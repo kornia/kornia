@@ -28,8 +28,7 @@ from kornia.enhance import posterize
 class RandomPosterize(IntensityAugmentationBase2D):
     r"""Posterize images to a random number of bits, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = RandomPosterize(bits, ...)(input)`` reduces the retained bit depth of selected images. Use
-    :class:`RandomSolarize` to invert values above a threshold instead of quantizing them.
+    ``output = RandomPosterize(bits, ...)(input)`` reduces the retained bit depth of selected images.
 
     .. image:: _static/img/RandomPosterize.png
 

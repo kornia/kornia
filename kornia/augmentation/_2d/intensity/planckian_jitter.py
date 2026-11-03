@@ -95,7 +95,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     r"""Shift the illuminant color (Planckian jitter), applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomPlanckianJitter(...)(input)`` changes the illumination of selected RGB images ``(B, 3, H, W)``
-    along its color-temperature model. Use :class:`RandomRGBShift` to offset RGB channels independently.
+    along its color-temperature model.
 
     .. image:: _static/img/RandomPlanckianJitter.png
 

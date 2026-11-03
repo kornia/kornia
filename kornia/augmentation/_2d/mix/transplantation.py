@@ -33,9 +33,10 @@ __all__ = ["RandomTransplantation"]
 class RandomTransplantation(MixAugmentationBaseV2):
     r"""Paste a labelled region from the previous batch image, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomTransplantation(data_keys=["input", "mask"])`` and ``image_out, mask_out = aug(input, mask)`` copy
-    selected labelled image regions and their segmentation masks between batch elements. Use
-    :class:`RandomTransplantation3D` for volumetric data.
+    ``image_out, mask_out = RandomTransplantation(data_keys=["input", "mask"])(input, mask)`` copies
+    selected labelled regions and their segmentation masks between batch elements. Use
+    :class:`RandomTransplantation3D` for volume dispatch in
+    :class:`~kornia.augmentation.container.AugmentationSequential`.
 
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only

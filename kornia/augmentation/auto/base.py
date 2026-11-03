@@ -37,23 +37,20 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     """Build and replay image augmentation policies made of named operations.
 
-    A concrete subclass constructs ``PolicyAugmentBase(policy)`` and selects
-    :class:`~kornia.augmentation.auto.PolicySequential` children when it is called with a floating image tensor of
-    shape ``(B, C, H, W)``. Use :class:`~kornia.augmentation.auto.AutoAugment`,
-    :class:`~kornia.augmentation.auto.RandAugment` or :class:`~kornia.augmentation.auto.TrivialAugment` for the
-    policy families supplied by Kornia.
+    ``output = MyPolicy(policy)(input)`` applies :class:`~kornia.augmentation.auto.PolicySequential` children to
+    floating images of shape ``(B, C, H, W)`` after a subclass implements ``compose_subpolicy_sequential``.
+    Concrete subclasses define the policy family and may override parameter sampling to select its children.
 
     Convention:
         - a concrete policy selects one or more :class:`~kornia.augmentation.auto.PolicySequential` children for each
-          forward call and
-          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
+          forward call and records that selected path, including every operation parameter dictionary, in ``_params``.
+          Passing
           that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
           path and reproduces their output.
         - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
-          and for :class:`~kornia.augmentation.auto.RandAugment` the order in which its sub-policies were drawn. When
-          matrix computation is
-          enabled, their geometric transformation matrices
-          compose in that same execution order; a nonempty policy containing only intensity
+          and for :class:`~kornia.augmentation.auto.RandAugment` the order in which its sub-policies were drawn.
+          When matrix computation is enabled, their geometric transformation matrices compose in that same execution
+          order; a nonempty policy containing only intensity
           operations has the identity matrix. An empty selected sub-policy has no matrix.
           ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
           intensity operation cannot be undone.

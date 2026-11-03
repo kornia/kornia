@@ -4,7 +4,7 @@
 .. currentmodule:: kornia.augmentation
 
 Choose an intensity transform when pixel positions must stay fixed. The classes take image tensors of shape
-``(B, C, H, W)`` (with selected classes accepting an unbatched image), and their range and channel requirements
+``(B, C, H, W)`` (with some classes accepting an unbatched image), and their range and channel requirements
 vary: color effects commonly clamp selected inputs to ``[0, 1]``, whereas filters and noise may retain arbitrary
 values. Their geometric matrix is the identity, so masks, boxes and keypoints pass through unless a class documents
 a specialized handler. Use a geometric augmentation to move pixels or change annotation coordinates.

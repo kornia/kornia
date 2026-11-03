@@ -28,9 +28,8 @@ from kornia.filters import box_blur
 class RandomBoxBlur(IntensityAugmentationBase2D):
     """Blur images with a box filter, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = RandomBoxBlur(kernel_size, ...)(input)`` replaces each selected pixel with a rectangular-window mean
-    in an image of shape ``(B, C, H, W)``. Use :class:`RandomGaussianBlur` when the window should give central pixels
-    more weight.
+    ``output = RandomBoxBlur(kernel_size, ...)(input)`` replaces every pixel in each selected image of shape
+    ``(B, C, H, W)`` with a rectangular-window mean.
 
     .. image:: _static/img/RandomBoxBlur.png
 

@@ -31,8 +31,7 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compu
 class RandomRotation3D(GeometricAugmentationBase3D):
     r"""Rotate 3D volumes by a random axis-angle rotation, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomRotation3D(degrees, ...)`` and ``output = aug(input)`` rotate volumes of shape ``(B, C, D, H, W)``.
-    Use :class:`RandomAffine3D` to also sample translation, scale or shear.
+    ``output = RandomRotation3D(degrees, ...)(input)`` rotates volumes of shape ``(B, C, D, H, W)``.
 
     Args:
         degrees: Range of degrees to select from.
@@ -76,8 +75,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
           :func:`kornia.geometry.transform.rotate` turn it counter-clockwise
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - the default interpolation is bilinear with ``align_corners=False``.
-
-    Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors ``(B, C, D, H, W)``.
 
     See Also:
         - :class:`RandomAffine3D`: samples a combined 3D affine transformation.

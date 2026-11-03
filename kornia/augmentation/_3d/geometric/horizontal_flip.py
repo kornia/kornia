@@ -27,8 +27,8 @@ from kornia.core.ops import _device_literal
 class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
     r"""Flip 3D volumes horizontally, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomHorizontalFlip3D(...)`` and ``output = aug(input)`` reverse the ``W`` axis of volumes. Use
-    :class:`RandomVerticalFlip3D` or :class:`RandomDepthicalFlip3D` for the other axes.
+    ``output = RandomHorizontalFlip3D(...)(input)`` reverses the ``W`` axis of selected volumes shaped
+    ``(B, C, D, H, W)``.
 
     Args:
         p: probability of applying the transformation to each sample.

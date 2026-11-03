@@ -32,7 +32,7 @@ class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Blur images with a Gaussian kernel of random sigma, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomGaussianBlur(kernel_size, sigma, ...)(input)`` convolves each selected ``(B, C, H, W)`` image
-    with separable Gaussian weights. Use :class:`RandomBoxBlur` for uniform window weights.
+    with separable Gaussian weights.
 
     The standard deviation is sampled for each instance.
 

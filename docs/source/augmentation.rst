@@ -42,15 +42,19 @@ annotation and inverse limitations.
    **Input format.** Use floating-point tensors with shape ``(B, C, H, W)`` for image batches and
    ``(B, C, D, H, W)`` for volume batches. Color transforms generally expect values in ``[0, 1]``: convert
    8-bit images with ``img.float() / 255`` before applying them. Casting a ``[0, 255]`` image to float alone
-   does not scale it, and operations that clamp to ``[0, 1]`` can discard its intensity detail.
+   does not scale it. A ``uint8`` input raises ``TypeError`` in image augmentations. A float input in
+   ``[0, 255]`` can be accepted without an error and then clamped by color transforms such as
+   :class:`~kornia.augmentation.ColorJiggle`, discarding intensity detail.
    Geometric transforms and :class:`~kornia.augmentation.Normalize` have different range rules; check the
    operator's contract before applying color transforms to normalized data.
 
 Benchmark
 ---------
 
-Benchmark the batch size, device and pipeline you will use. Hold those settings fixed when comparing libraries,
-and include parameter sampling when measuring a training-time augmentation pipeline.
+For CPU ``uint8`` single-image loaders, the measured comparisons favor native implementations such as
+albumentations and OpenCV. Batched floating-point GPU pipelines are Kornia's stronger regime, with gradient
+support for differentiable operators; the results depend on the operator, device and compilation settings.
+Benchmark the batch size and pipeline you will use, including parameter sampling.
 
 Reproducible, honestly-framed benchmarks live under
 `benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ and
@@ -92,8 +96,9 @@ Augmentations are PyTorch modules. Capture and export support depend on the oper
   is skipped during an export capture; the captured output is unchanged. Random augmentations and
   bounding-box/keypoint propagation through an exported graph are not covered.
 
-- **torch.compile.** See the per-operation ``test_dynamo`` tests for tested configurations. Graph capture depends
-  on the operators, flags and shapes; a successful capture does not by itself establish a speedup.
+- **torch.compile.** The :ref:`augmentation export survey <export-support-kornia-augmentation>` lists
+  per-operator compile results for its measured configurations. Graph capture depends on the operators, flags
+  and shapes; a successful capture does not by itself establish a speedup.
 
 - **ONNX.** :class:`~kornia.onnx.sequential.ONNXSequential` chains ONNX graphs; it does not take an augmentation
   module. The :ref:`export survey <export-support>` records which individual augmentations exported. Without

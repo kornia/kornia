@@ -31,7 +31,6 @@ class RandomGrayscale(IntensityAugmentationBase2D):
 
     ``output = RandomGrayscale(...)(input)`` turns selected images ``(B, C, H, W)`` into grayscale values while
     retaining their channel count: RGB uses luminance weights and other channel counts default to equal weights.
-    Use :class:`RandomSaturation` for a continuous color reduction.
 
     .. image:: _static/img/RandomGrayscale.png
 

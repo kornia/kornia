@@ -30,8 +30,8 @@ from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _cr
 class CenterCrop(GeometricAugmentationBase2D):
     r"""Crop a given image torch.Tensor at the center.
 
-    ``crop = CenterCrop(size)`` and ``output = crop(input)`` extract the centred ``size`` patch from an image of
-    shape ``(B, C, H, W)``. Use :class:`RandomCrop` to sample the crop position instead.
+    ``output = CenterCrop(size)(input)`` extracts the center ``size`` patch from images of shape
+    ``(B, C, H, W)``. Use :class:`RandomCrop` to sample the crop position instead.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -69,7 +69,7 @@ class CenterCrop(GeometricAugmentationBase2D):
 
     See Also:
         - :class:`RandomCrop`: samples a crop position for each selected image.
-        - :class:`CenterCrop3D`: extracts a centred subvolume.
+        - :class:`CenterCrop3D`: extracts a center subvolume.
 
     Examples:
         >>> import torch

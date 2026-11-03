@@ -30,8 +30,8 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 class RandomPerspective3D(GeometricAugmentationBase3D):
     r"""Warp 3D volumes with a random perspective transform, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomPerspective3D(distortion_scale, ...)`` and ``output = aug(input)`` projectively warp volumes of
-    shape ``(B, C, D, H, W)``. Use :class:`RandomAffine3D` when an affine transform is enough.
+    ``output = RandomPerspective3D(distortion_scale, ...)(input)`` projectively warps volumes of shape
+    ``(B, C, D, H, W)``.
 
     Args:
         p: probability of applying the transformation to each sample.

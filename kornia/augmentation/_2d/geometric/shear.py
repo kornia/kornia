@@ -32,8 +32,7 @@ from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 class RandomShear(GeometricAugmentationBase2D):
     r"""Shear images by random angles in degrees, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomShear(shear, ...)`` and ``output = aug(input)`` shear selected images of shape ``(B, C, H, W)``
-    about their centres. Use :class:`RandomAffine` to combine sampled shear with rotation, scale or translation.
+    ``output = RandomShear(shear, ...)(input)`` shears images of shape ``(B, C, H, W)`` with sampled angles.
 
     Args:
         shear: Range of degrees to select from.
@@ -59,8 +58,6 @@ class RandomShear(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
-
-    The transformation is computed so that the image center is kept invariant.
 
     .. note::
         Unlike torchvision's ``RandomAffine(degrees=0, shear=...)``, which shears every image, this class shears each

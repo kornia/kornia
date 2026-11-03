@@ -59,14 +59,13 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 
 
 class AugmentationBase2D(_AugmentationBase):
-    r"""Base class for custom 2D augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a custom 2D augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``AugmentationBase2D`` and implement its hooks for images of shape ``(B, C, H, W)``. Use
-    :class:`GeometricAugmentationBase2D` when the operation must transform coordinates and record a matrix.
-
-    AugmentationBase2D aims at offering a generic base class for a greater level of customization.
-    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
-    might be a better fit.
+    ``output = MyAugmentation(...)(input)`` processes images of shape ``(B, C, H, W)`` after a subclass
+    implements ``apply_transform`` and supplies any parameter generation it needs. This generic base supports
+    custom operations, including matrix-free warps such as :class:`RandomElasticTransform` and
+    :class:`RandomThinPlateSpline`. Use :class:`IntensityAugmentationBase2D` for value-only operations or
+    :class:`GeometricAugmentationBase2D` for matrix-based coordinate transforms.
 
     This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
     Mix and 3D augmentations have their own bases and contracts.
@@ -147,15 +146,14 @@ class AugmentationBase2D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""Base class for 2D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Record a matrix for a custom 2D transform, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``RigidAffineAugmentationBase2D`` to build a 2D augmentation that records a ``(B, 3, 3)`` matrix. Use
-    :class:`GeometricAugmentationBase2D` for geometric transform hooks.
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 3, 3)`` matrix after a subclass implements
+    ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
+    use :class:`GeometricAugmentationBase2D` for coordinate transforms or :class:`IntensityAugmentationBase2D`
+    for value-only operations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
-
-    RigidAffineAugmentationBase2D manages transformation matrices. Further subclasses supply the
-    handlers for different data types like masks, boxes, and keypoints.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities

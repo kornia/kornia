@@ -52,13 +52,19 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 }
 """Top-level packages left out of the rollout, with the reason."""
 
+CATALOG_EXCEPTIONS: dict[str, str] = {
+    "kornia.augmentation.utils": (
+        "internal augmentation helpers; __all__ supports implementation imports, not a public API catalog"
+    ),
+}
+"""Namespaces intentionally omitted from public catalogs, with a reason; exports remain unchanged."""
+
 CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.augmentation",
     "kornia.augmentation.auto",
     "kornia.augmentation.auto.operations.ops",
     "kornia.augmentation.container.base",
     "kornia.augmentation.container.params",
-    "kornia.augmentation.utils",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
     "kornia.geometry.bbox",

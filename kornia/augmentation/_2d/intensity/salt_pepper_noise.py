@@ -29,8 +29,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     r"""Add salt-and-pepper noise to images, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomSaltAndPepperNoise(amount, salt_vs_pepper, ...)(input)`` rewrites sampled pixels of selected
-    one- or three-channel images ``(B, C, H, W)`` to zero or one. Use :class:`RandomGaussianNoise` for dense,
-    continuous noise.
+    one- or three-channel images ``(B, C, H, W)`` to zero or one.
 
     .. image:: _static/img/RandomSaltAndPepperNoise.png
 

@@ -12,7 +12,8 @@ Choose an operator by what it changes. Image batches use floating-point tensors 
 volume batches use ``(B, C, D, H, W)``. Color transforms generally expect values in ``[0, 1]``. Each class states
 its channel and range requirements, whether its probability gate applies per sample or to the whole batch,
 and which parameters ``same_on_batch`` shares. Use :class:`~kornia.augmentation.container.AugmentationSequential` to
-compose transforms and coordinate their supported annotation handlers.
+compose transforms and coordinate their supported annotation handlers. In the operator contracts, "selected"
+means chosen by the probability gate: ``p`` selects samples or a whole batch as documented by that class.
 
 .. list-table::
    :widths: 30 70

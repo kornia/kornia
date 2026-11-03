@@ -29,8 +29,8 @@ from kornia.geometry.transform import elastic_transform2d
 class RandomElasticTransform(AugmentationBase2D):
     r"""Warp images with a random elastic displacement field, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomElasticTransform(kernel_size, sigma, alpha, ...)`` and ``output = aug(input)`` displace pixels in
-    selected images of shape ``(B, C, H, W)``. Use :class:`RandomThinPlateSpline` for a sparse-control-point warp.
+    ``output = RandomElasticTransform(kernel_size, sigma, alpha, ...)(input)`` displaces pixels in selected images
+    of shape ``(B, C, H, W)``.
 
     Args:
         kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.

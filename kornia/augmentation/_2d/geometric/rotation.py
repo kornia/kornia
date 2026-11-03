@@ -31,8 +31,8 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 class RandomRotation(GeometricAugmentationBase2D):
     r"""Rotate images by a random angle in degrees, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomRotation(degrees, ...)`` and ``output = aug(input)`` rotate selected images of shape
-    ``(B, C, H, W)`` about their centres. Use :class:`RandomRotation90` when only quarter turns are wanted.
+    ``output = RandomRotation(degrees, ...)(input)`` rotates selected images of shape ``(B, C, H, W)``
+    about their centers. Use :class:`RandomRotation90` when only quarter turns are wanted.
 
     .. image:: _static/img/RandomRotation.png
 
@@ -169,8 +169,8 @@ def _range_allows_odd_turns(low: float, high: float) -> bool:
 class RandomRotation90(GeometricAugmentationBase2D):
     r"""Rotate images by a random multiple of 90 degrees, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomRotation90(times, ...)`` and ``output = aug(input)`` rotate selected images of shape
-    ``(B, C, H, W)`` by quarter turns. Use :class:`RandomRotation` to sample arbitrary angles.
+    ``output = RandomRotation90(times, ...)(input)`` rotates selected images of shape ``(B, C, H, W)``
+    by quarter turns. Use :class:`RandomRotation` to sample arbitrary angles.
 
     Args:
         times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:

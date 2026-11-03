@@ -30,10 +30,9 @@ from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
 class Resize(GeometricAugmentationBase2D):
-    """Resize to size.
+    """Resample images to a requested spatial size. Always occurs (p=1.0).
 
-    ``resize = Resize(size, ...)`` and ``output = resize(input)`` resample images of shape ``(B, C, H, W)`` to
-    ``size``. Use :class:`LongestMaxSize` or :class:`SmallestMaxSize` to preserve aspect ratio from one bound.
+    ``output = Resize(size, ...)(input)`` resamples images of shape ``(B, C, H, W)`` to ``size``.
 
     Args:
         size: Size (h, w) in pixels of the resized region or just one side.
@@ -55,7 +54,7 @@ class Resize(GeometricAugmentationBase2D):
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
         bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
-        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        the corner pixel centers onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
         ``nearest-exact`` interpolation.
         ``inverse()`` resamples to the prior canvas and cannot recover
         values discarded by a resize.
@@ -174,7 +173,7 @@ class Resize(GeometricAugmentationBase2D):
 class LongestMaxSize(Resize):
     """Rescale an image so that maximum side is equal to max_size, keeping the aspect ratio of the initial image.
 
-    ``resize = LongestMaxSize(max_size)`` and ``output = resize(input)`` preserve an input image's aspect ratio.
+    ``output = LongestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
     Use :class:`SmallestMaxSize` to set the shortest side instead.
 
     Args:
@@ -206,7 +205,7 @@ class LongestMaxSize(Resize):
 class SmallestMaxSize(Resize):
     """Rescale an image so that minimum side is equal to max_size, keeping the aspect ratio of the initial image.
 
-    ``resize = SmallestMaxSize(max_size)`` and ``output = resize(input)`` preserve an input image's aspect ratio.
+    ``output = SmallestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
     Use :class:`LongestMaxSize` to bound the longest side instead.
 
     Args:

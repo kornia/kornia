@@ -29,8 +29,7 @@ from kornia.enhance import normalize
 class Normalize(IntensityAugmentationBase2D):
     r"""Normalize image channels with supplied mean and standard deviation.
 
-    ``Normalize(mean, std)(image)`` returns ``(image - mean) / std`` for selected batches. Use
-    :class:`RandomAutoContrast` when each image should instead be rescaled from its observed extrema.
+    ``output = Normalize(mean, std)(input)`` returns ``(input - mean) / std``.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -57,8 +56,8 @@ class Normalize(IntensityAugmentationBase2D):
           and takes no ``same_on_batch`` argument.
         - the statistics live in ``flags`` rather than in a buffer: ``state_dict()`` is empty and
           ``Module.to(...)`` does not move them; they are cast to the input's device and dtype on each call.
-        - :class:`Denormalize` built with the same ``mean`` and ``std`` inverts this class, up to float
-          rounding, when both apply -- each draws its own ``p`` gate.
+        - :class:`Denormalize` built with the same ``mean`` and nonzero ``std`` inverts this class, up to
+          floating-point rounding, when both transforms apply and their intermediate values remain finite.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
     .. note::

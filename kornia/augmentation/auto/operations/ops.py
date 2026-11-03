@@ -16,7 +16,7 @@
 #
 """Implement color and geometric operations used by automatic augmentation policies.
 
-Which operation to use:
+Available operations:
 
 - :class:`AutoContrast`, :class:`Equalize`, :class:`Contrast`, :class:`Brightness`, :class:`Hue`,
   :class:`Saturate` and :class:`Gray` change image tone or color.
@@ -116,8 +116,7 @@ class AutoContrast(OperationBase):
     """Stretch each image channel's occupied range to the full value range.
 
     ``output = AutoContrast(probability)(input)`` stretches each selected channel's occupied range in a floating
-    ``(B, C, H, W)`` batch toward ``[0, 1]`` . Use :class:`Contrast` to adjust contrast around the grayscale mean
-    instead.
+    ``(B, C, H, W)`` batch toward ``[0, 1]``.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -181,7 +180,7 @@ class Contrast(OperationBase):
 
     ``output = Contrast(magnitude, probability)(input)`` scales selected floating images ``(B, C, H, W)`` around their
     mean. RGB inputs use the grayscale mean; other channel counts use the mean over all channels and pixels. Selected
-    inputs and outputs are clamped into ``[0, 1]`` ; use :class:`~kornia.augmentation.RandomContrast` for direct
+    inputs and outputs are clamped into ``[0, 1]``; use :class:`~kornia.augmentation.RandomContrast` for direct
     multiplication instead.
 
     Args:
@@ -216,7 +215,7 @@ class Hue(OperationBase):
     """Shift hue by a policy-controlled amount.
 
     ``output = Hue(magnitude, probability)(input)`` shifts hue in a floating RGB batch ``(B, 3, H, W)`` and keeps its
-    shape. The magnitude is a fraction of a full hue turn. Selected inputs and outputs are clamped to ``[0, 1]`` ; use
+    shape. The magnitude is a fraction of a full hue turn. Selected inputs and outputs are clamped to ``[0, 1]``; use
     :class:`Saturate` to change saturation instead.
 
     Args:
@@ -252,7 +251,7 @@ class Saturate(OperationBase):
 
     ``output = Saturate(magnitude, probability)(input)`` blends selected floating images ``(B, C, H, W)`` with their
     grayscale versions. One or three channels are accepted; grayscale inputs only undergo the ``[0, 1]`` input/output
-    clamps. Use :class:`Hue` to shift hue instead.
+    clamps.
 
     Unlike :class:`~kornia.augmentation.RandomSaturation`, this blends RGB
     values with grayscale rather than scaling HSV saturation.
@@ -290,8 +289,7 @@ class Equalize(OperationBase):
     """Equalize image histograms when selected by a policy probability gate.
 
     ``output = Equalize(probability)(input)`` equalizes the histograms of selected images in a floating ``(B, C, H, W)``
-    batch and keeps its shape. Selected inputs and outputs are clamped to ``[0, 1]`` . Use :class:`AutoContrast` to
-    stretch channel ranges without histogram equalization.
+    batch and keeps its shape. Selected inputs and outputs are clamped to ``[0, 1]``.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -343,7 +341,7 @@ class Invert(OperationBase):
     """Invert selected image values around the operation's supported range.
 
     ``output = Invert(probability)(input)`` replaces selected values with ``1 - input`` in a floating ``(B, C, H, W)``
-    batch. It preserves the shape and does not clamp values; use :class:`Solarize` for thresholded inversion.
+    batch. It preserves the shape and does not clamp values.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -368,7 +366,7 @@ class Posterize(OperationBase):
 
     ``output = Posterize(magnitude, probability)(input)`` reduces the retained bits of selected floating
     ``(B, C, H, W)`` images. Selected inputs are clamped to ``[0, 1]`` and the magnitude is truncated to an integer bit
-    count; use :class:`Solarize` for thresholded inversion instead.
+    count.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -407,8 +405,7 @@ class Solarize(OperationBase):
     """Invert values at or above a policy-controlled solarization threshold.
 
     ``output = Solarize(magnitude, probability)(input)`` inverts values at or above the magnitude's threshold in
-    selected floating ``(B, C, H, W)`` images after clamping inputs to ``[0, 1]`` . Use :class:`SolarizeAdd` to add an
-    intensity offset before inversion.
+    selected floating ``(B, C, H, W)`` images after clamping inputs to ``[0, 1]``.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -439,12 +436,13 @@ class Solarize(OperationBase):
 
 
 class SolarizeAdd(OperationBase):
-    """Add an intensity offset, then solarize at a sampled threshold.
+    """Add an intensity offset, then apply the current solarization behavior.
 
     ``output = SolarizeAdd(magnitude, probability)(input)`` clamps selected floating images ``(B, C, H, W)`` into
-    ``[0, 1]`` , adds the magnitude to every pixel, clamps again, then inverts values at or above a sampled threshold.
-    Thresholds are drawn from ``[0, 1]`` per selected image; use :class:`Solarize` to control the threshold with the
-    magnitude instead.
+    ``[0, 1]``, adds the magnitude to every pixel, clamps again, then inverts values at or above a sampled threshold.
+    The threshold is sampled from ``[0, 1]`` per selected image. This is a known defect tracked in
+    `#6561 <https://github.com/kornia/kornia/issues/6561>`_: reference solarize-add adds only below a fixed
+    ``128 / 255`` threshold and never inverts pixels.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -479,7 +477,7 @@ class Sharpness(OperationBase):
 
     ``output = Sharpness(magnitude, probability)(input)`` blends selected floating ``(B, C, H, W)`` images with a
     smoothed copy. A factor of zero selects the smoothed image, one keeps the input, and larger factors sharpen;
-    selected inputs and outputs are clamped into ``[0, 1]`` . Height and width must be at least three pixels when the
+    selected inputs and outputs are clamped into ``[0, 1]``. Height and width must be at least three pixels when the
     operation runs.
 
     Args:
@@ -514,7 +512,7 @@ class HorizontalFlip(OperationBase):
     """Reverse image columns with a policy probability gate.
 
     ``output = HorizontalFlip(probability)(input)`` reverses columns of selected floating ``(B, C, H, W)`` images,
-    preserving shape and pixel values. Use :class:`VerticalFlip` to reverse rows.
+    preserving shape and pixel values.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -538,7 +536,7 @@ class VerticalFlip(OperationBase):
     """Reverse image rows with a policy probability gate.
 
     ``output = VerticalFlip(probability)(input)`` reverses rows of selected floating ``(B, C, H, W)`` images, preserving
-    shape and pixel values. Use :class:`HorizontalFlip` to reverse columns.
+    shape and pixel values.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -562,8 +560,7 @@ class Rotate(OperationBase):
     """Rotate selected images by a policy-controlled angle.
 
     ``output = Rotate(magnitude, probability)(input)`` rotates selected floating ``(B, C, H, W)`` images about their
-    centers, keeping the output size. The magnitude is in degrees with a random sign by default; use :class:`ShearX` or
-    :class:`ShearY` for shearing.
+    centers, keeping the output size. The magnitude is in degrees with a random sign by default.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -603,8 +600,7 @@ class ShearX(OperationBase):
     """Shear selected images along the x axis by a policy-controlled amount.
 
     ``output = ShearX(magnitude, probability)(input)`` shears selected floating ``(B, C, H, W)`` images along x, keeping
-    the output size. The magnitude is a shear factor with a random sign by default; use :class:`ShearY` for y-axis
-    shearing.
+    the output size. The magnitude is a shear factor with a random sign by default.
 
     The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
     learned, or passed to ``forward_parameters``. It is mapped to the wrapped augmentation's degrees with
@@ -654,8 +650,7 @@ class ShearY(OperationBase):
     """Shear selected images along the y axis by a policy-controlled amount.
 
     ``output = ShearY(magnitude, probability)(input)`` shears selected floating ``(B, C, H, W)`` images along y, keeping
-    the output size. The magnitude is a shear factor with a random sign by default; use :class:`ShearX` for x-axis
-    shearing.
+    the output size. The magnitude is a shear factor with a random sign by default.
 
     The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
     learned, or passed to ``forward_parameters``. It is mapped to the wrapped augmentation's degrees with

@@ -29,7 +29,7 @@ class RandomErasing(IntensityAugmentationBase2D):
     r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomErasing(scale, ratio, value, ...)(input)`` replaces one sampled rectangle in each selected
-    image ``(B, C, H, W)``. Use :class:`RandomChannelDropout` to replace whole channels instead of a spatial region.
+    image ``(B, C, H, W)``.
 
     .. image:: _static/img/RandomErasing.png
 

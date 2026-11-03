@@ -30,8 +30,7 @@ from kornia.geometry.transform import hflip
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
     r"""Flip images horizontally, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomHorizontalFlip(...)`` and ``output = aug(input)`` reverse the width axis of selected images of
-    shape ``(B, C, H, W)``. Use :class:`RandomVerticalFlip` to reverse the height axis instead.
+    ``output = RandomHorizontalFlip(...)(input)`` reverses the width axis of images of shape ``(B, C, H, W)``.
 
     Args:
         p: probability of applying the transformation to each sample.
@@ -53,15 +52,9 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     .. image:: _static/img/RandomHorizontalFlip.png
 
-    Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors ``(B, C, H, W)``.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will Horizontally flip the tensors and torch.cat the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
-
     See Also:
         - :class:`RandomHorizontalFlip3D`: reverses the width axis of a volume.
-        - :class:`RandomVerticalFlip`: reflects across the horizontal centre line.
+        - :class:`RandomVerticalFlip`: reflects across the horizontal center line.
 
     Examples:
         >>> import torch

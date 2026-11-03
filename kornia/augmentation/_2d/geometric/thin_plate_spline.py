@@ -30,8 +30,8 @@ from kornia.geometry.transform import get_tps_transform, warp_image_tps
 class RandomThinPlateSpline(AugmentationBase2D):
     r"""Warp images with a random thin plate spline, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomThinPlateSpline(...)`` and ``output = aug(input)`` deform selected images of shape ``(B, C, H, W)``
-    using a sampled thin-plate spline. Use :class:`RandomElasticTransform` for a smooth displacement-field warp.
+    ``output = RandomThinPlateSpline(...)(input)`` deforms selected images of shape ``(B, C, H, W)`` using a sampled
+    thin-plate spline.
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

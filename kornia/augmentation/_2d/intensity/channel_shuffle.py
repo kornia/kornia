@@ -28,7 +28,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     r"""Randomly permute the channels of images, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomChannelShuffle(...)(input)`` reorders the channels of every selected image ``(B, C, H, W)``
-    without changing its values. Use :class:`RandomChannelDropout` to replace a sampled set of channels instead.
+    without changing its values.
 
     .. image:: _static/img/RandomChannelShuffle.png
 

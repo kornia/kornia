@@ -49,8 +49,7 @@ class TrivialAugment(PolicyAugmentBase):
     """Sample one TrivialAugment operation for an image batch.
 
     ``output = TrivialAugment()(input)`` selects one operation for a floating ``(B, C, H, W)`` image batch and draws
-    its magnitude per image, if it has one. Use :class:`~kornia.augmentation.auto.RandAugment` to draw more than one
-    operation per call. The policy follows :cite:`muller2021trivialaugment`.
+    its magnitude per image, if it has one. The policy follows :cite:`muller2021trivialaugment`.
 
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 

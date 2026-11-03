@@ -29,8 +29,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
 
     ``output = RandomChannelDropout(num_drop_channels, fill_value, ...)(input)`` replaces selected channels of each
-    selected image ``(B, C, H, W)`` with a constant. Use :class:`RandomChannelShuffle` to reorder channels without
-    discarding their values.
+    selected image ``(B, C, H, W)`` with a constant.
 
     .. image:: _static/img/RandomChannelDropout.png
 

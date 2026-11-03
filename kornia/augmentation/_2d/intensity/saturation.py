@@ -29,8 +29,8 @@ from kornia.enhance.adjust import adjust_saturation
 class RandomSaturation(IntensityAugmentationBase2D):
     r"""Scale the HSV saturation of a three-channel image by a random factor.
 
-    ``RandomSaturation(saturation)(image)`` changes only the saturation component of selected images. Use
-    :class:`ColorJitter` for torchvision-compatible grayscale-blend saturation.
+    ``output = RandomSaturation(saturation)(input)`` changes only the saturation component of selected images.
+    Use :class:`ColorJitter` for torchvision-compatible grayscale-blend saturation.
 
     The factor scales the HSV saturation. torchvision's and PIL's saturation blends the image with its
     grayscale instead (``factor * input + (1 - factor) * gray``); :class:`ColorJitter`'s saturation step is

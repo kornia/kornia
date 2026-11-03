@@ -35,8 +35,8 @@ __all__ = ["RandomMosaic"]
 class RandomMosaic(MixAugmentationBaseV2):
     r"""Replace each sample, with probability ``p`` (default 0.7), by a crop of a mosaic of batch images.
 
-    ``aug = RandomMosaic(output_size, ...)`` and ``output = aug(input)`` arrange batch images in a mosaic before
-    taking one output crop. Use :class:`RandomJigsaw` to rearrange tiles from one image instead.
+    ``output = RandomMosaic(output_size, ...)(input)`` arranges batch images in a mosaic before taking one output
+    crop.
 
     Args:
         output_size: the output ``(height, width)`` after mosaicing.
@@ -59,15 +59,6 @@ class RandomMosaic(MixAugmentationBaseV2):
             differentiability.
 
     .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
-
-    Given a certain number of images, mosaic transform combines them into one output image.
-    The output image is composed of the parts from each sub-image. To mess up each image individually,
-    referring to :class:`kornia.augmentation.RandomJigsaw`.
-
-    The mosaic transform steps are as follows:
-
-         1. Concate selected images into a super-image.
-         2. Crop out the outcome image according to the top-left corner and crop size.
 
     See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 

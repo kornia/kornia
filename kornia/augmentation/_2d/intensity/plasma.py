@@ -57,8 +57,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
     r"""Shift brightness by a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomPlasmaBrightness(roughness, intensity, ...)(input)`` adds a sampled fractal field to each
-    selected image ``(B, C, H, W)`` and clamps it to ``[0, 1]``. Use :class:`RandomGaussianIllumination` for a
-    smooth Gaussian field.
+    selected image ``(B, C, H, W)`` and clamps it to ``[0, 1]``.
 
     .. image:: _static/img/RandomPlasmaBrightness.png
 
@@ -138,7 +137,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
     r"""Scale contrast by a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomPlasmaContrast(roughness, ...)(input)`` scales contrast locally with a sampled fractal field on
-    selected ``(B, C, H, W)`` images. Use :class:`RandomPlasmaBrightness` to add a field instead.
+    selected ``(B, C, H, W)`` images.
 
     .. image:: _static/img/RandomPlasmaContrast.png
 
@@ -212,7 +211,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
     r"""Add shadows from a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomPlasmaShadow(roughness, shade_intensity, ...)(input)`` darkens areas chosen by a sampled
-    fractal field in selected ``(B, C, H, W)`` images. Use :class:`RandomPlasmaBrightness` to add a signed field.
+    fractal field in selected ``(B, C, H, W)`` images.
 
     .. image:: _static/img/RandomPlasmaShadow.png
 

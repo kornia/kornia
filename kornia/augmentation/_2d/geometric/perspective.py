@@ -29,8 +29,8 @@ from kornia.geometry.transform import get_perspective_transform, warp_perspectiv
 class RandomPerspective(GeometricAugmentationBase2D):
     r"""Warp images with a random perspective transformation, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomPerspective(distortion_scale, ...)`` and ``output = aug(input)`` apply a projective warp to
-    selected images of shape ``(B, C, H, W)``. Use :class:`RandomAffine` when a sampled affine transform is enough.
+    ``output = RandomPerspective(distortion_scale, ...)(input)`` applies a projective warp to selected images of
+    shape ``(B, C, H, W)``.
 
     Args:
         distortion_scale: the degree of distortion, ranged from 0 to 1.

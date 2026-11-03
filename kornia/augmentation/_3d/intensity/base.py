@@ -19,10 +19,12 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
-    r"""Base class for custom 3D intensity augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a 3D value augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``IntensityAugmentationBase3D`` to change voxel values while retaining their coordinates. Use
-    :class:`GeometricAugmentationBase3D` for an operation that warps the volume.
+    ``output = MyAugmentation(...)(input)`` changes voxel values while retaining their coordinates after a
+    subclass implements ``apply_transform`` and ``compute_transformation``. Unlike the 2D intensity base, this
+    base requires the subclass to return an identity ``(B, 4, 4)`` matrix from ``compute_transformation``.
+    Use :class:`GeometricAugmentationBase3D` for an operation that warps the volume.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 

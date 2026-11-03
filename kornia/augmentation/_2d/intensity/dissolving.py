@@ -28,8 +28,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
     r"""Dissolve images with a Stable Diffusion model, applied to the whole batch with probability ``p`` (default 0.5).
 
     ``output = RandomDissolving(step_range, version, ...)(input)`` applies one sampled reverse-diffusion step to the
-    selected batch of images. It needs the optional ``diffusers`` dependency and a compatible Stable Diffusion model;
-    use :class:`RandomErasing` to remove a rectangle without loading a diffusion model.
+    selected batch of images. It needs the optional ``diffusers`` dependency and a compatible Stable Diffusion model.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 

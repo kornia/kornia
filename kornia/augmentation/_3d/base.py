@@ -30,9 +30,10 @@ from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a custom 3D augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``AugmentationBase3D`` to implement augmentation hooks for volumes of shape ``(B, C, D, H, W)``. Use
+    ``output = MyAugmentation(...)(input)`` processes volumes of shape ``(B, C, D, H, W)`` after a subclass
+    implements ``apply_transform`` and supplies any parameter generation it needs. Use
     :class:`GeometricAugmentationBase3D` when the operation moves coordinates, or :class:`IntensityAugmentationBase3D`
     when it changes voxel values alone.
 
@@ -92,13 +93,12 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Record a matrix for a custom 3D transform, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``RigidAffineAugmentationBase3D`` for a transform with a ``(B, 4, 4)`` matrix. Use
-    :class:`GeometricAugmentationBase3D` for geometric transform hooks.
-
-    RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
-    for different data types like masks, boxes, and keypoints.
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 4, 4)`` matrix after a subclass implements
+    ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
+    use :class:`GeometricAugmentationBase3D` for coordinate transforms or :class:`IntensityAugmentationBase3D`
+    for value-only operations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 

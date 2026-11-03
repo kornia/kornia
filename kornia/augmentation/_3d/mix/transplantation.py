@@ -24,11 +24,8 @@ __all__ = ["RandomTransplantation3D"]
 class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):
     """Paste a labelled region from the previous 3D volume, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomTransplantation3D(...)`` and ``output = aug(input, mask)`` copy selected labelled 3D regions
+    ``image_out, mask_out = RandomTransplantation3D(...)(input, mask)`` copies selected labelled regions
     between batched volumes and their segmentation masks. Use :class:`RandomTransplantation` for 2D images.
-
-    3D version of the :class:`kornia.augmentation.RandomTransplantation` augmentation intended to be used with
-    :class:`kornia.augmentation.container.AugmentationSequential`. The interface is identical to the 2D version.
 
     See the Convention block on :class:`~kornia.augmentation.RandomTransplantation`.
 

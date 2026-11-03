@@ -24,11 +24,11 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 
 
 class PadTo(GeometricAugmentationBase2D):
-    r"""Pad the given sample to a specific size. Always occurs (p=1.0).
+    r"""Pad or crop an image batch to a requested size. Always occurs (p=1.0).
 
-    ``pad = PadTo(size)`` and ``output = pad(input)`` pad or crop the right and bottom edges of an image batch
-    ``(B, C, H, W)`` to ``size``. Set ``crop_if_exceeds=False`` to keep oversized axes unchanged; use
-    :class:`Resize` when the content itself should be resampled.
+    ``output = PadTo(size)(input)`` pads or crops the right and bottom edges of an image batch
+    ``(B, C, H, W)`` to ``size``. Set ``crop_if_exceeds=False`` to keep oversized axes unchanged;
+    use :class:`Resize` when the content itself should be resampled.
 
     Args:
         size: a tuple of ints in the format (height, width) that give the spatial

@@ -118,9 +118,9 @@ class AutoAugment(PolicyAugmentBase):
     """Sample a searched AutoAugment sub-policy for a named image dataset.
 
     ``output = AutoAugment(policy)(input)`` selects one fixed two-operation sub-policy for ``imagenet``, ``cifar10``
-    or ``svhn`` from :cite:`cubuk2018autoaugment` and applies its probability gates to a floating ``(B, C, H, W)`` image
-    batch. Use
-    :class:`~kornia.augmentation.auto.RandAugment` to sample operation choices instead of choosing from a searched list.
+    or ``svhn`` from :cite:`cubuk2018autoaugment` and applies its probability gates to a floating image batch
+    ``(B, C, H, W)``. Use :class:`~kornia.augmentation.auto.RandAugment` to sample operation choices instead of
+    choosing from a searched list.
 
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 

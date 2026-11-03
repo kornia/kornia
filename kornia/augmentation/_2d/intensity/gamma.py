@@ -28,8 +28,8 @@ from kornia.enhance.adjust import adjust_gamma
 class RandomGamma(IntensityAugmentationBase2D):
     r"""Apply a random gamma power law to unit-range images.
 
-    ``RandomGamma(gamma, gain)(image)`` raises selected pixels to a sampled gamma and multiplies by sampled gain.
-    Use :class:`RandomBrightness` or :class:`RandomContrast` for linear value adjustments.
+    ``output = RandomGamma(gamma, gain)(input)`` raises pixels in selected images to a sampled gamma and multiplies
+    them by sampled gain.
 
     The formula is torchvision's ``adjust_gamma`` for a float image: ``clamp(gain * input ** gamma, 0, 1)``.
 

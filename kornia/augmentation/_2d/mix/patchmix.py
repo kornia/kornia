@@ -25,10 +25,10 @@ from kornia.constants import DataKey
 
 
 class PatchMix(MixAugmentationBaseV2):
-    r"""PatchMix augmentation.
+    r"""Replace image patches from another sample, applied per sample with probability ``p`` (default 1.0).
 
-    ``aug = PatchMix(alpha, patch_size, ...)`` and ``output = aug(input)`` replace a same-position square patch in
-    each selected image. Use :class:`RandomCutMixV2` to sample a CutMix rectangle and return paired labels.
+    ``output = PatchMix(alpha, patch_size, ...)(input)`` replaces a same-position square patch in each selected
+    image.
 
     Args:
         alpha: Hyperparameter for the Beta distribution used to generate the

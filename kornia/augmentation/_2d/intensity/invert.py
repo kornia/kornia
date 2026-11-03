@@ -29,8 +29,7 @@ from kornia.enhance import invert
 class RandomInvert(IntensityAugmentationBase2D):
     r"""Invert image values as ``max_val - x``, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = RandomInvert(max_val, ...)(input)`` subtracts selected image values from a chosen maximum. Use
-    :class:`RandomSolarize` to invert only values at or above a sampled threshold.
+    ``output = RandomInvert(max_val, ...)(input)`` subtracts selected image values from a chosen maximum.
 
     .. image:: _static/img/RandomInvert.png
 

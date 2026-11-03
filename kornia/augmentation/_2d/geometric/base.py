@@ -29,10 +29,11 @@ from kornia.geometry.keypoints import Keypoints
 
 
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
-    r"""Base class for custom 2D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a 2D coordinate transform, applied per sample with probability ``p`` (default 0.5).
 
-    Subclass ``GeometricAugmentationBase2D`` to implement a sampled geometric warp of images shaped ``(B, C, H, W)``.
-    Use :class:`AugmentationBase2D` for an augmentation that does not move coordinates.
+    ``output = MyAugmentation(...)(input)`` warps images of shape ``(B, C, H, W)`` after a subclass implements
+    ``compute_transformation`` and ``apply_transform``. Implement ``inverse_transform`` to support image inversion.
+    Use :class:`IntensityAugmentationBase2D` for an augmentation that changes values without moving coordinates.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -46,8 +47,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
-        - pixel coordinates are ``(x, y)`` at integer pixel centres, with corners ``(0, 0)`` and
-          ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centred
+        - pixel coordinates are ``(x, y)`` at integer pixel centers, with corners ``(0, 0)`` and
+          ``(W - 1, H - 1)`` (see :doc:`/get-started/conventions`); rotations, shears and affine maps are centered
           at ``((W - 1) / 2, (H - 1) / 2)``, and ``transform_matrix`` maps input pixel coordinates to output pixel
           coordinates.
         - the resampling classes, including the non-rigid :class:`RandomElasticTransform` and
@@ -82,8 +83,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         unless ``resample`` is passed explicitly to ``transform_masks()`` or ``inverse_masks()`` --
         which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
         both directions. Antialiasing is disabled for masks by default, even when it is enabled for images.
-        Pass ``antialias=True`` explicitly to ``transform_masks()`` or through ``extra_args[DataKey.MASK]``
-        to filter soft masks.
+        For :class:`Resize`, pass ``antialias=True`` explicitly to ``transform_masks()`` or through
+        ``extra_args[DataKey.MASK]`` to filter soft masks. This only affects transforms that implement
+        antialiasing; :class:`RandomResizedCrop` ignores the flag in both cropping modes.
 
     See Also:
         - :class:`AugmentationBase2D`: base class for general 2D augmentations.

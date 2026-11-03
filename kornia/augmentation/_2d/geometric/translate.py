@@ -29,8 +29,8 @@ from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 class RandomTranslate(GeometricAugmentationBase2D):
     r"""Translate images by a random 2D shift, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomTranslate(translate_x, translate_y, ...)`` and ``output = aug(input)`` shift selected images of
-    shape ``(B, C, H, W)``. Use :class:`RandomAffine` to combine translation with rotation, scaling or shear.
+    ``output = RandomTranslate(translate_x, translate_y, ...)(input)`` shifts selected images of shape
+    ``(B, C, H, W)``.
 
     Args:
         translate_x: tuple of maximum absolute fraction for horizontal translations.

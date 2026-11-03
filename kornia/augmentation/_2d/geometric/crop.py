@@ -54,11 +54,10 @@ def _remove_padding(
 
 
 class RandomCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches of a torch.Tensor image on a given size.
+    r"""Crop random image patches to a requested size, applied to a batch with probability ``p`` (default 1.0).
 
-    ``crop = RandomCrop(size, ...)`` and ``output = crop(input)`` choose crop positions in images of shape
-    ``(B, C, H, W)`` and return patches of ``size``. Use :class:`CenterCrop` for the deterministic centre patch or
-    :class:`RandomResizedCrop` to resize the sampled patch.
+    ``output = RandomCrop(size, ...)(input)`` chooses crop positions in images of shape ``(B, C, H, W)`` and returns
+    patches of ``size``. Use :class:`RandomResizedCrop` to resize the sampled patch.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -133,7 +132,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomCrop.png
 
     See Also:
-        - :class:`CenterCrop`: extracts the deterministic centred patch.
+        - :class:`CenterCrop`: extracts the deterministic center patch.
         - :class:`RandomResizedCrop`: samples a crop and resizes it to the requested output size.
         - :class:`RandomCrop3D`: samples a fixed-size subvolume.
 

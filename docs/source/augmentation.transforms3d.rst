@@ -6,7 +6,9 @@
 Operators for volumetric ``(B, C, D, H, W)`` tensors, for example medical volumes. Use
 :class:`~kornia.augmentation.container.VideoSequential` to apply 2D transforms framewise to video.
 The geometric transforms use voxel coordinates ordered ``(x, y, z)`` for tensors ordered ``(D, H, W)``. Use a
-3D transform for volumes; the similarly named 2D transforms operate on images and do not accept a depth dimension.
+3D transform for volumes. Most similarly named 2D transforms accept only images. A direct call to
+:class:`RandomTransplantation` accepts arbitrary spatial dimensions, but use :class:`RandomTransplantation3D`
+for volume dispatch inside :class:`~kornia.augmentation.container.AugmentationSequential`.
 
 Geometric
 ---------

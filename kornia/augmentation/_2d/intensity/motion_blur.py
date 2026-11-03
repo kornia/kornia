@@ -30,7 +30,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     r"""Blur images with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomMotionBlur(kernel_size, angle, direction, ...)(input)`` convolves selected ``(B, C, H, W)``
-    images with a sampled directional kernel. Use :class:`RandomGaussianBlur` for non-directional Gaussian blur.
+    images with a sampled directional kernel.
 
     .. image:: _static/img/RandomMotionBlur.png
 

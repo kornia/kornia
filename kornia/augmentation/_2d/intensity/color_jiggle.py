@@ -122,8 +122,8 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 class ColorJiggle(IntensityAugmentationBase2D):
     r"""Jiggle color with Kornia's additive-brightness and HSV formulas.
 
-    ``ColorJiggle(brightness, contrast, saturation, hue)(image)`` applies a sampled order of enabled color steps.
-    Use :class:`ColorJitter` when reproducing torchvision's multiplicative and grayscale-blend formulas.
+    ``output = ColorJiggle(brightness, contrast, saturation, hue)(input)`` applies a sampled order of enabled color
+    steps. Use :class:`ColorJitter` when reproducing torchvision's multiplicative and grayscale-blend formulas.
 
     .. image:: _static/img/ColorJiggle.png
 

@@ -46,10 +46,10 @@ def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches in an image torch.Tensor and resizes to a given size.
+    r"""Crop random image patches and resize them, applied to a batch with probability ``p`` (default 1.0).
 
-    ``crop = RandomResizedCrop(size, scale, ratio, ...)`` and ``output = crop(input)`` sample regions from images of
-    shape ``(B, C, H, W)`` and resample them to ``size``. Use :class:`RandomCrop` to preserve the sampled patch size.
+    ``output = RandomResizedCrop(size, scale, ratio, ...)(input)`` samples regions from images of shape
+    ``(B, C, H, W)`` and resamples them to ``size``. Use :class:`RandomCrop` to preserve the sampled patch size.
 
     Args:
         size: Desired output size (out_h, out_w) of each edge.
@@ -87,13 +87,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         width (input narrower than ``min(ratio)``) or its full height (wider than ``max(ratio)``). So
         ``scale=(1.0, 1.0)`` keeps an input within ``ratio`` whole, except that a candidate rounded a pixel or two
         short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
-        torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
+        torchvision, which centers the fallback crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
         ``align_corners`` for ``resample="nearest"``. With bilinear or bicubic interpolation, each mode's image
         follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
-        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
+        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centers
         onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
         ``nearest-exact`` interpolation. With corner alignment, an axis where the output is one pixel long samples
         the crop's first row or column, and one where the crop is one pixel long repeats it, as ``F.interpolate``
@@ -108,6 +108,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
     See Also:
         - :class:`RandomCrop`: samples a fixed-size patch without resizing it.
+
+    .. image:: _static/img/RandomResizedCrop.png
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -130,8 +132,6 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
-
-    .. image:: _static/img/RandomResizedCrop.png
 
     """
 

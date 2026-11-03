@@ -31,7 +31,7 @@ class RandomRain(IntensityAugmentationBase2D):
     r"""Draw random rain-drop streaks on images, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomRain(...)(input)`` draws sampled streaks over selected one- or three-channel images
-    ``(B, C, H, W)``. Use :class:`RandomSnow` for an HLS-based snow effect on RGB images.
+    ``(B, C, H, W)``.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 

@@ -13,9 +13,6 @@ image level, Kornia provides `GeometricAugmentationBase2D` for rigid transformat
 location of image pixels, `IntensityAugmentationBase2D` for transformations that preserve pixel locations, and the
 generic `AugmentationBase2D`, which allows more freedom for customized augmentation design.
 
-Subclass the narrowest base that supplies the behavior a new operator needs: ``AugmentationBase2D`` for generic image
-operations, ``GeometricAugmentationBase2D`` for coordinate transforms, and the corresponding 3D bases for volumes.
-
 The Base-Class Hierarchy
 ------------------------
 
@@ -107,7 +104,7 @@ value in `apply_transform`:
            super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
            # A PlainUniformGenerator sampler is a 4-tuple ``(range, name, center, bound)``:
            # sample a value inside ``range`` and expose it as ``params[name]``. ``center`` and
-           # ``bound`` (``None`` here) are optional constraints for centred/bounded ranges.
+           # ``bound`` (``None`` here) are optional constraints for centered/bounded ranges.
            self._param_generator = rg.PlainUniformGenerator((add_range, "add", None, None))
 
        def apply_transform(

@@ -29,7 +29,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomLinearIllumination(...)(input)`` adds a sampled edge-to-edge ramp to selected images
-    ``(B, C, H, W)`` and clamps them to ``[0, 1]``. Use :class:`RandomLinearCornerIllumination` for a corner origin.
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -156,7 +156,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
 
     ``output = RandomLinearCornerIllumination(...)(input)`` adds a sampled ramp from one corner to selected images
-    ``(B, C, H, W)`` and clamps them to ``[0, 1]``. Use :class:`RandomLinearIllumination` for an edge-to-edge ramp.
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 

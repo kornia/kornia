@@ -29,8 +29,8 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomSnow(IntensityAugmentationBase2D):
     r"""Create an HLS snow effect on selected RGB images.
 
-    ``output = RandomSnow(snow_coefficient, brightness, ...)(input)`` brightens selected pixels of
-    ``(B, 3, H, W)`` images according to a sampled snow threshold. Use :class:`RandomRain` for drawn rain streaks.
+    ``output = RandomSnow(snow_coefficient, brightness, ...)(input)`` brightens pixels of selected ``(B, 3, H, W)``
+    images according to a sampled snow threshold.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 

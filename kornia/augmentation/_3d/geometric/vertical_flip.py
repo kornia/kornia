@@ -27,8 +27,8 @@ from kornia.core.ops import _device_literal
 class RandomVerticalFlip3D(GeometricAugmentationBase3D):
     r"""Flip 3D volumes vertically, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomVerticalFlip3D(...)`` and ``output = aug(input)`` reverse the ``H`` axis of volumes. Use
-    :class:`RandomHorizontalFlip3D` or :class:`RandomDepthicalFlip3D` for the other axes.
+    ``output = RandomVerticalFlip3D(...)(input)`` reverses the ``H`` axis of selected volumes shaped
+    ``(B, C, D, H, W)``.
 
     Args:
         p: probability of applying the transformation to each sample.
@@ -49,8 +49,6 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         - flips the height ``H`` axis (tensor axis ``-2``, coordinate ``y``). Its matrix maps ``y`` to
           ``H - 1 - y`` in inclusive voxel coordinates, rounded where the dtype cannot
           represent it (see the base).
-
-    Input should be a tensor of shape ``(C, D, H, W)`` or a batch of tensors ``(B, C, D, H, W)``.
 
     See Also:
         - :class:`RandomVerticalFlip`: reverses image rows in 2D.

@@ -25,10 +25,10 @@ from kornia.enhance import jpeg_codec_differentiable
 
 
 class RandomJPEG(IntensityAugmentationBase2D):
-    r"""Applies random (differentiable) JPEG coding to a torch.Tensor image.
+    r"""Simulate differentiable JPEG coding for RGB images.
 
     ``output = RandomJPEG(jpeg_quality, ...)(input)`` simulates JPEG coding for selected RGB images of shape
-    ``(B, 3, H, W)``. Use :class:`RandomGaussianNoise` to add a continuous noise field without codec simulation.
+    ``(B, 3, H, W)``.
 
     .. image:: _static/img/RandomJPEG.png
 

@@ -15,24 +15,9 @@
 # limitations under the License.
 #
 
-"""Provide helpers used internally to validate, sample and reshape augmentation parameters.
+"""Provide internal helpers for augmentation validation, sampling and tensor layouts.
 
-These helpers are implementation utilities. ``deepcopy_dict`` copies a parameter dictionary and
-``override_parameters`` replaces entries for a replay; the remaining exports validate parameters or adapt tensor
-layouts and random draws.
-
-Which function to use:
-
-- ``deepcopy_dict`` copies a parameter dictionary, cloning tensor values.
-- ``override_parameters`` applies overrides to a parameter dictionary.
-- ``_adapted_beta``, ``_adapted_rsampling``, ``_adapted_sampling`` and ``_adapted_uniform`` sample batched values.
-- ``_transform_input``, ``_transform_input3d``, ``_transform_input_by_shape``, ``_transform_input3d_by_shape`` and
-  ``_transform_output_shape`` adapt input and output tensor layouts.
-- ``_check_filter_min_size``, ``_check_positive_int_or_traced``, ``_common_param_check``, ``_infer_batch_shape``,
-  ``_infer_batch_shape3d``, ``_joint_range_check``, ``_pad_with_fill``, ``_range_bound``, ``_shape_validation``,
-  ``_shear_bound``, ``_singular_range_check``, ``_truncate_to_start``, ``_tuple_range_reader``, ``_validate_input``,
-  ``_validate_input3d``, ``_validate_input_dtype``, ``_validate_input_shape`` and ``_validate_shape`` validate or
-  prepare augmentation inputs and parameters.
+These implementation utilities are not a stable public API.
 """
 
 from kornia.augmentation.utils.helpers import (

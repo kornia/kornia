@@ -79,8 +79,8 @@ class _PicklableCompileMixin:
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""Build a 2D value augmentation, per sample with probability ``p`` (default 0.5).
 
-    ``class MyAugmentation(IntensityAugmentationBase2D)`` supplies the probability gate, parameter replay and
-    identity geometric transform; ``MyAugmentation(...)(image)`` must implement only the value operation. Use
+    ``output = MyAugmentation(...)(input)`` changes pixel values after a subclass implements ``apply_transform``.
+    The base supplies the probability gate, parameter replay and identity geometric transform. Use
     :class:`~kornia.augmentation.GeometricAugmentationBase2D` for an augmentation that moves pixels.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
@@ -123,7 +123,7 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           ``(1, C, H, W)`` and the plasma classes store an expanded view that shares one map across the batch.
         - where a class documents bounds for a parameter, a range outside them usually raises at construction;
           the class page states a bound it does not enforce, or checks only on the forward pass. A scalar
-          magnitude ``x`` usually means ``center ± x`` around a centre the class fixes -- the neutral value, for a
+          magnitude ``x`` usually means ``center ± x`` around a center the class fixes -- the neutral value, for a
           factor such as ``contrast`` -- with its lower end floored at the bound, so ``contrast=1.5`` reads as
           ``[0, 2.5]``, while an upper end past the bound raises. :class:`RandomSharpness` reads a scalar as
           ``[0, x]`` and :class:`RandomPosterize` as ``[x, 8]``.

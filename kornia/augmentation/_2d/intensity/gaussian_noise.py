@@ -27,9 +27,8 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomGaussianNoise(IntensityAugmentationBase2D):
     r"""Add sampled Gaussian noise without clipping the result, per sample with probability ``p`` (default 0.5).
 
-    ``RandomGaussianNoise(mean, std)(image)`` adds a sampled noise field to each selected image; with
-    ``same_on_batch=True``, the field is shared across the batch. Use :class:`RandomSaltAndPepperNoise` for sparse
-    binary-valued noise instead.
+    ``output = RandomGaussianNoise(mean, std)(input)`` adds a sampled noise field to each selected image; with
+    ``same_on_batch=True``, the field is shared across the batch.
 
     .. image:: _static/img/RandomGaussianNoise.png
 

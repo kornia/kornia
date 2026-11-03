@@ -23,8 +23,8 @@ its channel, range and probability rules. Use ``AugmentationSequential`` to tran
 annotations together; use ``ImageSequential`` for images alone. In eager mode, ``_params`` records a draw
 for replay with ``params=``. An inverse geometric warp cannot recover cropped or resampled image content.
 
-Which function to use
----------------------
+Which augmentation to use
+-------------------------
 Pipelines and policies:
     - ``AugmentationSequential``: coordinate image, mask, box and keypoint handlers.
     - ``ImageSequential``: chain image transforms, including ordinary PyTorch modules.
@@ -94,7 +94,7 @@ Mixing and rearranging images:
 
 Volumes:
     - ``CenterCrop3D`` and ``RandomCrop3D``: take centered or randomly positioned volume crops.
-    - ``RandomHorizontalFlip3D`` , ``RandomVerticalFlip3D`` and ``RandomDepthicalFlip3D`` : reverse width, height or
+    - ``RandomHorizontalFlip3D``, ``RandomVerticalFlip3D`` and ``RandomDepthicalFlip3D``: reverse width, height or
       depth.
     - ``RandomAffine3D``: sample a 3D affine warp; ``RandomRotation3D`` samples rotation alone.
     - ``RandomPerspective3D``: perturb the volume corners for a projective warp.

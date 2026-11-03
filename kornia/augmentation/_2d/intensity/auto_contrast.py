@@ -40,8 +40,7 @@ def _warn_clip_output_deprecated(clip_output: Optional[bool]) -> None:
 class RandomAutoContrast(IntensityAugmentationBase2D):
     r"""Rescale each selected image channel from its own minimum to maximum.
 
-    ``RandomAutoContrast()(image)`` maps each selected channel into ``[0, 1]`` from its observed extrema. Use
-    :class:`RandomContrast` to scale values by a sampled factor instead.
+    ``output = RandomAutoContrast()(input)`` maps each selected channel into ``[0, 1]`` from its observed extrema.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 

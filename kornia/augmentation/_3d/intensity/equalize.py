@@ -26,8 +26,7 @@ from kornia.enhance import equalize3d
 class RandomEqualize3D(IntensityAugmentationBase3D):
     r"""Equalize the histogram of 3D volumes, applied per sample with probability ``p`` (default 0.5).
 
-    ``aug = RandomEqualize3D(...)`` and ``output = aug(input)`` redistribute intensity values without moving voxels.
-    Use :class:`RandomMotionBlur3D` to blur a volume instead.
+    ``output = RandomEqualize3D(...)(input)`` redistributes intensity values without moving voxels.
 
     Args:
         p: probability of applying the transformation to each sample.

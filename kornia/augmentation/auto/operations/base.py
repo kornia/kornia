@@ -46,7 +46,7 @@ class _RandomSign:
 class OperationBase(nn.Module):
     """Wrap one augmentation module for use in an automatic augmentation policy.
 
-    ``wrapped = OperationBase(op)`` and ``output = wrapped(input)`` apply the wrapped augmentation to floating
+    ``output = OperationBase(op)(input)`` applies a wrapped shape-preserving augmentation to floating
     images of shape ``(B, C, H, W)``. To control a magnitude, pass a list such as
     ``initial_magnitude=[("brightness_factor", 0.5)]`` for a brightness operation. Use
     :class:`~kornia.augmentation.auto.PolicySequential` to compose operations into a policy.
@@ -58,8 +58,9 @@ class OperationBase(nn.Module):
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
         temperature: retained for API compatibility.
-        is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
-            Set to True for most non-shape-persistent operations (e.g. cropping).
+        is_batch_operation: determine whether to obtain the probability from ``p`` or ``p_batch``.
+            This selects the wrapped gate source; the wrapped operation must preserve the input shape because
+            ``forward`` blends its output with the input.
 
     Convention:
         - ``probability`` is initialized from the wrapped augmentation's ``p`` (``p_batch`` for a batch operation),
@@ -72,6 +73,8 @@ class OperationBase(nn.Module):
           augmentation transforms every row whose gate is above ``0``, so the same supplied fractional
           ``batch_prob`` produces the same soft blend whatever the wrapped ``p`` or ``p_batch``. Below ``p = 1`` the
           wrapped augmentation skips a row with gate ``0``, so that row's matrix stays the identity.
+          Consequently, a wrapped operation that changes spatial dimensions cannot be used, even when
+          ``is_batch_operation=True``.
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
