@@ -291,6 +291,20 @@ class TestProjectionOrthographic(BaseTester):
         with pytest.raises(ShapeError):
             unproject_points_orthographic(points, extension)
 
+    def test_exception_extension_trailing_size_not_1(self, device, dtype) -> None:
+        # The extension is the z column, (..., 1) or (...,): one of the same rank with a trailing size other
+        # than 1 used to be concatenated whole and returned more than three coordinates.
+        from kornia.core.exceptions import ShapeError
+
+        points = torch.ones(5, 2, device=device, dtype=dtype)
+        for extension in (torch.ones(5, 2, device=device, dtype=dtype), torch.ones(5, 3, device=device, dtype=dtype)):
+            with pytest.raises(ShapeError):
+                unproject_points_orthographic(points, extension)
+        with pytest.raises(ShapeError):
+            unproject_points_orthographic(
+                torch.ones(2, device=device, dtype=dtype), torch.ones(2, device=device, dtype=dtype)
+            )
+
     def test_convention_dx_orthographic_is_the_scalar_du_dx_not_the_full_jacobian(self, device, dtype):
         # dx_project_points_orthographic returns the scalar du/dx = 1 with shape (..., 1), not the (2, 3)
         # Jacobian that its z1 sibling dx_project_points_z1 returns. Every literal is dyadic, so exact.

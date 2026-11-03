@@ -33,7 +33,7 @@ __all__ = ["RandomMosaic"]
 
 
 class RandomMosaic(MixAugmentationBaseV2):
-    r"""Mosaic augmentation.
+    r"""Replace each sample, with probability ``p`` (default 0.7), by a crop of a mosaic of batch images.
 
     .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
 

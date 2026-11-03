@@ -37,6 +37,7 @@ from kornia.core.check import (
     KORNIA_CHECK_TYPE,
 )
 from kornia.core.exceptions import (
+    AsyncCheckError,
     BaseError,
     DeviceError,
     ImageError,
@@ -153,3 +154,26 @@ class TestExceptionBases(BaseTester):
             assert clone.args == raised.args
             assert str(clone) == str(raised)
             assert vars(clone) == vars(raised)
+
+
+class TestAsyncCheckError:
+    """The host form of a check that runs ``torch._assert_async`` on an accelerator."""
+
+    def test_convention_catchable_as_runtime_and_value_error(self):
+        # torch raises a RuntimeError for the same check on an accelerator, so ``except RuntimeError`` handles every
+        # device; ``except BaseError`` and ``except ValueError`` keep catching it like any other value check.
+        assert AsyncCheckError.__bases__ == (ValueCheckError, RuntimeError)
+        error = AsyncCheckError("x must be positive")
+        assert isinstance(error, (BaseError, ValueCheckError, ValueError, RuntimeError))
+        assert error.actual_value is None
+        assert error.expected_range is None
+
+    def test_pickle_and_copy_keep_class_and_message(self):
+        error = AsyncCheckError("x must be positive")
+        protocols = range(2, pickle.HIGHEST_PROTOCOL + 1)
+        clones = [pickle.loads(pickle.dumps(error, protocol=p)) for p in protocols]  # noqa: S301 - our own bytes
+        clones += [copy.copy(error), copy.deepcopy(error)]
+        for clone in clones:
+            assert type(clone) is AsyncCheckError
+            assert clone.args == error.args
+            assert vars(clone) == vars(error)

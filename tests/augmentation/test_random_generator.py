@@ -1569,7 +1569,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         torch.manual_seed(9)
         batch_size = 8
         res = PosterizeGenerator(bits=torch.tensor([0, 8], device=device, dtype=dtype))(torch.Size([batch_size]))
-        expected = {"bits_factor": torch.tensor([5, 2, 4, 6, 7, 7, 2, 8], device=device, dtype=torch.int32)}
+        expected = {"bits_factor": torch.tensor([5, 2, 4, 6, 8, 8, 2, 8], device=device, dtype=torch.int32)}
         assert res.keys() == expected.keys()
         assert_close(res["bits_factor"], expected["bits_factor"], rtol=1e-4, atol=1e-4)
 

@@ -49,7 +49,7 @@ def ssim3d(
     eps: float = 1e-12,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the Structural Similarity (SSIM) index map between two images.
+    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
@@ -68,14 +68,14 @@ def ssim3d(
 
     Convention:
         - See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
-          ``max_val``. ``ssim3d`` applies them to :math:`(D, H, W)` with an isotropic Gaussian window, and ``'valid'``
+          ``max_val``. ``ssim3d`` applies them to ``(D, H, W)`` with an isotropic Gaussian window, and ``'valid'``
           crops every axis. A volume of identical slices reproduces the 2-D map up to floating-point roundoff.
         - The Gaussian window uses the computation dtype of the inputs; integer and half-precision inputs are
           evaluated in float32.
 
     Args:
-        img1: the first input image with shape :math:`(B, C, D, H, W)`.
-        img2: the second input image with shape :math:`(B, C, D, H, W)`.
+        img1: the first input image with shape ``(B, C, D, H, W)``.
+        img2: the second input image with shape ``(B, C, D, H, W)``.
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
@@ -83,7 +83,7 @@ def ssim3d(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-       The ssim index map with shape :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
+       The ssim index map with shape ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
        ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
@@ -188,7 +188,7 @@ def ssim3d(
 
 
 class SSIM3D(nn.Module):
-    r"""Create a module that computes the Structural Similarity (SSIM) index between two 3D images.
+    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
@@ -216,9 +216,9 @@ class SSIM3D(nn.Module):
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Shape:
-        - Input: :math:`(B, C, D, H, W)`.
-        - Target :math:`(B, C, D, H, W)`.
-        - Output: :math:`(B, C, D, H, W)`, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
+        - Input: ``(B, C, D, H, W)``.
+        - Target ``(B, C, D, H, W)``.
+        - Output: ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
           under ``padding='valid'``.
 
     Examples:
@@ -240,11 +240,11 @@ class SSIM3D(nn.Module):
         """Compute a 3D SSIM map between two volume batches.
 
         Args:
-            img1: First volume tensor with shape :math:`(B, C, D, H, W)`.
+            img1: First volume tensor with shape ``(B, C, D, H, W)``.
             img2: Second volume tensor with the same shape as ``img1``.
 
         Returns:
-            Tensor with shape :math:`(B, C, D, H, W)`, cropped under ``padding='valid'``, containing local
+            Tensor with shape ``(B, C, D, H, W)``, cropped under ``padding='valid'``, containing local
             structural similarity values across depth, height, and width.
         """
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

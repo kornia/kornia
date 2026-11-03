@@ -23,10 +23,12 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
@@ -38,8 +40,10 @@ class TestRandomCropAnnotations(BaseTester):
         seq = K.AugmentationSequential(
             K.RandomCrop((size, size), p=1.0, cropping_mode="slice"), data_keys=["input", "bbox_xyxy"]
         )
+        # A forward call rejects the oversized crop (#4414); its replay still stretches the oversized axis.
+        params = [ParamItem(name, oversized_random_crop_params(crop, x.shape)) for name, crop in seq.named_children()]
 
-        out, out_boxes = seq(x, boxes)
+        out, out_boxes = seq(x, boxes, params=params)
         x_offset = out[0, 0, 0, 0]
 
         self.assert_close(out_boxes[0, 0, [0, 2]], boxes[0, 0, [0, 2]] - x_offset)
@@ -65,7 +69,10 @@ class TestRandomCropAnnotations(BaseTester):
         # An oversized axis starts at 0 and is stretched; an axis that fits is cropped, here from 1.
         x0, y0 = float(w < width), float(h < height)
         x1, y1 = x0 + min(w, width) - 1, y0 + min(h, height) - 1
-        params = seq.forward_parameters(ramp.shape)
+        # A forward call rejects the oversized crop (#4414); its replay still stretches the oversized axis.
+        params = [
+            ParamItem(name, oversized_random_crop_params(crop, ramp.shape)) for name, crop in seq.named_children()
+        ]
         params[0].data["src"] = ramp.new_tensor(
             [[[x0, y0], [x0 + w - 1, y0], [x0 + w - 1, y0 + h - 1], [x0, y0 + h - 1]]]
         )

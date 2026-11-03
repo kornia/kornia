@@ -88,12 +88,12 @@ class PatchEmbed(nn.Module):
         r"""Run this DeDoDe module forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`. ``H`` and ``W`` must be
+            x: Input image tensor with shape ``(B, C, H, W)``. ``H`` and ``W`` must be
                multiples of the patch height and width respectively.
 
         Returns:
-            Patch embeddings with shape :math:`(B, N_p, D)` when ``flatten_embedding=True``,
-            or :math:`(B, H_p, W_p, D)` when ``flatten_embedding=False``, where
+            Patch embeddings with shape ``(B, N_p, D)`` when ``flatten_embedding=True``,
+            or ``(B, H_p, W_p, D)`` when ``flatten_embedding=False``, where
             :math:`N_p = H_p \times W_p`.
         """
         _, _, H, W = x.shape

@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _check_points_layout, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -66,11 +66,23 @@ def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
 
 
 class Se3(nn.Module):
-    r"""Base class to represent the Se3 group.
+    r"""Represent a 3D rigid motion, rotation and translation, as an SE(3) Lie group element.
 
-    The SE(3) is the group of rigid body transformations about the origin of three-dimensional Euclidean
-    space :math:`R^3` under the operation of composition.
-    See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
+    ``g = Se3(rotation, t)`` pairs an :class:`So3` or :class:`~kornia.geometry.quaternion.Quaternion` rotation with a
+    translation ``t`` of shape ``(B, 3)``; ``Se3.exp(v)`` builds one from tangent vectors
+    :math:`v = [\upsilon, \omega]` of shape ``(B, 6)``, translation first, :meth:`from_matrix` from ``(B, 4, 4)``
+    matrices, :meth:`from_qxyz` from ``(B, 7)`` rows ``[qw, qx, qy, qz, x, y, z]``, and ``Se3.identity(B)`` and
+    ``Se3.random(B)`` build ``B`` poses, or an unbatched one with ``batch_size=None``. ``g1 * g2`` composes a batch
+    with a batch of the same size, a batch of one or an unbatched pose; ``g.inverse()`` inverts, ``g.log()`` returns
+    the ``(B, 6)`` tangent vectors and ``g.matrix()`` the ``(B, 4, 4)`` matrices; an unbatched pose drops the ``B``.
+    ``g * p`` maps points as :math:`R p + t`: ``(3,)`` or ``(N, 3)`` points for an unbatched pose, and ``(B, 3)``,
+    one point per pose, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps
+    ``(N, 3)``. For a pose that
+    names its frames and checks them when composing, use :class:`~kornia.geometry.pose.NamedPose`; for plain
+    ``(N, 4, 4)`` matrices, :func:`~kornia.geometry.linalg.compose_transformations`.
+
+    SE(3) is the group of rigid motions of :math:`R^3` under composition; see
+    https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf.
 
     Convention:
         - The tangent vector is :math:`[\upsilon, \omega]`, translation first
@@ -82,14 +94,23 @@ class Se3(nn.Module):
         - The rotation is an :class:`~kornia.geometry.liegroup.So3`, whose storage and point-shape conventions
           apply: a non-unit quaternion stands for the rotation of its direction. ``from_matrix`` ignores the bottom
           row.
-        - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector3``
-          passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only when ``p`` is one.
+        - ``t`` is always a tensor, whichever constructor built the pose, and registered as module state outside
+          graph capture; a ``Vector3`` passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only
+          when ``p`` is one.
         - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
           and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
           buffer/parameter convention.
         - ``a * b`` and ``g * p`` compute in float32 for float16/bfloat16 inputs and return the input dtype,
           rounding :math:`R p + t` once; ``matrix()`` and ``inverse()`` take the rotation from
           :class:`~kornia.geometry.liegroup.So3`, which does the same.
+
+    See Also:
+        - :class:`Se2`: the 2D rigid motion, with an :class:`So2` rotation and a ``(B, 2)`` translation.
+        - :class:`So3`: the rotation alone, without a translation.
+        - :class:`~kornia.geometry.pose.NamedPose`: wraps an ``Se3`` with the names of its source and destination
+          frames, and checks that they chain when composing.
+        - :func:`~kornia.geometry.linalg.compose_transformations`: the same composition on plain ``(N, 4, 4)``
+          matrices, without a group object.
 
     Example:
         >>> q = Quaternion.identity()
@@ -103,15 +124,17 @@ class Se3(nn.Module):
     """
 
     def __init__(self, rotation: Quaternion | So3, translation: Vector3 | torch.Tensor) -> None:
-        """Construct the base class.
+        """Construct an Se3 from a rotation and a translation.
 
         Internally represented by an So3 rotation and a translation 3-vector.
 
         Args:
             rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is stored as given, and
                 a non-unit quaternion stands for the rotation of its direction.
-            translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
-                tensor is what gets stored. It must have the rotation's dtype and device.
+            translation: translation torch.Tensor with the shape of ``(B, 3)``, or a Vector3 wrapping one; the
+                tensor is what gets stored. It must have the rotation's dtype and device. Its batch is not checked
+                against the rotation's: a mismatch fails later, in ``matrix()``
+                (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
 
         Raises:
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
@@ -174,8 +197,9 @@ class Se3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
-                pose and a last dimension of 3.
+            right: the other Se3 transformation, unbatched, a batch of the same size or a batch of one, or points
+                as a tensor or ``Vector3``: ``(3,)`` or ``(N, 3)`` for an unbatched pose, and ``(B, 3)``, one point
+                per pose, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps ``(N, 3)``).
 
         Return:
             The resulting Se3 transformation, or the transformed points.
@@ -189,6 +213,7 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
+            _check_points_layout(so3.q, _right_data)
             # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
             out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out
@@ -211,7 +236,7 @@ class Se3(nn.Module):
 
     @property
     def t(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape ``(B,3)``."""
         return self._translation
 
     @property
@@ -221,15 +246,15 @@ class Se3(nn.Module):
 
     @property
     def translation(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape ``(B,3)``."""
         return self._translation
 
     @staticmethod
     def exp(v: torch.Tensor) -> Se3:
-        """Convert elements of lie algebra to elements of lie group.
+        r"""Convert elements of lie algebra to elements of lie group.
 
         Args:
-            v: vector of shape :math:`(B, 6)`.
+            v: vector :math:`[\upsilon, \omega]` of shape ``(B, 6)``, translation first, rotation vector last.
 
         Example:
             >>> v = torch.zeros((1, 6))
@@ -299,10 +324,10 @@ class Se3(nn.Module):
         """Convert elements from vector space to lie algebra.
 
         Args:
-            v: vector of shape :math:`(B, 6)`.
+            v: vector of shape ``(B, 6)``.
 
         Returns:
-            matrix of shape :math:`(B, 4, 4)`.
+            matrix of shape ``(B, 4, 4)``.
 
         Example:
             >>> v = torch.ones((1, 6))
@@ -324,10 +349,10 @@ class Se3(nn.Module):
         """Convert elements from lie algebra to vector space.
 
         Args:
-            omega: 4x4-matrix representing lie algebra of shape :math:`(B,4,4)`.
+            omega: 4x4-matrix representing lie algebra of shape ``(B,4,4)``.
 
         Returns:
-            vector of shape :math:`(B,6)`.
+            vector of shape ``(B,6)``.
 
         Example:
             >>> v = torch.ones((1, 6))
@@ -371,7 +396,7 @@ class Se3(nn.Module):
         return cls(So3.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> torch.Tensor:
-        """Return the matrix representation of shape :math:`(B, 4, 4)`.
+        """Return the matrix representation of shape ``(B, 4, 4)``.
 
         Example:
             >>> s = Se3(So3.identity(), torch.ones(3))
@@ -392,7 +417,7 @@ class Se3(nn.Module):
         """Create a Se3 group from a matrix.
 
         Args:
-            matrix: torch.Tensor of shape :math:`(B, 4, 4)`.
+            matrix: torch.Tensor of shape ``(B, 4, 4)``.
             check_rotation: if ``True``, raise ``ValueError`` unless the rotation
                 block of every input is a rotation matrix. The default ``False``
                 keeps the unchecked behaviour, under which a reflection block
@@ -417,7 +442,7 @@ class Se3(nn.Module):
         """Create a Se3 group from a quaternion and a translation vector.
 
         Args:
-            qxyz: torch.Tensor of shape :math:`(B, 7)` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
+            qxyz: torch.Tensor of shape ``(B, 7)`` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
                 quaternion is stored as given, and a non-unit one stands for the rotation of its direction.
 
         Example:
@@ -562,7 +587,7 @@ class Se3(nn.Module):
         return cls.trans(zs, zs, z)
 
     def adjoint(self) -> torch.Tensor:
-        """Return the adjoint matrix of shape :math:`(B, 6, 6)`.
+        """Return the adjoint matrix of shape ``(B, 6, 6)``.
 
         Example:
             >>> s = Se3.identity()

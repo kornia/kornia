@@ -17,12 +17,16 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
+import io
+
 import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.sam.architecture.common import LayerNorm
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.models.sam.architecture.mask_decoder import MaskDecoder
+from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
 from kornia.models.tiny_vit import TinyViT
 
@@ -39,16 +43,16 @@ def test_sam_has_to_onnx():
 
 @pytest.mark.timeout(120)
 @pytest.mark.xfail(
-    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    torch_version_ge(2, 14) and torch_version_lt(2, 16, 0),
     reason=(
-        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU "
-        "build (the CUDA build exports it): DispatchError 'No decompositions registered for the "
+        "the dynamo ONNX exporter of torch 2.14 and 2.15 cannot translate aten.mul.Scalar for this graph in "
+        "the CPU build (the 2.14 CUDA build exports it): DispatchError 'No decompositions registered for the "
         "real-valued input'; not yet reported upstream"
     ),
     raises=torch.onnx.OnnxExporterError,
-    # Strict on the CPU builds, where an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
-    # than sit silently until the 2.15 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130 on
-    # Linux), so there the marker is not strict.
+    # Strict on the CPU builds, where an upstream fix inside 2.14.x or 2.15.x must announce itself as an XPASS failure
+    # rather than sit silently until the 2.16 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130
+    # on Linux), so there the marker is not strict.
     strict=torch.version.cuda is None,
 )
 def test_sam_encoder_to_onnx(tmp_path):
@@ -171,3 +175,37 @@ def test_tiny_vit_encoder_legacy_onnx_declares_the_pseudo_batch():
     assert _dims(op.graph.input[0]) == [3, 3, 64, 64]
     assert _dims(op.graph.output[0])[0] == 3
     _check_onnx_against_eager(op, model.image_encoder, (3,), 64)
+
+
+@pytest.mark.timeout(120)
+def test_mask_decoder_legacy_onnx_declares_a_dynamic_prompt_batch():
+    """The TorchScript exporter declares the masks' prompt batch dynamic, as the prompt embeddings' batch is."""
+    onnx = pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    transformer = TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2)
+    decoder = MaskDecoder(transformer_dim=32, transformer=transformer).eval()
+    image = (torch.rand(1, 32, 8, 8), torch.rand(1, 32, 8, 8))
+    prompts = (torch.rand(2, 2, 32), torch.rand(2, 32, 8, 8))
+    buffer = io.BytesIO()
+    torch.onnx.export(
+        decoder,
+        (*image, *prompts, True),
+        buffer,
+        input_names=["image_embeddings", "image_pe", "sparse", "dense"],
+        output_names=["masks", "iou_pred"],
+        dynamic_axes={"sparse": {0: "prompts"}, "dense": {0: "prompts"}},
+        dynamo=False,
+    )
+    masks = onnx.load_from_string(buffer.getvalue()).graph.output[0]
+    assert masks.type.tensor_type.shape.dim[0].dim_param
+    # The graph also runs at other prompt batches and matches eager there.
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    for batch in (1, 3):
+        sparse, dense = torch.rand(batch, 2, 32), torch.rand(batch, 32, 8, 8)
+        with torch.no_grad():
+            expected = decoder(*image, sparse, dense, True)
+        names = ["image_embeddings", "image_pe", "sparse", "dense"]
+        actual = session.run(None, {name: t.numpy() for name, t in zip(names, (*image, sparse, dense))})
+        for got, want in zip(actual, expected):
+            torch.testing.assert_close(torch.from_numpy(got), want, rtol=1e-4, atol=1e-5)

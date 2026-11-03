@@ -289,7 +289,7 @@ class StableDiffusionDissolving(ImageModule):
         Args:
             input: Image tensor passed to the wrapped dissolving model. The
                 expected shape follows the model wrapper, typically
-                :math:`(B, C, H, W)`, where :math:`B` is the batch size,
+                ``(B, C, H, W)``, where :math:`B` is the batch size,
                 :math:`C` is the channel count, :math:`H` is the image height,
                 and :math:`W` is the image width.
             step_number: Integer diffusion timestep used by the dissolving

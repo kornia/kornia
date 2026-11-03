@@ -52,7 +52,7 @@ class PatchMix(MixAugmentationBaseV2):
           whatever the gate. Each output sample copies that square from its paired input, ``_params["mix_pairs"]``,
           at the same sampled ``(x, y)`` top-left corner, ``_params["patch_coords"]``. The sampled ``lam`` is
           stored but blends nothing.
-        - ``p`` is a batch-wide gate (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+        - ``p`` is a batch-wide gate.
           ``same_on_batch=True`` shares the patch corner, not the pairing, which may pair a sample with itself.
           Only image input is implemented.
 

@@ -319,6 +319,20 @@ class TestLoFTR(BaseTester):
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
 
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch flattens the coarse maps without a -1 to infer and returns no matches."""
+        loftr = _loftr_matching_every_cell(device, dtype)
+        out = loftr(
+            {
+                "image0": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+                "image1": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+            }
+        )
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["confidence"].shape == (0,)
+        assert out["batch_indexes"].shape == (0,)
+
 
 class TestLoFTRConfigIsPerInstance(BaseTester):
     """Building a LoFTR must not write into ``default_cfg`` or into a caller-passed config."""

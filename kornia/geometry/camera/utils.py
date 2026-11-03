@@ -71,6 +71,8 @@ def create_intrinsics(
 ) -> torch.Tensor:
     """Create intrinsic camera matrices from focal lengths and principal points.
 
+    Tensor principal points retain their gradients in the returned matrices.
+
     Args:
         fxs: Focal length in x direction
         fys: Focal length in y direction
@@ -83,10 +85,7 @@ def create_intrinsics(
         Stacked intrinsic matrices of shape (N, 4, 4)
     """
     intrinsics_batch: list[torch.Tensor] = []
-    # Convert cxs and cys to lists if they are tensors
-    cxs_list = cxs.tolist() if isinstance(cxs, torch.Tensor) else cxs
-    cys_list = cys.tolist() if isinstance(cys, torch.Tensor) else cys
-    for fx, fy, cx, cy in zip(fxs, fys, cxs_list, cys_list):
+    for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[0, 0] = fx
         intrinsics[1, 1] = fy

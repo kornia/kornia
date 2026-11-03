@@ -613,7 +613,7 @@ CASES += [
         G,
         bbox_to_mask,
         [boxes_quad[0]],
-        {"width": W, "height": H},
+        {"size": (H, W)},
         note="H,W baked; input (N,4,2)",
     ),
     case(

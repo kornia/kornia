@@ -29,9 +29,9 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
     """Convert a NumPy image to a PyTorch tensor image.
 
     Convention:
-        - The last axis of a 3-D or 4-D array is always the channels: :math:`(H, W, C)` becomes :math:`(C, H, W)` and
-          :math:`(B, H, W, C)` becomes :math:`(B, C, H, W)`. A channels-first :math:`(C, H, W)` array is not detected:
-          it is read as :math:`(H, W, C)`.
+        - The last axis of a 3-D or 4-D array is always the channels: ``(H, W, C)`` becomes ``(C, H, W)`` and
+          ``(B, H, W, C)`` becomes ``(B, C, H, W)``. A channels-first ``(C, H, W)`` array is not detected:
+          it is read as ``(H, W, C)``.
         - The dtype and the values are kept, so ``uint8`` stays in [0, 255], and the tensor is a view of the array
           that shares its memory. An array with a negative stride, such as OpenCV's ``img[..., ::-1]``, raises
           ``ValueError``; pass ``img[..., ::-1].copy()``.
@@ -39,14 +39,14 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
         - :ref:`Files and arrays <image-io-conventions>` relates it to torchvision's ``ToTensor``.
 
     Args:
-        image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
-            :math:`(B, H, W, C)`.
-        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
-            always :math:`(B, C, H, W)`.
+        image: image of the form ``(H, W, C)``, ``(H, W)`` or
+            ``(B, H, W, C)``.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, ``(1, C, H, W)``. A 4-D input is
+            always ``(B, C, H, W)``.
 
     Returns:
-        tensor of the form :math:`(C, H, W)` for a 2-D or 3-D input with ``keepdim=True`` (a 2-D input has
-        :math:`C = 1`), and :math:`(B, C, H, W)` otherwise.
+        tensor of the form ``(C, H, W)`` for a 2-D or 3-D input with ``keepdim=True`` (a 2-D input has
+        :math:`C = 1`), and ``(B, C, H, W)`` otherwise.
 
     Raises:
         TypeError: if ``image`` is not a ``numpy.ndarray``.
@@ -96,13 +96,13 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
 
     Convention:
         See the Convention block of :func:`~kornia.image.image_to_tensor`. Unlike it, this function copies the images
-        into a new tensor and takes :math:`(H, W, C)` images only.
+        into a new tensor and takes ``(H, W, C)`` images only.
 
     Args:
-        images: list of images, each of the form :math:`(H, W, C)`, all of the same shape.
+        images: list of images, each of the form ``(H, W, C)``, all of the same shape.
 
     Returns:
-        tensor of the form :math:`(B, C, H, W)`.
+        tensor of the form ``(B, C, H, W)``.
 
     Example:
         >>> imgs = [np.ones((4, 4, 1)), np.zeros((4, 4, 1))]
@@ -133,10 +133,10 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCHW format.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(*, H, W)`.
+        tensor (torch.Tensor): image of the form ``(*, H, W)``.
 
     Returns:
-        input tensor of the form :math:`(B, C, H, W)`.
+        input tensor of the form ``(B, C, H, W)``.
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -161,10 +161,10 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCDHW format.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(*, D, H, W)`.
+        tensor (torch.Tensor): image of the form ``(*, D, H, W)``.
 
     Returns:
-        input tensor of the form :math:`(B, C, D, H, W)`.
+        input tensor of the form ``(B, C, D, H, W)``.
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -189,9 +189,9 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
     """Convert a PyTorch tensor image to a numpy image.
 
     Convention:
-        - The channels move last, and a single channel is always dropped: :math:`(1, H, W)` gives :math:`(H, W)` and
-          :math:`(B, 1, H, W)` gives :math:`(B, H, W)`. ``keepdim`` keeps only the batch axis of a
-          :math:`(1, C, H, W)` input.
+        - The channels move last, and a single channel is always dropped: ``(1, H, W)`` gives ``(H, W)`` and
+          ``(B, 1, H, W)`` gives ``(B, H, W)``. ``keepdim`` keeps only the batch axis of a
+          ``(1, C, H, W)`` input.
         - The array shares memory with a CPU tensor whose dtype NumPy supports. A ``bfloat16`` tensor is returned as a
           ``float32`` copy, a dtype NumPy cannot represent, such as ``float8_e4m3fn``, raises ``TypeError``, a tensor
           on another device is copied, and ``force_contiguous=True`` copies a result that is not contiguous, such as
@@ -199,13 +199,13 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
         - The dtype is kept, except ``bfloat16``, which NumPy lacks: it becomes ``float32``.
 
     Args:
-        tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)` or
-            :math:`(B, C, H, W)`.
-        keepdim: If ``True``, keep the batch axis of a :math:`(1, C, H, W)` input.
+        tensor: image of the form ``(H, W)``, ``(C, H, W)`` or
+            ``(B, C, H, W)``.
+        keepdim: If ``True``, keep the batch axis of a ``(1, C, H, W)`` input.
         force_contiguous: If ``True``, call ``contiguous`` on the result before converting it to NumPy.
 
     Returns:
-        image of the form :math:`(H, W)`, :math:`(H, W, C)`, :math:`(B, H, W)` or :math:`(B, H, W, C)`.
+        image of the form ``(H, W)``, ``(H, W, C)``, ``(B, H, W)`` or ``(B, H, W, C)``.
 
     Raises:
         TypeError: if ``tensor`` is not a ``torch.Tensor``.
@@ -262,11 +262,11 @@ class ImageToTensor(nn.Module):
 
     Convention:
         See the Convention block of :func:`~kornia.image.image_to_tensor`. Unlike it, ``keepdim`` defaults to
-        ``False``, so an :math:`(H, W, C)` array becomes :math:`(1, C, H, W)`.
+        ``False``, so an ``(H, W, C)`` array becomes ``(1, C, H, W)``.
 
     Args:
-        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
-            always :math:`(B, C, H, W)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, ``(1, C, H, W)``. A 4-D input is
+            always ``(B, C, H, W)``.
 
     """
 

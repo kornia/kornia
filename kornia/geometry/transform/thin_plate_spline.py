@@ -15,6 +15,28 @@
 # limitations under the License.
 #
 
+r"""Fit a thin-plate spline to pairs of 2D points, and warp points or images with it.
+
+Points are ``(B, N, 2)`` tensors of ``(x, y)`` coordinates. :func:`get_tps_transform` and :func:`warp_points_tps`
+take them in whatever frame the caller uses and normalize nothing; :func:`warp_image_tps` needs them in the normalized
+frame of ``grid_sample``. :func:`get_tps_transform` returns kernel weights ``(B, N, 2)`` and affine weights
+``(B, 3, 2)``, with the x and y transforms as columns, for radial kernels centred on its **second** argument, which the
+warps take as ``kernel_centers``. A warp then computes ``f(p) = a_0 + p @ A + sum_i w_i U(|p - c_i|)`` with
+:math:`U(r) = r^2 \log r`, ``[a_0; A]`` the affine weights and ``c_i`` the kernel centres. Bookstein's thin-plate
+spline centres them on the first argument instead, so these warps differ from it between and away from the landmarks
+(`#6404 <https://github.com/kornia/kornia/issues/6404>`_).
+
+Which function to use:
+
+- Fit the spline that maps source points onto target points: :func:`get_tps_transform`.
+- Move points with it: :func:`warp_points_tps`. Warp an image with it: :func:`warp_image_tps`, which samples the
+  input at the spline of each output pixel, so fit it from target to source, in normalized coordinates.
+- For one global matrix, use :func:`~kornia.geometry.transform.warp_perspective` or
+  :func:`~kornia.geometry.transform.warp_affine`; for random spline warps in an augmentation pipeline,
+  :class:`~kornia.augmentation.RandomThinPlateSpline`; for a smoothed random displacement field,
+  :func:`~kornia.geometry.transform.elastic_transform2d`.
+"""
+
 from __future__ import annotations
 
 import torch
@@ -28,7 +50,7 @@ __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
 
 
 def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
-    r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors.
+    r"""Compute the pairwise squared euclidean distance matrices ``(B, N, M)`` between two tensors.
 
     Tensors with shapes (B, N, C) and (B, M, C).
     """
@@ -56,16 +78,27 @@ def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
 
 
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute the TPS transform parameters that warp source points to target points.
+    r"""Fit a thin-plate-spline warp that maps source points exactly onto target points.
 
-    The input to this function is a torch.Tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
-    torch.Tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
+    ``kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)`` takes ``(B, N, 2)`` point pairs and
+    returns the ``(B, N, 2)`` kernel weights and ``(B, 3, 2)`` affine weights of the spline whose kernels are centred on
+    ``points_dst``: ``warp_points_tps(points_src, points_dst, kernel_weights, affine_weights)`` returns ``points_dst``.
+    Unlike Bookstein's thin-plate spline, whose kernels are centred on the points where it interpolates
+    (``points_src`` here), the kernels sit on ``points_dst``, so the warp differs between and away from the landmarks
+    (`#6404 <https://github.com/kornia/kornia/issues/6404>`_). To warp an image, fit the reverse mapping and use
+    :func:`warp_image_tps` (see Convention); for a homography from four point pairs, use
+    :func:`get_perspective_transform`.
 
     Convention:
-        - ``points_src``/``points_dst``: :math:`(B, N, 2)` in ``(x, y)`` order, in whatever
+        - ``points_src``/``points_dst``: ``(B, N, 2)`` in ``(x, y)`` order, in whatever
           coordinate frame the caller supplies; no normalization is applied
-        - returns kernel weights :math:`(B, N, 2)` and affine weights :math:`(B, 3, 2)`; the
-          identity mapping gives zero kernel weights and an identity affine up to solver round-off
+        - returns kernel weights ``(B, N, 2)`` and affine weights ``(B, 3, 2)``; the
+          identity mapping gives zero kernel weights and an identity affine up to solver round-off, and any pairs
+          related by an affine map give zero kernel weights, except a constant map of more than three points, whose
+          equal ``points_dst`` make the system singular
+        - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
+          set of points all on one line, make it singular too, but round-off can hide that, and the solve then
+          returns huge affine weights that throw points off that line far away and may miss the landmarks themselves
         - the tensor passed as the **second** argument is the ``kernel_centers`` that the warp
           function must receive with these weights. :func:`warp_points_tps` is composed in the
           natural ``(points_src, points_dst)`` order; :func:`warp_image_tps` samples from output
@@ -77,21 +110,24 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
                                       kernel_weights=kernel_weights, affine_weights=affine_weights)
 
     Args:
-        points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
-        points_dst: batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
+        points_src: batch of source points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
+        points_dst: batch of target points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
 
     Returns:
-        :math:`(B, N, 2)` torch.Tensor of kernel weights and :math:`(B, 3, 2)`
+        ``(B, N, 2)`` torch.Tensor of kernel weights and ``(B, 3, 2)``
             torch.Tensor of affine weights. The last dimension contains the x-transform and y-transform weights
-            as separate columns.
+            as separate columns. Row 0 of the affine weights is the translation and rows 1 and 2 the matrix ``A``
+            that multiplies a point as ``p @ A``.
+
+    See Also:
+        - :func:`warp_points_tps`: applies the fitted spline to points, with ``points_dst`` as ``kernel_centers``.
+        - :func:`warp_image_tps`: applies a spline fitted from target to source to an image.
+        - :func:`get_perspective_transform`: the ``(B, 3, 3)`` homography of four point pairs, one global matrix.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
         >>> points_dst = torch.rand(1, 5, 2)
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
-
-    .. note::
-        This function is often used in conjunction with :func:`warp_points_tps`, :func:`warp_image_tps`.
 
     """
     if not isinstance(points_src, torch.Tensor):
@@ -133,28 +169,35 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 def warp_points_tps(
     points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
 ) -> torch.Tensor:
-    r"""Warp a torch.Tensor of coordinate points using the thin plate spline defined by arguments.
+    r"""Move 2D points by a thin-plate spline given as kernel centres and weights.
 
-    The source points should be a :math:`(B, N, 2)` torch.Tensor of :math:`(x, y)` coordinates. The kernel centers are
-    a :math:`(B, K, 2)` torch.Tensor of :math:`(x, y)` coordinates. The kernel weights are a :math:`(B, K, 2)`
-    torch.Tensor, and the affine weights are a :math:`(B, 3, 2)` torch.Tensor.  For the weight tensors,
-    torch.Tensor[..., 0] contains the weights for the x-transform and torch.Tensor[..., 1] the weights
-    for the y-transform.
+    ``warped = warp_points_tps(points_src, kernel_centers, kernel_weights, affine_weights)`` takes ``(B, N, 2)`` points
+    and the ``(B, K, 2)`` kernel centres, ``(B, K, 2)`` kernel weights and ``(B, 3, 2)`` affine weights of a spline, and
+    returns the ``(B, N, 2)`` warped points in the same frame, unclamped. With the weights of
+    ``get_tps_transform(points_src, points_dst)``, pass ``points_dst`` as ``kernel_centers``: that function centres the
+    kernels there, unlike Bookstein's thin-plate spline (`#6404 <https://github.com/kornia/kornia/issues/6404>`_). In
+    the weight tensors, ``[..., 0]`` holds the weights of the x transform and ``[..., 1]`` those of the y transform. To
+    warp an image, use :func:`warp_image_tps`.
 
     Convention:
-        - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in ``(x, y)``
+        - points: ``(B, N, 2)`` (or ``(B, K, 2)`` for kernel centers) in ``(x, y)``
           order; no normalization is applied, and the output is in the same frame, not clamped
         - ``kernel_centers`` must be the second argument passed to :func:`get_tps_transform`
           (see its Convention block)
 
     Args:
-        points_src: torch.Tensor of source points :math:`(B, N, 2)`.
-        kernel_centers: torch.Tensor of kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
-        affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
+        points_src: torch.Tensor of source points ``(B, N, 2)``.
+        kernel_centers: torch.Tensor of kernel center points ``(B, K, 2)``.
+        kernel_weights: torch.Tensor of kernel weights ``(B, K, 2)``.
+        affine_weights: torch.Tensor of affine weights ``(B, 3, 2)``.
 
     Returns:
-        The :math:`(B, N, 2)` torch.Tensor of warped source points, from applying the TPS transform.
+        The ``(B, N, 2)`` torch.Tensor of warped source points, from applying the TPS transform.
+
+    See Also:
+        - :func:`get_tps_transform`: fits the weights from point pairs.
+        - :func:`warp_image_tps`: applies a spline to every pixel of an image, in normalized coordinates.
+        - :func:`~kornia.geometry.linalg.transform_points`: moves points by one ``(B, 3, 3)`` matrix instead.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -162,9 +205,6 @@ def warp_points_tps(
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
         >>> warped = warp_points_tps(points_src, points_dst, kernel_weights, affine_weights)
         >>> warped_correct = torch.allclose(warped, points_dst)
-
-    .. note::
-        This function is often used in conjunction with :func:`get_tps_transform`.
 
     """
     if not isinstance(points_src, torch.Tensor):
@@ -212,19 +252,23 @@ def warp_image_tps(
     align_corners: bool = False,
     padding_mode: str = "zeros",
 ) -> torch.Tensor:
-    r"""Warp an image torch.Tensor according to the thin plate spline transform defined by arguments.
+    r"""Warp images by a thin-plate spline that maps each output pixel to the input pixel it samples.
+
+    ``out = warp_image_tps(image, kernel_centers, kernel_weights, affine_weights)`` takes images ``(B, C, H, W)`` and a
+    spline as in :func:`warp_points_tps` (one per image, or a batch of 1 for all), applies the spline to the normalized
+    coordinates of every output pixel and returns the ``(B, C, H, W)`` images bilinearly sampled there. The spline
+    therefore maps output space to input space: to move control points ``points_src`` of the input onto
+    ``points_dst``, fit ``get_tps_transform(points_dst, points_src)`` and pass ``points_src`` as ``kernel_centers``,
+    with both point sets in normalized coordinates. The kernels then sit on ``points_src``, whereas Bookstein's
+    thin-plate spline would centre them on ``points_dst``, the output points where it interpolates
+    (`#6404 <https://github.com/kornia/kornia/issues/6404>`_). For one global matrix, use
+    :func:`~kornia.geometry.transform.warp_perspective`; for random spline warps in an augmentation pipeline,
+    :class:`~kornia.augmentation.RandomThinPlateSpline`.
 
     .. image:: _static/img/warp_image_tps.png
 
-    The transform is applied to each pixel coordinate in the output image to obtain a point in the input
-    image for interpolation of the output pixel. So the TPS parameters should correspond to a warp from
-    output space to input space.
-
-    The input `image` is a :math:`(B, C, H, W)` torch.Tensor. The kernel centers, kernel weight and affine weights
-    are the same as in `warp_points_tps`.
-
     Convention:
-        - image: :math:`(B, C, H, W)`; the weights come from :func:`get_tps_transform` called
+        - image: ``(B, C, H, W)``; the weights come from :func:`get_tps_transform` called
           **reversed**, ``get_tps_transform(points_dst, points_src)``, and ``kernel_centers`` is
           ``points_src`` (see its Convention block)
         - all control points live in the normalized ``grid_sample`` frame selected by
@@ -235,15 +279,22 @@ def warp_image_tps(
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
 
     Args:
-        image: input image torch.Tensor :math:`(B, C, H, W)`.
-        kernel_centers: kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
-        affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
+        image: input image torch.Tensor ``(B, C, H, W)``.
+        kernel_centers: kernel center points ``(B, K, 2)``.
+        kernel_weights: torch.Tensor of kernel weights ``(B, K, 2)``.
+        affine_weights: torch.Tensor of affine weights ``(B, 3, 2)``.
         align_corners: interpolation flag used by `grid_sample`.
         padding_mode: padding flag used by `grid_sample`.
 
     Returns:
-        warped image torch.Tensor :math:`(B, C, H, W)`.
+        warped image torch.Tensor ``(B, C, H, W)``.
+
+    See Also:
+        - :func:`get_tps_transform`: fits the spline; call it with the target points first for this warp.
+        - :func:`warp_points_tps`: applies the same spline to points.
+        - :class:`~kornia.augmentation.RandomThinPlateSpline`: random spline warps, in an augmentation pipeline.
+        - :func:`~kornia.geometry.transform.elastic_transform2d`: a smoothed random displacement field instead of
+          control points.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -252,9 +303,6 @@ def warp_image_tps(
         >>> # note that we are getting the reverse transform: dst -> src
         >>> kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
         >>> warped_image = warp_image_tps(image, points_src, kernel_weights, affine_weights)
-
-    .. note::
-        This function is often used in conjunction with :func:`get_tps_transform`.
 
     """
     if not isinstance(image, torch.Tensor):

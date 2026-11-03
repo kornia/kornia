@@ -36,6 +36,10 @@ comparisons against torchvision, albumentations, OpenCV and PIL on the devices t
 cover -- CPU and Apple silicon today, with more hardware being added -- and the
 :doc:`precision page <precision>` documents ``float16``/``bfloat16`` support.
 
+A GPU does not make every port faster than the library it replaces. For local features, the
+:ref:`image matching guide <feature-speed-by-device>` compares each of kornia's pipelines with its reference
+implementation on CUDA, an x86 CPU and Apple silicon, including where kornia is slower.
+
 Apple silicon (``device="mps"``) is supported as well. PyTorch's MPS backend has no ``float64`` tensors, so keep
 inputs in ``float32`` (or half precision) there, and be aware that autocast on MPS can change the effective
 dtype of an operation.

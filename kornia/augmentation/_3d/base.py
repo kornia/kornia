@@ -23,13 +23,14 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.augmentation.utils.helpers import _VOLUME_SHAPES, _raise_input_rank_error
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
+    r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -48,7 +49,8 @@ class AugmentationBase3D(_AugmentationBase):
           only.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
           values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
-          exposes ``p_batch`` (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          exposes ``p_batch`` in its constructor, though it can be set as an attribute on any 3D augmentation;
+          :class:`CenterCrop3D` and
           :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
           augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
           :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
@@ -62,10 +64,10 @@ class AugmentationBase3D(_AugmentationBase):
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.Tensor is formatted as expected."""
+        """Check that the input has a float dtype and one of the ranks ``forward`` accepts: 3, 4 or 5."""
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
-        if len(input.shape) != 5:
-            raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
+        if len(input.shape) not in (3, 4, 5):
+            _raise_input_rank_error(input.shape, _VOLUME_SHAPES)
 
     def transform_tensor(
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
@@ -83,7 +85,7 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase3D base class for rigid/affine augmentation implementations.
+    r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.

@@ -26,6 +26,7 @@ from torch._dynamo.testing import CompileCounter, CompileCounterWithBackend
 
 import kornia.augmentation as K
 
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import BaseTester, dynamo_is_available
 
 
@@ -389,7 +390,9 @@ class TestRandomCropCompile(BaseTester):
         input = torch.rand(2, 3, 12, 15, device=device, dtype=dtype, requires_grad=True)
         fn = torch_optimizer(aug)
         for _ in range(3):
-            params = aug.forward_parameters(input.shape)
+            # (19, 23) without pad_if_needed exceeds the 14 x 17 padded canvas, which a forward call rejects (#4414);
+            # its replayed parameters still reach the oversized-crop scaling.
+            params = oversized_random_crop_params(aug, input.shape)
             expected = aug(input, params=params)
             actual = fn(input, params=params)
             self.assert_close(actual, expected)

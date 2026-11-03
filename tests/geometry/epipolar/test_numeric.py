@@ -20,6 +20,7 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
 from testing.two_view import two_view_scene
@@ -72,6 +73,12 @@ class TestSkewSymmetric(BaseTester):
     def test_gradcheck(self, device):
         vec = torch.ones(2, 3, device=device, requires_grad=True, dtype=torch.float64)
         assert self.gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
+
+    @pytest.mark.parametrize("shape", [(1, 4), ()])
+    def test_wrong_last_dim_raises_6454(self, shape, device, dtype):
+        # A last dimension other than 3 raised a bare AssertionError, and a 0-d tensor an IndexError.
+        with pytest.raises(ShapeError, match=r"x must have shape \(\*, 3\), got \["):
+            epi.cross_product_matrix(torch.rand(shape, device=device, dtype=dtype))
 
 
 class TestEyeLike:

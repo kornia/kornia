@@ -40,13 +40,13 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
 
     Args:
-        image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
+        image: RGB image to be converted to HLS with shape ``(*, 3, H, W)``.
         eps: bias added to the chroma and lightness denominators before dividing. The zero
             denominators themselves are handled by a safe-substitution guard, so ``eps`` is not
             what keeps the result finite and ``eps=0`` is well defined.
 
     Returns:
-        HLS version of the image with shape :math:`(*, 3, H, W)`.
+        HLS version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -111,10 +111,10 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
         Expects H, L, S channels at axis -3 with hue in radians.
 
     Args:
-        image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: HLS image to be converted to RGB with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -161,8 +161,8 @@ class RgbToHls(nn.Module):
         HLS version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -178,12 +178,12 @@ class RgbToHls(nn.Module):
         """Convert an RGB tensor to HLS.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            HLS tensor with shape :math:`(*, 3, H, W)`.
+            HLS tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_hls(image)
 
@@ -199,8 +199,8 @@ class HlsToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - input: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - input: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Reference:
         https://en.wikipedia.org/wiki/HSL_and_HSV
@@ -219,11 +219,11 @@ class HlsToRgb(nn.Module):
         """Convert an HLS tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to HLS channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return hls_to_rgb(image)

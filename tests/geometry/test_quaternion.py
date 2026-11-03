@@ -317,6 +317,30 @@ class TestQuaternion(BaseTester):
         # The quaternion's parameter should have gradients
         assert q.data.grad is not None
 
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None), (1, 3), (3, 1)])
+    def test_mul_broadcasts_an_unbatched_or_size_one_batch(self, device, dtype, left_batch, right_batch):
+        # #6481: the Hamilton product used to raise in torch.linalg.cross when one operand was unbatched
+        q1 = Quaternion.random(left_batch, device, dtype)
+        q2 = Quaternion.random(right_batch, device, dtype)
+        expected = torch.stack(
+            [(Quaternion(a) * Quaternion(b)).data for a, b in zip(*torch.broadcast_tensors(q1.data, q2.data))]
+        )
+        self.assert_close((q1 * q2).data, expected)
+
+    def test_mul_unbatched_by_a_tensor_of_scalars(self, device, dtype):
+        q = Quaternion.random(None, device, dtype)
+        s = torch.tensor([1.0, 2.0, -3.0], device=device, dtype=dtype)
+        expected = s[:, None] * q.data
+        self.assert_close((q * s).data, expected)
+        self.assert_close((s * q).data, expected)
+
+    @pytest.mark.parametrize(("left_shape", "right_shape"), [((3, 4), (2, 4)), ((2, 3, 4), (3, 4))])
+    def test_mul_incompatible_batches_raise(self, device, dtype, left_shape, right_shape):
+        q1 = Quaternion(torch.rand(left_shape, device=device, dtype=dtype))
+        q2 = Quaternion(torch.rand(right_shape, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            q1 * q2
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)

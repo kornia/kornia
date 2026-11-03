@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Module with the functionalities for triangulation."""
+"""Triangulate 3D points from two views by the DLT."""
 
 from __future__ import annotations
 
@@ -105,13 +105,16 @@ def triangulate_points(
     points2: torch.Tensor,
     solver: str = "eigh",
 ) -> torch.Tensor:
-    r"""Reconstructs a bunch of points by triangulation.
+    r"""Triangulate 3D points from their projections in two views by the linear DLT.
 
-    Triangulates the 3d position of 2d correspondences between two images.
-    Reference: the ``"svd"`` and ``"eigh"`` solvers use the DLT formulation from Hartley/Zisserman 12.2 pag.312.
-
-    The input points are assumed to be inlier correspondences. The method does not perform any robust
-    estimation.
+    ``points3d = triangulate_points(P1, P2, points1, points2)`` takes the projection matrices ``(*, 3, 4)`` of two
+    cameras and matched points ``(*, N, 2)`` in their image coordinates and returns the Euclidean 3D points
+    ``(*, N, 3)`` in the frame that ``P1`` and ``P2`` map from: the world frame for ``P = K [R | t]`` from
+    :func:`projection_from_KRt`, and the frame of camera 1 for ``P1 = K1 [I | 0]``. Each point is the least-squares
+    null vector of its four DLT equations (Hartley and Zisserman, 12.2, p. 312) with ``solver="svd"`` or ``"eigh"``,
+    and its approximation by one step of inverse iteration with ``"cofactor"``. The correspondences are assumed to be
+    inliers: there is no robust estimation and no cheirality check. For the relative pose of two calibrated cameras
+    together with the points, use :func:`motion_from_essential_choose_solution`.
 
     Convention:
         - ``P1`` pairs with ``points1`` and ``P2`` with ``points2``. Input and output points are Euclidean;
@@ -130,12 +133,12 @@ def triangulate_points(
         - A caller's autocast region does not change the result.
 
     Args:
-        P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
-        P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
+        P1: The projection matrix for the first camera with shape ``(*, 3, 4)``.
+        P2: The projection matrix for the second camera with shape ``(*, 3, 4)``.
         points1: The set of points seen from the first camera, in the image coordinates of ``P1`` (pixels
-          for ``P1 = K [R | t]``), with shape :math:`(*, N, 2)`.
+          for ``P1 = K [R | t]``), with shape ``(*, N, 2)``.
         points2: The set of points seen from the second camera, in the image coordinates of ``P2`` (pixels
-          for ``P2 = K [R | t]``), with shape :math:`(*, N, 2)`.
+          for ``P2 = K [R | t]``), with shape ``(*, N, 2)``.
         solver: Back-end used to find the null vector of the :math:`4 \times 4` DLT
           constraint matrix. One of:
 
@@ -160,7 +163,13 @@ def triangulate_points(
             rank-deficient (zero baseline). Fastest option for large batches.
 
     Returns:
-        The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
+        The reconstructed 3d points in the world frame with shape ``(*, N, 3)``.
+
+    See Also:
+        - :func:`motion_from_essential_choose_solution`: the relative pose from an essential matrix, with the points
+          triangulated in the frame of camera 1.
+        - :func:`projection_from_KRt`: the projection matrices to pass, from intrinsics and poses.
+        - :func:`~kornia.geometry.solvers.null_vector_3x4`: the cofactor null vector that ``"cofactor"`` builds on.
 
     Example:
         >>> P1 = torch.eye(3, 4)[None]   # 1x3x4

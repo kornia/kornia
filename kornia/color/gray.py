@@ -39,10 +39,10 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
         The singleton channel at axis -3 is repeated into R, G and B. Leading dimensions are preserved.
 
     Args:
-        image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
+        image: grayscale image torch.Tensor to be converted to RGB with shape ``(*,1,H,W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.randn(2, 1, 4, 5)
@@ -76,12 +76,12 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         exactly, bit for bit as ``cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)`` does.
 
     Args:
-        image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image: RGB image to be converted to grayscale with shape ``(*,3,H,W)``.
         rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
 
     Returns:
-        grayscale version of the image with shape :math:`(*,1,H,W)`.
+        grayscale version of the image with shape ``(*,1,H,W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
@@ -141,10 +141,10 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
         BGR is channel-first at axis -3. This uses the RGB luma weights after reversing channel order.
 
     Args:
-        image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image: BGR image to be converted to grayscale with shape ``(*,3,H,W)``.
 
     Returns:
-        grayscale version of the image with shape :math:`(*,1,H,W)`.
+        grayscale version of the image with shape ``(*,1,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -168,8 +168,8 @@ class GrayscaleToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Shape:
-        - image: :math:`(*, 1, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 1, H, W)``
+        - output: ``(*, 3, H, W)``
 
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
@@ -188,12 +188,12 @@ class GrayscaleToRgb(nn.Module):
         """Convert a grayscale tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 1, H, W)`.
+            image: Input tensor with shape ``(*, 1, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``1`` is a single grayscale channel, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return grayscale_to_rgb(image)
 
@@ -206,8 +206,8 @@ class RgbToGrayscale(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)``
 
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
@@ -233,12 +233,12 @@ class RgbToGrayscale(nn.Module):
         """Convert an RGB tensor to grayscale.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Grayscale tensor with shape :math:`(*, 1, H, W)`, computed with the module's RGB weights.
+            Grayscale tensor with shape ``(*, 1, H, W)``, computed with the module's RGB weights.
         """
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
@@ -251,8 +251,8 @@ class BgrToGrayscale(nn.Module):
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)``
 
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
@@ -271,11 +271,11 @@ class BgrToGrayscale(nn.Module):
         """Convert a BGR tensor to grayscale.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Grayscale tensor with shape :math:`(*, 1, H, W)`.
+            Grayscale tensor with shape ``(*, 1, H, W)``.
         """
         return bgr_to_grayscale(image)

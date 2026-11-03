@@ -1140,12 +1140,13 @@ class TestDepthWarperConventions(BaseTester):
             self.assert_close(by_function, by_class)
             assert (by_class - img).abs().max().item() > 0.1
 
-    def test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273(self, device, dtype):
+    def test_convention_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273(self, device, dtype):
         # kornia#4273: the two APIs produce the same warp from OPPOSITE argument names:
         #   warp_frame_depth(image_src=IMG, depth_dst=D, src_trans_dst=T)
         #   DepthWarper(pinhole_dst=cam(T)).compute_projection_matrix(pinhole_src=cam(I))(depth_src=D, patch_dst=IMG)
         # Mapping 'dst' to 'dst' across the two gives the INVERSE warp (the swapped pair). The arguments are
-        # keywords on purpose: the #4273 fix is a rename, so this pin fails when it lands.
+        # keywords on purpose: both namings are kept by design (#4273); this pin fails if either API renames
+        # its frames.
         image = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
         depth = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
         identity = _eye4(device, dtype)

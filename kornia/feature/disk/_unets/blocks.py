@@ -32,7 +32,7 @@ class TrivialUpsample(nn.Module):
         """Run this DISK component forward.
 
         Args:
-            x: Input feature map with shape :math:`(B, C, H, W)`.
+            x: Input feature map with shape ``(B, C, H, W)``.
 
         Returns:
             Upsampled feature map with shape :math:`(B, C, 2H, 2W)`.
@@ -50,10 +50,10 @@ class TrivialDownsample(nn.Module):
         """Run this DISK component forward.
 
         Args:
-            x: Input feature map with shape :math:`(B, C, H, W)`.
+            x: Input feature map with shape ``(B, C, H, W)``.
 
         Returns:
-            Downsampled feature map with shape :math:`(B, C, H/2, W/2)`.
+            Downsampled feature map with shape ``(B, C, H/2, W/2)``.
         """
         return F.avg_pool2d(x, 2)
 

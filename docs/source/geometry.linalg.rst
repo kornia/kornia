@@ -6,6 +6,12 @@ kornia.geometry.linalg
 
 .. currentmodule:: kornia.geometry.linalg
 
+Homogeneous transforms and the operations around them. :func:`compose_transformations` chains two ``4 x 4``
+transforms, :func:`inverse_transformation` inverts a rigid one and :func:`relative_transformation` gives the transform
+between two poses expressed in one frame; ``trans_ab`` maps points in frame ``b`` to frame ``a``.
+:func:`transform_points` applies a ``(D + 1, D + 1)`` matrix to ``(..., N, D)`` points. :func:`euclidean_distance` and
+:func:`point_line_distance` measure distances, and :func:`batched_dot_product` and :func:`batched_squared_norm` (also
+exported as :func:`squared_norm`) reduce the last dimension.
 
 .. autofunction:: relative_transformation
 .. autofunction:: compose_transformations

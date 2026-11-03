@@ -377,12 +377,12 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         """Detect objects in an image.
 
         Args:
-            images: images to be detected. Shape :math:`(N, C, H, W)`.
+            images: images to be detected. Shape ``(N, C, H, W)``.
 
         Returns:
-            - **logits** - Tensor of shape :math:`(N, Q, K)`, where :math:`Q` is the number of queries,
+            - **logits** - Tensor of shape ``(N, Q, K)``, where :math:`Q` is the number of queries,
               :math:`K` is the number of classes.
-            - **boxes** - Tensor of shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries.
+            - **boxes** - Tensor of shape ``(N, Q, 4)``, where :math:`Q` is the number of queries.
 
         """
         feats = self.backbone(images)

@@ -37,11 +37,11 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
     and within the dimensions of the input torch.Tensor.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
+        input: the input torch.Tensor with shape ``(*, D)``. Where D is the number of dimensions.
         dim: the dimension to be summed.
 
     Returns:
-        Integral torch.Tensor for the input torch.Tensor with shape :math:`(*, D)`.
+        Integral torch.Tensor for the input torch.Tensor with shape ``(*, D)``.
 
     Examples:
         >>> input = torch.ones(3, 5)
@@ -86,10 +86,10 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
     This particular version sums over the last two dimensions.
 
     Args:
-        image: the input image torch.Tensor with shape :math:`(*, H, W)`.
+        image: the input image torch.Tensor with shape ``(*, H, W)``.
 
     Returns:
-        Integral torch.Tensor for the input image torch.Tensor with shape :math:`(*, H, W)`.
+        Integral torch.Tensor for the input image torch.Tensor with shape ``(*, H, W)``.
 
     Examples:
         >>> input = torch.ones(1, 5, 5)
@@ -114,14 +114,14 @@ class IntegralTensor(nn.Module):
         See :func:`integral_tensor` for axis order and validation behavior.
 
     Args:
-        image: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        image: the input torch.Tensor with shape ``(B,C,H,W)``.
 
     Returns:
-        Integral torch.Tensor for the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        Integral torch.Tensor for the input torch.Tensor with shape ``(B,C,H,W)``.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.ones(3, 5)
@@ -162,14 +162,14 @@ class IntegralImage(nn.Module):
     This particular version sums over the last two dimensions.
 
     Args:
-        image: the input image torch.Tensor with shape :math:`(B,C,H,W)`.
+        image: the input image torch.Tensor with shape ``(B,C,H,W)``.
 
     Returns:
-        Integral torch.Tensor for the input image torch.Tensor with shape :math:`(B,C,H,W)`.
+        Integral torch.Tensor for the input image torch.Tensor with shape ``(B,C,H,W)``.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.ones(1, 5, 5)
@@ -188,7 +188,7 @@ class IntegralImage(nn.Module):
 
         Args:
             input: Tensor whose last two dimensions represent spatial axes,
-                typically shaped :math:`(*, H, W)`.
+                typically shaped ``(*, H, W)``.
 
         Returns:
             A tensor of the same shape as ``input`` where each location stores

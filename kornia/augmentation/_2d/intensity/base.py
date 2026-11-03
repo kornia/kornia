@@ -77,7 +77,7 @@ class _PicklableCompileMixin:
 
 
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
-    r"""IntensityAugmentationBase2D base class for customized intensity augmentation implementations.
+    r"""Base class for custom 2D intensity augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 

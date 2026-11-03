@@ -38,7 +38,7 @@ def one_hot(
           are not validated by kornia; the result for them is undefined.
 
     Args:
-        labels: torch.Tensor with labels of shape :math:`(N, *)`, where N is batch size.
+        labels: torch.Tensor with labels of shape ``(N, *)``, where N is batch size.
           Each value is an integer representing correct classification.
         num_classes: number of classes in labels.
         device: the desired device of returned torch.Tensor.
@@ -47,7 +47,7 @@ def one_hot(
           zeros with ``eps`` and keeps the ones, which needs a floating point ``dtype``.
 
     Returns:
-        the labels in one hot torch.Tensor of shape :math:`(N, C, *)`,
+        the labels in one hot torch.Tensor of shape ``(N, C, *)``,
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])

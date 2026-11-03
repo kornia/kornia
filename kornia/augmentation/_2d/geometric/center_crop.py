@@ -47,7 +47,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
         - Output: :math:`(B, C, out_h, out_w)`
 
     .. note::

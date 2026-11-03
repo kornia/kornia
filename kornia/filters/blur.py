@@ -132,7 +132,7 @@ def box_blur(
           :func:`~kornia.filters.filter2d`.
 
     Args:
-        input: the image to blur with shape :math:`(B,C,H,W)`.
+        input: the image to blur with shape ``(B,C,H,W)``.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
@@ -142,7 +142,7 @@ def box_blur(
           absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
+        the blurred torch.Tensor with shape ``(B,C,H,W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
@@ -206,8 +206,8 @@ class BoxBlur(nn.Module):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -267,12 +267,12 @@ class BoxBlur(nn.Module):
         dimensional passes.
 
         Args:
-            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+            input: Image or feature tensor with shape ``(B, C, H, W)``,
                 where :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the locally
+            Tensor with shape ``(B, C, H, W)`` containing the locally
             averaged result. The output keeps the same batch, channel, and
             spatial layout as ``input``; border pixels are handled according to
             the configured border mode.

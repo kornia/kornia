@@ -97,7 +97,7 @@ def results_from_detections(
     """Convert a detection torch.Tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
-        detections: torch.Tensor with shape :math:`(D, 6)`, where :math:`D` is the number of
+        detections: torch.Tensor with shape ``(D, 6)``, where :math:`D` is the number of
             detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
         format: detection format.
@@ -168,11 +168,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """Detect objects in a given list of images.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
 
         Returns:
-            list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`,
+            list of detections found in each image. For item in a batch, shape is ``(D, 6)``,
             where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
 

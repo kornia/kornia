@@ -63,7 +63,7 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+    r"""Randomly adjust brightness, contrast, saturation and hue using torchvision-compatible formulas.
 
     The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
     with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this
@@ -89,8 +89,8 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
           The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
           entry is ignored, including on replay.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

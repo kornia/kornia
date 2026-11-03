@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+import operator
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
@@ -43,7 +45,8 @@ class KMeans:
           truncated toward zero.
 
     Args:
-        num_clusters: number of clusters the data has to be assigned to. Required, also with ``cluster_centers``.
+        num_clusters: number of clusters the data has to be assigned to, a positive integer. Required, also with
+            ``cluster_centers``; without them, :meth:`fit` needs at least ``num_clusters`` samples.
         cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
             each :meth:`fit`.
         tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
@@ -66,7 +69,17 @@ class KMeans:
         max_iterations: int = 0,
         seed: int | None = None,
     ) -> None:
-        KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
+        # Any integer count, such as a NumPy integer or a 0-d integer tensor, is accepted and stored as an int; a
+        # bool is not a count.
+        try:
+            count = operator.index(num_clusters)
+        except TypeError:
+            count = 0
+        is_bool = isinstance(num_clusters, bool) or (
+            isinstance(num_clusters, torch.Tensor) and num_clusters.dtype == torch.bool
+        )
+        KORNIA_CHECK(not is_bool and count > 0, f"num_clusters must be a positive int, got {num_clusters!r}")
+        num_clusters = count
         KORNIA_CHECK(max_iterations >= 0, f"max_iterations must be >= 0, got {max_iterations}")
         KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
         KORNIA_CHECK(
@@ -99,7 +112,7 @@ class KMeans:
         """Return the current cluster centers.
 
         Returns:
-            A tensor with shape :math:`(C, D)`:
+            A tensor with shape ``(C, D)``:
             - ``C`` is the number of clusters.
             - ``D`` is the feature dimension of each sample.
 
@@ -121,7 +134,7 @@ class KMeans:
         """Return cluster labels assigned during the most recent ``fit`` call.
 
         Returns:
-            A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
+            A 1D tensor with shape ``(N,)``, where ``N`` is the number of
             samples given to :meth:`fit`. Each value is the cluster index
             nearest to the corresponding sample in the final centers, matching
             :meth:`predict` on the training data even when fitting stops early.
@@ -202,6 +215,11 @@ class KMeans:
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
         if self._initial_cluster_centers is None:
+            # The starting centres are distinct samples of X, so there must be at least num_clusters of them.
+            KORNIA_CHECK(
+                len(X) >= self.num_clusters,
+                lambda: f"num_clusters={self.num_clusters} needs at least as many samples, but X has {len(X)}",
+            )
             current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns

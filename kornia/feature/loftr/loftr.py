@@ -84,7 +84,7 @@ class LoFTR(nn.Module):
     Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
 
     Convention:
-        - ``image0`` and ``image1`` are grayscale :math:`(N, 1, H, W)` images in :math:`[0, 1]`, the input of the
+        - ``image0`` and ``image1`` are grayscale ``(N, 1, H, W)`` images in :math:`[0, 1]`, the input of the
           pretrained models. With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses,
           the two images can differ in size, and their heights and widths do not need to be multiples of 8 (the
           reference implementation expects multiples of 8).
@@ -161,7 +161,7 @@ class LoFTR(nn.Module):
         match an image against many others without running the backbone again for every pair.
 
         Args:
-            image: grayscale images with shape :math:`(N, 1, H, W)`.
+            image: grayscale images with shape ``(N, 1, H, W)``.
 
         Returns:
             - ``coarse``, position-encoded 1/8-resolution features
@@ -209,18 +209,18 @@ class LoFTR(nn.Module):
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
-            image0: left image with shape :math:`(N, 1, H1, W1)`.
-            image1: right image with shape :math:`(N, 1, H2, W2)`.
+            image0: left image with shape ``(N, 1, H1, W1)``.
+            image1: right image with shape ``(N, 1, H2, W2)``.
             features0 (optional): instead of ``image0``, its :meth:`extract_features` output.
             features1 (optional): instead of ``image1``, its :meth:`extract_features` output.
-            mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
-            mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
+            mask0 (optional): left image mask. '0' indicates a padded position ``(N, H1, W1)``.
+            mask1 (optional): right image mask. '0' indicates a padded position ``(N, H2, W2)``.
 
         Returns:
-            - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
-            - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, the coarse matching score, see the Convention block :math:`(NC)`.
-            - ``batch_indexes``, batch index of each match :math:`(NC)`.
+            - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
+            - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
+            - ``confidence``, the coarse matching score, see the Convention block ``(NC)``.
+            - ``batch_indexes``, batch index of each match ``(NC)``.
 
         """
         # Pixel strides of the coarse and the fine feature map, (8, 2) by default. Every stride-2 stage of the backbone
@@ -256,12 +256,10 @@ class LoFTR(nn.Module):
         # Token-major copies: the reshape of the permuted maps is a channel-strided view, and every transformer GEMM
         # on it would run on the transposed layout.
         feat_c0 = feat_c0.permute(0, 2, 3, 1)
-        n, _h, _w, c = feat_c0.shape
-        feat_c0 = feat_c0.reshape(n, -1, c).contiguous()
+        feat_c0 = feat_c0.flatten(start_dim=1, end_dim=2).contiguous()
 
         feat_c1 = feat_c1.permute(0, 2, 3, 1)
-        n1, _h1, _w1, c1 = feat_c1.shape
-        feat_c1 = feat_c1.reshape(n1, -1, c1).contiguous()
+        feat_c1 = feat_c1.flatten(start_dim=1, end_dim=2).contiguous()
 
         mask_c0 = mask_c1 = None  # mask is useful in training
         # a coarse cell takes the mask value of the pixel it sits on

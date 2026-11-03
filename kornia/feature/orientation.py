@@ -27,6 +27,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
+from ._layout import _patch_conv_layout
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 from .siftdesc import _gradient_magnitude_orientation
 
@@ -48,11 +49,11 @@ class PassLAF(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
+            laf: ``(B, N, 2, 3)``
             img: not used.
 
         Returns:
-            LAF, unchanged :math:`(B, N, 2, 3)`
+            LAF, unchanged ``(B, N, 2, 3)``
 
         """
         return laf
@@ -111,10 +112,10 @@ class PatchDominantGradientOrientation(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            angle in radians: :math:`(B)`
+            angle in radians: ``(B)``
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
@@ -189,7 +190,10 @@ class PatchDominantGradientOrientation(nn.Module):
         # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
         # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
         denom = left + right - 2.0 * center
-        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
+        has_peak = denom != 0
+        # Guard the division itself: masking 0 / 0 afterwards still gives NaN smoothing-weight gradients.
+        safe_denom = torch.where(has_peak, denom, torch.ones_like(denom))
+        c_subpix = torch.where(has_peak, 0.5 * (left - right) / safe_denom, torch.zeros_like(denom))
         return -((2.0 * math.pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - math.pi)
 
 
@@ -275,21 +279,21 @@ class OriNet(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            angle in radians: :math:`(B)`
+            angle in radians: ``(B)``
 
         """
-        xy = self.features(self._normalize_input(patch)).view(-1, 2)
+        xy = self.features(_patch_conv_layout(self._normalize_input(patch))).view(-1, 2)
         return torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
 
 
 class LAFOrienter(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs).
+    """Estimate the orientation of (B, N, 2, 3) LAFs from their image patches and rotate the LAFs by it.
 
-    Then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
-    :class:`~kornia.feature.OriNet` on patches and then rotates the LAFs by the estimated angles
+    It extracts a patch per LAF, runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
+    :class:`~kornia.feature.OriNet` on it and rotates the LAF by the estimated angle.
 
     Convention:
         - Each LAF's patch (:func:`~kornia.feature.extract_patches_from_pyramid`) gives an angle, measured in the
@@ -329,15 +333,15 @@ class LAFOrienter(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)
-        KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]
