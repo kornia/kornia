@@ -511,12 +511,15 @@ class TestUndistortPointsNewton(BaseTester):
             self.assert_close(actual, fixed_point, rtol=0, atol=0)
 
     @pytest.mark.parametrize("num_iters", [12, 64])
-    def test_slow_fixed_point_root(self, device, dtype, num_iters):
+    def test_fixed_point_convergence_budget(self, device, dtype, num_iters):
         K = torch.eye(3, device=device, dtype=dtype)
         points = torch.tensor([[1.784, 0.0]], device=device, dtype=dtype)
         dist = torch.tensor([0.08, 0.07, 0.0, 0.0, -0.03], device=device, dtype=dtype)
-        # A fixed-point warm-up followed by Newton can still reach the other root at 1.77966.
+        # The fixed-point sequence reaches 1.49464 only after the shorter budget expires.
         actual = undistort_points(points, K, dist, num_iters=num_iters, solver="newton")
+        if num_iters == 12:
+            self.assert_close(actual, points.new_tensor([[1.779662337, 0.0]]))
+            return
         fixed_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         expected = undistort_points(
             points.to(fixed_dtype), K.to(fixed_dtype), dist.to(fixed_dtype), num_iters=num_iters
@@ -589,6 +592,46 @@ class TestUndistortPointsNewton(BaseTester):
             (points, dist),
             requires_grad=(True, True),
         )
+
+    def test_slow_convergence_uses_newton(self, device, dtype):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
+        dist = torch.tensor([0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        observed = distort_points(points, K, dist)
+        actual = undistort_points(observed, K, dist, num_iters=12, solver="newton")
+        tolerance = 8 * torch.finfo(dtype).eps
+        self.assert_close(actual, points, rtol=tolerance, atol=tolerance)
+
+    def test_gradcheck_newton_branch(self, device):
+        K = torch.eye(3, device=device, dtype=torch.float64)
+        points = torch.tensor([[1.5, 0.0], [16.5, 0.3]], device=device, dtype=torch.float64)
+        dist = torch.tensor([0.5, 0.0, 0.0, 0.0], device=device, dtype=torch.float64)
+        actual = undistort_points(points, K, dist, num_iters=12, solver="newton")
+        fixed = undistort_points(points, K, dist, num_iters=12)
+        assert not torch.allclose(actual[0], fixed[0])
+        self.gradcheck(
+            lambda p, c: undistort_points(p, K, c, num_iters=12, solver="newton"),
+            (points, dist),
+            requires_grad=(True, True),
+        )
+
+    def test_unused_branch_overflow_gradient(self, device, dtype):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[2.0, 0.0], [0.1, 0.1]], device=device, dtype=dtype, requires_grad=True)
+        dist = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], device=device, dtype=dtype, requires_grad=True)
+        actual = undistort_points(points, K, dist, num_iters=12, solver="newton")
+        point_grad, dist_grad = torch.autograd.grad(actual[1].sum(), (points, dist))
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(dist_grad).all()
+        self.assert_close(point_grad[0], torch.zeros_like(point_grad[0]))
+
+        valid_points = points[1:].detach().requires_grad_()
+        valid_dist = dist.detach().requires_grad_()
+        expected = undistort_points(valid_points, K, valid_dist, num_iters=12, solver="newton")
+        expected_point_grad, expected_dist_grad = torch.autograd.grad(expected.sum(), (valid_points, valid_dist))
+        self.assert_close(actual[1:], expected)
+        self.assert_close(point_grad[1:], expected_point_grad)
+        self.assert_close(dist_grad, expected_dist_grad)
 
     def test_singular_jacobian(self, device, dtype):
         K = torch.eye(3, device=device, dtype=dtype)
@@ -666,7 +709,8 @@ class TestUndistortPointsNewton(BaseTester):
         dist = torch.tensor([[0.25, 0.0, 0.0, 0.0, -0.025], [0.08, 0.07, 0.0, 0.0, -0.03]], device=device, dtype=dtype)
         op = torch_optimizer(undistort_points, fullgraph=True)
         actual = op(points, K, dist, num_iters=12, solver="newton")
-        self.assert_close(actual, undistort_points(points, K, dist, num_iters=12))
+        self.assert_close(actual, undistort_points(points, K, dist, num_iters=12, solver="newton"))
+        self.assert_close(actual[0], undistort_points(points, K, dist, num_iters=12)[0])
 
 
 class TestUndistortImage(BaseTester):
