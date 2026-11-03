@@ -3,17 +3,41 @@ Matching
 
 .. currentmodule:: kornia.feature
 
-The descriptor matchers take the descriptors of two images, and some of them their LAFs, and return
-``(dists, idxs)``: a quality and an ``(index in desc1, index in desc2)`` pair per match, which
-:func:`match_smnn_batched`, for padded batches of pairs, prefixes with the batch index. :func:`match_nn` keeps every
-nearest neighbour, :func:`match_mnn` the mutual ones, :func:`match_snn` and :func:`match_smnn` add Lowe's ratio
-test, and :func:`match_fginn` and :func:`match_adalam` also read the LAFs. :class:`DescriptorMatcher` and
-:class:`GeometryAwareDescriptorMatcher` are their module forms, and :class:`LocalFeatureMatcher` runs a detector and
-a descriptor on two images before a descriptor-only matcher.
-The learned matchers are networks with pretrained weights: :class:`LightGlueMatcher`, :class:`LightGlue` and
-:class:`OnnxLightGlue` match detected keypoints and their descriptors, and :class:`LoFTR` matches the images
-themselves, without a detector. To keep the matches that one geometric model explains, pass them to
-:class:`~kornia.geometry.ransac.RANSAC`.
+Descriptor matchers return ``(dists, idxs)``: one value and one index pair per match.
+Each row of ``idxs`` is ``(index in desc1, index in desc2)``.
+Choose the matcher by its acceptance rule, and interpret its first output as follows:
+
+.. list-table:: Matcher selection and scores
+   :header-rows: 1
+   :widths: 28 42 30
+
+   * - Matcher
+     - Acceptance rule
+     - First output
+   * - :func:`match_nn`, :func:`match_mnn`
+     - Nearest neighbour; MNN also requires the reverse match.
+     - Distance; lower is better.
+   * - :func:`match_snn`, :func:`match_smnn`
+     - Nearest-to-second-nearest ratio test; SMNN requires mutual matches and tests both directions.
+     - Ratio; lower is better. SMNN returns the larger ratio.
+   * - :func:`match_fginn`
+     - Ratio test against a geometrically inconsistent neighbour, using LAFs.
+     - Ratio; lower is better.
+   * - :func:`match_adalam`
+     - Local affine consistency using LAFs.
+     - Inverse confidence, or a squared-distance ratio in the no-seed fallback; lower is better.
+   * - :class:`LightGlueMatcher`
+     - Learned matching with pretrained weights for the selected feature.
+     - Matching score; higher is better.
+
+:class:`DescriptorMatcher` wraps NN, MNN, SNN and SMNN as a module.
+:class:`GeometryAwareDescriptorMatcher` wraps FGINN and AdaLAM.
+For padded batches of descriptor pairs, use :func:`match_smnn_batched`; its index rows include the batch index.
+To detect, describe and match two images in one call, use :class:`LocalFeatureMatcher` with a descriptor-only matcher.
+
+:class:`LightGlue` takes feature dictionaries and returns the full network outputs; :class:`OnnxLightGlue`
+runs an exported model. :class:`LoFTR` matches images directly, without a detector.
+To keep matches that agree with a geometric model, use :class:`~kornia.geometry.ransac.RANSAC`.
 
 Descriptor matching
 -------------------

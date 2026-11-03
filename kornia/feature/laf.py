@@ -46,14 +46,13 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
 
     ``scale = get_laf_scale(laf)`` takes ``(B, N, 2, 3)`` LAFs and returns their scales :math:`\sqrt{|\det A|}` as a
     ``(B, N, 1, 1)`` tensor, in pixels for LAFs in pixels: the radius of a circular LAF's region, and the geometric
-    mean of the two semi-axes of an elliptical one. The result broadcasts against the shape ``A``, so
-    ``scale_laf(laf, 1.0 / scale)`` gives a LAF of scale ``1e-3`` or more a unit scale, to within about ``5e-5`` or
-    the rounding of a half-precision LAF. The ``1e-10`` that the scale adds to the determinant moves a smaller frame
-    further off: by 0.5 % at ``1e-4``, and far from 1 at ``1e-5``. For the orientation and the centre, use
+    mean of the two semi-axes of an elliptical one. The result broadcasts against the shape ``A``, so use
+    ``scale_laf(laf, 1.0 / scale)`` to normalize an ordinary LAF. For the orientation and centre, use
     :func:`get_laf_orientation` and :func:`get_laf_center`.
 
     Convention:
         - See the Convention block on :func:`~kornia.feature.laf_from_center_scale_ori`, which defines the scale.
+        - The ``1e-10`` added to the determinant makes frames smaller than about ``1e-4`` px read too large.
         - The determinant of a float16 LAF is formed in float32, so that a LAF whose entry products leave the float16
           range does not overflow; the scale is returned in the LAF dtype.
 
@@ -128,12 +127,12 @@ def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
     """Check which slots hold a detection rather than the zero-LAF padding.
 
     ``filled = laf_is_filled(lafs)`` takes the ``(B, N, 2, 3)`` LAFs of a detector and returns a boolean ``(B, N)``
-    mask, false for the all-zero frames that pad the slots no detection filled: index the LAFs, responses and
+    mask, false for all-zero padded frames: index the LAFs, responses and
     descriptors of image ``b`` with ``laf_is_filled(lafs)[b]`` to keep its detections. A filled frame need not be
     usable; to also drop singular and non-finite frames, use :func:`laf_is_valid` instead.
 
     Convention:
-        - kornia's LAF detectors pad the slots no detection filled with an all-zero LAF and a zero response, so that a
+        - kornia's LAF detectors pad unused slots with an all-zero LAF and a zero response, so that a
           batch is one tensor. Drop those slots before matching: the padding frames are identical to one another, so a
           mutual nearest-neighbour test does not reject them and they match each other at zero distance.
         - Only an all-zero frame is padding. Any other frame is filled: a detection at the image origin, which has a
@@ -202,9 +201,10 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
     ``ori = get_laf_orientation(laf)`` takes ``(B, N, 2, 3)`` LAFs and returns their orientations ``atan2(a12, a11)``
     in degrees, within ``[-180, 180]``, as a ``(B, N, 1)`` tensor. It reads only the first row of the shape ``A``,
     which for ``A = U R``, an upright factor times the rotation matrix of an angle, gives that angle whatever the shear
-    of ``U``. A growing orientation turns the patch's x axis counter-clockwise on screen for a LAF of positive
-    determinant, and clockwise for a mirrored one. OpenCV's ``KeyPoint.angle`` turns the other way:
-    ``angle = (-ori) mod 360``. To change the orientation, use :func:`set_laf_orientation` or :func:`rotate_laf`.
+    of ``U``. For a circular similarity frame ``A = s R``, OpenCV's ``KeyPoint.angle`` is ``(-ori) mod 360``. For a
+    general affine frame, use ``atan2(a21, a11)`` in degrees modulo 360; an OpenCV keypoint cannot
+    retain its affine shape or reflection. To change the orientation, use :func:`set_laf_orientation` or
+    :func:`rotate_laf`.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.laf_from_center_scale_ori`, which defines the orientation.
@@ -237,11 +237,9 @@ def rotate_laf(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
     """Rotate each LAF's patch frame by an angle in degrees, adding it to the orientation.
 
     ``rotated = rotate_laf(laf, angles)`` takes ``(B, N, 2, 3)`` LAFs and angles ``(B, N, 1)`` in degrees and returns
-    the ``(B, N, 2, 3)`` LAFs whose orientation is the input's plus ``angles``. A positive angle turns the patch's x
-    axis counter-clockwise on screen for a LAF of positive determinant, by exactly that angle for ``A = s R``, and
-    clockwise for a mirrored one. Only the patch frame turns: the centre, the scale and the region, the ellipse
-    ``c + A u`` over the unit vectors ``u``, are kept. To set given orientations instead, use
-    :func:`set_laf_orientation`.
+    the ``(B, N, 2, 3)`` LAFs whose orientation is the input's plus ``angles``. Only the patch frame turns: the
+    centre, scale and region, the ellipse ``c + A u`` over unit vectors ``u``, stay the same. To set given
+    orientations instead, use :func:`set_laf_orientation`.
 
     Convention:
         - The result is ``[A @ R | c]``, with ``R`` the rotation matrix of ``angles_degrees`` from
@@ -275,9 +273,9 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
 
     ``oriented = set_laf_orientation(laf, angles)`` takes ``(B, N, 2, 3)`` LAFs and orientations ``(B, N, 1)`` in
     degrees and returns the ``(B, N, 2, 3)`` LAFs rotated to them, as :func:`rotate_laf` rotates: the centre, the
-    scale and the region are kept. With angles of 0, a LAF of positive determinant becomes the upright LAF of
-    :func:`make_upright`, up to that function's stabilizers, while a mirrored LAF keeps its reflection. To add angles
-    to the current orientation, use :func:`rotate_laf` instead.
+    scale and region are kept. With angles of 0, a LAF of positive determinant becomes the upright LAF of
+    :func:`make_upright`, up to its ``eps``. To add angles to the current orientation, use :func:`rotate_laf`
+    instead.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.rotate_laf`. This rotates by ``angles_degrees`` minus the
@@ -330,6 +328,8 @@ def laf_from_center_scale_ori(
           back ``-179``. For :math:`\det A > 0`, ``A = U R`` with ``U`` the upright ``A`` that
           :func:`~kornia.feature.make_upright` returns, up to its stabilizers, and ``R`` the rotation matrix of that
           orientation.
+        - A negative determinant mirrors the patch frame. Increasing its orientation turns its x axis clockwise on
+          screen. With a nonzero scale, this constructor produces a positive determinant.
 
     Args:
         xy: ``(B, N, 2)``.
@@ -963,8 +963,8 @@ def extract_patches_simple(
         patches with shape ``(B, N, CH, PS,PS)``.
 
     See Also:
-        - :func:`extract_patches_from_pyramid`: samples each LAF from the pyramid level that matches its scale, so a
-          large LAF does not alias.
+        - :func:`extract_patches_from_pyramid`: samples each LAF from a pyramid level chosen by its scale to limit
+          aliasing.
 
     """
     KORNIA_CHECK_LAF(laf)
@@ -1009,7 +1009,7 @@ def extract_patches_from_pyramid(
     ``patches = extract_patches_from_pyramid(img, laf, PS)`` takes images ``(B, CH, H, W)`` and their LAFs
     ``(B, N, 2, 3)`` in pixels and returns one ``PS x PS`` patch per LAF, ``(B, N, CH, PS, PS)`` in the image dtype:
     the square ``c + A [-1, 1]^2`` resampled from the level of a Gaussian pyramid of ``img`` that matches the LAF's
-    scale, so that a large LAF does not alias. It is the sampler of :func:`get_laf_descriptors`,
+    scale, which limits aliasing. It is the sampler of :func:`get_laf_descriptors`,
     :class:`LAFOrienter` and the affine shape estimators. With ``normalize_lafs_before_extraction=False``, ``laf`` is
     read in the frame of :func:`normalize_laf`. To sample the full-resolution image only, use
     :func:`extract_patches_simple`.
@@ -1024,7 +1024,8 @@ def extract_patches_from_pyramid(
           that exist: :func:`~kornia.geometry.transform.pyrdown` builds them while the shorter side stays at least
           ``PS``, so a larger LAF is sampled from the coarsest level that can still provide a full patch. Level 0,
           the image itself, always exists: an image whose shorter side is below ``PS`` has only that level, so even a
-          large LAF is sampled from it. A level samples the same image positions as level 0, in its own pixels.
+          large LAF is sampled from it. The level uses the geometric-mean scale, so a highly anisotropic LAF can
+          still alias along its long axis. A level samples the same image positions as level 0, in its own pixels.
         - A cell outside the image reads the nearest border pixel of the level it samples.
         - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
           in at least ``float32``. A LAF with a non-finite entry gives a zero patch.

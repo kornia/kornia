@@ -312,14 +312,9 @@ def match_nn(
 
     Convention:
         - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
-          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched` adds the
-          batch index as a first column). ``dists`` is ``(M, 1)``. :func:`match_adalam` returns it in float32 and
-          :func:`match_smnn_batched` in the descriptor dtype, which its ``dm`` must have. The others return it in the
-          descriptor dtype without ``dm``; with ``dm``, :func:`match_nn` and :func:`match_mnn` return its entries in
-          its dtype, and :func:`match_snn`, :func:`match_smnn` and :func:`match_fginn` their quotients, in the dtype
-          of a floating ``dm`` and in the default floating dtype for an integer one. An empty ``dists`` of these
-          five can have the descriptor dtype or that of ``dm`` instead. Lower values are better, and what they are
-          depends on the function:
+          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows; :func:`match_smnn_batched` adds the batch
+          index as a first column. ``dists`` is ``(M, 1)``. Without ``dm``, it has the descriptor dtype, except that
+          :func:`match_adalam` returns float32. Lower values are better, and their meaning depends on the function:
 
           - :func:`match_nn`, :func:`match_mnn`: the distance, the entry of ``dm`` when it is given.
           - :func:`match_snn`: the ratio of the nearest to the second-nearest distance, not a distance.
@@ -334,13 +329,9 @@ def match_nn(
           ``1 - dists`` as ``confidence``.
         - The ratio tests of :func:`match_snn`, :func:`match_smnn`, :func:`match_smnn_batched` and
           :func:`match_fginn` keep ``ratio <= th``: a ratio equal to ``th`` passes.
-        - Without ``dm``, the L2 distances between the descriptors are used. For large float32 and float64 inputs
-          that need no gradient, on the CPU and CUDA and outside autocast, export and tracing, :func:`match_nn`,
-          :func:`match_mnn`, :func:`match_snn` and :func:`match_smnn` select on the squared distances and take the
-          square roots of the selected ones: two distances that round to the same value only after the square root
-          are then not tied, and the nearer one is returned. A given ``dm`` is read as it is: :func:`match_nn` and
-          :func:`match_mnn` accept any matrix in which smaller is better and return its entries, while the ratio
-          tests divide its entries, so they need non-negative values, and squared distances need ``th ** 2``.
+        - Without ``dm``, the functions use L2 distances. A given ``dm`` replaces them: :func:`match_nn` and
+          :func:`match_mnn` require only that smaller entries are better, while ratio tests require non-negative
+          distances. Use ``th ** 2`` for squared distances.
         - Of tied nearest neighbours, :func:`match_nn` and :func:`match_mnn` take the one with the lower index.
         - An empty desc1 or desc2 gives a ``(0, 1)`` and a ``(0, 2)`` tensor (``(0, 3)`` for
           :func:`match_smnn_batched`). The ratio tests need a second neighbour: :func:`match_snn` and
@@ -563,11 +554,8 @@ def match_smnn(
     ``dists, idxs = match_smnn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
     mutual nearest neighbours whose nearest-to-second-nearest distance ratio is at most ``th`` both from ``desc1``
     to ``desc2`` and back, and returns the larger of their two ratios ``(B3, 1)`` and their index pairs ``(B3, 2)``,
-    with ``B3 <= min(B1, B2)``, in the order of the rows of ``desc1``. For a ``th`` below 1 in the dtype of the
-    ratios (in float16, 0.9999 rounds to 1), its matches are those of :func:`match_snn` at the same ``th`` that are
-    also mutual nearest neighbours of :func:`match_mnn` and pass the test backwards; at 1, tied distances can make
-    them differ. For many pairs of descriptor sets, padded to common sizes, use :func:`match_smnn_batched` instead
-    of a loop.
+    with ``B3 <= min(B1, B2)``, in the order of the rows of ``desc1``. For many pairs of descriptor sets, padded to
+    common sizes, use :func:`match_smnn_batched` instead of a loop.
 
     Speed, with the same matches, on 1,024 to 8,192 RootSIFT descriptors: on an x86 CPU this is faster than faiss and
     OpenCV's ``BFMatcher``, while faiss's exact k-nearest-neighbour search, run both ways, is up to 1.6x faster on
@@ -650,8 +638,10 @@ def match_smnn_batched(
 
     Convention:
         See the Convention blocks on :func:`match_nn` and :func:`match_smnn`. For each batch item it returns the
-        pairs and ratios that :func:`match_smnn` returns for the valid descriptors of that item, with the batch
-        index as the first column of the indices. Without ``dm``, float16 and bfloat16 descriptors give the results
+        pairs and ratios that :func:`match_smnn` returns for finite distances between the valid descriptors of that
+        item, with the batch index as the first column of the indices. Unlike :func:`match_smnn`, it rejects a match
+        when the nearest or second-nearest distance in either direction is non-finite. Without ``dm``, float16 and
+        bfloat16 descriptors give the results
         of :func:`match_smnn` on float32 copies, with the ratios rounded back, and a few pairs and ratios can differ
         slightly from those of :func:`match_smnn` on the half-precision descriptors.
 

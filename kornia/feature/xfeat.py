@@ -89,8 +89,8 @@ class BasicLayer(nn.Module):
 class XFeatModel(nn.Module):
     """Compute the dense descriptors, keypoint logits and reliability map of XFeat at 1/8 resolution.
 
-    ``net = XFeatModel()`` builds the network with random weights in training mode (``XFeat.from_pretrained().net``
-    is the trained one), and ``feats, keypoints, heatmap = net(images)`` takes float images ``(B, C, H, W)`` with any
+    ``net = XFeatModel().eval()`` builds the random-weight network for inference (``XFeat.from_pretrained().net``
+    is trained), and ``feats, keypoints, heatmap = net(images)`` takes float images ``(B, C, H, W)`` with any
     channel count and ``H`` and ``W`` multiples of 8, and returns the dense descriptors ``(B, 64, H/8, W/8)``, not
     normalised, the keypoint logits ``(B, 65, H/8, W/8)`` and the reliability map ``(B, 1, H/8, W/8)``, a sigmoid. It
     finds no keypoints itself: for keypoints, descriptors and matches, use :class:`XFeat` instead. It implements the
@@ -101,6 +101,8 @@ class XFeatModel(nn.Module):
           affine change ``a x + b`` of the intensities with ``a > 0`` changes the outputs only through the norm's
           ``eps`` (``1e-5``): negligibly while the variance of the channel mean is much larger than ``eps``, and
           substantially for a low-contrast image, whose variance is close to it (see :class:`XFeat`).
+        - A new ``XFeatModel`` is in training mode. A single ``32 x 32`` image reaches BatchNorm with one value per
+          channel and raises; call ``.eval()`` for inference.
         - ``H`` and ``W`` must be multiples of 8; other sizes raise an error or give maps of mismatched sizes.
           :class:`XFeat` resizes its input to multiples of 32.
         - ``keypoints`` holds 65 logits per 8 x 8 cell: channel ``(y % 8) * 8 + x % 8`` of cell ``(y // 8, x // 8)``
@@ -308,17 +310,12 @@ class InterpolateSparse2d(nn.Module):
 class XFeat(nn.Module):
     """Detect and describe keypoints with XFeat, and match image pairs, sparse or refined (XFeat*).
 
-    ``xfeat = XFeat.from_pretrained()`` loads the trained weights in evaluation mode, and
-    ``out = xfeat.detectAndCompute(images)`` takes images ``(B, C, H, W)`` with any channel count and returns a list
-    of ``B`` dicts, one per image, of up to ``top_k`` keypoints: ``"keypoints"`` ``(N, 2)`` as ``(x, y)`` pixels,
-    their ``"scores"`` ``(N,)`` in descending order and their ``"descriptors"`` ``(N, 64)``, L2-normalised.
-    ``mkpts0, mkpts1 = xfeat.match_xfeat(img0, img1)`` detects and matches one image pair by mutual nearest
-    neighbour, and :meth:`match_xfeat_star` matches the semi-dense features of :meth:`detectAndComputeDense` and
-    refines the matches (XFeat*); for one pair, each returns the matched pixels ``(M, 2)`` of the two images, and for
-    a batch of pairs a list of ``(M, 4)``. XFeat defines no ``forward``; its network, ``xfeat.net``, is the
-    :class:`XFeatModel` that gives the dense maps. To match with the LighterGlue weights instead, pass the descriptors
-    with ``laf_from_center_scale_ori(keypoints[None])`` to :class:`LightGlueMatcher` in ``"xfeat"`` mode, with
-    gradients disabled (see the Convention block); for sub-pixel keypoints, use :class:`ALIKED` instead.
+    ``xfeat = XFeat.from_pretrained()`` loads trained weights in evaluation mode.
+    ``out = xfeat.detectAndCompute(images)`` takes images ``(B, C, H, W)`` with any channel count and returns one
+    dictionary per image. Each contains up to ``top_k`` keypoints ``(N, 2)`` in ``(x, y)`` pixels, scores ``(N,)``
+    in descending order and L2-normalised descriptors ``(N, 64)``.
+    Use :meth:`match_xfeat` to extract and match sparse features, or :meth:`match_xfeat_star` for refined matches
+    from semi-dense features. For subpixel keypoint detection, use :class:`ALIKED` instead.
 
     Reference:
         "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
@@ -327,13 +324,12 @@ class XFeat(nn.Module):
     .. image:: _static/img/XFeat.png
 
     Convention:
-        - ``XFeat()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
-          running statistics on every call, and raises when a single image leaves one value per channel in the
-          network's 1/32-resolution map: every method raises for one image whose ``H`` and ``W`` are both below 64,
-          and the default multiscale :meth:`detectAndComputeDense` and :meth:`match_xfeat_star`, whose 0.6x scale
-          shrinks the image, also for one whose ``H`` and ``W`` are both below 107. :meth:`match_xfeat_star` also
-          raises when it refines a single match. Call ``.eval()`` for inference; :meth:`from_pretrained` returns the
-          trained model in evaluation mode.
+        - Use the named extraction and matching methods: XFeat has no ``forward``. Its network, ``xfeat.net``,
+          is an :class:`XFeatModel` that produces dense maps. To match with LighterGlue, construct LAFs with
+          :func:`~kornia.feature.laf_from_center_scale_ori` on ``keypoints[None]`` and pass them with the descriptors
+          to :class:`LightGlueMatcher` in ``"xfeat"`` mode, with gradients disabled.
+        - ``XFeat()`` builds random weights in training mode. Batch normalisation can raise on a single small image;
+          call ``.eval()`` for inference. :meth:`from_pretrained` returns the trained model in evaluation mode.
         - :meth:`detectAndCompute`, :meth:`detectAndComputeDense`, :meth:`match_xfeat` and :meth:`match_xfeat_star`
           run under ``torch.inference_mode``, so they return inference tensors.
         - The image is ``(B, C, H, W)`` with any channel count. Each extraction resizes the image it gets
@@ -343,26 +339,21 @@ class XFeat(nn.Module):
           lower the image's contrast. With the pretrained weights and ``top_k=2048``, the :math:`[0, 1]` and
           :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
           with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01. Every output is float32.
-        - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
-          keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')`` in the pixel
-          frame of :func:`~kornia.feature.laf_from_center_scale_ori`
-          (see :ref:`Local features <local-features-conventions>`). That is the centre of the resized pixel only
-          when ``H`` and ``W`` are multiples of 32; otherwise that centre is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
-          Reporting it ``0.5 * (W / W' - 1)`` px left of that centre and ``0.5 * (H / H' - 1)`` px above it is a known
-          defect (`#6537 <https://github.com/kornia/kornia/issues/6537>`_).
+        - :meth:`detectAndCompute` keypoints are integer pixels of the resized image, strict maxima of the keypoint
+          heatmap in their 5 x 5 window (see the note), reported in the pixel convention of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          Their reported position is offset after resizing; see `#6537 <https://github.com/kornia/kornia/issues/6537>`_.
         - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
           bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.
         - With ``multiscale=False``, :meth:`detectAndComputeDense` reports cell ``(j, i)`` of the 1/8-resolution map
-          at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. It keeps the
-          ``top_k`` cells of highest reliability, or every cell when there are fewer or ``top_k`` is below 1. With
-          the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
+          at ``8 * (j, i)``, scaled by the input-to-resized image ratio: the top-left pixel of the cell, not its centre.
+          It keeps up to ``top_k`` cells by reliability; ``top_k < 1`` keeps every cell.
+          With the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
           on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and divides each
-          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. Dividing by the factor,
-          rather than mapping a pixel ``i`` to ``(i + 0.5) / s - 0.5`` for a factor ``s``, is a known defect too
-          (`#6537 <https://github.com/kornia/kornia/issues/6537>`_): when the rescaled sizes are multiples of 32, the
-          keypoints of the 0.6 scale lie 0.33 px up and to the left of the pixel they come from, and those of the 1.3
-          scale 0.12 px down and to the right. A share of 0 yields no cell from its scale, and a scale with fewer
+          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. Their reported positions
+          are offset after resizing; see `#6537 <https://github.com/kornia/kornia/issues/6537>`_. A share of 0 yields
+          no cell from its scale, and a scale with fewer
           cells than its share returns all of them, so there are never more than ``top_k`` keypoints, and exactly
           ``top_k`` when both scales have enough cells. A ``top_k`` below 1 keeps every cell of both scales. Its
           descriptors are not normalised. The reference implementation gives the 1.3 scale ``int(0.8 * top_k)`` and

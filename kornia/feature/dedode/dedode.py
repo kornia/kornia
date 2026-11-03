@@ -79,25 +79,26 @@ urls: Dict[str, Dict[str, str]] = {
 class DeDoDe(nn.Module):
     r"""Detect the n best keypoints of each RGB image and describe them with two networks (DeDoDe).
 
-    ``dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")`` loads the trained
-    weights in evaluation mode, and ``keypoints, scores, descriptions = dedode(images, n=10_000)`` takes RGB images
-    ``(B, 3, H, W)`` in :math:`[0, 1]` and returns the ``n`` best keypoints of each image, ``(B, N, 2)`` as ``(x, y)``
-    pixels with the centre of pixel ``i`` at ``i + 0.5``, their scores ``(B, N)`` and their descriptions
-    ``(B, N, 256)``, which are not normalised, with ``N = min(n, H W)``. :meth:`detect` and :meth:`describe` run the
-    detector and the descriptor on their own. The default descriptor, ``G``, runs a frozen DINOv2 ViT-L/14 backbone
-    (built by ``kornia.feature.dedode.transformer.vit_large``) besides VGG19 and loads the DINOv2 weights already in
-    the constructor; ``B`` runs VGG19 only. To match two images, pass the descriptions with LAFs centred on the
-    keypoints minus 0.5 to :class:`LightGlueMatcher` in ``"dedodeb"`` or ``"dedodeg"`` mode; for a keypoint count that
-    follows the image content, use :class:`ALIKED` or :class:`DISK` instead.
+    ``dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")`` loads trained
+    weights in evaluation mode. ``keypoints, scores, descriptions = dedode(images, n=10_000)`` takes RGB images
+    ``(B, 3, H, W)`` in :math:`[0, 1]` and returns the best ``N = min(n, H W)`` keypoints per image.
+    Outputs are ``(x, y)`` pixel coordinates ``(B, N, 2)`` with pixel centres at ``i + 0.5``, scores ``(B, N)``
+    and unnormalised descriptors ``(B, N, 256)``. Use :class:`ALIKED` or :class:`DISK` when the keypoint count
+    should depend on image content.
 
     See :cite:`edstedt2024dedode` for details.
 
     Convention:
+        - :meth:`detect` and :meth:`describe` run the detector and descriptor separately. The default descriptor,
+          ``G``, combines VGG19 with a frozen DINOv2 ViT-L/14 backbone and loads the backbone's weights in the
+          constructor. Descriptor ``B`` uses VGG19 alone.
+        - For :class:`LightGlueMatcher`, construct LAFs centred on the keypoints minus 0.5 and pass them with the
+          descriptors in ``"dedodeb"`` or ``"dedodeg"`` mode, matching the descriptor variant.
         - :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and apply
           the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
           already normalized. ``pad_if_not_divisible`` zero-pads the normalized image at the bottom and right to
           multiples of 14, so the padding is the ImageNet mean colour, and removes it from the maps again.
-        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel frame of
+        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
           :meth:`detect` returns it normalized, as ``(2 i + 1) / (W, H) - 1`` in :math:`[-1, 1]`
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a

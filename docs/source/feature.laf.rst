@@ -15,9 +15,9 @@ the other detectors into LAFs.
 
 - To keep the detections of a fixed-size detector output, use :func:`laf_is_filled`; to also drop singular and
   non-finite frames, :func:`laf_is_valid`; to keep the regions that lie inside the image, :func:`laf_is_inside_image`.
-- To sample patches to describe, use :func:`extract_patches_from_pyramid`, which reads each LAF from the pyramid level
-  that matches its scale; :func:`extract_patches_simple` reads the full-resolution image only, and aliases for large
-  LAFs.
+- To sample patches to describe, use :func:`extract_patches_from_pyramid`, which reads each LAF from a pyramid level
+  chosen by its scale and limits aliasing. :func:`extract_patches_simple` reads the full-resolution image only and
+  aliases for large LAFs; a highly anisotropic LAF can still alias along its long axis.
 - To drop the orientation, use :func:`make_upright`; to set or add angles, :func:`set_laf_orientation` or
   :func:`rotate_laf`; to estimate the orientation from the image, :class:`LAFOrienter`.
 - To adapt the affine shape to the image, use :class:`LAFAffineShapeEstimator` (the second-moment matrix of the

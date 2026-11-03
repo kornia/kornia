@@ -56,8 +56,8 @@ class SIFTDescriptorFromPyramid(nn.Module):
     it describes the square ``c + A [-1, 1]^2`` that :class:`SIFTDescriptor` sees in the patch of
     :func:`extract_patches_from_pyramid`, without sampling that patch, so its values approximate those of
     :class:`SIFTDescriptor` without equalling them. For the patch descriptors themselves, use
-    ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)`` (:class:`LAFDescriptor`) instead, the descriptor of the
-    ``"patch"`` backend of :class:`SIFTFeature`; this module is that of its ``"pyramid"`` backend.
+    ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)`` (:class:`LAFDescriptor`) instead. :class:`SIFTFeature`'s
+    ``"patch"`` backend uses that descriptor, and its ``"pyramid"`` backend uses this module.
 
     The performance and accuracy acceptance criteria of its automatic
     orientation are tracked in
@@ -84,7 +84,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
     image pyramid before the affine footprint is sampled.
 
     Convention:
-        - ``lafs`` are in the pixel frame of ``image``, with the layout of
+        - ``lafs`` use the pixel convention of ``image``, with the layout of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
           Cell ``(i, j)`` of the ``num_spatial_bins`` x ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)``
           with ``u_k = (2 k + 1) / num_spatial_bins - 1``, at whichever octave the LAF selects: the cell centres of a

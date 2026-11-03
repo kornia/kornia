@@ -842,7 +842,7 @@ class ALIKED(nn.Module):
           and ``W`` work: the image is replicate-padded around its centre to multiples of 32 and the maps are cropped
           back, so the padding does not move the keypoints. The image must have the model's dtype: a float16,
           bfloat16 or float64 image raises on a float32 model, so cast the model first, ``aliked.to(images.dtype)``.
-        - The keypoints of :meth:`forward` are sub-pixel ``(x, y)`` in the pixel frame of
+        - The keypoints of :meth:`forward` are sub-pixel ``(x, y)`` in the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`): a strict maximum of the score map in its
           ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the border, moved by a
@@ -858,9 +858,9 @@ class ALIKED(nn.Module):
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
-          largest keypoint count in the batch and the responses are ``(B, N, 1)``. The padded slots hold zero LAFs,
-          responses and descriptors, which :func:`~kornia.feature.laf_is_filled` finds. Its ``mask`` multiplies the
-          score map, and it takes no ``image_size``.
+          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Padded slots hold zero LAFs,
+          responses and descriptors; ``laf_is_filled(lafs)`` is true for detections, so index every output with it to
+          discard the padding. Its ``mask`` multiplies the score map, and it takes no ``image_size``.
         - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
           an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
           call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).

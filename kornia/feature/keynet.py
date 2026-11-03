@@ -157,12 +157,14 @@ class KeyNet(nn.Module):
         - The input is a grayscale image, and the pretrained weights expect it in ``[0, 1]``, as the Key.Net
           reference scales its images. The response is not proportional to the intensity, so an image in
           ``[0, 255]`` gives other detections. A multi-channel image raises ``RuntimeError``.
-        - The response is a non-negative map of the input's size.
+        - The response is a non-negative map of the input's size when ``kernel_size`` is odd. With ``pretrained=False``
+          and an even ``kernel_size``, the final convolution returns a map one pixel larger on each axis.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_filters``, ``num_levels`` or an odd ``kernel_size`` other than the default changes the architecture.
+            Pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
 
     Returns:
@@ -219,14 +221,10 @@ class KeyNetDetector(MultiResolutionDetector):
 
     ``detector = KeyNetDetector(num_features=2048)``, then ``lafs, responses = detector(img)`` takes one grayscale
     image ``(1, 1, H, W)`` in ``[0, 1]`` and returns ``(1, num_features, 2, 3)`` LAFs in input pixels and their
-    ``(1, num_features)`` KeyNet responses, strongest first; the slots no detection filled hold a zero response and a
-    zero LAF, which :func:`laf_is_filled` finds. It is a :class:`MultiResolutionDetector` on the :class:`KeyNet`
+    ``(1, num_features)`` KeyNet responses, strongest first. ``laf_is_filled(lafs)`` is true for detections; index
+    every output with it to discard padded slots. It is a :class:`MultiResolutionDetector` on the :class:`KeyNet`
     response with the default ``config``: maxima at the integer pixels of six pyramid levels, in upright frames unless
-    ``ori_module`` or ``aff_module`` change them. With the pretrained weights, only the KeyNet network is put in
-    evaluation mode: the detector reports ``training=True`` (see :ref:`local-features-conventions`), and a
-    ``.train()`` call on it switches KeyNet's batch normalisation to batch statistics, which changes the detections
-    and, on every call in that mode, the running statistics. With ``pretrained=False`` KeyNet stays in training mode
-    too. For KeyNet detections with orientation and HardNet descriptors, use :class:`KeyNetHardNet` or
+    ``ori_module`` or ``aff_module`` change them. For KeyNet detections with orientation and HardNet descriptors, use
     :class:`KeyNetAffNetHardNet` instead.
 
     This is based on the original code from the paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN
@@ -236,13 +234,15 @@ class KeyNetDetector(MultiResolutionDetector):
 
     Convention:
         A :class:`~kornia.feature.MultiResolutionDetector` with :class:`~kornia.feature.KeyNet` as its response; see
-        their Convention blocks for the frame of the detections and for the input range.
+        their Convention blocks for the pixel convention and input range. Only KeyNet is in evaluation mode after
+        construction, so this detector reports ``training=True``; calling ``.train()`` changes its detections.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
-            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``num_filters``, ``num_levels`` or an odd ``kernel_size`` other than the default changes the architecture.
+            Pass
             ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
@@ -262,7 +262,7 @@ class KeyNetDetector(MultiResolutionDetector):
         - :class:`KeyNetAffNetHardNet`: the same, with AffNet affine shapes before the orientation.
         - :class:`LAFOrienter`: an ``ori_module`` that orients each frame from its image patch.
         - :class:`LAFAffineShapeEstimator`: an ``aff_module`` that adapts each frame to its patch's second moments.
-        - :func:`laf_is_filled`: finds the slots that hold a detection rather than the zero padding.
+        - :func:`laf_is_filled`: is true for detections; use it to discard padded slots.
 
     """
 

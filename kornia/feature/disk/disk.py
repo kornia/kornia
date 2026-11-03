@@ -44,20 +44,20 @@ urls: dict[str, list[str]] = {
 class DISK(nn.Module):
     r"""Detect integer-pixel keypoints and describe them with the dense maps of one U-Net (DISK).
 
-    ``disk = DISK.from_pretrained("depth")`` loads the trained weights in evaluation mode (``DISK()`` builds random
-    ones in training mode), and ``features = disk(images, n=2048)`` takes RGB images ``(B, 3, H, W)``, with ``H`` and
-    ``W`` multiples of 16 unless ``pad_if_not_divisible=True``, and returns a list of ``B`` :class:`DISKFeatures`, one
-    per image: up to ``n`` keypoints ``(N, 2)`` as integer ``(x, y)`` pixels in raster order, their detection scores
-    ``(N,)`` and L2-normalised descriptors ``(N, 128)``, with ``N`` set by each image's heatmap. To match two images,
-    pass the descriptors with ``laf_from_center_scale_ori(keypoints[None])`` to :class:`LightGlueMatcher` in
-    ``"disk"`` mode. For sub-pixel keypoints, use :class:`ALIKED` instead; for the same number of keypoints in every
-    image, :class:`DeDoDe`.
+    ``disk = DISK.from_pretrained("depth")`` loads trained weights in evaluation mode.
+    ``features = disk(images, n=2048)`` takes RGB images ``(B, 3, H, W)`` and returns one :class:`DISKFeatures`
+    per image: up to ``n`` integer-pixel keypoints ``(N, 2)``, scores ``(N,)`` and L2-normalised descriptors
+    ``(N, 128)``. Image dimensions must be multiples of 16 unless ``pad_if_not_divisible=True``.
+    Use :class:`ALIKED` for subpixel keypoints or :class:`DeDoDe` for a fixed keypoint budget per image.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
 
     Convention:
+        - ``DISK()`` creates random weights in training mode. For matching, construct LAFs with
+          :func:`~kornia.feature.laf_from_center_scale_ori` on ``keypoints[None]`` and pass them with the descriptors
+          to :class:`LightGlueMatcher` in ``"disk"`` mode.
         - ``images`` are RGB, ``(B, 3, H, W)``, which the U-Net sees as given, without normalisation. With the
           default U-Net, a common positive gain of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
           changes the outputs only through the instance norms' ``eps``, which weighs more the lower the image's
@@ -71,7 +71,7 @@ class DISK(nn.Module):
           dtype: a float16, bfloat16 or float64 image raises on a float32 model, so cast the model first,
           ``disk.to(images.dtype)``.
         - Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
-          maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          maxima (see the note), using the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
           by column) rather than by score, in float32 for a float16 or bfloat16 network and otherwise in the dtype
           of the network's output. ``detection_scores`` are the heatmap values there, in the network's dtype, and

@@ -7,20 +7,21 @@ Patch descriptors and LAFs
 --------------------------
 
 :class:`SIFTDescriptor`, :class:`MKDDescriptor` and the learned :class:`HardNet`, :class:`HardNet8`,
-:class:`HyNet`, :class:`SOSNet` and :class:`TFeat` describe grayscale patches ``(B, 1, PS, PS)``, one
-descriptor per patch. ``PS`` is 32 for the learned networks, which raise for another size, and the
-``patch_size`` argument of SIFT (41 by default) and MKD (32 by default). All but TFeat return L2-normalised
-descriptors. HardNet, HardNet8, MKD and SIFT ignore a positive gain and an offset of the patch intensities, as do
-SOSNet and TFeat up to the variance floor of their first ``InstanceNorm2d``; HyNet ignores only a positive gain (see
-each Convention block). The learned networks load their pretrained weights by default.
+:class:`HyNet`, :class:`SOSNet` and :class:`TFeat` compute one descriptor per grayscale patch
+``(B, 1, PS, PS)``. The learned networks require ``PS = 32`` and load pretrained weights by default.
+SIFT and MKD accept a configurable ``patch_size``, with defaults of 41 and 32 respectively.
+All except TFeat return L2-normalised descriptors. See each descriptor's conventions for its response
+to changes in image brightness and contrast.
 
-To describe the LAFs of an image, :class:`LAFDescriptor`, which holds a pretrained :class:`HardNet` by default, or
-:func:`get_laf_descriptors`, which takes the descriptor in each call, samples one patch per LAF with
-:func:`extract_patches_from_pyramid` and runs the patch descriptor on it; pass the patch size of any descriptor
-other than the default. The patches follow the orientation of their LAFs, so orient the LAFs first, e.g. with
-:class:`LAFOrienter`. For SIFT descriptors of LAFs without sampling patches, use :class:`SIFTDescriptorFromPyramid`
-(see below). The pipelines of :doc:`feature.local_features` combine a detector with these descriptors.
-:class:`SOLD2` instead detects, describes and matches line segments of whole images.
+To describe LAFs in an image, use :class:`LAFDescriptor` to reuse a descriptor module, or
+:func:`get_laf_descriptors` to supply one on each call. Both extract a patch for each LAF and compute its
+descriptor. Set ``patch_size`` to the size expected by the descriptor; the default is 32.
+:class:`LAFDescriptor` uses pretrained :class:`HardNet` by default. Patches follow the orientation of
+their LAFs, so orient the LAFs first, for example with :class:`LAFOrienter`.
+
+For SIFT descriptors of LAFs without extracting patches, use :class:`SIFTDescriptorFromPyramid`
+(see below). The :doc:`local-feature pipelines <feature.local_features>` combine a detector with a descriptor.
+:class:`SOLD2` detects, describes and matches line segments in whole images.
 
 .. _sift-descriptor-interfaces:
 

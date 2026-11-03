@@ -1278,8 +1278,9 @@ full rules.
   run along the patch's x axis.
 - :func:`~kornia.feature.normalize_laf` divides the centre by ``max(W - 1, 1)`` and ``max(H - 1, 1)`` and ``A`` by
   the smaller of the two; its Convention block covers moving a LAF to an image of another size.
-- kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
-  batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+- kornia's LAF detectors pad unused slots with an all-zero LAF and a zero response, so that a
+  batch is one tensor. :func:`~kornia.feature.laf_is_filled` is true for detections; index LAFs, responses and
+  descriptors with it to drop padding before matching.
 - The ``match_*`` functions return ``(dists, idxs)``, one row per match; a lower ``dists`` is a better match.
   See the Convention block of :func:`~kornia.feature.match_nn` for each matcher's distance definition.
 - ``idxs`` holds ``(index in desc1, index in desc2)`` for unbatched matchers. :func:`~kornia.feature.match_smnn_batched`
@@ -1301,8 +1302,8 @@ OpenCV keypoints and SIFT descriptors convert as follows:
    * - orientation
      - degrees, counter-clockwise on screen for a LAF of positive determinant (clockwise for a mirrored one), read by
        :func:`~kornia.feature.get_laf_orientation`
-     - ``KeyPoint.angle``, degrees clockwise on screen: ``angle = (-orientation) mod 360`` and
-       ``orientation = -angle``
+     - For a circular similarity frame ``A = s R``, ``KeyPoint.angle`` is ``(-orientation) mod 360``. For a general
+       affine frame, use ``atan2(a21, a11)`` in degrees modulo 360. A keypoint cannot retain affine shape or reflection.
    * - scale
      - :math:`\sqrt{|\det A|}`, read by :func:`~kornia.feature.get_laf_scale`; the frames of
        :class:`~kornia.feature.SIFTFeatureScaleSpace` have the scale :math:`6 \sigma` for the detection scale

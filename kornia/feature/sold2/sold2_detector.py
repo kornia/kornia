@@ -37,7 +37,7 @@ urls["wireframe"] = [
 
 
 class SOLD2_detector(nn.Module):
-    r"""Detect line segments in grayscale images with SOLD2, without building its descriptor head.
+    r"""Detect line segments in grayscale images with SOLD2, without describing or matching them.
 
     ``detector = SOLD2_detector()`` builds the network with its pretrained weights, in evaluation mode, and
     ``outputs = detector(images)`` takes grayscale images ``(B, 1, H, W)`` in :math:`[0, 1]`, with ``H`` and ``W``
@@ -50,12 +50,12 @@ class SOLD2_detector(nn.Module):
     Convention:
         - Sizes that are not multiples of 8 raise an error or give heatmaps of another size.
         - ``line_segments`` holds one ``(N, 2, 2)`` tensor per image: the two endpoints of each segment as
-          ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          ``(row, col)`` in the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
           of a segment, and the segments by their first endpoint, are in raster order: the smaller row first or, on
           the same row, the smaller column, whatever the junction scores.
-        - The endpoints are junction pixels. The default junction refinement (``use_junction_refinement`` of
-          ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
+        - The endpoints are junction coordinates. The default junction refinement (``use_junction_refinement`` of
+          ``LineDetectorCfg``) can produce sub-pixel endpoints in 0.25-pixel steps, up to one pixel per axis.
 
     Args:
         config (DetectorCfg): Configuration object containing all parameters, or a dict of its fields. None will load
