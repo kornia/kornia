@@ -1135,9 +1135,12 @@ class TestConvQuadInterp3d(BaseTester):
         converged = n_iters == 2
         expected = torch.tensor(peak if converged else candidate, device=device, dtype=dtype)
         self.assert_close(coord[0, 0, :, 2, 2, 5], expected, atol=1e-4, rtol=1e-4)
-        # a rejected point keeps the input value at its NMS voxel; the converged one reads the peak value 0
+        # a rejected point keeps the input value at its NMS voxel; the converged one reads the peak value 0. That 0
+        # is the sum of terms of about 0.42 = 0.65**2, so a half dtype gets it to one rounding of those terms: CUDA
+        # returns 0.0015 in bfloat16 and -0.00024 in float16, where the CPU happens to cancel exactly.
         expected_val = torch.zeros((), device=device, dtype=dtype) if converged else sample[0, 0, 2, 2, 5]
-        self.assert_close(val[0, 0, 2, 2, 5], expected_val, atol=1e-4, rtol=1e-4)
+        half = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(val[0, 0, 2, 2, 5], expected_val, **({} if half else {"atol": 1e-4, "rtol": 1e-4}))
 
     @pytest.mark.parametrize("op", ["conv_quad_interp3d", "iterative_quad_interp3d"])
     @pytest.mark.parametrize("amplitude", [1.0, 1e-2, 1e-3])

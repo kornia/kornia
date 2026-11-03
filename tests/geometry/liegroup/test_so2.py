@@ -505,7 +505,8 @@ class TestSo2(BaseTester):
         assert s[1].z.shape == ()  # indexing reads the (B,) view, as for a (B,) z
         before = torch.view_as_real(param.detach()).clone()  # torch.equal has no complex float16 kernel
         s.log().sum().backward()
-        torch.optim.SGD(s.parameters(), lr=0.1).step()
+        # torch's CUDA foreach optimizer kernels have no complex32 (float16) implementation.
+        torch.optim.SGD(s.parameters(), lr=0.1, foreach=False).step()
         assert not torch.equal(torch.view_as_real(param.detach()), before)
 
     @pytest.mark.parametrize("method", ["to", "bfloat16"])
@@ -715,7 +716,8 @@ class TestSo2DtypeMigration(BaseTester):
         assert rotation._z.grad.real.dtype == dtype
         self.assert_close(rotation._z.grad.real, torch.ones(2, device=device, dtype=dtype))
         self.assert_close(rotation._z.grad.imag, torch.full((2,), 2.0, device=device, dtype=dtype))
-        torch.optim.SGD(rotation.parameters(), lr=0.125).step()
+        # torch's CUDA foreach optimizer kernels have no complex32 (float16) implementation.
+        torch.optim.SGD(rotation.parameters(), lr=0.125, foreach=False).step()
         self.assert_close(rotation.z.real, before.real.to(dtype) - 0.125)
         self.assert_close(rotation.z.imag, before.imag.to(dtype) - 0.25)
 
