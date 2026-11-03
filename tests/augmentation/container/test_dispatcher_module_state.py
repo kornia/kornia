@@ -159,12 +159,13 @@ class TestDispatcherModuleState(BaseTester):
         assert set(result.missing_keys) == missing_keys
         assert result.unexpected_keys == []
 
-    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("nested", [False, True])
     @pytest.mark.parametrize("lazy_kind", ["linear", "batch_norm"])
-    def test_legacy_state_keeps_lazy_children_uninitialized(self, dispatcher_class, nested, lazy_kind):
+    def test_legacy_state_keeps_lazy_children_uninitialized(self, device, dtype, dispatcher_class, nested, lazy_kind):
         layer = nn.LazyLinear(5) if lazy_kind == "linear" else nn.LazyBatchNorm2d()
-        dispatcher = dispatcher_class(K.AugmentationSequential(layer, data_keys=["input"]))
+        dispatcher = dispatcher_class(K.AugmentationSequential(layer, data_keys=["input"])).to(
+            device=device, dtype=dtype
+        )
         module = nn.Sequential(nn.Identity(), dispatcher) if nested else dispatcher
         uninitialized = {
             name: value for name, value in module.state_dict().items() if torch.nn.parameter.is_lazy(value)
@@ -178,11 +179,15 @@ class TestDispatcherModuleState(BaseTester):
             if name in uninitialized:
                 assert value is uninitialized[name]
                 assert torch.nn.parameter.is_lazy(value)
+                assert value.device == device
+                assert value.dtype == dtype
 
-        image = torch.rand(2, 3, 4, 5)
+        image = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         output = self.call(dispatcher, image)
         assert len(output) == 1
         assert output[0].shape == image.shape
+        assert output[0].device == device
+        assert output[0].dtype == dtype
         assert torch.isfinite(output[0]).all()
         assert not any(torch.nn.parameter.is_lazy(value) for value in module.state_dict().values())
 
