@@ -42,29 +42,20 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
             ((1, 0, 3, 4, 5), (0, 4, 5)),
         ],
     )
-    def test_empty_grid_sample_operands_6554(self, src_shape, dsize, device, dtype, monkeypatch):
-        """Sample nonempty stand-ins before expanding them to an empty warp."""
+    def test_empty_warp_bypasses_grid_sample_6554(self, src_shape, dsize, device, dtype, monkeypatch):
+        """Avoid the unsupported 3-D sampler while preserving an empty warp's contracts."""
         src = torch.empty(*src_shape, device=device, dtype=dtype, requires_grad=True)
         matrix = torch.empty(src_shape[0], 3, 4, device=device, dtype=dtype, requires_grad=True)
-        sampled_shapes = []
-        grid_sample = imgwarp._torch_grid_sample
 
-        def capture_grid_sample(sample_src, grid, **kwargs):
-            sampled_shapes.append((sample_src.shape, grid.shape))
-            return grid_sample(sample_src, grid, **kwargs)
+        def unsupported_grid_sample(*args, **kwargs):
+            raise NotImplementedError("grid_sampler_3d is unavailable")
 
-        monkeypatch.setattr(imgwarp, "_torch_grid_sample", capture_grid_sample)
+        monkeypatch.setattr(imgwarp, "_torch_grid_sample", unsupported_grid_sample)
         out = proj.warp_affine3d(src, matrix, dsize)
 
         assert out.shape == (*src_shape[:2], *dsize)
         assert out.dtype == dtype
         assert out.device == device
-        assert len(sampled_shapes) == 1
-        sample_src_shape, grid_shape = sampled_shapes[0]
-        assert all(size > 0 for size in sample_src_shape)
-        assert all(size > 0 for size in grid_shape)
-        assert sample_src_shape[-3:] == (1, 1, 1)
-        assert grid_shape[1:] == (1, 1, 1, 3)
         out.sum().backward()
         assert src.grad is not None
         assert src.grad.shape == src.shape
@@ -97,8 +88,12 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
         matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="expected mode"):
             proj.warp_affine3d(src, matrix, (3, 4, 5), flags="invalid")
+        with pytest.raises(RuntimeError, match="bicubic interpolation only supports 4D"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), flags="bicubic")
         with pytest.raises(ValueError, match="expected padding_mode"):
             proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
+        with pytest.raises(TypeError, match="align_corners"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), align_corners="invalid")
         with pytest.raises(RuntimeError):
             proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
         # A non-empty batch rejects a matrix of another dtype, so an empty one must too.

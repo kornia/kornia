@@ -461,10 +461,23 @@ def _crop_by_boxes3d_to_size(
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
-    dst_trans_src: torch.Tensor = get_perspective_transform3d(src_box, dst_box)
-    _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
-    # simulate broadcasting
-    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
+    if (
+        tensor.shape[0] == 0
+        and src_box.shape[0] == 0
+        and dst_box.shape[0] == 0
+        and tensor.device == src_box.device
+        and tensor.device == dst_box.device
+    ):
+        # No pair of boxes exists to transform. Avoid the empty batched solve, which MPS did not implement before
+        # torch 2.7, while retaining zero-gradient dependencies on the volume and both box tensors.
+        zero = tensor.reshape(-1)[:1].sum() * 0.0
+        zero = zero + src_box.reshape(-1)[:1].sum() * 0.0 + dst_box.reshape(-1)[:1].sum() * 0.0
+        dst_trans_src = zero.reshape(1, 1, 1).expand(0, 4, 4)
+    else:
+        dst_trans_src = get_perspective_transform3d(src_box, dst_box)
+        _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
+        # simulate broadcasting
+        dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     patches: torch.Tensor = crop_by_transform_mat3d(
         tensor, dst_trans_src, out_size, mode=interpolation, align_corners=align_corners
