@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -283,7 +285,8 @@ class TestEnhanceConventions(BaseTester):
 
     # equalize, equalize3d and equalize_clahe count every pixel in the lookup-table entry it reads, its 8-bit level
     # (x * 255).long() in the input dtype, so a continuous image gives exactly what its 8-bit levels give. They used to
-    # count it in floor(256 x), one bin above the entry it reads for every value in [k/256, k/255) (#6181).
+    # count it in floor(256 x), one bin above the entry it reads for every value in [k/256, k/255) (#6181). In float32
+    # and float64 the 255 is raised by four float32 epsilons, relative, so k / 255 rounded a unit low still reads k.
     @pytest.mark.parametrize(
         ("op", "shape"),
         [
@@ -296,7 +299,8 @@ class TestEnhanceConventions(BaseTester):
     )
     def test_convention_equalize_counts_the_8bit_level_it_reads_6181(self, device, dtype, op, shape):
         image = torch.rand(shape, generator=torch.Generator().manual_seed(6181)).to(device, dtype)
-        levels = (image * 255).long().to(dtype) / 255
+        scale = 255 * (1 + 2**-21) if dtype in (torch.float32, torch.float64) else 255
+        levels = (image * scale).long().to(dtype) / 255
         assert torch.equal(op(image), op(levels))
 
     # equalize is PIL's Equalize of the 8-bit levels its lookup reads, for continuous input as well. 13 of these 32
@@ -321,6 +325,42 @@ class TestEnhanceConventions(BaseTester):
         image = torch.tensor(self._PIL_VALUES, device=device, dtype=dtype).repeat(33, 1)[None, None]
         expected = torch.tensor(self._PIL_EXPECTED, device=device, dtype=dtype).div(255).expand(33, 32)
         assert torch.equal(kornia.enhance.equalize(image)[0, 0], expected)
+
+    # An 8-bit image normalized as levels / 255 reads each pixel at its level k, however the division was rounded.
+    # CUDA divides by a Python number by multiplying with its rounded reciprocal, which leaves 24 of the 256 float64
+    # levels one unit in the last place below k / 255, and so does x * (1 / 255) on any device; (x * 255).long() read
+    # them as k - 1, so equalize of a random 8-bit image on CUDA differed from the CPU by up to 2 levels on 8% of the
+    # pixels, CLAHE by up to 16, and posterize(x, 7) by 2. In half precision a unit below k / 255 is up to an eighth of
+    # a level (float16) or a whole level (bfloat16), another value, so only float32 and float64 also try that one.
+    _LEVEL_READERS = {
+        "equalize": (kornia.enhance.equalize, (1, 1, 32, 32)),
+        "equalize3d": (kornia.enhance.equalize3d, (1, 1, 4, 16, 16)),
+        "clahe_even_tiles": (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 1, 32, 32)),
+        "clahe_odd_tiles": (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 1, 30, 30)),
+        "posterize_7": (lambda x: kornia.enhance.posterize(x, 7), (1, 1, 32, 32)),
+        "posterize_4": (lambda x: kornia.enhance.posterize(x, 4), (1, 1, 32, 32)),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_LEVEL_READERS))
+    def test_convention_8bit_level_reads_k_however_k_over_255_was_rounded(self, op, device, dtype):
+        fn, shape = self._LEVEL_READERS[op]
+        levels = torch.arange(math.prod(shape), device=device).remainder(256).reshape(shape)
+        reference = (levels.cpu().double() / 255).to(dtype)  # k / 255 rounded once to the dtype, on the CPU
+        variants = {
+            "divided on the device": levels.to(dtype) / 255,
+            "multiplied by 1 / 255": levels.to(dtype) * (1 / 255),
+        }
+        if dtype in (torch.float32, torch.float64):
+            variants["one unit below"] = torch.nextafter(reference, torch.zeros_like(reference)).to(device)
+        expected = fn(reference.to(device))
+        for name, image in variants.items():
+            assert torch.equal(fn(image), expected), name
+
+    def test_convention_equalize_of_every_8bit_level_once_is_the_identity(self, device, dtype):
+        # Every level occurring equally often gives the identity table, so the output names the level each pixel read.
+        levels = torch.arange(1024, device=device).remainder(256).reshape(1, 1, 32, 32)
+        out = kornia.enhance.equalize(levels.to(dtype) / 255)
+        assert torch.equal((out.cpu().double() * 255).round(), levels.cpu().double())
 
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).
