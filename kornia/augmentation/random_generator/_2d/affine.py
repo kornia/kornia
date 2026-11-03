@@ -20,6 +20,7 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import (
     _adapted_rsampling,
     _check_positive_int_or_traced,
@@ -87,9 +88,7 @@ class AffineGenerator(RandomGeneratorBase):
         return f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        # Normalize bounds before the device move without rounding below the requested sampler precision.
-        # Retain a wider ambient dtype so lower-precision samplers keep their existing rounding.
-        range_dtype = torch.promote_types(torch.get_default_dtype(), dtype)
+        range_dtype = _range_bound_dtype(dtype)
         _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360), dtype=range_dtype).to(
             device=device, dtype=dtype
         )
