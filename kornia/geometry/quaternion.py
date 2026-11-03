@@ -826,8 +826,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     r"""Average quaternions as their weighted chordal mean rotation, whatever their signs.
 
     ``q_mean = average_quaternions(Q, w)`` takes a :class:`Quaternion` of ``M`` quaternions, ``(M, 4)``, and optional
-    non-negative weights ``w`` of shape ``(M,)``, uniform by default, and returns their mean rotation as a unit
-    :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
+    non-negative weights ``w`` of shape ``(M,)`` or ``(M, 1)``, uniform by default, and returns their mean rotation as
+    a unit :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
     :meth:`Quaternion.slerp`.
 
     Convention:
@@ -839,15 +839,9 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
           the same as ``q``.
 
     Args:
-    <<<<<<< HEAD
-        Q: quaternions of shape ``(M, 4)``.
-        w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
-            ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
-    =======
         Q (Quaternion): quaternion object containing data of shape (M, 4).
-        w (torch.Tensor, optional): Weights of shape (M,) or (M, 1). If None, uniform weights are used.
-
-    >>>>>>> 233355cb (Fix Lie group shape and quaternion validation)
+        w (torch.Tensor, optional): Non-negative weights of shape (M,) or (M, 1).
+            If None, uniform weights are used.
 
     Returns:
         the averaged quaternion, of unit norm and shape ``(1, 4)``.
