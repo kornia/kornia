@@ -189,6 +189,16 @@ class TestCenterCrop3D(BaseTester):
 
 
 class TestCropByBoxes3D(BaseTester):
+    def test_crop_by_boxes3d_empty_batch_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype)
+
+        patches = kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes)
+
+        assert patches.shape == (0, 3, 0, 0, 0)
+        assert patches.dtype == inp.dtype
+        assert patches.device == inp.device
+
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
         src_box = torch.tensor(

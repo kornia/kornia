@@ -427,6 +427,8 @@ def crop_by_boxes3d(
 
     """
     bbox = infer_bbox_shape3d(dst_box)
+    if bbox[0].shape[0] == 0:
+        return _crop_by_boxes3d_to_size(tensor, src_box, dst_box, (0, 0, 0), interpolation, align_corners)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
         raise AssertionError(
             "Cropping depth, height and width must be exact same in a batch. "

@@ -404,6 +404,8 @@ def crop_by_boxes(
         )
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
+    if bbox[0].shape[0] == 0:
+        return _crop_by_boxes_to_size(input_tensor, src_box, dst_box, (0, 0), mode, padding_mode, align_corners)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
             f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}."
