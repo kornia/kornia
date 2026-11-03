@@ -44,6 +44,16 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _samples_half_in_float32(input: torch.Tensor) -> bool:
+    """Return whether ``input`` is resampled in float32 and returned in its own dtype: true for float16/bfloat16.
+
+    The policy holds on every device, because no torch half ``grid_sample`` is accurate enough to warp an image:
+    the CPU kernels are corrupt or missing (#5751), and the CUDA ones compute the source coordinates and the
+    interpolation weights in the half dtype (#5814).
+    """
+    return input.dtype in (torch.float16, torch.bfloat16)
+
+
 def _torch_grid_sample(
     input: torch.Tensor,
     grid: torch.Tensor,
@@ -51,12 +61,16 @@ def _torch_grid_sample(
     padding_mode: str = "zeros",
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, float16/bfloat16 in float32.
 
     torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
-    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    torch 2.5.1 has no such kernel (#5751). The CUDA half kernels compute the source coordinates and the
+    interpolation weights in the half dtype, which puts a bfloat16 warp of a 256 px image off by up to 0.9 on a
+    ``[0, 1]`` image, and under a float16 ``torch.autocast`` a bfloat16 input raises (#5814). A half input with a
+    grid of its own dtype is therefore sampled in float32 on every device and returned in its dtype. A grid of
+    another dtype, and every other input dtype, reach ``grid_sample`` unchanged, which rejects a mismatch as before.
     """
-    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+    if _samples_half_in_float32(input) and grid.dtype == input.dtype:
         return F.grid_sample(
             input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
         ).to(input.dtype)
