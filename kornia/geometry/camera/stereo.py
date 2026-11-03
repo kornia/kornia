@@ -106,7 +106,7 @@ class StereoCamera:
           requires the same ``fx``, ``fy`` and ``cy``; ``cx`` may differ.
         - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
           strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
-          non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
+          non-finite ``P_right[0, 3]`` is not screened, and these checks and the intrinsics check are
           skipped under graph capture (``torch.compile``, ``torch.export``).
           The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
           is the page's matrix evaluated at the page's ``tx``.
@@ -145,10 +145,11 @@ class StereoCamera:
         - :func:`reproject_disparity_to_3D`: the same reprojection from a ``Q`` matrix instead of the two
           projection matrices.
         - :func:`~kornia.geometry.depth.depth_from_disparity`: a depth map, ``fx * tx / d`` at every pixel,
-          instead of points.
+          instead of points. It equals ``Z`` on a rig with equal ``cx``; otherwise pass
+          ``d - (cx_left - cx_right)`` as the disparity.
         - :func:`~kornia.geometry.depth.depth_to_3d_v2`: points from a depth map; after
-          :func:`~kornia.geometry.depth.depth_from_disparity`, the same points up to the ``1e-8`` that function
-          adds to the disparity.
+          :func:`~kornia.geometry.depth.depth_from_disparity` of that same disparity, the same points up to the
+          ``1e-8`` that function adds to the disparity.
         - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: a single camera with intrinsics and
           world-to-camera extrinsics.
     """
