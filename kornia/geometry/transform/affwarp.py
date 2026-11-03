@@ -86,18 +86,23 @@ def _register_transform_tensor(module: nn.Module, name: str, value: Optional[tor
 # utilities to compute affine matrices
 
 
-def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Compute the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+def _compute_tensor_center(tensor: torch.Tensor, like: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Compute the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W).
+
+    The center is in the dtype of ``like`` when it is a floating-point tensor, the parameter it is combined with, so
+    that the default center gives the same matrix as one passed explicitly (#6545); otherwise in ``tensor``'s.
+    """
     if not 2 <= len(tensor.shape) <= 4:
         raise AssertionError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
+    dtype = like.dtype if like is not None and like.is_floating_point() else tensor.dtype
     # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued
     # kernels. TorchScript, which cannot compile ``_device_literal``, keeps the host literal.
     if torch.jit.is_scripting():
-        return torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
-    return _device_literal([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
+        return torch.tensor([center_x, center_y], device=tensor.device, dtype=dtype)
+    return _device_literal([center_x, center_y], device=tensor.device, dtype=dtype)
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
@@ -403,7 +408,7 @@ def rotate(
 
     # compute the rotation center
     if center is None:
-        center = _compute_tensor_center(tensor)
+        center = _compute_tensor_center(tensor, angle)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
@@ -661,7 +666,7 @@ def scale(
 
     # compute the tensor center
     if center is None:
-        center = _compute_tensor_center(tensor)
+        center = _compute_tensor_center(tensor, scale_factor)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
@@ -1276,7 +1281,9 @@ class Affine(nn.Module):
         params_batch = self.angle.shape[0]
         # The default center is the same for every image, so it takes the parameters' batch: a batch-1 parameter set
         # then warps every image, and B parameter sets warp one image, as with an explicit center.
-        center = _compute_tensor_center(input).expand(params_batch, -1) if self.center is None else self.center
+        center = (
+            _compute_tensor_center(input, self.angle).expand(params_batch, -1) if self.center is None else self.center
+        )
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         if params_batch not in (batch, 1) and batch != 1:
