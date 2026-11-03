@@ -501,6 +501,25 @@ def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
     return _normalize_to_float32_or_float64(input.dtype)
 
 
+def _torch_svd_right(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return singular values and right vectors without CUDA's tall-matrix SVD path.
+
+    For a tall CUDA matrix with at most 32 columns, QR reduces the SVD to a small square matrix.
+    This preserves the singular values and right vectors without squaring the condition number.
+    R-only QR has no backward, so differentiable inputs retain the direct SVD. Callers supplying
+    detached inputs can attach their own derivatives to the returned vectors.
+    """
+    if input.device.type == "cuda" and input.shape[-2] > 32 and input.shape[-1] <= 32 and not _needs_derivatives(input):
+        work = input.to(_svd_work_dtype(input))
+        _, r = torch.linalg.qr(work, mode="r")
+        # work already has the decomposition dtype; recasting a half input's
+        # float32 R through _torch_svd_cast would promote it a second time.
+        _, s, vh = torch.linalg.svd(r, full_matrices=False)
+        return s.to(input.dtype), vh.mH.to(input.dtype)
+    _, s, v = _torch_svd_cast(input, full_matrices=False)
+    return s, v
+
+
 def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 

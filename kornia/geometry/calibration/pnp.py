@@ -29,7 +29,7 @@ from kornia.core.utils import (
     _right_singular_vector,
     _svd_work_dtype,
     _torch_linalg_svdvals,
-    _torch_svd_cast,
+    _torch_svd_right,
 )
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
@@ -233,7 +233,12 @@ def solve_pnp_dlt(
         # Checking if world_points_norm (of any element of the batch) has rank = 3. This
         # function cannot be used if all world points (of any element of the batch) lie
         # on a line or if all world points (of any element of the batch) lie on a plane.
-        s = _torch_linalg_svdvals(world_points_norm if check_scale is None else check_scale * world_points_norm)
+        rank_system = world_points_norm if check_scale is None else check_scale * world_points_norm
+        if rank_system.device.type == "cuda" and rank_system.shape[-2] > 32:
+            # Only the rank decision uses these values, so no QR backward is needed.
+            # Keep the original svdvals work dtype and the unchanged CPU/MPS paths.
+            _, rank_system = torch.linalg.qr(rank_system.detach(), mode="r")
+        s = _torch_linalg_svdvals(rank_system)
         if torch.any(s[:, -1] < svd_eps):
             raise AssertionError(
                 "The last singular value of one/more of the elements of the batch is smaller "
@@ -266,7 +271,7 @@ def solve_pnp_dlt(
         # The SVD is of the detached system: the solution's gradient comes from _right_singular_vector, which stays
         # finite when other singular values are equal, as for world points on the corners of a cube.
         work = system.detach().to(_svd_work_dtype(system))
-        _, s, v = _torch_svd_cast(work, full_matrices=False)
+        s, v = _torch_svd_right(work)
         solution = _right_singular_vector(system, s, v, -1).to(system.dtype)
 
         # Reshaping the solution vectors to the correct shape.
