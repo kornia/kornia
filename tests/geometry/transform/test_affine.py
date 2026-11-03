@@ -1437,9 +1437,9 @@ class TestAffine2d(BaseTester):
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         image = torch.rand(2, 3, 6, 7, device=device, dtype=torch.float64)
-        angle = torch.tensor([30.0, -15.0], device=device)
-        factor = torch.tensor([[1.5, 0.75], [0.5, 2.0]], device=device)
-        center = torch.tensor([[3.0, 2.5]], device=device).expand(2, -1)
+        angle = torch.tensor([30.0, -15.0], device=device, dtype=torch.float32)
+        factor = torch.tensor([[1.5, 0.75], [0.5, 2.0]], device=device, dtype=torch.float32)
+        center = torch.tensor([[3.0, 2.5]], device=device, dtype=torch.float32).expand(2, -1)
         if op == "rotate":
             out = kornia.geometry.transform.rotate(image, angle)
             expected = kornia.geometry.transform.rotate(image, angle, center)
