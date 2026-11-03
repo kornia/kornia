@@ -1,0 +1,1 @@
+`Normalize`, `Denormalize` and `Rescale` preserve constructor arguments supplied as `torch.nn.Parameter`, so optimizers discover them and `state_dict()` saves them. They were incorrectly registered as non-persistent buffers, hiding them from both. Ordinary tensor arguments remain non-persistent buffers and continue to move with `.to()`.

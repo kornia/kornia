@@ -28,7 +28,8 @@ class Rescale(nn.Module):
         factor is a scalar float or 0-D tensor and multiplies every element.
         A float is kept as a Python number and applied like one: a float64 input keeps
         its precision and an integer input promotes to the default float dtype. A tensor
-        is stored as a non-persistent buffer, so ``.to()`` moves apply to it.
+        is stored as a non-persistent buffer, so ``.to()`` moves apply to it. An ``nn.Parameter`` stays a
+        parameter, so optimizers and checkpoints include it.
 
     Args:
         factor: The scaling factor. Could be a float or a 0-d torch.Tensor.
@@ -40,7 +41,10 @@ class Rescale(nn.Module):
         if isinstance(factor, float):
             self.factor = factor
         elif isinstance(factor, torch.Tensor) and factor.ndim == 0:
-            self.register_buffer("factor", factor, persistent=False)
+            if isinstance(factor, nn.Parameter):
+                self.factor = factor
+            else:
+                self.register_buffer("factor", factor, persistent=False)
         else:
             raise TypeError(f"Expected factor to be a float or a 0-d torch.Tensor, got {factor}.")
 
