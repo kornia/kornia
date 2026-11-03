@@ -852,6 +852,9 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
+    if isinstance(thresholds, int) and not isinstance(thresholds, bool):
+        # An int is documented and means the equal float (#6550).
+        thresholds = float(thresholds)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
@@ -927,6 +930,9 @@ def solarize(
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
+    if isinstance(thresholds, int) and not isinstance(thresholds, bool):
+        # An int is documented and means the equal float (#6550).
+        thresholds = float(thresholds)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
@@ -934,6 +940,8 @@ def solarize(
         thresholds = torch.as_tensor(thresholds, device=input.device, dtype=input.dtype)
 
     if additions is not None:
+        if isinstance(additions, int) and not isinstance(additions, bool):
+            additions = float(additions)
         if not isinstance(additions, (float, torch.Tensor)):
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 

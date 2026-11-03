@@ -1621,10 +1621,21 @@ class TestSolarize(BaseTester):
             assert TestSolarize.f([1.0], 0.0)
 
         with pytest.raises(TypeError):
-            assert TestSolarize.f(img, 1)
+            assert TestSolarize.f(img, True)
 
         with pytest.raises(TypeError):
-            assert TestSolarize.f(img, 0.8, 1)
+            assert TestSolarize.f(img, 0.8, False)
+
+        # An int addition is read as the float and range-checked like one (#6550).
+        with pytest.raises(RuntimeError, match="closed range"):
+            TestSolarize.f(img, 0.8, 1)
+
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5)])
+    @pytest.mark.parametrize(("thresholds", "additions"), [(1, None), (0, None), (1, 0), (0.5, 0), (0, 0.25)])
+    def test_int_parameters_match_float_6550(self, device, dtype, shape, thresholds, additions):
+        img = torch.rand(*shape, device=device, dtype=dtype)
+        expected = TestSolarize.f(img, float(thresholds), None if additions is None else float(additions))
+        self.assert_close(TestSolarize.f(img, thresholds, additions), expected, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5), (2, 2, 3, 4, 5)])
     @pytest.mark.parametrize("element_shape", [(1,), (1, 1)])
