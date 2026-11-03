@@ -365,12 +365,13 @@ class Boxes:
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
-        data = cast(torch.Tensor, self._data[key])
-        if data.ndim == 2:
-            data = data.unsqueeze(0)
-        new_box = type(self)(data, False)
+        data = self._data[key]
+        # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
+        one_box = data.ndim == 2 and not isinstance(key, tuple)
+        new_box = type(self)(data.unsqueeze(0) if one_box else data, False)
         new_box._mode = self._mode
-        new_box._valid = self._valid[key].reshape(data.shape[:-2])
+        valid = self._valid[key]
+        new_box._valid = valid.unsqueeze(0) if one_box else valid
         # Select padding metadata with the same key as the box batch, including boolean masks.
         if self._N is not None:
             selected = torch.as_tensor(self._N, device=self._data.device)[key]
@@ -1409,8 +1410,9 @@ class Boxes3D:
         self._mode = mode
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes3D:
-        data = cast(torch.Tensor, self._data[key])
-        if data.ndim == 2:
+        data = self._data[key]
+        if data.ndim == 2 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
             data = data.unsqueeze(0)
         new_box = Boxes3D(data, False, mode="xyzxyz_plus")
         new_box._mode = self._mode

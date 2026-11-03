@@ -170,6 +170,34 @@ class TestBoxesIndexing(BaseTester):
             with pytest.raises(IndexError):
                 empty[key]
 
+    @pytest.mark.parametrize(
+        "batched,key",
+        [
+            (False, (slice(None), 0)),
+            (False, (slice(None), -1)),
+            (False, (Ellipsis, 0, slice(None))),
+            (True, (0, 1)),
+            (True, (-1, -1)),
+        ],
+    )
+    def test_tuple_key_selection_raises_6478(
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        batched: bool,
+        key: tuple,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
+        # A tuple key that leaves a (vertices, coordinates) tensor, as ``[:, 0]`` does with as many boxes as vertices,
+        # is not the selection of one box by an integer: it raises, as it did before #6478.
+        shape = (2, vertices, vertices, coordinates) if batched else (vertices, vertices, coordinates)
+        boxes = container(torch.rand(shape, device=device, dtype=dtype), mode=mode)
+        with pytest.raises(ValueError, match="shape must be"):
+            boxes[key]
+
     def test_gradcheck_scalar_6478(
         self,
         container: type[Boxes] | type[Boxes3D],
@@ -552,19 +580,6 @@ class TestBoxes2D(BaseTester):
         assert selected._valid.shape == (1,)
         self.assert_close(selected._valid, filtered._valid[key].reshape(1), atol=0, rtol=0)
         self.assert_close(selected.to_tensor("xyxy"), filtered.to_tensor("xyxy")[key].unsqueeze(0), atol=0, rtol=0)
-
-    def test_scalar_selection_on_list_backed_boxes_6478(self, device: torch.device, dtype: torch.dtype) -> None:
-        # #6478: the scalar path stays consistent with the existing batch-axis selection of list-backed boxes.
-        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
-        lb = Boxes([first, torch.cat([first, first]), torch.cat([first, first, first])])
-
-        selected = lb[1]
-
-        assert selected._N is None
-        assert selected.shape == (3, 4, 2)
-        assert selected._valid.shape == (3,)
-        self.assert_close(selected._valid, lb._valid[1])
-        assert isinstance(selected.to_tensor("xyxy"), torch.Tensor)
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
