@@ -448,8 +448,10 @@ def fft_conv(
     Note:
         - Internally, the function performs zero-padding of the kernel to
           match the input size and uses real-valued FFTs (`rfftn` / `irfftn`).
-        - CPU float16 and bfloat16 inputs use float32 FFTs, with the result
-          cast back to the input dtype.
+        - float16 and bfloat16 inputs use float32 FFTs on every device, with
+          the result cast back to the input dtype: torch's CPU FFTs have no
+          half-precision kernels, and cuFFT computes float16 only for
+          power-of-two sizes and returns float32 for bfloat16.
         - This implementation computes linear convolution via FFT by
           appropriate spatial padding and cropping, avoiding circular
           convolution artifacts.
@@ -538,9 +540,11 @@ def fft_conv(
     if input_padded.shape[0] == 0:
         return input_padded[..., : padded_h - kh + 1, : padded_w - kw + 1] + tmp_kernel.sum() * 0
 
-    # CPU FFT kernels do not support float16 or bfloat16.
-    is_cpu_half = input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16)
-    if is_cpu_half:
+    # torch has no half-precision FFT that covers every input: the CPU kernels support neither float16 nor
+    # bfloat16, cuFFT computes float16 only for power-of-two sizes and transforms bfloat16 in float32, returning
+    # a float32 result. Half inputs are therefore transformed in float32 on every device and cast back once.
+    is_half = input.dtype in (torch.float16, torch.bfloat16)
+    if is_half:
         input_padded = input_padded.float()
         tmp_kernel = tmp_kernel.float()
 
@@ -559,7 +563,7 @@ def fft_conv(
     crop_w = padded_w - kw + 1
     output = output[..., :crop_h, :crop_w].contiguous()
 
-    return output.to(input.dtype) if is_cpu_half else output
+    return output.to(input.dtype) if is_half else output
 
 
 def correlate2d(

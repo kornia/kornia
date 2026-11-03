@@ -29,7 +29,7 @@ No CI job covers CUDA or MPS half precision; CPU results do not establish suppor
      - ✅
      - ✅
      - 0 / 0
-     - Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype
+     - Canny, Gaussian kernels/blur and FFT convolution compute half inputs in float32 and return the input dtype
    * - ``kornia.enhance``
      - ✅
      - ✅

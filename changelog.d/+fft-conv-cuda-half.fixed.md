@@ -1,0 +1,3 @@
+`fft_conv` now transforms float16 and bfloat16 inputs in float32 on every device, not only on CPU, and returns the
+input dtype. On CUDA a float16 input used to raise unless every padded size was a power of two, and a bfloat16 input
+returned float32.
