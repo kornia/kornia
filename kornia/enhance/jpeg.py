@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling
 from kornia.enhance.adjust import _check_floating_image
 from kornia.filters import gaussian_blur2d
 from kornia.image.utils import perform_keep_shape_image
@@ -199,24 +199,14 @@ def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
     return output
 
 
-# The gather helpers below exist for ``torch.export``. A ``view`` that splits a chroma plane into
-# ``(H // 8, 8, W // 8, 8)`` gives the patch grid sizes of its own, ``H // 16`` and ``W // 16`` of the padded image,
-# and either can be 1. Torch reads whether a size is 1 when it checks the result of a view for contiguity, so the
-# exported program would guard ``(H + 15) // 16 != 1`` and fail for a side of 16 pixels. The luma grid and the ``2N``
-# concatenated chroma patches are provably larger than 1, which is why only the chroma planes are routed around the
-# view. Both routes move the same values, so the result is bit for bit the eager one. Sizes are symbolic while
-# exporting, and the ONNX exporter cannot translate ``torch.remainder`` by a symbolic size, so the indices use
-# ``a - a // b * b`` where ``b`` is a size.
+def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
+    """Patchify the Cb and Cr planes together into one tensor of 8 x 8 patches.
 
-
-def _patchify_chroma_gather(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
-    """Patchify Cb and Cr with one gather, the route ``torch.export`` takes.
-
-    ``patches = _patchify_chroma_gather(input_cb, input_cr)`` takes the Cb and Cr planes of the shape ``(B, H, W)``,
-    with ``H`` and ``W`` multiples of 8, and returns their non-overlapping 8 x 8 patches, the Cb ones followed by the
-    Cr ones. The values and the patch order are those of ``_patchify_8x8`` on each plane, read with one
-    ``torch.index_select`` instead of views, so that ``torch.export`` adds no guard for a chroma grid of one patch
-    along a side. Use ``_patchify_chroma``, which takes this route only while exporting.
+    ``patches = _patchify_chroma(input_cb, input_cr)`` takes the Cb and Cr planes of the shape ``(B, H, W)``, with
+    ``H`` and ``W`` multiples of 8, and returns their non-overlapping 8 x 8 patches, the Cb ones followed by the Cr
+    ones, with the values and the order of ``_patchify_8x8`` on each plane. The planes are stacked along the height
+    and their rows of 8 pixels read with one ``torch.index_select``: no intermediate tensor has an axis of the patch
+    rows or columns of one plane, either of which can be 1, so ``torch.export`` keeps the image size dynamic.
 
     Args:
         input_cb: Cb plane of the shape ``(B, H, W)``.
@@ -226,33 +216,31 @@ def _patchify_chroma_gather(input_cb: torch.Tensor, input_cr: torch.Tensor) -> t
         The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)`` with ``N = (H // 8) * (W // 8)``.
 
     See Also:
-        - :func:`jpeg_codec_differentiable`: the public codec, whose export reaches this helper.
+        - :func:`jpeg_codec_differentiable`: the public codec, whose encoder calls this helper.
 
     """
     B, H, W = input_cb.shape
     n_cols = W // 8
-    n_patches = (H // 8) * n_cols
-    planes = torch.stack((input_cb, input_cr), dim=1).reshape(B, -1)
-    # For every output element (plane, patch, row, column), in that order, the position it reads in ``planes``.
-    out_idx = torch.arange(2 * n_patches * 64, device=input_cb.device)
-    col = torch.remainder(out_idx, 8)
-    row = torch.remainder(torch.div(out_idx, 8, rounding_mode="floor"), 8)
-    patch_idx = torch.div(out_idx, 64, rounding_mode="floor")
-    plane = torch.div(patch_idx, n_patches, rounding_mode="floor")
-    patch = patch_idx - plane * n_patches
-    patch_row = torch.div(patch, n_cols, rounding_mode="floor")
-    patch_col = patch - patch_row * n_cols
-    src = plane * (H * W) + (patch_row * 8 + row) * W + patch_col * 8 + col
-    return planes.index_select(1, src).reshape(B, 2 * n_patches, 8, 8)
+    n_patches = 2 * (H // 8) * n_cols
+    # Rows of 8 pixels of the stacked planes. Flattened first: splitting the width alone would compare the patch
+    # columns with 1.
+    rows = torch.cat((input_cb, input_cr), dim=1).flatten(1).view(B, n_patches * 8, 8)
+    # Row ``r`` of patch ``p`` is row ``(p // n_cols * 8 + r) * n_cols + p % n_cols``. ``p % n_cols`` is spelled
+    # ``p - p // n_cols * n_cols``: the ONNX exporter cannot translate ``torch.remainder`` by a symbolic size.
+    patch = torch.arange(n_patches, device=input_cb.device)
+    block_row = torch.div(patch, n_cols, rounding_mode="floor")
+    first_row = block_row * (8 * n_cols) + (patch - block_row * n_cols)
+    src = first_row[:, None] + torch.arange(8, device=input_cb.device) * n_cols
+    return rows.index_select(1, src.view(-1)).view(B, n_patches, 8, 8)
 
 
-def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Unpatchify Cb and Cr with one gather, the route ``torch.export`` takes.
+def _unpatchify_chroma(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Unpatchify the joint Cb and Cr patches back into two planes.
 
-    ``cb, cr = _unpatchify_chroma_gather(input, H, W)`` takes the Cb patches followed by the Cr patches, of the shape
+    ``cb, cr = _unpatchify_chroma(input, H, W)`` takes the Cb patches followed by the Cr patches, of the shape
     ``(B, 2N, 8, 8)``, and returns the Cb and the Cr plane, each of the shape ``(B, H, W)``. It undoes
-    ``_patchify_chroma_gather`` and gives the values of ``_unpatchify_8x8`` on each half, read with one
-    ``torch.index_select`` instead of views. Use ``_unpatchify_chroma``, which takes this route only while exporting.
+    ``_patchify_chroma`` and gives the values of ``_unpatchify_8x8`` on each half, read as rows of 8 pixels with one
+    ``torch.index_select``.
 
     Args:
         input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
@@ -263,76 +251,20 @@ def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torc
         The Cb and the Cr plane, each of the shape ``(B, H, W)``.
 
     See Also:
-        - :func:`jpeg_codec_differentiable`: the public codec, whose export reaches this helper.
+        - :func:`jpeg_codec_differentiable`: the public codec, whose decoder calls this helper.
 
     """
     B = input.shape[0]
     n_cols = W // 8
-    n_patches = (H // 8) * n_cols
-    patches = input.reshape(B, -1)
-    # For every output element (plane, row, column), in that order, the position it reads in ``patches``.
-    out_idx = torch.arange(2 * H * W, device=input.device)
-    rest = torch.div(out_idx, W, rounding_mode="floor")
-    col = out_idx - rest * W
-    plane = torch.div(rest, H, rounding_mode="floor")
-    row = rest - plane * H
-    patch_row = torch.div(row, 8, rounding_mode="floor")
-    patch_col = torch.div(col, 8, rounding_mode="floor")
-    patch = plane * n_patches + patch_row * n_cols + patch_col
-    src = (patch * 8 + (row - patch_row * 8)) * 8 + (col - patch_col * 8)
-    planes = patches.index_select(1, src).reshape(B, 2, H, W)
+    n_rows = 2 * H * n_cols
+    # Row ``k`` of 8 pixels of the stacked planes is row ``k // n_cols % 8`` of patch
+    # ``k // n_cols // 8 * n_cols + k % n_cols``.
+    k = torch.arange(n_rows, device=input.device)
+    plane_row = torch.div(k, n_cols, rounding_mode="floor")
+    block_row = torch.div(plane_row, 8, rounding_mode="floor")
+    src = (block_row * n_cols + (k - plane_row * n_cols)) * 8 + (plane_row - block_row * 8)
+    planes = input.reshape(B, n_rows, 8).index_select(1, src).flatten(1).view(B, 2, H, W)
     return planes[:, 0], planes[:, 1]
-
-
-def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
-    """Patchify the Cb and Cr planes together into one tensor of 8 x 8 patches.
-
-    ``patches = _patchify_chroma(input_cb, input_cr)`` takes the Cb and Cr planes of the shape ``(B, H, W)`` and returns
-    their 8 x 8 patches, the Cb ones followed by the Cr ones. Eager and the TorchScript tracer view each plane with
-    ``_patchify_8x8`` and concatenate; ``torch.export`` takes ``_patchify_chroma_gather``, which gives the same values
-    and adds no guard for a chroma grid of one patch along a side.
-
-    Args:
-        input_cb: Cb plane of the shape ``(B, H, W)``.
-        input_cr: Cr plane of the shape ``(B, H, W)``.
-
-    Returns:
-        The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)``.
-
-    See Also:
-        - :func:`jpeg_codec_differentiable`: the public codec, whose encoder calls this helper.
-
-    """
-    if is_exporting():
-        return _patchify_chroma_gather(input_cb, input_cr)
-    return torch.cat((_patchify_8x8(input_cb), _patchify_8x8(input_cr)), dim=1)
-
-
-def _unpatchify_chroma(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Unpatchify the joint Cb and Cr patches back into two planes.
-
-    ``cb, cr = _unpatchify_chroma(input, H, W)`` takes the Cb patches followed by the Cr patches, of the shape
-    ``(B, 2N, 8, 8)``, and returns the Cb and the Cr plane, each of the shape ``(B, H, W)``. Eager and the TorchScript
-    tracer split the patches and reverse them with ``_unpatchify_8x8``; ``torch.export`` takes
-    ``_unpatchify_chroma_gather``, which gives the same values and adds no guard for a chroma grid of one patch along a
-    side.
-
-    Args:
-        input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
-        H: height of each plane.
-        W: width of each plane.
-
-    Returns:
-        The Cb and the Cr plane, each of the shape ``(B, H, W)``.
-
-    See Also:
-        - :func:`jpeg_codec_differentiable`: the public codec, whose decoder calls this helper.
-
-    """
-    if is_exporting():
-        return _unpatchify_chroma_gather(input, H, W)
-    input_cb, input_cr = _split_cb_cr(input, input.shape[1] // 2)
-    return _unpatchify_8x8(input_cb, H, W), _unpatchify_8x8(input_cr, H, W)
 
 
 def _dct_8x8(input: torch.Tensor) -> torch.Tensor:
@@ -531,15 +463,6 @@ def _chroma_upsampling(input_c: torch.Tensor) -> torch.Tensor:
     return output_c[:, 0]
 
 
-def _split_cb_cr(input_cb_cr: torch.Tensor, n_patches: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Split the concatenated Cb and Cr patches of the shape :math:`(B, 2N, 8, 8)` into two ``(B, N, 8, 8)``.
-
-    This is ``chunk(2, dim=1)`` with the half size passed in: ``chunk`` exports as a ``SplitToSequence`` with a
-    symbolic size, which the ONNX optimizer cannot fold when the image size is dynamic.
-    """
-    return input_cb_cr[:, :n_patches], input_cb_cr[:, n_patches:]
-
-
 def _jpeg_encode(
     image_rgb: torch.Tensor,
     jpeg_quality: torch.Tensor,
@@ -664,9 +587,7 @@ def _crop_padding(image: torch.Tensor, H: int, W: int) -> torch.Tensor:
     """Crop the bottom and right padding off an image padded to a multiple of 16.
 
     ``cropped = _crop_padding(image, H, W)`` takes an image of the shape ``(*, C, H_new, W_new)`` that
-    ``_perform_padding`` padded from ``H`` x ``W``, and returns its top-left ``(*, C, H, W)`` part. Eager slices;
-    ``torch.export`` pads by the negative of the padding, which gives the same values and adds no guard that ``H`` is at
-    most ``H_new``.
+    ``_perform_padding`` padded from ``H`` x ``W``, and returns its top-left ``(*, C, H, W)`` part, as a copy.
 
     Args:
         image: Padded image of the shape ``(*, C, H_new, W_new)``.
@@ -680,12 +601,10 @@ def _crop_padding(image: torch.Tensor, H: int, W: int) -> torch.Tensor:
         - :func:`jpeg_codec_differentiable`: the public codec, whose last step is this crop.
 
     """
-    if is_exporting():
-        # ``image[..., :H, :W]`` asks torch whether ``H`` is at most the padded height, a guard that torch.export
-        # cannot show true for every ``H``. A negative pad crops without asking, and gives the same values.
-        h_pad, w_pad = image.shape[-2] - H, image.shape[-1] - W
-        return F.pad(image, (0, -w_pad, 0, -h_pad))
-    return image[..., :H, :W]
+    # ``image[..., :H, :W]`` would make ``torch.export`` guard that ``H`` is at most the padded height, which it cannot
+    # show for every ``H``. A negative pad crops without that guard, and gives the same values.
+    h_pad, w_pad = image.shape[-2] - H, image.shape[-1] - W
+    return F.pad(image, (0, -w_pad, 0, -h_pad))
 
 
 @perform_keep_shape_image

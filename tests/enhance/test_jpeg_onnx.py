@@ -141,7 +141,8 @@ def test_chroma_resampling_matches_rescale(size):
 
 
 # Sizes the exported programs and routes below are checked at: the padded block grid is a single block (16 x 16, 1 x 1,
-# 5 x 9), a row or a column of blocks, and several; the padding is zero, partial and one short of a block.
+# 5 x 9), a row or a column of blocks, and several; the padding is zero, partial and one short of a block; and an empty
+# batch.
 _EXPORT_SHAPES = [
     (2, 3, 32, 48),
     (1, 3, 32, 48),
@@ -155,6 +156,7 @@ _EXPORT_SHAPES = [
     (1, 3, 5, 9),
     (1, 3, 1, 1),
     (1, 3, 100, 131),
+    (0, 3, 24, 40),
 ]
 
 
@@ -188,5 +190,5 @@ def test_jpeg_codec_torch_export_matches_eager_at_other_shapes(dim_min):
             actual = exported(image, quality)
             expected = model(image, quality)
         assert actual.shape == expected.shape, f"traced at (32, 48), run at {shape}"
-        # Same operations on the same values: only the layout of the patches differs.
+        # The program runs the eager operations on the same values.
         assert_close(actual, expected, rtol=0.0, atol=0.0)
