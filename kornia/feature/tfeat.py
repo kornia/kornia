@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
-from kornia.feature._layout import _patch_conv_layout
+from kornia.feature._layout import _mark_patch_convolutions, _patch_conv_layout
 
 urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
@@ -89,6 +89,7 @@ class TFeat(nn.Module):
             nn.Conv2d(32, 64, kernel_size=6),
             nn.Tanh(),
         )
+        _mark_patch_convolutions(self.features)
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
@@ -109,8 +110,9 @@ class TFeat(nn.Module):
         x = input
         for layer in self.features:
             # The leading InstanceNorm2d returns the default layout, so the layout is set per convolution; a
-            # convolution's output already has it, which makes the second call free.
-            if isinstance(layer, nn.Conv2d):
+            # convolution's output already has it, which makes the second call free. The convolutions are found by
+            # their mark, which TorchScript resolves per layer (see _mark_patch_convolutions).
+            if getattr(layer, "_patch_conv_input", False):
                 x = _patch_conv_layout(x)
             x = layer(x)
         x = x.flatten(1)

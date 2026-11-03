@@ -15,10 +15,27 @@
 # limitations under the License.
 #
 
+from collections.abc import Iterable
+
 import torch
+from torch import nn
 
 # A defaulted argument rather than a closed-over global: TorchScript cannot read module-level Python values.
 _CPU_HAS_ONEDNN: bool = torch.backends.mkldnn.is_available()
+
+
+def _mark_patch_convolutions(layers: Iterable[nn.Module]) -> None:
+    """Mark the ``nn.Conv2d`` layers among ``layers`` whose input a layer loop gives :func:`_patch_conv_layout`.
+
+    A ``forward`` that loops over its layers tests ``getattr(layer, "_patch_conv_input", False)``, never
+    ``isinstance(layer, nn.Conv2d)``: TorchScript resolves that ``isinstance`` against the one ``Conv2d`` class type
+    it compiled first in the process, and gives every other ``Conv2d`` a mangled type that fails it. A scripted network
+    would then skip the layout before some or all of its convolutions, depending on what had been scripted before it,
+    and convolve in a different layout from eager. TorchScript reads the attribute of each submodule instead.
+    """
+    for layer in layers:
+        if isinstance(layer, nn.Conv2d):
+            layer._patch_conv_input = True
 
 
 def _patch_conv_layout(x: torch.Tensor, cpu_has_onednn: bool = _CPU_HAS_ONEDNN) -> torch.Tensor:

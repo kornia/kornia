@@ -120,6 +120,35 @@ class TestPatchConvLayout(BaseTester):
             assert (is_channels_last and not is_contiguous) == channels_last, conv
             assert is_contiguous != channels_last, conv
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("name", ["HardNet", "HardNet8", "SOSNet", "TFeat", "HyNet"])
+    def test_scripted_network_sets_the_layout_where_eager_does(self, name, monkeypatch):
+        # TorchScript resolves ``isinstance(layer, nn.Conv2d)`` against the one Conv2d class type it compiled first in
+        # the process, and every other Conv2d gets a mangled type that fails the test. A scripted SOSNet or TFeat, which
+        # loop over their layers, therefore set the layout before none of their convolutions once another Conv2d had
+        # been scripted, and convolved in a different layout from eager. Scripting a Conv2d first sets up that state.
+        torch.jit.script(nn.Conv2d(3, 5, 7))
+        net = NETWORKS[name](pretrained=False).eval()
+        calls = []
+
+        def count(x):
+            calls.append(x.shape)
+            return _patch_conv_layout(x)
+
+        with monkeypatch.context() as patch:
+            for module in CALLERS:
+                patch.setattr(module, "_patch_conv_layout", count)
+            with torch.no_grad():
+                _run(name, net, "cpu", torch.float32)
+        scripted = torch.jit.script(net)
+        call_sites = [
+            node
+            for module in scripted.modules()
+            for node in module.graph.findAllNodes("prim::CallFunction")
+            if node.inputsAt(0).node().s("name") == "_patch_conv_layout"
+        ]
+        assert len(call_sites) == len(calls)
+
     @pytest.mark.parametrize("name", NETWORKS)
     def test_layout_keeps_outputs(self, name, device, dtype, monkeypatch):
         torch.manual_seed(0)
