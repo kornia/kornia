@@ -63,6 +63,23 @@ class TestColorMap(BaseTester):
         assert actual.colors.dtype == dtype
         self.assert_close(actual.colors, expected)
 
+    @pytest.mark.parametrize("num_colors", [2, 4, 5, 8, 256])
+    def test_ramp_resamples_evenly_6556(self, device, dtype, num_colors):
+        actual = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=num_colors, device=device, dtype=dtype)
+        ramp = torch.arange(num_colors, device=device, dtype=dtype) / (num_colors - 1)
+        self.assert_close(actual.colors, ramp.expand(3, -1))
+
+    @pytest.mark.parametrize("num_colors", [8, 63, 65, 256])
+    @pytest.mark.parametrize("name", ["viridis", "jet", "autumn"])
+    def test_resampled_map_keeps_end_colors_6556(self, device, dtype, name, num_colors):
+        base = ColorMap(base=name, device=device, dtype=dtype).colors
+        actual = ColorMap(base=name, num_colors=num_colors, device=device, dtype=dtype).colors
+        assert actual.shape == (3, num_colors)
+        self.assert_close(actual[:, 0], base[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(actual[:, -1], base[:, -1], atol=0.0, rtol=0.0)
+        assert not torch.equal(actual[:, 0], actual[:, 1])
+        assert not torch.equal(actual[:, -2], actual[:, -1])
+
 
 class TestApplyColorMap(BaseTester):
     def test_smoke(self, device, dtype):
