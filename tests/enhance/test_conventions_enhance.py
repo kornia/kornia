@@ -345,7 +345,7 @@ class TestEnhanceConventions(BaseTester):
     def test_convention_8bit_level_reads_k_however_k_over_255_was_rounded(self, op, device, dtype):
         fn, shape = self._LEVEL_READERS[op]
         levels = torch.arange(math.prod(shape), device=device).remainder(256).reshape(shape)
-        reference = (levels.double().cpu() / 255).to(dtype)  # k / 255 rounded once to the dtype, on the CPU
+        reference = (levels.cpu().double() / 255).to(dtype)  # k / 255 rounded once to the dtype, on the CPU
         variants = {
             "divided on the device": levels.to(dtype) / 255,
             "multiplied by 1 / 255": levels.to(dtype) * (1 / 255),
@@ -360,7 +360,7 @@ class TestEnhanceConventions(BaseTester):
         # Every level occurring equally often gives the identity table, so the output names the level each pixel read.
         levels = torch.arange(1024, device=device).remainder(256).reshape(1, 1, 32, 32)
         out = kornia.enhance.equalize(levels.to(dtype) / 255)
-        assert torch.equal((out.double() * 255).round(), levels.double())
+        assert torch.equal((out.cpu().double() * 255).round(), levels.cpu().double())
 
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).

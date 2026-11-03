@@ -591,8 +591,10 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("clip_limit", [40.0, 300.0])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     def test_clahe_half_precision_tile_of_65536_pixels(self, slow_and_differentiable, clip_limit, device, dtype):
-        torch.manual_seed(5374)
-        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        # Drawn on the CPU, so every device equalizes the same values. The level a pixel reads is computed in its own
+        # dtype: a float32 value just outside the 2**-21 margin below a level boundary can round into it and read the
+        # level above the one float64 reads. About 3 in 10 uniform images this size hold such a value; this one none.
+        img = torch.rand(1, 1, 256, 256, dtype=dtype, generator=torch.Generator().manual_seed(5374)).to(device)
         out = enhance.equalize_clahe(img, clip_limit, (1, 1), slow_and_differentiable)
         assert out.dtype == dtype
         assert torch.isfinite(out).all()
