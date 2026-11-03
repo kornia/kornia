@@ -25,13 +25,36 @@ from testing.base import BaseTester
 
 
 class TestTotalVariation(BaseTester):
+    @pytest.mark.parametrize("side", [256, 512])
+    def test_half_sum_finite_image_regularizer(self, device, side):
+        # Binary image values are in the image domain, even when the TV exceeds
+        # float16's range. Each horizontal and vertical difference is exactly 1.
+        row = torch.arange(side, device=device)
+        image = ((row[:, None] + row[None, :]) % 2).to(torch.float16).requires_grad_()
+        actual = kornia.losses.total_variation(image)
+        assert torch.isfinite(actual)
+        expected = torch.tensor(2 * side * (side - 1), device=device, dtype=torch.float32)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.TotalVariation()(image), expected)
+
+        reference_image = image.detach().float().requires_grad_()
+        reference = (reference_image[1:, :] - reference_image[:-1, :]).abs().sum() + (
+            reference_image[:, 1:] - reference_image[:, :-1]
+        ).abs().sum()
+        weight = 1e-5
+        self.assert_close(actual * weight, reference * weight)
+        (actual * weight).backward()
+        (reference * weight).backward()
+        self.assert_close(image.grad, reference_image.grad.half(), rtol=0, atol=6e-8)
+
     @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1), (2, 3, 1, 4), (2, 3, 4, 1)])
     @pytest.mark.parametrize("reduction", ["sum", "mean"])
     def test_singleton_spatial_axis(self, device, dtype, shape, reduction):
         height, width = shape[-2:]
         image = torch.arange(height * width, device=device, dtype=dtype).reshape(height, width).expand(shape)
         expected_value = 0.0 if height == width == 1 else 1.0 if reduction == "mean" else 3.0
-        expected = torch.full(shape[:-2], expected_value, device=device, dtype=dtype)
+        expected_dtype = torch.float32 if dtype == torch.float16 and reduction == "sum" else dtype
+        expected = torch.full(shape[:-2], expected_value, device=device, dtype=expected_dtype)
 
         self.assert_close(kornia.losses.total_variation(image, reduction), expected)
 
@@ -76,7 +99,7 @@ class TestTotalVariation(BaseTester):
     )
     def test_tv_on_constant(self, device, dtype, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype))
-        self.assert_close(actual, expected.to(device, dtype))
+        self.assert_close(actual, expected.to(device, torch.float32 if dtype == torch.float16 else dtype))
 
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize(
@@ -148,7 +171,9 @@ class TestTotalVariation(BaseTester):
     )
     def test_tv_on_3d(self, device, dtype, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype))
-        self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(
+            actual, expected.to(device, torch.float32 if dtype == torch.float16 else dtype), rtol=1e-3, atol=1e-3
+        )
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize(
@@ -185,7 +210,9 @@ class TestTotalVariation(BaseTester):
     )
     def test_tv_on_4d(self, device, dtype, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype))
-        self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(
+            actual, expected.to(device, torch.float32 if dtype == torch.float16 else dtype), rtol=1e-3, atol=1e-3
+        )
 
     @pytest.mark.parametrize("pred", [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
     def test_tv_shapes(self, device, dtype, pred):
@@ -196,14 +223,19 @@ class TestTotalVariation(BaseTester):
             actual_lesser_dims.append(slice_tv)
         actual_lesser_dims = torch.stack(actual_lesser_dims, dim=0)
         actual_higher_dims = kornia.losses.total_variation(pred)
-        self.assert_close(actual_lesser_dims, actual_higher_dims.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(actual_lesser_dims, actual_higher_dims, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("reduction, expected", [("sum", torch.tensor(20)), ("mean", torch.tensor(1))])
     def test_tv_reduction(self, device, dtype, reduction, expected):
         pred, _ = torch.meshgrid([torch.arange(5), torch.arange(5)], indexing="ij")
         pred = pred.to(device, dtype)
         actual = kornia.losses.total_variation(pred, reduction=reduction)
-        self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+        self.assert_close(
+            actual,
+            expected.to(device, torch.float32 if dtype == torch.float16 and reduction == "sum" else dtype),
+            rtol=1e-3,
+            atol=1e-3,
+        )
 
     @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "permuted"])
     @pytest.mark.parametrize("reduction", ["sum", "mean"])
@@ -219,7 +251,8 @@ class TestTotalVariation(BaseTester):
         dif1 = (pred[..., 1:, :] - pred[..., :-1, :]).abs()
         dif2 = (pred[..., :, 1:] - pred[..., :, :-1]).abs()
         if reduction == "sum":
-            expected = dif1.sum(dim=(-2, -1)) + dif2.sum(dim=(-2, -1))
+            sum_dtype = torch.float32 if dtype == torch.float16 else dtype
+            expected = dif1.sum(dim=(-2, -1), dtype=sum_dtype) + dif2.sum(dim=(-2, -1), dtype=sum_dtype)
         else:
             expected = dif1.mean(dim=(-2, -1)) + dif2.mean(dim=(-2, -1))
 
@@ -280,7 +313,11 @@ class TestConventionsTotalVariation(BaseTester):
         # Anisotropic L1 total variation, sum |d/dy| + sum |d/dx| over the last two axes only: (B, C, H, W) gives
         # (B, C), with the channels kept apart. The default reduction is 'sum', and TotalVariation always sums.
         img = self._edges(device, dtype)
-        expected = torch.tensor([[5.0, 8.0, 0.0], [10.0, 16.0, 0.0]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[5.0, 8.0, 0.0], [10.0, 16.0, 0.0]],
+            device=device,
+            dtype=torch.float32 if dtype == torch.float16 else dtype,
+        )
         self.assert_close(kornia.losses.total_variation(img), expected)
         self.assert_close(kornia.losses.TotalVariation()(img), expected)
         self.assert_close(kornia.losses.total_variation(img[0, 1]), expected[0, 1])

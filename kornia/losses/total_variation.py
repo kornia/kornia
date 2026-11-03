@@ -33,6 +33,8 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
         - The default ``reduction='sum'`` adds the differences. ``'mean'`` averages each term over its own count,
           :math:`(H - 1) W` vertical and :math:`H (W - 1)` horizontal differences, and adds the two means; it is not
           the sum divided by :math:`H W`. An axis with no adjacent pixels contributes zero. There is no ``'none'``.
+        - For ``float16`` inputs, ``'sum'`` accumulates and returns ``float32`` to keep image-sized totals finite.
+          ``'mean'`` and other floating-point input types retain their dtype.
           :ref:`Losses and metrics <losses-metrics-conventions>` compares both with torchmetrics.
 
     Args:
@@ -91,8 +93,9 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
         res1 = res1.mean(dim=-1) if res1.shape[-1] > 0 else res1.sum(dim=-1)
         res2 = res2.mean(dim=-1) if res2.shape[-1] > 0 else res2.sum(dim=-1)
     elif reduction == "sum":
-        res1 = res1.sum(dim=-1)
-        res2 = res2.sum(dim=-1)
+        sum_dtype = torch.float32 if img.dtype == torch.float16 else None
+        res1 = res1.sum(dim=-1, dtype=sum_dtype)
+        res2 = res2.sum(dim=-1, dtype=sum_dtype)
     else:
         raise NotImplementedError("Invalid reduction option.")
 
@@ -104,7 +107,7 @@ class TotalVariation(nn.Module):
 
     Convention:
         See the Convention block of :func:`~kornia.losses.total_variation`. The module has no ``reduction`` and
-        always sums.
+        always sums, returning ``float32`` for ``float16`` inputs.
 
     Shape:
         - Input: ``(*, H, W)``.

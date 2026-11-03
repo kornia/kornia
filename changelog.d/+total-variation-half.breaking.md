@@ -1,0 +1,1 @@
+`total_variation` with `reduction="sum"` and `TotalVariation` now accumulate and return float32 for float16 inputs; previously image-sized totals could overflow to infinity in float16. Mean reduction keeps its input dtype.
