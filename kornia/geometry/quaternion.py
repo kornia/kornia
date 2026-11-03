@@ -839,15 +839,15 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
           the same as ``q``.
 
     Args:
-<<<<<<< HEAD
+    <<<<<<< HEAD
         Q: quaternions of shape ``(M, 4)``.
         w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
             ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
-=======
+    =======
         Q (Quaternion): quaternion object containing data of shape (M, 4).
         w (torch.Tensor, optional): Weights of shape (M,) or (M, 1). If None, uniform weights are used.
 
->>>>>>> 233355cb (Fix Lie group shape and quaternion validation)
+    >>>>>>> 233355cb (Fix Lie group shape and quaternion validation)
 
     Returns:
         the averaged quaternion, of unit norm and shape ``(1, 4)``.
