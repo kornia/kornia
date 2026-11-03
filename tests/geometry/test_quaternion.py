@@ -44,6 +44,93 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
+    def test_from_coeffs_integer_and_types(self, device, dtype):
+        # 1. Four integer coefficients produce a floating-point tensor with the default dtype
+        q_int = Quaternion.from_coeffs(1, 0, 0, 0)
+        assert q_int.data.is_floating_point()
+        assert q_int.data.dtype == torch.get_default_dtype()
+        assert q_int.data.shape == (4,)
+        self.assert_close(q_int.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+        # Operations on integer-constructed quaternion must succeed
+        self.assert_close(q_int.matrix(), torch.eye(3))
+        self.assert_close(q_int.to_axis_angle(), torch.zeros(3))
+
+        # 2. Four floating-point coefficients
+        q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
+        assert q_float.data.is_floating_point()
+        assert q_float.data.dtype == torch.get_default_dtype()
+        assert q_float.data.shape == (4,)
+        self.assert_close(q_float.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+        # Mixed float and int coefficients
+        q_mixed = Quaternion.from_coeffs(1, 0.0, 0, 0.0)
+        assert q_mixed.data.is_floating_point()
+        assert q_mixed.data.dtype == torch.get_default_dtype()
+
+        # 3. Four tensor coefficients preserve device, dtype, and autograd
+        w = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
+        x = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
+        y = torch.tensor(0.0, device=device, dtype=dtype)
+        z = torch.tensor(0.0, device=device, dtype=dtype)
+        q_tensor = Quaternion.from_coeffs(w, x, y, z)
+        assert q_tensor.data.device == w.device
+        assert q_tensor.data.dtype == dtype
+        self.assert_close(q_tensor.data, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
+        loss = q_tensor.data.sum()
+        loss.backward()
+        assert w.grad is not None
+        assert w.grad == 1.0
+        assert x.grad is not None
+        assert x.grad == 1.0
+
+        # 4. Mixed Python scalars and tensor coefficients
+        w_grad = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
+        q_mixed_t = Quaternion.from_coeffs(w_grad, 0.0, 0, 0.0)
+        assert q_mixed_t.data.device == w_grad.device
+        assert q_mixed_t.data.dtype == dtype
+        assert q_mixed_t.data.shape == (4,)
+        self.assert_close(q_mixed_t.data, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
+        loss_mixed = q_mixed_t.data.sum()
+        loss_mixed.backward()
+        assert w_grad.grad is not None
+        assert w_grad.grad == 1.0
+
+        # 5. Mixed scalar/tensor inputs on CUDA when CUDA is available
+        if torch.cuda.is_available():
+            w_cuda = torch.tensor(1.0, device="cuda", dtype=torch.float32, requires_grad=True)
+            q_cuda = Quaternion.from_coeffs(w_cuda, 0.0, 0.0, 0.0)
+            assert q_cuda.data.device.type == "cuda"
+            assert q_cuda.data.dtype == torch.float32
+            loss_cuda = q_cuda.data.sum()
+            loss_cuda.backward()
+            assert w_cuda.grad is not None
+            assert w_cuda.grad == 1.0
+
+        # Tensor integer inputs convert to default float dtype
+        ti = torch.tensor(1)
+        zi = torch.tensor(0)
+        q_ti = Quaternion.from_coeffs(ti, zi, zi, zi)
+        assert q_ti.data.is_floating_point()
+        assert q_ti.data.dtype == torch.get_default_dtype()
+
+        # Incompatible tensor dtypes raise ValueError
+        with pytest.raises(ValueError, match="matching floating-point dtypes"):
+            Quaternion.from_coeffs(
+                torch.tensor(1.0, dtype=torch.float32),
+                torch.tensor(0.0, dtype=torch.float64),
+                torch.tensor(0.0, dtype=torch.float32),
+                torch.tensor(0.0, dtype=torch.float32),
+            )
+
+        # 6. Default floating-point dtype behavior
+        orig_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            q_f64_default = Quaternion.from_coeffs(1, 0, 0, 0)
+            assert q_f64_default.data.dtype == torch.float64
+        finally:
+            torch.set_default_dtype(orig_default)
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
@@ -756,6 +843,40 @@ class TestQuaternionAverage(BaseTester):
             average_quaternions(Q, w=torch.tensor([1.0, -0.5, 0.5], device=device, dtype=dtype))
         with pytest.raises(ValueError, match="zero"):
             average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
+
+    def test_average_quaternions_weight_shapes(self, device, dtype):
+        # Issue 6482 reproduction: Quaternion.random(6) with torch.ones(6, 1)
+        q6 = Quaternion.random(6, device=device, dtype=dtype)
+        w6_2d = torch.ones(6, 1, device=device, dtype=dtype)
+        w6_1d = torch.ones(6, device=device, dtype=dtype)
+        out6_2d = average_quaternions(q6, w=w6_2d)
+        out6_1d = average_quaternions(q6, w=w6_1d)
+        self.assert_close(out6_2d.data, out6_1d.data)
+
+        Q = Quaternion.random(3, device=device, dtype=dtype)
+        w_1d = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        w_2d = torch.tensor([[1.0], [2.0], [3.0]], device=device, dtype=dtype)
+
+        # (M, 1) weights must match (M,) weights
+        out_1d = average_quaternions(Q, w=w_1d)
+        out_2d = average_quaternions(Q, w=w_2d)
+        self.assert_close(out_1d.data, out_2d.data)
+
+        # Incompatible shapes must raise ValueError mentioning the expected shape
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 2), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 1, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2,), device=device, dtype=dtype))
 
     def test_member_norm_is_not_a_weight_4974(self, device, dtype):
         # #4974: the members were used as stored, so a member stored as 3 q counted 9 times (the result was scipy's
