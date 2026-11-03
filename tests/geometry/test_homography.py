@@ -805,7 +805,7 @@ class TestFindHomographyDLT(BaseTester):
         def fail(*args, **kwargs):
             raise RuntimeError("linalg.svd: The algorithm failed to converge")
 
-        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_in_work_dtype", fail)
         points1 = torch.rand(2, 6, 2, device=device, dtype=dtype)
         points2 = torch.rand(2, 6, 2, device=device, dtype=dtype)
         with pytest.warns(RuntimeWarning, match="SVD did not converge"):
@@ -1127,7 +1127,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         def fail(*args, **kwargs):
             raise RuntimeError("linalg.svd: The algorithm failed to converge")
 
-        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_in_work_dtype", fail)
         ls1 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
         ls2 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
         with pytest.warns(RuntimeWarning, match="SVD did not converge"):

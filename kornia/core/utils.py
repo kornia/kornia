@@ -461,6 +461,19 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
     ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
+    out1, out2, out3 = _torch_svd_in_work_dtype(input, full_matrices)
+    return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
+
+
+def _torch_svd_in_work_dtype(
+    input: torch.Tensor, full_matrices: bool = True
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decompose ``input`` as :func:`_torch_svd_cast` does, returning ``U, S, V`` in :func:`_svd_work_dtype`.
+
+    A caller that needs the factors at the precision they were computed in, such as for a derivative, uses this
+    instead of casting ``input`` to the work dtype first: :func:`_torch_svd_cast` would promote a float32 input
+    to float64 again, so a float16 or bfloat16 input would be decomposed in float64 instead of float32.
+    """
     x = input.to(_svd_work_dtype(input))
     # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
     # shader compilation failure, not memory pressure -- once an input holds 8192 elements
@@ -476,8 +489,7 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     else:
         out1, out2, out3H = torch.linalg.svd(x, full_matrices=full_matrices)
     # Since kornia requires torch>=2.5.1, we can always use .mH
-    out3 = out3H.mH
-    return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
+    return out1, out2, out3H.mH
 
 
 def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:

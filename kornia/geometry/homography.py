@@ -55,9 +55,8 @@ from kornia.core.exceptions import ShapeError
 from kornia.core.utils import (
     _autocast_disabled,
     _extract_device_dtype,
-    _svd_work_dtype,
     _symmetric_eigenvector,
-    _torch_svd_cast,
+    _torch_svd_in_work_dtype,
     safe_inverse_with_mask,
     safe_solve_with_mask,
 )
@@ -756,9 +755,9 @@ def _svd_null_vector(normal: torch.Tensor) -> torch.Tensor:
     """
     finite = normal.isfinite().flatten(1).all(-1)
     safe = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
-    work = safe.detach().to(_svd_work_dtype(safe))
     try:
-        _, S, V = _torch_svd_cast(work)
+        # A half input is decomposed in float32, and S and V stay at the precision they were computed in.
+        _, S, V = _torch_svd_in_work_dtype(safe.detach())
     except RuntimeError:
         warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
         return torch.full_like(normal[..., 0], float("nan"))
