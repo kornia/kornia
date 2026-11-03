@@ -81,8 +81,8 @@ def create_meshgrid(
         grid tensor with shape ``(1, H, W, 2)``.
 
     See Also:
-        - :func:`create_meshgrid3d`: the ``(1, D, H, W, 3)`` grid of ``(d, x, y)`` voxel coordinates, corner-aligned
-          only.
+        - :func:`create_meshgrid3d`: the ``(1, D, H, W, 3)`` grid of ``(d, x, y)`` voxel coordinates, with the same
+          ``align_corners`` choice.
         - :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`: normalizes given ``(x, y)`` pixel
           coordinates the way the default grid is normalized.
         - :func:`~kornia.geometry.transform.warp_grid`: applies homographies to this grid, without sampling.
@@ -188,23 +188,23 @@ def create_meshgrid3d(
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    """Generate a (1, D, H, W, 3) grid of (d, x, y) voxel coordinates, in [-1, 1] by default.
+    r"""Generate a (1, D, H, W, 3) grid of (d, x, y) voxel coordinates, in [-1, 1] by default.
 
     ``grid = create_meshgrid3d(D, H, W)`` returns the ``(d, x, y)`` coordinates of every voxel of a ``D x H x W`` volume
     as a ``(1, D, H, W, 3)`` tensor, ``grid[0, k, i, j]`` holding depth ``k``, column ``j`` and row ``i``: normalized
-    to :math:`[-1, 1]`, corner-aligned, by default, or in voxels with ``normalized_coordinates=False``. Depth comes
-    first, unlike the ``(x, y, z)`` that :func:`torch.nn.functional.grid_sample` reads. For the ``(1, H, W, 2)`` grid of
-    an image, use :func:`create_meshgrid`.
+    to :math:`[-1, 1]` by default, corner-aligned or half-voxel as ``align_corners`` selects, or in voxels with
+    ``normalized_coordinates=False``. Depth comes first, unlike the ``(x, y, z)`` that
+    :func:`torch.nn.functional.grid_sample` reads. For the ``(1, H, W, 2)`` grid of an image, use
+    :func:`create_meshgrid`.
 
     Convention:
-        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid is always
-          corner-aligned; reorder its last axis with ``grid[..., [1, 2, 0]]`` before passing it to
-          :py:func:`torch.nn.functional.grid_sample`.
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid follows
+          ``align_corners`` as in :func:`create_meshgrid`: corner-aligned under ``True`` (the default), the half-pixel
+          grid under ``False``. Reorder its last axis with ``grid[..., [1, 2, 0]]`` before passing it to
+          :py:func:`torch.nn.functional.grid_sample` with the same ``align_corners``.
         - A size-1 axis is ``0`` and a size-0 axis gives an empty grid.
-        - Known defect: there is no ``align_corners`` argument, so the half-pixel grid that
-          ``grid_sample(..., align_corners=False)`` expects cannot be requested
-          (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
 
     Args:
         depth: the volume depth (the ``D`` axis).
@@ -213,6 +213,11 @@ def create_meshgrid3d(
         normalized_coordinates: whether to normalize coordinates to :math:`[-1, 1]`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
+        align_corners: which normalization convention to use when
+          ``normalized_coordinates`` is ``True``. ``True`` maps voxel centers
+          :math:`[0, size-1]` to :math:`[-1, 1]`; ``False`` uses the half-pixel
+          mapping :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the
+          outer voxel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
         grid tensor with shape ``(1, D, H, W, 3)``.
@@ -221,9 +226,18 @@ def create_meshgrid3d(
         - :func:`create_meshgrid`: the ``(1, H, W, 2)`` grid of ``(x, y)`` pixel coordinates, with an
           ``align_corners`` choice.
         - :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`: normalizes given ``(d, x, y)`` voxel
-          coordinates the way this grid is normalized.
+          coordinates the way the default grid is normalized.
         - :func:`~kornia.geometry.transform.warp_grid3d`: applies ``4 x 4`` homographies to an ``(x, y, z)`` grid, so
           reorder this one first.
+
+    Example:
+        >>> create_meshgrid3d(2, 2, 2)[0, 0, 0]
+        tensor([[-1., -1., -1.],
+                [-1.,  1., -1.]])
+
+        >>> create_meshgrid3d(2, 2, 2, align_corners=False)[0, 0, 0]
+        tensor([[-0.5000, -0.5000, -0.5000],
+                [-0.5000,  0.5000, -0.5000]])
 
     """
     # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at
@@ -243,13 +257,24 @@ def create_meshgrid3d(
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
             depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=work_dtype)
-            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
-            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
-            zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, zs * 0.0)
-        else:
+            if align_corners:
+                xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
+                ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
+                zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, zs * 0.0)
+            else:
+                # See ``create_meshgrid``: the half-pixel mapping lands a singleton axis on the
+                # centre without a special case.
+                xs = (2.0 * xs + 1.0) / width_t - 1.0
+                ys = (2.0 * ys + 1.0) / height_t - 1.0
+                zs = (2.0 * zs + 1.0) / depth_t - 1.0
+        elif align_corners:
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
             zs = (zs / (depth - 1) - 0.5) * 2 if depth > 1 else zs * 0.0
+        else:
+            xs = (2.0 * xs + 1.0) / width - 1.0
+            ys = (2.0 * ys + 1.0) / height - 1.0
+            zs = (2.0 * zs + 1.0) / depth - 1.0
     if widened:
         xs = xs.to(ramp_dtype)
         ys = ys.to(ramp_dtype)
