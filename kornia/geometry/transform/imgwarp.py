@@ -1769,8 +1769,7 @@ def warp_affine3d(
 
     See Also:
         - :func:`warp_affine`: the 2D warp of images by ``(B, 2, 3)`` matrices.
-        - :func:`warp_perspective3d`: a ``(B, 4, 4)`` homography; its default ``align_corners=False`` resamples even an
-          identity.
+        - :func:`warp_perspective3d`: a ``(B, 4, 4)`` homography.
         - :func:`affine3d`: keeps the input size and accepts an unbatched ``(C, D, H, W)`` volume.
         - :func:`get_projective_transform`: the ``(B, 3, 4)`` matrix of a rotation and a scale about a centre.
         - :func:`crop_by_transform_mat3d`: calls this warp with the top three rows of a ``(B, 3, 4)`` or ``(B, 4, 4)``
@@ -2237,7 +2236,7 @@ def warp_perspective3d(
 
     See Also:
         - :func:`warp_perspective`: the 2D warp of images by ``(B, 3, 3)`` homographies.
-        - :func:`warp_affine3d`: a ``(B, 3, 4)`` affine matrix, correct at its default ``align_corners=True``.
+        - :func:`warp_affine3d`: a ``(B, 3, 4)`` affine matrix.
         - :func:`homography_warp3d`: a destination→source homography, in normalized coordinates by default.
         - :func:`get_perspective_transform3d`: the homography that maps box corners onto box corners.
 

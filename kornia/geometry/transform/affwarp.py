@@ -292,7 +292,7 @@ def affine3d(
         The warped image, with the shape of the input.
 
     See Also:
-        - :func:`affine`: the 2D warp of images, whose default ``align_corners=True`` is correct.
+        - :func:`affine`: the 2D warp of images, which defaults to ``align_corners=True``.
         - :func:`warp_affine3d`: the same warp with an explicit output size.
         - :func:`rotate3d`: rotate a volume about its centre without building the matrix.
 
