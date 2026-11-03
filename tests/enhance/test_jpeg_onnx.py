@@ -138,3 +138,57 @@ def test_chroma_resampling_matches_rescale(size):
         assert_close(actual, expected[:, 0], rtol=0.0, atol=0.0)
         up = rescale(actual[:, None], factor=2.0, interpolation="bilinear", align_corners=False, antialias=False)
         assert_close(_chroma_upsampling(actual), up[:, 0], rtol=0.0, atol=0.0)
+
+
+# Sizes the exported programs and routes below are checked at: the padded block grid is a single block (16 x 16, 1 x 1,
+# 5 x 9), a row or a column of blocks, and several; the padding is zero, partial and one short of a block; and an empty
+# batch.
+_EXPORT_SHAPES = [
+    (2, 3, 32, 48),
+    (1, 3, 32, 48),
+    (3, 3, 48, 64),
+    (2, 3, 64, 32),
+    (1, 3, 41, 70),
+    (2, 3, 17, 17),
+    (1, 3, 16, 16),
+    (2, 3, 16, 40),
+    (1, 3, 33, 16),
+    (1, 3, 5, 9),
+    (1, 3, 1, 1),
+    (1, 3, 100, 131),
+    (0, 3, 24, 40),
+]
+
+
+@pytest.mark.timeout(240)
+@pytest.mark.skipif(
+    torch_version_lt(2, 14, 0), reason="torch.export keeps the codec's height and width dynamic on 2.14"
+)
+@pytest.mark.parametrize("dim_min", [None, 1], ids=["default_range", "min_1"])
+def test_jpeg_codec_torch_export_matches_eager_at_other_shapes(dim_min):
+    """``torch.export`` with a dynamic height and width gives a program that holds at every size, not at the traced one.
+
+    The program used to raise ``ConstraintViolationError`` for named dims (#6294), and with ``Dim.AUTO`` it asserted
+    outside the traced padding class and at a size of 16 pixels.
+    """
+    from torch.export import Dim, export
+
+    model = JPEGCodecDifferentiable().eval()
+    example = (torch.rand(2, 3, 32, 48), torch.tensor([50.0, 80.0]))
+    options = {} if dim_min is None else {"min": dim_min}
+    batch, height, width = Dim("batch", **options), Dim("height", **options), Dim("width", **options)
+    program = export(
+        model, example, dynamic_shapes={"image_rgb": {0: batch, 2: height, 3: width}, "jpeg_quality": {0: batch}}
+    )
+    exported = program.module()
+
+    generator = torch.Generator().manual_seed(0)
+    for shape in _EXPORT_SHAPES:
+        image = torch.rand(*shape, generator=generator)
+        quality = torch.rand(shape[0], generator=generator) * 90.0 + 5.0
+        with torch.no_grad():
+            actual = exported(image, quality)
+            expected = model(image, quality)
+        assert actual.shape == expected.shape, f"traced at (32, 48), run at {shape}"
+        # The program runs the eager operations on the same values.
+        assert_close(actual, expected, rtol=0.0, atol=0.0)

@@ -391,7 +391,7 @@ class LAFOrienter(nn.Module):
 
         """
         KORNIA_CHECK_LAF(laf)
-        KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]

@@ -16,8 +16,7 @@
 #
 
 import math
-import warnings
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -59,9 +58,9 @@ class SOLD2_detector(nn.Module):
           ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
 
     Args:
-        config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px. A dict of its fields is deprecated and warns. A
-            ``config`` with ``use_descriptor=True`` builds the descriptor head, which the outputs do not use.
+        config (DetectorCfg): Configuration object containing all parameters, or a dict of its fields. None will load
+            the default parameters, which are tuned for images in the range 400~800 px. A ``config`` with
+            ``use_descriptor=True`` builds the descriptor head, which the outputs do not use.
         pretrained (bool): If True, download and set pretrained weights to the model, and return it in eval mode;
             otherwise the weights are random and the model is in training mode.
 
@@ -78,15 +77,8 @@ class SOLD2_detector(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[Union[DetectorCfg, Dict[str, Any]]] = None) -> None:
         if isinstance(config, dict):
-            warnings.warn(
-                "Usage of config as a plain dictionary is deprecated in favor of "
-                "`kornia.feature.sold2.structures.DetectorCfg`. The support of plain "
-                "dictionaries as config will be removed in a future release.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
