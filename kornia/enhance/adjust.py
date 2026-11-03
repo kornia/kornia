@@ -842,7 +842,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     Args:
         input: image or batched images to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
@@ -852,9 +852,6 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if isinstance(thresholds, int) and not isinstance(thresholds, bool):
-        # An int is documented and means the equal float (#6550).
-        thresholds = float(thresholds)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
@@ -897,11 +894,11 @@ def solarize(
     Args:
         input: image torch.Tensor with shapes like ``(*, C, H, W)`` to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
         additions: in the closed range [-0.5, 0.5], endpoints included.
             If None, no addition will be performed.
-            If int or one element torch.Tensor, same addition will be added across the whole batch.
+            If a float or one-element torch.Tensor, same addition will be added across the whole batch.
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
@@ -930,9 +927,6 @@ def solarize(
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if isinstance(thresholds, int) and not isinstance(thresholds, bool):
-        # An int is documented and means the equal float (#6550).
-        thresholds = float(thresholds)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
@@ -940,8 +934,6 @@ def solarize(
         thresholds = torch.as_tensor(thresholds, device=input.device, dtype=input.dtype)
 
     if additions is not None:
-        if isinstance(additions, int) and not isinstance(additions, bool):
-            additions = float(additions)
         if not isinstance(additions, (float, torch.Tensor)):
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
