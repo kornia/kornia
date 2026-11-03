@@ -47,12 +47,12 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         reference white.
 
     Args:
-        image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to Luv with shape ``(*, 3, H, W)``.
         eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
             epsilon remains representable without a dtype-dependent floor.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -115,12 +115,12 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         is nonlinear sRGB.
 
     Args:
-        image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: Luv image to be converted to RGB with shape ``(*, 3, H, W)``.
         eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
             epsilon remains representable without a dtype-dependent floor.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -183,8 +183,8 @@ class RgbToLuv(nn.Module):
         Luv version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -207,12 +207,12 @@ class RgbToLuv(nn.Module):
         """Convert an RGB tensor to Luv.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Luv tensor with shape :math:`(*, 3, H, W)`.
+            Luv tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_luv(image)
 
@@ -226,8 +226,8 @@ class LuvToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -250,11 +250,11 @@ class LuvToRgb(nn.Module):
         """Convert a Luv tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to Luv channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return luv_to_rgb(image)

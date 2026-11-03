@@ -97,8 +97,8 @@ class SemanticSegmentation(ModelBase):
         """Forward pass of the semantic segmentation model.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             output tensor.
@@ -215,10 +215,10 @@ class SemanticSegmentation(ModelBase):
         """Visualize the segmentation masks.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
-            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
+            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape ``(C, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, C, H, W)``.
             output_type: The type of output, can be "torch" or "pil".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
@@ -262,10 +262,10 @@ class SemanticSegmentation(ModelBase):
         """Save the segmentation results.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
-            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
+            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape ``(C, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, C, H, W)``.
             directory: The directory to save the results.
             output_type: "torch" or "pil", as in :meth:`visualize`; it does not change the files written.
             colormap: The colormap to use, can be "random" or a custom color map.

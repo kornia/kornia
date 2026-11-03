@@ -215,8 +215,8 @@ def guided_blur(
           dtype of the rule above.
 
     Arguments:
-        guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
-        input: the input torch.Tensor with shape :math:`(B,C_i,H,W)`.
+        guidance: the guidance torch.Tensor with shape ``(B,C_g,H,W)``.
+        input: the input torch.Tensor with shape ``(B,C_i,H,W)``.
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
@@ -234,7 +234,7 @@ def guided_blur(
           large windows. Default: False
 
     Returns:
-        the blurred torch.Tensor with same shape as `input` :math:`(B, C_i, H, W)`.
+        the blurred torch.Tensor with same shape as `input` ``(B, C_i, H, W)``.
 
     Raises:
         TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
@@ -330,8 +330,8 @@ class GuidedBlur(nn.Module):
         BaseError: if ``subsample`` is not positive, or is a ``bool``. Both are raised by the constructor.
 
     Shape:
-        - Input: :math:`(B, C_g, H, W)`, :math:`(B, C_i, H, W)`
-        - Output: :math:`(B, C_i, H, W)`
+        - Input: ``(B, C_g, H, W)``, ``(B, C_i, H, W)``
+        - Output: ``(B, C_i, H, W)``
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -379,17 +379,17 @@ class GuidedBlur(nn.Module):
         in the filtered result.
 
         Args:
-            guidance: Guidance tensor with shape :math:`(B, C_g, H, W)`, where
+            guidance: Guidance tensor with shape ``(B, C_g, H, W)``, where
                 :math:`B` is the batch size, :math:`C_g` is the number of
                 guidance channels, :math:`H` is the height, and :math:`W` is
                 the width.
-            input: Tensor to filter with shape :math:`(B, C_i, H, W)`, where
+            input: Tensor to filter with shape ``(B, C_i, H, W)``, where
                 :math:`C_i` is the number of channels in the signal being
                 smoothed. Its batch and spatial dimensions must equal those
                 of ``guidance``.
 
         Returns:
-            Tensor with shape :math:`(B, C_i, H, W)` containing the
+            Tensor with shape ``(B, C_i, H, W)`` containing the
             edge-aware filtered version of ``input``.
         """
         return guided_blur(

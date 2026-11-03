@@ -107,16 +107,16 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         """Forward pass of the edge detection model.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`. For a detector from
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``. For a detector from
                 :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, the pixel values are in
                 :math:`[0, 1]`.
 
         Returns:
-            A list with one output of shape :math:`(1, 1, H, W)` per input image, resized back to that image's size.
+            A list with one output of shape ``(1, 1, H, W)`` per input image, resized back to that image's size.
             For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
             probabilities in :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
-            :math:`(B, 1, H, W)` tensor at the input's size instead, see :meth:`to_onnx`.
+            ``(B, 1, H, W)`` tensor at the input's size instead, see :meth:`to_onnx`.
 
         Raises:
             ValueError: Under an ONNX export through :meth:`to_onnx`, or a direct one on the TorchScript exporter or,
@@ -241,8 +241,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     ) -> onnx.ModelProto:
         """Export the current edge detection model to an ONNX model file.
 
-        The graph takes one :math:`(B, 3, H, W)` tensor. With the pre- and post-processor and a
-        ``ResizePostProcessor``, it returns the edge maps of the batch as one :math:`(B, 1, H, W)` tensor at the
+        The graph takes one ``(B, 3, H, W)`` tensor. With the pre- and post-processor and a
+        ``ResizePostProcessor``, it returns the edge maps of the batch as one ``(B, 1, H, W)`` tensor at the
         input's size, resized with the post-processor's ``"bilinear"``, ``"bicubic"``, ``"nearest"`` or
         ``"nearest-exact"`` mode: the ``torch.cat`` of the list that :meth:`forward` returns. A subclass of
         ``ResizePostProcessor`` that overrides ``forward`` is exported as its ``forward`` computes. Export through

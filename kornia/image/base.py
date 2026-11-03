@@ -94,8 +94,8 @@ class ChannelsOrder(Enum):
     r"""Enum that represents the channels order of an image.
 
     Convention:
-        See the Convention block of :class:`~kornia.image.Image`. ``CHANNELS_FIRST`` stores :math:`(C, H, W)` and
-        ``CHANNELS_LAST`` stores :math:`(H, W, C)`.
+        See the Convention block of :class:`~kornia.image.Image`. ``CHANNELS_FIRST`` stores ``(C, H, W)`` and
+        ``CHANNELS_LAST`` stores ``(H, W, C)``.
     """
 
     CHANNELS_FIRST = 0

@@ -30,7 +30,7 @@ def heatmap_to_keypoints(
     """Detect keypoints as the strict local maxima of a heatmap, in raster order.
 
     Args:
-        heatmap: detection logits of shape :math:`(B, 1, H, W)`.
+        heatmap: detection logits of shape ``(B, 1, H, W)``.
         n: the maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An image
             with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima tied at the
             ``n``-th score are taken in raster order (row by row, then column by column) until ``n`` are kept.

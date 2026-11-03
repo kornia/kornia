@@ -97,7 +97,7 @@ class MosaicGenerator(RandomGeneratorBase):
         rand_ids = (
             torch.randperm(
                 batch_size * (perm_times - 1),
-                device=self.device,
+                device=self._generator.device if self._generator is not None else _device,
                 **_generator_kwargs(self._generator),
             ).to(_device)
             % batch_size

@@ -504,11 +504,11 @@ class MILossFromRef2D(MILossFromRef):
         """Flatten the spatial dimensions of a 2D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, H, W)`, where ``*`` is
+            tensor: Signal tensor with shape ``(*, H, W)``, where ``*`` is
                 any leading batch shape.
 
         Returns:
-            Tensor with shape :math:`(*, H * W)` suitable for histogram-based
+            Tensor with shape ``(*, H * W)`` suitable for histogram-based
             mutual-information computation.
         """
         return tensor.flatten(max(tensor.dim() - 2, 0))
@@ -592,7 +592,7 @@ class MILossFromRef3D(MILossFromRef):
         """Flatten the spatial dimensions of a 3D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, D, H, W)`, where
+            tensor: Signal tensor with shape ``(*, D, H, W)``, where
                 :math:`D` is depth, :math:`H` is height, and :math:`W` is
                 width.
 
@@ -680,10 +680,10 @@ class NMILossFromRef2D(NMILossFromRef):
         """Flatten the spatial dimensions of a 2D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, H, W)`.
+            tensor: Signal tensor with shape ``(*, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(*, H * W)` used by the normalized
+            Tensor with shape ``(*, H * W)`` used by the normalized
             mutual-information base implementation.
         """
         return tensor.flatten(max(tensor.dim() - 2, 0))
@@ -767,7 +767,7 @@ class NMILossFromRef3D(NMILossFromRef):
         """Flatten the spatial dimensions of a 3D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, D, H, W)`.
+            tensor: Signal tensor with shape ``(*, D, H, W)``.
 
         Returns:
             Tensor with shape :math:`(*, D * H * W)` used by the normalized

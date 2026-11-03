@@ -51,8 +51,12 @@ Kornia augmentations generally follow a `sample-apply` routine.
   matrix of the call's parameters to the mask, box and keypoint handlers of geometric children and of custom
   `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last
   apply to an image or that were edited since. An in-place edit made inside ``torch.inference_mode`` is not seen,
-  because inference tensors have no version counter; replace the value instead. Non-rigid coordinate transforms
-  are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  because inference tensors have no version counter; replace the value instead.
+  `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` have no matrix, so a forward call through
+  a pipeline that contains one refuses keypoint and box data keys. The container does not call the box and
+  keypoint handlers of a custom child that subclasses `AugmentationBase2D` directly, so those keys come back
+  unchanged; subclass `GeometricAugmentationBase2D` to move them
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------
@@ -268,9 +272,9 @@ identical draws across devices or releases.
 
 With a stream bound, every built-in sampler draws on that stream's device. A few samplers build their
 bounds from host-side constants, so the ``None`` path keeps drawing them on CPU even under
-``set_rng_device_and_dtype("cuda")``; binding a CUDA stream moves those draws to CUDA, which keeps an
-explicit run identical to the equivalent globally seeded run. Generator-free results are therefore
-unchanged only for the default CPU sampling device.
+``set_rng_device_and_dtype("cuda")``. Generator-free calls retain their sampling devices, draw order
+and seeded results. An explicit CUDA stream also controls the draws that normally use the CPU stream,
+so it need not reproduce a globally seeded run that mixes CPU and CUDA draws.
 
 A DataLoader worker must receive its own appropriately seeded generator. The workers inherit a copy of the
 persistent stream, so without a fix each worker replays the same draws; copy the state to every worker and

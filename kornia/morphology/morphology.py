@@ -300,10 +300,10 @@ def dilation(
           window of a kernel with no non-zero cell. The composite operations inherit these infinities.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -338,7 +338,7 @@ def dilation(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-        Dilated image with shape :math:`(B, C, H, W)`.
+        Dilated image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -493,10 +493,10 @@ def erosion(
         OpenCV. ``structuring_element`` is subtracted before the minimum.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -531,7 +531,7 @@ def erosion(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-        Eroded image with shape :math:`(B, C, H, W)`.
+        Eroded image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -688,10 +688,10 @@ def opening(
         ``replicate`` can break them.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -726,7 +726,7 @@ def opening(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Opened image with shape :math:`(B, C, H, W)`.
+       Opened image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -794,10 +794,10 @@ def closing(
         ``replicate`` can break them.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -832,7 +832,7 @@ def closing(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Closed image with shape :math:`(B, C, H, W)`.
+       Closed image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -898,10 +898,10 @@ def gradient(
         ``gradient`` is ``dilation(tensor) - erosion(tensor)`` with the same arguments; see :func:`dilation`.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -936,7 +936,7 @@ def gradient(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Gradient image with shape :math:`(B, C, H, W)`.
+       Gradient image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -991,10 +991,10 @@ def top_hat(
         ``top_hat`` is ``tensor - opening(tensor)`` with the same arguments.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -1029,7 +1029,7 @@ def top_hat(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Top hat transformed image with shape :math:`(B, C, H, W)`.
+       Top hat transformed image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -1087,10 +1087,10 @@ def bottom_hat(
         ``bottom_hat`` is ``closing(tensor) - tensor`` with the same arguments.
 
     Args:
-        tensor: Floating-point image with shape :math:`(B, C, H, W)`; any other dtype raises a ``TypeError``.
+        tensor: Floating-point image with shape ``(B, C, H, W)``; any other dtype raises a ``TypeError``.
         kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
             the set of neighbors of the ``origin`` cell over which the operation is applied, and their
-            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's :math:`(H, W)` axes.
+            magnitude is ignored. Its shape is :math:`(k_h, k_w)`, laid over the image's ``(H, W)`` axes.
             For a full neighborhood pass a ``kernel`` of all ones.
         structuring_element: Non-flat structuring element, added to the neighbor values before the maximum
             in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Its shape must equal
@@ -1125,7 +1125,7 @@ def bottom_hat(
             pass, which is more memory than ``"unfold"``, not less.
 
     Returns:
-       Bottom hat transformed image with shape :math:`(B, C, H, W)`.
+       Bottom hat transformed image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -1214,7 +1214,7 @@ def reconstruction(
         ``mask`` (below it for ``"erosion"``) is clipped to ``mask`` instead of raising.
 
     Args:
-        seed: Floating-point starting image with shape :math:`(B, C, H, W)`.
+        seed: Floating-point starting image with shape ``(B, C, H, W)``.
         mask: Floating-point image bounding the reconstruction, with the same shape as ``seed``.
         kernel: Offsets from the center that a pixel's value spreads to in one step, with shape
             :math:`(k_h, k_w)` and odd sizes. Non-zero cells mark an offset; their magnitude and dtype are
@@ -1232,7 +1232,7 @@ def reconstruction(
             is rejected: it is not exact on every backend, and an inexact step can keep the loop from converging.
 
     Returns:
-        Reconstructed image with shape :math:`(B, C, H, W)` and the promoted dtype of ``seed`` and ``mask``.
+        Reconstructed image with shape ``(B, C, H, W)`` and the promoted dtype of ``seed`` and ``mask``.
 
     Raises:
         TypeCheckError: if ``seed``, ``mask`` or ``kernel`` is not a tensor.

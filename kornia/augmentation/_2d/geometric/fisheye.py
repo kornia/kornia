@@ -28,7 +28,7 @@ from kornia.geometry.transform import remap
 
 
 class RandomFisheye(AugmentationBase2D):
-    r"""Add random camera radial distortion.
+    r"""Add a random radial (fisheye) distortion, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomFisheye.png
 
@@ -38,16 +38,16 @@ class RandomFisheye(AugmentationBase2D):
         The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
         the centre changes the distance, but scaling is about the coordinate origin.
         Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
-        There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have limitations
+        There is no ``transform_matrix`` or ``inverse``. A ``mask``, keypoint or box data key raises
+        ``NotImplementedError`` identifying this augmentation, even at ``p=0``
         (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-        A ``mask`` data key raises ``NotImplementedError`` identifying this augmentation, even at ``p=0``.
 
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
         center_y: Ranges to sample respect to y-coordinate center with shape (2,).
         gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

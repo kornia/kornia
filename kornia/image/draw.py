@@ -76,14 +76,14 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Convention:
         See the Convention block of :func:`~kornia.image.draw_line` for the coordinates, the rounding, the colour
-        and the in-place drawing. The image is :math:`(C, H, W)` or :math:`(H, W)`.
+        and the in-place drawing. The image is ``(C, H, W)`` or ``(H, W)``.
 
     Args:
-        image: the input image on which to draw the points with shape :math:`(C,H,W)` or :math:`(H,W)`.
-        points: the [x, y] points to be drawn on the image with shape :math:`(N, 2)`, a single
-            point with shape :math:`(2,)`, or an empty tensor with shape :math:`(0, 2)`.
-        color: the color of the pixel with :math:`(C)` where :math:`C` is the number of channels of the image,
-            or a single value with shape :math:`(1)` or 0-d.
+        image: the input image on which to draw the points with shape ``(C,H,W)`` or ``(H,W)``.
+        points: the [x, y] points to be drawn on the image with shape ``(N, 2)``, a single
+            point with shape ``(2,)``, or an empty tensor with shape ``(0, 2)``.
+        color: the color of the pixel with ``(C)`` where :math:`C` is the number of channels of the image,
+            or a single value with shape ``(1)`` or 0-d.
 
     Return:
         The image with points set to the color. This operation modifies image inplace but also
@@ -135,10 +135,10 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
     r"""Draw a pixel into an image.
 
     Args:
-        image: the input image to where to draw the lines with shape :math:`(C,H,W)`.
+        image: the input image to where to draw the lines with shape ``(C,H,W)``.
         x: the x coordinate of the pixel.
         y: the y coordinate of the pixel.
-        color: the color of the pixel with :math:`(C)` where :math:`C` is the number of channels of the image.
+        color: the color of the pixel with ``(C)`` where :math:`C` is the number of channels of the image.
 
     Return:
         Nothing is returned.
@@ -157,7 +157,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         - A line has one pixel per step along its longer axis: the pixel whose centre is nearest to the segment
           between the two endpoint pixels, a tie going to the larger coordinate. The line is therefore the same from
           ``p1`` to ``p2`` as from ``p2`` to ``p1``, and both endpoints are drawn.
-        - The image is one :math:`(C, H, W)` tensor, and ``(B, 2)`` endpoints draw ``B`` lines into it. An endpoint
+        - The image is one ``(C, H, W)`` tensor, and ``(B, 2)`` endpoints draw ``B`` lines into it. An endpoint
           outside the image raises ``ValueError``; nothing is clipped.
         - The colour is cast to the image's dtype without rescaling or a range check, and a single value is written
           to every channel.
@@ -165,11 +165,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         - :ref:`Drawing <drawing-conventions>` compares these rules with OpenCV, Pillow and torchvision.
 
     Args:
-        image: the input image to where to draw the lines with shape :math:`(C,H,W)`.
+        image: the input image to where to draw the lines with shape ``(C,H,W)``.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
         p2: the end point [x y] of the line, with the same shape as ``p1``.
-        color: the color of the line with shape :math:`(C)` where :math:`C` is the number of channels
-            of the image, or a single value with shape :math:`(1)` or 0-d.
+        color: the color of the line with shape ``(C)`` where :math:`C` is the number of channels
+            of the image, or a single value with shape ``(1)`` or 0-d.
 
     Return:
         The image containing the line.
@@ -277,10 +277,10 @@ def draw_rectangle(
         - The colour and the in-place drawing follow :func:`~kornia.image.draw_line`.
 
     Args:
-        image: the images, :math:`(B, C, H, W)`.
-        rectangle: the rectangles, :math:`(B, N, 4)`: ``N`` per image, each ``[x1, y1, x2, y2]``.
-        color: the colour, :math:`(C)` or :math:`(B, N, C)`, or a single value (0-d, :math:`(1)` or
-            :math:`(B, N, 1)`). Black by default.
+        image: the images, ``(B, C, H, W)``.
+        rectangle: the rectangles, ``(B, N, 4)``: ``N`` per image, each ``[x1, y1, x2, y2]``.
+        color: the colour, ``(C)`` or ``(B, N, C)``, or a single value (0-d, ``(1)`` or
+            ``(B, N, 1)``). Black by default.
         fill: whether to fill the rectangles instead of drawing their outlines.
         line_width: the thickness of each side of the outline in pixels, a positive integer. Ignored when
             ``fill=True``.
@@ -292,7 +292,7 @@ def draw_rectangle(
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
-        convenience, with the shape of the input :math:`(B, C, H, W)`.
+        convenience, with the shape of the input ``(B, C, H, W)``.
 
     Note:
         The rectangle coordinates are read back to the host once, and ``torch.compile`` breaks the graph there: a
@@ -448,12 +448,12 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        colors: the fill colours, :math:`(B, C)` or :math:`(C)`, or a single value (0-d, :math:`(1)` or
-            :math:`(B, 1)`).
+        colors: the fill colours, ``(B, C)`` or ``(C)``, or a single value (0-d, ``(1)`` or
+            ``(B, 1)``).
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
-        convenience, with the shape of the input :math:`(B, C, H, W)`.
+        convenience, with the shape of the input ``(B, C, H, W)``.
 
     Raises:
         ShapeError: if the images are not ``(B, C, H, W)``. It is also a ``ValueError``.

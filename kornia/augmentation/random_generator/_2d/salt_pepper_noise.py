@@ -87,18 +87,17 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         salt_and_pepper_factor = _adapted_rsampling(
             (batch_size,), self.salt_and_pepper_sampler, same_on_batch, generator=self._generator
         )
+        if self._generator is None:
+            amount_factor = amount_factor.to(device=_device, dtype=_dtype)
+            salt_and_pepper_factor = salt_and_pepper_factor.to(device=_device, dtype=_dtype)
 
         ## Generate noise masks.
-        # Draw the mask uniforms on the sampling device so an explicit generator follows the same stream
-        # as the global path; framing them from Python floats would pin the draw to CPU.
-        low = torch.zeros((), device=self.device, dtype=self.dtype)
-        high = torch.ones((), device=self.device, dtype=self.dtype)
         mask_noise = _adapted_uniform(
-            (batch_size, 1, H, W), low=low, high=high, same_on_batch=same_on_batch, generator=self._generator
-        ) < amount_factor.view(batch_size, 1, 1, 1)
+            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch, generator=self._generator
+        ).to(amount_factor.device) < amount_factor.view(batch_size, 1, 1, 1)
         mask_salt = _adapted_uniform(
-            (batch_size, 1, H, W), low=low, high=high, same_on_batch=same_on_batch, generator=self._generator
-        ) < salt_and_pepper_factor.view(batch_size, 1, 1, 1)
+            (batch_size, 1, H, W), low=0.0, high=1.0, same_on_batch=same_on_batch, generator=self._generator
+        ).to(salt_and_pepper_factor.device) < salt_and_pepper_factor.view(batch_size, 1, 1, 1)
 
         # If the number of channels is greater than one (3), replicate the generated mask for each channel.
         if C > 1:

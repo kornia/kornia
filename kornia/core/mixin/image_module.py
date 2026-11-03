@@ -96,8 +96,8 @@ class ImageModuleMixIn:
     This modules accepts multiple input and output data types, provides end-to-end visualization, file saving features.
     Note that this MixIn fits the classes that return one image tensor only.
 
-    Non-tensor inputs are converted by :meth:`to_tensor`: a NumPy array of shape :math:`(H, W)`, :math:`(H, W, C)`
-    or :math:`(B, H, W, C)`, a PIL image or an image path becomes a :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor.
+    Non-tensor inputs are converted by :meth:`to_tensor`: a NumPy array of shape ``(H, W)``, ``(H, W, C)``
+    or ``(B, H, W, C)``, a PIL image or an image path becomes a ``(C, H, W)`` or ``(B, C, H, W)`` tensor.
     An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
     its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
     unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
@@ -267,9 +267,9 @@ class ImageModuleMixIn:
     def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
 
-        Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape :math:`(H, W)`,
-        :math:`(H, W, C)` or :math:`(B, H, W, C)` becomes :math:`(C, H, W)` or :math:`(B, C, H, W)`, with one channel
-        for :math:`(H, W)`; a PIL image converts like its NumPy array, except that a palette image (mode ``P`` or
+        Supports image path, numpy array, PIL image, and raw tensor. A NumPy array of shape ``(H, W)``,
+        ``(H, W, C)`` or ``(B, H, W, C)`` becomes ``(C, H, W)`` or ``(B, C, H, W)``, with one channel
+        for ``(H, W)``; a PIL image converts like its NumPy array, except that a palette image (mode ``P`` or
         ``PA``) is converted to RGB, or RGBA when it has transparency, first. A path is loaded with
         :func:`kornia.io.load_image` as ``ImageLoadType.UNCHANGED``, which keeps 16-bit data and alpha, except that
         an 8-bit palette PNG converts like its PIL image, to RGB, or RGBA when it has a ``tRNS`` chunk. An integer image
@@ -338,10 +338,10 @@ class ImageModuleMixIn:
     def to_numpy(self, x: Any) -> "np.array":
         """Convert input to numpy array.
 
-        A :math:`(C, H, W)` or :math:`(B, C, H, W)` tensor becomes a channels-last :math:`(H, W, C)` or
-        :math:`(B, H, W, C)` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
+        A ``(C, H, W)`` or ``(B, C, H, W)`` tensor becomes a channels-last ``(H, W, C)`` or
+        ``(B, H, W, C)`` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
         converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
-        to be an image, so a non-image element of a tuple output, such as a :math:`(B, N, 4)` box tensor, is moved to
+        to be an image, so a non-image element of a tuple output, such as a ``(B, N, 4)`` box tensor, is moved to
         channels-last too. :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it
         converts its images and masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold
         boxes, keypoints or labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
@@ -372,7 +372,7 @@ class ImageModuleMixIn:
         """Convert input to PIL image.
 
         A floating image is clamped to ``[0, 1]`` and rounded to 8 bits on the CPU; a ``uint8`` image keeps its
-        values. A one-channel image becomes a mode ``"L"`` image, and a :math:`(B, C, H, W)` batch a list of images.
+        values. A one-channel image becomes a mode ``"L"`` image, and a ``(B, C, H, W)`` batch a list of images.
         Other integer and ``bool`` images convert only with one channel (PIL modes ``"I"``, ``"I;16"`` and ``"1"``).
 
         Args:

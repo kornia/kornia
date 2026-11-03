@@ -64,12 +64,12 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             but will raise a deprecation warning when False.
 
     Inputs:
-        - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Raw labels, shape of :math:`(B)`.
+        - Input image tensors, shape of ``(B, C, H, W)``.
+        - Raw labels, shape of ``(B)``.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Adjusted image, shape of ``(B, C, H, W)``.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
 
     Convention:
@@ -192,7 +192,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             input_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             # compute mask to match input shape
-            mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+            mask = bbox_to_mask(crop, size=(height, width)).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]
 
         return out_inputs

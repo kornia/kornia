@@ -55,12 +55,12 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
           a few levels already drives its weight to about 0.
         - ``idepth`` is not normalised, so the loss is linear in its scale;
           :ref:`Losses and metrics <losses-metrics-conventions>` shows how to port a normalised smoothness term.
-        - Only the rank, :math:`(H, W)`, device and dtype are validated: the channel counts are not, a batch of one
+        - Only the rank, ``(H, W)``, device and dtype are validated: the channel counts are not, a batch of one
           broadcasts against the other argument, and swapped arguments return a value.
 
     Args:
-        idepth: tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
-        image: tensor with the input image with shape :math:`(N, 3, H, W)`.
+        idepth: tensor with the inverse depth with shape ``(N, 1, H, W)``.
+        image: tensor with the input image with shape ``(N, 3, H, W)``.
 
     Return:
         a scalar with the computed loss.
@@ -125,8 +125,8 @@ class InverseDepthSmoothnessLoss(nn.Module):
         See the Convention block of :func:`~kornia.losses.inverse_depth_smoothness_loss`.
 
     Shape:
-        - Inverse Depth: :math:`(N, 1, H, W)`
-        - Image: :math:`(N, 3, H, W)`
+        - Inverse Depth: ``(N, 1, H, W)``
+        - Image: ``(N, 3, H, W)``
         - Output: scalar
 
     Examples:
@@ -141,8 +141,8 @@ class InverseDepthSmoothnessLoss(nn.Module):
         """Compute image-aware smoothness regularization for inverse depth.
 
         Args:
-            idepth: Inverse-depth tensor with shape :math:`(B, 1, H, W)`.
-            image: RGB image tensor with shape :math:`(B, 3, H, W)` used to
+            idepth: Inverse-depth tensor with shape ``(B, 1, H, W)``.
+            image: RGB image tensor with shape ``(B, 3, H, W)`` used to
                 reduce the smoothness penalty across visible image edges.
 
         Returns:

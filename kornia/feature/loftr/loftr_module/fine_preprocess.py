@@ -78,12 +78,12 @@ class FinePreprocess(nn.Module):
         """Run this LoFTR component forward.
 
         Args:
-            feat_f0: Fine feature map of the first image with shape :math:`(B, C_f, H_f, W_f)`.
-            feat_f1: Fine feature map of the second image with shape :math:`(B, C_f, H_f, W_f)`.
+            feat_f0: Fine feature map of the first image with shape ``(B, C_f, H_f, W_f)``.
+            feat_f1: Fine feature map of the second image with shape ``(B, C_f, H_f, W_f)``.
             feat_c0: Coarse feature map or transformed tokens of the first image with shape
-                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+                ``(B, C_c, H_c, W_c)`` or ``(N_c, C_c)``.
             feat_c1: Coarse feature map or transformed tokens of the second image with shape
-                :math:`(B, C_c, H_c, W_c)` or :math:`(N_c, C_c)`.
+                ``(B, C_c, H_c, W_c)`` or ``(N_c, C_c)``.
             data: Dictionary containing coarse match metadata and indices, and the pixel strides ``stride_c`` and
                 ``stride_f`` of the coarse and the fine feature maps.
 

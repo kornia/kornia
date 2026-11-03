@@ -76,8 +76,8 @@ class MotionBlur(nn.Module):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -111,12 +111,12 @@ class MotionBlur(nn.Module):
         biased, or backward-biased along that line.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B`
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`B`
                 is the batch size, :math:`C` is the number of channels,
                 :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the directional
+            Tensor with shape ``(B, C, H, W)`` containing the directional
             blur response. The output uses the same batch, channel, and spatial
             layout as ``x``.
         """
@@ -133,7 +133,7 @@ class MotionBlur3D(nn.Module):
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
         angle: Components of one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles; see
             :func:`~kornia.filters.get_motion_kernel3d`. A scalar sets all three components to the same value;
-            a three-element sequence sets each component, and a tensor must have shape :math:`(B, 3)`.
+            a three-element sequence sets each component, and a tensor must have shape ``(B, 3)``.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
@@ -150,8 +150,8 @@ class MotionBlur3D(nn.Module):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 7, 9)
@@ -205,13 +205,13 @@ class MotionBlur3D(nn.Module):
         movement can be modeled in three spatial dimensions.
 
         Args:
-            x: Volume tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Volume tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the channel count,
                 :math:`D` is the depth, :math:`H` is the height, and
                 :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, D, H, W)` containing the blurred
+            Tensor with shape ``(B, C, D, H, W)`` containing the blurred
             volume. The output keeps the same dimensional order as ``x``.
         """
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type, mode=self.mode)
@@ -235,15 +235,15 @@ def motion_blur(
           side on which the streak of a bright point is heaviest), ``mode``, the tensor shapes and the border modes.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
+        input: the input torch.Tensor with shape ``(B, C, H, W)``.
         kernel_size: motion kernel width and height, an odd integer of at least 3.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
-            If torch.Tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be ``(B,)``.
         direction : forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If torch.Tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be ``(B,)``.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'reflect'``, which leaves
             a constant image constant like :func:`~kornia.filters.box_blur` and
@@ -253,7 +253,7 @@ def motion_blur(
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
-        the blurred image with shape :math:`(B, C, H, W)`.
+        the blurred image with shape ``(B, C, H, W)``.
 
     Example:
         >>> input = torch.randn(1, 3, 80, 90).repeat(2, 1, 1, 1)
@@ -290,15 +290,15 @@ def motion_blur3d(
           decreasing ``D``.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.
+        input: the input torch.Tensor with shape ``(B, C, D, H, W)``.
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
         angle: ``(yaw, pitch, roll)``, one Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler
-            angles; see :func:`~kornia.filters.get_motion_kernel3d`. If torch.Tensor, it must be :math:`(B, 3)`.
+            angles; see :func:`~kornia.filters.get_motion_kernel3d`. If torch.Tensor, it must be ``(B, 3)``.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If torch.Tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be ``(B,)``.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'replicate'``, which
             leaves a constant volume constant like :func:`~kornia.filters.filter3d`, at any volume size
@@ -308,7 +308,7 @@ def motion_blur3d(
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
-        the blurred image with shape :math:`(B, C, D, H, W)`.
+        the blurred image with shape ``(B, C, D, H, W)``.
 
     Example:
         >>> input = torch.randn(1, 3, 120, 80, 90).repeat(2, 1, 1, 1, 1)

@@ -3,7 +3,7 @@ Local affine frames (LAF)
 
 .. currentmodule:: kornia.feature
 
-A local affine frame is a :math:`(B, N, 2, 3)` tensor describing, for each keypoint, an affine transformation
+A local affine frame is a ``(B, N, 2, 3)`` tensor describing, for each keypoint, an affine transformation
 from a canonical patch to the image. Most detectors and descriptors in :mod:`kornia.feature` exchange LAFs.
 
 Functions

@@ -196,7 +196,7 @@ def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
     by tens of levels.
 
     Args:
-        residual: residual per tile, shape :math:`(T,)`, below ``num_bins``.
+        residual: residual per tile, shape ``(T,)``, below ``num_bins``.
         num_bins: number of histogram bins.
 
     Returns:
@@ -239,9 +239,12 @@ def _compute_luts(
         # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
-        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
+        # The centres and bandwidth follow float64 tiles; every other dtype stays float32 because histogram
+        # evaluates half-precision kernels in float32.
+        centre_dtype = torch.promote_types(tiles.dtype, torch.float32)
+        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device, dtype=centre_dtype)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
-        histos = histogram(tiles, bins, torch.tensor(0.001))
+        histos = histogram(tiles, bins, torch.tensor(0.001, dtype=centre_dtype))
         histos *= pixels
 
     if isinstance(clip, torch.Tensor):
@@ -500,7 +503,7 @@ def equalize_clahe(
     values are not rounded to 8-bit integers.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
+        input: images tensor to equalize with values in the range [0, 1] and shape ``(*, C, H, W)``.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
             than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.

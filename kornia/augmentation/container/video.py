@@ -24,10 +24,16 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.augmentation.utils.helpers import _frame_boxes, _video_boxes
+from kornia.augmentation.utils.helpers import (
+    _frame_boxes,
+    _frame_keypoints,
+    _raise_input_rank_error,
+    _video_boxes,
+    _video_keypoints,
+)
 from kornia.augmentation.utils.random import _with_generator
 from kornia.geometry.boxes import Boxes, VideoBoxes
-from kornia.geometry.keypoints import Keypoints
+from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
 from .params import ParamItem
 
@@ -459,8 +465,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -484,8 +490,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -512,8 +518,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -522,6 +528,10 @@ class VideoSequential(ImageSequential):
             input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().transform_keypoints(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
+        elif isinstance(input, VideoKeypoints):
+            # The children index frames; VideoKeypoints indexes videos (#6375).
+            frames = super().transform_keypoints(_frame_keypoints(input), params, extra_args=extra_args)
+            input = _video_keypoints(frames, input.temporal_channel_size)
         else:
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
@@ -535,8 +545,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -545,6 +555,9 @@ class VideoSequential(ImageSequential):
             input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
+        elif isinstance(input, VideoKeypoints):
+            frames = super().inverse_keypoints(_frame_keypoints(input), params, extra_args=extra_args)
+            input = _video_keypoints(frames, input.temporal_channel_size)
         else:
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input
@@ -576,7 +589,7 @@ class VideoSequential(ImageSequential):
     ) -> torch.Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
-            raise AssertionError(f"Input must be a 5-dim torch.Tensor. Got {input.shape}.")
+            _raise_input_rank_error(input.shape, "(" + ", ".join(self.data_format) + ")")
 
         if params is None:
             self._params = self.forward_parameters(input.shape)

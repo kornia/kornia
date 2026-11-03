@@ -43,7 +43,7 @@ class GemmaRMSNorm(nn.Module):
         """Apply Gemma RMS normalization to hidden states.
 
         Args:
-            x: Hidden-state tensor with shape :math:`(B, N, D)`, where
+            x: Hidden-state tensor with shape ``(B, N, D)``, where
                 :math:`B` is batch size, :math:`N` is sequence length, and
                 :math:`D` is hidden dimension.
 
@@ -80,7 +80,7 @@ class GemmaRotaryEmbedding(nn.Module):
 
         Args:
             x: Tensor whose dtype is used for the returned embeddings.
-            position_ids: Position tensor with shape :math:`(B, N)`.
+            position_ids: Position tensor with shape ``(B, N)``.
 
         Returns:
             Tuple ``(cos, sin)`` containing rotary embedding factors with dtype
@@ -132,10 +132,10 @@ class GemmaMLP(nn.Module):
         """Apply the gated Gemma feed-forward projection.
 
         Args:
-            x: Hidden-state tensor with shape :math:`(B, N, D)`.
+            x: Hidden-state tensor with shape ``(B, N, D)``.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` after gate projection,
+            Tensor with shape ``(B, N, D)`` after gate projection,
             activation, up projection, elementwise gating, and down projection.
         """
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -182,13 +182,13 @@ class GemmaAttention(nn.Module):
         """Apply grouped-query self-attention with rotary position embeddings.
 
         Args:
-            hidden_states: Input token tensor with shape :math:`(B, N, D)`.
+            hidden_states: Input token tensor with shape ``(B, N, D)``.
             attention_mask: Optional attention mask passed to scaled dot-product
                 attention.
-            position_ids: Token position ids with shape :math:`(B, N)`.
+            position_ids: Token position ids with shape ``(B, N)``.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` after attention and output
+            Tensor with shape ``(B, N, D)`` after attention and output
             projection.
         """
         bsz, q_len, _ = hidden_states.size()
@@ -246,12 +246,12 @@ class GemmaDecoderLayer(nn.Module):
         """Run one Gemma decoder layer.
 
         Args:
-            hidden_states: Input token tensor with shape :math:`(B, N, D)`.
+            hidden_states: Input token tensor with shape ``(B, N, D)``.
             attention_mask: Optional mask used by the attention block.
             position_ids: Token position ids used to build rotary embeddings.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` after self-attention, MLP, and
+            Tensor with shape ``(B, N, D)`` after self-attention, MLP, and
             residual connections.
         """
         residual = hidden_states

@@ -48,8 +48,8 @@ class SOSNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Note:
         With float16 weights, the final BatchNorm keeps its running statistics in float32.
@@ -101,11 +101,11 @@ class SOSNet(nn.Module):
         """Compute SOSNet descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            input: Input tensor with shape ``(B, 1, 32, 32)``.
             eps: Small constant added before normalization for stability.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, 128)`.
+            Descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.layers(input)

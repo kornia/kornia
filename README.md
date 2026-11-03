@@ -131,7 +131,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
-[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.14.0.
+[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
 There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. The remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153).
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.

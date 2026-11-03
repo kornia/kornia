@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numbers
 from typing import Optional, Union
 
 import torch
@@ -75,15 +76,15 @@ def harris_response(
         - ``k`` is not validated.
 
     Args:
-        input: input image with shape :math:`(B, C, H, W)`.
+        input: input image with shape ``(B, C, H, W)``.
         k: the Harris detector free parameter.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
           ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid, as in
           `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c>`_.
 
     Return:
-        the response map per channel with shape :math:`(B, C, H, W)`.
+        the response map per channel with shape ``(B, C, H, W)``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -162,13 +163,13 @@ def gftt_response(
           decay with blur depends on the image structure, including the corner geometry.
 
     Args:
-        input: input image with shape :math:`(B, C, H, W)`.
+        input: input image with shape ``(B, C, H, W)``.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
           ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
 
     Return:
-        the response map per channel with shape :math:`(B, C, H, W)`.
+        the response map per channel with shape ``(B, C, H, W)``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -252,17 +253,17 @@ def hessian_response(
         - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
 
     Args:
-        input: input image with shape :math:`(B, C, H, W)`.
+        input: input image with shape ``(B, C, H, W)``.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
           ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
 
     Return:
-        the response map per channel with shape :math:`(B, C, H, W)`.
+        the response map per channel with shape ``(B, C, H, W)``.
 
     Shape:
-       - Input: :math:`(B, C, H, W)`
-       - Output: :math:`(B, C, H, W)`
+       - Input: ``(B, C, H, W)``
+       - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.tensor([[[
@@ -308,7 +309,7 @@ def hessian_response(
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response between adjacent levels of a (B, C, D, H, W) Gaussian scale stack.
 
     Convention:
         - Output level ``i`` is ``input[:, :, i + 1] - input[:, :, i]`` along the level axis ``D`` (dim 2), so ``D``
@@ -316,10 +317,10 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
           :math:`L(k\sigma) - L(\sigma)`: negative at a bright blob, positive at a dark one.
 
     Args:
-        input: a given the gaussian 5d torch.Tensor :math:`(B, C, D, H, W)`.
+        input: a given the gaussian 5d torch.Tensor ``(B, C, D, H, W)``.
 
     Return:
-        the response map per channel with shape :math:`(B, C, D-1, H, W)`.
+        the response map per channel with shape ``(B, C, D-1, H, W)``.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
@@ -328,7 +329,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
 
 def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float = 1.6) -> torch.Tensor:
-    r"""Compute the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image, its sigma2 blur minus its sigma1 blur.
 
     .. image:: _static/img/dog_response_single.png
 
@@ -339,12 +340,12 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
           swapping them flips the sign.
 
     Args:
-        input: a given the gaussian 4d torch.Tensor :math:`(B, C, H, W)`.
+        input: a given the gaussian 4d torch.Tensor ``(B, C, H, W)``.
         sigma1: lower gaussian sigma
         sigma2: bigger gaussian sigma
 
     Return:
-        the response map per channel with shape :math:`(B, C, H, W)`.
+        the response map per channel with shape ``(B, C, H, W)``.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -356,10 +357,10 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
 
 
 class BlobDoG(nn.Module):
-    r"""nn.Module that calculates Difference-of-Gaussians blobs.
+    r"""Compute Difference-of-Gaussian responses of a (B, C, D, H, W) scale stack; the module form of dog_response.
 
     Convention:
-        Returns :func:`~kornia.feature.dog_response` of the :math:`(B, C, D, H, W)` scale stack; see its Convention
+        Returns :func:`~kornia.feature.dog_response` of the ``(B, C, D, H, W)`` scale stack; see its Convention
         block. ``sigmas`` is ignored.
     """
 
@@ -373,7 +374,7 @@ class BlobDoG(nn.Module):
         """Compute Difference-of-Gaussians response maps.
 
         Args:
-            input: Input scale stack of shape :math:`(B, C, D, H, W)`.
+            input: Input scale stack of shape ``(B, C, D, H, W)``.
             sigmas: Unused in this wrapper; kept for API compatibility.
 
         Returns:
@@ -383,7 +384,7 @@ class BlobDoG(nn.Module):
 
 
 class BlobDoGSingle(nn.Module):
-    r"""nn.Module that calculates Difference-of-Gaussians blobs.
+    r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image; the module form of dog_response_single.
 
     .. image:: _static/img/dog_response_single.png
 
@@ -398,13 +399,13 @@ class BlobDoGSingle(nn.Module):
         self.sigma2 = sigma2
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
+        return f"{self.__class__.__name__}(sigma1={self.sigma1}, sigma2={self.sigma2})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Compute single-scale Difference-of-Gaussians response.
 
         Args:
-            input: Input tensor of shape :math:`(B, C, H, W)`.
+            input: Input tensor of shape ``(B, C, H, W)``.
             sigmas: Unused in this wrapper; kept for API compatibility.
 
         Returns:
@@ -430,6 +431,9 @@ class CornerHarris(nn.Module):
         super().__init__()
         if isinstance(k, float):
             self.register_buffer("k", torch.tensor(k))
+        elif isinstance(k, numbers.Real) and not isinstance(k, bool):
+            # An int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+            self.register_buffer("k", torch.tensor(float(k)))
         else:
             self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
@@ -441,7 +445,7 @@ class CornerHarris(nn.Module):
         """Compute Harris corner response for each input channel.
 
         Args:
-            input: Input tensor of shape :math:`(B, C, H, W)`.
+            input: Input tensor of shape ``(B, C, H, W)``.
             sigmas: Optional per-image scales forwarded to :func:`harris_response`, which multiplies the
                 response by ``sigmas ** 4``.
 
@@ -471,7 +475,7 @@ class CornerGFTT(nn.Module):
         """Compute Shi-Tomasi (GFTT) corner response maps.
 
         Args:
-            input: Input tensor of shape :math:`(B, C, H, W)`.
+            input: Input tensor of shape ``(B, C, H, W)``.
             sigmas: Optional per-image scales forwarded to :func:`gftt_response`, which multiplies the
                 response by ``sigmas ** 4``.
 
@@ -502,7 +506,7 @@ class BlobHessian(nn.Module):
         """Compute Hessian determinant-like blob responses.
 
         Args:
-            input: Input tensor of shape :math:`(B, C, H, W)`.
+            input: Input tensor of shape ``(B, C, H, W)``.
             sigmas: Optional per-image scales forwarded to :func:`hessian_response`, which multiplies the
                 response by ``sigmas ** 4``.
 

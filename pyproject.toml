@@ -174,7 +174,6 @@ filterwarnings = [
 markers = [
   "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
   "compile_conformance: torch.compile conformance of the promised operators (#5819); deselected unless --compile-conformance selects packages",
-  "mps_process_abort: aborts the pytest process on MPS on virtualized Apple GPUs (#4204); skipped there unless --run-mps-process-abort",
   "onnx_conformance: ONNX conformance of the promised operators (#5819); deselected unless --onnx-conformance selects packages",
   "slow: mark test as slow to run",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul and cuDNN precision; xfail by default, run with --tf32 to activate",
@@ -301,7 +300,7 @@ ignore = [
   "D100",  # Allow Undocumented public module
   "D104",  # TODO: Undocumented public package
   "D105",  # Allow Undocumented magic method
-  "D107",  # TODO: Undocumented public init
+  "D107",  # Allow Undocumented public init: the class docstring documents the constructor
 ]
 
 [tool.ruff.lint.flake8-import-conventions.aliases]

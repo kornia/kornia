@@ -27,6 +27,52 @@ from testing.base import BaseTester
 
 
 class TestDivergenceLoss(BaseTester):
+    @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("identical", [False, True])
+    def test_kl_autocast(self, amp_dtype, identical, device):
+        """Evaluate half heatmap logarithms at the precision used by autocast KL divergence."""
+        if device.type != "cpu":
+            pytest.skip("only CPU autocast leaves log in half precision; CUDA and MPS autocast run it in float32")
+        generator = torch.Generator().manual_seed(0)
+        target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7)
+        target = target.to(device=device, dtype=amp_dtype)
+        pred = target.clone() if identical else target.roll(1, -1)
+        pred = pred.detach().requires_grad_()
+        target = target.detach().requires_grad_()
+        pred_ref = pred.detach().double().requires_grad_()
+        target_ref = target.detach().double().requires_grad_()
+        expected = (target_ref * (target_ref.log() - pred_ref.log())).sum((-2, -1)).mean()
+        with torch.autocast(device.type, dtype=amp_dtype):
+            actual = kornia.losses.kl_div_loss_2d(pred, target)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected.float(), rtol=1e-6, atol=1e-6)
+        gradients = torch.autograd.grad(actual, (pred, target))
+        references = torch.autograd.grad(expected, (pred_ref, target_ref))
+        for gradient, reference in zip(gradients, references):
+            self.assert_close(gradient, reference.to(amp_dtype))
+
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+    def test_kl_autocast_keeps_full_precision_inputs(self, input_dtype, device):
+        """Leave float32/float64 heatmaps untouched by the CPU autocast logarithm lift."""
+        if device.type != "cpu":
+            pytest.skip("checks the CPU autocast logarithm lift")
+        generator = torch.Generator().manual_seed(0)
+        target = torch.randn(1, 2, 49, generator=generator, dtype=input_dtype).softmax(-1).reshape(1, 2, 7, 7)
+        pred = target.roll(1, -1)
+        expected = kornia.losses.kl_div_loss_2d(pred, target)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            actual = kornia.losses.kl_div_loss_2d(pred, target)
+        assert actual.dtype == input_dtype
+        assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_jit(self, loss, device, dtype):
+        """Keep both public divergence losses scriptable, including their empty-cell handling."""
+        pred = torch.tensor([0.0, 0.5, 0.25, 0.25], device=device, dtype=dtype).view(1, 1, 2, 2)
+        target = torch.tensor([0.0, 0.25, 0.75, 0.0], device=device, dtype=dtype).view(1, 1, 2, 2)
+        scripted = torch.jit.script(loss)
+        self.assert_close(scripted(pred, target), loss(pred, target))
+
     def test_js_div_loss_2d_small_probability(self, device, dtype):
         # The mixture must not round a positive half-precision probability down to zero.
         tiny = torch.finfo(dtype).tiny * torch.finfo(dtype).eps if dtype == torch.bfloat16 else 2.0**-24

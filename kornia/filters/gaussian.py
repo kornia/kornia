@@ -115,10 +115,10 @@ def gaussian_blur2d(
           :func:`~kornia.filters.filter2d`; ``sigma`` is cast to float32 as well.
 
     Arguments:
-        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape ``(B,C,H,W)``.
         kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
         sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.Tensor
-            with shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+            with shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
             Values must be positive; the note below says when that is checked.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -126,7 +126,7 @@ def gaussian_blur2d(
         separable: run as composition of two 1d-convolutions. Default: ``True``.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with shape ``(B, C, H, W)``.
 
     Raises:
         ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
@@ -272,8 +272,8 @@ class GaussianBlur2d(nn.Module):
         the blurred torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples::
 
@@ -317,12 +317,12 @@ class GaussianBlur2d(nn.Module):
         of the approximation.
 
         Args:
-            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+            input: Image or feature tensor with shape ``(B, C, H, W)``,
                 where :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the smoothed
+            Tensor with shape ``(B, C, H, W)`` containing the smoothed
             result. The output keeps the same channel layout as ``input`` while
             reducing high-frequency noise and fine texture.
         """

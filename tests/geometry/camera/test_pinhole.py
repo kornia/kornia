@@ -1117,7 +1117,8 @@ class TestPinholeCamera(BaseTester):
             cam = kornia.geometry.camera.PinholeCamera(k, e, h, w)
         assert cam.fx.shape == (1, 2)
         self.assert_close(cam.fx, torch.full((1, 2), 100.0, device=device, dtype=dtype))
-        with pytest.raises(RuntimeError):
+        # A (1, 2) camera batch does not line up with a (1, 5, 3) point set (#6473).
+        with pytest.raises(ValueError, match="leading batch axes of the points"):
             cam.project(torch.ones(1, 5, 3, device=device, dtype=dtype))
 
     def test_rank4_construction_does_not_warn_under_trace_4266(self, device, dtype):

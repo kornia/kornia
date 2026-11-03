@@ -677,6 +677,43 @@ class TestEqualization(BaseTester):
         flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
         self.assert_close(flipped, out.flip(dim))
 
+    def test_clahe_slow_path_does_not_depend_on_the_default_dtype_6366(self, device, dtype):
+        # Differentiable CLAHE takes its bin centres and 0.001 bandwidth from the tile dtype, so
+        # torch.set_default_dtype(torch.float64) must not change the output (#6366). The image is the
+        # 2x3x32x40 seed-10 case from that report, cast to the parametrized dtype.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        x = torch.rand(2, 3, 32, 40, generator=torch.Generator().manual_seed(10), dtype=torch.float64).to(device, dtype)
+        out = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            expected = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        finally:
+            torch.set_default_dtype(previous)
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    def test_clahe_slow_path_centres_in_promoted_tile_dtype_6366(self, device, dtype, monkeypatch):
+        # Float64 tiles get float64 centres and bandwidth; every other dtype keeps the float32 ones it had, so its
+        # output is unchanged (#6366). The test above cannot see a dtype that ignores the default dtype but is wrong.
+        from kornia.enhance import equalization
+
+        calls = []
+        histogram = equalization.histogram
+
+        def spy(x, bins, bandwidth, *args, **kwargs):
+            calls.append((bins, bandwidth))
+            return histogram(x, bins, bandwidth, *args, **kwargs)
+
+        monkeypatch.setattr(equalization, "histogram", spy)
+        img = torch.linspace(0, 1, 256, device=device, dtype=dtype).view(1, 1, 16, 16)
+        enhance.equalize_clahe(img, slow_and_differentiable=True)
+        expected = torch.promote_types(dtype, torch.float32)
+        ((bins, bandwidth),) = calls
+        assert bins.dtype == expected
+        assert bandwidth.dtype == expected
+        self.assert_close(bins, torch.linspace(0, 1, 256, device=device, dtype=expected), rtol=0, atol=0)
+
     def test_clahe_odd_tiles_gradcheck_5812(self, device):
         torch.manual_seed(4)
         img = torch.rand(1, 1, 9, 15, device=device, dtype=torch.float64)

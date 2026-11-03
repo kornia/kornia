@@ -70,8 +70,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
           loss negative.
 
     Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        target: labels tensor with shape :math:`(N, H, W)` with binary values.
+        pred: logits tensor with shape ``(N, 1, H, W)``.
+        target: labels tensor with shape ``(N, H, W)`` with binary values.
 
     Return:
         a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
@@ -159,8 +159,8 @@ class LovaszHingeLoss(nn.Module):
         See the Convention block of :func:`~kornia.losses.lovasz_hinge_loss`.
 
     Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        target: labels tensor with shape :math:`(N, H, W)` with binary values.
+        pred: logits tensor with shape ``(N, 1, H, W)``.
+        target: labels tensor with shape ``(N, H, W)`` with binary values.
 
     Return:
         a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
@@ -184,8 +184,8 @@ class LovaszHingeLoss(nn.Module):
         """Compute binary Lovasz hinge loss for segmentation logits.
 
         Args:
-            pred: Binary logit tensor with shape :math:`(B, 1, H, W)`.
-            target: Binary label tensor with shape :math:`(B, H, W)`.
+            pred: Binary logit tensor with shape ``(B, 1, H, W)``.
+            target: Binary label tensor with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing the Lovasz hinge surrogate for the

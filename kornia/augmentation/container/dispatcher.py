@@ -15,11 +15,33 @@
 # limitations under the License.
 #
 
-from typing import List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from torch import Tensor, nn
+from torch.nn.parameter import is_lazy
 
 from .augment import AugmentationSequential
+
+
+def _fill_missing_augmentation_state(
+    module: nn.Module,
+    state_dict: Dict[str, Any],
+    prefix: str,
+    local_metadata: Dict[str, Any],
+    *args: Any,
+) -> None:
+    # Children used to live in a plain tuple, so old checkpoints contain no augmentation state.
+    # Version 2 records the registered layout: never hide its missing keys, even if all child state is absent.
+    if local_metadata.get("version", 1) >= 2:
+        return
+    if any(key.startswith(prefix + "augmentations.") for key in state_dict):
+        return
+    for name, value in module.state_dict(keep_vars=False).items():
+        if name.startswith("augmentations."):
+            # Lazy parameters and buffers must reach their load hooks without tensor operations.
+            state_dict[prefix + name] = (
+                value.detach().clone() if isinstance(value, Tensor) and not is_lazy(value) else value
+            )
 
 
 class ManyToManyAugmentationDispather(nn.Module):
@@ -57,10 +79,13 @@ class ManyToManyAugmentationDispather(nn.Module):
 
     """
 
+    _version = 2
+
     def __init__(self, *augmentations: AugmentationSequential) -> None:
         super().__init__()
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):
@@ -125,11 +150,14 @@ class ManyToOneAugmentationDispather(nn.Module):
 
     """
 
+    _version = 2
+
     def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:
         super().__init__()
         self.strict = strict
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):

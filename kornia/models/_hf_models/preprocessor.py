@@ -89,7 +89,7 @@ class _DPTResize(nn.Module):
         self.interpolation = interpolation
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Resize ``image`` of shape :math:`(*, C, H, W)` to the DPT output size of its ``H`` and ``W``."""
+        """Resize ``image`` of shape ``(*, C, H, W)`` to the DPT output size of its ``H`` and ``W``."""
         height, width = image.shape[-2:]
         output_size = _dpt_output_size(height, width, self.size, self.keep_aspect_ratio, self.multiple)
         batch = image.reshape(-1, *image.shape[-3:])

@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._layout import _patch_conv_layout
 
 urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
@@ -58,8 +59,8 @@ class TFeat(nn.Module):
         torch.Tensor: TFeat descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -91,12 +92,18 @@ class TFeat(nn.Module):
         """Compute TFeat descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            input: Input tensor with shape ``(B, 1, 32, 32)``.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, 128)`.
+            Descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
-        x = self.features(input)
+        x = input
+        for layer in self.features:
+            # The leading InstanceNorm2d returns the default layout, so the layout is set per convolution; a
+            # convolution's output already has it, which makes the second call free.
+            if isinstance(layer, nn.Conv2d):
+                x = _patch_conv_layout(x)
+            x = layer(x)
         x = x.flatten(1)
         return self.descr(x)

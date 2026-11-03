@@ -74,7 +74,7 @@ class BasicBlockD(nn.Module):
         """Apply a basic ResNet-D residual block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Tensor after two convolutions, shortcut projection if needed, and
@@ -108,7 +108,7 @@ class BottleneckD(nn.Module):
         """Apply a bottleneck ResNet-D residual block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Tensor after ``1x1``, ``3x3``, and ``1x1`` convolutions, shortcut
@@ -190,7 +190,7 @@ class ResNetD(nn.Module):
         """Run the ResNet-D backbone and return detector feature maps.
 
         Args:
-            x: Image tensor with shape :math:`(B, 3, H, W)`.
+            x: Image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             List ``[res3, res4, res5]`` containing the final three feature

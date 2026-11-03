@@ -41,8 +41,8 @@ class PadTo(GeometricAugmentationBase2D):
             shape depends on the input.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     .. note::
         This function internally uses :func:`torch.nn.functional.pad`.

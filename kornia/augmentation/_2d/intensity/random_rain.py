@@ -28,20 +28,20 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomRain(IntensityAugmentationBase2D):
-    r"""Add Random Rain to the image.
+    r"""Draw random rain-drop streaks on images, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         number_of_drops: number of drops per image
         drop_height: Height of the drop in the image (same for each drop in one image). Sampled values must be
             greater than zero and strictly smaller than the input image height.
         drop_width: Width of the drop in the image (same for each drop in one image). The absolute sampled value
             must be strictly smaller than the input image width.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.

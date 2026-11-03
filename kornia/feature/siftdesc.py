@@ -590,7 +590,7 @@ class DenseSIFTDescriptor(nn.Module):
         """Compute dense SIFT descriptors over a full image grid.
 
         Args:
-            input: Grayscale image tensor with shape :math:`(B, 1, H, W)`.
+            input: Grayscale image tensor with shape ``(B, 1, H, W)``.
 
         Returns:
             Dense descriptor map tensor with channel dimension

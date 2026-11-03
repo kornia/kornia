@@ -49,7 +49,7 @@ class Rescale(nn.Module):
 
         Args:
             input: Tensor to be rescaled. In image workflows this is commonly
-                shaped as :math:`(*, C, H, W)`, where ``*`` denotes optional
+                shaped as ``(*, C, H, W)``, where ``*`` denotes optional
                 leading dimensions (for example batch), ``C`` is channel count,
                 and ``H``/``W`` are spatial dimensions.
 

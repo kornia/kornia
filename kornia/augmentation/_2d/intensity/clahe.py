@@ -27,7 +27,7 @@ from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
-    r"""Apply CLAHE equalization on the input torch.Tensor randomly.
+    r"""Equalize local contrast with CLAHE, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/equalize_clahe.png
 
@@ -44,7 +44,7 @@ class RandomClahe(IntensityAugmentationBase2D):
             autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
             intensity augmentation does -- so set it to ``True`` to keep the class differentiable.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

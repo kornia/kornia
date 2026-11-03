@@ -129,23 +129,23 @@ class OnnxLightGlue:
 
         ``data`` (``dict``):
             ``image0`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, M, 2)`
+                ``keypoints`` (`float32`): ``(1, M, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, M, D)`
+                ``descriptors`` (`float32`): ``(1, M, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
             ``image1`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, N, 2)`
+                ``keypoints`` (`float32`): ``(1, N, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, N, D)`
+                ``descriptors`` (`float32`): ``(1, N, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
         ``output`` (``dict``):
-            ``matches`` (`int64`): :math:`(S, 2)`
+            ``matches`` (`int64`): ``(S, 2)``
 
-            ``scores`` (`float32`): :math:`(S)`
+            ``scores`` (`float32`): ``(S)``
 
         """
         # Input validation.

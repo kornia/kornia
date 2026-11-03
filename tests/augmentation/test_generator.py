@@ -18,6 +18,7 @@
 """Explicit augmentation RNG streams and their isolation from global state."""
 
 import concurrent.futures
+from unittest import mock
 
 import pytest
 import torch
@@ -244,7 +245,10 @@ class TestExplicitGenerator(BaseTester):
         aug.set_rng_device_and_dtype(device, torch.float32)
         shape = torch.Size((4, 3, 8, 8))
         torch.manual_seed(7)
-        expected = aug.forward_parameters(shape)
+        # Global CUDA sampling can also consume the CPU stream. An explicit CUDA stream owns every draw.
+        expected = aug.forward_parameters(
+            shape, **({"generator": torch.Generator(device=device).manual_seed(7)} if device.type == "cuda" else {})
+        )
         cpu_state = torch.random.get_rng_state().clone()
         device_state = torch.cuda.get_rng_state(device).clone() if device.type == "cuda" else cpu_state
         actual = aug.forward_parameters(shape, generator=torch.Generator(device=device).manual_seed(7))
@@ -252,6 +256,37 @@ class TestExplicitGenerator(BaseTester):
         assert torch.equal(cpu_state, torch.random.get_rng_state())
         if device.type == "cuda":
             assert torch.equal(device_state, torch.cuda.get_rng_state(device))
+
+    @pytest.mark.parametrize("factory", [K.RandomMixUpV2, K.RandomMosaic])
+    def test_default_host_range_permutation_stays_on_cpu(self, factory, device):
+        """Configuring CUDA sampling does not move a host-range permutation off the global CPU stream."""
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Native generator sampling needs a CPU or CUDA device")
+        aug = factory(p=1.0)
+        aug.set_rng_device_and_dtype(device, torch.float32)
+        with mock.patch.object(torch, "randperm", wraps=torch.randperm) as randperm:
+            aug.generate_parameters(torch.Size((4, 3, 8, 8)))
+        assert randperm.call_count == 1
+        assert torch.device(randperm.call_args.kwargs["device"]).type == "cpu"
+
+    def test_default_motion_blur_index_stays_on_cpu(self, device):
+        """The unbound motion-blur kernel index retains its global CPU draw."""
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Native generator sampling needs a CPU or CUDA device")
+        aug = K.RandomMotionBlur((3, 5), 30.0, 0.5, p=1.0)
+        aug.set_rng_device_and_dtype(device, torch.float32)
+        params = aug.generate_parameters(torch.Size((4, 3, 8, 8)))
+        assert params["idx"].device.type == "cpu"
+
+    @pytest.mark.parametrize("factory", [K.RandomMotionBlur, K.RandomMotionBlur3D])
+    def test_default_motion_blur_kernel_range_stays_on_cpu(self, factory, device, dtype):
+        """Kernel-size bounds keep the host/default dtype independently of the angle sampler."""
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Native generator sampling needs a CPU or CUDA device")
+        aug = factory((3, 5), 30.0, 0.5, p=1.0)
+        aug.set_rng_device_and_dtype(device, dtype)
+        assert aug._param_generator.ksize_sampler.low.device.type == "cpu"
+        assert aug._param_generator.ksize_sampler.low.dtype == torch.get_default_dtype()
 
     def test_dynamo_explicit_parameter_replay_4427(self, device, dtype, torch_optimizer):
         """Sample an isolated stream eagerly, then capture deterministic transform application."""

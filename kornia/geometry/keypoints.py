@@ -15,6 +15,21 @@
 # limitations under the License.
 #
 
+"""Keypoint containers: 2D ``(x, y)`` and 3D ``(x, y, z)`` points that transform by matrices.
+
+A container wraps one floating-point tensor of points, ``(N, 2)`` or ``(B, N, 2)`` in 2D and ``(N, 3)`` or
+``(B, N, 3)`` in 3D, without copying it, and transforms it by homogeneous matrices with
+:func:`~kornia.geometry.linalg.transform_points`. 2D points are ``(x, y)`` pixel coordinates, ``x`` the column and ``y``
+the row, with pixel ``(0, 0)`` centred at ``(0, 0)``; see :ref:`Coordinates and sizes <coordinate-conventions>`.
+
+Which class to use:
+
+- 2D keypoints that follow an image through ``3 x 3`` transforms and padding, as
+  :class:`~kornia.augmentation.container.AugmentationSequential` does with its ``'keypoints'`` data: :class:`Keypoints`.
+- 3D points transformed by ``4 x 4`` matrices: :class:`Keypoints3D`.
+- Boxes rather than points: :class:`~kornia.geometry.boxes.Boxes`.
+"""
+
 from typing import List, Optional, Tuple, Union, cast
 
 import torch
@@ -35,10 +50,21 @@ def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Ten
 
 
 class Keypoints:
-    r"""2D keypoints, stored as an :math:`(N, 2)` or :math:`(B, N, 2)` tensor of ``(x, y)`` points.
+    r"""Store (x, y) pixel keypoints, (N, 2) or (B, N, 2), to transform and pad with images.
+
+    ``kp = Keypoints(points)`` wraps a floating-point ``(N, 2)`` or ``(B, N, 2)`` tensor of ``(x, y)`` pixel
+    coordinates without copying it, and ``kp.transform_keypoints(M)`` maps the points by ``(3, 3)`` or ``(B, 3, 3)``
+    matrices and returns a new :class:`Keypoints`; ``kp.to_tensor()`` returns the stored tensor. A ``(B, 3, 3)``
+    batch of ``B > 1`` matrices pairs matrix ``b`` with ``points[b]`` and needs ``(B, N, 2)`` points. :meth:`pad` and
+    :meth:`unpad` shift the points by image padding.
+    :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`Keypoints` under its
+    ``'keypoints'`` data key and transforms it with the images, unless the pipeline contains a
+    :class:`~kornia.augmentation.container.VideoSequential`: such a pipeline raises ``TypeError`` for a
+    :class:`Keypoints` and takes ``VideoKeypoints`` or a ``(B, T, N, 2)`` tensor. To transform a plain tensor once, use
+    :func:`~kornia.geometry.linalg.transform_points`; for 3D points, :class:`Keypoints3D`.
 
     Args:
-        keypoints: tensor of :math:`(N, 2)` or :math:`(B, N, 2)` coordinates. A list of tensors is not implemented
+        keypoints: tensor of ``(N, 2)`` or ``(B, N, 2)`` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
@@ -53,8 +79,16 @@ class Keypoints:
         - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
           :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
           change the caller's tensor; call :meth:`clone` first to keep it.
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 2)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
+
+    See Also:
+        - :class:`Keypoints3D`: ``(x, y, z)`` points, transformed by ``4 x 4`` matrices, with no padding.
+        - :func:`~kornia.geometry.linalg.transform_points`: the point transform this class applies, on a plain tensor.
+        - :class:`~kornia.geometry.boxes.Boxes`: boxes in the same pixel frame, with matching pad, unpad and transform
+          methods.
 
     """
 
@@ -86,7 +120,11 @@ class Keypoints:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "Keypoints":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
@@ -97,8 +135,8 @@ class Keypoints:
         """Return the tensor shape used to store 2D keypoints.
 
         Returns:
-            Shape of :attr:`data`. The common layouts are :math:`(N, 2)` for
-            unbatched keypoints and :math:`(B, N, 2)` for batched keypoints,
+            Shape of :attr:`data`. The common layouts are ``(N, 2)`` for
+            unbatched keypoints and ``(B, N, 2)`` for batched keypoints,
             where :math:`B` is the batch size, :math:`N` is the number of
             keypoints, and the final dimension stores ``(x, y)`` coordinates.
         """
@@ -181,11 +219,11 @@ class Keypoints:
         See the Convention block on :class:`Keypoints`.
 
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only ``left`` and ``top`` shift the
-        coordinate origin. Both the batched :math:`(B, N, 2)` and the unbatched :math:`(N, 2)` container are
+        coordinate origin. Both the batched ``(B, N, 2)`` and the unbatched ``(N, 2)`` container are
         supported; the unbatched form carries a single image, so ``padding_size`` must have exactly one row.
 
         Args:
-            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+            padding_size: per-image padding in pixels, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -204,7 +242,7 @@ class Keypoints:
         Accepts the same batched and unbatched containers and ``padding_size`` layout as :meth:`pad`.
 
         Args:
-            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+            padding_size: per-image padding in pixels, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -221,7 +259,7 @@ class Keypoints:
         See the Convention block on :class:`Keypoints`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
+            M: The transformation matrix to be applied, shape of ``(3, 3)`` or ``(B, 3, 3)``.
             inplace: ``True`` rebinds this object to the transformed tensor and returns it; ``False`` returns a new
                 :class:`Keypoints`.
 
@@ -248,7 +286,7 @@ class Keypoints:
         """Validate and wrap a tensor of 2D keypoint coordinates.
 
         Args:
-            keypoints: Floating-point tensor in :math:`(N, 2)` or :math:`(B, N, 2)` format; an integer tensor
+            keypoints: Floating-point tensor in ``(N, 2)`` or ``(B, N, 2)`` format; an integer tensor
                 raises ``ValueError``. The last dimension stores ``(x, y)`` coordinates.
 
         Returns:
@@ -264,7 +302,7 @@ class Keypoints:
                 (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            The stored tensor itself, :math:`(N, 2)` or :math:`(B, N, 2)`.
+            The stored tensor itself, ``(N, 2)`` or ``(B, N, 2)``.
 
         """
         if as_padded_sequence:
@@ -297,6 +335,10 @@ class VideoKeypoints(Keypoints):
 
     Non-contiguous inputs are copied only when flattening requires it. Empty batches and point sets
     retain their shape on conversion back to a tensor; the temporal dimension must be nonzero.
+
+    Indexing and item assignment select whole videos on the video-batch axis, as for
+    :class:`~kornia.geometry.boxes.VideoBoxes`: ``vk[i]`` is a one-video :class:`VideoKeypoints` whose
+    :meth:`to_tensor` is ``(1, T, N, 2)``, and a boolean mask has length ``B``. Index frames with ``vk.data``.
     """
 
     temporal_channel_size: int
@@ -315,6 +357,36 @@ class VideoKeypoints(Keypoints):
         out = cls(boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3)))
         out.temporal_channel_size = temporal_channel_size
         return out
+
+    def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "VideoKeypoints":
+        r"""Select videos while preserving the temporal axis, as :meth:`VideoBoxes.__getitem__` does.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        selected = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+        out = type(self)(selected.flatten(0, 1), False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "VideoKeypoints":
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`.
+
+        A :class:`VideoKeypoints` value must have the same ``temporal_channel_size``: otherwise its frames would be
+        regrouped into videos of another length.
+        """
+        size = self.temporal_channel_size
+        if isinstance(value, VideoKeypoints) and value.temporal_channel_size != size:
+            raise ValueError(
+                f"Cannot assign videos of {value.temporal_channel_size} frames to videos of {size} frames."
+            )
+        # Explicit video counts: a clip with no points has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        return self
 
     def to_tensor(self) -> torch.torch.Tensor:
         out = super().to_tensor(as_padded_sequence=False)
@@ -337,20 +409,32 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
-    """3D keypoints, stored as an :math:`(N, 3)` or :math:`(B, N, 3)` tensor of ``(x, y, z)`` points.
+    """Store (N, 3) or (B, N, 3) keypoints in (x, y, z), to transform by 4x4 matrices.
 
-    The constructor validates the tensor as :class:`Keypoints` does and wraps a floating-point one without copying it.
+    ``kp = Keypoints3D(points)`` wraps a floating-point ``(N, 3)`` or ``(B, N, 3)`` tensor of ``(x, y, z)`` points
+    without copying it, and ``kp.transform_keypoints(M)`` maps them by ``(4, 4)`` or ``(B, 4, 4)`` matrices and returns
+    a new :class:`Keypoints3D`; ``kp.to_tensor()`` returns the stored tensor. Unlike :class:`Keypoints` it has no
+    padding, ``index_put``, ``type``, ``device`` or ``dtype``. To transform a plain tensor once, use
+    :func:`~kornia.geometry.linalg.transform_points`; for 2D image points, :class:`Keypoints`. The constructor validates
+    the tensor as :class:`Keypoints` does.
 
     Args:
-        keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented
+        keypoints: tensor of ``(N, 3)`` or ``(B, N, 3)`` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 3)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``;
           :meth:`pad` and :meth:`unpad` are deprecated and also raise it
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
+
+    See Also:
+        - :class:`Keypoints`: 2D ``(x, y)`` image points, transformed by ``3 x 3`` matrices and padded with the image.
+        - :func:`~kornia.geometry.linalg.transform_points`: the point transform this class applies, on a plain tensor.
+        - :class:`~kornia.geometry.boxes.Boxes3D`: 3D boxes, transformed by the same ``4 x 4`` matrices.
 
     """
 
@@ -382,7 +466,11 @@ class Keypoints3D:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.Tensor]) -> "Keypoints3D":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.Tensor], value: "Keypoints3D") -> "Keypoints3D":
         self._data[key] = value._data
@@ -393,8 +481,8 @@ class Keypoints3D:
         """Return the tensor shape used to store 3D keypoints.
 
         Returns:
-            Shape of :attr:`data`. The common layouts are :math:`(N, 3)` and
-            :math:`(B, N, 3)`, where the final dimension stores ``(x, y, z)``
+            Shape of :attr:`data`. The common layouts are ``(N, 3)`` and
+            ``(B, N, 3)``, where the final dimension stores ``(x, y, z)``
             coordinates.
         """
         return self.data.shape
@@ -436,7 +524,7 @@ class Keypoints3D:
         :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
+            M: The transformation matrix to be applied, shape of ``(4, 4)`` or ``(B, 4, 4)``.
             inplace: ``True`` rebinds this object to the transformed tensor and returns it, without writing into the
                 tensor it wrapped; ``False`` returns a new :class:`Keypoints3D`.
 
@@ -463,8 +551,8 @@ class Keypoints3D:
         """Validate and wrap a tensor of 3D keypoint coordinates.
 
         Args:
-            keypoints: Tensor in :math:`(N, 3)` or :math:`(B, N, 3)` format,
-                where the last dimension stores ``(x, y, z)``.
+            keypoints: Floating-point tensor in ``(N, 3)`` or ``(B, N, 3)`` format; an integer tensor raises
+                ``ValueError``. The last dimension stores ``(x, y, z)``.
 
         Returns:
             New :class:`Keypoints3D` instance containing the input coordinates.
@@ -479,7 +567,7 @@ class Keypoints3D:
                 (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            The stored tensor itself, :math:`(N, 3)` or :math:`(B, N, 3)`.
+            The stored tensor itself, ``(N, 3)`` or ``(B, N, 3)``.
 
         """
         if as_padded_sequence:

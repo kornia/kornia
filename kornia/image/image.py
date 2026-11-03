@@ -59,15 +59,15 @@ class Image:
         This API is experimental and might suffer changes in the future.
 
     Convention:
-        - An ``Image`` holds one image, :math:`(C, H, W)` or :math:`(H, W, C)` as ``layout.channels_order`` says,
+        - An ``Image`` holds one image, ``(C, H, W)`` or ``(H, W, C)`` as ``layout.channels_order`` says,
           never a batch: a 4-D tensor raises ``ShapeError``. The layout and the pixel format are checked against the
           data: ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color space must fit the
           channel count, 1 for ``GRAY``, 3 for ``RGB`` and ``BGR``, any for ``UNKNOWN``.
         - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
           array or capsule of a CPU image. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an
-          image from :meth:`from_file` gives :math:`(C, H, W)`. Neither the array nor the capsule carries the layout
-          or the color space: :meth:`from_numpy` reads :math:`(H, W, C)` and :meth:`from_dlpack` reads
-          :math:`(C, H, W)` unless ``channels_order`` says otherwise, and both label the color space by channel count
+          image from :meth:`from_file` gives ``(C, H, W)``. Neither the array nor the capsule carries the layout
+          or the color space: :meth:`from_numpy` reads ``(H, W, C)`` and :meth:`from_dlpack` reads
+          ``(C, H, W)`` unless ``channels_order`` says otherwise, and both label the color space by channel count
           unless ``color_space`` is given. Pass ``img.pixel_format.color_space`` and ``img.channels_order`` to read an
           exported image back.
         - :meth:`to_gray`, :meth:`to_rgb` and :meth:`to_bgr` return the image itself when it is already in that color
@@ -451,7 +451,7 @@ class Image:
         """Construct an ``Image`` from a file.
 
         The file is loaded with :func:`~kornia.io.load_image` as ``ImageLoadType.RGB8``: the image is
-        :math:`(3, H, W)` ``uint8``, ``RGB`` and ``CHANNELS_FIRST``, on the CPU.
+        ``(3, H, W)`` ``uint8``, ``RGB`` and ``CHANNELS_FIRST``, on the CPU.
 
         Args:
             file_path: the path to the file to read the image from.

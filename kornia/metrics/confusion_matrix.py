@@ -52,8 +52,8 @@ def confusion_matrix(
           a label outside :math:`[0, K)`, unless graph capture traces the range check (``torch.export``,
           ``torch.compile(fullgraph=True)``), which skips it: an out-of-range label is then counted in another cell
           or makes the call fail.
-        - The first axis is always the batch: the result holds one :math:`(K, K)` float32 count matrix per sample,
-          :math:`(B, K, K)`, and is never pooled over the batch, so a flat :math:`(N,)` label vector gives :math:`N`
+        - The first axis is always the batch: the result holds one ``(K, K)`` float32 count matrix per sample,
+          ``(B, K, K)``, and is never pooled over the batch, so a flat ``(N,)`` label vector gives :math:`N`
           matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.
         - Rows are the target and columns the prediction, ``cm[b, target, pred]``; swapping the two arguments
           transposes every count matrix. :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and
@@ -61,7 +61,7 @@ def confusion_matrix(
 
     Args:
         pred: tensor with estimated targets returned by a
-          classifier. The shape can be :math:`(B, *)` and must contain integer
+          classifier. The shape can be ``(B, *)`` and must contain integer
           values between 0 and K-1.
         target: tensor with ground truth (correct) target
           values. The shape must be that of ``pred``, and it must contain integer
@@ -72,7 +72,7 @@ def confusion_matrix(
 
     Returns:
         a tensor containing the confusion matrix with shape
-        :math:`(B, K, K)` where K is the number of classes.
+        ``(B, K, K)`` where K is the number of classes.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])

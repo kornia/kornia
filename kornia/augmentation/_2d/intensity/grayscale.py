@@ -27,7 +27,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
-    r"""Apply random transformation to Grayscale according to a probability p value.
+    r"""Convert images to grayscale (channel count kept), applied per sample with probability ``p`` (default 0.1).
 
     .. image:: _static/img/RandomGrayscale.png
 
@@ -42,14 +42,14 @@ class RandomGrayscale(IntensityAugmentationBase2D):
             channel (three, for the usual RGB case). If ``None``, RGB inputs use the standard
             luminance weights and multispectral inputs weight every band equally. Weights are applied
             as given and are not normalized, so weights that do not sum to one rescale the output.
-        p: probability of the image to be transformed to grayscale.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.

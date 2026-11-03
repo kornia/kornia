@@ -31,11 +31,13 @@ from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._2d.intensity.invert import RandomInvert
 from kornia.augmentation._2d.mix.mixup import RandomMixUpV2
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.geometric.depthical_flip import RandomDepthicalFlip3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.core import ImageModule
 from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import InputRankError, ShapeError
 from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWraper_HF
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -348,6 +350,55 @@ class TestGeometricAugmentationBase3D:
         assert res.dtype == dtype, "The output dtype should match the input dtype"
 
 
+class _RandomDepthicalFlip3DWithMask(RandomDepthicalFlip3D):
+    def apply_transform_mask(self, input, params, flags, transform=None):
+        return self.apply_transform(input, params, flags, transform)
+
+    def apply_non_transform_mask(self, input, params, flags, transform=None):
+        return input
+
+
+class TestTransformTensorByShape(BaseTester):
+    # Each case gives the output shape for match_channel=False and for True; None means the channel check raises.
+    @pytest.mark.parametrize("match_channel", [False, True])
+    @pytest.mark.parametrize(
+        "reference, input_shape, expected",
+        [
+            ((2, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((1, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (2, 5, 6), ((2, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (3, 5, 6), ((1, 3, 5, 6), (1, 3, 5, 6))),
+            ((2, 3, 5, 6), (2, 3, 5, 6), ((2, 3, 5, 6), (2, 3, 5, 6))),
+            ((2, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((1, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (2, 4, 5, 6), ((2, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (3, 4, 5, 6), ((1, 3, 4, 5, 6), (1, 3, 4, 5, 6))),
+            ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6), ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6))),
+        ],
+    )
+    def test_shape_6354(self, device, dtype, reference, input_shape, expected, match_channel):
+        augmentation = RandomHorizontalFlip(p=1.0) if len(reference) == 4 else RandomHorizontalFlip3D(p=1.0)
+        input = torch.rand(input_shape, device=device, dtype=dtype)
+        shape = torch.tensor(reference, device=device)
+        expected = expected[match_channel]
+        if expected is None:
+            with pytest.raises(ValueError, match="C dimension"):
+                augmentation.transform_tensor(input, shape=shape, match_channel=match_channel)
+        else:
+            assert augmentation.transform_tensor(input, shape=shape, match_channel=match_channel).shape == expected
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    def test_3d_bdhw_mask_follows_the_volume_6354(self, device, dtype, keepdim):
+        volume = torch.arange(2 * 4 * 5 * 6, device=device).to(dtype).reshape(2, 1, 4, 5, 6)
+        augmentation = _RandomDepthicalFlip3DWithMask(p=1.0, keepdim=keepdim)
+        output_volume = augmentation(volume)
+        output_mask = augmentation.transform_masks(
+            volume[:, 0], augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+        )
+        expected = output_volume[:, 0] if keepdim else output_volume
+        self.assert_close(output_mask, expected, rtol=0, atol=0)
+
+
 class TestDeviceAgnosticAugmentationParameters(BaseTester):
     """Augmentations keep RNG/params on CPU while accepting accelerator inputs.
 
@@ -527,22 +578,64 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(TypeError, match=expected):
                 K.RandomHorizontalFlip(p=1.0)(torch.zeros(1, 1, 4, 4, device=device, dtype=bad))
 
-    def test_wart_wrong_input_rank_has_entry_point_specific_errors_4424(self, device, dtype):
-        # Wart pin (#4424): one user error can raise different exception types depending on which entry point
-        # sees it. The class path raises `ValueError` from `transform_tensor`, the container path raises
-        # `RuntimeError` with a different message, and `validate_tensor`'s own
-        # `RuntimeError` (which also rejects the legal (C, H, W) rank). `forward` promotes legal unbatched
-        # inputs before validation.
+    def test_convention_wrong_input_rank_raises_one_error_from_every_entry_point_4424(self, device, dtype):
+        # Convention pin (#4424): one user error, one exception and one message, whichever entry point sees it.
+        # The class, `validate_tensor` and the containers used to raise `ValueError`, `RuntimeError` or
+        # `AssertionError` with four different messages; `InputRankError` is all three types, so a caller's
+        # existing `except` clause still catches it.
         x5 = torch.rand(1, 2, 3, 6, 8, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="Input size must have a shape of either"):
-            K.RandomHorizontalFlip(p=1.0)(x5)
-        with pytest.raises(RuntimeError, match=r"input shape expected to be in \(2, 4\)"):
-            K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"])(x5)
-        with pytest.raises(RuntimeError, match=r"Expect \(B, C, H, W\)"):
-            K.RandomHorizontalFlip(p=1.0).validate_tensor(x5)
-        with pytest.raises(RuntimeError, match=r"Expect \(B, C, H, W\)"):
-            # a rank `forward` accepts, rejected by the validator behind it
-            K.RandomHorizontalFlip(p=1.0).validate_tensor(torch.rand(3, 6, 8, device=device, dtype=dtype))
+        message = r"Input size must have a shape of either \(H, W\), \(C, H, W\) or \(\*, C, H, W\)\. Got"
+        entry_points = {
+            "class": lambda: K.RandomHorizontalFlip(p=1.0)(x5),
+            "validate_tensor": lambda: K.RandomHorizontalFlip(p=1.0).validate_tensor(x5),
+            "AugmentationSequential": lambda: K.AugmentationSequential(
+                K.RandomHorizontalFlip(p=1.0), data_keys=["input"]
+            )(x5),
+            "ImageSequential": lambda: K.ImageSequential(K.RandomHorizontalFlip(p=1.0))(x5),
+        }
+        for name, call in entry_points.items():
+            with pytest.raises(InputRankError, match=message) as info:
+                call()
+            for legacy_type in (ValueError, RuntimeError, AssertionError, ShapeError):
+                assert isinstance(info.value, legacy_type), (name, legacy_type)
+            assert info.value.actual_shape == tuple(x5.shape), name
+
+    def test_convention_validate_tensor_accepts_the_ranks_forward_accepts_4424(self, device, dtype):
+        # `forward` promotes (H, W) and (C, H, W); `validate_tensor` used to reject both (#4424).
+        aug = K.RandomHorizontalFlip(p=1.0)
+        for shape in ((6, 8), (3, 6, 8), (2, 3, 6, 8)):
+            x = torch.rand(*shape, device=device, dtype=dtype)
+            aug.validate_tensor(x)
+            assert aug(x).shape[-2:] == (6, 8)
+        with pytest.raises(InputRankError):
+            aug.validate_tensor(torch.rand(8, device=device, dtype=dtype))
+
+    def test_convention_wrong_input_rank_in_patch_video_and_3d_entry_points_4424(self, device, dtype):
+        flips = [K.RandomHorizontalFlip(p=1.0) for _ in range(4)]
+        with pytest.raises(InputRankError, match=r"must have a shape of \(B, C, H, W\)\. Got"):
+            K.PatchSequential(*flips, grid_size=(2, 2))(torch.rand(1, 2, 3, 8, 8, device=device, dtype=dtype))
+        with pytest.raises(InputRankError, match=r"must have a shape of \(B, T, C, H, W\)\. Got") as info:
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0))(torch.rand(2, 3, 6, 8, device=device, dtype=dtype))
+        assert isinstance(info.value, AssertionError)
+        volume_message = r"must have a shape of either \(D, H, W\), \(C, D, H, W\) or \(\*, C, D, H, W\)\. Got"
+        x6 = torch.rand(1, 1, 2, 3, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(InputRankError, match=volume_message):
+            RandomHorizontalFlip3D(p=1.0)(x6)
+        with pytest.raises(InputRankError, match=volume_message):
+            RandomHorizontalFlip3D(p=1.0).validate_tensor(x6)
+        RandomHorizontalFlip3D(p=1.0).validate_tensor(torch.rand(3, 4, 5, device=device, dtype=dtype))
+
+    def test_convention_wrong_input_rank_in_augmentation_sequential_video_and_3d_4424(self, device, dtype):
+        # Only the 5D layout is listed: a rank-3 or rank-4 video does not run through the container.
+        video = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BCTHW"))
+        with pytest.raises(InputRankError, match=r"must have a shape of \(B, C, T, H, W\)\. Got"):
+            video(torch.rand(1, 1, 2, 3, 6, 8, device=device, dtype=dtype))
+        # Rank 4 is ambiguous next to a 3D child, so no message lists (C, D, H, W).
+        volume = K.AugmentationSequential(RandomHorizontalFlip3D(p=1.0), data_keys=["input"])
+        for shape in ((2, 3, 5, 6), (5, 6), (1, 2, 1, 3, 5, 6)):
+            with pytest.raises(InputRankError, match=r"either \(D, H, W\) or \(B, C, D, H, W\)\. Got") as info:
+                volume(torch.rand(*shape, device=device, dtype=dtype))
+            assert isinstance(info.value, RuntimeError)
 
     def test_convention_numeric_ranges_return_cpu_parameters_independently_of_input(self, device, dtype):
         # With numeric ranges and unchanged CPU defaults, returned parameter placement is independent of
