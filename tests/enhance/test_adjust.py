@@ -1626,6 +1626,18 @@ class TestSolarize(BaseTester):
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
 
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5), (2, 2, 3, 4, 5)])
+    @pytest.mark.parametrize("element_shape", [(1,), (1, 1)])
+    def test_one_element_tensor_serves_the_batch_6547(self, device, dtype, shape, element_shape):
+        # A one-element thresholds or additions tensor solarizes the whole batch, as a 0-d one does; it was read as
+        # per-sample and rejected unless the batch (or, unbatched, the channel count) was 1.
+        img = torch.rand(shape, device=device, dtype=dtype)
+        thresholds = torch.full(element_shape, 0.5, device=device, dtype=dtype)
+        additions = torch.full(element_shape, 0.25, device=device, dtype=dtype)
+        expected = TestSolarize.f(img, thresholds.reshape(()), additions.reshape(()))
+        self.assert_close(TestSolarize.f(img, thresholds, additions), expected, atol=0, rtol=0)
+        self.assert_close(TestSolarize.f(img, thresholds), TestSolarize.f(img, thresholds.reshape(())), atol=0, rtol=0)
+
     @pytest.mark.parametrize("addition", [0.5, -0.5])
     def test_additions_closed_range_4605(self, device, dtype, addition):
         # RandomSolarize admits the closed [-0.5, 0.5], and its sampler can draw an endpoint exactly.

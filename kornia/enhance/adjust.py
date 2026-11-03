@@ -855,6 +855,9 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
+    if isinstance(thresholds, torch.Tensor) and thresholds.numel() == 1:
+        # One threshold serves the whole batch, as documented, whatever its shape (#6547).
+        thresholds = thresholds.reshape(())
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
@@ -945,6 +948,9 @@ def solarize(
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )
 
+        if isinstance(additions, torch.Tensor) and additions.numel() == 1:
+            # One addition serves the whole batch, as documented, whatever its shape (#6547).
+            additions = additions.reshape(())
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
