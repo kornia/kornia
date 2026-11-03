@@ -465,6 +465,8 @@ def _crop_by_boxes3d_to_size(
         tensor.shape[0] == 0
         and src_box.shape[0] == 0
         and dst_box.shape[0] == 0
+        and len(src_box.shape) == 3
+        and src_box.shape == dst_box.shape
         and tensor.device == src_box.device
         and tensor.device == dst_box.device
     ):
