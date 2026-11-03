@@ -390,6 +390,7 @@
     "MotionBlur",
     "MotionBlur3D",
     "OtsuThreshold",
+    "SauvolaThreshold",
     "Sobel",
     "SpatialGradient",
     "SpatialGradient3d",
@@ -438,6 +439,7 @@
     "motion_blur",
     "motion_blur3d",
     "otsu_threshold",
+    "sauvola_threshold",
     "sobel",
     "spatial_gradient",
     "spatial_gradient3d",
@@ -450,6 +452,10 @@
     "blur_pool2d",
     "edge_aware_blur_pool2d",
     "max_blur_pool2d"
+  ],
+  "kornia.filters.sauvola": [
+    "SauvolaThreshold",
+    "sauvola_threshold"
   ],
   "kornia.geometry": [
     "ARKitQTVecs_to_ColmapQTVecs",

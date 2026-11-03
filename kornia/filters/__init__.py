@@ -63,6 +63,7 @@ from .laplacian import Laplacian, laplacian
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .otsu_thresholding import OtsuThreshold, otsu_threshold
+from .sauvola import SauvolaThreshold, sauvola_threshold
 from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from .unsharp import UnsharpMask, unsharp_mask
 
@@ -82,6 +83,7 @@ __all__ = [
     "MotionBlur",
     "MotionBlur3D",
     "OtsuThreshold",
+    "SauvolaThreshold",
     "Sobel",
     "SpatialGradient",
     "SpatialGradient3d",
@@ -130,6 +132,7 @@ __all__ = [
     "motion_blur",
     "motion_blur3d",
     "otsu_threshold",
+    "sauvola_threshold",
     "sobel",
     "spatial_gradient",
     "spatial_gradient3d",

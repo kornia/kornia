@@ -17,7 +17,7 @@ counterpart on the same page.
    * - :doc:`filters.edge_detection`
      - Sobel, Laplacian and Canny edge detectors and spatial gradients in 2D and 3D.
    * - :doc:`Thresholding <filters.segmentation>`
-     - Range thresholding and Otsu's threshold.
+     - Range thresholding, Otsu's global threshold and Sauvola's local threshold.
    * - :doc:`filters.filtering_api`
      - Apply your own 2D, separable or 3D kernels with :func:`filter2d`, :func:`filter2d_separable` and :func:`filter3d`,
        or by correlation or convolution with :func:`correlate2d`, :func:`convolve2d`, :func:`correlate3d` and
