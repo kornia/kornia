@@ -345,9 +345,10 @@ class TestImageRegistrator(BaseTester):
     @pytest.mark.parametrize("height, width", [(32, 48), (48, 32)])
     def test_register_rotation_non_square_5063(self, device, dtype, height, width):
         # dst is src rotated by angle_to_rotation_matrix(6 deg) about the image centre, in pixels. The model maps dst to
-        # src, so rot converges to -6 on a non-square image as on a square one: measured -6.00 to -6.01 in float32 and
-        # float64, -5.78 to -5.85 in float16 and bfloat16. Rotating in the anisotropic normalized frame converged to
-        # -5.27 and -5.42 in float32, and -4.99 to -5.38 in half precision.
+        # src, so rot converges to -6 on a non-square image as on a square one: measured -6.00 to -6.01 in every dtype,
+        # since half precision is optimized in float32 (bfloat16 then rounds the angle to -6.0). Optimizing in the half
+        # dtype stopped at -5.78 to -5.85, and rotating in the anisotropic normalized frame converged to -5.27 and
+        # -5.42 in float32.
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
 
@@ -368,7 +369,7 @@ class TestImageRegistrator(BaseTester):
 
         ir = ImageRegistrator("rotation", lr=0.1, num_iterations=60, pyramid_levels=1, tolerance=0.0).to(device, dtype)
         ir.register(scene(0.0), scene(6.0))
-        assert abs(ir.model.rot.item() + 6.0) < 0.4
+        assert abs(ir.model.rot.item() + 6.0) < 0.05
 
     def test_different_shapes_message_6454(self, device, dtype):
         # The message carried a run of spaces from its string literal.
@@ -503,3 +504,29 @@ class TestConventionsImageRegistrator(BaseTester):
         assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
         with pytest.raises(ValueError):
             ir.register(dst.expand(1, 3, -1, -1), dst)
+
+    @pytest.mark.parametrize("model_type", ["similarity", "homography"])
+    def test_convention_image_registrator_optimizes_half_in_float32(self, device, dtype, model_type):
+        # Adam's second-moment estimate 0.001 * g**2 and its eps of 1e-8 are both 0 in float16 once |g| < 0.008, so a
+        # float16 optimization divided by zero: a float16 similarity registration of this scene ended in NaN on CPU and
+        # raised in linalg.inv on CUDA. A half model is optimized in float32 and handed back in its own dtype, so it
+        # ends where a float32 registration of the same half images does.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 registration")
+        src = self._scene(0.0, 0.0, device, dtype)
+        dst = self._scene(3.0, -1.5, device, dtype)
+        ir = ImageRegistrator(model_type, lr=3e-3, num_iterations=40, pyramid_levels=2).to(device, dtype)
+        reference = ImageRegistrator(model_type, lr=3e-3, num_iterations=40, pyramid_levels=2).to(device)
+        actual = ir.register(src, dst)
+        expected = reference.register(src.float(), dst.float())
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        for tensor in [*ir.model.parameters(), *ir.model.buffers()]:
+            assert tensor.dtype == dtype
+        expected_parameters = dict(reference.model.named_parameters())
+        # The same float32 optimization: bit for bit on CPU, up to CUDA's atomic grid_sample backward elsewhere.
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        for name, parameter in ir.model.named_parameters():
+            assert parameter.grad is None or parameter.grad.dtype == dtype
+            self.assert_close(parameter, expected_parameters[name].to(dtype), **exact)
+        self.assert_close(actual, expected.to(dtype))
