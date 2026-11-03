@@ -2957,6 +2957,9 @@ def determinant_to_polynomial(
         - Each row of ``A`` holds two cubics (columns 0 to 3 and 4 to 7) and a quartic (columns 8 to 12) in
           ``z``, highest degree first. The returned coefficients are lowest degree first (``cs[i]`` multiplies
           ``z**i``), the reverse of the :func:`solve_quadratic` layout.
+        - Half inputs are evaluated in float32 and the coefficients are returned in the input dtype. Each
+          coefficient sums 6 to 84 triple products; summed in float16 or bfloat16, the result depends on the
+          order of the additions, which CUDA's atomic ``scatter_add_`` does not fix.
 
     Args:
         A: torch.Tensor ``(B, 3, 13)``.
@@ -2971,17 +2974,18 @@ def determinant_to_polynomial(
     """
     B, device, dtype = A.shape[0], A.device, A.dtype
     global multiplication_indices, signs, coefficient_map  # noqa: PLW0603
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
 
     multiplication_indices = multiplication_indices.to(device)
-    signs = signs.to(device, dtype)
+    signs = signs.to(device, compute_dtype)
     coefficient_map = coefficient_map.to(device)
 
-    A_flat = A.flatten(start_dim=1)
+    A_flat = A.flatten(start_dim=1).to(compute_dtype)
     gathered_values = A_flat[:, multiplication_indices]
     products = torch.prod(gathered_values, dim=-1)
     signed_products = products * signs
 
-    cs = torch.zeros(B, 11, device=device, dtype=dtype)
+    cs = torch.zeros(B, 11, device=device, dtype=compute_dtype)
     batch_coefficient_map = coefficient_map.repeat(B, 1)
     cs.scatter_add_(dim=1, index=batch_coefficient_map, src=signed_products)
-    return cs
+    return cs.to(dtype)
