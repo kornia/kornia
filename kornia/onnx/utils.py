@@ -308,7 +308,7 @@ class ONNXLoader(CachedDownloader):
 
         try:
             # url is a fixed https:// literal built from a hardcoded Hugging Face API prefix.
-            with urlopen(url, timeout=10) as response:
+            with urlopen(url, timeout=10) as response:  # noqa: S310 - URL uses the fixed Hugging Face API prefix above.
                 return json.loads(response.read())  # Returns the JSON content of the repo
         except urllib.error.HTTPError as e:
             raise ValueError(f"Failed to fetch repository contents: {e.code}") from e
