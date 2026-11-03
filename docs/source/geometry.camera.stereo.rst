@@ -20,7 +20,7 @@ The *left rectified camera matrix*:
 
 .. math::
     P_0 = \begin{bmatrix}
-    fx & 0  & cx & 0 \\
+    fx & 0  & cx_{left} & 0 \\
     0  & fy & cy & 0 \\
     0  & 0  & 1  & 0
     \end{bmatrix}
@@ -29,7 +29,7 @@ The *right rectified camera matrix*:
 
 .. math::
     P_1 = \begin{bmatrix}
-    fx & 0  & cx & tx * fx \\
+    fx & 0  & cx_{right} & tx * fx \\
     0  & fy & cy & 0       \\
     0  & 0  & 1  & 0
     \end{bmatrix}
@@ -37,7 +37,7 @@ The *right rectified camera matrix*:
 where:
     * :math:`fx` is the focal length in the x-direction in pixels.
     * :math:`fy` is the focal length in the y-direction in pixels.
-    * :math:`cx` is the x-coordinate of the principal point in pixels.
+    * :math:`cx_{left}` and :math:`cx_{right}` are the x-coordinates of the left and right principal points in pixels.
     * :math:`cy` is the y-coordinate of the principal point in pixels.
     * :math:`tx` is the horizontal baseline in metric units.
 
@@ -108,7 +108,7 @@ Subtracting the first row from the third and inverting the expression gives:
     1
     \end{bmatrix} =
     \begin{bmatrix}
-    fy * tx & 0       & 0   & -fy * cx * tx \\
+    fy * tx & 0       & 0   & -fy * cx_{left} * tx \\
     0       & fx * tx & 0   & -fx * cy * tx \\
     0       & 0       & 0   & fx * fy * tx  \\
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
@@ -125,7 +125,7 @@ where :math:`Q` is
 .. math::
 
     Q = \begin{bmatrix}
-    fy * tx & 0       & 0   & -fy * cx * tx \\
+    fy * tx & 0       & 0   & -fy * cx_{left} * tx \\
     0       & fx * tx & 0   & -fx * cy * tx \\
     0       & 0       & 0   & fx * fy * tx  \\
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
@@ -139,7 +139,7 @@ Assuming :math:`fx = fy` you can further reduce this to:
 
 .. math::
     Q = \begin{bmatrix}
-    1 & 0       & 0   & -cx \\
+    1 & 0       & 0   & -cx_{left} \\
     0       & 1 & 0   & -cy \\
     0       & 0       & 0   & fx  \\
     0       & 0       & -1/tx & (cx_{left} - cx_{right}) / tx
