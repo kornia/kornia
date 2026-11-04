@@ -174,6 +174,45 @@ class TestWarpPoints(BaseTester):
         self.assert_close(op(src, dst, kernel, affine), op_jit(src, dst, kernel, affine))
 
 
+class TestThinPlateSplineAutocast(BaseTester):
+    """A caller's autocast region does not reach the kernel distances of the thin plate spline (#6573)."""
+
+    @pytest.mark.parametrize(
+        "entry", ["get_tps_transform", "warp_points_tps", "warp_image_tps", "RandomThinPlateSpline"]
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_autocast_does_not_change_the_result_6573(self, entry, autocast_dtype, device):
+        # The one matrix product of _pair_square_euclidean ran in the autocast dtype: in bfloat16, a float32
+        # warp_image_tps of a 256 px [0, 1] image was 0.08 off and a seeded RandomThinPlateSpline 0.29.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+        src = torch.tensor([[[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8], [0.1, -0.2]]], device=device)
+        dst = src + torch.tensor(
+            [[[0.03, -0.02], [-0.02, 0.05], [0.04, 0.01], [-0.03, -0.04], [0.02, 0.03]]], device=device
+        )
+        transform = kornia.geometry.transform
+
+        def run():
+            if entry == "RandomThinPlateSpline":
+                torch.manual_seed(3)
+                return kornia.augmentation.RandomThinPlateSpline(p=1.0)(image)
+            kernel, affine = transform.get_tps_transform(src, dst)
+            if entry == "get_tps_transform":
+                return torch.cat([kernel, affine], dim=1)
+            if entry == "warp_points_tps":
+                return transform.warp_points_tps(src, src, kernel, affine)
+            return transform.warp_image_tps(image, src, kernel, affine, align_corners=True)
+
+        expected = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = run()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
 class TestWarpImage(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device, dtype):
