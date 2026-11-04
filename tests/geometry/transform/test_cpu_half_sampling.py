@@ -42,10 +42,10 @@ from kornia.geometry.transform import (
 )
 from kornia.geometry.transform.imgwarp import _runs_in_float32
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample
 
 
-class TestCPUHalfSampling(BaseTester):
+class TestHalfSampling(BaseTester):
     @staticmethod
     def _warp(image, operation, align_corners):
         batch, _, height, width = image.shape
@@ -133,6 +133,7 @@ class TestCPUHalfSampling(BaseTester):
     @staticmethod
     def _float32_warp(image, operation, align_corners, param_dtype):
         # The transform is rounded to ``param_dtype`` first, so a float64 run of the same inputs is the reference.
+        # Transforms and maps are built on the CPU in float64 and then moved, as MPS has no float64.
         batch, _, height, width = image.shape
         c = math.cos(math.radians(25.0))
         s = math.sin(math.radians(25.0))
@@ -155,8 +156,8 @@ class TestCPUHalfSampling(BaseTester):
         if operation == "homography_pixel":
             return homography_warp(image, homography, (height, width), normalized_homography=False, **options)
         if operation == "remap_pixel":
-            grid = create_meshgrid(height, width, False, device=image.device, dtype=torch.float64)
-            points = torch.cat([grid, torch.ones_like(grid[..., :1])], -1) @ rotation.double()[0].T
+            grid = create_meshgrid(height, width, False, dtype=torch.float64)
+            points = torch.cat([grid, torch.ones_like(grid[..., :1])], -1) @ rotation.cpu().double()[0].T
             points = points.to(param_dtype).to(image)
             return remap(image, points[..., 0], points[..., 1], **options)
         if operation == "affine3d":
@@ -196,17 +197,19 @@ class TestCPUHalfSampling(BaseTester):
     )
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_half_warp_matches_float64(self, device, dtype, operation, align_corners):
-        # torch's CPU half grid_sample is corrupt from about 128 px, the CUDA one rounds coordinates and weights to
-        # the half dtype, and a half grid is off by more than half a pixel at 256 px in bfloat16 (#5751, #5814):
-        # on every device the matrix warps and remap run in float32, so they agree with a float64 run of the same
-        # half inputs to the output rounding.
+        # torch's CPU half grid_sample is corrupt from about 128 px, and on every device a half grid is off by more
+        # than half a pixel at 256 px in bfloat16 (#5751, #5814): the matrix warps and remap build their grid and
+        # sample in float32, so they agree with a float64 run of the same half inputs to the output rounding. The
+        # float64 reference runs on the CPU, as MPS has no float64.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("float16/bfloat16 warps run in float32")
+        if operation.endswith("3d") and not supports_bilinear_3d_grid_sample(device, torch.float32):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device")
         image = ((torch.arange(3 * 256 * 256, device=device) % 251).float() / 251).reshape(1, 3, 256, 256).to(dtype)
         actual = self._float32_warp(image, operation, align_corners, dtype)
-        expected = self._float32_warp(image.double(), operation, align_corners, dtype)
+        expected = self._float32_warp(image.cpu().double(), operation, align_corners, dtype)
         assert actual.dtype == dtype
-        self.assert_close(actual.double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
+        self.assert_close(actual.cpu().double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
 
     def test_half_augmentation_matches_float64(self, device, dtype):
         if dtype not in (torch.float16, torch.bfloat16):
@@ -214,9 +217,11 @@ class TestCPUHalfSampling(BaseTester):
         image = ((torch.arange(3 * 256 * 256, device=device) % 251).float() / 251).reshape(1, 3, 256, 256).to(dtype)
         aug = RandomAffine(degrees=(25.0, 25.0), p=1.0)
         actual = aug(image)
-        matrix = aug.transform_matrix[:, :2].double()
-        expected = warp_affine(image.double(), matrix, (256, 256), align_corners=False)
-        self.assert_close(actual.double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
+        # The float64 reference runs on the CPU, as MPS has no float64.
+        matrix = aug.transform_matrix[:, :2].cpu().double()
+        expected = warp_affine(image.cpu().double(), matrix, (256, 256), align_corners=False)
+        assert actual.dtype == dtype
+        self.assert_close(actual.cpu().double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
 
     @pytest.mark.parametrize("operation", ["affine", "perspective", "remap_pixel"])
     def test_cpu_half_warp_gradients_run_in_float32(self, device, dtype, operation):
