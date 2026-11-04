@@ -239,6 +239,28 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(steps, -offset.data)
         self.assert_close(points, expected_points)
 
+    @pytest.mark.parametrize("line_batch", [(), (1,)])
+    @pytest.mark.parametrize("plane_batch", [(2, 3), (3, 2), (2, 1), (1, 3), (2, 2, 2)])
+    def test_line_intersect_multi_axis_batch_of_planes_6497(self, line_batch, plane_batch, device, dtype):
+        """Each plane of a multi-axis batch gets its own point: ``point.shape == lambda.shape + (3,)``."""
+        origin = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype).expand(*line_batch, 3)
+        direction = torch.tensor([1.0, -1.0, 2.0], device=device, dtype=dtype).expand(*line_batch, 3)
+        line = ParametrizedLine(origin, direction)
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype).expand(*plane_batch, 3).clone()
+        offset = -torch.arange(1.0, torch.Size(plane_batch).numel() + 1, device=device, dtype=dtype).view(plane_batch)
+
+        steps, points = line.intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        assert steps.shape == plane_batch
+        assert points.shape == (*plane_batch, 3)
+        expected = [
+            line.intersect(Hyperplane(Vector3(n), Scalar(d)))[1].squeeze(0)
+            for n, d in zip(normal.view(-1, 3), offset.view(-1))
+        ]
+        self.assert_close(points.view(-1, 3), torch.stack(expected))
+        # Each point lies on its own plane, n . p + d = 0, with this normal along z: z = -d.
+        self.assert_close(points[..., 2], -offset)
+
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
             torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype),

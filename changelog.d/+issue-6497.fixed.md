@@ -1,0 +1,1 @@
+`ParametrizedLine.intersect` now returns one point per plane for a plane batch with more than one axis. A `(M, K)` batch used to give wrong points of shape `(M, 3)` without an error, or raise when the shapes did not broadcast, and now gives `(M, K, 3)`. As a result, a `(M, 1)` batch now returns `(M, 1, 3)` instead of `(M, 3)`; its values are unchanged.
