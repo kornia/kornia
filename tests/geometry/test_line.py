@@ -689,10 +689,10 @@ class TestFitLine(BaseTester):
         origin, direction = torch_optimizer(op)(points)
         # The origin is 0 only up to the rounding of coordinates of 40000: CUDA Inductor turns the mean into a
         # product with 1 / 3 and fuses it with the shift back by the first point, so float32 gives 0.0012, a quarter
-        # of an ulp of the coordinates, where eager and CPU Inductor round the mean to 40000 exactly.
-        self.assert_close(
-            origin, torch.zeros(1, 2, device=device, dtype=dtype), rtol=0.0, atol=40000 * torch.finfo(dtype).eps
-        )
+        # of an ulp of the coordinates, where eager and CPU Inductor round the mean to 40000 exactly. Half dtypes are
+        # centred in float32, so the bound follows float32's rounding: their own eps would allow an origin of 312.
+        atol = 40000 * torch.finfo(torch.promote_types(dtype, torch.float32)).eps
+        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype), rtol=0.0, atol=atol)
         expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
         self.assert_close(direction, expected)
 
