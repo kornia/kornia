@@ -70,10 +70,14 @@ the other, which every mismatch along that line fits, so a line of mismatches
 (along an edge, say) could outvote the true geometry. Such a model gets no
 inliers: each image's term of the distance, ``(a x2 + b y2)`` and
 ``(c x1 + d y1)`` over ``|(a, b, c, d)|``, must vary over the keypoints by at
-least five inlier thresholds (a standard deviation). In 1000 px images with 30
+least two inlier thresholds (a standard deviation). In 1000 px images with 30
 true correspondences, 40 mismatches within 0.3 px of a line and 30 random ones
 (ten scenes, the line in either image, ``inl_th`` of 1 or 2), it keeps 27 to 30
 of the true ones and 0 to 2 of the line; without the check, 0 to 1 and all 40.
+A true geometry whose keypoints spread less than that across its epipolar lines
+is rejected too, and RANSAC then returns zeros. With 200 correspondences, 0.5 px
+noise and ``inl_th=2.0``, that happens to a 15 px patch and to a second view at
+1/100 of the first one's scale, but not to a 30 px patch or a scale of 1/20.
 It suits views that are close to parallel projection. On synthetic pinhole views of
 a 60 m scene from 45 degrees off nadir (1000 px images, 0.5 px noise,
 ``inl_th=2.0``), it kept 99% of the true correspondences from 3000 m away,

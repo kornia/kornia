@@ -29,6 +29,7 @@ from kornia.core.utils import (
     _svd_work_dtype,
     _symmetric_eigenvector,
     _torch_svd_cast,
+    _torch_svd_in_work_dtype,
     safe_inverse_with_mask,
 )
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
@@ -669,9 +670,9 @@ def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             expected_shape=["B", "N"],
         )
     dtype = points1.dtype
-    # Pixel coordinates in the hundreds overflow a half-precision scatter matrix, and eigh has no half kernel. float32
-    # points are fitted in float64 (float32 on MPS): far from the origin, a float32 scatter of a near-planar scene
-    # rounds its two smallest eigenvalues into each other.
+    # Pixel coordinates in the hundreds overflow half precision, and the SVD has no half kernel. float32 points are
+    # fitted in float64 (float32 on MPS), so that far from the origin, as in a large image, the fit adds no rounding
+    # of its own to theirs.
     work = _svd_work_dtype(points1)
     with _autocast_disabled(points1.device.type):
         X = torch.cat([points2, points1], dim=-1).to(work)
@@ -681,21 +682,36 @@ def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             # A negative weight counts as zero; ``where`` keeps the derivative at a zero weight one-sided (#4229).
             w = weights.to(work)
             w = torch.where(w < 0, 0.0, w)
+        # A batch element with a non-finite point or weight, whose sum is then not finite, has no matrix. It is fitted
+        # as zeros and its F set to NaN, so the other elements keep theirs and every gradient stays finite, as in
+        # _svd_null_vector (#4770).
+        finite = (X.sum((-2, -1)) + w.sum(-1)).isfinite()
+        X = torch.where(finite.view(-1, 1, 1), X, 0.0)
+        w = torch.where(finite.view(-1, 1), w, 1.0)
         mean = (w[..., None] * X).sum(1) / w.sum(1, keepdim=True).clamp_min(torch.finfo(work).tiny)
         centred = X - mean[:, None]
         # Linear in w, so a zero weight has a finite gradient, unlike row scaling by sqrt(w) (#4912).
         scatter = (centred * w[..., None]).transpose(-2, -1) @ centred
-        # eigh's backward divides by every eigenvalue gap, so it is NaN when two of the other eigenvalues are equal,
-        # as for a grid seen from the front and the side; _symmetric_eigenvector divides only by the gaps to the
-        # smallest one (#6214).
-        eigenvalues, eigenvectors = torch.linalg.eigh(scatter.detach())
-        normal = _symmetric_eigenvector(scatter, eigenvalues, eigenvectors, 0)
+        # The derivatives come from the scatter: _symmetric_eigenvector divides only by the gaps to the smallest
+        # eigenvalue, so they stay finite when two other eigenvalues are equal, as for a grid seen from the front and
+        # the side (#6214).
+        if work == torch.float64:
+            eigenvalues, eigenvectors = torch.linalg.eigh(scatter.detach())
+            normal = _symmetric_eigenvector(scatter, eigenvalues, eigenvectors, 0)
+        else:
+            # The scatter squares the condition number: in float32 (on MPS, or for a half input), its eigh mixes the two
+            # smallest directions of a sample near a line and a plane, and torch 2.5's MPS has no eigh. The right
+            # singular vectors of the weighted centred points keep them apart; their squared singular values are the
+            # scatter's eigenvalues. In float64, eigh resolves them and is several times faster than an SVD on CUDA.
+            _, S, V = _torch_svd_in_work_dtype((centred * w[..., None].sqrt()).detach(), full_matrices=False)
+            normal = _symmetric_eigenvector(scatter, S.to(work).square(), V.to(work), -1)
         zeros = torch.zeros_like(normal[:, 0])
         last = -(normal * mean).sum(-1)
         F = torch.stack(
             [zeros, zeros, normal[:, 0], zeros, zeros, normal[:, 1], normal[:, 2], normal[:, 3], last], dim=-1
         ).view(-1, 3, 3)
         F = normalize_transformation(F)
+        F = torch.where(finite.view(-1, 1, 1), F, float("nan"))
         if dtype == torch.float16:
             # Points centred on the origin put e near 0, and F[2, 2] = 1 then puts the other entries above float16's
             # 65504: such an F is scaled to its largest entry 1 instead.
@@ -733,7 +749,8 @@ def find_fundamental(
           distance): only their ratios matter, a negative weight counts as zero, and ``method="7POINT"`` ignores them.
         - ``"AFFINE"`` fits and returns the affine form exactly; it computes in float64 (float32 on MPS and for
           half-precision input). A float16 result whose entries ``F[2, 2] = 1`` would put above float16's maximum
-          (``e`` near 0, as for points centred on the origin) is scaled to its largest entry 1 instead.
+          (``e`` near 0, as for points centred on the origin) is scaled to its largest entry 1 instead. A batch
+          element with a non-finite point or weight gets a NaN matrix, and the others are unaffected.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
         - A caller's autocast region does not change the fit.
 

@@ -100,8 +100,10 @@ _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
 
 # An affine fundamental matrix must tie the two images together: as a correspondence's point in one image moves over
-# the keypoints, the geometric distance must vary by at least this many inlier thresholds (a standard deviation).
-_AFFINE_FUNDAMENTAL_MIN_SPREAD = 5.0
+# the keypoints, the geometric distance must vary by at least this many inlier thresholds (a standard deviation). The
+# tests bound it on both sides: at 1, twenty mismatches along a line outvote twelve true correspondences, and at 4, a
+# true geometry whose keypoints spread 3.7 thresholds across its epipolar lines is rejected.
+_AFFINE_FUNDAMENTAL_MIN_SPREAD = 2.0
 
 
 def _affine_fundamental_ties_both_images(
@@ -117,20 +119,22 @@ def _affine_fundamental_ties_both_images(
     ``(c x1 + d y1)`` over ``kp1`` and ``(a x2 + b y2)`` over ``kp2``, divided by ``|(a, b, c, d)|``, must have a
     standard deviation of at least ``_AFFINE_FUNDAMENTAL_MIN_SPREAD`` times the inlier threshold ``inl_th`` (not
     squared). For the true geometry the first image's term is the spread of the matched points across the epipolar
-    lines, seen in the second image.
+    lines, seen in the second image. Correspondences with a non-finite point, which no model fits, are left out.
     """
     with _autocast_disabled(kp1.device.type):
         work = torch.promote_types(torch.promote_types(kp1.dtype, models.dtype), torch.float32)
         normal = models[:, [0, 1, 2, 2], [2, 2, 0, 1]].to(work)  # (a, b, c, d)
-        floor = _AFFINE_FUNDAMENTAL_MIN_SPREAD * inl_th * normal.norm(dim=-1)
-
-        def spread(points: torch.Tensor, direction: torch.Tensor) -> torch.Tensor:
-            centred = points.reshape(-1, 2).to(work)
-            centred = centred - centred.mean(0)
-            covariance = centred.mT @ centred / centred.shape[0]
-            return ((direction @ covariance) * direction).sum(-1).clamp_min(0.0).sqrt()
-
-        return (spread(kp2, normal[:, :2]) >= floor) & (spread(kp1, normal[:, 2:]) >= floor)
+        # The correspondences as (x2, y2, x1, y1), the order of (a, b, c, d); a row whose sum is not finite is left out.
+        points = torch.cat([kp2.reshape(-1, 2), kp1.reshape(-1, 2)], -1).to(work)
+        finite = points.sum(-1, keepdim=True).isfinite()
+        count = finite.sum().clamp_min(1)
+        points = torch.where(finite, points, 0.0)
+        centred = torch.where(finite, points - points.sum(0) / count, 0.0)
+        covariance = centred.mT @ centred / count
+        # Each image's term has the variance n^T C n over its own 2 x 2 block of the covariance; compared squared.
+        floor = (_AFFINE_FUNDAMENTAL_MIN_SPREAD * inl_th) ** 2 * normal.square().sum(-1)
+        n2, n1 = normal[:, :2], normal[:, 2:]
+        return (((n2 @ covariance[:2, :2]) * n2).sum(-1) >= floor) & (((n1 @ covariance[2:, 2:]) * n1).sum(-1) >= floor)
 
 
 def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
@@ -282,8 +286,9 @@ class RANSAC(nn.Module):
           and refits its inliers by orthogonal regression, the Gold Standard estimate (Hartley and Zisserman,
           algorithm 14.1). It counts no inliers for a matrix that (nearly) ignores one image, ``(a, b)`` or
           ``(c, d)`` near 0: that matrix is a line in the other image, which mismatches along a line fit. Each
-          image's term of the distance must vary over the keypoints by at least five inlier thresholds (a standard
-          deviation).
+          image's term of the distance must vary over the keypoints by at least two inlier thresholds (a standard
+          deviation). A true geometry whose keypoints spread less across its epipolar lines, such as a 15 px patch
+          at ``inl_th=2``, is rejected too, and RANSAC returns zeros.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven

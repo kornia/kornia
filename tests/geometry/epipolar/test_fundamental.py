@@ -532,6 +532,36 @@ class TestFindFundamentalAffine(BaseTester):
         self.assert_close(F.float(), expected / expected.abs().amax(), rtol=0.0, atol=1e-3)
         assert F.abs().amax() == 1.0
 
+    @pytest.mark.parametrize("image", [1, 2])
+    def test_points_of_one_image_on_a_line_give_that_line(self, device, dtype, image):
+        # Every four of the fixture's twelve correspondences, with one image's points moved onto the line y = 50. The
+        # stacked correspondences then vary along neither that y nor, for some samples, a second direction whose
+        # scatter eigenvalue is below 1e-7 of the largest. A float32 eigh of the scatter matrix (a half input's, or a
+        # float32 input's on MPS) mixed the two; the singular vectors of the centred correspondences keep them apart.
+        scene = affine_two_view_scene(device, dtype)
+        x1, x2 = scene["x1"][0], scene["x2"][0]
+        (x1 if image == 1 else x2)[:, 1] = 50.0
+        samples = torch.combinations(torch.arange(12, device=device), 4)
+        F = epi.find_fundamental(x1[samples], x2[samples], method="AFFINE")
+        expected = torch.zeros(3, 3, device=device, dtype=dtype)
+        expected[(2, 1) if image == 1 else (1, 2)] = -0.02
+        expected[2, 2] = 1.0
+        self.assert_close(F, expected.expand_as(F), rtol=0.0, atol=1e-4)
+
+    def test_nonfinite_batch_element_gives_nan(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
+        x1, x2 = x1.repeat(3, 1, 1), x2.repeat(3, 1, 1)
+        x1[1, 4] = float("nan")
+        x2[2, 7, 0] = float("inf")
+        x1.requires_grad_()
+        F = epi.find_fundamental(x1, x2, method="AFFINE")
+        # The finite element keeps its matrix and the others are NaN, rather than the whole batch raising.
+        self.assert_close(F[0], epi.find_fundamental(x1[:1].detach(), x2[:1], method="AFFINE")[0])
+        assert torch.isnan(F[1:]).all()
+        F[0].sum().backward()
+        assert torch.isfinite(x1.grad).all()
+
     def test_too_few_correspondences_raise(self, device, dtype):
         points = torch.rand(1, 3, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError, match=r"points1 and points2 must have shape \(B, N, 2\) with N >= 4, got"):

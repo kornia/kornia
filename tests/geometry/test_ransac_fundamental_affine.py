@@ -116,12 +116,12 @@ class TestRANSACFundamentalAffine(BaseTester):
     @pytest.mark.parametrize("image", [1, 2])
     def test_points_on_a_line_in_one_image_give_no_model(self, device, dtype, image):
         x1, x2, _ = _with_outliers(device, dtype)
-        # With one image's points all on the line y = 0, every sample is fitted by the rank-one matrix of that line,
-        # (a, b) = (0, 1) or (c, d) = (0, 1), which every correspondence satisfies exactly: no epipolar geometry.
+        # With one image's points all on the line y = 0, the rank-one matrix of that line, (a, b) = (0, 1) or
+        # (c, d) = (0, 1), fits all twenty correspondences exactly: no epipolar geometry. A sample that is nearly
+        # coplanar besides can be fitted by another matrix, which a few correspondences fit.
         (x1 if image == 1 else x2)[:, 1] = 0.0
-        model, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=256, seed=0)(x1, x2)
-        assert not model.any()
-        assert not inliers.any()
+        _, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=256, seed=0)(x1, x2)
+        assert int(inliers.sum()) < 20
 
     @pytest.mark.parametrize("image", [1, 2])
     def test_mismatches_along_a_line_do_not_outvote_the_true_geometry(self, device, dtype, image):
@@ -136,6 +136,39 @@ class TestRANSACFundamentalAffine(BaseTester):
         # (12 / 40)^4 = 0.8%: 2048 samples miss it with probability 6e-8.
         model, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=2048, seed=0)(x1, x2)
         assert torch.equal(inliers, torch.arange(40, device=device) < 12)
+        self.assert_close(model, expected, **_tol(dtype))
+
+    def test_true_geometry_that_spreads_little_is_kept(self, device, dtype):
+        _skip_half(dtype)
+        x1, x2, F = _with_outliers(device, dtype)
+        # View 2 shrunk 20 times about (300, 260), as a far smaller-scale image would be. Over the keypoints, the
+        # true matrix's two terms of the distance vary by 3.7 and 4.9 px (standard deviations): a check at four
+        # thresholds or more would reject it. The mismatches stay at least 2.1 px from it.
+        scale, cx, cy = 0.05, 300.0, 260.0
+        centre = torch.tensor([cx, cy], device=device, dtype=dtype)
+        x2 = centre + scale * (x2 - centre)
+        # The fixture's F applies to the unshrunk points, T x2.
+        T = torch.tensor(
+            [[1 / scale, 0.0, cx * (1 - 1 / scale)], [0.0, 1 / scale, cy * (1 - 1 / scale)], [0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+        expected = T.mT @ F
+        expected = expected / expected[2, 2]
+        model, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=256, seed=0)(x1, x2)
+        assert torch.equal(inliers, torch.arange(20, device=device) < 12)
+        self.assert_close(model, expected, **_tol(dtype))
+
+    def test_nonfinite_correspondences_are_outliers(self, device, dtype):
+        _skip_half(dtype)
+        x1, x2, expected = _with_outliers(device, dtype)
+        # Copies of five true correspondences, three with a NaN point in image 1 and two with an infinite coordinate
+        # in image 2. Most samples draw one of them, and the keypoints' spread includes them.
+        x1, x2 = torch.cat([x1, x1[:5]]), torch.cat([x2, x2[:5]])
+        x1[20:23] = float("nan")
+        x2[23:, 0] = float("inf")
+        model, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=256, seed=0)(x1, x2)
+        assert torch.equal(inliers, torch.arange(25, device=device) < 12)
         self.assert_close(model, expected, **_tol(dtype))
 
     def test_threshold_is_the_geometric_distance(self, device, dtype):
