@@ -6,9 +6,10 @@
 Transforms that combine samples or rearrange patches within an image. Supported label, box and mask keys
 vary by class; mixing does not imply support for every annotation type.
 
-Use ``RandomMixUpV2`` to blend complete paired images and ``RandomCutMixV2`` to replace a sampled rectangle with its
-paired image. ``RandomMosaic`` constructs a crop from several batch images, whereas ``RandomJigsaw`` rearranges tiles
-within each image. ``RandomTransplantation`` requires image masks and copies a labelled region with its mask.
+``RandomMixUpV2`` blends each image with a paired batch image, and ``RandomCutMixV2`` pastes in a rectangle from
+it. ``RandomMosaic`` replaces an image by a crop of a mosaic of batch images; ``RandomJigsaw`` shuffles the tiles of
+each image. ``RandomTransplantation`` copies the region of one mask label, together with its mask, from the previous
+image in the batch.
 
 .. autoclass:: PatchMix
 .. autoclass:: RandomCutMixV2

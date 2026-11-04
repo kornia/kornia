@@ -9,16 +9,14 @@ Automatic Augmentation Methods
 Augmentation Policy
 -------------------
 
-Choose a policy by how it selects operations:
+The three policies differ in how they pick operations:
 
-- :class:`AutoAugment` selects a sub-policy from a searched dataset preset or a supplied list.
-- :class:`RandAugment` selects ``n`` operations without replacement and sets their magnitudes using ``m``.
-- :class:`TrivialAugment` selects one operation and samples its magnitude per image, if it has one.
+- :class:`AutoAugment` picks one sub-policy from a searched dataset preset, or from a list you supply.
+- :class:`RandAugment` picks ``n`` distinct operations and sets every magnitude from ``m``.
+- :class:`TrivialAugment` picks one operation and draws its magnitude, if it has one, per image.
 
-Each call selects the operation sequence for the batch. Individual operations then use their own probability
-gates and parameters. The policies accept floating image batches ``(B, C, H, W)``; channel and range requirements
-come from the operations in the chosen policy. Use :class:`~kornia.augmentation.container.ImageSequential` for
-a sequence of transforms you choose explicitly.
+One call picks one operation sequence for the whole batch; each operation then applies its own probability and
+parameters. To chain transforms of your own choice, use :class:`~kornia.augmentation.container.ImageSequential`.
 
 .. autoclass:: AutoAugment
 
@@ -63,8 +61,7 @@ a sequence of transforms you choose explicitly.
 Policy operations
 -----------------
 
-The following building blocks are primarily useful when defining a custom policy. The policy classes above choose and
-sequence them for the supplied AutoAugment, RandAugment and TrivialAugment policies.
+The operations the policies above sample. Use them directly to define a custom policy.
 
 .. currentmodule:: kornia.augmentation.auto.operations.ops
 

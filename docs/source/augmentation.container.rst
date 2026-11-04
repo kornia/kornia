@@ -6,18 +6,19 @@ Augmentation Containers
 
 .. currentmodule:: kornia.augmentation.container
 
-Choose :class:`AugmentationSequential` for images with aligned masks, boxes or keypoints, and :class:`ImageSequential`
-for images alone. :class:`VideoSequential` applies image transforms to video frames; :class:`PatchSequential` applies
-them to an image grid. The dispatchers run several pipelines on one input bundle or pair each pipeline with a bundle.
+Containers chain augmentations into one pipeline. Use :class:`AugmentationSequential` when masks, boxes or keypoints
+must follow the image, and :class:`ImageSequential` for images alone. :class:`VideoSequential` applies image
+transforms to every frame of a video, and :class:`PatchSequential` to every patch of an image grid. The dispatchers
+run several pipelines, either all on one input or each on its own input.
 
 
 Augmentation Sequential
 -----------------------
 
-``AugmentationSequential(*transforms, data_keys=keys)(*inputs)`` applies a sequence through each child's supported
-image and annotation handlers. Its recorded parameters support replay, and matrix-based geometric steps contribute
-to the composed transform matrix. Inversion applies to supported 2D geometric steps; it leaves intensity changes
-applied and cannot recover image content lost through resampling or cropping.
+``AugmentationSequential`` samples its parameters once per call and applies them to every input named in
+``data_keys``: images, masks, boxes and keypoints. It records the draw for replay, composes the matrices of its
+geometric steps, and undoes them with ``inverse()``. Inversion restores coordinates, not the pixels lost to cropping
+or resampling, and it leaves color changes in place.
 
 .. autoclass:: AugmentationSequential
 
@@ -163,8 +164,7 @@ data formats.
 Container building blocks
 -------------------------
 
-These base classes and records support custom containers. Applications normally start with
-``AugmentationSequential``, ``ImageSequential``, ``PatchSequential`` or ``VideoSequential`` above.
+Base classes and parameter records for writing a custom container. To build a pipeline, use the containers above.
 
 .. autoclass:: kornia.augmentation.container.base.BasicSequentialBase
 .. autoclass:: kornia.augmentation.container.base.SequentialBase

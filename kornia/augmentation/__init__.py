@@ -17,11 +17,11 @@
 
 """Build image, video and volume augmentation pipelines with recorded random parameters.
 
-Construct a transform, then call it on a floating-point tensor. Image batches use ``(B, C, H, W)`` and
-volume batches ``(B, C, D, H, W)``; color operations generally expect values in ``[0, 1]``. Each class states
-its channel, range and probability rules. Use ``AugmentationSequential`` to transform images and supported
-annotations together; use ``ImageSequential`` for images alone. In eager mode, ``_params`` records a draw
-for replay with ``params=``. An inverse geometric warp cannot recover cropped or resampled image content.
+Transforms take float tensors, ``(B, C, H, W)`` images or ``(B, C, D, H, W)`` volumes; color transforms expect
+values in ``[0, 1]``. ``AugmentationSequential`` applies one draw to images, masks, boxes and keypoints together,
+and ``ImageSequential`` chains image-only transforms. In eager mode, ``aug._params`` holds the last draw, and
+``aug(x, params=aug._params)`` replays it. Inverting a geometric warp cannot restore pixels lost to cropping or
+resampling.
 
 Which class to use:
 

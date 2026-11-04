@@ -17,8 +17,8 @@
 
 """Choose a policy that samples image augmentation operations automatically.
 
-The policies accept image tensors and record their chosen paths in ``_params`` for replay. Their operations are
-defined for automatic policy construction; for a hand-written sequence use ``kornia.augmentation.ImageSequential``.
+Each policy records the operations it chose in ``_params``, so a call can be replayed. To chain transforms of your
+own choice, use ``kornia.augmentation.ImageSequential``.
 
 Which class to use:
 

@@ -8,12 +8,11 @@ Image Augmentations
 
 .. currentmodule:: kornia.augmentation
 
-Choose an operator by what it changes. Image batches use floating-point tensors of shape ``(B, C, H, W)``;
-volume batches use ``(B, C, D, H, W)``. Color transforms generally expect values in ``[0, 1]``. Each class states
-its channel and range requirements, whether its probability gate applies per sample or to the whole batch,
-and which parameters ``same_on_batch`` shares. Use :class:`~kornia.augmentation.container.AugmentationSequential` to
-compose transforms and coordinate their supported annotation handlers. In the operator contracts, "selected"
-means chosen by the probability gate: ``p`` selects samples or a whole batch as documented by that class.
+The augmentation operators, grouped by what they change. They take float tensors of shape ``(B, C, H, W)``, or
+``(B, C, D, H, W)`` for the 3D transforms; color transforms expect values in ``[0, 1]``. Each operator applies
+with probability ``p``, drawn per sample, except the crops, the resizes, ``RandomMixUpV2``, ``RandomCutMixV2`` and
+``PatchMix``, which transform the whole batch or none of it. In the class descriptions, "selected" samples are
+the ones ``p`` picked. Combine operators with :class:`~kornia.augmentation.container.AugmentationSequential`.
 
 .. list-table::
    :widths: 30 70
