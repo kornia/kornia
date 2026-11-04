@@ -504,14 +504,15 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
         # returns to the homography's dtype, so a 640 voxel wide identity samples where a normalized identity grid
         # does, and in float16 within an eighth of a voxel of every column. The volume holds the column index. The
         # reference is the 2-D homography_warp of a depth slice, whose normalized grid follows align_corners; the
-        # 3-D normalized grid is corner-aligned under both settings (#4503). A CPU half 3-D warp runs in float32
-        # (#5751), so its reference does too.
+        # 3-D normalized grid is corner-aligned under both settings (#4503). A half 3-D warp runs in float32 on
+        # every device (#5751, #5814), so its reference does too.
         width = 640
         volume = torch.arange(width, device=device).to(dtype).expand(1, 1, 2, 2, width)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
 
         actual = self._warp(volume, identity, (2, 2, width), align_corners=align_corners)
-        reference_dtype = torch.float32 if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16) else dtype
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        reference_dtype = torch.float32 if half_in_float32 else dtype
         normalized = proj.homography_warp(
             volume[:, :, 0].to(reference_dtype),
             identity[:, :3, :3].to(reference_dtype),
@@ -636,8 +637,9 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
             device=device,
             dtype=dtype,
         )
-        # a CPU float16/bfloat16 warp runs in float32 and returns the input dtype (#5751)
-        work = torch.float32 if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16) else dtype
+        # a float16/bfloat16 warp runs in float32 on every device and returns the input dtype (#5751, #5814)
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        work = torch.float32 if half_in_float32 else dtype
         grid = kornia.geometry.create_meshgrid3d(4, 3, 6, normalized_coordinates=True, device=device, dtype=work)
         warped_grid = proj.warp_grid3d(grid[..., [1, 2, 0]], src_homo_dst.to(work))
         expected = _torch_grid_sample(volume.to(work), warped_grid, align_corners=align_corners).to(dtype)
