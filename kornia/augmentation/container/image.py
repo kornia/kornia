@@ -67,16 +67,21 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
-            than the number of children with a nonzero weight, mix augmentations not counted.
+            ``random_apply_weights``. Selections repeat only when the requested count is larger than the number of
+            children that can be drawn: the children with a nonzero weight, mix augmentations not counted, plus one
+            place when the count and the mix augmentations together reach the number of children, since a mix
+            augmentation is then certain to take a place.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If True, the whole list of args will be processed as a sequence in a random order.
+            If True, the whole list of args will be processed as a sequence in a random order. With a non-mix child of
+            weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some may be
+            left out.
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
-            length shall be as same as the number of operations. Integer and boolean weights are converted to floating
-            point. By default, operations are sampled uniformly.
+            length shall be as same as the number of operations. The weights are relative: multiplying them all by a
+            constant changes neither the selection probabilities nor whether selections repeat. Integer and boolean
+            weights are converted to floating point. By default, operations are sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -228,6 +233,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
         """Get a forward sequence when random apply is in need.
 
+        The draw samples with replacement only when the drawn count exceeds the members that can be drawn, as the
+        ``random_apply`` argument describes.
+
         Args:
             with_mix: if to require a mix augmentation for the sequence.
 
@@ -247,10 +255,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
-        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
-        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
-        # place more can then be drawn without replacement. That place is last because the draw keeps the top
-        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        # The weights are relative, so whether members repeat must not depend on their scale: only the number of members
+        # that can be drawn decides it. Without replacement, torch.multinomial cannot draw more indices than there are
+        # nonzero weights. A certain mix insertion below replaces the last drawn index, where torch.multinomial puts a
+        # member of weight 0, so one place more can then be drawn without replacement. That place is last because the
+        # draw keeps the top weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
         num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
         mix_place = int(with_mix and len(mix_indices) != 0 and len(mix_indices) + num_samples >= len(self))
         # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
@@ -258,9 +267,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
             indices = torch.multinomial(
-                multinomial_weights,
-                num_samples,
-                replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
+                multinomial_weights, num_samples, replacement=num_samples > num_nonzero + mix_place
             )
 
         mix_added = False

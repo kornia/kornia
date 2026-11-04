@@ -54,7 +54,8 @@ class VideoSequential(ImageSequential):
         data_format: only BCTHW and BTCHW are supported.
         same_on_frame: apply the same transformation across the channel per frame.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+            apply transformation. Selections repeat only when the requested count is larger than the number of
+            children that can be drawn, as in :class:`~kornia.augmentation.container.ImageSequential`.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.

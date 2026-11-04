@@ -435,7 +435,7 @@ class TestConventionImageSequential(BaseTester):
             ([7, 0, 3, 1], 3, True, False),
             ([7, 0, 3, 1], True, True, True),
             ([7, 2, 1, 4], 5, True, True),
-            ([0.7, 0.2, 0.1], 2, False, True),
+            ([0.7, 0.2, 0.1], 2, False, False),
         ],
     )
     @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
@@ -443,8 +443,8 @@ class TestConventionImageSequential(BaseTester):
         self, weights, random_apply, with_mix, repeats, container, device, dtype
     ):
         # A count the nonzero weights can fill is drawn without repetition, also when a mix augmentation is certain to
-        # take the last place, as with random_apply=True; a count they cannot fill, or one above the sum of the weights,
-        # repeats. A mix augmentation is applied at most once either way.
+        # take the last place, as with random_apply=True; a count they cannot fill repeats. A count above the sum of the
+        # weights used to repeat as well, until #6114. A mix augmentation is applied at most once either way.
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         members = [K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0)]
         if with_mix:
@@ -502,6 +502,276 @@ class TestConventionImageSequential(BaseTester):
             assert not mix_added
             assert len(names) == 4
             assert "RandomMixUpV2_3" not in names
+
+    @staticmethod
+    def _random_apply_members(num_mix=0):
+        ordinary = [K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0)]
+        return ordinary + [K.RandomMixUpV2(p=1.0) for _ in range(num_mix)]
+
+    @staticmethod
+    def _random_apply_container(name, members, device, dtype, **kwargs):
+        # The four containers that select through ImageSequential.get_random_forward_sequence, each with its input.
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        if name == "VideoSequential":
+            return K.VideoSequential(*members, **kwargs), torch.rand(2, 2, 3, 8, 8, device=device, dtype=dtype)
+        if name == "PatchSequential":
+            return K.PatchSequential(*members, grid_size=(2, 2), patchwise_apply=False, **kwargs), image
+        return getattr(K, name)(*members, **kwargs), image
+
+    @staticmethod
+    def _applied_names(seq):
+        # PatchSequential records a PatchParamItem around each ParamItem.
+        return [getattr(item, "param", item).name for item in seq._params]
+
+    @staticmethod
+    def _drawn_names(seq, with_mix=True):
+        return [name for name, _ in seq.get_random_forward_sequence(with_mix=with_mix)[0]]
+
+    @pytest.mark.parametrize("weights", [[0.5, 0.3, 0.2], [5.0, 3.0, 2.0]])
+    @pytest.mark.parametrize(
+        "container", ["ImageSequential", "AugmentationSequential", "VideoSequential", "PatchSequential"]
+    )
+    def test_random_apply_repeats_do_not_follow_the_weight_scale_6114(self, weights, container, device, dtype):
+        # The script of #6114: [0.5, 0.3, 0.2] repeated a member in 366 of 1000 draws of random_apply=2, because the
+        # count exceeded the sum of the weights, and [5.0, 3.0, 2.0] repeated in none.
+        seq, x = self._random_apply_container(
+            container, self._random_apply_members(), device, dtype, random_apply=2, random_apply_weights=weights
+        )
+        for seed in range(50):
+            torch.manual_seed(seed)
+            seq(x)
+            names = self._applied_names(seq)
+            assert len(names) == len(set(names)) == 2
+
+    @pytest.mark.parametrize("weights", [None, [7.0, 2.0, 1.0, 4.0], [0.7, 0.2, 0.1, 0.4], [0.07, 0.02, 0.01, 0.0]])
+    @pytest.mark.parametrize(
+        "container", ["ImageSequential", "AugmentationSequential", "VideoSequential", "PatchSequential"]
+    )
+    def test_random_apply_true_with_a_mix_applies_each_member_once_6114(self, weights, container, device, dtype):
+        # The default weights compared the full count with the ordinary members' sum, so 79 of 100 calls did not apply
+        # every member once, although True is documented to process the whole list. The mix member's own weight plays
+        # no part.
+        members = self._random_apply_members(num_mix=1)
+        seq, x = self._random_apply_container(
+            container, members, device, dtype, random_apply=True, random_apply_weights=weights
+        )
+        for seed in range(30):
+            torch.manual_seed(seed)
+            seq(x)
+            names = self._applied_names(seq)
+            assert len(names) == 4
+            assert {name.rpartition("_")[2] for name in names} == {"0", "1", "2", "3"}
+
+    @pytest.mark.parametrize(
+        ("num_mix", "weights"),
+        [
+            (0, [0.5, 0.3, 0.2]),
+            (0, [5.0, 3.0, 2.0]),
+            (0, [0.005, 0.003, 0.002]),
+            (0, [5, 3, 2]),
+            (1, None),
+            (1, [0.5, 0.3, 0.2, 0.5]),
+            (1, [5.0, 3.0, 2.0, 5.0]),
+        ],
+    )
+    @pytest.mark.parametrize("random_apply", [2, 3, True, (2,), (1, 3), (0, 2)])
+    def test_random_apply_count_that_fits_never_repeats_6114(self, num_mix, weights, random_apply):
+        # With a mix, a range holds counts whose insertion is certain and counts whose insertion is not.
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights
+        )
+        drawn = set()
+        for seed in range(60):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq)
+            drawn.add(len(names))
+            assert len(set(names)) == len(names)
+        assert drawn == set(range(*seq.random_apply))
+
+    @pytest.mark.parametrize("num_mix", [0, 1])
+    @pytest.mark.parametrize("random_apply", [1, 2, 3, 5, True, (1,)])
+    def test_random_apply_weight_scale_leaves_the_selection_unchanged_6114(self, num_mix, random_apply):
+        # The weights are relative. A power of 2 scales them exactly, so a seed selects the same members in the same
+        # order and leaves the generator in the same state.
+        weights = torch.tensor([0.5, 0.25, 0.25, 0.5][: 3 + num_mix])
+        sequences = [
+            K.ImageSequential(
+                *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights * scale
+            )
+            for scale in (1.0, 1 / 64, 64.0)
+        ]
+        for seed in range(30):
+            selections, states = [], []
+            for seq in sequences:
+                torch.manual_seed(seed)
+                selections.append(self._drawn_names(seq))
+                states.append(torch.get_rng_state())
+            assert selections[0] == selections[1] == selections[2]
+            assert torch.equal(states[0], states[1])
+            assert torch.equal(states[0], states[2])
+
+    @pytest.mark.parametrize(
+        ("weights", "random_apply", "num_mix", "with_mix", "replacement"),
+        [
+            (None, 2, 0, True, False),
+            (None, True, 0, True, False),
+            (None, (1, 3), 0, True, False),
+            ([5.0, 3.0, 2.0], 2, 0, True, False),
+            ([5.0, 3.0, 2.0], (1, 3), 0, True, False),
+            ([7.0, 2.0, 1.0], True, 0, True, False),
+            ([7.0, 0.0, 3.0], 2, 0, True, False),
+            ([0.05, 0.03, 0.02], 1, 0, True, False),
+            (None, 5, 0, True, True),
+            ([7.0, 2.0, 1.0], 4, 0, True, True),
+            ([7.0, 0.0, 3.0], 3, 0, True, True),
+            (None, 1, 1, True, False),
+            (None, 2, 1, True, False),
+            (None, 3, 1, True, False),
+            (None, 5, 1, True, True),
+            ([7.0, 2.0, 1.0, 4.0], True, 1, True, False),
+            ([7.0, 0.0, 3.0, 1.0], 3, 1, True, False),
+            ([7.0, 0.0, 3.0, 1.0], True, 1, True, True),
+            ([7.0, 2.0, 1.0, 1.0], 4, 1, False, True),
+            ([7.0, 2.0, 1.0, 1.0], 3, 1, False, False),
+        ],
+    )
+    def test_random_apply_below_the_old_sum_rule_keeps_its_draw_6114(
+        self, weights, random_apply, num_mix, with_mix, replacement
+    ):
+        # Calls that never reached the sum rule keep their selection and their RNG consumption. torch.multinomial itself
+        # differs between torch 2.5.1 and 2.14 in both, so the reference is the same draw spelled out in torch calls and
+        # not a literal. A count of 1 did reach the rule, but torch.multinomial takes the same path for it either way.
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights
+        )
+        names = [name for name, _ in seq.named_children()]
+        for seed in range(50):
+            torch.manual_seed(seed)
+            selected = self._drawn_names(seq, with_mix=with_mix)
+            state = torch.get_rng_state()
+
+            torch.manual_seed(seed)
+            count = int(torch.randint(*seq.random_apply, (1,)).item())
+            mix_indices = seq.get_mix_augmentation_indices(seq.named_children())
+            ordinary = seq.random_apply_weights.clone()
+            ordinary[mix_indices] = 0
+            indices = torch.multinomial(ordinary, count, replacement=replacement)
+            if with_mix and mix_indices and (torch.rand(1) < (len(mix_indices) + count) / len(seq)).item():
+                mix_mask = torch.zeros_like(ordinary)
+                mix_mask[mix_indices] = 1.0
+                indices[-1] = torch.multinomial(mix_mask, 1)
+                indices = indices[torch.randperm(count)]
+
+            assert selected == [names[i] for i in indices.tolist()]
+            assert torch.equal(state, torch.get_rng_state())
+
+    @pytest.mark.parametrize(
+        ("weights", "num_mix", "random_apply"),
+        [
+            ([0.7, 0.2, 0.1], 0, 4),
+            ([7.0, 2.0, 1.0], 0, 4),
+            ([0.7, 0.0, 0.3], 0, 3),
+            ([0.7, 0.0, 0.3], 0, True),
+            ([0.7, 0.0, 0.3, 0.1], 1, True),
+            ([0.7, 0.2, 0.1, 0.4], 1, 5),
+            (None, 1, 5),
+        ],
+    )
+    def test_random_apply_count_above_the_drawable_members_repeats_6114(self, weights, num_mix, random_apply):
+        # A draw past the members that can be drawn still samples with replacement, whatever the weights' scale. The
+        # members of weight 0 stay out, and a mix member still takes at most one place.
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights
+        )
+        count = len(seq) if random_apply is True else random_apply
+        excluded = {name for (name, _), w in zip(seq.named_children(), weights or []) if w == 0}
+        for seed in range(40):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq)
+            assert len(names) == count
+            assert len(set(names)) < len(names)
+            assert not excluded.intersection(names)
+            assert sum(name.startswith("RandomMixUpV2") for name in names) <= 1
+
+    @pytest.mark.parametrize(
+        ("weights", "num_mix", "random_apply", "members"),
+        [
+            ([0.7, 0.0, 0.3], 0, 1, {"RandomHorizontalFlip_0", "RandomInvert_2"}),
+            ([0.7, 0.0, 0.3], 0, 2, {"RandomHorizontalFlip_0", "RandomInvert_2"}),
+            ([7.0, 0.0, 3.0], 0, 2, {"RandomHorizontalFlip_0", "RandomInvert_2"}),
+            ([0.7, 0.0, 0.3, 0.1], 1, 3, {"RandomHorizontalFlip_0", "RandomInvert_2", "RandomMixUpV2_3"}),
+            ([7.0, 0.0, 3.0, 1.0], 1, 3, {"RandomHorizontalFlip_0", "RandomInvert_2", "RandomMixUpV2_3"}),
+        ],
+    )
+    def test_random_apply_count_that_fits_skips_zero_weight_members_6114(self, weights, num_mix, random_apply, members):
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights
+        )
+        selected = set()
+        for seed in range(40):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq)
+            assert len(names) == len(set(names)) == random_apply
+            selected.update(names)
+        assert selected == members
+
+    @pytest.mark.parametrize("weights", [[0.5, 0.3, 0.2, 0.5], [5.0, 3.0, 2.0, 5.0]])
+    @pytest.mark.parametrize(("random_apply", "repeats"), [(2, False), (3, False), (4, True)])
+    def test_random_apply_without_mix_counts_the_ordinary_members_6114(self, weights, random_apply, repeats):
+        # with_mix=False has no mix insertion, so no place is counted for it: three ordinary members fill a count of 3
+        # and a count of 4 repeats them. PatchSequential draws this way once a mix has been added.
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix=1), random_apply=random_apply, random_apply_weights=weights
+        )
+        for seed in range(30):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq, with_mix=False)
+            assert len(names) == random_apply
+            assert (len(set(names)) < len(names)) == repeats
+            assert "RandomMixUpV2_3" not in names
+
+    @pytest.mark.parametrize("scale", [1.0, 0.1])
+    def test_random_apply_two_mix_members_take_one_place_6114(self, scale):
+        # One place is counted however many mix members there are, since at most one is inserted: two ordinary members
+        # and the insertion fill a count of 3, and random_apply=True, a count of 4, repeats an ordinary member. It
+        # cannot process the whole list, which holds a second mix member that the call does not apply.
+        members = [K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0)]
+        members += [K.RandomMixUpV2(p=1.0), K.RandomMixUpV2(p=1.0)]
+        weights = [scale] * 4
+
+        seq = K.ImageSequential(*members, random_apply=3, random_apply_weights=weights)
+        for seed in range(30):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq)
+            assert len(names) == len(set(names)) == 3
+            assert {"RandomHorizontalFlip_0", "RandomVerticalFlip_1"} <= set(names)
+
+        seq = K.ImageSequential(*members, random_apply=True, random_apply_weights=weights)
+        for seed in range(30):
+            torch.manual_seed(seed)
+            names = self._drawn_names(seq)
+            assert len(names) == 4
+            assert len(set(names)) < 4
+            assert sum(name.startswith("RandomMixUpV2") for name in names) == 1
+
+    @pytest.mark.parametrize(
+        ("weights", "num_mix", "random_apply"), [([0.5, 0.3, 0.2], 0, 2), ([0.5, 0.3, 0.2, 0.5], 1, True)]
+    )
+    def test_random_apply_weights_tensor_on_the_input_device_6114(self, weights, num_mix, random_apply, device, dtype):
+        # A tensor of weights stays where it was given, and the draw runs there.
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix),
+            random_apply=random_apply,
+            random_apply_weights=torch.tensor(weights, device=device),
+        ).to(device)
+        assert seq.random_apply_weights.device.type == device.type
+        for seed in range(20):
+            torch.manual_seed(seed)
+            assert seq(x).shape == x.shape
+            names = self._applied_names(seq)
+            assert len(names) == (len(seq) if random_apply is True else random_apply)
+            assert len(set(names)) == len(names)
 
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,

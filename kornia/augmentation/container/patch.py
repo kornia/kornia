@@ -87,9 +87,11 @@ class PatchSequential(ImageSequential):
         patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
-        random_apply: randomly select children to apply in random order. Selections may repeat when the requested
-            count is larger than the sum of the selection weights or than the number of children with a nonzero
-            weight, mix augmentations not counted.
+        random_apply: randomly select children to apply in random order. Selections repeat only when the requested
+            count is larger than the number of children that can be drawn: the children with a nonzero selection
+            weight, mix augmentations not counted, plus one place when the count and the mix augmentations together
+            reach the number of children, since a mix augmentation is then certain to take a place. The weights are
+            relative, so their scale plays no part.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
