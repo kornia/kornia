@@ -69,6 +69,12 @@ class TestColorMap(BaseTester):
         ramp = torch.arange(num_colors, device=device, dtype=dtype) / (num_colors - 1)
         self.assert_close(actual.colors, ramp.expand(3, -1))
 
+    @pytest.mark.parametrize("name", ["viridis", "jet"])
+    def test_one_color_map_holds_first_color_6556(self, device, dtype, name):
+        base = ColorMap(base=name, device=device, dtype=dtype).colors
+        actual = ColorMap(base=name, num_colors=1, device=device, dtype=dtype).colors
+        self.assert_close(actual, base[:, :1], atol=0.0, rtol=0.0)
+
     @pytest.mark.parametrize("num_colors", [8, 63, 65, 256])
     @pytest.mark.parametrize("name", ["viridis", "jet", "autumn"])
     def test_resampled_map_keeps_end_colors_6556(self, device, dtype, name, num_colors):

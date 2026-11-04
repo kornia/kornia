@@ -106,8 +106,9 @@ class ColorMap:
     Convention:
         colors has shape (3, num_colors) in RGB channel order. Built-in names are case-insensitive;
         a custom base is an ordered list of RGB triples and is linearly resampled to num_colors.
-        Entry ``i`` sits at ``i / (num_colors - 1)`` along the base, so the first and last colours of the base
-        are the first and last of the map.
+        For ``num_colors > 1``, entry ``i`` sits at ``i / (num_colors - 1)`` along the base, so the first and
+        last colours of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
+        base's first colour.
 
     Args:
         base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
