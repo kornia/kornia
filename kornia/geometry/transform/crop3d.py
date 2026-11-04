@@ -488,8 +488,8 @@ def _widen_one_voxel_axes(src_box: torch.Tensor, dst_box: torch.Tensor) -> Tuple
         dtype=src_box.dtype,
     )
     # the x, y and z edges leave corner 0 towards corners 1, 3 and 4
-    src_flat = (src_box[:, (1, 3, 4)] == src_box[:, :1]).all(dim=-1)
-    dst_flat = (dst_box[:, (1, 3, 4)] == dst_box[:, :1]).all(dim=-1)
+    src_flat = (src_box[:, [1, 3, 4]] == src_box[:, :1]).all(dim=-1)
+    dst_flat = (dst_box[:, [1, 3, 4]] == dst_box[:, :1]).all(dim=-1)
     offset = far * (src_flat & dst_flat).to(src_box.dtype)[:, None, :]
     return src_box + offset, dst_box + offset
 
