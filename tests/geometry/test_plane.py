@@ -432,7 +432,7 @@ class TestHyperplane(BaseTester):
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
-        # on collinear points returns what an eager call returns with checks disabled.
+        # on collinear points returns a normal, like an eager call with checks disabled, instead of raising.
         a = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
         b = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
         c = 2 * b - a
@@ -449,7 +449,12 @@ class TestHyperplane(BaseTester):
             if checks_were_enabled:
                 enable_checks()
         self.assert_close(actual[0], expected[0])
-        self.assert_close(actual[1], expected[1])
+        # Every unit vector orthogonal to the line fits collinear points equally well, so fit_plane's normal is
+        # whichever one the decomposition returns: on CUDA the compiled and eager calls return different ones.
+        line = (b - a) / (b - a).norm()
+        for normal in (actual[1], expected[1]):
+            self.assert_close(normal.norm(), torch.ones((), device=device, dtype=dtype))
+            self.assert_close(normal @ line, torch.zeros((), device=device, dtype=dtype))
 
     def test_thin_valid_triangle_still_fits(self, device, dtype):
         # The collinearity tolerance scales with the dtype: a sliver whose height is 64 machine epsilons of its

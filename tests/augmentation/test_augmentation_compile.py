@@ -157,7 +157,18 @@ class TestAugmentationCompile(BaseTester):
             self.assert_close(actual, expected)
             weights = torch.rand_like(actual)
             actual_grad = torch.autograd.grad(actual, input, weights)[0]
-            if device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
+            if device.type == "cuda" and resample == "nearest":
+                # CUDA's nearest-exact interpolate backward, which the eager slice crop uses, can send a pixel's
+                # gradient to its neighbour: a crop axis of 12 pixels resized to one reads pixel 6 and sends the
+                # gradient to pixel 5. The gather of the compiled crop routes it to the pixel it read, so compare with
+                # the eager crop on the CPU, in float32 for half dtypes.
+                reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+                reference = input.detach().to("cpu", reference_dtype).requires_grad_()
+                cpu_params = {key: value.cpu() if torch.is_tensor(value) else value for key, value in params.items()}
+                expected_grad = torch.autograd.grad(
+                    aug(reference, params=cpu_params), reference, weights.to("cpu", reference_dtype)
+                )[0].to(device, dtype)
+            elif device.type == "cuda" and dtype in (torch.float16, torch.bfloat16):
                 # CUDA half interpolate backward rounds atomic updates. Compare with
                 # float32 accumulation, as in the real-backend replay tests below.
                 reference = input.detach().float().requires_grad_()
