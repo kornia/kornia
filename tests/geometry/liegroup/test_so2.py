@@ -506,7 +506,8 @@ class TestSo2(BaseTester):
         before = torch.view_as_real(param.detach()).clone()  # torch.equal has no complex float16 kernel
         s.log().sum().backward()
         # torch's CUDA foreach optimizer kernels have no complex32 (float16) implementation.
-        torch.optim.SGD(s.parameters(), lr=0.1, foreach=False).step()
+        foreach = False if device.type == "cuda" and dtype == torch.float16 else None
+        torch.optim.SGD(s.parameters(), lr=0.1, foreach=foreach).step()
         assert not torch.equal(torch.view_as_real(param.detach()), before)
 
     @pytest.mark.parametrize("method", ["to", "bfloat16"])
@@ -717,7 +718,8 @@ class TestSo2DtypeMigration(BaseTester):
         self.assert_close(rotation._z.grad.real, torch.ones(2, device=device, dtype=dtype))
         self.assert_close(rotation._z.grad.imag, torch.full((2,), 2.0, device=device, dtype=dtype))
         # torch's CUDA foreach optimizer kernels have no complex32 (float16) implementation.
-        torch.optim.SGD(rotation.parameters(), lr=0.125, foreach=False).step()
+        foreach = False if device.type == "cuda" and dtype == torch.float16 else None
+        torch.optim.SGD(rotation.parameters(), lr=0.125, foreach=foreach).step()
         self.assert_close(rotation.z.real, before.real.to(dtype) - 0.125)
         self.assert_close(rotation.z.imag, before.imag.to(dtype) - 0.25)
 
