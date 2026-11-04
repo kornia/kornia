@@ -24,6 +24,7 @@ from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
+from kornia.core.utils import _to_device_nonblocking
 
 from . import ops
 
@@ -176,12 +177,14 @@ class RandAugment(PolicyAugmentBase):
             op = cast(PolicySequential, module)[0]
             op = cast(OperationBase, op)
             mag = None
-            if op.magnitude_range is not None:
-                minval, maxval = op.magnitude_range
-                if op._factor_name == "bits_factor":
-                    mag = (1 - m) * float(maxval - minval) + minval
-                else:
-                    mag = m * float(maxval - minval) + minval
+            magnitude_range = op.magnitude_range
+            if magnitude_range is not None:
+                minval, maxval = magnitude_range
+                scale = 1 - m if op._factor_name == "bits_factor" else m
+                # A moved policy has its range on the accelerator: stay there rather than read the range on the host.
+                if isinstance(minval, torch.Tensor):
+                    scale = _to_device_nonblocking(scale, minval.device)
+                mag = scale * (maxval - minval) + minval
 
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
