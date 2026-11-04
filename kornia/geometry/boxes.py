@@ -46,7 +46,7 @@ from torch import Size
 from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import _check_async
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.geometry._coordinate import _cast_to_floating_point
 from kornia.geometry.linalg import transform_points
 
@@ -70,6 +70,21 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
         raise NotImplementedError(f"`{method}` is not implemented.")
 
     return output, stats
+
+
+def _padding_mask(counts: list[int], num_boxes: int) -> torch.Tensor:
+    """Mark the last ``counts[i]`` of the ``num_boxes`` rows of each sample ``i`` in a ``(B, num_boxes)`` host mask."""
+    real = torch.as_tensor([num_boxes - n for n in counts], device="cpu", dtype=torch.long)
+    return torch.arange(num_boxes, device="cpu")[None] >= real[:, None]
+
+
+def _key_on_host(key: Any) -> Any:
+    """Move the tensors of an index key to the CPU, where the padding mask of a list-built :class:`Boxes` lives."""
+    if isinstance(key, torch.Tensor):
+        return key.cpu()
+    if isinstance(key, (tuple, list)):
+        return type(key)(_key_on_host(item) for item in key)
+    return key
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -282,9 +297,12 @@ class Boxes:
           or ``float64`` when that is the default dtype.
         - A list of per-image tensors, ``(N_i, 4)`` or ``(N_i, 4, 2)`` in :meth:`from_tensor` and ``(N_i, 4, 2)``
           in the constructor, is zero-padded to one ``(B, max N_i, 4, 2)`` batch; :meth:`to_tensor` then returns a
-          list trimmed back to each image's boxes, or the padded tensor with ``as_padded_sequence=True``. Item
-          assignment and :meth:`index_put` do not update the padding counts, so the trimmed export can then drop
-          real boxes or keep padding (`#6283 <https://github.com/kornia/kornia/issues/6283>`_).
+          list trimmed back to each image's boxes, or the padded tensor with ``as_padded_sequence=True``.
+        - Which rows are padding is recorded per box and follows the coordinates through indexing, item assignment,
+          :meth:`index_put` and :meth:`merge`: a padding row written elsewhere stays padding, and a :class:`Boxes`
+          that does not come from a list writes real boxes. A raw tensor passed to :meth:`index_put` changes only
+          coordinates. Writing padding to a :class:`Boxes` that does not come from a list marks those rows invalid,
+          since that object has no trimmed export.
         - :meth:`filter_boxes_by_area` removes boxes without changing the shape: it zeroes their corners and marks
           them invalid, and every export of an invalid box is exact zeros, after later transforms too.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area`, :meth:`merge`
@@ -330,10 +348,10 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
-        self._N: Optional[list[int]] = None
+        padding_counts: Optional[list[int]] = None
 
         if isinstance(boxes, list):
-            boxes, self._N = _merge_box_list(boxes)
+            boxes, padding_counts = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
@@ -354,27 +372,60 @@ class Boxes:
 
         self._data = boxes
         self._mode = mode
-        # Filtering can leave holes; _N only describes trailing list padding.
+        # ``_valid`` marks rows that stay in every export as exact zeros, such as the holes filtering leaves.
+        # ``_padding`` marks the rows a list input added, which the trimmed export drops and the padded export keeps as
+        # stored; it is ``None`` unless the object comes from a list. Every indexed read and write carries it with the
+        # coordinates, as it does ``_valid``, so it cannot go stale. It stays on the CPU, whatever the device of the
+        # boxes: the trimmed export needs its values to size the list it returns, and reading them there costs no
+        # device synchronization.
         self._valid = torch.ones(boxes.shape[:-2], device=boxes.device, dtype=torch.bool)
+        self._padding: Optional[torch.Tensor] = None
+        if padding_counts is not None:
+            self._set_padding(_padding_mask(padding_counts, boxes.shape[1]))
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        self.__dict__.update(state)
+        self.__dict__.update({name: value for name, value in state.items() if name != "_N"})
         if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
+        if "_padding" not in state:  # pickled when the padding was a list of trailing counts
+            self._padding = None
+            if state.get("_N") is not None:
+                self._set_padding(_padding_mask(state["_N"], self._data.shape[1]))
+        elif self._padding is not None:  # ``torch.load(map_location=...)`` moves every tensor it finds
+            self._padding = self._padding.cpu()
+
+    def _set_padding(self, padding: Optional[torch.Tensor]) -> None:
+        """Record the host mask of the rows a list input added, or ``None`` for an object without any."""
+        self._padding = padding
+
+    def _valid_without_padding(self) -> torch.Tensor:
+        """Return ``_valid`` with the padding rows marked invalid, for a destination that has no trimmed export."""
+        if self._padding is None:
+            return self._valid
+        return self._valid & ~_to_device_nonblocking(self._padding, self._valid.device)
+
+    @property
+    def _N(self) -> Optional[list[int]]:
+        """Return the number of padding rows of each sample, or ``None`` for an object with no trimmed export."""
+        if self._padding is None or not self._is_batched:
+            return None
+        return self._padding.sum(dim=-1).tolist()
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
         new_box._valid = self._valid[key]
-        # Select padding metadata with the same key as the box batch, including boolean masks.
-        if self._N is not None:
-            selected = torch.as_tensor(self._N, device=self._data.device)[key]
-            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
+        if self._padding is not None:
+            new_box._padding = self._padding[_key_on_host(key)]
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
-        self._valid[key] = value._valid
+        if self._padding is None:
+            self._valid[key] = value._valid_without_padding()
+        else:
+            self._valid[key] = value._valid
+            self._padding[_key_on_host(key)] = False if value._padding is None else value._padding
         return self
 
     @property
@@ -429,61 +480,39 @@ class Boxes:
 
         Note:
             When either input was created from a list, each batch row is repacked
-            so that its real boxes precede all trailing padding. The merged object
-            keeps the combined per-image padding counts in ``_N``.
+            so that its real boxes precede all of its padding, and the merged
+            object exports a list trimmed back to them.
 
         """
-        padding: Optional[list[int]] = None
-        if self._N is not None or boxes._N is not None:
-            if self._data.shape[0] != boxes.data.shape[0]:
+        padding: Optional[torch.Tensor] = None
+        if self._padding is not None or boxes._padding is not None:
+            if (self._is_batched or boxes._is_batched) and self._data.shape[0] != boxes.data.shape[0]:
                 raise ValueError(
                     f"Batch size mismatch. Got {self._data.shape[0]} for self and {boxes.data.shape[0]} for boxes."
                 )
+            padding = torch.cat([operand._padding_or_real() for operand in (self, boxes)], dim=-1)
 
-            self_padding = self._N if self._N is not None else [0] * self._data.shape[0]
-            boxes_padding = boxes._N if boxes._N is not None else [0] * boxes.data.shape[0]
-            data = torch.stack(
-                [
-                    torch.cat(
-                        [
-                            self._data[i, : self._data.shape[-3] - self_pad],
-                            boxes.data[i, : boxes.data.shape[-3] - boxes_pad],
-                            self._data[i, self._data.shape[-3] - self_pad :],
-                            boxes.data[i, boxes.data.shape[-3] - boxes_pad :],
-                        ]
-                    )
-                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
-                ]
-            )
-            valid = torch.stack(
-                [
-                    torch.cat(
-                        [
-                            self._valid[i, : self._valid.shape[-1] - self_pad],
-                            boxes._valid[i, : boxes._valid.shape[-1] - boxes_pad],
-                            self._valid[i, self._valid.shape[-1] - self_pad :],
-                            boxes._valid[i, boxes._valid.shape[-1] - boxes_pad :],
-                        ]
-                    )
-                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
-                ]
-            )
-            padding = [self_pad + boxes_pad for self_pad, boxes_pad in zip(self_padding, boxes_padding)]
-        else:
-            data = torch.cat([self._data, boxes.data], dim=-3)
-            valid = torch.cat([self._valid, boxes._valid], dim=-1)
+        data = torch.cat([self._data, boxes.data], dim=-3)
+        valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
-        if inplace:
-            self._data = data
-            self._N = padding
-            self._valid = valid
-            return self
+        if padding is not None and self._is_batched:
+            order = padding.long().argsort(dim=-1, stable=True)
+            padding = padding.gather(-1, order)
+            order = _to_device_nonblocking(order, data.device)
+            data = data.take_along_dim(order[..., None, None], dim=-3)
+            valid = valid.gather(-1, order)
 
-        obj = self.clone()
+        obj = self if inplace else self.clone()
         obj._data = data
-        obj._N = padding
         obj._valid = valid
+        obj._set_padding(padding)
         return obj
+
+    def _padding_or_real(self) -> torch.Tensor:
+        """Return the host padding mask, all ``False`` for an object that does not come from a list."""
+        if self._padding is not None:
+            return self._padding
+        return torch.zeros(self._valid.shape, device="cpu", dtype=torch.bool)
 
     def index_put(
         self,
@@ -504,8 +533,8 @@ class Boxes:
                 The indices address entries in the stored tensor, commonly
                 shaped ``(B, N, 4, 2)`` or ``(N, 4, 2)``.
             values: Replacement coordinates. If a :class:`Boxes` object is
-                passed, its coordinates and filtering validity are copied. Raw tensor writes
-                change only coordinates and preserve the existing filtering validity.
+                passed, its coordinates, filtering validity and list padding are copied. Raw tensor writes
+                change only coordinates and preserve the existing filtering validity and list padding.
             inplace: If ``True``, update this object and return ``self``. If
                 ``False``, clone the current data first and return a new
                 :class:`Boxes` instance.
@@ -516,7 +545,11 @@ class Boxes:
         obj = self if inplace else self.clone()
         if isinstance(values, Boxes):
             obj._data.index_put_(indices, values.data)
-            obj._valid.index_put_(indices, values._valid)
+            if obj._padding is None:
+                obj._valid.index_put_(indices, values._valid_without_padding())
+            else:
+                obj._valid.index_put_(indices, values._valid)
+                obj._padding.index_put_(_key_on_host(indices), values._padding_or_real())
         else:
             obj._data.index_put_(indices, values)
         return obj
@@ -825,8 +858,9 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
-                Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
-                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
+                Batch slicing, index tensors, and boolean masks keep the list export. A selection that returns an
+                unbatched object, such as an integer or scalar tensor index, exports all its rows, padding included,
+                as one tensor.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
@@ -875,11 +909,12 @@ class Boxes:
         valid = valid.reshape(valid.shape + (1,) * (boxes.ndim - valid.ndim))
         boxes = boxes.masked_fill(~valid, 0.0)
 
-        if self._N is not None and not as_padded_sequence:
-            boxes = [torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)]
-        else:
-            boxes = boxes if self._is_batched else boxes.squeeze(0)
-        return boxes
+        if self._padding is not None and self._is_batched and not as_padded_sequence:
+            keep = ~self._padding
+            samples, rows = keep.nonzero(as_tuple=True)
+            kept = boxes[_to_device_nonblocking(samples, boxes.device), _to_device_nonblocking(rows, boxes.device)]
+            return list(kept.split(keep.sum(dim=-1).tolist()))
+        return boxes if self._is_batched else boxes.squeeze(0)
 
     def to_mask(self, height: int, width: int) -> torch.Tensor:
         """Convert 2D boxes to masks. Covered area is 1 and the remaining is 0.
@@ -938,10 +973,9 @@ class Boxes:
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
-        if self._N is not None:
+        if self._padding is not None and is_batched:
             # Padding is not a box, even when its coordinates have been changed by a transform.
-            for i, n in enumerate(self._N):
-                clipped_boxes_xyxy[i, clipped_boxes_xyxy.shape[1] - n :] = 0
+            clipped_boxes_xyxy.masked_fill_(_to_device_nonblocking(self._padding, device)[..., None], 0)
 
         # -----------------
         # CPU Hotpath (loop)
@@ -1105,12 +1139,12 @@ class Boxes:
 
         Returns:
             New :class:`Boxes` object with cloned tensor storage. Metadata such
-            as the current mode, original list lengths, and batched flag is
+            as the current mode, list padding, and batched flag is
             preserved.
         """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
-        obj._N = self._N
+        obj._padding = None if self._padding is None else self._padding.clone()
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         return obj
@@ -1162,6 +1196,9 @@ class VideoBoxes(Boxes):
         - :meth:`Boxes.transform_boxes`, :meth:`Boxes.translate`, :meth:`Boxes.clamp`,
           :meth:`Boxes.filter_boxes_by_area` and :meth:`Boxes.merge` return a new :class:`VideoBoxes`;
           :meth:`Boxes.pad`, :meth:`Boxes.unpad`, :meth:`Boxes.to` and :meth:`Boxes.type` update and return ``self``.
+        - Every frame holds the same number of rows, with no trimmed export. The padding of list-built :class:`Boxes`
+          merged or written into a :class:`VideoBoxes` is marked invalid, so it exports as exact zeros in every mode
+          and draws no mask.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
@@ -1175,6 +1212,12 @@ class VideoBoxes(Boxes):
     """
 
     temporal_channel_size: int
+
+    def _set_padding(self, padding: Optional[torch.Tensor]) -> None:
+        """Mark the padding rows invalid: a video exports every row of every frame, with no trimmed export."""
+        self._padding = padding
+        self._valid = self._valid_without_padding()
+        self._padding = None
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True) -> VideoBoxes:
@@ -1246,7 +1289,8 @@ class VideoBoxes(Boxes):
         # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
         n, m = self._data.shape[0] // size, value.data.shape[0] // size
         self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
-        self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
+        value_valid = value._valid_without_padding()
+        self._valid.view(n, size, self._valid.shape[-1])[key] = value_valid.view(m, size, value_valid.shape[-1])
         return self
 
     def to_tensor(
@@ -1259,21 +1303,17 @@ class VideoBoxes(Boxes):
                 ``None``, uses the stored mode (``vertices_plus`` by default).
             as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
                 changes the result of a list-backed container; a
-                :class:`VideoBoxes` built from a ``(B, T, N, 4, 2)`` tensor
-                is not list-backed, so the value makes no difference there. The
-                keyword is accepted because the inherited :meth:`Boxes.get_boxes_shape`
-                and :meth:`Boxes.to_mask` pass it.
+                :class:`VideoBoxes` is never list-backed, so the value makes no
+                difference there. The keyword is accepted because the inherited
+                :meth:`Boxes.get_boxes_shape` and :meth:`Boxes.to_mask` pass it.
 
         Returns:
             Tensor shaped ``(B, T, ...)`` where :math:`T` is
             ``temporal_channel_size``.
         """
-        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        out = cast(torch.Tensor, super().to_tensor(mode, as_padded_sequence=as_padded_sequence))
         batch_size = self._data.shape[0] // self.temporal_channel_size
-        if isinstance(out, torch.Tensor):
-            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
-        # If returns a list of boxes.
-        return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
+        return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
 
     def clone(self) -> VideoBoxes:
         """Create an independent copy of the video box container.
@@ -1284,7 +1324,6 @@ class VideoBoxes(Boxes):
         """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
-        obj._N = self._N
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         obj.temporal_channel_size = self.temporal_channel_size

@@ -18,7 +18,10 @@
 import io
 import pickle
 import warnings
+from copy import copy as shallow_copy
+from copy import deepcopy
 from functools import partial
+from operator import setitem
 
 import pytest
 import torch
@@ -29,6 +32,81 @@ from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape,
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+# Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
+# one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
+_A = [1.0, 1.0, 3.0, 3.0]
+_B0 = [2.0, 2.0, 4.0, 5.0]
+_B1 = [3.0, 1.0, 6.0, 3.0]
+_B2 = [5.0, 4.0, 8.0, 7.0]
+_NEW = [0.0, 1.0, 2.0, 6.0]
+_SAMPLE_0 = [_A, None, None]
+_SAMPLE_1 = [_B0, _B1, _B2]
+
+# Each write takes the list-built boxes, the dense one-box ``(1, 4, 2)`` boxes of ``_NEW`` and a tensor factory on the
+# test device, and is listed with the rows it must leave.
+_PADDING_WRITES = {
+    # Whole samples.
+    "int": (lambda lb, new, t: setitem(lb, 0, lb[1]), [_SAMPLE_1, _SAMPLE_1]),
+    "int_writes_padding": (lambda lb, new, t: setitem(lb, 1, lb[0]), [_SAMPLE_0, _SAMPLE_0]),
+    "scalar_tensor": (lambda lb, new, t: setitem(lb, t(0), lb[t(1)]), [_SAMPLE_1, _SAMPLE_1]),
+    "slice": (lambda lb, new, t: setitem(lb, slice(0, 1), lb[1:2]), [_SAMPLE_1, _SAMPLE_1]),
+    "index_tensor": (lambda lb, new, t: setitem(lb, t([0]), lb[t([1])]), [_SAMPLE_1, _SAMPLE_1]),
+    "bool_batch": (lambda lb, new, t: setitem(lb, t([True, False]), lb[t([False, True])]), [_SAMPLE_1, _SAMPLE_1]),
+    # Single rows, by a boolean mask over (B, N) and by tuple keys. A row written behind a padding row leaves a hole.
+    "bool_rows": (
+        lambda lb, new, t: setitem(lb, t([[False, True, False], [False] * 3]), new),
+        [[_A, _NEW, None], _SAMPLE_1],
+    ),
+    "bool_rows_hole": (
+        lambda lb, new, t: setitem(lb, t([[False, False, True], [False] * 3]), new),
+        [[_A, None, _NEW], _SAMPLE_1],
+    ),
+    "bool_rows_write_padding": (
+        lambda lb, new, t: setitem(
+            lb, t([[False] * 3, [False, True, False]]), lb[t([[False, True, False], [False] * 3])]
+        ),
+        [_SAMPLE_0, [_B0, None, _B2]],
+    ),
+    "tuple_int_slice": (lambda lb, new, t: setitem(lb, (0, slice(1, 2)), new), [[_A, _NEW, None], _SAMPLE_1]),
+    "tuple_tensors": (lambda lb, new, t: setitem(lb, (t([0]), t([2])), new), [[_A, None, _NEW], _SAMPLE_1]),
+    "tuple_slices": (
+        lambda lb, new, t: setitem(lb, (slice(None), slice(2, 3)), new),
+        [[_A, None, _NEW], [_B0, _B1, _NEW]],
+    ),
+    "tuple_read": (
+        lambda lb, new, t: setitem(lb, (1, slice(0, 1)), lb[(0, slice(1, 2))]),
+        [_SAMPLE_0, [None, _B1, _B2]],
+    ),
+    # Through and from the unbatched object of one sample, which shares the storage of its coordinates and masks.
+    "unbatched_view": (lambda lb, new, t: setitem(lb[0], slice(1, 2), new), [[_A, _NEW, None], _SAMPLE_1]),
+    "unbatched_value": (lambda lb, new, t: setitem(lb, (1, slice(1, 2)), lb[0][1:2]), [_SAMPLE_0, [_B0, None, _B2]]),
+    # A singleton broadcasts over the rows it is written to.
+    "singleton": (lambda lb, new, t: setitem(lb, 0, new), [[_NEW, _NEW, _NEW], _SAMPLE_1]),
+    "singleton_padding": (lambda lb, new, t: setitem(lb, 1, lb[0][1:2]), [_SAMPLE_0, [None, None, None]]),
+    "singleton_batched": (lambda lb, new, t: setitem(lb, 0, lb[1:2][:, 2:3]), [[_B2, _B2, _B2], _SAMPLE_1]),
+    # index_put, with the same keys.
+    "index_put_sample": (
+        lambda lb, new, t: lb.index_put((t([0]),), lb[1:2].clone(), inplace=True),
+        [_SAMPLE_1, _SAMPLE_1],
+    ),
+    "index_put_writes_padding": (
+        lambda lb, new, t: lb.index_put((t([1]),), lb[0:1].clone(), inplace=True),
+        [_SAMPLE_0, _SAMPLE_0],
+    ),
+    "index_put_row": (
+        lambda lb, new, t: lb.index_put((t([0]), t([1])), new, inplace=True),
+        [[_A, _NEW, None], _SAMPLE_1],
+    ),
+    "index_put_list": (
+        lambda lb, new, t: lb.index_put([t([0]), t([2])], new, inplace=True),
+        [[_A, None, _NEW], _SAMPLE_1],
+    ),
+    "index_put_row_padding": (
+        lambda lb, new, t: lb.index_put((t([1]), t([1])), lb[0][1:2].clone(), inplace=True),
+        [_SAMPLE_0, [_B0, None, _B2]],
+    ),
+}
 
 
 def _legacy_onnx_to_mask_pairs(
@@ -385,6 +463,232 @@ class TestBoxes2D(BaseTester):
         scalar = lb[torch.tensor(1, device=device)]
         assert scalar._N is None
         assert isinstance(scalar.to_tensor("xyxy"), torch.Tensor)
+
+    @staticmethod
+    def _padding_boxes(device, dtype):
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        second = torch.tensor(_SAMPLE_1, device=device, dtype=dtype)
+        return Boxes.from_tensor([first, second], mode="xyxy")
+
+    def _assert_padding_rows(self, boxes, rows, device, dtype, height=10, width=10):
+        # The default export holds exactly the rows that are not padding, in order, and only those draw a mask.
+        exported = boxes.to_tensor("xyxy")
+        assert isinstance(exported, list)
+        assert len(exported) == len(rows)
+        assert boxes._N == [sum(row is None for row in sample) for sample in rows]
+        masks = boxes.to_mask(height, width)
+        assert masks.shape == (len(rows), len(rows[0]), height, width)
+        for out, sample, sample_masks in zip(exported, rows, masks):
+            real = [row for row in sample if row is not None]
+            self.assert_close(out, torch.tensor(real, device=device, dtype=dtype).reshape(-1, 4), atol=0.0, rtol=0.0)
+            for row, row_mask in zip(sample, sample_masks):
+                expected = torch.zeros(height, width, device=device, dtype=dtype)
+                if row is not None:
+                    expected[int(row[1]) : int(row[3]), int(row[0]) : int(row[2])] = 1.0
+                self.assert_close(row_mask, expected, atol=0.0, rtol=0.0)
+        for mode in ("xyxy_plus", "xywh", "vertices", "vertices_plus"):
+            lengths = [len(out) for out in boxes.to_tensor(mode)]
+            assert lengths == [sum(row is not None for row in sample) for sample in rows], mode
+
+    def test_list_padding_reported_cases_6283(self, device, dtype):
+        b = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        lb = Boxes([b, torch.cat([b + 2, b + 4, b + 6])])
+        lb[0] = lb[1]
+        assert [len(t) for t in lb.to_tensor("xyxy")] == [3, 3]
+
+        lb = Boxes([b, torch.cat([b + 2, b + 4, b + 6])])
+        out = lb.index_put((torch.tensor([0], device=device),), lb[1:2])
+        assert [len(t) for t in out.to_tensor("xyxy")] == [3, 3]
+        assert [len(t) for t in lb.to_tensor("xyxy")] == [1, 3]
+
+        a = b[0]
+        v = VideoBoxes.from_tensor(a.reshape(1, 1, 1, 4, 2).repeat(2, 2, 1, 1, 1))
+        v = v.merge(Boxes([a[None], torch.stack([a, a + 2]), a[None], a[None]]))
+        assert v.to_tensor().shape == (2, 2, 2 + 1, 4, 2)
+        assert v.to_mask(8, 8).shape == (2, 2, 2 + 1, 8, 8)
+
+    @pytest.mark.parametrize("write", _PADDING_WRITES.keys())
+    def test_list_padding_follows_every_write_6283(self, write, device, dtype):
+        # The padding follows each indexed write with the coordinates, so the trimmed export neither cuts a real box
+        # nor keeps a padding row, and the padded export and the masks agree with it.
+        writer, rows = _PADDING_WRITES[write]
+        boxes = self._padding_boxes(device, dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        writer(boxes, new, lambda value: torch.tensor(value, device=device))
+        self._assert_padding_rows(boxes, rows, device, dtype)
+        assert boxes.to_tensor("xyxy", as_padded_sequence=True).shape == (2, 3, 4)
+
+    @pytest.mark.parametrize("write", ["int", "bool_rows_hole", "unbatched_view", "index_put_row_padding"])
+    def test_list_padding_after_a_write_survives_copies_6283(self, write, device, dtype):
+        writer, rows = _PADDING_WRITES[write]
+        boxes = self._padding_boxes(device, dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        writer(boxes, new, lambda value: torch.tensor(value, device=device))
+        identity = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        low, high = torch.zeros(2, 2, device=device, dtype=dtype), torch.full((2, 2), 9.0, device=device, dtype=dtype)
+        buffer = io.BytesIO()
+        torch.save(boxes, buffer)
+        buffer.seek(0)
+        for copied in (
+            boxes.clone(),
+            shallow_copy(boxes),
+            deepcopy(boxes),
+            pickle.loads(pickle.dumps(boxes)),  # noqa: S301
+            torch.load(buffer, map_location=device, weights_only=False),
+            boxes.clone().to(device=device),
+            boxes.clone().type(dtype),
+            boxes.transform_boxes(identity),
+            boxes.clamp(low, high),
+            boxes.filter_boxes_by_area(min_area=0.0),
+            boxes[0:2],
+            boxes[torch.tensor([True, True], device=device)],
+        ):
+            self._assert_padding_rows(copied, rows, device, dtype)
+
+    def test_list_padding_copies_are_independent_6283(self, device, dtype):
+        boxes = self._padding_boxes(device, dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        cloned = boxes.clone()
+        cloned[0, 1:2] = new
+        self._assert_padding_rows(cloned, [[_A, _NEW, None], _SAMPLE_1], device, dtype)
+        self._assert_padding_rows(boxes, [_SAMPLE_0, _SAMPLE_1], device, dtype)
+        written = boxes.index_put((torch.tensor([0], device=device), torch.tensor([2], device=device)), new)
+        self._assert_padding_rows(written, [[_A, None, _NEW], _SAMPLE_1], device, dtype)
+        self._assert_padding_rows(boxes, [_SAMPLE_0, _SAMPLE_1], device, dtype)
+
+    def test_list_padding_follows_a_move_to_the_device_6283(self, device, dtype):
+        # The object is built elsewhere and moved, so its keys and its tensors are on the device of the test.
+        boxes = self._padding_boxes(torch.device("cpu"), dtype).to(device=device)
+        self._assert_padding_rows(boxes, [_SAMPLE_0, _SAMPLE_1], device, dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        boxes[torch.tensor([0], device=device), torch.tensor([1], device=device)] = new
+        self._assert_padding_rows(boxes, [[_A, _NEW, None], _SAMPLE_1], device, dtype)
+        selected = boxes[torch.tensor([True, False], device=device)]
+        self._assert_padding_rows(selected, [[_A, _NEW, None]], device, dtype)
+
+    def test_list_padding_write_then_merge_6283(self, device, dtype):
+        # The merge moves every padding row behind the real rows of both operands, holes included.
+        boxes = self._padding_boxes(device, dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        boxes[0, 2:3] = new
+        extra = Boxes.from_tensor(torch.tensor([[_B0], [_B1]], device=device, dtype=dtype), mode="xyxy")
+        merged = boxes.merge(extra)
+        self._assert_padding_rows(merged, [[_A, _NEW, _B0, None], [_B0, _B1, _B2, _B1]], device, dtype)
+        reverse = extra.merge(boxes)
+        self._assert_padding_rows(reverse, [[_B0, _A, _NEW, None], [_B1, _B0, _B1, _B2]], device, dtype)
+        both = boxes.merge(self._padding_boxes(device, dtype))
+        self._assert_padding_rows(both, [[_A, _NEW, _A, None, None, None], [*_SAMPLE_1, *_SAMPLE_1]], device, dtype)
+        boxes.merge(extra, inplace=True)
+        self._assert_padding_rows(boxes, [[_A, _NEW, _B0, None], [_B0, _B1, _B2, _B1]], device, dtype)
+
+    def test_list_padding_merge_of_unbatched_selections_6283(self, device, dtype):
+        # Each operand exports all of its rows, as the batched object's padded export does, and the merge keeps their
+        # order: an unbatched object has no ragged export to trim for. The merged rows remember which were padding.
+        boxes = self._padding_boxes(device, dtype)
+        padded = boxes.to_tensor("xyxy", as_padded_sequence=True)
+        merged = boxes[0].merge(boxes[1])
+        self.assert_close(merged.to_tensor("xyxy"), padded.flatten(0, 1), atol=0.0, rtol=0.0)
+        assert merged.data.shape == (6, 4, 2)
+        restored = self._padding_boxes(device, dtype)
+        restored[1] = merged[0:3]
+        self._assert_padding_rows(restored, [_SAMPLE_0, _SAMPLE_0], device, dtype)
+
+    def test_list_padding_is_not_filter_validity_6283(self, device, dtype):
+        # The two record different things and export differently. A filtered row stays where it is as a zero row. A
+        # padding row is trimmed from the default export and stays a stored row in the padded one, so ``_valid`` alone
+        # could not express it.
+        boxes = self._padding_boxes(device, dtype).filter_boxes_by_area(max_area=3.0)
+        exported = boxes.to_tensor("xyxy")
+        zero = [0.0, 0.0, 0.0, 0.0]
+        stored_zero = [0.0, 0.0, 1.0, 1.0]
+        self.assert_close(exported[0], torch.tensor([_A], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(exported[1], torch.tensor([_B0, _B1, zero], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        padded = torch.tensor([[_A, stored_zero, stored_zero], [_B0, _B1, zero]], device=device, dtype=dtype)
+        self.assert_close(boxes.to_tensor("xyxy", as_padded_sequence=True), padded, atol=0.0, rtol=0.0)
+        masks = boxes.to_mask(10, 10)
+        assert masks[0, 1:].count_nonzero() == 0
+        assert masks[1, 2].count_nonzero() == 0
+
+    def test_index_put_raw_tensor_keeps_the_padding_6283(self, device, dtype):
+        # A raw tensor brings coordinates and nothing else: padding stays padding, as a filtered row stays filtered, so
+        # shifting a whole sample moves its padding rows without turning them into boxes.
+        boxes = self._padding_boxes(device, dtype)
+        shifted = boxes.index_put((torch.tensor([0], device=device),), boxes.data[:1] + 1.0)
+        exported = shifted.to_tensor("xyxy")
+        self.assert_close(exported[0], torch.tensor([_A], device=device, dtype=dtype) + 1.0, atol=0.0, rtol=0.0)
+        assert [len(out) for out in exported] == [1, 3]
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize("index_put", [False, True])
+    def test_padding_written_to_dense_boxes_is_invalid_6283(self, index_put, mode, device, dtype):
+        # A dense container has no trimmed export, so a padding row written to it is not a box: it exports as an exact
+        # zero row instead of the stored zero corners' one-pixel box, and it draws no mask.
+        list_boxes = self._padding_boxes(device, dtype)
+        dense = Boxes.from_tensor(torch.tensor([_SAMPLE_1, _SAMPLE_1], device=device, dtype=dtype), mode="xyxy")
+        real = dense.to_tensor(mode)
+        if index_put:
+            dense.index_put((torch.tensor([0], device=device),), list_boxes[0:1], inplace=True)
+        else:
+            dense[0] = list_boxes[0]
+        assert dense._N is None
+        exported = dense.to_tensor(mode)
+        assert isinstance(exported, torch.Tensor)
+        assert exported[0, 1:].count_nonzero() == 0
+        self.assert_close(exported[1], real[1], atol=0.0, rtol=0.0)
+        first = Boxes.from_tensor(torch.tensor([_A], device=device, dtype=dtype), mode="xyxy").to_tensor(mode)
+        self.assert_close(exported[0, :1], first, atol=0.0, rtol=0.0)
+        masks = dense.to_mask(10, 10)
+        assert masks[0, 0].count_nonzero() > 0
+        assert masks[0, 1:].count_nonzero() == 0
+
+    def test_unpickle_with_padding_counts_6283(self, device, dtype):
+        # A Boxes pickled by an earlier kornia records its padding as trailing counts, and loads as the same padding.
+        boxes = self._padding_boxes(device, dtype)
+        boxes.__dict__.pop("_padding", None)
+        boxes.__dict__["_N"] = [2, 0]
+        restored = pickle.loads(pickle.dumps(boxes))  # noqa: S301
+        self._assert_padding_rows(restored, [_SAMPLE_0, _SAMPLE_1], device, dtype)
+        restored[0] = restored[1]
+        self._assert_padding_rows(restored, [_SAMPLE_1, _SAMPLE_1], device, dtype)
+
+    def test_list_export_gradient_follows_the_written_rows_6283(self, device):
+        # dtype-independent: gradcheck runs in float64.
+        def export(first, second, written):
+            boxes = Boxes([first, second])
+            boxes[0, 1:2] = Boxes(written)
+            return tuple(boxes.to_tensor("xyxy"))
+
+        corners = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=torch.float64)
+        first = corners.clone().requires_grad_()
+        second = torch.cat([corners + 1.0, corners + 2.0]).requires_grad_()
+        written = (corners + 3.0).requires_grad_()
+        self.gradcheck(export, (first, second, written))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_list_padding_is_fullgraph_6283(self, device, dtype, torch_optimizer):
+        # Writes, merges and both exports stay in one graph, for a written object as for one nothing touched.
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        second = torch.tensor(_SAMPLE_1, device=device, dtype=dtype)
+        new = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy").data
+
+        def untouched(x, y):
+            boxes = Boxes.from_tensor([x, y], mode="xyxy", validate_boxes=False)
+            return boxes.to_tensor("xyxy"), boxes.to_tensor("xyxy", as_padded_sequence=True), boxes.to_mask(10, 10)
+
+        def written(x, y, z):
+            boxes = Boxes.from_tensor([x, y], mode="xyxy", validate_boxes=False)
+            boxes[0, 1:2] = Boxes(z)
+            merged = boxes.merge(Boxes(z.expand(2, -1, -1, -1)))
+            return merged.to_tensor("xyxy"), merged.to_tensor("xyxy", as_padded_sequence=True), merged.to_mask(10, 10)
+
+        for function, args in ((untouched, (first, second)), (written, (first, second, new))):
+            exported, padded, masks = torch_optimizer(function, fullgraph=True)(*args)
+            expected_exported, expected_padded, expected_masks = function(*args)
+            assert len(exported) == len(expected_exported)
+            for actual, expected in zip(exported, expected_exported):
+                self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+            self.assert_close(padded, expected_padded, atol=0.0, rtol=0.0)
+            self.assert_close(masks, expected_masks, atol=0.0, rtol=0.0)
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
@@ -2321,6 +2625,95 @@ class TestVideoBoxes(BaseTester):
         self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
         assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
         assert filtered.to_mask(5, 5)[:, :, 1].count_nonzero() == 0
+
+    @staticmethod
+    def _padding_frames(device, dtype):
+        # Four frames with one, two, one and one boxes.
+        corners = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]], device=device, dtype=dtype)
+        return corners, Boxes([corners[None], torch.stack([corners, corners + 2]), corners[None], corners[None]])
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_merge_with_list_boxes_marks_the_padding_invalid_6283(self, inplace, device, dtype):
+        # A VideoBoxes has no ragged export: frames with different box counts share one (B, T, N, ...) tensor. The
+        # padding of merged list boxes is therefore invalid: exact zero rows in every mode and no mask, also after a
+        # transform.
+        corners, frames = self._padding_frames(device, dtype)
+        video = VideoBoxes.from_tensor(corners.reshape(1, 1, 1, 4, 2).repeat(2, 2, 1, 1, 1))
+        merged = video.merge(frames, inplace=inplace)
+        assert (merged is video) == inplace
+        assert isinstance(merged, VideoBoxes)
+        assert merged._N is None
+        assert merged.temporal_channel_size == 2
+
+        padding = torch.tensor([[[0, 0, 1], [0, 0, 0]], [[0, 0, 1], [0, 0, 1]]], device=device, dtype=torch.bool)
+        rows = torch.stack([corners] * 3).expand(4, 3, 4, 2).clone()
+        rows[1, 2] = corners + 2
+        dense = Boxes(rows, False)
+        transform = torch.eye(3, device=device, dtype=dtype)
+        transform[:2, 2] = 1.0
+        for boxes, reference in (
+            (merged, dense),
+            (merged.transform_boxes(transform.expand(4, -1, -1)), dense.transform_boxes(transform.expand(4, -1, -1))),
+        ):
+            for mode in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
+                exported = boxes.to_tensor(mode)
+                expected = reference.to_tensor(mode).reshape(exported.shape)
+                assert exported.shape[:3] == (2, 2, 3)
+                assert exported[padding].count_nonzero() == 0
+                self.assert_close(exported[~padding], expected[~padding], atol=0.0, rtol=0.0)
+                self.assert_close(boxes[1:].to_tensor(mode), exported[1:], atol=0.0, rtol=0.0)
+                self.assert_close(boxes[0].to_tensor(mode), exported[:1], atol=0.0, rtol=0.0)
+            masks = boxes.to_mask(8, 8)
+            assert masks.shape == (2, 2, 3, 8, 8)
+            assert masks[padding].count_nonzero() == 0
+            assert masks[~padding].flatten(1).any(dim=1).all()
+            expected_masks = reference.to_mask(8, 8).reshape(masks.shape)
+            self.assert_close(masks[~padding], expected_masks[~padding], atol=0.0, rtol=0.0)
+
+    def test_list_constructor_keeps_no_padding_6283(self, device, dtype):
+        corners, _ = self._padding_frames(device, dtype)
+        video = VideoBoxes([corners[None], torch.stack([corners, corners + 2])], False)
+        video.temporal_channel_size = 1
+        assert video._N is None
+        exported = video.to_tensor("xyxy")
+        assert exported.shape == (2, 1, 2, 4)
+        assert exported[0, 0, 1].count_nonzero() == 0
+        assert exported[1, 0, 1].count_nonzero() > 0
+
+    def test_merge_with_list_boxes_keeps_the_batch_check_6283(self, device, dtype):
+        corners, frames = self._padding_frames(device, dtype)
+        video = VideoBoxes.from_tensor(corners.reshape(1, 1, 1, 4, 2).repeat(1, 2, 1, 1, 1))
+        with pytest.raises(ValueError, match="Batch size mismatch"):
+            video.merge(frames)
+
+    @pytest.mark.parametrize("write", ["setitem", "index_put"])
+    def test_writing_list_boxes_marks_the_padding_invalid_6283(self, write, device, dtype):
+        corners, frames = self._padding_frames(device, dtype)
+        video = VideoBoxes.from_tensor(corners.reshape(1, 1, 1, 4, 2).repeat(2, 2, 2, 1, 1))
+        if write == "setitem":
+            video[0] = frames[:2]
+        else:
+            video.index_put((torch.tensor([0], device=device),), frames[0:1], inplace=True)
+        assert video._N is None
+        assert video.to_tensor("xyxy")[0, 0, 1].count_nonzero() == 0
+        assert video.to_tensor("xyxy")[0, 0, 0].count_nonzero() > 0
+        masks = video.to_mask(8, 8)
+        assert masks[0, 0, 1].count_nonzero() == 0
+        assert masks[0, 0, 0].count_nonzero() > 0
+        assert masks[1].flatten(2).any(dim=2).all()
+
+    def test_unpickle_with_padding_counts_6283(self, device, dtype):
+        # An earlier kornia could leave counts on a VideoBoxes after a merge; they load as invalid rows, which export.
+        corners, _ = self._padding_frames(device, dtype)
+        video = VideoBoxes.from_tensor(corners.reshape(1, 1, 1, 4, 2).repeat(1, 2, 2, 1, 1))
+        video.__dict__.pop("_padding", None)
+        video.__dict__["_N"] = [1, 0]
+        restored = pickle.loads(pickle.dumps(video))  # noqa: S301
+        assert restored._N is None
+        exported = restored.to_tensor("xyxy")
+        assert exported.shape == (1, 2, 2, 4)
+        assert exported[0, 0, 1].count_nonzero() == 0
+        assert exported[0, 1, 1].count_nonzero() > 0
 
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 

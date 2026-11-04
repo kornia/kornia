@@ -1,0 +1,1 @@
+`Boxes` built from a list now records its padding per box, so item assignment and `index_put` no longer make the trimmed `to_tensor` export drop real boxes or keep padding rows, and a `VideoBoxes` merged with list-built boxes exports and draws masks, with the padding as invalid zero rows.
