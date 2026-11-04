@@ -107,14 +107,14 @@ class RandomTranslate(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        translations = torch.stack(
-            [
-                _as_tensor_nonblocking(params["translate_x"], input.device, input.dtype),
-                _as_tensor_nonblocking(params["translate_y"], input.device, input.dtype),
-            ],
-            dim=-1,
-        )
-        return get_translation_matrix2d(translations)
+        translate_x, translate_y = params["translate_x"], params["translate_y"]
+        if translate_x.device != translate_y.device:
+            # A learned magnitude sits with its operation, and the generator's other draw stays where it was drawn. With
+            # both on one device, the stack below is moved once rather than each component.
+            translate_x = _as_tensor_nonblocking(translate_x, input.device, input.dtype)
+            translate_y = _as_tensor_nonblocking(translate_y, input.device, input.dtype)
+        translations = torch.stack([translate_x, translate_y], dim=-1)
+        return get_translation_matrix2d(_as_tensor_nonblocking(translations, input.device, input.dtype))
 
     def apply_transform(
         self,
