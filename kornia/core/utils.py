@@ -546,9 +546,11 @@ def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS and under Inductor (CPU and CUDA),
     while eager CPU and CUDA keep ``-0.0``.
     """
-    clamped = input.clamp(0.0, 1.0)
     if not _needs_derivatives(input):
-        return clamped
+        return input.clamp(0.0, 1.0)
+    # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
+    # backward of a recorded clamp made a forward and backward pass about twice as slow.
+    clamped = input.detach().clamp(0.0, 1.0)
     return torch.where(clamped == input, input, clamped)
 
 
