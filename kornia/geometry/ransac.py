@@ -99,6 +99,39 @@ _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 # tuned batch sizes; large explicit batches are split without changing the minimal-sample budget.
 _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
 
+# An affine fundamental matrix must tie the two images together: as a correspondence's point in one image moves over
+# the keypoints, the geometric distance must vary by at least this many inlier thresholds (a standard deviation).
+_AFFINE_FUNDAMENTAL_MIN_SPREAD = 5.0
+
+
+def _affine_fundamental_ties_both_images(
+    kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
+) -> torch.Tensor:
+    """Return which affine fundamental matrices ``(B, 3, 3)`` depend on both images' points, ``(B,)``.
+
+    ``F = [[0, 0, a], [0, 0, b], [c, d, e]]`` puts a correspondence at the geometric distance
+    ``(a x2 + b y2 + c x1 + d y1 + e) / |(a, b, c, d)|``. With ``(c, d) = 0`` that is the distance of ``x2`` to one
+    line, whatever ``x1`` is, so mismatches whose second points lie along a line all fit it and can outvote the true
+    geometry; with ``(a, b) = 0`` the same holds in the first image. Points near a line give small terms rather than
+    zero ones, and what counts as small depends on the images' extent and the threshold. So each image's term,
+    ``(c x1 + d y1)`` over ``kp1`` and ``(a x2 + b y2)`` over ``kp2``, divided by ``|(a, b, c, d)|``, must have a
+    standard deviation of at least ``_AFFINE_FUNDAMENTAL_MIN_SPREAD`` times the inlier threshold ``inl_th`` (not
+    squared). For the true geometry the first image's term is the spread of the matched points across the epipolar
+    lines, seen in the second image.
+    """
+    with _autocast_disabled(kp1.device.type):
+        work = torch.promote_types(torch.promote_types(kp1.dtype, models.dtype), torch.float32)
+        normal = models[:, [0, 1, 2, 2], [2, 2, 0, 1]].to(work)  # (a, b, c, d)
+        floor = _AFFINE_FUNDAMENTAL_MIN_SPREAD * inl_th * normal.norm(dim=-1)
+
+        def spread(points: torch.Tensor, direction: torch.Tensor) -> torch.Tensor:
+            centred = points.reshape(-1, 2).to(work)
+            centred = centred - centred.mean(0)
+            covariance = centred.mT @ centred / centred.shape[0]
+            return ((direction @ covariance) * direction).sum(-1).clamp_min(0.0).sqrt()
+
+        return (spread(kp2, normal[:, :2]) >= floor) & (spread(kp1, normal[:, 2:]) >= floor)
+
 
 def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
     """Squared one-way transfer errors ``(B, N)`` of affine models ``(B, 3, 3)`` on one set of correspondences.
@@ -247,7 +280,10 @@ class RANSAC(nn.Module):
           with free translation and return a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal
           samples need three non-collinear source points. ``"fundamental_affine"`` solves its four-point samples
           and refits its inliers by orthogonal regression, the Gold Standard estimate (Hartley and Zisserman,
-          algorithm 14.1).
+          algorithm 14.1). It counts no inliers for a matrix that (nearly) ignores one image, ``(a, b)`` or
+          ``(c, d)`` near 0: that matrix is a line in the other image, which mismatches along a line fit. Each
+          image's term of the distance must vary over the keypoints by at least five inlier thresholds (a standard
+          deviation).
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -788,6 +824,9 @@ class RANSAC(nn.Module):
         inf = float("inf")
         errors = errors.nan_to_num(nan=inf, posinf=inf, neginf=inf)
         inl_mask = errors <= inl_th
+        if self.model_type == "fundamental_affine":
+            # A matrix that (nearly) ignores one image is a line in the other, which a line of mismatches fits.
+            inl_mask = inl_mask & _affine_fundamental_ties_both_images(kp1, kp2, models, math.sqrt(inl_th))[:, None]
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             # Equivalent to minimizing the truncated squared loss (MSAC), normalized

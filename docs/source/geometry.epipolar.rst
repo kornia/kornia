@@ -43,11 +43,11 @@ Fundamental
 -----------
 
 Estimate the fundamental matrix from pixel correspondences with the 8-point or 7-point algorithm, or the affine
-fundamental matrix of two affine cameras from four or more (:func:`find_fundamental`), convert from an essential matrix or two projection matrices
-(:func:`fundamental_from_essential`, :func:`fundamental_from_projections`), compute epipolar lines and the nearest
-points on them (:func:`compute_correspond_epilines`, :func:`get_closest_point_on_epipolar_line`,
-:func:`get_perpendicular`), and normalize points and matrices for the estimators (:func:`normalize_points`,
-:func:`normalize_transformation`).
+fundamental matrix of two affine cameras from four or more (:func:`find_fundamental`), convert from an essential
+matrix or two projection matrices (:func:`fundamental_from_essential`, :func:`fundamental_from_projections`),
+compute epipolar lines and the nearest points on them (:func:`compute_correspond_epilines`,
+:func:`get_closest_point_on_epipolar_line`, :func:`get_perpendicular`), and normalize points and matrices for the
+estimators (:func:`normalize_points`, :func:`normalize_transformation`).
 
 .. autofunction:: find_fundamental
 .. autofunction:: fundamental_from_essential

@@ -7,7 +7,7 @@ kornia.geometry.ransac
 .. currentmodule:: kornia.geometry.ransac
 
 Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies,
-fundamental matrices (general and affine) and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
+fundamental and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
 and calling it on one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
 ``"homography_from_linesegments"``) of the first and the second image returns the ``(3, 3)`` model and the ``(N,)``
 inlier mask. A homography or affine map takes the first image to the second, a fundamental matrix satisfies
@@ -65,12 +65,21 @@ correspondence's Sampson distance is then exact: the smallest total displacement
 of its two points that makes them correspond, the distance ``inl_th`` bounds.
 Like any fundamental matrix, it is not determined by correspondences on one plane,
 which a single 2D affine map relates (``model_type="affine"`` tests for that).
+A matrix with ``(a, b)`` or ``(c, d)`` near zero ignores one image: it is a line in
+the other, which every mismatch along that line fits, so a line of mismatches
+(along an edge, say) could outvote the true geometry. Such a model gets no
+inliers: each image's term of the distance, ``(a x2 + b y2)`` and
+``(c x1 + d y1)`` over ``|(a, b, c, d)|``, must vary over the keypoints by at
+least five inlier thresholds (a standard deviation). In 1000 px images with 30
+true correspondences, 40 mismatches within 0.3 px of a line and 30 random ones
+(ten scenes, the line in either image, ``inl_th`` of 1 or 2), it keeps 27 to 30
+of the true ones and 0 to 2 of the line; without the check, 0 to 1 and all 40.
 It suits views that are close to parallel projection. On synthetic pinhole views of
 a 60 m scene from 45 degrees off nadir (1000 px images, 0.5 px noise,
 ``inl_th=2.0``), it kept 99% of the true correspondences from 3000 m away,
 89% from 1500 m and 49% from 500 m, where ``"fundamental"`` kept all of them;
 on exactly affine views both kept all of them, ``"fundamental_affine"`` with a more
-accurate matrix, six to twelve times faster on CPU and 24 to 50 times on CUDA.
+accurate matrix, several times faster.
 It uses ``local_optimization="dlt"``; ``"lm"``, ``compile=True`` and DEGENSAC
 are not supported.
 

@@ -467,6 +467,71 @@ class TestFindFundamentalAffine(BaseTester):
         expected = epi.find_fundamental(scene["x1"].float(), scene["x2"].float(), method="AFFINE").to(dtype)
         assert torch.equal(F, expected)
 
+    def test_float32_points_fit_in_float64(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64; the fit runs in float32 there")
+        x1, x2 = self._noisy(affine_two_view_scene(device, torch.float64))
+        # Far from the origin, as in a large image: the float32 points round to 2e-3 px, and a float32 scatter matrix
+        # of their centred coordinates would move F by more than that.
+        x1, x2 = (x1 + 15000.0).float(), (x2 + 15000.0).float()
+        F = epi.find_fundamental(x1, x2, method="AFFINE")
+        assert F.dtype == torch.float32
+        expected = epi.find_fundamental(x1.double(), x2.double(), method="AFFINE").float()
+        self.assert_close(F, expected, rtol=1e-6, atol=0.0)
+
+    @staticmethod
+    def _cube_seen_from_front_and_side(device: torch.device, dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+        # A 3 x 3 x 3 grid with spacing 100 seen by two orthographic cameras 90 degrees apart: x1 = (X, Y) and
+        # x2 = (Z, Y + 10). The stacked correspondences (Z, Y + 10, X, Y) have scatter eigenvalues 0, v, v and 2v:
+        # F = [[0, 0, 0], [0, 0, -0.1], [0, 0.1, 1]] is well defined, its eigenvalue 0 being simple, but eigh's
+        # backward divides by the gap between the two equal ones.
+        grid = torch.arange(3, device=device, dtype=dtype) * 100.0
+        X = torch.cartesian_prod(grid, grid, grid)
+        return X[None, :, :2], torch.stack([X[:, 2], X[:, 1] + 10.0], dim=-1)[None]
+
+    def test_gradient_is_finite_when_two_other_eigenvalues_are_equal(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        x1, x2 = self._cube_seen_from_front_and_side(device, dtype)
+        weights = torch.ones(1, 27, device=device, dtype=dtype, requires_grad=True)
+        x1.requires_grad_()
+        x2.requires_grad_()
+        F = epi.find_fundamental(x1, x2, weights, method="AFFINE")
+        expected = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, -0.1], [0.0, 0.1, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(F, expected, **self._tol(dtype))
+        (F * torch.arange(9, device=device, dtype=dtype).view(3, 3)).sum().backward()
+        for grad in (x1.grad, x2.grad, weights.grad):
+            assert torch.isfinite(grad).all()
+
+    def test_gradcheck_when_two_other_eigenvalues_are_equal(self, device):
+        x1, x2 = self._cube_seen_from_front_and_side(device, torch.float64)
+        weights = torch.ones(1, 27, device=device, dtype=torch.float64)
+
+        def fit(p1: torch.Tensor, p2: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+            return epi.find_fundamental(p1, p2, w, method="AFFINE")
+
+        self.gradcheck(fit, (x1.requires_grad_(), x2.requires_grad_(), weights.requires_grad_()))
+
+    def test_float16_result_is_finite_for_centred_points(self, device):
+        # Points centred on the origin and scaled to unit size, as normalize_points leaves them, put the epipolar plane
+        # near the origin: e is near 0, and scaling F to F[2, 2] = 1 put the other entries above float16's 65504.
+        # Fifty points seen by the fixture's two affine cameras, with 0.3 px noise.
+        generator = torch.Generator().manual_seed(4)
+        X = torch.rand(50, 3, generator=generator) * 200.0 - 100.0
+        M1 = torch.tensor([[1.2, 0.1, -0.3], [0.05, -1.1, 0.4]])
+        M2 = torch.tensor([[0.9, 0.5, 0.2], [-0.3, -0.8, 0.7]])
+        points1 = (X @ M1.T)[None] + 0.3 * torch.randn(1, 50, 2, generator=generator)
+        points2 = (X @ M2.T)[None] + 0.3 * torch.randn(1, 50, 2, generator=generator)
+        points1, points2 = ((x - x.mean(1, keepdim=True)) for x in (points1, points2))
+        points1, points2 = (x / x.abs().max() for x in (points1, points2))
+        points1, points2 = points1.half().to(device), points2.half().to(device)
+        F = epi.find_fundamental(points1, points2, method="AFFINE")
+        assert F.dtype == torch.float16
+        assert torch.isfinite(F).all()
+        # The same matrix up to scale: the largest entry is 1 instead of F[2, 2].
+        expected = epi.find_fundamental(points1.float(), points2.float(), method="AFFINE")
+        self.assert_close(F.float(), expected / expected.abs().amax(), rtol=0.0, atol=1e-3)
+        assert F.abs().amax() == 1.0
+
     def test_too_few_correspondences_raise(self, device, dtype):
         points = torch.rand(1, 3, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError, match=r"points1 and points2 must have shape \(B, N, 2\) with N >= 4, got"):

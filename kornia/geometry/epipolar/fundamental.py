@@ -24,7 +24,13 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import (
+    _autocast_disabled,
+    _svd_work_dtype,
+    _symmetric_eigenvector,
+    _torch_svd_cast,
+    safe_inverse_with_mask,
+)
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -632,7 +638,9 @@ def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     correspondence to it is the geometric error, the smallest total displacement of its two points that makes them
     correspond. The hyperplane that minimizes the sum of the squared (weighted) distances passes through the
     centroid, and its normal is the eigenvector of the smallest eigenvalue of the centred scatter matrix. This is
-    the Gold Standard (maximum-likelihood) estimate under Gaussian noise, exact for four correspondences.
+    the Gold Standard (maximum-likelihood) estimate under Gaussian noise, exact for four correspondences. When the
+    points of one image lie on a line, the minimizer is that line, a rank-one matrix with ``(a, b) = 0`` or
+    ``(c, d) = 0``, which no pair of affine cameras has; ``RANSAC("fundamental_affine")`` rejects such models.
 
     Reference: Hartley and Zisserman, Multiple View Geometry in Computer Vision, 2nd ed., section 14.2, algorithm 14.1.
 
@@ -661,8 +669,10 @@ def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             expected_shape=["B", "N"],
         )
     dtype = points1.dtype
-    # Pixel coordinates in the hundreds overflow a half-precision scatter matrix, and eigh has no half kernel.
-    work = torch.promote_types(dtype, torch.float32)
+    # Pixel coordinates in the hundreds overflow a half-precision scatter matrix, and eigh has no half kernel. float32
+    # points are fitted in float64 (float32 on MPS): far from the origin, a float32 scatter of a near-planar scene
+    # rounds its two smallest eigenvalues into each other.
+    work = _svd_work_dtype(points1)
     with _autocast_disabled(points1.device.type):
         X = torch.cat([points2, points1], dim=-1).to(work)
         if weights is None:
@@ -675,13 +685,23 @@ def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         centred = X - mean[:, None]
         # Linear in w, so a zero weight has a finite gradient, unlike row scaling by sqrt(w) (#4912).
         scatter = (centred * w[..., None]).transpose(-2, -1) @ centred
-        normal = torch.linalg.eigh(scatter)[1][..., 0]
+        # eigh's backward divides by every eigenvalue gap, so it is NaN when two of the other eigenvalues are equal,
+        # as for a grid seen from the front and the side; _symmetric_eigenvector divides only by the gaps to the
+        # smallest one (#6214).
+        eigenvalues, eigenvectors = torch.linalg.eigh(scatter.detach())
+        normal = _symmetric_eigenvector(scatter, eigenvalues, eigenvectors, 0)
         zeros = torch.zeros_like(normal[:, 0])
         last = -(normal * mean).sum(-1)
         F = torch.stack(
             [zeros, zeros, normal[:, 0], zeros, zeros, normal[:, 1], normal[:, 2], normal[:, 3], last], dim=-1
         ).view(-1, 3, 3)
-        return normalize_transformation(F).to(dtype)
+        F = normalize_transformation(F)
+        if dtype == torch.float16:
+            # Points centred on the origin put e near 0, and F[2, 2] = 1 then puts the other entries above float16's
+            # 65504: such an F is scaled to its largest entry 1 instead.
+            scale = F.abs().amax(dim=(-2, -1), keepdim=True)
+            F = torch.where(scale > torch.finfo(torch.float16).max, F / scale, F)
+        return F.to(dtype)
 
 
 def find_fundamental(
@@ -690,7 +710,7 @@ def find_fundamental(
     weights: Optional[torch.Tensor] = None,
     method: Literal["8POINT", "7POINT", "AFFINE"] = "8POINT",
 ) -> torch.Tensor:
-    r"""Estimate the fundamental matrix from pixel correspondences with the 8- or 7-point algorithm.
+    r"""Estimate the fundamental matrix from pixel correspondences with the 8-, 7-point or affine algorithm.
 
     ``F = find_fundamental(points1, points2)`` takes correspondences ``(B, N, 2)``, ``N >= 8``, of the first and the
     second image, in pixels or any other image coordinates, and returns the rank-2 matrix ``(B, 3, 3)`` with
@@ -711,7 +731,9 @@ def find_fundamental(
           ``method="7POINT"`` returns three candidates in no particular order.
         - ``weights`` weight each correspondence's equation in the linear system (for ``"AFFINE"``, its squared
           distance): only their ratios matter, a negative weight counts as zero, and ``method="7POINT"`` ignores them.
-        - ``"AFFINE"`` fits and returns the affine form exactly; it computes in at least float32.
+        - ``"AFFINE"`` fits and returns the affine form exactly; it computes in float64 (float32 on MPS and for
+          half-precision input). A float16 result whose entries ``F[2, 2] = 1`` would put above float16's maximum
+          (``e`` near 0, as for points centred on the origin) is scaled to its largest entry 1 instead.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
         - A caller's autocast region does not change the fit.
 
