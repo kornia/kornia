@@ -15,7 +15,8 @@
 # limitations under the License.
 #
 
-from typing import Any, List, Optional, Tuple, Union
+from functools import partial
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -148,6 +149,34 @@ def _learnable_range_bound(
     if factor.dim() == 0:
         return factor, center, bounds
     return factor, None, None
+
+
+def _load_unowned_learnable_range(module: torch.nn.Module, name: str, center: Optional[float]) -> None:
+    r"""Let ``module`` strict-load a checkpoint saved when it did not own its learnable range ``name`` yet.
+
+    Use it after :func:`_learnable_range_bound`, with the ``center`` it returned. The colour augmentations used to keep
+    an ``nn.Parameter`` range only when it was a ``(2,)`` CPU tensor in the default dtype. Their other checkpoints hold
+    no ``name`` entry, only the generator's ``<name>_factor``: the range as a ``(2,)`` tensor, and for a 0-d parameter
+    the range derived from it, ``[max(center - f, low), center + f]``. A load pre-hook fills ``name`` from that entry,
+    and for a 0-d parameter recovers ``f`` as the upper end minus ``center``, because the upper end is never clamped.
+    Nothing is registered for a range that is not a parameter, whose checkpoint layout did not change.
+    """
+    if isinstance(module._parameters.get(name), torch.nn.Parameter):
+        module._register_load_state_dict_pre_hook(partial(_fill_unowned_learnable_range, name, center))
+
+
+def _fill_unowned_learnable_range(
+    name: str, center: Optional[float], state_dict: Dict[str, Any], prefix: str, *args: Any
+) -> None:
+    key, factor_key = prefix + name, f"{prefix}_param_generator.{name}_factor"
+    if key in state_dict or factor_key not in state_dict:
+        return
+    saved = state_dict[factor_key]
+    # ``center`` is only returned for a 0-d parameter; a (2,) entry for it is the range the old layout derived.
+    if center is not None and isinstance(saved, torch.Tensor) and saved.shape == (2,):
+        saved = saved.detach()[1] - center
+        state_dict[factor_key] = saved
+    state_dict[key] = saved
 
 
 def _shear_bound(

@@ -664,9 +664,12 @@ Serializing an augmentation
   is described in :doc:`/augmentation.base`.
 - A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
   augmentation or container with an ``nn.Parameter`` range owns a copy of
-  that parameter: it draws from it, and its gradients reach it rather than
-  the original's. The ``_params`` it inherits from the last call keep their
-  values, detached.
+  that parameter, and its gradients reach that copy rather than the
+  original. It draws from the value the parameter had when it was copied: as
+  in the original, an in-place update such as an optimizer step or
+  ``AveragedModel.update_parameters`` does not reach the draws
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). The ``_params``
+  it inherits from the last call keep their values, detached.
 
 Morphology
 ----------

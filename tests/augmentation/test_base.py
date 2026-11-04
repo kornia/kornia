@@ -1694,6 +1694,18 @@ _RANGES_ON_DEVICE = {
     "ColorJitter": (lambda r: K.ColorJitter(r, p=1.0), (0.8, 1.2), 0.2),
 }
 
+# name -> (class, range name, (2,) range, 0-d half-width, the range a checkpoint holds for that half-width). Before the
+# four colour classes owned a learnable range, their checkpoints held one only as the generator's ``<name>_factor``, a
+# CPU float32 (2,) range, unless it was a CPU float32 (2,) parameter. For a 0-d half-width that is the range derived
+# from it, with the lower end floored at the domain: the saved ranges are what
+# ``RandomX(nn.Parameter(torch.tensor(half_width))).state_dict()`` gives at 0ee23ec52.
+_UNOWNED_RANGE_CHECKPOINTS = {
+    "RandomBrightness": (K.RandomBrightness, "brightness", (0.8, 1.2), 0.2, (0.8, 1.2)),
+    "RandomContrast": (K.RandomContrast, "contrast", (0.8, 1.2), 0.3, (0.7, 1.3)),
+    "RandomSaturation": (K.RandomSaturation, "saturation", (0.7, 1.2), 1.5, (0.0, 2.5)),
+    "RandomHue": (K.RandomHue, "hue", (-0.1, 0.2), 0.1, (-0.1, 0.1)),
+}
+
 
 def _torch_save_round_trip(module: torch.nn.Module) -> torch.nn.Module:
     buffer = io.BytesIO()
@@ -1925,3 +1937,20 @@ class TestLearnableRangeCopies(BaseTester):
             self.assert_close(actual[key], value, rtol=0, atol=0)
         sum(value.sum() for value in actual.values() if value.is_floating_point()).backward()
         assert all(p.grad is not None and p.device.type == "cpu" for p in generator.parameters())
+
+    @pytest.mark.parametrize("form", ["range", "half-width"])
+    @pytest.mark.parametrize("name", list(_UNOWNED_RANGE_CHECKPOINTS))
+    def test_strict_load_of_a_checkpoint_without_the_range(self, name, form, device, dtype):
+        make, key, pair, half_width, saved_range = _UNOWNED_RANGE_CHECKPOINTS[name]
+        value = torch.tensor(pair if form == "range" else half_width, device=device, dtype=dtype)
+        checkpoint = {f"_param_generator.{key}_factor": torch.tensor(pair if form == "range" else saved_range)}
+        aug = make(torch.nn.Parameter(value.clone()), p=1.0)
+        for target in (aug, pickle.loads(pickle.dumps(aug))):  # noqa: S301
+            (param,) = target.parameters()
+            with torch.no_grad():
+                param.zero_()
+            target.load_state_dict(checkpoint)
+            self.assert_close(param, value)
+            # A checkpoint of the module as it is now still loads, and its own layout is kept.
+            target.load_state_dict(make(torch.nn.Parameter(value.clone()), p=1.0).state_dict())
+            assert set(target.state_dict()) == {key, f"_param_generator.{key}_factor"}
