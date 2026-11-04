@@ -1399,11 +1399,12 @@ _FILTER2D_FNS = {"filter2d": filter2d, "fft_conv": fft_conv}
 
 
 def _fft_guard(name: str, device: torch.device, dtype: torch.dtype) -> None:
-    """Skip fft_conv where the device has no FFT for the dtype (fft_conv computes a CPU half input in float32)."""
+    """Skip fft_conv where the device has no FFT for the dtype it transforms (float32 for half inputs)."""
     if name != "fft_conv" or device.type == "cpu":
         return
+    fft_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     try:
-        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=dtype))
+        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=fft_dtype))
     except (RuntimeError, NotImplementedError):
         pytest.skip("this device has no FFT for this dtype, which fft_conv needs")
 
