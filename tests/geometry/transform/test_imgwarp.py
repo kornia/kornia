@@ -1704,6 +1704,96 @@ class TestWarpAutocast(BaseTester):
         self.assert_close(op(image, matrix), expected, rtol=1e-3, atol=1e-3)
 
 
+class TestMatrixBuildersAutocast(BaseTester):
+    """A caller's autocast region does not reach the products of the affine matrix builders (#6573)."""
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _builder(op_name, device, dtype):
+        # A centre far from the origin gives translation entries that need more digits than half precision keeps.
+        def tensor(*values):
+            return torch.tensor(values, device=device, dtype=dtype)
+
+        shear_a, shear_b = tensor(0.13), tensor(0.07)
+        center2, center3 = tensor([319.5, 239.5]), tensor([319.5, 239.5, 15.5])
+        angle2, angle3 = tensor(25.0), tensor([10.0, 20.0, 25.0])
+        scale2, scale3 = tensor([1.13, 0.87]), tensor([1.13, 0.87, 1.05])
+        move2, move3 = tensor([3.3, 1.7]), tensor([3.3, 1.7, 0.9])
+        transform = kornia.geometry.transform
+        builders = {
+            "get_rotation_matrix2d": lambda: transform.get_rotation_matrix2d(center2, angle2, scale2),
+            "get_affine_matrix2d": lambda: transform.get_affine_matrix2d(move2, center2, scale2, angle2),
+            "get_affine_matrix2d_shear": lambda: transform.get_affine_matrix2d(
+                move2, center2, scale2, angle2, shear_a, shear_b
+            ),
+            "get_projective_transform": lambda: transform.get_projective_transform(center3, angle3, scale3),
+            "get_affine_matrix3d": lambda: transform.get_affine_matrix3d(move3, center3, scale3, angle3),
+            "get_affine_matrix3d_shear": lambda: transform.get_affine_matrix3d(
+                move3, center3, scale3, angle3, shear_a, shear_b, shear_a, shear_b, shear_a, shear_b
+            ),
+        }
+        return builders[op_name], angle2 if "2d" in op_name else angle3
+
+    _builders = (
+        "get_rotation_matrix2d",
+        "get_affine_matrix2d",
+        "get_affine_matrix2d_shear",
+        "get_projective_transform",
+        "get_affine_matrix3d",
+        "get_affine_matrix3d_shear",
+    )
+
+    @pytest.mark.parametrize("op_name", _builders)
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_autocast_does_not_change_the_matrix_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # The matrix products ran in the autocast dtype and the matrix came back in it: in bfloat16, a rotation about
+        # the center of a 640 x 480 image moved its corner by about 1 px, and rotate, scale and the affine
+        # augmentations warped by that matrix.
+        self._skip_unsupported(device, autocast_dtype)
+        if (
+            device.type == "cpu"
+            and src_dtype in (torch.float16, torch.bfloat16)
+            and src_dtype != getattr(torch, autocast_dtype)
+        ):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build, _ = self._builder(op_name, device, src_dtype)
+        expected = build()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build()
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", _builders)
+    def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        build, angle = self._builder(op_name, device, torch.float32)
+        angle.requires_grad_()
+        expected = torch.autograd.grad(build().sum(), angle)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = build()
+        actual = torch.autograd.grad(out.sum(), angle)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["get_rotation_matrix2d", "get_affine_matrix2d_shear"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_under_autocast_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        build, _ = self._builder(op_name, device, torch.float32)
+        expected = build()
+        op = torch_optimizer(build)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+
+
 class TestGetTranslationMatrix2d(BaseTester):
     @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
     def test_rejects_unsupported_shape(self, shape, device, dtype):

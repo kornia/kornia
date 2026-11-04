@@ -6563,6 +6563,47 @@ class TestMultiprocessing:
 
 
 @pytest.mark.slow
+class TestGeometricAugmentationAutocast(BaseTester):
+    """A caller's autocast region does not reach the matrix or the sampling grid of these augmentations (#6573)."""
+
+    @pytest.mark.parametrize(
+        "name,make",
+        [
+            ("RandomAffine", lambda: kornia.augmentation.RandomAffine(25.0, (0.1, 0.1), (0.9, 1.1), 10.0, p=1.0)),
+            ("RandomRotation", lambda: kornia.augmentation.RandomRotation(25.0, p=1.0)),
+            ("RandomPerspective", lambda: kornia.augmentation.RandomPerspective(0.3, p=1.0)),
+            ("RandomShear", lambda: kornia.augmentation.RandomShear(10.0, p=1.0)),
+            ("RandomAffine3D", lambda: kornia.augmentation.RandomAffine3D(25.0, p=1.0)),
+            ("RandomRotation3D", lambda: kornia.augmentation.RandomRotation3D(25.0, p=1.0)),
+            ("RandomPerspective3D", lambda: kornia.augmentation.RandomPerspective3D(0.3, p=1.0)),
+        ],
+        ids=lambda case: case if isinstance(case, str) else "",
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_autocast_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
+        # In bfloat16 a seeded float32 RandomRotation of a 256 px [0, 1] image was up to 0.83 off, RandomAffine 0.41
+        # and RandomPerspective 0.94, from the half-precision products of the matrix builders and the warps.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        generator = torch.Generator().manual_seed(0)
+        shape = (1, 1, 32, 32, 32) if name.endswith("3D") else (1, 3, 256, 256)
+        image = torch.rand(shape, generator=generator).to(device)
+
+        def run():
+            torch.manual_seed(3)
+            augmentation = make()
+            return augmentation(image), augmentation.transform_matrix
+
+        expected, expected_matrix = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, actual_matrix = run()
+        assert actual.dtype == actual_matrix.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_matrix, expected_matrix, rtol=0, atol=0)
+
+
 class TestRandomJPEG(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
