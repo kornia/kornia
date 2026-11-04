@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
-from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.helpers import _constant_tensor, _detach_recorded_graph_tensors
 from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -158,6 +158,11 @@ class _BasicAugmentationBase(nn.Module):
         dtype = probe.dtype if probe.is_floating_point() else self.dtype
         self.set_rng_device_and_dtype(probe.device, dtype)
         return out
+
+    def __getstate__(self) -> Dict[str, Any]:
+        # With a learnable range, ``_params`` and the matrix state recorded by the last call are part of its graph;
+        # a copy keeps their values, detached.
+        return _detach_recorded_graph_tensors(super().__getstate__())
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
