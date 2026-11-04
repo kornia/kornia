@@ -1389,10 +1389,7 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(a, ["B", "4"], "a must have shape (B, 4).")
     KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
-    global T_deg1  # noqa: PLW0603
-    if T_deg1.device != a.device or T_deg1.dtype != a.dtype:
-        T_deg1 = T_deg1.to(device=a.device, dtype=a.dtype)
-    return (a.unsqueeze(2) * b.unsqueeze(1)).flatten(start_dim=-2) @ T_deg1
+    return (a.unsqueeze(2) * b.unsqueeze(1)).flatten(start_dim=-2) @ T_deg1.to(a.device, a.dtype)
 
 
 # Reference
@@ -1468,12 +1465,9 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(a, ["B", "10"], "a must have shape (B, 10).")
     KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
-    global T_deg2  # noqa: PLW0603
-    if T_deg2.device != a.device or T_deg2.dtype != a.dtype:
-        T_deg2 = T_deg2.to(device=a.device, dtype=a.dtype)
     product_basis = a.unsqueeze(2) * b.unsqueeze(1)
     product_vector = product_basis.flatten(start_dim=-2)
-    return product_vector @ T_deg2
+    return product_vector @ T_deg2.to(a.device, a.dtype)
 
 
 # Compute degree 10 poly representing determinant (equation 14 in the paper)
@@ -2975,19 +2969,14 @@ def determinant_to_polynomial(
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype
-    global multiplication_indices, signs, coefficient_map  # noqa: PLW0603
     compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
 
-    multiplication_indices = multiplication_indices.to(device)
-    signs = signs.to(device, compute_dtype)
-    coefficient_map = coefficient_map.to(device)
-
     A_flat = A.flatten(start_dim=1).to(compute_dtype)
-    gathered_values = A_flat[:, multiplication_indices]
+    gathered_values = A_flat[:, multiplication_indices.to(device)]
     products = torch.prod(gathered_values, dim=-1)
-    signed_products = products * signs
+    signed_products = products * signs.to(device, compute_dtype)
 
     cs = torch.zeros(B, 11, device=device, dtype=compute_dtype)
-    batch_coefficient_map = coefficient_map.repeat(B, 1)
+    batch_coefficient_map = coefficient_map.to(device).repeat(B, 1)
     cs.scatter_add_(dim=1, index=batch_coefficient_map, src=signed_products)
     return cs.to(dtype)

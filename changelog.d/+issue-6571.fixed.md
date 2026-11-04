@@ -1,0 +1,1 @@
+`determinant_to_polynomial`, `multiply_deg_one_poly` and `multiply_deg_two_one_poly` no longer rebind their module-level tables to the device and dtype of each call. On torch 2.14, one MPS float32 call used to corrupt the tables, so every later call in the process returned NaN or garbage on every device.
