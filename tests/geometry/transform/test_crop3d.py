@@ -21,7 +21,7 @@ import torch
 import kornia
 from kornia.core._compat import torch_version
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_unit_size_3d_affine_grid
 
 
 class TestCropAndResize3D(BaseTester):
@@ -608,3 +608,103 @@ class TestCrop3DAffineBoxes(BaseTester):
         skewed = self._skewed_box(device, dtype)
         with pytest.raises(AssertionError, match="affine map"):
             kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
+
+
+class TestCrop3DOneVoxelAxis(BaseTester):
+    # A one-voxel axis makes the eight box corners coplanar, and solving the homography from them raised
+    # torch.linalg.LinAlgError (#4747). The 3D augmentations stopped solving for it in #4705.
+
+    @staticmethod
+    def _box(origin, size, device, dtype):
+        # the axis-aligned box of size = (d, h, w) voxels whose first corner is origin = (x, y, z)
+        x, y, z = origin
+        d, h, w = size
+        x1, y1, z1 = x + w - 1, y + h - 1, z + d - 1
+        corners = [[x, y, z], [x1, y, z], [x1, y1, z], [x, y1, z], [x, y, z1], [x1, y, z1], [x1, y1, z1], [x, y1, z1]]
+        return torch.tensor([corners], device=device, dtype=dtype)
+
+    @staticmethod
+    def _skip_unsupported(device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+        if not supports_unit_size_3d_affine_grid(device, dtype):
+            pytest.skip("3D affine_grid cannot build a size-1 axis for this device and dtype")
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 4), (1, 1, 1)])
+    def test_center_crop3d_size_one_axis_4747(self, size, device, dtype):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        d, h, w = size
+        z, y, x = int(2 - d / 2), int(2.5 - h / 2), int(3 - w / 2)
+
+        out = kornia.geometry.transform.center_crop3d(volume, size)
+
+        self.assert_close(out, volume[..., z : z + d, y : y + h, x : x + w])
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 1)])
+    def test_box_crops_size_one_axis_4747(self, size, device, dtype):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(240, device=device, dtype=dtype).view(2, 1, 4, 5, 6)
+        # a different box for each volume of the batch
+        boxes = torch.cat([self._box((1, 1, 0), size, device, dtype), self._box((2, 0, 1), size, device, dtype)])
+        expected = torch.cat(
+            [
+                volume[:1, :, 0 : size[0], 1 : 1 + size[1], 1 : 1 + size[2]],
+                volume[1:, :, 1 : 1 + size[0], 0 : size[1], 2 : 2 + size[2]],
+            ]
+        )
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, boxes, size, align_corners=True)
+        self.assert_close(out, expected)
+        out = kornia.geometry.transform.crop_by_boxes3d(volume, boxes, boxes - boxes[:, :1], align_corners=True)
+        self.assert_close(out, expected)
+
+    def test_crop_and_resize3d_resizes_the_other_axes_of_a_flat_box_4747(self, device, dtype):
+        # The one-voxel depth keeps its place, and the (2, 3) face is resized to (3, 5), as for a 2-voxel-deep box.
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        flat = self._box((1, 1, 2), (1, 2, 3), device, dtype)
+        two_deep = self._box((1, 1, 2), (2, 2, 3), device, dtype)
+        expected = kornia.geometry.transform.crop_and_resize3d(volume, two_deep, (2, 3, 5), align_corners=True)
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, flat, (1, 3, 5), align_corners=True)
+
+        self.assert_close(out, expected[:, :, :1])
+
+    @pytest.mark.parametrize(
+        "box_size, size",
+        [
+            ((1, 2, 3), (3, 2, 3)),  # a one-voxel depth resized to 3 voxels
+            ((2, 2, 3), (1, 2, 3)),  # 2 voxels resized to 1
+        ],
+    )
+    def test_wart_one_voxel_axis_on_one_side_raises_4747(self, box_size, size, device, dtype):
+        # No affine map takes a flat box onto a thick one or back, so these still raise.
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), box_size, device, dtype)
+        with pytest.raises(torch.linalg.LinAlgError):
+            kornia.geometry.transform.crop_and_resize3d(volume, box, size, align_corners=True)
+
+    def test_gradcheck_flat_box_4747(self, device):
+        # Finite differences move single corners off the flat box, so only the volume is gradchecked; the box
+        # gradient is checked to be finite.
+        dtype = torch.float64
+        self._skip_unsupported(device, dtype)
+        volume = (torch.arange(120, device=device, dtype=dtype) * 0.37).sin().view(1, 1, 4, 5, 6)
+        flat = self._box((1.25, 1.5, 2.0), (1, 2, 3), device, dtype)
+
+        self.gradcheck(
+            kornia.geometry.transform.crop_and_resize3d,
+            (volume, flat, (1, 3, 4), "bilinear", True),
+            requires_grad=(True, False, False, False, False),
+        )
+        flat.requires_grad_(True)
+        kornia.geometry.transform.crop_and_resize3d(volume, flat, (1, 3, 4), align_corners=True).sum().backward()
+        assert flat.grad.isfinite().all()
+
+    def test_dynamo_size_one_axis_4747(self, device, dtype, torch_optimizer):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(240, device=device, dtype=dtype).view(2, 1, 4, 5, 6)
+        op = torch_optimizer(kornia.geometry.transform.center_crop3d)
+
+        self.assert_close(op(volume, (1, 3, 4)), kornia.geometry.transform.center_crop3d(volume, (1, 3, 4)))
