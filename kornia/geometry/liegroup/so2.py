@@ -77,7 +77,7 @@ class So2(nn.Module):
           ``.to(torch.float32)`` use complex64 state, while ``.double()`` and ``.to(torch.float64)`` use complex128.
           Device-only conversions preserve the complex precision, and explicit complex dtypes are also accepted.
           The complex checkpoint key ``_z`` and its shape are unchanged. ``.half()`` uses PyTorch's experimental
-          complex32 dtype, which torch's CUDA ``foreach`` optimizer kernels do not support: build the optimizer
+          complex32 dtype, which torch's CUDA ``foreach`` SGD step does not support: build a ``torch.optim.SGD``
           of a CUDA complex32 rotation with ``foreach=False``. Since PyTorch has no complex bfloat16 dtype,
           ``.bfloat16()`` and ``.to(torch.bfloat16)`` keep the rotation's existing complex precision while
           following any requested device move.
