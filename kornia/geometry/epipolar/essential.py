@@ -522,9 +522,10 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
         - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
         - A caller's autocast region does not change the result, outside TorchScript.
         - The derivatives at an exact essential matrix are finite and correct, also where its two largest singular
-          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate. They need the smallest
-          singular value to differ from the other two; without that, as for a matrix of rank 1, there is no derivative
-          and the gradient is finite but not meaningful. A scripted call differentiates through the SVD instead.
+          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate, up to the second
+          order; a third derivative is not correct. They need the smallest singular value to differ from the other
+          two; without that, as for a matrix of rank 1, there is no derivative and the gradient is finite but not
+          meaningful. A scripted call differentiates through the SVD instead.
 
     Args:
         E_mat: The matrices to project with shape ``(*, 3, 3)``.
@@ -569,8 +570,8 @@ def _project_to_essential_differentiable(E_mat: torch.Tensor) -> torch.Tensor:
     """The value of :func:`_project_to_essential`, with the derivatives of :func:`_pair_invariant_terms`."""
     U, S, V = _torch_svd_in_work_dtype(E_mat.detach())
     value = _projection_from_svd(U.to(E_mat.dtype), S.to(E_mat.dtype), V.to(E_mat.dtype))
-    _, _, pair_sum = _pair_invariant_terms(E_mat, U, S, V)
-    return _with_derivatives_of(value, 0.5 * pair_sum)
+    _, _, projection = _pair_invariant_terms(E_mat, U, S, V)
+    return _with_derivatives_of(value, projection)
 
 
 def _with_derivatives_of(value: torch.Tensor, smooth: torch.Tensor) -> torch.Tensor:
@@ -594,9 +595,10 @@ def _pair_invariant_terms(
         M = E - (u_3^\top E v_3)\, u_3 v_3^\top - [u_3]_\times E [v_3]_\times
           = (s_1 + s_2)(u_1 v_1^\top + u_2 v_2^\top).
 
-    The projection onto essential matrices is :math:`M / 2`, the rotations are
-    :math:`u_3 v_3^\top \pm [u_3]_\times M / (s_1 + s_2)` with :math:`s_1 + s_2 = \|M\|_F / \sqrt{2}`, and the
-    translation is :math:`u_3`. All of this holds for any :math:`E`, so these expressions have the derivatives of the
+    The projection onto essential matrices is :math:`P = M / 2`, the rotations are
+    :math:`u_3 v_3^\top \pm [u_3]_\times P / m` with :math:`m = (s_1 + s_2) / 2 = \|P\|_F / \sqrt{2}`, and the
+    translation is :math:`u_3`. :math:`P` is built from :math:`E / 2`, so it stays in range for every finite :math:`E`,
+    where :math:`M` can overflow. All of this holds for any :math:`E`, so these expressions have the derivatives of the
     SVD wherever the backward of :func:`torch.linalg.svd` is correct, but they never divide by the difference of the
     two largest singular values, which that backward does. Only the derivatives of :math:`u_3` and :math:`v_3` divide,
     by the gaps to :math:`s_3`: :func:`~kornia.core.utils._symmetric_eigenvector` gives them to second order, and leaves
@@ -609,14 +611,19 @@ def _pair_invariant_terms(
         V: the right singular vectors ``(*, 3, 3)``, in that dtype.
 
     Returns:
-        :math:`u_3` and :math:`v_3`, ``(*, 3)``, right-handed whatever the signs of ``U`` and ``V``, and :math:`M`,
+        :math:`u_3` and :math:`v_3`, ``(*, 3)``, right-handed whatever the signs of ``U`` and ``V``, and :math:`P`,
         ``(*, 3, 3)``, in that dtype.
     """
     E = E_mat.to(V.dtype)
     u = _right_singular_vector(E.mT, S, U, 2) * _handedness(U)
     v = _right_singular_vector(E, S, V, 2) * _handedness(V)
     uv = u[..., :, None] @ v[..., None, :]
-    return u, v, E - (uv * E).sum((-2, -1), keepdim=True) * uv - cross_product_matrix(u) @ E @ cross_product_matrix(v)
+    half = 0.5 * E
+    return (
+        u,
+        v,
+        half - (uv * half).sum((-2, -1), keepdim=True) * uv - cross_product_matrix(u) @ half @ cross_product_matrix(v),
+    )
 
 
 def _handedness(frame: torch.Tensor) -> torch.Tensor:
@@ -644,10 +651,11 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
         - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
           float32 rotations.
         - The derivatives at an exact essential matrix are finite and correct, also where its two largest singular
-          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate. They are those of the
-          labeling the call returned. They need the smallest singular value to differ from the other two; without that,
-          as for a matrix of rank 1, there is no derivative and the gradient is finite but not meaningful. A scripted
-          call differentiates through the SVD instead.
+          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate, up to the second
+          order; a third derivative is not correct. They are those of the labeling the call returned. They need the
+          smallest singular value to differ from the other two; without that, as for a matrix of rank 1, there is no
+          derivative and the gradient is finite but not meaningful. A scripted call differentiates through the SVD
+          instead.
 
     Args:
        E_mat: The essential matrix in the form of ``(*, 3, 3)``.
@@ -685,14 +693,14 @@ def _decompose_essential_matrix_differentiable(E_mat: torch.Tensor) -> Tuple[tor
     """The value of :func:`_decompose_essential_matrix`, with the derivatives of :func:`_pair_invariant_terms`."""
     U, S, V = _torch_svd_in_work_dtype(E_mat.detach())
     R1, R2, T = _candidates_from_svd(U.to(E_mat.dtype), V.to(E_mat.dtype))
-    u, v, pair_sum = _pair_invariant_terms(E_mat, U, S, V)
+    u, v, projection = _pair_invariant_terms(E_mat, U, S, V)
     # Divided by its largest magnitude, held constant, to keep the squares in range. A zero matrix has no rotations to
     # differentiate, and a division by its zero norm would still reach its gradient.
-    scale = pair_sum.detach().abs().amax(dim=(-2, -1), keepdim=True)
-    pair_sum = pair_sum / torch.where(scale > 0, scale, torch.ones_like(scale))
-    norm_squared = 0.5 * (pair_sum * pair_sum).sum((-2, -1), keepdim=True)
+    scale = projection.detach().abs().amax(dim=(-2, -1), keepdim=True)
+    projection = projection / torch.where(scale > 0, scale, torch.ones_like(scale))
+    norm_squared = 0.5 * (projection * projection).sum((-2, -1), keepdim=True)
     norm = torch.where(norm_squared > 0, norm_squared, torch.ones_like(norm_squared)).sqrt()
-    rotated = cross_product_matrix(u) @ (pair_sum / norm)
+    rotated = cross_product_matrix(u) @ (projection / norm)
     uv = u[..., :, None] @ v[..., None, :]
     return (
         _with_derivatives_of(R1, uv + rotated),

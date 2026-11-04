@@ -1718,6 +1718,41 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
         with torch.no_grad():
             assert not epi.project_to_essential(E_mat).requires_grad
 
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("entry", [1e308, 0.9 * torch.finfo(torch.float64).max])
+    def test_near_maximum_matrix_keeps_its_value_6251(self, device, name, entry):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # The sum of the two largest singular values overflows here, though the matrix and its rotations are finite. A
+        # recorded derivative must not change the value: the projection itself overflows with or without one.
+        E_mat = torch.diag(torch.tensor([entry, entry, 0.0], device=device, dtype=torch.float64))[None]
+        expected = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = _SVD_DECOMPOSITIONS_6251[name](E_mat.clone().requires_grad_())
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert torch.equal(out.detach().nan_to_num(7.0), ref.nan_to_num(7.0))
+            if name != "project_to_essential":
+                assert torch.isfinite(ref).all()
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_gradient_of_unbatched_and_nested_batches_6251(self, device, name):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+
+        def gradient(E_mat):
+            E_mat = E_mat.clone().requires_grad_()
+            outputs = fn(E_mat)
+            outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+            return torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)[0]
+
+        flat = torch.cat([_exact_essential_6251(pose, device) for pose in range(6)])
+        expected = gradient(flat)
+        assert torch.isfinite(expected).all()
+        self.assert_close(gradient(flat.view(2, 3, 3, 3)), expected.view(2, 3, 3, 3))
+        self.assert_close(gradient(flat[0]), expected[0])
+
     def test_rows_of_a_batch_are_independent_6251(self, device):
         # Only some rows are degenerate: a zero matrix and a rank-one matrix have no derivative, but must not touch the
         # gradient of any other row, and stay finite themselves.
