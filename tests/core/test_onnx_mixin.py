@@ -135,6 +135,10 @@ _NOT_CALL_STATE = {
         ("device", "dtype", "_sampler_attrs"),
         "called by .to(), not by a call; _sampler_attrs names the samplers for __getstate__ and __setstate__",
     ),
+    "RandomGeneratorBase.__setstate__": (
+        ("device",),
+        "unpickling; the samplers it rebuilds follow torch.load's map_location",
+    ),
     "RandomTransplantation.params_from_input": (
         ("excluded_labels",),
         "a constructor argument moved to the mask's device; its values never change",

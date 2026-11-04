@@ -78,15 +78,25 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         # Leave them out: ``__setstate__`` rebuilds them from the copy's range, so gradients from the copy reach the
         # copy's parameter. Samplers without autograd history are copied as they are.
         state = super().__getstate__()
-        for name in state.get("_sampler_attrs", ()):
-            if _holds_graph_tensor(state.get(name)):
-                del state[name]
+        dropped = [name for name in state.get("_sampler_attrs", ()) if _holds_graph_tensor(state.get(name))]
+        for name in dropped:
+            del state[name]
+        if dropped:
+            # ``torch.load(map_location=...)`` moves the tensors of the state but not ``self.device``. An empty tensor
+            # on that device moves with them and tells ``__setstate__`` where the samplers would have gone.
+            state["_sampler_device_probe"] = torch.empty(0, device=self.device)
         return state
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
+        probe = state.pop("_sampler_device_probe", None)
         super().__setstate__(state)
         if any(name not in self.__dict__ for name in self.__dict__.get("_sampler_attrs", ())):
-            self.make_samplers(self.device, self.dtype)
+            if probe is not None:
+                self.device = probe.device
+            # Only samplers with autograd history were left out, so they are rebuilt with it, whatever the grad mode
+            # of the copy: under ``torch.no_grad()`` the copy's range would otherwise never receive a gradient.
+            with torch.enable_grad():
+                self.make_samplers(self.device, self.dtype)
 
     def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
         """Update sampler device and dtype using ``torch.nn.Module.to`` semantics.
@@ -111,6 +121,9 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         """Create distribution samplers for the given device and dtype.
+
+        Assign the samplers to attributes of the generator, new or replaced, rather than writing them into an object
+        it already holds: a copy of the generator rebuilds the attributes this call assigns, and only those.
 
         Args:
             device: Target device.

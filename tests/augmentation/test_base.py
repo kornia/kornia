@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import contextlib
 import copy
 import io
 import pickle
@@ -1726,7 +1727,7 @@ class TestLearnableRangeCopies(BaseTester):
 
     @staticmethod
     def _ranges(module):
-        # The dispatcher keeps its sequences in a plain list, so their parameters are reached through it.
+        # Read the dispatcher's parameters through its sequences, which it registers as child modules only since #6449.
         members = module.augmentations if isinstance(module, K.ManyToOneAugmentationDispather) else [module]
         return [p for member in members for p in member.parameters()]
 
@@ -1753,11 +1754,14 @@ class TestLearnableRangeCopies(BaseTester):
             # Records that share values in the original still share them in the copy.
             assert clone._transform_matrix_params is clone._params
 
+    @pytest.mark.parametrize("grad_mode", ["enabled", "no_grad"])
     @pytest.mark.parametrize("copier", list(_COPIERS))
     @pytest.mark.parametrize("name", _DIFFERENTIABLE_RANGES)
-    def test_gradients_reach_the_range_of_the_copy(self, name, copier, device, dtype):
+    def test_gradients_reach_the_range_of_the_copy(self, name, copier, grad_mode, device, dtype):
         aug, x = self._case(name, device, dtype)
-        clone = _COPIERS[copier](aug)
+        # A copy made under ``torch.no_grad()``, as an EMA or evaluation copy often is, trains like any other.
+        with torch.no_grad() if grad_mode == "no_grad" else contextlib.nullcontext():
+            clone = _COPIERS[copier](aug)
         self._draw(aug, 3, x).sum().backward()
         expected = [None if p.grad is None else p.grad.clone() for p in aug.parameters()]
         assert any(grad is not None and bool(grad.ne(0).any()) for grad in expected)
@@ -1897,3 +1901,27 @@ class TestLearnableRangeCopies(BaseTester):
         params = aug.forward_parameters((2, 3, 4, 4))
         for key in ("r_shift", "g_shift", "b_shift"):
             assert bool((params[key].abs() <= float(limit) * (1 + 1e-3)).all())
+
+    @pytest.mark.parametrize("name", ["RandomBrightness", "RandomAffine"])
+    def test_load_mapped_to_the_cpu_rebuilds_the_samplers_there(self, name, device, dtype):
+        if device.type == "cpu":
+            pytest.skip("needs a device to map from")
+        # ``torch.load(map_location=...)`` moves the tensors of a module but not its generator's ``device``. The
+        # samplers are rebuilt where the tensors went, so a module saved on an accelerator loads where there is none.
+        aug, x = self._case(name, device, dtype)
+        self._draw(aug, 1, x)
+        buffer = io.BytesIO()
+        torch.save(aug, buffer)
+        buffer.seek(0)
+        generator = torch.load(buffer, map_location="cpu", weights_only=False)._param_generator
+        moved = copy.deepcopy(aug).to("cpu")._param_generator
+        assert generator.device == moved.device == torch.device("cpu")
+        torch.manual_seed(2)
+        expected = moved(x.shape)
+        torch.manual_seed(2)
+        actual = generator(x.shape)
+        assert actual.keys() == expected.keys()
+        for key, value in expected.items():
+            self.assert_close(actual[key], value, rtol=0, atol=0)
+        sum(value.sum() for value in actual.values() if value.is_floating_point()).backward()
+        assert all(p.grad is not None and p.device.type == "cpu" for p in generator.parameters())
