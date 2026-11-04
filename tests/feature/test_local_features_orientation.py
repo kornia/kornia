@@ -289,18 +289,20 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         assert (patch_grad.flatten(1) != 0).any(1).all()
         assert weight_grad.count_nonzero() > 0
 
-    def test_float16_gradients_follow_float64_6455(self, device):
-        # bfloat16 is left out: its 8-bit patch rounding moves the peak of some of these noise patches to another bin.
+    # Parametrized so that the CUDA half-precision isolation sees the dtype. bfloat16 is left out: its 8-bit patch
+    # rounding moves the peak of some of these noise patches to another bin.
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    def test_float16_gradients_follow_float64_6455(self, device, half_dtype):
         if device.type == "mps":
             pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         noise = torch.rand(16, 1, 32, 32, dtype=torch.float64)
         grads = {}
-        for dtype in (torch.float16, torch.float64):
+        for dtype in (half_dtype, torch.float64):
             patches = noise.to(device, dtype).requires_grad_(True)
             model = PatchDominantGradientOrientation(32).to(device, dtype)
             grads[dtype] = torch.autograd.grad(model(patches).sum(), (patches, model.angular_smooth.weight))
-        for half, reference, limit in zip(grads[torch.float16], grads[torch.float64], (0.1, 0.02)):
+        for half, reference, limit in zip(grads[half_dtype], grads[torch.float64], (0.1, 0.02)):
             assert (half.double() - reference).norm() / reference.norm() < limit
 
     @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
