@@ -205,6 +205,55 @@ class TestRandAugment(BaseTester):
             RandAugment(n=3, m=10, policy=policy)
 
 
+class TestSolarizeAdd(BaseTester):
+    @pytest.mark.parametrize("seed", [0, 1, 17])
+    def test_reference_values_6561(self, device, dtype, seed):
+        # timm.data.auto_augment.solarize_add: add below 128/255, never invert.
+        image = torch.tensor([0.1, 0.4, 0.5, 128 / 255, 0.6, 0.9], device=device, dtype=dtype)
+        image = image.reshape(1, 1, 1, 6).repeat(4, 3, 2, 1)
+        expected = image.new_tensor([0.3, 0.6, 0.7, 128 / 255, 0.6, 0.9]).reshape(1, 1, 1, 6).expand_as(image)
+        torch.manual_seed(seed)
+        op = ops.SolarizeAdd(initial_magnitude=0.2, initial_probability=1.0)
+        output = op(image)
+        self.assert_close(output, expected)
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+
+    @pytest.mark.parametrize("magnitude, expected", [(0.5, [0.6, 1.0, 0.9]), (-0.5, [0.0, 0.001, 0.9])])
+    def test_clamps_only_the_added_pixels(self, device, dtype, magnitude, expected):
+        image = torch.tensor([[[[0.1, 0.501, 0.9]]]], device=device, dtype=dtype)
+        op = ops.SolarizeAdd(magnitude, 1.0, magnitude_range=(-0.5, 0.5))
+        self.assert_close(op(image), image.new_tensor(expected).reshape_as(image))
+
+    def test_per_image_magnitudes_gate_and_replay(self, device, dtype):
+        image = torch.tensor([[[[0.1, 0.4, 0.6, 0.9]]]], device=device, dtype=dtype).repeat(3, 1, 1, 1)
+        op = ops.SolarizeAdd(initial_magnitude=None, initial_probability=1.0)
+        params = op.forward_parameters(image.shape, mag=image.new_tensor([0.2, -0.2, 0.3]))
+        params["batch_prob"] = image.new_tensor([1.0, 1.0, 0.0])
+        expected = image.new_tensor([[0.3, 0.6, 0.6, 0.9], [0.0, 0.2, 0.6, 0.9], [0.1, 0.4, 0.6, 0.9]])
+        self.assert_close(op(image, params=params), expected.reshape_as(image))
+        self.assert_close(op(image, params=params), expected.reshape_as(image))
+
+    def test_randaugment_policy_6561(self, device, dtype):
+        policy = next(policy for policy in randaug_config if policy[0][0] == "solarize_add")
+        aug = RandAugment(n=1, m=15, policy=[policy])
+        image = torch.tensor([[[[0.1, 0.4, 0.6, 0.9]]]], device=device, dtype=dtype).repeat(4, 1, 1, 1)
+        # m=15 of 30 maps to half the default policy's 0.43 maximum addition.
+        expected = image.new_tensor([0.315, 0.615, 0.6, 0.9]).reshape(1, 1, 1, 4).expand_as(image)
+        self.assert_close(aug(image), expected)
+        self.assert_close(aug(image, params=aug._params), expected)
+
+    def test_gradcheck(self, device):
+        image = torch.tensor([[[[0.1, 0.4, 0.6, 0.9]]]], device=device, dtype=torch.float64)
+        magnitude = image.new_tensor([0.2])
+        op = ops.SolarizeAdd(initial_magnitude=None, initial_probability=1.0)
+
+        def apply(image, magnitude):
+            return op(image, params=op.forward_parameters(image.shape, mag=magnitude))
+
+        self.gradcheck(apply, (image, magnitude))
+
+
 class TestTrivialAugment(BaseTester):
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):

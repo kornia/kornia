@@ -24,6 +24,7 @@ from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation._2d.intensity.brightness import RandomBrightness
 from kornia.augmentation._2d.intensity.contrast import RandomContrast
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
+from kornia.augmentation._2d.intensity.solarize import RandomSolarize
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import (
@@ -372,8 +373,28 @@ class Solarize(OperationBase):
         )
 
 
+class _RandomSolarizeAdd(RandomSolarize):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the reference solarize-add without solarization's inversion."""
+        input = _clamp_unit_range(input)
+        additions = _to_device_nonblocking(params["additions"], input.device, input.dtype).reshape(-1, 1, 1, 1)
+        # Compare in the input dtype, without rounding the fixed threshold through the generator's float32 draw.
+        return torch.where(input < 128 / 255, (input + additions).clamp(0, 1), input)
+
+
 class SolarizeAdd(OperationBase):
-    """Apply solarize-addition operation with a fixed thresholds of 0.5.
+    """Add an intensity offset only to pixels below a fixed threshold of ``128 / 255``.
+
+    Following ``timm.data.auto_augment.solarize_add``, the comparison uses the original
+    pixel value, the sum is clamped to ``[0, 1]``, and pixels at or above the threshold
+    stay unchanged. Unlike :class:`~kornia.augmentation.RandomSolarize`, this operation
+    never inverts pixels.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -394,7 +415,12 @@ class SolarizeAdd(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
+            _RandomSolarizeAdd(
+                thresholds=(128 / 255, 128 / 255),
+                additions=magnitude_range,
+                same_on_batch=False,
+                p=initial_probability,
+            ),
             initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
