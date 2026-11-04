@@ -161,7 +161,8 @@ class TestAugmentationCompile(BaseTester):
                 # CUDA's nearest-exact interpolate backward, which the eager slice crop uses, can send a pixel's
                 # gradient to its neighbour: a crop axis of 12 pixels resized to one reads pixel 6 and sends the
                 # gradient to pixel 5. The gather of the compiled crop routes it to the pixel it read, so compare with
-                # the eager crop on the CPU, in float32 for half dtypes.
+                # the eager crop on the CPU, in float32 for half dtypes. This is the PyTorch bug
+                # https://github.com/pytorch/pytorch/issues/97135; drop this branch once it is fixed.
                 reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
                 reference = input.detach().to("cpu", reference_dtype).requires_grad_()
                 cpu_params = {key: value.cpu() if torch.is_tensor(value) else value for key, value in params.items()}
