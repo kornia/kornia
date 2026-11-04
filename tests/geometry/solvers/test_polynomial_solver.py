@@ -804,6 +804,24 @@ class TestDeterminantToPolynomial(BaseTester):
         # Compare result with expected values
         self.assert_close(result, expected, rtol=1e-5, atol=1e-5)
 
+    def test_half_products_cancel_in_float32(self, device, dtype):
+        """Two products of ``cs[:, 0]`` that cancel to ``2**-14`` keep the residual in every dtype.
+
+        ``A[0, 0, 3] * A[0, 1, 7] * A[0, 2, 12] = 1.0078125**2 = 1 + 2**-6 + 2**-14`` and
+        ``A[0, 0, 7] * A[0, 1, 3] * A[0, 2, 12] = 1.015625 = 1 + 2**-6`` enter ``cs[:, 0]`` with opposite signs. Rounded
+        to float16 or bfloat16, the first product equals the second and the coefficient is 0. In float32 the
+        difference is exact, and ``2**-14`` is representable in both half dtypes.
+        """
+        A = torch.zeros(1, 3, 13, device=device, dtype=dtype)
+        A[0, 0, 3] = A[0, 1, 7] = 1.0078125
+        A[0, 0, 7] = 1.015625
+        A[0, 1, 3] = A[0, 2, 12] = 1.0
+        expected = torch.zeros(1, 11, device=device, dtype=dtype)
+        expected[0, 0] = 2**-14
+        result = solver.determinant_to_polynomial(A)
+        assert result.dtype == dtype
+        self.assert_close(result, expected, rtol=0, atol=0)
+
 
 class TestQuarticSolver(BaseTester):
     @pytest.mark.parametrize(
