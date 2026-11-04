@@ -279,8 +279,8 @@ class ImageRegistrator(nn.Module):
           one can differ by an ulp from the returned ``self.model()``, which is computed in the model's dtype.
         - A ``float16``, ``bfloat16`` or ``float32`` model therefore registers images of any of these dtypes.
           :meth:`warp_src_into_dst` and :meth:`warp_dst_into_src` sample a model and an image of two different ones
-          of them in ``float32`` too and return the image's dtype; a model and an image of the same dtype are sampled
-          in that dtype.
+          of them in ``float32`` too and return the image's dtype; a model and an image of the same dtype go to the
+          warper unchanged, as before.
 
     Args:
         model_type: Geometrical model for registration: ``'homography'``, ``'similarity'``, or ``'translation'``,
