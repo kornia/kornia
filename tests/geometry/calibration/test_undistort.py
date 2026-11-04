@@ -597,16 +597,19 @@ class TestUndistortImage(BaseTester):
         # from the float64 positions. On a horizontal ramp the intensity error times the width is that position
         # error; what remains here is the rounding of the input and output ramps, 0.25 px in float16 and 2 px in
         # bfloat16.
+        # The float64 reference is built on CPU: MPS has no float64.
         H, W = 480, 640
-        ramp = (torch.arange(W, device=device, dtype=torch.float64) / W).expand(1, 1, H, W)
-        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device)
-        dist = torch.tensor([[-0.2, 0.05, 0.001, 0.001, 0.0]], device=device)
-        expected = undistort_image(ramp, K.double(), dist.double())
+        ramp = (torch.arange(W, dtype=torch.float64) / W).expand(1, 1, H, W)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], dtype=torch.float64)
+        dist = torch.tensor([[-0.2, 0.05, 0.001, 0.001, 0.0]], dtype=torch.float64)
+        expected = undistort_image(ramp, K, dist)
 
-        out = undistort_image(ramp.to(dtype), K.to(dtype), dist.to(dtype))
+        out = undistort_image(
+            ramp.to(device=device, dtype=dtype), K.to(device=device, dtype=dtype), dist.to(device=device, dtype=dtype)
+        )
 
         assert out.dtype == dtype
-        error_px = (out.double() - expected)[..., 40:-40, 40:-40].abs().amax() * W
+        error_px = (out.cpu().double() - expected)[..., 40:-40, 40:-40].abs().amax() * W
         bound = {torch.float16: 0.4, torch.bfloat16: 2.5}.get(dtype, 1e-3)
         assert error_px < bound, f"sampled {error_px:.3f} px away from the float64 positions"
 
