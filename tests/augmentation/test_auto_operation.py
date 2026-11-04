@@ -234,6 +234,38 @@ class TestSolarizeAdd(BaseTester):
         self.assert_close(op(image, params=params), expected.reshape_as(image))
         self.assert_close(op(image, params=params), expected.reshape_as(image))
 
+    def test_rejects_magnitude_override_that_expands_batch(self, device, dtype):
+        image = torch.full((1, 1, 2, 3), 0.1, device=device, dtype=dtype)
+        op = ops.SolarizeAdd(initial_magnitude=None, initial_probability=1.0)
+        params = op.forward_parameters(image.shape, mag=image.new_tensor([0.1, 0.2]))
+        with pytest.raises(AssertionError, match="additions must be"):
+            op(image, params=params)
+
+    @pytest.mark.parametrize("batch_size, additions_shape", [(1, (1, 1)), (2, (1,)), (2, (2, 1)), (2, (0,))])
+    def test_rejects_invalid_additions_shape(self, device, dtype, batch_size, additions_shape):
+        image = torch.full((batch_size, 1, 2, 3), 0.1, device=device, dtype=dtype)
+        op = ops.SolarizeAdd(initial_probability=1.0)
+        params = op.forward_parameters(image.shape)
+        params["additions"] = torch.full(additions_shape, 0.2, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match="additions must be"):
+            op(image, params=params)
+
+    @pytest.mark.parametrize("additions_shape", [(), (2,)])
+    def test_accepts_scalar_or_per_image_additions(self, device, dtype, additions_shape):
+        image = torch.full((2, 3, 2, 4), 0.1, device=device, dtype=dtype)
+        op = ops.SolarizeAdd(initial_probability=1.0)
+        params = op.forward_parameters(image.shape)
+        params["additions"] = torch.full(additions_shape, 0.2, device=device, dtype=dtype)
+        output = op(image, params=params)
+        assert output.shape == image.shape
+        self.assert_close(output, torch.full_like(image, 0.3))
+
+    def test_compile(self, device, dtype, torch_optimizer):
+        image = torch.full((2, 3, 2, 4), 0.1, device=device, dtype=dtype)
+        op = ops.SolarizeAdd(initial_probability=1.0)
+        params = op.forward_parameters(image.shape)
+        self.assert_close(torch_optimizer(op)(image, params=params), op(image, params=params))
+
     def test_randaugment_policy_6561(self, device, dtype):
         policy = next(policy for policy in randaug_config if policy[0][0] == "solarize_add")
         aug = RandAugment(n=1, m=15, policy=[policy])

@@ -383,7 +383,13 @@ class _RandomSolarizeAdd(RandomSolarize):
     ) -> torch.Tensor:
         """Apply the reference solarize-add without solarization's inversion."""
         input = _clamp_unit_range(input)
-        additions = _to_device_nonblocking(params["additions"], input.device, input.dtype).reshape(-1, 1, 1, 1)
+        additions = params["additions"]
+        if additions.ndim != 0 and (additions.ndim != 1 or additions.shape[0] != input.shape[0]):
+            raise AssertionError(
+                "additions must be a scalar or a 1-d vector matching the input batch. "
+                f"Got {additions.shape} for input {input.shape}."
+            )
+        additions = _to_device_nonblocking(additions, input.device, input.dtype).reshape(-1, 1, 1, 1)
         # Compare in the input dtype, without rounding the fixed threshold through the generator's float32 draw.
         return torch.where(input < 128 / 255, (input + additions).clamp(0, 1), input)
 
