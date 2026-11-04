@@ -50,6 +50,13 @@ from .pyramid import build_pyramid
 
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
+_HALF_DTYPES = (torch.float16, torch.bfloat16)
+
+
+def _float32_if_half(tensor: torch.Tensor) -> torch.Tensor:
+    """Return a ``float16``/``bfloat16`` tensor as ``float32``, and any other tensor unchanged."""
+    return tensor.float() if tensor.dtype in _HALF_DTYPES else tensor
+
 
 class BaseModel(ABC, nn.Module):
     """Declare the interface of a transform model that ImageRegistrator optimizes.
@@ -262,6 +269,18 @@ class ImageRegistrator(nn.Module):
           gives a shift of :math:`(-t_x, -t_y)`.
         - :meth:`register` always starts from the identity, so a loaded ``state_dict`` drives the warps but is not a
           warm start.
+        - A ``float16``/``bfloat16`` model or image is optimized in ``float32``: during :meth:`register` both images,
+          also when ``allow_shape_mismatch`` resizes ``src_img``, and the model's half parameters and buffers are
+          ``float32``, and afterwards those tensors and their gradients return to their own dtype, also when
+          :meth:`register` raises. Adam's second-moment estimate ``0.001 * g**2`` and its ``eps`` of ``1e-8`` are
+          both 0 in ``float16`` once ``|g| < 0.0055``, so a ``float16`` optimization divides by zero and ends in NaN,
+          and ``bfloat16`` steps round to the dtype's coarse spacing. For a half model the intermediate models of
+          ``output_intermediate_models`` are computed in ``float32`` and rounded to the model's dtype, so the last
+          one can differ by an ulp from the returned ``self.model()``, which is computed in the model's dtype.
+        - A ``float16``, ``bfloat16`` or ``float32`` model therefore registers images of any of these dtypes.
+          :meth:`warp_src_into_dst` and :meth:`warp_dst_into_src` sample a model and an image of two different ones
+          of them in ``float32`` too and return the image's dtype; a model and an image of the same dtype go to the
+          warper unchanged, as before.
 
     Args:
         model_type: Geometrical model for registration: ``'homography'``, ``'similarity'``, or ``'translation'``,
@@ -382,18 +401,36 @@ class ImageRegistrator(nn.Module):
 
         """
         self.reset_model()
-        if src_img.shape != dst_img.shape:
-            if not self.allow_shape_mismatch:
-                raise ValueError(
-                    f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
-                    "Consider setting `allow_shape_mismatch = True`"
-                )
-            src_img = F.interpolate(
-                src_img,
-                size=dst_img.shape[-2:],
-                mode="bilinear",
-                align_corners=False,
+        if src_img.shape != dst_img.shape and not self.allow_shape_mismatch:
+            raise ValueError(
+                f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
+                "Consider setting `allow_shape_mismatch = True`"
             )
+        # Half precision is optimized in float32 (see the class Convention), the resize of src_img included. Every
+        # promotion runs inside the region that gives the model's tensors their dtype back; restoring a tensor that an
+        # error left unpromoted is a no-op.
+        restore = [(t, t.dtype) for t in (*self.model.parameters(), *self.model.buffers()) if t.dtype in _HALF_DTYPES]
+        try:
+            for tensor, _ in restore:
+                tensor.data = tensor.data.float()
+            src_img, dst_img = _float32_if_half(src_img), _float32_if_half(dst_img)
+            if src_img.shape != dst_img.shape:
+                src_img = F.interpolate(src_img, size=dst_img.shape[-2:], mode="bilinear", align_corners=False)
+            aux_models = self._optimize(src_img, dst_img, verbose, output_intermediate_models)
+        finally:
+            for tensor, dtype in restore:
+                tensor.data = tensor.data.to(dtype)
+                if tensor.grad is not None:
+                    tensor.grad = tensor.grad.to(dtype)
+        model = self.model()
+        if output_intermediate_models:
+            return model, [aux.to(model.dtype) for aux in aux_models]
+        return model
+
+    def _optimize(
+        self, src_img: torch.Tensor, dst_img: torch.Tensor, verbose: bool, output_intermediate_models: bool
+    ) -> List[torch.Tensor]:
+        """Run the coarse-to-fine optimization of :meth:`register` and return the model after each level, if asked."""
         # ToDo: better parameter passing to optimizer
         _opt_args: Dict[str, Any] = {}
         _opt_args["lr"] = self.lr
@@ -428,21 +465,25 @@ class ImageRegistrator(nn.Module):
                 opt.step()
             if output_intermediate_models:
                 aux_models.append(self.model().clone().detach())
-        if output_intermediate_models:
-            return self.model(), aux_models
-        return self.model()
+        return aux_models
+
+    def _warp(self, img: torch.Tensor, model: torch.Tensor) -> torch.Tensor:
+        """Warp ``img`` by ``model`` at the image's size, in the image's dtype (see the class Convention)."""
+        _height, _width = img.shape[-2:]
+        warper = self.warper(_height, _width)
+        if model.dtype == img.dtype:
+            return warper(img, model)
+        # register() optimizes a half model or image in float32, so the two can differ in dtype; such a pair is
+        # sampled in float32 as well
+        return warper(_float32_if_half(img), _float32_if_half(model)).to(img.dtype)
 
     def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
         r"""Warp src_img with estimated model."""
-        _height, _width = src_img.shape[-2:]
-        warper = self.warper(_height, _width)
-        return warper(src_img, self.model())
+        return self._warp(src_img, self.model())
 
     def warp_dst_into_src(self, dst_img: torch.Tensor) -> torch.Tensor:
         r"""Warp dst_img with inverted estimated model."""
-        _height, _width = dst_img.shape[-2:]
-        warper = self.warper(_height, _width)
-        return warper(dst_img, self.model.forward_inverse())
+        return self._warp(dst_img, self.model.forward_inverse())
 
     @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
     def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
