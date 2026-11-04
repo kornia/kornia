@@ -1,0 +1,1 @@
+`warp_affine`, `warp_perspective`, `warp_affine3d` and `warp_perspective3d` now build their sampling grid outside a caller's `torch.autocast` region, except in a scripted call, so a float32 or half-precision warp gives the same result in and out of it. Under `autocast(bfloat16)` a float32 warp of a `[0, 1]` image was up to 0.55 off and still returned float32.

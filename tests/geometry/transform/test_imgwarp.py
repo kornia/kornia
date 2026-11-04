@@ -1619,6 +1619,91 @@ class TestGetPerspectiveTransformAutocast(BaseTester):
         self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
 
 
+class TestWarpAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of warp_affine and warp_perspective (#6573)."""
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _warp_inputs(op_name, device, dtype):
+        # A 25-degree rotation of a 256 px image: the normalized matrix needs more digits than half precision keeps.
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0))
+        center, angle, scale = torch.tensor([[127.5, 127.5]]), torch.tensor([25.0]), torch.ones(1, 2)
+        matrix = kornia.geometry.transform.get_rotation_matrix2d(center, angle, scale)
+        if op_name == "warp_perspective":
+            matrix = torch.cat([matrix, torch.tensor([[[1e-4, 0.0, 1.0]]])], dim=1)
+        return image.to(device=device, dtype=dtype), matrix.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _warp(op_name, image, matrix):
+        return getattr(kornia.geometry.transform, op_name)(image, matrix, (256, 256), align_corners=False)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_autocast_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # normalize_homography's matrix products ran in the autocast dtype: 0.55 off in bfloat16 for a float32 image of
+        # [0, 1] values, without a sign of it, as the output is still float32. A half image runs in float32 and got the
+        # same matrix. Autocast does not cast a float64 one, so its result never changed.
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, src_dtype)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        matrix.requires_grad_()
+        expected = torch.autograd.grad(self._warp(op_name, image, matrix).sum(), matrix)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = self._warp(op_name, image, matrix)
+        actual = torch.autograd.grad(out.sum(), matrix)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_trace_under_autocast_6573(self, op_name, device):
+        # Tracing takes the other grid path, F.affine_grid or transform_points, both matrix products. A trace taken in
+        # the region recorded their half-precision casts, which stayed in the graph after the region.
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=torch.bfloat16, cache_enabled=False):
+            traced = torch.jit.trace(lambda x, m: self._warp(op_name, x, m), (image, matrix), check_trace=False)
+        self.assert_close(traced(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_still_scriptable_6573(self, op_name, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image = torch.rand(1, 2, 5, 6, device=device, dtype=dtype)
+        rows = 2 if op_name == "warp_affine" else 3
+        matrix = torch.eye(3, device=device, dtype=dtype)[None, :rows]
+        op = getattr(kornia.geometry.transform, op_name)
+        scripted = torch.jit.script(op)
+        self.assert_close(scripted(image, matrix, (4, 3)), op(image, matrix, (4, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_under_autocast_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, matrix)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+
 class TestGetTranslationMatrix2d(BaseTester):
     @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
     def test_rejects_unsupported_shape(self, shape, device, dtype):
