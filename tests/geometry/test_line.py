@@ -261,6 +261,23 @@ class TestParametrizedLine(BaseTester):
         # Each point lies on its own plane, n . p + d = 0, with this normal along z: z = -d.
         self.assert_close(points[..., 2], -offset)
 
+    def test_unbatched_line_keeps_its_dtype_for_one_plane_6497(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # A 0-d step does not promote the line's dtype; a (1,) one would.
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0, 0.0], device=device, dtype=torch.float32),
+            torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float32),
+        )
+        plane = Hyperplane(
+            Vector3(torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float64)),
+            Scalar(torch.tensor(-3.0, device=device, dtype=torch.float64)),
+        )
+        steps, point = line.intersect(plane)
+        assert steps.dtype == torch.float64
+        assert point.dtype == torch.float32
+        self.assert_close(point, torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32))
+
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
             torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype),
