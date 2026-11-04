@@ -89,13 +89,16 @@ class TFeat(nn.Module):
             nn.Conv2d(32, 64, kernel_size=6),
             nn.Tanh(),
         )
-        _mark_patch_convolutions(self.features)
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
             self.eval()
+
+    def __prepare_scriptable__(self) -> "TFeat":
+        _mark_patch_convolutions(self.features)
+        return self
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute TFeat descriptors for grayscale 32x32 patches.
@@ -110,9 +113,12 @@ class TFeat(nn.Module):
         x = input
         for layer in self.features:
             # The leading InstanceNorm2d returns the default layout, so the layout is set per convolution; a
-            # convolution's output already has it, which makes the second call free. The convolutions are found by
-            # their mark, which TorchScript resolves per layer (see _mark_patch_convolutions).
-            if getattr(layer, "_patch_conv_input", False):
+            # convolution's output already has it, which makes the second call free. A scripted loop also needs the
+            # mark (see _mark_patch_convolutions). Ruff's SIM114 would merge the two tests with ``or``, which
+            # TorchScript rejects.
+            if isinstance(layer, nn.Conv2d):  # noqa: SIM114
+                x = _patch_conv_layout(x)
+            elif getattr(layer, "_patch_conv_input", False):
                 x = _patch_conv_layout(x)
             x = layer(x)
         x = x.flatten(1)

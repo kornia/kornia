@@ -25,13 +25,16 @@ _CPU_HAS_ONEDNN: bool = torch.backends.mkldnn.is_available()
 
 
 def _mark_patch_convolutions(layers: Iterable[nn.Module]) -> None:
-    """Mark the ``nn.Conv2d`` layers among ``layers`` whose input a layer loop gives :func:`_patch_conv_layout`.
+    """Mark the ``nn.Conv2d`` layers among ``layers`` for a scripted layer loop that calls :func:`_patch_conv_layout`.
 
-    A ``forward`` that loops over its layers tests ``getattr(layer, "_patch_conv_input", False)``, never
-    ``isinstance(layer, nn.Conv2d)``: TorchScript resolves that ``isinstance`` against the one ``Conv2d`` class type
-    it compiled first in the process, and gives every other ``Conv2d`` a mangled type that fails it. A scripted network
-    would then skip the layout before some or all of its convolutions, depending on what had been scripted before it,
-    and convolve in a different layout from eager. TorchScript reads the attribute of each submodule instead.
+    A ``forward`` that loops over its layers sets the layout before each layer that passes
+    ``isinstance(layer, nn.Conv2d)``, else before one with ``getattr(layer, "_patch_conv_input", False)``. Eager needs
+    only the ``isinstance``. TorchScript resolves it against the one ``Conv2d`` class type it compiled first in the
+    process, and gives every ``Conv2d`` with other constants a mangled type that fails it, so a scripted loop would
+    skip the layout before some or all of its convolutions, depending on what had been scripted before it, and convolve
+    in a different layout from eager. TorchScript reads the attribute of each submodule instead. The networks call this
+    from ``__prepare_scriptable__``, which ``torch.jit.script`` runs on every submodule before compiling, so the mark
+    also reaches a convolution swapped in after construction and a model unpickled from an earlier kornia.
     """
     for layer in layers:
         if isinstance(layer, nn.Conv2d):
