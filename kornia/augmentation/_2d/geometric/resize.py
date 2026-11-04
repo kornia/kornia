@@ -170,13 +170,16 @@ class Resize(GeometricAugmentationBase2D):
 
 
 class LongestMaxSize(Resize):
-    """Rescale an image so that maximum side is equal to max_size, keeping the aspect ratio of the initial image.
+    """Resize so the longest side equals ``max_size``, applied to a batch with probability ``p`` (default 1.0).
 
     ``output = LongestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
     Use :class:`SmallestMaxSize` to set the shortest side instead.
 
     Args:
-        max_size: maximum size of the image after the transformation.
+        max_size: length of the longest output side.
+        resample: Resampling mode, as in :class:`Resize`.
+        align_corners: interpolation flag, as in :class:`Resize`.
+        p: probability of resizing the batch; one draw decides for every sample.
 
     Convention:
         See :class:`Resize` for the common resize conventions. This behaves like
@@ -202,13 +205,16 @@ class LongestMaxSize(Resize):
 
 
 class SmallestMaxSize(Resize):
-    """Rescale an image so that minimum side is equal to max_size, keeping the aspect ratio of the initial image.
+    """Resize so the shortest side equals ``max_size``, applied to a batch with probability ``p`` (default 1.0).
 
     ``output = SmallestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
     Use :class:`LongestMaxSize` to bound the longest side instead.
 
     Args:
-        max_size: maximum size of the image after the transformation.
+        max_size: length of the shortest output side.
+        resample: Resampling mode, as in :class:`Resize`.
+        align_corners: interpolation flag, as in :class:`Resize`.
+        p: probability of resizing the batch; one draw decides for every sample.
 
     Convention:
         See :class:`Resize` for the common resize conventions. This behaves like

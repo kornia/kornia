@@ -47,7 +47,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
           operations do not contribute to that matrix.
         - ``forward_parameters`` uses :meth:`~kornia.augmentation.auto.operations.OperationBase.forward_parameters`
           for each child, so the operation's magnitude, magnitude mapping and symmetric sign apply; the gate comes
-          from the wrapped augmentation's ``p``.
+          from the wrapped augmentation's ``p`` and ``p_batch``.
 
     Args:
         operations: the operations to perform, passed as positional arguments rather than as one list.
