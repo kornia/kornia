@@ -27,7 +27,8 @@ _CPU_HAS_ONEDNN: bool = torch.backends.mkldnn.is_available()
 def _mark_patch_convolutions(layers: Iterable[nn.Module]) -> None:
     """Mark the ``nn.Conv2d`` layers among ``layers`` for a scripted layer loop that calls :func:`_patch_conv_layout`.
 
-    A ``forward`` that loops over its layers sets the layout before each layer that passes
+    ``_mark_patch_convolutions(layers)`` sets ``_patch_conv_input = True`` on each ``nn.Conv2d`` in ``layers`` (not on
+    nested ones). A ``forward`` that loops over its layers sets the layout before each layer that passes
     ``isinstance(layer, nn.Conv2d)``, else before one with ``getattr(layer, "_patch_conv_input", False)``. Eager needs
     only the ``isinstance``. TorchScript resolves it against the one ``Conv2d`` class type it compiled first in the
     process, and gives every ``Conv2d`` with other constants a mangled type that fails it, so a scripted loop would
