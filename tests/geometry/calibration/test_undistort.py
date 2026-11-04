@@ -574,19 +574,41 @@ class TestUndistortImage(BaseTester):
     def test_convention_resamples_with_align_corners_true(self, device, dtype):
         # undistort_image is remap(image, mapx, mapy, align_corners=True) over the map distort_points produces
         # on the create_meshgrid pixel grid; align_corners is fixed and not exposed. The align_corners=False arm
-        # must differ, so the pin discriminates between the two settings.
+        # must differ, so the pin discriminates between the two settings. A half image builds the map and samples
+        # in float32.
         image = _ramp_image(1, 3, 5, 7, device, dtype)
         K = _k_short_focal(device, dtype)
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
-        grid = create_meshgrid(5, 7, False, device, dtype).reshape(-1, 2)
-        distorted = distort_points(grid, K, dist)
+        work = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        grid = create_meshgrid(5, 7, False, device, work).reshape(-1, 2)
+        distorted = distort_points(grid, K.to(work), dist.to(work))
         assert not torch.allclose(distorted.float(), grid.float())
         mapx = distorted[..., 0].reshape(1, 5, 7)
         mapy = distorted[..., 1].reshape(1, 5, 7)
         out = undistort_image(image, K, dist)
         assert not torch.allclose(out.float(), image.float())
-        self.assert_close(out, remap(image, mapx, mapy, align_corners=True), atol=0.0, rtol=0.0)
-        assert not torch.allclose(out.float(), remap(image, mapx, mapy, align_corners=False).float())
+        expected = remap(image.to(work), mapx, mapy, align_corners=True).to(dtype)
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        assert not torch.allclose(out.float(), remap(image.to(work), mapx, mapy, align_corners=False).float())
+
+    def test_convention_half_image_samples_at_float32_positions(self, device, dtype):
+        # In half precision the pixel coordinates of a 640 px row round to half pixels (float16) or to 4 px
+        # (bfloat16), so a map built in the image dtype sampled up to 0.79 px (float16) and 6.3 px (bfloat16) away
+        # from the float64 positions. On a horizontal ramp the intensity error times the width is that position
+        # error; what remains here is the rounding of the input and output ramps, 0.25 px in float16 and 2 px in
+        # bfloat16.
+        H, W = 480, 640
+        ramp = (torch.arange(W, device=device, dtype=torch.float64) / W).expand(1, 1, H, W)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device)
+        dist = torch.tensor([[-0.2, 0.05, 0.001, 0.001, 0.0]], device=device)
+        expected = undistort_image(ramp, K.double(), dist.double())
+
+        out = undistort_image(ramp.to(dtype), K.to(dtype), dist.to(dtype))
+
+        assert out.dtype == dtype
+        error_px = (out.double() - expected)[..., 40:-40, 40:-40].abs().amax() * W
+        bound = {torch.float16: 0.4, torch.bfloat16: 2.5}.get(dtype, 1e-3)
+        assert error_px < bound, f"sampled {error_px:.3f} px away from the float64 positions"
 
     def test_gradcheck(self, device):
         im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
