@@ -61,7 +61,7 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 class AugmentationBase2D(_AugmentationBase):
     r"""Build a custom 2D augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` processes images of shape ``(B, C, H, W)`` after a subclass
+    ``output = MyAugmentation(...)(input)`` processes images of shape ``(B, C, H, W)`` once a subclass
     implements ``apply_transform`` and supplies any parameter generation it needs. This generic base supports
     custom operations, including matrix-free warps such as :class:`RandomElasticTransform` and
     :class:`RandomThinPlateSpline`. Use :class:`IntensityAugmentationBase2D` for value-only operations or
@@ -148,7 +148,7 @@ class AugmentationBase2D(_AugmentationBase):
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
     r"""Record a matrix for a custom 2D transform, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` records a ``(B, 3, 3)`` matrix after a subclass implements
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 3, 3)`` matrix once a subclass implements
     ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
     use :class:`GeometricAugmentationBase2D` for coordinate transforms or :class:`IntensityAugmentationBase2D`
     for value-only operations.

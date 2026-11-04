@@ -79,7 +79,7 @@ class _PicklableCompileMixin:
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""Build a 2D value augmentation, per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` changes pixel values after a subclass implements ``apply_transform``.
+    ``output = MyAugmentation(...)(input)`` changes pixel values once a subclass implements ``apply_transform``.
     The base supplies the probability gate, parameter replay and identity geometric transform. Use
     :class:`~kornia.augmentation.GeometricAugmentationBase2D` for an augmentation that moves pixels.
 

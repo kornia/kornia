@@ -31,7 +31,7 @@ from kornia.geometry.keypoints import Keypoints
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""Build a 2D coordinate transform, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` warps images of shape ``(B, C, H, W)`` after a subclass implements
+    ``output = MyAugmentation(...)(input)`` warps images of shape ``(B, C, H, W)`` once a subclass implements
     ``compute_transformation`` and ``apply_transform``. Implement ``inverse_transform`` to support image inversion.
     Use :class:`IntensityAugmentationBase2D` for an augmentation that changes values without moving coordinates.
 
@@ -83,9 +83,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         unless ``resample`` is passed explicitly to ``transform_masks()`` or ``inverse_masks()`` --
         which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
         both directions. Antialiasing is disabled for masks by default, even when it is enabled for images.
-        For :class:`Resize`, pass ``antialias=True`` explicitly to ``transform_masks()`` or through
-        ``extra_args[DataKey.MASK]`` to filter soft masks. This only affects transforms that implement
-        antialiasing; :class:`RandomResizedCrop` ignores the flag in both cropping modes.
+        Only :class:`Resize` and its subclasses, :class:`LongestMaxSize` and :class:`SmallestMaxSize`, read the
+        flag: pass ``antialias=True`` explicitly to ``transform_masks()`` or through ``extra_args[DataKey.MASK]`` to
+        filter soft masks. Other geometric augmentations ignore it.
 
     See Also:
         - :class:`AugmentationBase2D`: base class for general 2D augmentations.

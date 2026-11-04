@@ -21,7 +21,7 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
     r"""Build a 3D coordinate transform, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` warps volumes of shape ``(B, C, D, H, W)`` after a subclass implements
+    ``output = MyAugmentation(...)(input)`` warps volumes of shape ``(B, C, D, H, W)`` once a subclass implements
     ``compute_transformation`` and ``apply_transform``. The 3D base does not support image inversion.
     Use :class:`IntensityAugmentationBase3D` for an operation that changes voxel values without moving coordinates.
 

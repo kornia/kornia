@@ -58,9 +58,8 @@ class OperationBase(nn.Module):
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
         temperature: retained for API compatibility.
-        is_batch_operation: determine whether to obtain the probability from ``p`` or ``p_batch``.
-            This selects the wrapped gate source; the wrapped operation must preserve the input shape because
-            ``forward`` blends its output with the input.
+        is_batch_operation: initialize the legacy ``probability`` from ``p_batch`` instead of ``p``; sampling still
+            uses the wrapped gates.
 
     Convention:
         - ``probability`` is initialized from the wrapped augmentation's ``p`` (``p_batch`` for a batch operation),

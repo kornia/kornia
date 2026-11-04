@@ -72,7 +72,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
     Shape:
         - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
-        - Output: :math:`(B, C, out_d, out_h, out_w)`
+        - Output: ``(B, C, out_d, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -98,7 +98,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           Defaults are bilinear resampling and ``align_corners=True``.
 
     See Also:
-        - :class:`CenterCrop3D`: extracts the deterministic center subvolume.
+        - :class:`CenterCrop3D`: extracts the deterministic centered subvolume.
         - :class:`RandomCrop`: samples a fixed-size patch from a 2D image.
 
     Examples:

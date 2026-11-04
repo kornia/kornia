@@ -16,7 +16,7 @@
 #
 """Record selections and parameter draws made by sequential augmentation containers.
 
-Which record to use:
+Which class to use:
 
 - ``ParamItem`` stores the child name and its parameter data.
 - ``PatchParamItem`` adds the patch indices for a patch-level operation.

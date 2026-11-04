@@ -23,8 +23,8 @@ its channel, range and probability rules. Use ``AugmentationSequential`` to tran
 annotations together; use ``ImageSequential`` for images alone. In eager mode, ``_params`` records a draw
 for replay with ``params=``. An inverse geometric warp cannot recover cropped or resampled image content.
 
-Which augmentation to use
--------------------------
+Which class to use:
+
 Pipelines and policies:
     - ``AugmentationSequential``: coordinate image, mask, box and keypoint handlers.
     - ``ImageSequential``: chain image transforms, including ordinary PyTorch modules.

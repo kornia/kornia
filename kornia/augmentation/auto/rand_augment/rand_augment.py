@@ -50,10 +50,10 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class RandAugment(PolicyAugmentBase):
     """Sample a fixed number of RandAugment operations at one global magnitude.
 
-    ``output = RandAugment(n, m)(input)`` draws ``n`` operations from the supported pool and applies them in draw order
-    with magnitude ``m`` to a floating ``(B, C, H, W)`` image batch. Use
-    :class:`~kornia.augmentation.auto.AutoAugment` for a fixed searched
-    sub-policy, or :class:`~kornia.augmentation.auto.TrivialAugment` for one operation.
+    ``output = RandAugment(n, m)(input)`` draws ``n`` operations from the supported pool and applies them in draw
+    order with magnitude ``m`` to a floating ``(B, C, H, W)`` image batch. Use
+    :class:`~kornia.augmentation.auto.AutoAugment` for a fixed searched sub-policy, or
+    :class:`~kornia.augmentation.auto.TrivialAugment` for one operation.
 
     The policy follows :cite:`cubuk2020randaugment`.
 

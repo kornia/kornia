@@ -43,7 +43,7 @@ annotation and inverse limitations.
    ``(B, C, D, H, W)`` for volume batches. Color transforms generally expect values in ``[0, 1]``: convert
    8-bit images with ``img.float() / 255`` before applying them. Casting a ``[0, 255]`` image to float alone
    does not scale it. A ``uint8`` input raises ``TypeError`` in image augmentations. A float input in
-   ``[0, 255]`` can be accepted without an error and then clamped by color transforms such as
+   ``[0, 255]`` is accepted without an error and then clamped by color transforms such as
    :class:`~kornia.augmentation.ColorJiggle`, discarding intensity detail.
    Geometric transforms and :class:`~kornia.augmentation.Normalize` have different range rules; check the
    operator's contract before applying color transforms to normalized data.
@@ -52,9 +52,9 @@ Benchmark
 ---------
 
 For CPU ``uint8`` single-image loaders, the measured comparisons favor native implementations such as
-albumentations and OpenCV. Batched floating-point GPU pipelines are Kornia's stronger regime, with gradient
-support for differentiable operators; the results depend on the operator, device and compilation settings.
-Benchmark the batch size and pipeline you will use, including parameter sampling.
+albumentations, OpenCV and kornia-rs. Batched floating-point GPU pipelines are Kornia's stronger regime, with
+gradient support for differentiable operators; the results depend on the operator, device and compilation
+settings. Benchmark the batch size and pipeline you will use, including parameter sampling.
 
 Reproducible, honestly-framed benchmarks live under
 `benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ and

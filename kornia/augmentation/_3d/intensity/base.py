@@ -21,7 +21,7 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
     r"""Build a 3D value augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` changes voxel values while retaining their coordinates after a
+    ``output = MyAugmentation(...)(input)`` changes voxel values while retaining their coordinates once a
     subclass implements ``apply_transform`` and ``compute_transformation``. Unlike the 2D intensity base, this
     base requires the subclass to return an identity ``(B, 4, 4)`` matrix from ``compute_transformation``.
     Use :class:`GeometricAugmentationBase3D` for an operation that warps the volume.

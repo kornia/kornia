@@ -43,7 +43,7 @@ def _export_boxes(box: Boxes, mode: str, box_input: Any) -> torch.Tensor:
 class MixAugmentationBaseV2(_BasicAugmentationBase):
     r"""Build a custom augmentation that mixes samples through data-key handlers.
 
-    ``output = MyAugmentation(...)(input)`` combines batch samples or rearranges image content after a subclass
+    ``output = MyAugmentation(...)(input)`` combines batch samples or rearranges image content once a subclass
     implements ``apply_transform`` and provides parameter generation, either through ``_param_generator`` or
     by overriding ``generate_parameters``. Implement the additional data-key handlers that the operation supports;
     the Convention block below describes how each handler uses the probability gate.

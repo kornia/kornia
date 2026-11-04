@@ -30,7 +30,7 @@ from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
 class Resize(GeometricAugmentationBase2D):
-    """Resample images to a requested spatial size. Always occurs (p=1.0).
+    """Resample images to a requested spatial size, applied to a batch with probability ``p`` (default 1.0).
 
     ``output = Resize(size, ...)(input)`` resamples images of shape ``(B, C, H, W)`` to ``size``.
 
@@ -40,7 +40,7 @@ class Resize(GeometricAugmentationBase2D):
         resample: Resampling mode.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling. No effect for upscaling.
-        p: probability of the augmentation been applied.
+        p: probability of resizing the batch; one draw decides for every sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
@@ -56,8 +56,7 @@ class Resize(GeometricAugmentationBase2D):
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
         the corner pixel centers onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
         ``nearest-exact`` interpolation.
-        ``inverse()`` resamples to the prior canvas and cannot recover
-        values discarded by a resize.
+        ``inverse()`` resamples to the prior canvas and cannot recover values discarded by a resize.
 
     See Also:
         - :class:`LongestMaxSize`: bounds the longest image side while preserving aspect ratio.

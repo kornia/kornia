@@ -32,7 +32,8 @@ from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 class RandomShear(GeometricAugmentationBase2D):
     r"""Shear images by random angles in degrees, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = RandomShear(shear, ...)(input)`` shears images of shape ``(B, C, H, W)`` with sampled angles.
+    ``output = RandomShear(shear, ...)(input)`` shears images of shape ``(B, C, H, W)`` about their centers by
+    sampled angles.
 
     Args:
         shear: Range of degrees to select from.

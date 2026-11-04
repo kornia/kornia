@@ -87,7 +87,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     Shape:
         - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
-        - Output: :math:`(B, C, out_h, out_w)`
+        - Output: ``(B, C, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -132,7 +132,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomCrop.png
 
     See Also:
-        - :class:`CenterCrop`: extracts the deterministic center patch.
+        - :class:`CenterCrop`: extracts the deterministic centered patch.
         - :class:`RandomResizedCrop`: samples a crop and resizes it to the requested output size.
         - :class:`RandomCrop3D`: samples a fixed-size subvolume.
 

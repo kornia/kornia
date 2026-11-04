@@ -16,7 +16,7 @@
 #
 """Implement color and geometric operations used by automatic augmentation policies.
 
-Available operations:
+Which class to use:
 
 - :class:`AutoContrast`, :class:`Equalize`, :class:`Contrast`, :class:`Brightness`, :class:`Hue`,
   :class:`Saturate` and :class:`Gray` change image tone or color.
@@ -215,8 +215,7 @@ class Hue(OperationBase):
     """Shift hue by a policy-controlled amount.
 
     ``output = Hue(magnitude, probability)(input)`` shifts hue in a floating RGB batch ``(B, 3, H, W)`` and keeps its
-    shape. The magnitude is a fraction of a full hue turn. Selected inputs and outputs are clamped to ``[0, 1]``; use
-    :class:`Saturate` to change saturation instead.
+    shape. The magnitude is a fraction of a full hue turn. Selected inputs and outputs are clamped to ``[0, 1]``.
 
     Args:
         initial_probability: probability of applying the operation to each image.
@@ -436,7 +435,7 @@ class Solarize(OperationBase):
 
 
 class SolarizeAdd(OperationBase):
-    """Add an intensity offset, then apply the current solarization behavior.
+    """Add an intensity offset, then invert values above a random threshold.
 
     ``output = SolarizeAdd(magnitude, probability)(input)`` clamps selected floating images ``(B, C, H, W)`` into
     ``[0, 1]``, adds the magnitude to every pixel, clamps again, then inverts values at or above a sampled threshold.
@@ -705,12 +704,10 @@ class TranslateX(OperationBase):
     """Translate selected images along the x axis by a policy-controlled amount.
 
     ``output = TranslateX(magnitude, probability)(input)`` shifts selected floating ``(B, C, H, W)`` images
-    horizontally, keeping the output size. The magnitude is a fraction of image width with a random sign by default; use
-    :class:`TranslateY` for vertical shifts.
+    horizontally, keeping the output size. The magnitude is a fraction of image width with a random sign by default.
 
-    The magnitude is a fraction of the image width, whether it is sampled from ``magnitude_range``,
-    learned, or passed to ``forward_parameters``; the wrapped augmentation translates by that fraction
-    of the width in pixels.
+    The magnitude is a fraction of the image width, whether it is sampled from ``magnitude_range``, learned, or passed
+    to ``forward_parameters``; the wrapped augmentation translates by that fraction of the width in pixels.
 
     Args:
         initial_magnitude: the initial magnitude, a fraction of the image width.
@@ -764,12 +761,10 @@ class TranslateY(OperationBase):
     """Translate selected images along the y axis by a policy-controlled amount.
 
     ``output = TranslateY(magnitude, probability)(input)`` shifts selected floating ``(B, C, H, W)`` images vertically,
-    keeping the output size. The magnitude is a fraction of image height with a random sign by default; use
-    :class:`TranslateX` for horizontal shifts.
+    keeping the output size. The magnitude is a fraction of image height with a random sign by default.
 
-    The magnitude is a fraction of the image height, whether it is sampled from ``magnitude_range``,
-    learned, or passed to ``forward_parameters``; the wrapped augmentation translates by that fraction
-    of the height in pixels.
+    The magnitude is a fraction of the image height, whether it is sampled from ``magnitude_range``, learned, or
+    passed to ``forward_parameters``; the wrapped augmentation translates by that fraction of the height in pixels.
 
     Args:
         initial_magnitude: the initial magnitude, a fraction of the image height.

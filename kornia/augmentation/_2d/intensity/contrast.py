@@ -29,12 +29,9 @@ from kornia.enhance.adjust import adjust_contrast
 class RandomContrast(IntensityAugmentationBase2D):
     r"""Scale pixel values by a random contrast factor.
 
-    ``output = RandomContrast(contrast)(input)`` multiplies each selected image by its sampled factor. Use
-    :class:`ColorJitter` for torchvision-compatible contrast, which blends with the grayscale mean.
-
-    The factor scales the raw values: the output is ``input * factor``. torchvision's and PIL's contrast blends
-    the image with its grayscale mean instead (``factor * input + (1 - factor) * mean``); :class:`ColorJitter`'s
-    contrast step is that formula.
+    ``output = RandomContrast(contrast)(input)`` computes ``input * factor`` for each selected image using a sampled
+    contrast factor, with clamping enabled by default. Use :class:`ColorJitter` for torchvision-compatible contrast,
+    which blends the image with its grayscale mean, ``factor * input + (1 - factor) * mean``.
 
     .. image:: _static/img/RandomContrast.png
 

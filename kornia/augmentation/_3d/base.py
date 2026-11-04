@@ -32,7 +32,7 @@ from kornia.geometry.keypoints import Keypoints3D
 class AugmentationBase3D(_AugmentationBase):
     r"""Build a custom 3D augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` processes volumes of shape ``(B, C, D, H, W)`` after a subclass
+    ``output = MyAugmentation(...)(input)`` processes volumes of shape ``(B, C, D, H, W)`` once a subclass
     implements ``apply_transform`` and supplies any parameter generation it needs. Use
     :class:`GeometricAugmentationBase3D` when the operation moves coordinates, or :class:`IntensityAugmentationBase3D`
     when it changes voxel values alone.
@@ -95,7 +95,7 @@ class AugmentationBase3D(_AugmentationBase):
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
     r"""Record a matrix for a custom 3D transform, applied per sample with probability ``p`` (default 0.5).
 
-    ``output = MyAugmentation(...)(input)`` records a ``(B, 4, 4)`` matrix after a subclass implements
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 4, 4)`` matrix once a subclass implements
     ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
     use :class:`GeometricAugmentationBase3D` for coordinate transforms or :class:`IntensityAugmentationBase3D`
     for value-only operations.
