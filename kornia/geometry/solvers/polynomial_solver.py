@@ -2959,7 +2959,9 @@ def determinant_to_polynomial(
           ``z**i``), the reverse of the :func:`solve_quadratic` layout.
         - Half inputs are evaluated in float32 and the coefficients are returned in the input dtype. Each
           coefficient sums 6 to 84 triple products; summed in float16 or bfloat16, the result depends on the
-          order of the additions, which CUDA's atomic ``scatter_add_`` does not fix.
+          order of the additions, which CUDA's and MPS's ``scatter_add_`` do not fix. The float32 sum is
+          order-dependent only at float32 roundoff, which can still move a coefficient by one step of the
+          half dtype after the cast.
 
     Args:
         A: torch.Tensor ``(B, 3, 13)``.
