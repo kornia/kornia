@@ -57,9 +57,9 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
     t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
-    # A caller's autocast region would run this product in half precision and the kernels with it: in bfloat16, a float32
-    # warp_image_tps of a 256 px [0, 1] image was 0.08 off. TorchScript has no context managers; a scripted call keeps
-    # the caller's precision.
+    # A caller's autocast region would run this product in half precision and the kernels with it: in bfloat16, a
+    # float32 warp_image_tps of a 256 px [0, 1] image was 0.08 off. TorchScript has no context managers; a scripted call
+    # keeps the caller's precision.
     if torch.jit.is_scripting():
         t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
     else:
