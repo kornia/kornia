@@ -877,6 +877,24 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.parametrize("size", [(50, 50), (40, 45)])
+    def test_half_input_is_transformed_in_float32(self, size, device, dtype):
+        """A half input returns the float32 result for the same values, cast back to the input dtype.
+
+        With a 15 x 15 kernel the padded sizes are 64 x 64, a power of two, and 54 x 59, which is not.
+        """
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the float16 and bfloat16 path")
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.rand(2, 3, *size, generator=generator).to(device, dtype)
+        kernel = torch.rand(1, 15, 15, generator=generator).to(device, dtype)
+
+        actual = fft_conv(sample, kernel, border_type="constant")
+        expected = fft_conv(sample.float(), kernel.float(), border_type="constant").to(dtype)
+
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("padding", ["same", "valid"])
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     @pytest.mark.parametrize("normalized", [True, False])
