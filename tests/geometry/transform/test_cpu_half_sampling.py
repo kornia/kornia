@@ -260,11 +260,22 @@ class TestHalfSampling(BaseTester):
             assert torch.isfinite(actual_grad).all()
             self.assert_close(actual_grad, expected_grad, atol=0, rtol=0)
 
+    @staticmethod
+    def _rejects_mismatched_grid(device, dtype):
+        # torch 2.5.1's MPS grid_sample samples a half input with a float32 grid instead of rejecting it.
+        try:
+            F.grid_sample(torch.zeros(1, 1, 2, 2, device=device, dtype=dtype), torch.zeros(1, 1, 1, 2, device=device))
+        except RuntimeError:
+            return True
+        return False
+
     @pytest.mark.parametrize("size", [0, 4])
     @pytest.mark.parametrize("map_dtype", [torch.float32, torch.int64])
     def test_mismatched_grid_dtype(self, device, dtype, size, map_dtype):
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half sampling dtype validation")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("torch's grid_sample accepts a grid of another dtype on this device")
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         coords = torch.zeros(1, size, 4, device=device, dtype=map_dtype)
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|same type|grid_sampler_2d_cpu not implemented)"):
@@ -274,6 +285,8 @@ class TestHalfSampling(BaseTester):
         # A float32 matrix next to a half image is rejected as before; only matching dtypes move to float32.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("half sampling dtype validation")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("torch's grid_sample accepts a grid of another dtype on this device")
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device)[None]
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|same type|grid_sampler_2d_cpu not implemented)"):
