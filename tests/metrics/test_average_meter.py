@@ -63,6 +63,7 @@ class TestAverageMeter:
 
 class TestConventionsAverageMeter(BaseTester):
     def test_low_precision_updates_keep_the_running_sum(self, device, dtype):
+        """Repeated low-precision updates retain the full sum and raw last value."""
         meter = AverageMeter()
         value = torch.tensor(1.0, device=device, dtype=dtype)
         for _ in range(1000):
@@ -76,6 +77,7 @@ class TestConventionsAverageMeter(BaseTester):
         )
 
     def test_weighting_promotes_before_multiplication(self, device, dtype):
+        """Promote before weighting so sums and gradients avoid half-precision loss."""
         meter = AverageMeter()
         value = torch.tensor(1000.0, device=device, dtype=dtype, requires_grad=True)
         meter.update(value, n=100)
@@ -88,6 +90,7 @@ class TestConventionsAverageMeter(BaseTester):
         self.assert_close(value.grad, torch.tensor(100.0, device=device, dtype=dtype))
 
     def test_later_update_preserves_a_wider_dtype(self, device):
+        """A later float64 update widens the accumulator without rounding it away."""
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
         meter = AverageMeter()
