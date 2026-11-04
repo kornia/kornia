@@ -474,6 +474,9 @@ Enhancement
   adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
   correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
   variants.
+- The ``[0, 1]`` clamp of these intensity ops keeps the derivative of a result in the closed range, so
+  the gradient at an exact ``0`` or ``1`` does not depend on the torch version. A result outside the
+  range gets the bound and a zero gradient.
 - :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
   (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
   operate on HSV data.

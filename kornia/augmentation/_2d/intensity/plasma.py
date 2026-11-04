@@ -20,9 +20,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 def _generate_plasma(

@@ -20,10 +20,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 class RandomSnow(IntensityAugmentationBase2D):

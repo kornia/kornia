@@ -522,11 +522,34 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 
     Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
-    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode.
+    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode. TorchScript has no forward
+    mode and cannot compile the query.
     """
     if torch.is_grad_enabled() and input.requires_grad:
         return True
+    if torch.jit.is_scripting():
+        return False
     return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
+
+
+def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
+    """Clamp ``input`` into ``[0, 1]`` with an identity gradient on the closed range.
+
+    ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14.0, and valid images
+    often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
+    so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
+
+    The values always equal ``input.clamp(0, 1)``, ``NaN`` included, so a call that records no gradient and
+    carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
+    unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
+    Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
+    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS and under Inductor (CPU and CUDA),
+    while eager CPU and CUDA keep ``-0.0``.
+    """
+    clamped = input.clamp(0.0, 1.0)
+    if not _needs_derivatives(input):
+        return clamped
+    return torch.where(clamped == input, input, clamped)
 
 
 def _symmetric_eigenvector(

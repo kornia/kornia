@@ -564,6 +564,18 @@ def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
     assert aug.op.p_batch == 1.0
 
 
+@pytest.mark.parametrize("operation", [ops.Brightness, ops.Contrast, ops.Saturate])
+def test_auto_enhancer_keeps_the_identity_gradient_at_exact_0_and_1_6296(operation, device, dtype):
+    """Return the input at the neutral magnitude with an identity gradient on black and white pixels too."""
+    row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+    image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+    aug = operation(initial_magnitude=1.0, initial_probability=1.0).to(dtype=dtype)
+    out = aug(image)
+    (gradient,) = torch.autograd.grad(out.sum(), image)
+    assert_close(out, image)
+    assert_close(gradient, torch.ones_like(image))
+
+
 @pytest.mark.parametrize("policy", ["auto", "rand", "trivial"])
 def test_policy_brightness_uses_multiplicative_factor_6253(policy, device, dtype):
     """Use multiplicative brightness through all three policy containers."""

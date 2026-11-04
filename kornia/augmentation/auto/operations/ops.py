@@ -20,12 +20,11 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 import kornia.augmentation as K
-from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation._2d.intensity.brightness import RandomBrightness
 from kornia.augmentation._2d.intensity.contrast import RandomContrast
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
 from kornia.augmentation.auto.operations.base import OperationBase
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,

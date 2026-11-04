@@ -20,7 +20,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _to_device_nonblocking
-from kornia.enhance.adjust import _check_floating_image
+from kornia.enhance.adjust import _check_floating_image, _clip_unit_fresh
 
 
 def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor, b_shift: torch.Tensor) -> torch.Tensor:
@@ -41,4 +41,6 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
     shifts = [r_shift, g_shift, b_shift]
 
     shift = _to_device_nonblocking(torch.stack(shifts, dim=1).view(-1, 3, 1, 1), image.device, image.dtype)
-    return (image + shift).clamp_(min=0, max=1)
+    shifted = image + shift
+    # An integer image reaches here only with checks disabled, and integer bounds keep its dtype.
+    return _clip_unit_fresh(shifted) if shifted.is_floating_point() else shifted.clamp_(min=0, max=1)

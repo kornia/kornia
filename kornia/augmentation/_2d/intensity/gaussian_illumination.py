@@ -21,14 +21,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import (
-    IntensityAugmentationBase2D,
-    _clamp_unit_range,
-    _PicklableCompileMixin,
-)
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 def _apply_gaussian_illumination(

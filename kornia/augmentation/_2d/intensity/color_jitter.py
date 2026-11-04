@@ -22,11 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import (
-    IntensityAugmentationBase2D,
-    _clamp_unit_range,
-    _PicklableCompileMixin,
-)
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation._2d.intensity.color_jiggle import (
     _adjust_hue,
     _apply_order_cond,
@@ -34,6 +30,7 @@ from kornia.augmentation._2d.intensity.color_jiggle import (
     _dispatch_color_steps,
     _Steps,
 )
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
