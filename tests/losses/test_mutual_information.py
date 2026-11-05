@@ -1084,6 +1084,19 @@ class TestMutualInformationLargeSampleCounts(BaseTester):
             _contract_kernels_in_chunks(vals_1, vals_2, chunk_size), vals_1 @ vals_2.transpose(-1, -2).contiguous()
         )
 
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_gradient_matches_einsum(self, device, chunk_size):
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        # Weight every histogram cell differently, so that each input sample has its own gradient.
+        weights = torch.rand(2, 8, 8, device=device, dtype=torch.float32)
+        chunked = (_contract_kernels_in_chunks(vals_1, vals_2, chunk_size) * weights).sum()
+        reference = (torch.einsum("...in,...jn->...ij", vals_1, vals_2) * weights).sum()
+        for actual, expected in zip(
+            torch.autograd.grad(chunked, (vals_1, vals_2)), torch.autograd.grad(reference, (vals_1, vals_2))
+        ):
+            self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
     @pytest.mark.parametrize("num_samples", [33856, 70000])
     def test_mps_large_sample_counts_match_cpu_5873(self, device, dtype, loss_fn, num_samples):
@@ -1092,7 +1105,14 @@ class TestMutualInformationLargeSampleCounts(BaseTester):
         generator = torch.Generator().manual_seed(0)
         x = torch.rand(1, num_samples, generator=generator)
         y = x**2 + 0.05 * torch.rand(1, num_samples, generator=generator)
-        expected = loss_fn(x.to(dtype), y.to(dtype))
+
+        def loss_and_gradients(on_device):
+            x_on, y_on = x.to(on_device, dtype).requires_grad_(), y.to(on_device, dtype).requires_grad_()
+            loss = loss_fn(x_on, y_on)
+            return (loss.detach().cpu(), *(grad.cpu() for grad in torch.autograd.grad(loss, (x_on, y_on))))
+
+        expected = loss_and_gradients("cpu")
         # The defective matmul reads past its operands, so make what lies next to them non-zero.
         torch.full((5_000_000,), 1000.0, device=device)
-        self.assert_close(loss_fn(x.to(device, dtype), y.to(device, dtype)).cpu(), expected)
+        for actual, reference in zip(loss_and_gradients(device), expected):
+            self.assert_close(actual, reference)
