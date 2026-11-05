@@ -43,12 +43,17 @@ def harris_response(
     grads_mode: str = "sobel",
     sigmas: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Compute the Harris cornerness function.
+    r"""Compute the Harris corner response det(M) - k trace(M)^2 of the windowed structure tensor M.
+
+    ``R = harris_response(img, k)`` takes images ``(B, C, H, W)`` and returns the Harris response of every pixel of
+    every channel, ``(B, C, H, W)``, without non-maxima suppression: positive at a corner, negative along an edge and
+    zero on a constant image. ``k`` defaults to ``0.04``. To pass it to a detector as ``resp_module``, use its module
+    form :class:`CornerHarris`; for a corner response with no ``k`` to tune and no negative values up to roundoff,
+    use :func:`gftt_response`; for blobs, :func:`hessian_response`.
 
     .. image:: _static/img/harris_response.png
 
-    The function does no non-maxima suppression. The response map is computed according to the following
-    formulation:
+    The response map is computed according to the following formulation:
 
     .. math::
         R = det(M) - k \cdot trace(M)^2
@@ -74,17 +79,29 @@ def harris_response(
           multiplies the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in
           ``[0, 1]`` does not carry over to ``[0, 255]``.
         - ``k`` is not validated.
+        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
+          ``RuntimeError`` from the reflect padding of the window.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
-        k: the Harris detector free parameter.
+        k: the Harris detector free parameter, a number or a tensor that broadcasts against ``(B, C, H, W)``, such as
+          ``(B, 1, 1, 1)`` for one value per image.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
+        sigmas: per-image scales with shape ``(B,)``. The response of image ``b`` is multiplied by
           ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid, as in
-          `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c>`_.
+          `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c>`_. Another type raises ``TypeError``
+          and another shape ``ValueError``.
 
     Return:
         the response map per channel with shape ``(B, C, H, W)``.
+
+    See Also:
+        - :class:`CornerHarris`: the module form, with ``k`` and ``grads_mode`` fixed at construction.
+        - :func:`gftt_response`: the smaller eigenvalue of the same structure tensor, with no ``k`` and not negative
+          up to roundoff.
+        - :func:`hessian_response`: a blob response from second derivatives, positive at blobs of both polarities.
+        - :class:`ScaleSpaceDetector`: detects LAFs at the scale-space maxima of a response module such as
+          :class:`CornerHarris`.
 
     Example:
         >>> input = torch.tensor([[[
@@ -140,12 +157,17 @@ def harris_response(
 def gftt_response(
     input: torch.Tensor, grads_mode: str = "sobel", sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Compute the Shi-Tomasi cornerness function.
+    r"""Compute the Shi-Tomasi corner response, the smaller eigenvalue of the windowed structure tensor.
+
+    ``R = gftt_response(img)`` takes images ``(B, C, H, W)`` and returns the Shi-Tomasi ("good features to track")
+    response of every pixel of every channel, ``(B, C, H, W)``, without non-maxima suppression: large at a corner, near
+    zero along an edge and zero on a constant image. Unlike :func:`harris_response`, from the same structure tensor, it
+    has no ``k`` to tune. To pass it to a detector as ``resp_module``, use its module form :class:`CornerGFTT`; for
+    blobs, use :func:`hessian_response`.
 
     .. image:: _static/img/gftt_response.png
 
-    The function does no non-maxima suppression. The response map is computed according to the following
-    formulation:
+    The response map is computed according to the following formulation:
 
     .. math::
         R = min(eig(M))
@@ -154,22 +176,32 @@ def gftt_response(
     gradients and window.
 
     Convention:
-        - :math:`R` is not negative, up to roundoff. It is large at a corner and near zero along an edge, where the
-          Harris response is negative.
+        - :math:`R` is not negative, up to roundoff. Along an edge, where it is near zero, the Harris response is
+          negative.
         - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
         - ``sigmas`` multiplies the response by ``sigmas ** 4``, the same power used by
           :func:`~kornia.feature.harris_response`. This is the function's scale-weighting convention, not a guarantee
           of scale invariance. The integration window :math:`W` stays fixed as the image blur changes; the response's
           decay with blur depends on the image structure, including the corner geometry.
+        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
+          ``RuntimeError`` from the reflect padding of the window.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
-          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
+        sigmas: per-image scales with shape ``(B,)``. The response of image ``b`` is multiplied by
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid. Another type
+          raises ``TypeError`` and another shape ``ValueError``.
 
     Return:
         the response map per channel with shape ``(B, C, H, W)``.
+
+    See Also:
+        - :class:`CornerGFTT`: the module form, with ``grads_mode`` fixed at construction.
+        - :func:`harris_response`: the signed Harris measure of the same structure tensor, with a free ``k``.
+        - :func:`hessian_response`: a blob response from second derivatives, without a window.
+        - :class:`GFTTAffNetHardNet`: a :class:`ScaleSpaceDetector` on this response, with AffNet shapes and HardNet
+          descriptors.
 
     Example:
         >>> input = torch.tensor([[[
@@ -227,12 +259,17 @@ def gftt_response(
 def hessian_response(
     input: torch.Tensor, grads_mode: str = "sobel", sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Compute the determinant of the Hessian matrix.
+    r"""Compute the blob response det(H) of the per-pixel Hessian, positive at bright and dark blobs alike.
+
+    ``R = hessian_response(img)`` takes images ``(B, C, H, W)`` and returns the determinant of the Hessian of every
+    pixel of every channel, ``(B, C, H, W)``, without non-maxima suppression. Its module form :class:`BlobHessian` is
+    the default ``resp_module`` of :class:`ScaleSpaceDetector`. For a Difference-of-Gaussian response, which tells a
+    bright blob (a minimum) from a dark one (a maximum), use :func:`dog_response`; for corners,
+    :func:`harris_response` or :func:`gftt_response`.
 
     .. image:: _static/img/hessian_response.png
 
-    The function does no non-maxima suppression. The response map is computed according to the following
-    formulation:
+    The response map is computed according to the following formulation:
 
     .. math::
         R = det(H)
@@ -251,12 +288,14 @@ def hessian_response(
           blobs alike, negative at a saddle. The second derivatives come from
           :func:`~kornia.filters.spatial_gradient` with ``mode=grads_mode`` and ``order=2``.
         - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
+        - Each channel is processed independently.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: per-image scales with shape ``(B)``. The response of image ``b`` is multiplied by
-          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
+        sigmas: per-image scales with shape ``(B,)``. The response of image ``b`` is multiplied by
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid. Another type
+          raises ``TypeError`` and another shape ``ValueError``.
 
     Return:
         the response map per channel with shape ``(B, C, H, W)``.
@@ -264,6 +303,12 @@ def hessian_response(
     Shape:
        - Input: ``(B, C, H, W)``
        - Output: ``(B, C, H, W)``
+
+    See Also:
+        - :class:`BlobHessian`: the module form, with ``grads_mode`` fixed at construction.
+        - :func:`dog_response`: a signed blob response of a scale stack, a minimum at a bright blob.
+        - :func:`harris_response`: a corner response from first derivatives in a window.
+        - :class:`ScaleSpaceDetector`: detects LAFs at the scale-space maxima of this response, its default.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -309,7 +354,13 @@ def hessian_response(
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the Difference-of-Gaussian response between adjacent levels of a (B, C, D, H, W) Gaussian scale stack.
+    r"""Compute Difference-of-Gaussian responses between adjacent levels of a (B, C, D, H, W) scale stack.
+
+    ``R = dog_response(stack)`` takes a Gaussian scale stack ``(B, C, D, H, W)``, with its ``D`` levels along dim 2, and
+    returns the differences of adjacent levels, ``(B, C, D - 1, H, W)``. An octave of
+    :class:`~kornia.geometry.transform.ScalePyramid` is such a stack; to detect at the extrema, pass the module form
+    :class:`BlobDoG` to :class:`ScaleSpaceDetector` with ``scale_space_response=True`` and
+    ``minima_are_also_good=True``. For the DoG of one image at two given blurs, use :func:`dog_response_single`.
 
     Convention:
         - Output level ``i`` is ``input[:, :, i + 1] - input[:, :, i]`` along the level axis ``D`` (dim 2), so ``D``
@@ -317,10 +368,17 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
           :math:`L(k\sigma) - L(\sigma)`: negative at a bright blob, positive at a dark one.
 
     Args:
-        input: a given the gaussian 5d torch.Tensor ``(B, C, D, H, W)``.
+        input: a Gaussian scale stack ``(B, C, D, H, W)``, its levels along ``D``.
 
     Return:
-        the response map per channel with shape ``(B, C, D-1, H, W)``.
+        the response map per channel with shape ``(B, C, D - 1, H, W)``.
+
+    See Also:
+        - :class:`BlobDoG`: the module form, to pass to :class:`ScaleSpaceDetector` as ``resp_module``.
+        - :func:`dog_response_single`: the DoG of a ``(B, C, H, W)`` image, blurred at two given sigmas.
+        - :func:`hessian_response`: a blob response of one image, positive at blobs of both polarities.
+        - :class:`~kornia.geometry.transform.ScalePyramid`: builds the scale stacks, one ``(B, C, L, H_o, W_o)`` per
+          octave.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
@@ -331,6 +389,12 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float = 1.6) -> torch.Tensor:
     r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image, its sigma2 blur minus its sigma1 blur.
 
+    ``R = dog_response_single(img, sigma1, sigma2)`` takes images ``(B, C, H, W)`` and returns, per channel, their
+    Gaussian blur of ``sigma2`` minus their blur of ``sigma1``, ``(B, C, H, W)``: for ``sigma2 > sigma1``, negative at
+    a bright blob and positive at a dark one. It blurs the image itself, so it needs no scale stack; for the
+    differences of adjacent levels of a precomputed stack, use :func:`dog_response`. Its module form is
+    :class:`BlobDoGSingle`.
+
     .. image:: _static/img/dog_response_single.png
 
     Convention:
@@ -338,14 +402,22 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
           :func:`~kornia.feature.dog_response`; see its Convention block. Each kernel has the size
           ``int(8 * sigma + 1)``, rounded up to an odd number. The order of ``sigma1`` and ``sigma2`` is not checked:
           swapping them flips the sign.
+        - ``H`` and ``W`` must be larger than half the larger kernel, at least 7 for the default ``sigma2=1.6``: a
+          smaller image raises ``RuntimeError`` from the reflect padding of the blur.
 
     Args:
-        input: a given the gaussian 4d torch.Tensor ``(B, C, H, W)``.
+        input: images ``(B, C, H, W)``.
         sigma1: lower gaussian sigma
         sigma2: bigger gaussian sigma
 
     Return:
         the response map per channel with shape ``(B, C, H, W)``.
+
+    See Also:
+        - :class:`BlobDoGSingle`: the module form, with ``sigma1`` and ``sigma2`` fixed at construction.
+        - :func:`dog_response`: the differences of adjacent levels of a ``(B, C, D, H, W)`` scale stack.
+        - :func:`hessian_response`: a blob response that is positive at blobs of both polarities.
+        - :class:`SIFTFeature`: detects at the maxima of this response's magnitude on each level of an image pyramid.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -359,9 +431,23 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
 class BlobDoG(nn.Module):
     r"""Compute Difference-of-Gaussian responses of a (B, C, D, H, W) scale stack; the module form of dog_response.
 
+    ``R = BlobDoG()(stack, sigmas)`` returns ``dog_response(stack)``, the ``(B, C, D - 1, H, W)`` differences of
+    adjacent levels, and ignores ``sigmas``. It is the ``resp_module`` that :class:`ScaleSpaceDetector` takes with
+    ``scale_space_response=True``; since a bright blob is a DoG minimum, pass ``minima_are_also_good=True`` too, as
+    :class:`DoGHardNet` and the ``"patch"`` backend of :class:`SIFTFeatureScaleSpace` do. For the DoG of one image at
+    two given blurs, use :class:`BlobDoGSingle` instead.
+
     Convention:
         Returns :func:`~kornia.feature.dog_response` of the ``(B, C, D, H, W)`` scale stack; see its Convention
-        block. ``sigmas`` is ignored.
+        block.
+
+    See Also:
+        - :func:`dog_response`: the function form.
+        - :class:`BlobDoGSingle`: the DoG of a ``(B, C, H, W)`` image at two sigmas fixed at construction.
+        - :class:`BlobHessian`: a per-level blob response, positive at blobs of both polarities.
+        - :class:`ScaleSpaceDetector`: detects LAFs at the extrema of this response over its scale pyramid.
+        - :class:`SIFTFeatureScaleSpace`: a SIFT preset whose ``"patch"`` backend is that detector on this response.
+
     """
 
     def __init__(self) -> None:
@@ -386,11 +472,22 @@ class BlobDoG(nn.Module):
 class BlobDoGSingle(nn.Module):
     r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image; the module form of dog_response_single.
 
+    ``R = BlobDoGSingle(sigma1, sigma2)(img, sigmas)`` returns ``dog_response_single(img, sigma1, sigma2)``, the
+    ``(B, C, H, W)`` blur of ``sigma2`` minus the blur of ``sigma1``, and ignores ``sigmas``. Passed to
+    :class:`MultiResolutionDetector`, which keeps maxima only, it misses the centres of bright blobs, the DoG minima:
+    :class:`SIFTFeature` passes its magnitude instead. For the DoG of a whole scale stack, use :class:`BlobDoG`.
+
     .. image:: _static/img/dog_response_single.png
 
     Convention:
         Returns :func:`~kornia.feature.dog_response_single` with the constructor's ``sigma1`` and ``sigma2``; see its
-        Convention block. ``sigmas`` is ignored.
+        Convention block.
+
+    See Also:
+        - :func:`dog_response_single`: the function form, with the sigmas passed on each call.
+        - :class:`BlobDoG`: the DoG between adjacent levels of a ``(B, C, D, H, W)`` scale stack.
+        - :class:`MultiResolutionDetector`: detects LAFs at the maxima of a per-image response on an image pyramid.
+
     """
 
     def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
@@ -416,13 +513,26 @@ class BlobDoGSingle(nn.Module):
 
 
 class CornerHarris(nn.Module):
-    r"""nn.Module that calculates Harris corners.
+    r"""Compute the Harris corner response with a fixed k; the module form of harris_response.
+
+    ``R = CornerHarris(k)(img, sigmas)`` returns ``harris_response(img, k, grads_mode, sigmas)``, the ``(B, C, H, W)``
+    Harris response of ``(B, C, H, W)`` images, positive at a corner. ``k`` is stored as a buffer, so it moves with
+    :meth:`torch.nn.Module.to`. Pass it to :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over
+    scale; for a response with no ``k`` to choose, use :class:`CornerGFTT` instead.
 
     .. image:: _static/img/harris_response.png
 
     Convention:
         Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
-        Convention block. Unlike the function's, this ``k`` has no default.
+        Convention block. Unlike the function's, this ``k`` has no default. A ``float``, ``int`` or NumPy scalar
+        ``k`` becomes a 0-dimensional tensor; a tensor is stored as it is.
+
+    See Also:
+        - :func:`harris_response`: the function form, with ``k`` defaulting to ``0.04``.
+        - :class:`CornerGFTT`: the Shi-Tomasi corner response of the same structure tensor, without ``k``.
+        - :class:`BlobHessian`: the Hessian-determinant blob response.
+        - :class:`ScaleSpaceDetector`: detects LAFs at the scale-space maxima of a response module such as this one.
+
     """
 
     k: torch.Tensor
@@ -456,12 +566,25 @@ class CornerHarris(nn.Module):
 
 
 class CornerGFTT(nn.Module):
-    r"""nn.Module that calculates Shi-Tomasi corners.
+    r"""Compute the Shi-Tomasi corner response; the module form of gftt_response.
+
+    ``R = CornerGFTT()(img, sigmas)`` returns ``gftt_response(img, grads_mode, sigmas)``, the ``(B, C, H, W)``
+    smaller structure-tensor eigenvalue of ``(B, C, H, W)`` images, large at a corner. Pass it to
+    :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over scale, as :class:`GFTTAffNetHardNet` does;
+    for the signed Harris measure, use :class:`CornerHarris` instead.
 
     .. image:: _static/img/gftt_response.png
 
     Convention:
         Returns :func:`~kornia.feature.gftt_response` with the constructor's ``grads_mode``; see its Convention block.
+
+    See Also:
+        - :func:`gftt_response`: the function form.
+        - :class:`CornerHarris`: the Harris corner response of the same structure tensor, with a free ``k``.
+        - :class:`BlobHessian`: the Hessian-determinant blob response.
+        - :class:`GFTTAffNetHardNet`: a :class:`ScaleSpaceDetector` on this response, with AffNet shapes and HardNet
+          descriptors.
+
     """
 
     def __init__(self, grads_mode: str = "sobel") -> None:
@@ -486,13 +609,26 @@ class CornerGFTT(nn.Module):
 
 
 class BlobHessian(nn.Module):
-    r"""nn.Module that calculates Hessian blobs.
+    r"""Compute the Hessian-determinant blob response; the module form of hessian_response.
+
+    ``R = BlobHessian()(img, sigmas)`` returns ``hessian_response(img, grads_mode, sigmas)``, the ``(B, C, H, W)``
+    Hessian determinant of ``(B, C, H, W)`` images, positive at bright and dark blobs alike. It is the default
+    ``resp_module`` of :class:`ScaleSpaceDetector`, which passes each level's sigma so that the levels compare. For a
+    DoG response over a scale stack, use :class:`BlobDoG`; for corners, :class:`CornerGFTT` or :class:`CornerHarris`.
 
     .. image:: _static/img/hessian_response.png
 
     Convention:
         Returns :func:`~kornia.feature.hessian_response` with the constructor's ``grads_mode``; see its Convention
         block.
+
+    See Also:
+        - :func:`hessian_response`: the function form.
+        - :class:`BlobDoG`: the DoG blob response of a scale stack, a minimum at a bright blob.
+        - :class:`CornerGFTT`: a corner response, the smaller structure-tensor eigenvalue.
+        - :class:`ScaleSpaceDetector`: detects LAFs at the scale-space maxima of this response, its default.
+        - :class:`HesAffNetHardNet`: that detector on this response, with AffNet shapes and HardNet descriptors.
+
     """
 
     def __init__(self, grads_mode: str = "sobel") -> None:

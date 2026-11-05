@@ -805,7 +805,7 @@ class TestFindHomographyDLT(BaseTester):
         def fail(*args, **kwargs):
             raise RuntimeError("linalg.svd: The algorithm failed to converge")
 
-        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_in_work_dtype", fail)
         points1 = torch.rand(2, 6, 2, device=device, dtype=dtype)
         points2 = torch.rand(2, 6, 2, device=device, dtype=dtype)
         with pytest.warns(RuntimeWarning, match="SVD did not converge"):
@@ -1127,7 +1127,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         def fail(*args, **kwargs):
             raise RuntimeError("linalg.svd: The algorithm failed to converge")
 
-        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_in_work_dtype", fail)
         ls1 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
         ls2 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
         with pytest.warns(RuntimeWarning, match="SVD did not converge"):
@@ -2175,3 +2175,23 @@ class TestHomographySharedKernels(BaseTester):
         pts2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         H = create_random_homography(torch.zeros(3, 1, device=device, dtype=torch.float64), 3, std_val=0.1)
         self.gradcheck(lambda a, b, h: _oneway_transfer_error_shared_impl_(a, b, h, True), (pts1, pts2, H))
+
+
+class TestFindHomographyDLTSvdGradient(BaseTester):
+    """The ``"svd"`` solver's gradient is finite when other eigenvalues of the normal matrix are equal (#6213)."""
+
+    @pytest.mark.parametrize("n", [2, 3, 4, 5])
+    @pytest.mark.parametrize("centred", [False, True])
+    def test_identity_on_an_exact_grid_6213(self, device, n, centred):
+        # H = I on an exact grid gives the normal matrix repeated eigenvalues; on CPU the 3 x 3 grid in [0, 1] made
+        # every entry of the gradient NaN through torch's SVD backward.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        dtype = torch.float64
+        ys, xs = torch.meshgrid(
+            torch.linspace(0, 1, n, dtype=dtype), torch.linspace(0, 1, n, dtype=dtype), indexing="ij"
+        )
+        grid = torch.stack([xs.flatten(), ys.flatten()], -1)[None].to(device)
+        if centred:
+            grid = grid * 2 - 1
+        self.gradcheck(lambda p1, p2: find_homography_dlt(p1, p2, solver="svd"), (grid, grid.clone()), fast_mode=False)

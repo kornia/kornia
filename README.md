@@ -132,17 +132,19 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
-unsupported functions. The remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153).
-No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.
+There are **243 float16 and 255 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+unsupported functions. [#4153](https://github.com/kornia/kornia/issues/4153) tracked them until it was closed on
+2026-10-18; no single issue tracks the remaining entries.
+No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
+measurement of the whole test suite is [below](#cuda-test-suite-measurement).
 
 | Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
 |--------|:-------:|:--------:|:----------------------------:|-------|
 | `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv conversions and `rgb255_to_normals` compute half inputs in float32 and return the input dtype |
-| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype |
+| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and FFT convolution compute half inputs in float32 and return the input dtype |
 | `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 48 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
+| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
@@ -191,23 +193,33 @@ KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --kno
 `pixi run test-half` is an unseeded CPU sweep, without the strict profile baseline. See
 [TESTING.md](TESTING.md#7-half-precision-dtypes-float16--bfloat16) for focused checks and baseline maintenance.
 
-**CUDA support and measurement limits:**
+### CUDA test-suite measurement
 
 Kornia accepts CUDA tensors for GPU acceleration, subject to each operator's dtype and backend limitations.
-There is no blocking CUDA CI job or checked-in CUDA known-failure manifest, so the CPU xfail counts above do not
-provide a current CUDA pass rate. The previous local measurements are retained here as historical evidence only:
+There is no CUDA CI job or checked-in CUDA known-failure manifest, so the totals below are a local measurement of
+one revision, not a guarantee for later ones: `e4a444e9b` (2026-11-04), an RTX 4090, Python 3.11 and PyTorch
+2.15.0+cu132 with TF32 off, over `tests/` with `--device=cuda`:
 
-| Historical run (`f8449854`, 2026-09-23) | Passed | Failed | Skipped |
-|------------------------------------------------|-------:|-------:|--------:|
-| CUDA float32 | 12193 | 22 | 3957 |
-| CUDA float16 | 11738 | 451 | 3983 |
-| CUDA bfloat16 | 11736 | 500 | 3936 |
+| CUDA run | Passed | Failed | Skipped | XFAIL | XPASS |
+|----------|-------:|-------:|--------:|------:|------:|
+| float32 + float64 | 46079 | 0 | 9198 | 46 | 11 |
+| float16 + bfloat16 | 45024 | 440 | 9813 | 50 | 7 |
+| float32, `torch.compile` (inductor) tests | 853 | 6 | 80 | 1 | 1 |
 
-These used an RTX 4090, Python 3.11 and PyTorch 2.14.0+cu130. Source-marked xfails were excluded. Half tests ran
-in-process with `KORNIA_TEST_IN_SUBPROCESS=1`, followed by isolated retries of failures; two homography tests were
-deselected. They are not a measurement of the current branch. Those two tests (`TestFindHomographyDLT::test_nocrash`
-and `test_nocrash_lu`) now pass locally in all three CUDA dtypes at `649b3f86d`; a fresh full CUDA sweep is needed
-before quoting new totals.
+- **float32 and float64:** no failures.
+- **float16 and bfloat16:** 408 of the 440 failures are the CUDA counterparts of CPU manifest entries. Of the
+  other 32, 21 pass in an isolated process and 2 draw unseeded inputs that fail on CPU too. 9 fail on CUDA only:
+  5 because CUDA picks convolution and matrix-multiply kernels by batch size, so a half-precision LoFTR, SmallSR or
+  LightGlue gives an image slightly different outputs in a batch than alone (on CPU they are bitwise equal; with
+  pretrained weights the change is smaller than the half-precision error itself), and 4 `RandomRotation3D` bfloat16
+  backward cases, a bfloat16 limit rather than a CUDA one: the test's SGD step is under half a bfloat16 ulp of each
+  angle, so no angle changes.
+- **`torch.compile`:** 6 compiled tests fail on CUDA only (resized-crop replay, Otsu bin edges, `fit_line`,
+  `Hyperplane` and `Keypoints` scalar indexing).
+
+The [precision guide](https://kornia.readthedocs.io/en/latest/get-started/precision.html#cuda-test-suite-measurement)
+names each failure, gives the batched-versus-single measurements and lists the open CUDA-only issues the suite does
+not cover.
 
 For CUDA half tests, use `--isolate-half-precision` so each test gets a fresh process. They are skipped by default
 without it; selecting a half dtype alone does not exercise CUDA half support:

@@ -620,7 +620,10 @@ class TestHomographyWarper(BaseTester):
             image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
         )
 
-        with torch.autocast(device.type, dtype=autocast_dtype):
+        # The parametrizations share one scripted function. Once TorchScript has profiled it, its CUDA fuser fuses the
+        # float32 grid arithmetic and rounds it a few ulps from eager; the comparison is about autocast, so it runs
+        # unfused.
+        with torch.jit.fuser("none"), torch.autocast(device.type, dtype=autocast_dtype):
             actual = scripted(
                 image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
             )

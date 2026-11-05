@@ -106,6 +106,9 @@ class ColorMap:
     Convention:
         colors has shape (3, num_colors) in RGB channel order. Built-in names are case-insensitive;
         a custom base is an ordered list of RGB triples and is linearly resampled to num_colors.
+        For ``num_colors > 1``, entry ``i`` sits at ``i / (num_colors - 1)`` along the base, so the first and
+        last colours of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
+        base's first colour.
 
     Args:
         base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
@@ -119,15 +122,15 @@ class ColorMap:
 
     Examples:
         >>> ColorMap(base='viridis', num_colors=8).colors
-        tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
-                [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
-                [0.4072, 0.5207, 0.5543, 0.5574, 0.5334, 0.4519, 0.2880, 0.0989]])
+        tensor([[0.2670, 0.2752, 0.2124, 0.1534, 0.1223, 0.2889, 0.6266, 0.9932],
+                [0.0049, 0.1949, 0.3597, 0.4970, 0.6332, 0.7584, 0.8546, 0.9062],
+                [0.3294, 0.4960, 0.5517, 0.5577, 0.5304, 0.4284, 0.2234, 0.1439]])
 
     Create a color map from the first color (RGB with range[0-1]) to the last one with num_colors length.
         >>> ColorMap(base=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
-        tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
+        tensor([[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571, 1.0000],
                 [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
+                [1.0000, 0.8571, 0.7143, 0.5714, 0.4286, 0.2857, 0.1429, 0.0000]])
 
     """
 
@@ -174,7 +177,9 @@ class ColorMap:
         """
         dtype = self._dtype if self._dtype is not None else torch.get_default_dtype()
         tensor_colors = torch.tensor(list(base_colormap), dtype=dtype, device=self._device).T
-        return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear")[0, ...]
+        # align_corners=True keeps the base's end colours at the ends of the map (#6556): cell-centre sampling
+        # repeated them when upsampling and dropped them when downsampling.
+        return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear", align_corners=True)[0, ...]
 
     def __len__(self) -> int:
         r"""Return the number of colors in the colormap.

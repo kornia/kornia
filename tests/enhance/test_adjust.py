@@ -1400,10 +1400,11 @@ class TestEqualize3D(BaseTester):
             _sync(kornia.enhance.equalize3d(x).device)
 
     def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
-        # As the docstring states: the lookup step is an integer division by 255.
+        # As the docstring states: the lookup step is an integer division by 255. Such a volume comes back as it is,
+        # not as (x * 255) / 255, which can be a unit in the last place off.
         torch.manual_seed(0)
         x = torch.rand(2, 3, 3, 5, 17, device=device, dtype=dtype) * 0.5
-        self.assert_close(kornia.enhance.equalize3d(x), x)
+        assert torch.equal(kornia.enhance.equalize3d(x), x)
 
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
@@ -1625,6 +1626,23 @@ class TestSolarize(BaseTester):
 
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
+
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5), (2, 2, 3, 4, 5)])
+    @pytest.mark.parametrize("element_shape", [(1,), (1, 1)])
+    @pytest.mark.parametrize("param_dtype", [None, torch.float64])
+    def test_one_element_tensor_serves_the_batch_6547(self, device, dtype, shape, element_shape, param_dtype):
+        # A one-element thresholds or additions tensor solarizes the whole batch, as a 0-d one does; it was read as
+        # per-sample and rejected unless the batch (or, unbatched, the channel count) was 1. It is cast to the image
+        # dtype first, as the per-sample path does.
+        if param_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        img = torch.rand(shape, device=device, dtype=dtype)
+        thresholds = torch.full(element_shape, 0.3, device=device, dtype=param_dtype or dtype)
+        additions = torch.full(element_shape, 0.1, device=device, dtype=param_dtype or dtype)
+        threshold = thresholds.to(dtype).reshape(())
+        expected = TestSolarize.f(img, threshold, additions.to(dtype).reshape(()))
+        self.assert_close(TestSolarize.f(img, thresholds, additions), expected, atol=0, rtol=0)
+        self.assert_close(TestSolarize.f(img, thresholds), TestSolarize.f(img, threshold), atol=0, rtol=0)
 
     @pytest.mark.parametrize("addition", [0.5, -0.5])
     def test_additions_closed_range_4605(self, device, dtype, addition):
@@ -1909,7 +1927,8 @@ def _equalize_reference(input):
             hist.cumsum(0) + torch.div(step, 2, rounding_mode="trunc"), step.clamp(min=1), rounding_mode="trunc"
         )
         lut = torch.cat([torch.zeros_like(lut[:1]), lut[:-1]]).clamp(0, 255).to(input.dtype)
-        outputs.append(torch.where(step == 0, scaled, lut[scaled.long()]) / 255.0)
+        # A plane whose step is 0 comes back as it is.
+        outputs.append(torch.where(step == 0, plane, lut[scaled.long()] / 255.0))
     return torch.stack(outputs).reshape(input.shape)
 
 

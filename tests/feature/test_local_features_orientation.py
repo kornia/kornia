@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import ShapeError
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
@@ -396,6 +397,15 @@ class TestLAFOrienter(BaseTester):
         new_laf = ori(laf, inp)
         expected = torch.tensor([[[[-5.0, 0.0, 8.0], [0.0, -5.0, 8.0]]]], device=device)
         self.assert_close(new_laf, expected)
+
+    @pytest.mark.parametrize("num_lafs", [0, 1])
+    @pytest.mark.parametrize("channels", [2, 3])
+    def test_rejects_multichannel_image_6530(self, device, dtype, channels, num_lafs):
+        # Rejected up front, as in LAFAffineShapeEstimator, even when there is no LAF to orient.
+        laf = torch.tensor([[[[8.0, 0.0, 60.0], [0.0, 8.0, 50.0]]]], device=device, dtype=dtype)[:, :num_lafs]
+        img = torch.rand(1, channels, 120, 160, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=f"expected 1, got {channels}"):
+            LAFOrienter(32).to(device, dtype)(laf, img)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 21, 21

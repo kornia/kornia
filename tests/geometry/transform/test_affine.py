@@ -1430,6 +1430,28 @@ class TestAffine2d(BaseTester):
 
         assert out[0, 0, 0, 9] == 0.0
 
+    @pytest.mark.parametrize("op", ["rotate", "scale", "Affine"])
+    def test_default_center_takes_parameter_dtype_6545(self, device, op):
+        # float32 parameters with a float64 image sample in float64, as warp_affine documents. The default center was
+        # built in the image dtype and failed the matrix's same-dtype check, while an explicit center worked.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        image = torch.rand(2, 3, 6, 7, device=device, dtype=torch.float64)
+        angle = torch.tensor([30.0, -15.0], device=device, dtype=torch.float32)
+        factor = torch.tensor([[1.5, 0.75], [0.5, 2.0]], device=device, dtype=torch.float32)
+        center = torch.tensor([[3.0, 2.5]], device=device, dtype=torch.float32).expand(2, -1)
+        if op == "rotate":
+            out = kornia.geometry.transform.rotate(image, angle)
+            expected = kornia.geometry.transform.rotate(image, angle, center)
+        elif op == "scale":
+            out = kornia.geometry.transform.scale(image, factor)
+            expected = kornia.geometry.transform.scale(image, factor, center)
+        else:
+            out = kornia.geometry.transform.Affine(angle)(image)
+            expected = kornia.geometry.transform.Affine(angle, center=center)(image)
+        assert out.dtype == torch.float64
+        self.assert_close(out, expected, atol=0, rtol=0)
+
 
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):

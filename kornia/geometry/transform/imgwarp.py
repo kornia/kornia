@@ -59,6 +59,7 @@ from kornia.core.utils import (
     _autocast_disabled,
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
+    _samples_half_in_float32,
     _torch_grid_sample,
     _torch_inverse_cast,
     _torch_solve_cast,
@@ -136,11 +137,15 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
     torch's CPU float16/bfloat16 ``grid_sample`` returns wrong values, NaN and up to 3.4e38 once
     the source is about 128 px or larger (torch 2.9.1 and 2.14), and torch 2.5.1 has no such kernel
     at all; a half-precision sampling grid is also off by more than half a pixel at 256 px in
-    bfloat16 (#5751). A CPU half warp therefore runs in float32 and returns the input dtype, as the LAF
-    patch extractors already do. A mismatched ``other`` (transform or map) keeps the half path, so
-    it is rejected exactly as before. Other devices and dtypes are unaffected.
+    bfloat16 (#5751). That grid error does not depend on the device: a bfloat16 ``warp_affine`` of a
+    256 px ``[0, 1]`` image was off by up to 0.98 on CUDA and on MPS, whose half bilinear kernels
+    sample a given grid as float32 does, and torch's half 3D ``affine_grid`` raises for a size-1
+    output axis on every device (#5814). A half warp therefore builds its grid and samples in float32
+    on every device and returns the input dtype, as the LAF patch extractors already do. A mismatched
+    ``other`` (transform or map) keeps the half path, so it is rejected exactly as before. Other dtypes
+    are unaffected.
     """
-    return src.device.type == "cpu" and src.dtype in (torch.float16, torch.bfloat16) and other.dtype == src.dtype
+    return _samples_half_in_float32(src) and other.dtype == src.dtype
 
 
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:

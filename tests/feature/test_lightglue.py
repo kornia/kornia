@@ -1362,9 +1362,15 @@ class TestLightGlueBatchedPairs(BaseTester):
         out = self._forward(model, self._stack([data for data, _ in pairs]), pruning_threshold=1000)
         assert out["log_assignment"].shape == (2, self._M + 1, self._M + 1)
         assert out["stop"] == 2
+        # CUDA half matrix products accumulate in an order that depends on the batch size. The matches stay exact,
+        # but in bfloat16 a log-assignment entry of about -90 moves by up to two ulps (1.4 eps relative), about as
+        # far as bfloat16 log assignments are from float32 ones (1.2 eps); on CPU the half values are bitwise equal.
+        low_tolerance = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
         for k in range(2):
             self._assert_pair(out, k, singles[k], exact=False)
-            self.assert_close(out["log_assignment"][k : k + 1], singles[k]["log_assignment"])
+            self.assert_close(
+                out["log_assignment"][k : k + 1], singles[k]["log_assignment"], low_tolerance=low_tolerance
+            )
         self.assert_close(out["prune0"], torch.ones(2, self._M, device=device, dtype=torch.long))
 
     def test_convention_lightglue_batch_stops_early_when_every_pair_meets_its_criterion_5898(self, device, dtype):

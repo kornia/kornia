@@ -39,10 +39,19 @@ urls["orinet"] = [
 
 
 class PassLAF(nn.Module):
-    """Dummy module to use instead of local feature orientation or affine shape estimator.
+    """Return LAFs unchanged, in place of an orientation or affine shape estimator.
 
-    Convention:
-        Returns its ``laf`` argument itself, not a copy, and does not use ``img``.
+    ``out = PassLAF()(laf, img)`` takes ``(B, N, 2, 3)`` LAFs and an image and returns its ``laf`` argument itself, not
+    a copy, without reading ``img``. It is the default ``ori_module`` and ``aff_module`` of
+    :class:`ScaleSpaceDetector`, :class:`MultiResolutionDetector` and :class:`KeyNetDetector`, and the ``ori_module``
+    that keeps features upright. To estimate the orientation, use :class:`LAFOrienter`; to estimate the affine shape,
+    :class:`LAFAffineShapeEstimator` or :class:`LAFAffNetShapeEstimator`.
+
+    See Also:
+        - :class:`LAFOrienter`: rotates each LAF by the orientation estimated on its image patch.
+        - :class:`LAFAffineShapeEstimator`: adapts each LAF's shape to the second-moment matrix of its patch.
+        - :class:`LAFAffNetShapeEstimator`: adapts each LAF's shape with the learned AffNet.
+
     """
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
@@ -60,9 +69,14 @@ class PassLAF(nn.Module):
 
 
 class PatchDominantGradientOrientation(nn.Module):
-    r"""Module, which estimates the direction of the dominant gradient of the given patches, as an angle in radians.
+    r"""Estimate the orientation of patches from the peak of their histogram of gradient directions.
 
-    Zero angle points towards right.
+    ``angles = PatchDominantGradientOrientation(patch_size)(patches)`` takes ``(B, 1, patch_size, patch_size)``
+    patches and returns the direction of each patch's dominant gradient, ``(B,)`` in radians, 0 for a gradient that
+    points to the right: the peak, refined between bins, of a ``num_angular_bins``-bin histogram of the gradient
+    directions, each pixel weighted by its gradient magnitude and a Gaussian centred on the patch, as in SIFT's
+    orientation assignment. It returns one angle per patch, that of the highest peak. To orient LAFs on an image, run
+    it through :class:`LAFOrienter`, whose default it is; for a learned estimate, use :class:`OriNet` instead.
 
     Convention:
         - The angle is that of the dominant gradient, which points toward brighter values, counter-clockwise on
@@ -71,6 +85,13 @@ class PatchDominantGradientOrientation(nn.Module):
           LAF orientation.
         - The angle is not wrapped into :math:`(-\pi, \pi]`: it can exceed :math:`\pi` by up to
           ``pi / num_angular_bins``.
+        - A patch whose Sobel gradients are all exactly zero, such as an all-zero patch, gets the angle
+          :math:`\pi` from its empty histogram. A nearly flat patch gets an arbitrary angle set by rounding noise: a
+          constant float64 patch can have nonzero rounding-level gradients, and so does a patch sampled from a flat
+          image region by :func:`~kornia.feature.extract_patches_from_pyramid`.
+        - Known defect: in float16 the gradients with respect to a textured patch and to the smoothing weights are
+          NaN, because the histogram is cast back to float16 before the peak is refined
+          (`#6455 <https://github.com/kornia/kornia/issues/6455>`_).
 
     Args:
         patch_size: size of the (square) input patch.
@@ -83,6 +104,12 @@ class PatchDominantGradientOrientation(nn.Module):
         can differ at the ulp level, and a patch whose two strongest bins are nearly tied can
         return the neighbouring peak. ``torch.use_deterministic_algorithms(True)`` selects the
         deterministic kernel and restores run-to-run reproducibility.
+
+    See Also:
+        - :class:`OriNet`: a learned orientation of 32 x 32 patches.
+        - :class:`LAFOrienter`: samples each LAF's patch, runs this module on it by default and rotates the LAF.
+        - :class:`PatchAffineShapeEstimator`: the affine shape of a patch, from the second moments of the same Sobel
+          gradients.
 
     """
 
@@ -112,10 +139,10 @@ class PatchDominantGradientOrientation(nn.Module):
         """Run forward.
 
         Args:
-            patch: ``(B, 1, H, W)``
+            patch: ``(B, 1, patch_size, patch_size)``; another size raises ``TypeError``.
 
         Returns:
-            angle in radians: ``(B)``
+            angle in radians: ``(B,)``
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
@@ -198,11 +225,16 @@ class PatchDominantGradientOrientation(nn.Module):
 
 
 class OriNet(nn.Module):
-    """Network, which estimates the canonical orientation of the given 32x32 patches, in radians.
+    """Estimate the orientation of 32 x 32 patches with the learned OriNet CNN.
 
-    Zero angle points towards right. This is based on the original code from paper
-    "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
-    See :cite:`AffNet2018` for more details.
+    ``angles = OriNet()(patches)`` builds the network with its pretrained weights, in eval mode, and takes
+    ``(B, 1, 32, 32)`` patches and returns a learned canonical orientation per patch, ``(B,)`` in radians, in the
+    sense of the angle of :class:`PatchDominantGradientOrientation`; its zero is learned, so on a patch it need not
+    match the dominant gradient direction. ``pretrained=False`` leaves the weights random. To orient LAFs, pass it to
+    :class:`LAFOrienter` as ``angle_detector``, as :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet` do. For an
+    estimate that needs no weights, use :class:`PatchDominantGradientOrientation` instead. This is based on the
+    original code from the paper "Repeatability Is Not Enough: Learning Discriminative Affine Regions via
+    Discriminability". See :cite:`AffNet2018` for more details.
 
     Convention:
         - With the pretrained weights, the angle turns with the patch content, in the sense of
@@ -221,8 +253,13 @@ class OriNet(nn.Module):
         Angle in radians.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B)
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B,)``
+
+    See Also:
+        - :class:`PatchDominantGradientOrientation`: the hand-crafted dominant gradient direction, with no weights.
+        - :class:`LAFOrienter`: runs it on each LAF's patch, as ``angle_detector``, and rotates the LAF.
+        - :class:`LAFAffNetShapeEstimator`: AffNet, the affine shape network of the same paper.
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -266,7 +303,7 @@ class OriNet(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        """Normalize the input by batch."""
+        """Subtract each patch's mean and divide by its standard deviation plus ``eps``."""
         # `torch.std_mean` decomposes to `prims.sum`, which has no ONNX lowering; the split form is equivalent.
         mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
         sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
@@ -279,10 +316,10 @@ class OriNet(nn.Module):
         """Run forward.
 
         Args:
-            patch: ``(B, 1, H, W)``
+            patch: ``(B, 1, 32, 32)``, the patch size the weights were trained on.
 
         Returns:
-            angle in radians: ``(B)``
+            angle in radians: ``(B,)``
 
         """
         xy = self.features(_patch_conv_layout(self._normalize_input(patch))).view(-1, 2)
@@ -290,27 +327,40 @@ class OriNet(nn.Module):
 
 
 class LAFOrienter(nn.Module):
-    """Estimate the orientation of (B, N, 2, 3) LAFs from their image patches and rotate the LAFs by it.
+    """Orient LAFs by the angle that a patch orientation estimator finds in each LAF's patch.
 
-    It extracts a patch per LAF, runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
-    :class:`~kornia.feature.OriNet` on it and rotates the LAF by the estimated angle.
+    ``lafs = LAFOrienter(patch_size)(laf, img)`` takes ``(B, N, 2, 3)`` LAFs in pixels and their grayscale images
+    ``(B, 1, H, W)``, samples each LAF's ``patch_size`` patch with :func:`extract_patches_from_pyramid`, runs
+    ``angle_detector`` on it, :class:`PatchDominantGradientOrientation` with ``num_angular_bins`` bins by default, and
+    returns the ``(B, N, 2, 3)`` LAFs rotated by the angles found. Passed to a detector as ``ori_module``, it runs after
+    the ``aff_module``. To keep the LAFs upright, pass :class:`PassLAF` instead; to rotate them by known angles, use
+    :func:`rotate_laf`.
 
     Convention:
         - Each LAF's patch (:func:`~kornia.feature.extract_patches_from_pyramid`) gives an angle, measured in the
           patch, and the output orientation is the input orientation plus that angle, converted to degrees, modulo
           360 degrees. :func:`~kornia.feature.get_laf_orientation` reads it back in ``[-180, 180]``. The centre, the
           scale and the upright shape (:func:`~kornia.feature.make_upright`) of the LAF are kept.
-        - For an isotropic LAF, the default angle detector therefore turns the LAF's x axis onto the dominant
+        - For an isotropic LAF with positive determinant, the default angle detector turns the LAF's x axis onto the
+          dominant
           gradient, whatever the input orientation: content turned 30 degrees counter-clockwise on screen turns the
           output orientation by +30, the sign of :func:`~kornia.feature.laf_from_center_scale_ori`
-          (see :ref:`Local features <local-features-conventions>`).
+          (see :ref:`Local features <local-features-conventions>` for the orientation convention).
 
     Args:
         patch_size: side of the square patch sampled for each LAF.
         num_angular_bins: number of histogram bins of the default angle detector; not used when ``angle_detector``
           is given.
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
-          or OriNet.
+          or :class:`~kornia.feature.OriNet`.
+
+    See Also:
+        - :class:`PatchDominantGradientOrientation`: the default ``angle_detector``, the dominant gradient direction.
+        - :class:`OriNet`: a learned ``angle_detector`` for 32 x 32 patches.
+        - :class:`PassLAF`: keeps the input orientation, for upright features.
+        - :func:`rotate_laf`: rotates LAFs by known angles, as this module does with the estimated ones.
+        - :class:`LAFAffineShapeEstimator`: estimates the affine shape, which a detector runs before this module.
+        - :class:`LAFDescriptor`: describes the oriented LAFs, from patches that follow their orientation.
 
     """  # pylint: disable
 
@@ -341,7 +391,7 @@ class LAFOrienter(nn.Module):
 
         """
         KORNIA_CHECK_LAF(laf)
-        KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]
