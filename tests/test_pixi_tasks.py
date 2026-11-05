@@ -32,12 +32,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PIXI = tomllib.loads((ROOT / "pixi.toml").read_text(encoding="utf-8"))
-LOCKED_TORCH = next(
-    package
-    for package in tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))["package"]
-    if package["name"] == "torch"
-)
-WINDOWS_CUDA_BUILD = "cu132"
+LOCKED_PACKAGES = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))["package"]
+LOCKED_TORCH = next(package for package in LOCKED_PACKAGES if package["name"] == "torch")
+LOCKED_CUDA_TOOLKIT = next(package for package in LOCKED_PACKAGES if package["name"] == "cuda-toolkit")
+# PyPI's Linux wheels are the build of this toolkit, so toolkit 13.2 means the cu132 index.
+WINDOWS_CUDA_BUILD = "cu" + "".join(LOCKED_CUDA_TOOLKIT["version"].split(".")[:2])
 pytestmark = pytest.mark.device_agnostic
 
 
@@ -92,9 +91,11 @@ def _write_probe_project(directory: Path, dependency: str, version: str) -> None
 
 
 def test_locked_linux_torch_is_a_cuda_build() -> None:
-    # The Linux install task only syncs the lock, so it is only a CUDA install while this holds.
+    # The Linux install task only syncs the lock, so it is only a CUDA install while this holds on x86-64 and aarch64.
     assert any(
-        dependency["name"].startswith("nvidia-cudnn") and "sys_platform == 'linux'" in dependency.get("marker", "")
+        dependency["name"].startswith("nvidia-cudnn")
+        and "sys_platform == 'linux'" in dependency.get("marker", "")
+        and "platform_machine" not in dependency["marker"]
         for dependency in LOCKED_TORCH["dependencies"]
     )
 
@@ -103,11 +104,10 @@ def test_locked_linux_torch_is_a_cuda_build() -> None:
 def test_cuda_index_is_a_url(task: str) -> None:
     args = shlex.split(_cuda_tasks("win-64")[task]["cmd"])
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    cuda_index = next(
-        index for index in project["tool"]["uv"]["index"] if index["name"] == f"pytorch-{WINDOWS_CUDA_BUILD}"
-    )
-    # --index takes a URL, not the configured index's name.
-    assert args[args.index("--index") + 1] == cuda_index["url"]
+    indexes = {index["name"]: index["url"] for index in project["tool"]["uv"]["index"]}
+    # --index takes a URL, not the configured index's name. It also has to be the build of the locked cuda-toolkit, so
+    # a lock update fails here until the index follows it.
+    assert args[args.index("--index") + 1] == indexes.get(f"pytorch-{WINDOWS_CUDA_BUILD}")
 
 
 @pytest.mark.parametrize(

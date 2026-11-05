@@ -169,10 +169,15 @@ The rest of this guide contains practical and technical guidance so nobody has t
     task only syncs the lock, reinstalling every package so that removing a stale wheel cannot take files a locked
     wheel needs. PyPI's Windows wheels are CPU-only, so on Windows the task then replaces torch with the same version
     from the PyTorch CUDA index; a lock update to a new PyTorch has to update that version and index in `pixi.toml`
-    too. Pixi's `.pixi/envs/cuda` supplies the tools, not the Python dependencies under test. Commands
-    run with `-e cuda` disable automatic uv synchronization so the CUDA build is preserved. Re-run the CUDA install
-    task after changing dependencies or using a default-environment command that synchronizes `.venv`. For focused
-    CUDA tests, use `pixi run -e cuda test-module tests/<path> --device=cuda`.
+    and the index in `pyproject.toml` too. Pixi's `.pixi/envs/cuda` supplies the tools, not the Python dependencies
+    under test. Commands run with `-e cuda` do not synchronize `.venv` automatically, so re-run the CUDA install task
+    after a dependency or lock change. On Windows this is what preserves the CUDA build, and a default-environment
+    command that synchronizes `.venv` replaces it, so re-run the task after one of those too. For focused CUDA tests,
+    use `pixi run -e cuda test-module tests/<path> --device=cuda`.
+
+    The locked build needs an NVIDIA driver from the R580 branch or newer and a Turing or newer GPU. Check
+    `torch.cuda.is_available()` after installing: when it is false, a `--device=cuda` run skips its tests and still
+    exits 0.
 
 5. **Develop and test:**
 
