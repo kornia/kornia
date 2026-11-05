@@ -61,7 +61,7 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
    * - ``kornia.geometry.calibration``
      - ⚠️
      - ⚠️
-     - 13 / 12
+     - 12 / 12
      - solve_pnp_dlt rejects half inputs; undistort_points accuracy
    * - ``kornia.geometry.epipolar``
      - ⚠️

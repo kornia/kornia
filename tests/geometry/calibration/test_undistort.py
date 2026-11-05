@@ -595,8 +595,8 @@ class TestUndistortImage(BaseTester):
         # In half precision the pixel coordinates of a 640 px row round to half pixels (float16) or to 4 px
         # (bfloat16), so a map built in the image dtype sampled up to 0.79 px (float16) and 6.3 px (bfloat16) away
         # from the float64 positions. On a horizontal ramp the intensity error times the width is that position
-        # error; what remains here is the rounding of the input and output ramps, 0.25 px in float16 and 2 px in
-        # bfloat16.
+        # error; what remains here is the rounding of the input and output ramps, at most half a step of the values
+        # in [0.5, 1) twice over: 0.31 px in float16 and 2.5 px in bfloat16.
         # The float64 reference is built on CPU: MPS has no float64.
         H, W = 480, 640
         ramp = (torch.arange(W, dtype=torch.float64) / W).expand(1, 1, H, W)
@@ -612,6 +612,27 @@ class TestUndistortImage(BaseTester):
         error_px = (out.cpu().double() - expected)[..., 40:-40, 40:-40].abs().amax() * W
         bound = {torch.float16: 0.4, torch.bfloat16: 2.5}.get(dtype, 1e-3)
         assert error_px < bound, f"sampled {error_px:.3f} px away from the float64 positions"
+
+    def test_convention_half_image_keeps_the_precision_of_float32_calibration(self, device, dtype):
+        # A half image takes K and dist of another dtype and keeps their precision: this focal length and these
+        # coefficients do not survive a round trip through half, so the map below would change if they went through it.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only a half image builds its map in another dtype than its own")
+        image = _ramp_image(1, 3, 50, 70, device, dtype)
+        K = torch.tensor([[[60.3, 0.0, 35.1], [0.0, 60.7, 25.3], [0.0, 0.0, 1.0]]], device=device)
+        dist = torch.tensor([[-0.2013, 0.0517, 0.0011, 0.0013]], device=device)
+        grid = create_meshgrid(50, 70, False, device, torch.float32).reshape(-1, 2)
+        distorted = distort_points(grid, K, dist)
+        expected = remap(
+            image.float(),
+            distorted[..., 0].reshape(1, 50, 70),
+            distorted[..., 1].reshape(1, 50, 70),
+            align_corners=True,
+        )
+        out = undistort_image(image, K, dist)
+        assert out.dtype == dtype
+        self.assert_close(out, expected.to(dtype), atol=0.0, rtol=0.0)
+        assert not torch.equal(out, undistort_image(image, K.to(dtype), dist.to(dtype)))
 
     def test_gradcheck(self, device):
         im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
