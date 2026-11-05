@@ -303,6 +303,10 @@ class Boxes:
           that does not come from a list writes real boxes. A raw tensor passed to :meth:`index_put` changes only
           coordinates. Writing padding to a :class:`Boxes` that does not come from a list marks those rows invalid,
           since that object has no trimmed export.
+        - A selection by integer or slice shares its coordinates, validity and padding with the object it came from,
+          as tensor indexing does, and any other key copies all three. :meth:`to` and :meth:`type` to another device or
+          dtype, and an in-place :meth:`transform_boxes`, :meth:`translate` or :meth:`merge`, end the sharing of all
+          three, for the object they are called on, whether it is the selection or the original.
         - :meth:`filter_boxes_by_area` removes boxes without changing the shape: it zeroes their corners and marks
           them invalid, and every export of an invalid box is exact zeros, after later transforms too.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area`, :meth:`merge`
@@ -377,7 +381,9 @@ class Boxes:
         # stored; it is ``None`` unless the object comes from a list. Every indexed read and write carries it with the
         # coordinates, as it does ``_valid``, so it cannot go stale. It stays on the CPU, whatever the device of the
         # boxes: the trimmed export needs its values to size the list it returns, and reading them there costs no
-        # device synchronization.
+        # device synchronization. Two objects share all of ``_data``, ``_valid`` and ``_padding`` or none of them, or a
+        # write through one would flag rows whose coordinates it cannot reach. Replacing the ``_data`` of an existing
+        # object therefore goes through ``_rebind_data``.
         self._valid = torch.ones(boxes.shape[:-2], device=boxes.device, dtype=torch.bool)
         self._padding: Optional[torch.Tensor] = None
         if padding_counts is not None:
@@ -398,6 +404,21 @@ class Boxes:
         """Record the host mask of the rows a list input added, or ``None`` for an object without any."""
         self._padding = padding
 
+    def _detach_masks(self) -> None:
+        """Give ``_valid`` and ``_padding`` storage of their own, ``_valid`` on the device of the coordinates."""
+        self._valid = self._valid.to(device=self._data.device, copy=True)
+        if self._padding is not None:
+            self._padding = self._padding.clone()
+
+    def _rebind_data(self, data: torch.Tensor) -> None:
+        """Replace the coordinates of this object, and stop sharing its masks if ``data`` is another tensor.
+
+        Whatever shared the old coordinates, a selection or the object it came from, keeps them and the old masks.
+        """
+        if data is not self._data:
+            self._data = data
+            self._detach_masks()
+
     def _valid_without_padding(self) -> torch.Tensor:
         """Return ``_valid`` with the padding rows marked invalid, for a destination that has no trimmed export."""
         if self._padding is None:
@@ -412,11 +433,14 @@ class Boxes:
         return self._padding.sum(dim=-1).tolist()
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
-        new_box = type(self)(self._data[key], False)
+        selected = self._data[key]
+        new_box = type(self)(selected, False)
         new_box._mode = self._mode
         new_box._valid = self._valid[key]
         if self._padding is not None:
             new_box._padding = self._padding[_key_on_host(key)]
+        if new_box._data is not selected:  # the constructor cast integer coordinates, into a copy
+            new_box._detach_masks()
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
@@ -1042,7 +1066,7 @@ class Boxes:
 
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
-            self._data = transformed_boxes
+            self._rebind_data(transformed_boxes)
             return self
 
         obj = self.clone()
@@ -1130,8 +1154,7 @@ class Boxes:
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
-        self._data = self._data.to(device=device, dtype=dtype)
-        self._valid = self._valid.to(device=self._data.device)
+        self._rebind_data(self._data.to(device=device, dtype=dtype))
         return self
 
     def clone(self) -> Boxes:
@@ -1158,8 +1181,7 @@ class Boxes:
         Returns:
             ``self``, rebound to the converted tensor; the tensor it wrapped before is not modified.
         """
-        self._data = self._data.type(dtype)
-        self._valid = self._valid.to(device=self._data.device)
+        self._rebind_data(self._data.type(dtype))
         return self
 
 
@@ -1268,10 +1290,13 @@ class VideoBoxes(Boxes):
         if selected.ndim == self._data.ndim:
             selected = selected.unsqueeze(0)
 
-        out = type(self)(selected.flatten(0, 1), False)
+        frames = selected.flatten(0, 1)
+        out = type(self)(frames, False)
         out._mode = self._mode
         selected_valid = self._valid.view(batch_size, self.temporal_channel_size, self._valid.shape[-1])[key]
         out._valid = selected_valid.reshape(out._data.shape[:-2])
+        if out._data is not frames:  # the constructor cast integer coordinates, into a copy
+            out._detach_masks()
         out.temporal_channel_size = self.temporal_channel_size
         return out
 

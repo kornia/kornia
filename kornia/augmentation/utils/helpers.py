@@ -86,6 +86,8 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
     """
     frames = Boxes(boxes._data, False, mode=boxes._mode)
     frames._valid = boxes._valid
+    if frames._data is not boxes._data:  # the constructor cast integer coordinates, into a copy
+        frames._detach_masks()
     frames._is_batched = boxes._is_batched
     return frames
 

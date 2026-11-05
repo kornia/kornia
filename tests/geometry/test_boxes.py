@@ -26,6 +26,7 @@ from operator import setitem
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
@@ -107,6 +108,70 @@ _PADDING_WRITES = {
         [_SAMPLE_0, [_B0, None, _B2]],
     ),
 }
+
+
+def _other_dtype(dtype: torch.dtype) -> torch.dtype:
+    # Not float64, which MPS cannot allocate.
+    return torch.float16 if dtype == torch.float32 else torch.float32
+
+
+def _batch_rows(boxes: Boxes) -> int:
+    return boxes.data.shape[0] if boxes.data.ndim == 4 else 1
+
+
+def _identity(boxes: Boxes) -> torch.Tensor:
+    return torch.eye(3, device=boxes.device, dtype=boxes.dtype).repeat(_batch_rows(boxes), 1, 1)
+
+
+def _one_box_per_sample(boxes: Boxes) -> Boxes:
+    corners = torch.zeros(boxes.data.shape[:-3] + (1, 4, 2), device=boxes.device, dtype=boxes.dtype)
+    return Boxes(corners, False)
+
+
+def _bounds(boxes: Boxes, value: float, width: int = 2) -> torch.Tensor:
+    return torch.full((_batch_rows(boxes), width), value, device=boxes.device, dtype=boxes.dtype)
+
+
+# Every public method that changes the object it is called on, as ``name: (method, call)``. Those that move the
+# coordinates to other storage must take the masks along. The test below fails until a new public method is listed here
+# or in ``_LEAVES_THE_OBJECT_ALONE``, so that it is checked on a view before anything relies on it.
+_IN_PLACE_OPERATIONS = {
+    "to_dtype": ("to", lambda b: b.to(dtype=_other_dtype(b.dtype))),
+    "to_same": ("to", lambda b: b.to(dtype=b.dtype)),
+    "to_cpu": ("to", lambda b: b.to(device=torch.device("cpu"))),
+    "type_dtype": ("type", lambda b: b.type(_other_dtype(b.dtype))),
+    "type_same": ("type", lambda b: b.type(b.dtype)),
+    "transform_boxes": ("transform_boxes", lambda b: b.transform_boxes(_identity(b), inplace=True)),
+    "transform_boxes_": ("transform_boxes_", lambda b: b.transform_boxes_(_identity(b))),
+    "translate": ("translate", lambda b: b.translate(_bounds(b, 0.0), inplace=True)),
+    "clamp": ("clamp", lambda b: b.clamp(_bounds(b, -1.0), _bounds(b, 100.0), inplace=True)),
+    "pad": ("pad", lambda b: b.pad(_bounds(b, 0.0, 4))),
+    "unpad": ("unpad", lambda b: b.unpad(_bounds(b, 0.0, 4))),
+    "filter_boxes_by_area": ("filter_boxes_by_area", lambda b: b.filter_boxes_by_area(min_area=0.0, inplace=True)),
+    "merge": ("merge", lambda b: b.merge(_one_box_per_sample(b), inplace=True)),
+    "index_put": (
+        "index_put",
+        lambda b: b.index_put((torch.tensor([0], device=b.device),), b.data[:1] + 0.0, inplace=True),
+    ),
+}
+_LEAVES_THE_OBJECT_ALONE = {
+    "clone",
+    "compute_area",
+    "data",
+    "device",
+    "dtype",
+    "from_tensor",
+    "get_boxes_shape",
+    "mode",
+    "shape",
+    "to_mask",
+    "to_tensor",
+    "trim",
+}
+
+
+def _same_storage(first: torch.Tensor, second: torch.Tensor) -> bool:
+    return first.untyped_storage()._cdata == second.untyped_storage()._cdata
 
 
 def _legacy_onnx_to_mask_pairs(
@@ -651,8 +716,7 @@ class TestBoxes2D(BaseTester):
         restored[0] = restored[1]
         self._assert_padding_rows(restored, [_SAMPLE_1, _SAMPLE_1], device, dtype)
 
-    def test_list_export_gradient_follows_the_written_rows_6283(self, device):
-        # dtype-independent: gradcheck runs in float64.
+    def test_list_export_gradcheck_follows_the_written_rows_6283(self, device):
         def export(first, second, written):
             boxes = Boxes([first, second])
             boxes[0, 1:2] = Boxes(written)
@@ -664,7 +728,120 @@ class TestBoxes2D(BaseTester):
         written = (corners + 3.0).requires_grad_()
         self.gradcheck(export, (first, second, written))
 
+    def test_view_sweep_lists_every_public_method_6283(self):
+        listed = {method for method, _ in _IN_PLACE_OPERATIONS.values()} | _LEAVES_THE_OBJECT_ALONE
+        assert {name for name in dir(Boxes) if not name.startswith("_")} == listed
+
+    @pytest.mark.parametrize("selection", ["int", "slice"])
+    @pytest.mark.parametrize("target", ["view", "parent"])
+    @pytest.mark.parametrize("operation", _IN_PLACE_OPERATIONS.keys())
+    def test_view_shares_coordinates_and_masks_together_6283(self, operation, target, selection, device, dtype):
+        # A selection shares its coordinates, its validity and its padding with its parent, all three or none. Rows
+        # flagged through a mask whose coordinates another object holds would come apart from them on the next write.
+        boxes = self._padding_boxes(device, dtype)
+        view, row = (boxes[0], slice(1, 2)) if selection == "int" else (boxes[0:1], (0, slice(1, 2)))
+        _IN_PLACE_OPERATIONS[operation][1](view if target == "view" else boxes)
+
+        shared = _same_storage(view.data, boxes.data)
+        assert _same_storage(view._valid, boxes._valid) == shared
+        assert _same_storage(view._padding, boxes._padding) == shared
+
+        def state(box):
+            return box.data.clone(), box._valid.clone(), box._padding.clone()
+
+        def written(box):
+            value = Boxes.from_tensor(torch.tensor([_NEW], device=box.device, dtype=box.dtype), mode="xyxy")
+            filtered = value.clone()
+            filtered._valid[:] = False
+            return value, filtered
+
+        # A write through the view reaches the parent wholly or not at all, and the other way around.
+        parent_before = state(boxes)
+        value, filtered = written(view)
+        view[row] = value
+        view[row] = filtered
+        data, valid, padding = state(boxes)
+        if shared:
+            assert not padding[0, 1]
+            assert not valid[0, 1]
+            self.assert_close(data[0, 1], value.data[0].to(data.dtype), atol=0.0, rtol=0.0)
+        else:
+            for after, before in zip((data, valid, padding), parent_before):
+                assert torch.equal(after, before)
+
+        view_before = state(view)
+        value, filtered = written(boxes)
+        boxes[0, 2:3] = value
+        boxes[0, 2:3] = filtered
+        data, valid, padding = state(view)
+        data, valid, padding = (data, valid, padding) if selection == "int" else (data[0], valid[0], padding[0])
+        if shared:
+            assert not padding[2]
+            assert not valid[2]
+            self.assert_close(data[2], value.data[0].to(data.dtype), atol=0.0, rtol=0.0)
+        else:
+            for after, before in zip(state(view), view_before):
+                assert torch.equal(after, before)
+
+    def test_view_rebound_to_another_dtype_keeps_its_parents_rows_6283(self, device, dtype):
+        boxes = self._padding_boxes(device, dtype)
+        sample = boxes[0].to(dtype=_other_dtype(dtype))
+        sample[1:2] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        self._assert_padding_rows(boxes, [_SAMPLE_0, _SAMPLE_1], device, dtype)
+        written = sample.to_tensor("xyxy", as_padded_sequence=True)
+        self.assert_close(written[1], torch.tensor(_NEW, device=device, dtype=written.dtype), atol=0.0, rtol=0.0)
+
+    def test_view_of_a_rebound_parent_keeps_its_rows_6283(self, device, dtype):
+        boxes = self._padding_boxes(device, dtype)
+        sample = boxes[0]
+        boxes.to(dtype=_other_dtype(dtype))
+        sample[1:2] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        assert boxes._N == [2, 0]
+        assert boxes.data[0, 1].count_nonzero() == 0
+
+    def test_selection_the_constructor_casts_shares_nothing_6283(self, device, dtype):
+        # ``type`` accepts an integer dtype, and the constructor casts a selection of it to floating point, so the
+        # selection holds a copy of the coordinates and must not share the masks.
+        boxes = self._padding_boxes(device, dtype).type(torch.long)
+        selected = boxes[0]
+        assert selected.data.is_floating_point()
+        assert not _same_storage(selected.data, boxes.data)
+        assert not _same_storage(selected._valid, boxes._valid)
+        assert not _same_storage(selected._padding, boxes._padding)
+        selected[1:2] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=selected.dtype), mode="xyxy")
+        assert boxes._N == [2, 0]
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("export", ["trimmed", "padded", "to_mask"])
+    def test_dynamo_list_padding_of_a_preconstructed_object_6283(self, export, device, dtype, torch_optimizer):
+        # The object is built outside the graph, so its mask is an input of it. One compiled function follows objects
+        # whose padding differs, an object that was written to included.
+        if export == "trimmed" and torch_version_lt(2, 10, 0):
+            pytest.skip("torch.compile captures the dynamic shapes of this export by default from torch 2.10")
+        functions = {
+            "trimmed": lambda boxes: boxes.to_tensor("xyxy"),
+            "padded": lambda boxes: boxes.to_tensor("xyxy", as_padded_sequence=True),
+            "to_mask": lambda boxes: boxes.to_mask(10, 10),
+        }
+        function = functions[export]
+        compiled = torch_optimizer(function, fullgraph=True)
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        three = torch.tensor(_SAMPLE_1, device=device, dtype=dtype)
+        other = Boxes.from_tensor([three, three[:2]], mode="xyxy")
+        written = self._padding_boxes(device, dtype)
+        written[0] = written[1]
+        for boxes in (Boxes.from_tensor([first, three], mode="xyxy"), other, written):
+            actual, expected = compiled(boxes), function(boxes)
+            pairs = list(zip(actual, expected)) if isinstance(expected, list) else [(actual, expected)]
+            assert len(pairs) == (len(expected) if isinstance(expected, list) else 1)
+            for out, want in pairs:
+                self.assert_close(out, want, atol=0.0, rtol=0.0)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.skipif(
+        torch_version_lt(2, 10, 0),
+        reason="Before torch 2.10, torch.compile does not capture the dynamic shapes of a written object's export",
+    )
     def test_dynamo_list_padding_is_fullgraph_6283(self, device, dtype, torch_optimizer):
         # Writes, merges and both exports stay in one graph, for a written object as for one nothing touched.
         first = torch.tensor([_A], device=device, dtype=dtype)
@@ -2679,6 +2856,28 @@ class TestVideoBoxes(BaseTester):
         assert exported.shape == (2, 1, 2, 4)
         assert exported[0, 0, 1].count_nonzero() == 0
         assert exported[1, 0, 1].count_nonzero() > 0
+
+    @pytest.mark.parametrize(
+        "rebind",
+        [
+            pytest.param(lambda b: b.to(dtype=_other_dtype(b.dtype)), id="to_dtype"),
+            pytest.param(lambda b: b.type(_other_dtype(b.dtype)), id="type_dtype"),
+            pytest.param(lambda b: b.transform_boxes_(_identity(b)), id="transform_boxes_"),
+            pytest.param(lambda b: b.transform_boxes(_identity(b), inplace=True), id="transform_boxes"),
+            pytest.param(lambda b: b.translate(_bounds(b, 0.0), inplace=True), id="translate"),
+        ],
+    )
+    def test_view_validity_follows_its_coordinates_6283(self, rebind, device, dtype):
+        # The validity of a selection stops being shared when its coordinates do, or invalidating its rows, as filtering
+        # does, would blank rows of the parent whose coordinates it no longer reaches.
+        corners, _ = self._padding_frames(device, dtype)
+        video = VideoBoxes.from_tensor(corners.reshape(1, 1, 1, 4, 2).repeat(2, 2, 2, 1, 1))
+        before = video.to_tensor("xyxy").clone()
+        selected = video[0]
+        rebind(selected)
+        selected._valid[:] = False
+        self.assert_close(video.to_tensor("xyxy"), before, atol=0.0, rtol=0.0)
+        assert selected.to_tensor("xyxy").count_nonzero() == 0
 
     def test_merge_with_list_boxes_keeps_the_batch_check_6283(self, device, dtype):
         corners, frames = self._padding_frames(device, dtype)
