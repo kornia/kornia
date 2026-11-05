@@ -69,8 +69,8 @@ class OperationBase(nn.Module):
           ``batch_prob`` produces the same soft blend whatever the wrapped ``p`` or ``p_batch``. Below ``p = 1`` the
           wrapped augmentation skips a row with gate ``0``, so that row's matrix stays the identity.
         - ``magnitude_range`` is read-only and reads the wrapped generator on each access. A range that is an
-          ``nn.Parameter`` belongs to the generator, so ``state_dict()`` and ``named_parameters()`` list it under the
-          generator's name; a checkpoint or pickle that still has the former ``magnitude_range`` entry loads.
+          ``nn.Parameter`` belongs to the generator, so ``state_dict()`` and ``named_parameters()`` have no
+          ``magnitude_range`` entry for it; a checkpoint or pickle that still has the former entry loads.
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
