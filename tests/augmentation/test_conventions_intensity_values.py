@@ -1661,6 +1661,19 @@ class TestIntensityInputClamping(BaseTester):
         (grad,) = torch.autograd.grad(out.sum(), image)
         self.assert_close(grad, torch.ones_like(image))
 
+    # RandomPlasmaContrast has no neutral factor, but a replayed flat map of 0.25 gives a contrast of 1, which returns the
+    # input with its exact 0 and 1 pixels on the bounds of the clamp.
+    def test_plasma_contrast_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        aug = K.RandomPlasmaContrast(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["plasma"] = torch.full_like(params["plasma"], 0.25)
+        out = aug(image, params=params)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
     # RandomSnow at brightness 1 returns its input, and a black pixel's lightness stays on the bound of the clamp. At a
     # grey pixel the max/min tie of the HLS round trip sends the gradient to one channel, so compare the sum.
     def test_snow_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
