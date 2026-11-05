@@ -1036,7 +1036,6 @@ def test_autocast_disabled_covers_other_autocast_device_types(device_type):
         assert not torch.is_autocast_enabled(device_type)
 
 
-@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.parametrize(
     "first,second",
     [
@@ -1086,6 +1085,7 @@ def test_reconcile_under_autocast_does_nothing_outside_autocast():
     assert out_b is b
 
 
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_eager_backend_traces_autocast_disabled_on_meta():
     # torch.is_autocast_enabled("meta") raises, and under torch.compile Dynamo reports that as its own internal error
     # instead of routing it to an ``except`` in the traced function.
