@@ -44,6 +44,19 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _samples_half_in_float32(input: torch.Tensor) -> bool:
+    """Return whether ``input`` is resampled in float32 and returned in its own dtype: true for float16/bfloat16.
+
+    The policy holds on every device. The CPU half ``grid_sample`` kernels are corrupt or missing (#5751). The CUDA
+    bicubic one is off by more than 1 on a ``[0, 1]`` image, the CUDA and MPS half gradients differ from the float32
+    ones, and under an autocast of the other half dtype a half ``grid_sample`` raises (#5814). Bilinear and nearest
+    sampling of a given grid is as accurate in half precision as in float32 on CUDA and MPS, so most of the error of
+    a half warp came from a sampling grid built in the half dtype, up to 0.98 in bfloat16 on both; the warps that
+    build their own grid therefore build it in float32 too (``kornia.geometry.transform.imgwarp._runs_in_float32``).
+    """
+    return input.dtype in (torch.float16, torch.bfloat16)
+
+
 def _torch_grid_sample(
     input: torch.Tensor,
     grid: torch.Tensor,
@@ -51,12 +64,16 @@ def _torch_grid_sample(
     padding_mode: str = "zeros",
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, float16/bfloat16 in float32.
 
     torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
-    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    torch 2.5.1 has no such kernel (#5751). On CUDA the half bicubic kernel is off by more than 1 on a ``[0, 1]``
+    image, the CUDA and MPS half gradients differ from the float32 ones, and under a float16 ``torch.autocast`` a
+    bfloat16 input raises (#5814). A half input with a grid of its own dtype is therefore sampled in float32 on every
+    device and returned in its dtype. A grid of another dtype, and every other input dtype, reach ``grid_sample``
+    unchanged, which rejects a mismatch as before.
     """
-    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+    if _samples_half_in_float32(input) and grid.dtype == input.dtype:
         return F.grid_sample(
             input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
         ).to(input.dtype)
@@ -461,14 +478,20 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
     ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
-    if is_mps_tensor_safe(input):
-        dtype = torch.float32
-    elif input.dtype == torch.float32:
-        dtype = torch.float64
-    else:
-        dtype = _normalize_to_float32_or_float64(input.dtype)
+    out1, out2, out3 = _torch_svd_in_work_dtype(input, full_matrices)
+    return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
-    x = input.to(dtype)
+
+def _torch_svd_in_work_dtype(
+    input: torch.Tensor, full_matrices: bool = True
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decompose ``input`` as :func:`_torch_svd_cast` does, returning ``U, S, V`` in :func:`_svd_work_dtype`.
+
+    A caller that needs the factors at the precision they were computed in, such as for a derivative, uses this
+    instead of casting ``input`` to the work dtype first: :func:`_torch_svd_cast` would promote a float32 input
+    to float64 again, so a float16 or bfloat16 input would be decomposed in float64 instead of float32.
+    """
+    x = input.to(_svd_work_dtype(input))
     # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
     # shader compilation failure, not memory pressure -- once an input holds 8192 elements
     # or more, whatever the per-matrix shape. The bound is inclusive: 8192 is the first failing
@@ -483,8 +506,103 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     else:
         out1, out2, out3H = torch.linalg.svd(x, full_matrices=full_matrices)
     # Since kornia requires torch>=2.5.1, we can always use .mH
-    out3 = out3H.mH
-    return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
+    return out1, out2, out3H.mH
+
+
+def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
+    """Return the dtype :func:`_torch_svd_cast` decomposes ``input`` in: float64 for float32, except on MPS."""
+    if is_mps_tensor_safe(input):
+        return torch.float32
+    if input.dtype == torch.float32:
+        return torch.float64
+    return _normalize_to_float32_or_float64(input.dtype)
+
+
+def _needs_derivatives(input: torch.Tensor) -> bool:
+    """Return whether autograd can ask for a derivative through ``input``.
+
+    Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
+    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode.
+    """
+    if torch.is_grad_enabled() and input.requires_grad:
+        return True
+    return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
+
+
+def _symmetric_eigenvector(
+    input: torch.Tensor, eigenvalues: torch.Tensor, eigenvectors: torch.Tensor, index: Union[int, torch.Tensor]
+) -> torch.Tensor:
+    r"""Return the eigenvector ``eigenvectors[..., :, index]`` of the symmetric ``input``, differentiably.
+
+    The backward passes of ``torch.linalg.eigh`` and ``torch.linalg.svd`` divide by the gap between every pair of
+    eigenvalues, so the gradient of a single eigenvector is NaN where two of the *other* eigenvalues are equal, although
+    the vector is well defined while its own eigenvalue :math:`\lambda_k` is simple. With
+    :math:`R = \sum_{i \ne k} v_i v_i^\top / (\lambda_k - \lambda_i)`, the eigenvector of :math:`C` moves by
+    :math:`R\,dC\,v` to first order and by
+    :math:`R\,dC\,R\,dC\,v - (v^\top dC\,v)\,R^2 dC\,v - \tfrac12 v\,\|R\,dC\,v\|^2` to second. Both divide only by the
+    gaps to :math:`\lambda_k`, and an equal pair among the other eigenvalues enters only through its projector, which
+    does not depend on the basis chosen within it. The first-order term is the derivation of ``_NullSpaceBasis`` in
+    :mod:`kornia.geometry.epipolar.essential`.
+
+    The two terms are added to the detached eigenvector with ``dC = C - C.detach()``, which is zero in value (the
+    detached-value pattern of #4229): the value is the given eigenvector, and only the derivatives come from the terms.
+    A gap that is exactly zero, where the eigenvector is not unique, contributes nothing.
+
+    Args:
+        input: the symmetric matrix ``C``, of shape ``(*, D, D)``.
+        eigenvalues: eigenvalues of ``C``, of shape ``(*, K)``; for a positive semidefinite ``C`` they can be its
+            singular values.
+        eigenvectors: the matching orthonormal eigenvectors of ``C`` as columns, of shape ``(*, D, K)``.
+        index: the column to return, as an ``int`` or a ``(*, 1)`` integer tensor.
+
+    Returns:
+        The eigenvector, of shape ``(*, D)`` in the dtype of ``eigenvectors``, with first and second derivatives
+        with respect to ``input``.
+    """
+    lam = eigenvalues.detach()
+    V = eigenvectors.detach()
+    if isinstance(index, int):
+        v = V[..., :, index]
+        lam_k = lam[..., index, None]
+    else:
+        # gather rather than indexing with a tensor, which torch.compile would turn into a data-dependent shape
+        v = V.gather(-1, index[..., None, :].expand(*V.shape[:-1], 1))[..., 0]
+        lam_k = lam.gather(-1, index)
+    if not _needs_derivatives(input):
+        return v
+    columns = torch.arange(lam.shape[-1], device=lam.device)
+    others = columns != (index % lam.shape[-1] if isinstance(index, int) else index)
+    gap = lam_k - lam
+    # The kept column is excluded by position, not by its gap being zero: CUDA Inductor can evaluate an eigenvalue
+    # computed in the graph, such as (S / scale)^2, differently at its two reads, and a gap of 1e-20 there put 1e20
+    # into R.
+    nonzero = others & (gap.abs() > torch.finfo(gap.dtype).tiny)
+    inv_gap = torch.where(nonzero, 1.0 / torch.where(nonzero, gap, torch.ones_like(gap)), torch.zeros_like(gap))
+    R = (V * inv_gap[..., None, :]) @ V.mT
+    C = input.to(V.dtype)
+    dC = C - C.detach()
+    v = v[..., None]
+    dv = dC @ v
+    first = R @ dv
+    second = R @ (dC @ first) - (v.mT @ dv) * (R @ first) - 0.5 * v * (first.mT @ first)
+    return (v + first + second)[..., 0]
+
+
+def _right_singular_vector(input: torch.Tensor, S: torch.Tensor, V: torch.Tensor, index: int) -> torch.Tensor:
+    """Return the right singular vector ``V[..., :, index]`` of the ``(*, N, D)`` ``input``, differentiably.
+
+    ``S`` and ``V`` are the singular values and the right singular vectors, as columns, of ``input``. The vector is
+    the eigenvector of ``X^T X`` with eigenvalue ``S^2``, with the derivatives of :func:`_symmetric_eigenvector`.
+    ``X`` is ``input`` in the dtype of ``V`` divided by its largest magnitude, held constant, which leaves the vector
+    unchanged and keeps ``X^T X`` in range.
+    """
+    if not _needs_derivatives(input):
+        return V.detach()[..., :, index]
+    x = input.to(V.dtype)
+    scale = x.detach().abs().amax(dim=(-2, -1), keepdim=True)
+    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    x = x / scale
+    return _symmetric_eigenvector(x.mT @ x, (S.detach() / scale[..., 0]) ** 2, V, index)
 
 
 def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:

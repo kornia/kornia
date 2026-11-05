@@ -3243,7 +3243,10 @@ class TestNormalizePixelCoordinates(BaseTester):
             runtime = torch.zeros(1, 1, runtime_height, 4, device=device, dtype=dtype)
             convert = Convert()
             traced = torch.jit.trace(convert, (example, coords))
-            actual = traced(runtime, coords)
+            # TorchScript's CUDA fuser keeps a half chain in float32 and rounds once, one ulp from eager; the
+            # comparison is about the traced shape, so it runs unfused.
+            with torch.jit.fuser("none"):
+                actual = traced(runtime, coords)
             expected = convert(runtime, coords)
             self.assert_close(actual[0], expected[0], atol=0.0, rtol=0.0)
             self.assert_close(actual[1], expected[1], atol=0.0, rtol=0.0)
@@ -3262,7 +3265,8 @@ class TestNormalizePixelCoordinates(BaseTester):
             runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
             convert = Convert3d()
             traced = torch.jit.trace(convert, (example, coords3d))
-            actual = traced(runtime, coords3d)
+            with torch.jit.fuser("none"):
+                actual = traced(runtime, coords3d)
             expected = convert(runtime, coords3d)
             self.assert_close(actual[0], expected[0], atol=0.0, rtol=0.0)
             self.assert_close(actual[1], expected[1], atol=0.0, rtol=0.0)

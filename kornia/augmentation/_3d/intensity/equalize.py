@@ -45,7 +45,7 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         - values the 256-bin lookup cannot index (outside roughly ``[0, 1]``) raise a ``RuntimeError`` naming
           the range. Each channel's whole volume supplies one 256-bin histogram
           (:func:`kornia.enhance.equalize3d`), so a volume with at most 255 voxels per channel is returned
-          unchanged up to roundoff.
+          unchanged.
 
     Examples:
         >>> import torch

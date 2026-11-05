@@ -91,26 +91,28 @@ class StereoCamera:
     the right camera, such as ``P1`` and ``P2`` of ``cv2.stereoRectify``, and
     ``points = stereo.reproject_disparity_to_3D(disparity)`` takes a channels-last ``(B, H, W, 1)`` disparity map
     ``d = u_left - u_right``, in pixels, and returns the 3D point of every pixel in the left rectified camera
-    frame, ``(B, H, W, 3)``, in the units of the baseline: ``Z = fx * tx / d``. Where the homogeneous denominator
-    ``W`` satisfies ``abs(W) > 1e-8`` the result matches ``cv2.reprojectImageTo3D`` with OpenCV's ``Q``; elsewhere
-    a placeholder is returned. ``W = -fy * d`` on every rig the constructor accepts outside graph capture, so there
-    a disparity with ``abs(fy * d) <= 1e-8``, zero included, gets the placeholder (see the warning below). With a
-    ``Q`` matrix from elsewhere, call :func:`reproject_disparity_to_3D` instead; for a depth map rather than points,
+    frame, ``(B, H, W, 3)``, in the units of the baseline: ``Z = fx * tx / (d - (cx_left - cx_right))``. Where the
+    homogeneous denominator ``W`` satisfies ``abs(W) > 1e-8`` the result matches ``cv2.reprojectImageTo3D`` with
+    OpenCV's ``Q``; elsewhere a placeholder is returned. ``W = -fy * (d - (cx_left - cx_right))``, which is
+    ``-fy * d`` on a rig with equal ``cx``, so there a disparity with ``abs(fy * d) <= 1e-8``, zero included, gets
+    the placeholder (see the warning below). With a ``Q`` matrix from elsewhere, call
+    :func:`reproject_disparity_to_3D` instead; for a depth map rather than points,
     :func:`~kornia.geometry.depth.depth_from_disparity`.
 
     Convention:
         - the two arguments are the **rectified projection matrices** of the left and the right camera, each of
-          shape ``(B, 3, 4)``: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
-          the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
-          two to be equal outside that last column.
+          shape ``(B, 3, 4)``: ``[[fx, 0, cx_left, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera and
+          ``[[fx, 0, cx_right, -tx * fx], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the right one. The constructor
+          requires the same ``fx``, ``fy`` and ``cy``; ``cx`` may differ.
         - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
           strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
-          non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
+          non-finite ``P_right[0, 3]`` is not screened, and these checks and the intrinsics check are
           skipped under graph capture (``torch.compile``, ``torch.export``).
           The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
           is the page's matrix evaluated at the page's ``tx``.
-        - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
-          the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
+        - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by
+          ``W = -fy * (disparity - (cx_left - cx_right))`` the result is ``X = (u - cx_left) Z / fx``,
+          ``Y = (v - cy) Z / fy``, ``Z = fx * tx / (disparity - (cx_left - cx_right))``.
         - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
         - a disparity map is channels-**last**, ``(B, H, W, 1)`` (a ``(B, 1, H, W)`` map is rejected),
           and the point cloud is ``(B, H, W, 3)``. On a rig with equal ``cx``, where ``abs(fy * d) > 1e-8``, a
@@ -120,18 +122,15 @@ class StereoCamera:
         - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
         - the constructor raises :class:`StereoException` for a matrix that is not ``(B, 3, 4)``, for matrices on
-          different devices or with different dtypes and, outside graph capture, for different intrinsics or a
-          zero or reversed baseline. Left and right matrices with different batch sizes raise a plain
+          different devices or with different dtypes and, outside graph capture, for a different ``fx``, ``fy`` or
+          ``cy`` or a zero or reversed baseline. Left and right matrices with different batch sizes raise a plain
           :class:`RuntimeError` instead, except a right batch of 1, which is paired with every left matrix. The
           method raises :class:`StereoException` for a disparity map that is not a floating ``(B, H, W, 1)``
           tensor. An integer rig is accepted; its ``Q`` is in the default floating dtype.
 
     .. warning::
-        A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
-        case, so it is zero on every rig the constructor accepts outside graph capture:
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_. Under graph capture the check is skipped and
-        ``W = Q[3, 3] - fy * d``, so a nonzero disparity with ``fy * d = Q[3, 3]`` also makes ``W = 0``. On a
-        rig with equal ``cx``, a zero disparity (a point at infinity) makes ``W = -fy * d = 0``. Wherever
+        ``W = Q[3, 3] - fy * d`` with ``Q[3, 3] = fy * (cx_left - cx_right)``, so ``W = 0`` where the disparity
+        equals ``cx_left - cx_right``: a point at infinity, which is ``d = 0`` on a rig with equal ``cx``. Wherever
         ``abs(W) <= 1e-8``, which includes small nonzero disparities such as ``d = 1e-9`` at ``fy = 1``, the divide
         is skipped and a finite placeholder, behind the camera on a real rig, is returned, so ``d > 0`` alone does
         not select points in front of the rig. Request
@@ -146,10 +145,11 @@ class StereoCamera:
         - :func:`reproject_disparity_to_3D`: the same reprojection from a ``Q`` matrix instead of the two
           projection matrices.
         - :func:`~kornia.geometry.depth.depth_from_disparity`: a depth map, ``fx * tx / d`` at every pixel,
-          instead of points.
+          instead of points. It equals ``Z`` on a rig with equal ``cx``; otherwise pass
+          ``d - (cx_left - cx_right)`` as the disparity.
         - :func:`~kornia.geometry.depth.depth_to_3d_v2`: points from a depth map; after
-          :func:`~kornia.geometry.depth.depth_from_disparity`, the same points up to the ``1e-8`` that function
-          adds to the disparity.
+          :func:`~kornia.geometry.depth.depth_from_disparity` of that same disparity, the same points up to the
+          ``1e-8`` that function adds to the disparity.
         - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: a single camera with intrinsics and
           world-to-camera extrinsics.
     """
@@ -222,15 +222,17 @@ class StereoCamera:
                 f"Got {rectified_left_camera.dtype} and {rectified_right_camera.dtype}."
             )
 
-        # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
+        # Ensure fx, fy and cy are the same in both cameras. cx may differ, as a rectification that keeps each
+        # camera's principal point produces (OpenCV's stereoRectify without CALIB_ZERO_DISPARITY).
         # The check reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
         # torch.export).
-        if not is_compiling() and not torch.all(
-            torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
+        if not is_compiling() and not (
+            torch.all(torch.eq(rectified_left_camera[..., :, :2], rectified_right_camera[..., :, :2]))
+            and torch.all(torch.eq(rectified_left_camera[..., 1:, 2], rectified_right_camera[..., 1:, 2]))
         ):
             raise StereoException(
-                "Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
-                "same parameters except for the last column."
+                "Expected 'rectified_left_camera' and 'rectified_right_camera' to have the same fx, fy and cy; "
+                "only cx and the last column may differ. "
                 f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
             )
 

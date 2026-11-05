@@ -426,8 +426,8 @@ class Whitening(nn.Module):
         l2-normalized, whitened descriptors.
 
     Shape:
-        - Input: :math:`(N, in_{dims})`.
-        - Output: :math:`(N, output_{dims})`.
+        - Input: ``(N, in_dims)``.
+        - Output: ``(N, output_dims)``.
 
     Examples:
         >>> descs = torch.rand(23, 238)
@@ -552,10 +552,17 @@ class Whitening(nn.Module):
 
 
 class MKDDescriptor(nn.Module):
-    r"""nn.Module that computes Multiple Kernel local descriptors.
+    r"""Describe square grayscale patches with handcrafted Multiple Kernel Descriptors (MKD).
 
-    This is based on the paper "Understanding and Improving Kernel Local Descriptors".
-    See :cite:`mukundan2019understanding` for more details.
+    ``mkd = MKDDescriptor()``, then ``descs = mkd(patches)`` takes grayscale patches
+    ``(B, 1, patch_size, patch_size)``, 32 pixels square by default, and returns unit-norm descriptors ``(B, D)``,
+    ``(B, 128)`` with the defaults: the gradient magnitudes and orientations of each patch embedded in polar and
+    Cartesian spatial kernels (``kernel_type="concat"``), then whitened by ``whitening="pcawt"`` and reduced to
+    ``output_dims``. It has no CNN; only the whitening is learned, on ``training_set``, and the module is in eval mode
+    when built. To describe LAFs on an image, wrap it in :class:`LAFDescriptor` with the same ``patch_size``; for SIFT
+    histograms, use :class:`SIFTDescriptor`, and for a learned descriptor, :class:`HardNet`. This is based on the
+    paper "Understanding and Improving Kernel Local Descriptors". See :cite:`mukundan2019understanding` for more
+    details.
 
     Convention:
         - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size, and another size
@@ -581,8 +588,13 @@ class MKDDescriptor(nn.Module):
         Descriptors of the patches, of unit norm except as stated in the Convention block.
 
     Shape:
-        - Input: :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
+        - Input: ``(B, 1, patch_size, patch_size)``.
         - Output: ``(B, D)``, with :math:`D` as in the Convention block.
+
+    See Also:
+        - :class:`SIFTDescriptor`: the handcrafted SIFT histograms of gradient orientation of a patch.
+        - :class:`HardNet`: a learned descriptor of 32 x 32 patches.
+        - :class:`LAFDescriptor`: runs this module on a patch per LAF of an image.
 
     Examples:
         >>> patches = torch.rand(23, 1, 32, 32)

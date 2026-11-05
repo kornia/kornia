@@ -290,9 +290,14 @@ class TestSmallSRNetWrapper(BaseTester):
             output2 = model(x2)
             output_batch = model(x_batch)
 
-        # Individual processing should match batch processing
-        self.assert_close(output1, output_batch[0:1], rtol=1e-4, atol=1e-4)
-        self.assert_close(output2, output_batch[1:2], rtol=1e-4, atol=1e-4)
+        # Individual processing should match batch processing. CUDA half convolutions accumulate in an order that
+        # depends on the batch size, which moves an output by up to 0.0005 in float16 and 0.002 in bfloat16, while
+        # half outputs differ from float32 ones by about 0.0015 and 0.012, so CUDA half dtypes use the default half
+        # tolerance; CPU gives the same outputs for both.
+        cuda_half = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
+        tol = {} if cuda_half else {"rtol": 1e-4, "atol": 1e-4}
+        self.assert_close(output1, output_batch[0:1], **tol)
+        self.assert_close(output2, output_batch[1:2], **tol)
 
 
 class TestSmallSRNetWeights:
