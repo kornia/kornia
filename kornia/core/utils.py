@@ -856,7 +856,6 @@ def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ..
     """
     first = None
     mismatched = False
-    has_half = False
     for tensor in tensors:
         if tensor is None:
             continue
@@ -865,8 +864,7 @@ def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ..
         if first is None:
             first = tensor
         mismatched = mismatched or tensor.dtype != first.dtype
-        has_half = has_half or tensor.dtype != torch.float32
-    if first is None or not (mismatched and has_half and _caller_autocast_on(first.device.type)):
+    if first is None or not (mismatched and _caller_autocast_on(first.device.type)):
         return tensors
     return tuple(None if tensor is None else tensor.float() for tensor in tensors)
 
