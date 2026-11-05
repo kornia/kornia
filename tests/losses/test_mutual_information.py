@@ -31,6 +31,7 @@ from kornia.losses.mutual_information import (
     NMILossFromRef,
     NMILossFromRef2D,
     NMILossFromRef3D,
+    _contract_kernels_in_chunks,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
@@ -1071,3 +1072,27 @@ class TestConventionsMutualInformation(BaseTester):
         assert histogram.dtype == torch.float32
         self.assert_close(histogram.sum(), torch.tensor(70000.0), rtol=0, atol=0)
         self.assert_close(actual, signal.new_tensor(expected))
+
+
+class TestMutualInformationLargeSampleCounts(BaseTester):
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_matches_einsum(self, device, chunk_size):
+        # float32 on every leg: half-precision losses accumulate their histogram in float32.
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        self.assert_close(
+            _contract_kernels_in_chunks(vals_1, vals_2, chunk_size), vals_1 @ vals_2.transpose(-1, -2).contiguous()
+        )
+
+    @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
+    @pytest.mark.parametrize("num_samples", [33856, 70000])
+    def test_mps_large_sample_counts_match_cpu_5873(self, device, dtype, loss_fn, num_samples):
+        if device.type != "mps":
+            pytest.skip("pytorch/pytorch#195163 is an MPS matmul defect.")
+        generator = torch.Generator().manual_seed(0)
+        x = torch.rand(1, num_samples, generator=generator)
+        y = x**2 + 0.05 * torch.rand(1, num_samples, generator=generator)
+        expected = loss_fn(x.to(dtype), y.to(dtype))
+        # The defective matmul reads past its operands, so make what lies next to them non-zero.
+        torch.full((5_000_000,), 1000.0, device=device)
+        self.assert_close(loss_fn(x.to(device, dtype), y.to(device, dtype)).cpu(), expected)

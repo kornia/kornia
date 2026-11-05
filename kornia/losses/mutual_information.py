@@ -24,6 +24,11 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 from kornia.core.utils import is_exporting
 
+# On Apple M1 and M2, an MPS batched matmul that contracts 32767 or more samples adds memory past the end of its
+# operands to the result whenever both output dimensions are at least 16, so the error depends on what the allocator
+# put there. pytorch/pytorch#195163, not fixed in torch 2.15.
+_MPS_MAX_CONTRACTED_SAMPLES = 16384
+
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
@@ -150,6 +155,17 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
     return torch.where(nontrivial, (data - min_val.unsqueeze(-1)) / safe_diff * (num_bins - 1), 0)
 
 
+def _contract_kernels_in_chunks(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int) -> torch.Tensor:
+    """Return ``einsum("...in,...jn->...ij", vals_1, vals_2)``, contracting at most ``chunk_size`` samples at a time."""
+    joint_histogram = torch.einsum("...in,...jn->...ij", vals_1[..., :chunk_size], vals_2[..., :chunk_size])
+    for start in range(chunk_size, vals_1.shape[-1], chunk_size):
+        stop = start + chunk_size
+        joint_histogram = joint_histogram + torch.einsum(
+            "...in,...jn->...ij", vals_1[..., start:stop], vals_2[..., start:stop]
+        )
+    return joint_histogram
+
+
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     P_xy = joint_histogram
     # clamp for numerical stability
@@ -222,9 +238,9 @@ class EntropyBasedLossBase(torch.nn.Module):
         # This empty, non-persistent buffer follows Module.to without adding a state_dict key.
         self.register_buffer("_reference_dtype", reference_signal.new_empty(0), persistent=False)
         self.initial_shape = reference_signal.shape
-        signal = reference_signal[..., mask]
-        # Without a mask the gather keeps every sample: checking its size would guard on a data-dependent size
-        # and break ``fullgraph`` capture.
+        # Without a mask the gather would keep every sample and only give the signal a data-dependent size, which
+        # ``fullgraph`` capture cannot guard on.
+        signal = reference_signal if self._ref_mask_is_full else reference_signal[..., mask]
         KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
         if signal.dtype in (torch.float16, torch.bfloat16):
             signal = signal.float()
@@ -343,6 +359,8 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         # Autocast would undo the promotion at this matrix multiplication.
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
+            if other_signal.device.type == "mps" and other_signal.shape[-1] > _MPS_MAX_CONTRACTED_SAMPLES:
+                return _contract_kernels_in_chunks(vals_1, vals_2, _MPS_MAX_CONTRACTED_SAMPLES)
             return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     def entropies(
