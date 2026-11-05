@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.subpix import (
     AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
@@ -35,7 +36,7 @@ from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
-from .responses import BlobHessian
+from .responses import BlobDoG, BlobHessian, CornerGFTT, CornerHarris
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
@@ -200,6 +201,34 @@ def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
     return is_iterative, batchable
 
 
+_FLOAT16_IN_FLOAT32_RESPONSES = (BlobHessian, BlobDoG, CornerHarris, CornerGFTT)
+
+
+def _holds_only_scalars(module: nn.Module) -> bool:
+    """Return whether every parameter and buffer of ``module`` is zero-dimensional, so none rejects an input dtype."""
+    return all(t.dim() == 0 for t in (*module.parameters(), *module.buffers()))
+
+
+def _detects_float16_in_float32(pyramid: nn.Module, response: nn.Module, subpix: nn.Module) -> bool:
+    """Return whether a float16 image can run through these modules in float32, with autocast off.
+
+    The pyramid and the response function get the image, so only their exact built-in classes qualify, read through a
+    :func:`torch.compile` wrapper. These follow their input's dtype, whatever dtype the module was converted to, so a
+    float32 input comes back as float32, which `_detect` can round to float16. A custom module or a subclass may hold
+    float16 weights that reject float32 input, or return a wider response on purpose, and from the outside neither can
+    be told from a module that follows its input, so it gets the float16 image. So does a :class:`CornerHarris` with a
+    non-scalar ``k``, which promotes a float16 response. The refiner gets the response in at least float32 on every
+    path, so its class does not matter; only autocast changes for it, and turning that off would make float16 weights
+    reject the input they now get cast for.
+    """
+    return (
+        type(getattr(pyramid, "_orig_mod", pyramid)) is ScalePyramid
+        and type(getattr(response, "_orig_mod", response)) in _FLOAT16_IN_FLOAT32_RESPONSES
+        and _holds_only_scalars(response)
+        and _holds_only_scalars(subpix)
+    )
+
+
 class ScaleSpaceDetector(nn.Module):
     r"""Detect LAFs at the sub-pixel scale-space maxima of a pluggable response, for a batch of images.
 
@@ -238,9 +267,12 @@ class ScaleSpaceDetector(nn.Module):
           hold a zero response and a zero LAF.
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
-          at least float32. A float16 image is detected in float32 and its scores are returned in float16, because the
-          gradient overflows float16 on the way through the scale space; a response function with float16 weights gets
-          float16 input instead.
+          at least float32. With :class:`~kornia.geometry.transform.ScalePyramid`, a :class:`BlobHessian`,
+          :class:`BlobDoG`, :class:`CornerHarris` or :class:`CornerGFTT` response and a refiner without weights, a
+          float16 image is detected in float32 with autocast off and its scores are returned in float16, because the
+          gradient overflows float16 on the way through the scale space. With any other pyramid or response function, a
+          subclass included, or a refiner with weights, the detector passes the float16 image on, in the caller's
+          autocast region.
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
@@ -620,10 +652,6 @@ class ScaleSpaceDetector(nn.Module):
         current_lafs[:, :, 1, :].mul_(octave_to_image[1])
         return resp_flat_best, current_lafs, filled, resp_dtype
 
-    def _response_needs_float16(self) -> bool:
-        """Return whether the response function holds non-scalar float16 state, which float32 input would not match."""
-        return any(t.dtype == torch.float16 and t.dim() > 0 for t in (*self.resp.parameters(), *self.resp.buffers()))
-
     def _detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -636,13 +664,23 @@ class ScaleSpaceDetector(nn.Module):
             _check_mask(mask, img)
         # The backward pass of a float16 scale space overflows: a response's gradient, about 4e4 even when the image's
         # is about 10, is multiplied by sigma ** 4, and a convolution then turns that inf into NaN at every pixel. So a
-        # float16 image is detected in float32, unless the response function needs float16 input. The weights keep
-        # their float16 values and only the scores are cast back.
-        float16_scores = img.dtype == torch.float16 and not self._response_needs_float16()
-        if float16_scores:
-            img = img.float()
+        # float16 image is detected in float32 when the modules allow it (see `_detects_float16_in_float32`), with
+        # autocast off, since its convolutions would otherwise go back to the autocast dtype. The mask weights keep
+        # their float16 values and only the scores are cast back. Every other image takes the path below untouched.
+        if img.dtype == torch.float16 and _detects_float16_in_float32(self.scale_pyr, self.resp, self.subpix):
             if mask is not None and mask.is_floating_point():
                 mask = mask.to(torch.float16)
+            with _autocast_disabled(img.device.type):
+                return self._detect_in_image_dtype(img.float(), num_feats, mask, True)
+        return self._detect_in_image_dtype(img, num_feats, mask, False)
+
+    def _detect_in_image_dtype(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor], float16_scores: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run the scale space, the octaves and the cross-octave ranking on ``img`` in the dtype it has.
+
+        ``float16_scores`` says that ``img`` is the float32 copy of a float16 image: see :meth:`_detect`.
+        """
         dev = img.device
         dtype: torch.dtype = img.dtype
         with self._dynamo_config_patch(("scale_pyr",)):
