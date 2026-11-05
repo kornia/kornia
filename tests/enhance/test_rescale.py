@@ -58,6 +58,9 @@ class TestRescale(BaseTester):
             Rescale(torch.ones(2))  # not a 0-d tensor
 
         with pytest.raises(TypeError):
+            Rescale(torch.nn.Parameter(torch.ones(2, device=device, dtype=dtype)))
+
+        with pytest.raises(TypeError):
             Rescale([0.5])  # list is not valid either
 
     def test_gradcheck(self, device):
