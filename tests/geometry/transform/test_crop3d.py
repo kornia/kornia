@@ -674,6 +674,8 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         [
             ((1, 2, 3), (3, 2, 3)),  # a one-voxel depth resized to 3 voxels
             ((2, 2, 3), (1, 2, 3)),  # 2 voxels resized to 1
+            ((1, 1, 3), (3, 1, 3)),  # a one-voxel depth resized to 3 voxels, next to a one-voxel height kept
+            ((2, 1, 3), (1, 1, 3)),  # 2 voxels resized to 1, next to a one-voxel height kept
         ],
     )
     def test_wart_one_voxel_axis_on_one_side_raises_4747(self, box_size, size, device, dtype):
