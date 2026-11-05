@@ -601,6 +601,40 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, _ = det(img, torch.full((1, 1, 96, 128), 1e-8, device=device))
         assert bool(kornia.feature.laf_is_filled(lafs).any()) == (dtype != torch.float16)
 
+    @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d])
+    @pytest.mark.parametrize("convert_module", [False, True])
+    def test_float16_image_gradient_matches_float32_6143(self, device, subpix, convert_module):
+        # The true gradient of about 10 fits float16, but its way through the response does not: 4e4 * sigma ** 4.
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0))
+        gradients = {}
+        for image_dtype in (torch.float32, torch.float16):
+            det = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)
+            if convert_module:
+                det = det.to(image_dtype)
+            x = image.to(device, image_dtype).clone().requires_grad_()
+            lafs, responses = det(x)
+            assert lafs.dtype == torch.float32
+            assert responses.dtype == image_dtype
+            gradients[image_dtype] = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
+        assert gradients[torch.float16].isfinite().all()
+        self.assert_close(gradients[torch.float16].float(), gradients[torch.float32], rtol=0.05, atol=0.05)
+
+    def test_float16_response_with_weights_gets_float16_input(self, device):
+        _skip_without_half_padding(device, torch.float16)
+
+        class LearnedResponse(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(1, 1, 3, padding=1)
+
+            def forward(self, x, sigmas=None):
+                return self.conv(x)
+
+        resp = LearnedResponse().to(device, torch.float16)
+        det = ScaleSpaceDetector(5, resp_module=resp).to(device)
+        _, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert responses.dtype == torch.float16
+
     def test_float_weights_above_one_are_clamped(self, device, dtype):
         # A float 0/255 mask -- an OpenCV mask after `.astype(np.float32)` -- is weights, and a weight
         # above one scaled every score by 255. Weights are clamped to one, so it means what the

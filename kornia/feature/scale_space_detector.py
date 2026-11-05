@@ -238,7 +238,9 @@ class ScaleSpaceDetector(nn.Module):
           hold a zero response and a zero LAF.
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
-          at least float32.
+          at least float32. A float16 image is detected in float32 and its scores are returned in float16, because the
+          gradient overflows float16 on the way through the scale space; a response function with float16 weights gets
+          float16 input instead.
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
@@ -410,6 +412,7 @@ class ScaleSpaceDetector(nn.Module):
         is_iterative_subpix: bool,
         batchable_subpix: bool,
         octave_to_image: Tuple[float, float],
+        float16_scores: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
 
@@ -460,8 +463,8 @@ class ScaleSpaceDetector(nn.Module):
         # The refiners write absolute pixel coordinates into a tensor of the response's dtype, and bfloat16 holds no
         # odd integer above 256 (float16: above 2048). Run NMS, refinement and top-K on the response in at least
         # float32; promoting is exact, so NMS selects the same candidates. `_detect` casts the responses back.
-        resp_dtype = oct_resp.dtype
-        oct_resp = oct_resp.to(torch.promote_types(resp_dtype, torch.float32))
+        resp_dtype = torch.float16 if float16_scores else oct_resp.dtype
+        oct_resp = oct_resp.to(torch.promote_types(oct_resp.dtype, torch.float32))
         scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]].to(oct_resp.dtype)
 
         # Always precompute NMS masks in one fused pass.
@@ -470,7 +473,9 @@ class ScaleSpaceDetector(nn.Module):
         #   and drives the sparse top-K below.
         max_nms_mask: torch.Tensor
         min_nms_mask: torch.Tensor
-        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp)
+        # A float16 image detected in float32 selects its candidates on the float16 score: the rounding noise of its
+        # flat regions is below that score's resolution, where it does not make a maximum.
+        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp.to(torch.float16).float() if float16_scores else oct_resp)
 
         # The mask is applied to the candidates, not to the response the NMS reads: multiplying the
         # response first would carve a hard edge into it, and every response pixel next to a zeroed
@@ -615,6 +620,10 @@ class ScaleSpaceDetector(nn.Module):
         current_lafs[:, :, 1, :].mul_(octave_to_image[1])
         return resp_flat_best, current_lafs, filled, resp_dtype
 
+    def _response_needs_float16(self) -> bool:
+        """Return whether the response function holds non-scalar float16 state, which float32 input would not match."""
+        return any(t.dtype == torch.float16 and t.dim() > 0 for t in (*self.resp.parameters(), *self.resp.buffers()))
+
     def _detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -625,6 +634,15 @@ class ScaleSpaceDetector(nn.Module):
         """
         if mask is not None:
             _check_mask(mask, img)
+        # The backward pass of a float16 scale space overflows: a response's gradient, about 4e4 even when the image's
+        # is about 10, is multiplied by sigma ** 4, and a convolution then turns that inf into NaN at every pixel. So a
+        # float16 image is detected in float32, unless the response function needs float16 input. The weights keep
+        # their float16 values and only the scores are cast back.
+        float16_scores = img.dtype == torch.float16 and not self._response_needs_float16()
+        if float16_scores:
+            img = img.float()
+            if mask is not None and mask.is_floating_point():
+                mask = mask.to(torch.float16)
         dev = img.device
         dtype: torch.dtype = img.dtype
         with self._dynamo_config_patch(("scale_pyr",)):
@@ -671,6 +689,7 @@ class ScaleSpaceDetector(nn.Module):
                 is_iterative_subpix,
                 batchable_subpix,
                 octave_to_image[i],
+                float16_scores,
             )
             for i in range(n_oct)
         ]

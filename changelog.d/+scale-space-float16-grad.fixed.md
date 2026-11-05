@@ -1,0 +1,1 @@
+`ScaleSpaceDetector` no longer gives a NaN image gradient for a float16 image: a float16 image is now detected in float32 and its scores are returned in float16, so its keypoints also land closer to the float32 ones. A response function with float16 weights still gets float16 input.
