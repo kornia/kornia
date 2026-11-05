@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core.utils import _autocast_disabled, _torch_grid_sample, _torch_solve_cast
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast, _torch_grid_sample, _torch_solve_cast
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
@@ -54,6 +54,8 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
 
     Tensors with shapes (B, N, C) and (B, M, C).
     """
+    if not torch.jit.is_scripting():
+        tensor1, tensor2 = _reconcile_under_autocast(tensor1, tensor2)
     # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
     t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)

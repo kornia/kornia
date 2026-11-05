@@ -611,6 +611,33 @@ class TestHomographyWarper(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize(
+        "patch_dtype,matrix_dtype",
+        [(torch.float32, "bfloat16"), (torch.float32, "float16"), (torch.bfloat16, "float32")],
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+        self, normalized_coordinates, patch_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 96, 96, generator=torch.Generator().manual_seed(0)).to(device)
+        values = [[0.9, -0.42, 0.01], [0.42, 0.9, -0.02], [1e-3, 0.0, 1.0]]
+        if not normalized_coordinates:
+            values = [[0.9, -0.42, 30.0], [0.42, 0.9, -20.0], [1e-4, 0.0, 1.0]]
+        homography = torch.tensor([values], device=device, dtype=torch.float32).to(getattr(torch, matrix_dtype))
+        image = image.to(patch_dtype)
+        warp = kornia.geometry.transform.homography_warp
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(image.float(), homography.float(), (96, 96), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(image, homography, (96, 96), **options)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
     def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
         # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
@@ -1113,6 +1140,34 @@ class TestHomographyWarp3dAutocast(BaseTester):
         expected = warp()
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = warp()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
+class TestHomographyWarp3dMixedDtypesAutocast(BaseTester):
+    """A half homography with a float32 volume runs in float32 in a caller's autocast region (#6573)."""
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize("matrix_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+        self, normalized_coordinates, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = torch.rand(1, 1, 16, 16, 16, generator=torch.Generator().manual_seed(0)).to(device)
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.0, 0.01], [0.42, 0.9, 0.0, -0.02], [0.0, 0.0, 1.0, 0.03], [1e-3, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=torch.float32,
+        ).to(getattr(torch, matrix_dtype))
+        warp = kornia.geometry.transform.homography_warp3d
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(volume, homography.float(), (16, 16, 16), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(volume, homography, (16, 16, 16), **options)
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0, atol=0)
 

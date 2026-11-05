@@ -213,6 +213,62 @@ class TestThinPlateSplineAutocast(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
 
 
+class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
+    """Half points with float32 ones meet in float32 in a caller's autocast region, which casts both sides (#6573)."""
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _inputs(device):
+        image = torch.rand(1, 3, 96, 96, generator=torch.Generator().manual_seed(0)).to(device)
+        src = torch.tensor([[[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8], [0.1, -0.2]]], device=device)
+        dst = src + torch.tensor(
+            [[[0.03, -0.02], [-0.02, 0.05], [0.04, 0.01], [-0.03, -0.04], [0.02, 0.03]]], device=device
+        )
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
+        return image, src, dst, kernel, affine
+
+    @pytest.mark.parametrize("half", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_float32_image_half_kernel_centers_6573(self, half, autocast_dtype, device):
+        # A float32 image with kernel centers and weights a model predicted under AMP: the base ran this in the autocast
+        # dtype, and the guard around the matrix product of the distances made it raise.
+        self._skip_unsupported(device, autocast_dtype)
+        half = getattr(torch, half)
+        image, src, _, kernel, affine = self._inputs(device)
+        warp = kornia.geometry.transform.warp_image_tps
+        src, kernel, affine = src.to(half), kernel.to(half), affine.to(half)
+        expected = warp(image, src.float(), kernel.float(), affine.float(), align_corners=True)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(image, src, kernel, affine, align_corners=True)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("first,second", [("float32", "bfloat16"), ("bfloat16", "float32"), ("float32", "float16")])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_points_6573(self, first, second, autocast_dtype, device):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "cpu" and autocast_dtype not in (first, second):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.cat")
+        _, src, dst, kernel, affine = self._inputs(device)
+        src, dst = src.to(getattr(torch, first)), dst.to(getattr(torch, second))
+        transform = kornia.geometry.transform
+        expected_weights = transform.get_tps_transform(src.float(), dst.float())
+        expected_points = transform.warp_points_tps(src.float(), dst.float(), kernel, affine)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            weights = transform.get_tps_transform(src, dst)
+            points = transform.warp_points_tps(src, dst, kernel, affine)
+        assert points.dtype == torch.float32
+        self.assert_close(points, expected_points, rtol=0, atol=0)
+        self.assert_close(weights[0].float(), expected_weights[0], rtol=1e-3, atol=1e-3)
+        self.assert_close(weights[1].float(), expected_weights[1], rtol=1e-3, atol=1e-3)
+
+
 class TestWarpImage(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device, dtype):

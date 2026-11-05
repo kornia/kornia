@@ -927,6 +927,32 @@ class TestWarp3dAutocast(BaseTester):
         assert actual.dtype == src_dtype
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # The 3D grid takes the matrix dtype, so a half volume with a matrix of the other half dtype reached grid_sample
+        # with two half dtypes under the guard, which CUDA autocast rejects.
+        self._skip_unsupported(device, autocast_dtype)
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        volume, matrix = volume.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, volume.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, volume, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
         self._skip_unsupported(device, "bfloat16")

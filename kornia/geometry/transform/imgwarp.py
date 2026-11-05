@@ -59,6 +59,7 @@ from kornia.core.utils import (
     _autocast_disabled,
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
+    _reconcile_under_autocast,
     _samples_half_in_float32,
     _torch_grid_sample,
     _torch_inverse_cast,
@@ -369,6 +370,7 @@ def warp_perspective(
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
+          (it runs a ``src`` and ``M`` that mix float32 and half dtypes in float32, also for a half ``M`` from a model)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -431,6 +433,8 @@ def warp_perspective(
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
         src, M = src.float(), M.float()
+    if not torch.jit.is_scripting():
+        src, M = _reconcile_under_autocast(src, M)
 
     # A caller's autocast region would run the matrix products in half precision and the grid would inherit them: a
     # float32 warp of a 256 px [0, 1] image was up to 0.5 off in bfloat16, and still returned float32. Only the grid
@@ -537,6 +541,7 @@ def warp_affine(
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
+          (it runs a ``src`` and ``M`` that mix float32 and half dtypes in float32, also for a half ``M`` from a model)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -607,6 +612,8 @@ def warp_affine(
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
         src, M = src.float(), M.float()
+    if not torch.jit.is_scripting():
+        src, M = _reconcile_under_autocast(src, M)
 
     # Outside a caller's autocast region, except the sampling; see warp_perspective.
     if torch.jit.is_scripting():
@@ -1475,6 +1482,7 @@ def get_affine_matrix2d(
 
     if any(s is not None for s in [sx, sy]):
         # Outside a caller's autocast region, as in get_rotation_matrix2d.
+        transform_h, center, sx, sy = _reconcile_under_autocast(transform_h, center, sx, sy)
         with _autocast_disabled(center.device.type):
             shear_mat = get_shear_matrix2d(center, sx, sy)
             transform_h = transform_h @ shear_mat
@@ -1656,6 +1664,9 @@ def get_affine_matrix3d(
     transform_h = convert_affinematrix_to_homography3d(transform)
     if any(s is not None for s in [sxy, sxz, syx, syz, szx, szy]):
         # Outside a caller's autocast region, as in get_rotation_matrix2d.
+        transform_h, center, sxy, sxz, syx, syz, szx, szy = _reconcile_under_autocast(
+            transform_h, center, sxy, sxz, syx, syz, szx, szy
+        )
         with _autocast_disabled(center.device.type):
             shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
             transform_h = transform_h @ shear_mat
@@ -1811,6 +1822,7 @@ def warp_affine3d(
         - padding_mode: ``'zeros'`` by default
         - ``M`` has the batch of ``src``: one matrix is not shared by a larger batch
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid
+          (it runs a ``src`` and ``M`` that mix float32 and half dtypes in float32, also for a half ``M`` from a model)
         - an empty batch returns shape ``(0, C, d, h, w)`` with gradients connected to both inputs
           even when a source spatial dimension is zero
         - a zero output dimension returns an autograd-connected empty tensor;
@@ -1857,6 +1869,7 @@ def warp_affine3d(
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
         src, M = src.float(), M.float()
+    src, M = _reconcile_under_autocast(src, M)
 
     size_src: tuple[int, int, int] = (D, H, W)
     size_out: tuple[int, int, int] = dsize
@@ -2286,6 +2299,7 @@ def warp_perspective3d(
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
+          (it runs a ``src`` and ``M`` that mix float32 and half dtypes in float32, also for a half ``M`` from a model)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -2334,6 +2348,8 @@ def warp_perspective3d(
     out_dtype = src.dtype
     if _runs_in_float32(src, M):
         src, M = src.float(), M.float()
+    if not torch.jit.is_scripting():
+        src, M = _reconcile_under_autocast(src, M)
 
     # launches the warper
     d, h, w = src.shape[-3:]
@@ -2439,6 +2455,8 @@ def homography_warp(
             f"src_H_dst.device: {src_homo_dst.device}."
         )
     if normalized_homography:
+        if not torch.jit.is_scripting():
+            patch_src, src_homo_dst = _reconcile_under_autocast(patch_src, src_homo_dst)
         height, width = dsize
         if normalized_coordinates:
             grid = create_meshgrid(
@@ -2572,6 +2590,8 @@ def homography_warp3d(
     out_dtype = patch_src.dtype
     if _runs_in_float32(patch_src, src_homo_dst):
         patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
+    if not torch.jit.is_scripting():
+        patch_src, src_homo_dst = _reconcile_under_autocast(patch_src, src_homo_dst)
     depth, height, width = dsize
     if normalized_coordinates:
         grid = create_meshgrid3d(

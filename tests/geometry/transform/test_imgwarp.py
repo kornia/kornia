@@ -1658,6 +1658,32 @@ class TestWarpAutocast(BaseTester):
         assert actual.dtype == src_dtype
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # A half matrix from a model under AMP with a float32 image is a normal training setup. It ran its products in
+        # the autocast dtype, 0.38 off in bfloat16; autocast reconciled the operands, so leaving the region must too.
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        image, matrix = image.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, image.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
     def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
         self._skip_unsupported(device, "bfloat16")
@@ -1689,6 +1715,19 @@ class TestWarpAutocast(BaseTester):
         op = getattr(kornia.geometry.transform, op_name)
         scripted = torch.jit.script(op)
         self.assert_close(scripted(image, matrix, (4, 3)), op(image, matrix, (4, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_mixed_dtypes_under_autocast_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        half_matrix = matrix.to(getattr(torch, autocast_dtype))
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, half_matrix.float())
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, half_matrix)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
@@ -1740,6 +1779,25 @@ class TestMatrixBuildersAutocast(BaseTester):
         }
         return builders[op_name], angle2 if "2d" in op_name else angle3
 
+    @staticmethod
+    def _shear_builder(op_name, device):
+        def build(dtype, shear_dtype, promote=False):
+            def tensor(values, value_dtype=dtype):
+                return torch.tensor([values], device=device, dtype=torch.float32).to(value_dtype)
+
+            first, second = tensor(0.13, shear_dtype), tensor(0.07, shear_dtype)
+            if promote:
+                first, second = first.float(), second.float()
+            transform = kornia.geometry.transform
+            if op_name == "get_affine_matrix2d":
+                center, scale, angle = tensor([319.5, 239.5]), tensor([1.13, 0.87]), tensor(25.0)
+                return transform.get_affine_matrix2d(tensor([3.3, 1.7]), center, scale, angle, first, second)
+            center, scale, angle = tensor([319.5, 239.5, 15.5]), tensor([1.13, 0.87, 1.05]), tensor([10.0, 20.0, 25.0])
+            shears = (first, second, first, second, first, second)
+            return transform.get_affine_matrix3d(tensor([3.3, 1.7, 0.9]), center, scale, angle, *shears)
+
+        return build
+
     _builders = (
         "get_rotation_matrix2d",
         "get_affine_matrix2d",
@@ -1769,6 +1827,36 @@ class TestMatrixBuildersAutocast(BaseTester):
             actual = build()
         assert actual.dtype == src_dtype
         self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("shear_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_half_shear_with_float32_center_under_autocast_6573(self, op_name, shear_dtype, autocast_dtype, device):
+        # Autocast cast both sides of the shear product, so half shears with a float32 center ran; they meet in float32.
+        self._skip_unsupported(device, autocast_dtype)
+        shear_dtype = getattr(torch, shear_dtype)
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float32, shear_dtype, promote=True)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(torch.float32, shear_dtype)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("center_dtype", [torch.bfloat16, torch.float16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_float32_shear_with_half_center_under_autocast_6573(self, op_name, center_dtype, autocast_dtype, device):
+        # The reverse mismatch raised under the guard, while the base ran it in the autocast dtype.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "cpu" and center_dtype != getattr(torch, autocast_dtype):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float64, torch.float64)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(center_dtype, torch.float32)
+        assert actual.dtype == torch.float32
+        # The rotation part is still built in the half dtype of its inputs, as outside autocast.
+        self.assert_close(actual.double(), expected, rtol=0, atol=2.0)
 
     @pytest.mark.parametrize("op_name", _builders)
     def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
