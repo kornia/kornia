@@ -619,6 +619,20 @@ class TestScaleSpaceDetector(BaseTester):
         assert gradients[torch.float16].isfinite().all()
         self.assert_close(gradients[torch.float16].float(), gradients[torch.float32], rtol=0.05, atol=0.05)
 
+    def test_float16_custom_response_keeps_its_dtype_and_nms_precision(self, device):
+        # A custom response is not rounded to float16: an isolated peak of 1.0001 on a floor of 1.0 stays a maximum.
+        class WideResponse(torch.nn.Module):
+            def forward(self, x, sigmas=None):
+                out = torch.ones_like(x, dtype=torch.float32)
+                out[out.shape[0] // 2, :, out.shape[-2] // 2, out.shape[-1] // 2] = 1.0001
+                return out
+
+        _skip_without_half_padding(device, torch.float16)
+        det = ScaleSpaceDetector(3, resp_module=WideResponse()).to(device)
+        lafs, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert responses.dtype == torch.float32
+        assert kornia.feature.laf_is_filled(lafs).any()
+
     def test_float16_response_with_weights_gets_float16_input(self, device):
         _skip_without_half_padding(device, torch.float16)
 

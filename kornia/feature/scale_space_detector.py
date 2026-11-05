@@ -35,7 +35,7 @@ from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
-from .responses import BlobHessian
+from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT, CornerHarris
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
@@ -238,9 +238,9 @@ class ScaleSpaceDetector(nn.Module):
           hold a zero response and a zero LAF.
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
-          at least float32. A float16 image is detected in float32 and its scores are returned in float16, because the
-          gradient overflows float16 on the way through the scale space; a response function with float16 weights gets
-          float16 input instead.
+          at least float32. With kornia's own scale pyramid and response functions, a float16 image is detected in
+          float32 and its scores are returned in float16, because the gradient overflows float16 on the way through the
+          scale space. A custom pyramid or response function gets float16 input, and its gradient can still be NaN.
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
@@ -620,9 +620,11 @@ class ScaleSpaceDetector(nn.Module):
         current_lafs[:, :, 1, :].mul_(octave_to_image[1])
         return resp_flat_best, current_lafs, filled, resp_dtype
 
-    def _response_needs_float16(self) -> bool:
-        """Return whether the response function holds non-scalar float16 state, which float32 input would not match."""
-        return any(t.dtype == torch.float16 and t.dim() > 0 for t in (*self.resp.parameters(), *self.resp.buffers()))
+    def _detects_float16_in_float32(self) -> bool:
+        """Return whether the pyramid and response are kornia's own, which take float32 input."""
+        return isinstance(self.scale_pyr, ScalePyramid) and isinstance(
+            self.resp, (BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT, CornerHarris)
+        )
 
     def _detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
@@ -635,10 +637,10 @@ class ScaleSpaceDetector(nn.Module):
         if mask is not None:
             _check_mask(mask, img)
         # The backward pass of a float16 scale space overflows: a response's gradient, about 4e4 even when the image's
-        # is about 10, is multiplied by sigma ** 4, and a convolution then turns that inf into NaN at every pixel. So a
-        # float16 image is detected in float32, unless the response function needs float16 input. The weights keep
-        # their float16 values and only the scores are cast back.
-        float16_scores = img.dtype == torch.float16 and not self._response_needs_float16()
+        # is about 10, is multiplied by sigma ** 4, and a convolution then turns that inf into NaN at every pixel. So
+        # kornia's own modules detect a float16 image in float32. A custom module keeps the float16 input and the
+        # response dtype it was written for. The weights keep their float16 values and only the scores are cast back.
+        float16_scores = img.dtype == torch.float16 and self._detects_float16_in_float32()
         if float16_scores:
             img = img.float()
             if mask is not None and mask.is_floating_point():
