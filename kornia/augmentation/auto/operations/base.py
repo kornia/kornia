@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch import nn
@@ -68,6 +68,9 @@ class OperationBase(nn.Module):
           augmentation transforms every row whose gate is above ``0``, so the same supplied fractional
           ``batch_prob`` produces the same soft blend whatever the wrapped ``p`` or ``p_batch``. Below ``p = 1`` the
           wrapped augmentation skips a row with gate ``0``, so that row's matrix stays the identity.
+        - ``magnitude_range`` is read-only and reads the wrapped generator on each access. A range that is an
+          ``nn.Parameter`` belongs to the generator, so ``state_dict()`` and ``named_parameters()`` list it under the
+          generator's name; a checkpoint or pickle that still has the former ``magnitude_range`` entry loads.
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
@@ -107,6 +110,19 @@ class OperationBase(nn.Module):
 
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # A module pickled when ``magnitude_range`` was an attribute brings it back, and ``_parameters`` would go on
+        # demanding the key below from every later load. The property reads the same range from the generator.
+        self._parameters.pop("magnitude_range", None)
+        self.__dict__.pop("magnitude_range", None)
+
+    def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
+        # ``magnitude_range`` was an attribute, so ``nn.Module`` registered a parameter range under that name as well.
+        # Checkpoints from then hold the same values under the generator's own key, which is the one that loads.
+        state_dict.pop(f"{prefix}magnitude_range", None)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def _init_magnitude_fn(
         self, magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]]

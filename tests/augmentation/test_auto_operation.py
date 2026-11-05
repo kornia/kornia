@@ -793,7 +793,8 @@ class TestOperationAfterTo6297(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_state_dict_keys_stay_the_same(self):
-        # Checkpoints embed these names, so following the range must not add one.
+        # Checkpoints embed these names, so following a range that is not a parameter must not add one. A parameter
+        # range did have a key of its own, which the tests below cover.
         common = {"_magnitude", "_probability", "temperature"}
         assert set(ops.Brightness().state_dict()) == common | {"op._param_generator.brightness_factor"}
         assert set(ops.ShearX().state_dict()) == common
@@ -811,3 +812,104 @@ class TestOperationAfterTo6297(BaseTester):
         clone = copy.deepcopy(wrapper)
         assert clone.magnitude_range is clone.op._param_generator.shear_x
         assert clone.magnitude_range is not wrapper.magnitude_range
+
+
+def _wrapper_with_learnable_range(low=0.0, high=30.0):
+    return OperationBase(
+        K.RandomRotation(torch.nn.Parameter(torch.tensor([low, high])), p=1.0), initial_magnitude=[("degrees", 5.0)]
+    )
+
+
+# The ``state_dict`` of ``_wrapper_with_learnable_range`` before #6297. ``magnitude_range`` was an attribute, so
+# ``nn.Module`` registered a parameter range on the wrapper too, and checkpoints hold that alias beside the generator's.
+_OLD_LEARNABLE_RANGE_KEYS = (
+    "magnitude_range",
+    "_magnitude",
+    "_probability",
+    "temperature",
+    "op._param_generator.degrees",
+)
+
+
+def _old_learnable_range_state_dict(prefix=""):
+    return {
+        f"{prefix}magnitude_range": torch.tensor([0.0, 20.0]),
+        f"{prefix}_magnitude": torch.tensor([7.0]),
+        f"{prefix}_probability": torch.tensor([0.5]),
+        f"{prefix}temperature": torch.tensor([0.1]),
+        f"{prefix}op._param_generator.degrees": torch.tensor([0.0, 20.0]),
+    }
+
+
+class TestLearnableMagnitudeRangeCheckpoint6297(BaseTester):
+    def test_old_state_dict_loads_strictly(self, device, dtype):
+        old = _old_learnable_range_state_dict()
+        assert tuple(old) == _OLD_LEARNABLE_RANGE_KEYS
+        wrapper = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        wrapper.load_state_dict(old, strict=True)
+        expected = torch.tensor([0.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(wrapper.magnitude_range, expected)
+        self.assert_close(wrapper.op._param_generator.degrees, expected)
+        self.assert_close(wrapper._magnitude, torch.tensor([7.0], device=device, dtype=dtype))
+        assert "magnitude_range" in old, "the caller's dict stays as it was"
+
+    def test_old_state_dict_loads_strictly_inside_a_policy(self, device, dtype):
+        policy = PolicySequential(_wrapper_with_learnable_range()).to(device=device, dtype=dtype)
+        name = next(iter(policy._modules))
+        policy.load_state_dict(_old_learnable_range_state_dict(f"{name}."), strict=True)
+        self.assert_close(policy[0].magnitude_range, torch.tensor([0.0, 20.0], device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_only_the_old_key_is_forgiven(self):
+        wrapper = _wrapper_with_learnable_range()
+        unexpected = {**_old_learnable_range_state_dict(), "nonsense": torch.zeros(1)}
+        with pytest.raises(RuntimeError, match=r'Unexpected key.*"nonsense"') as error:
+            wrapper.load_state_dict(unexpected, strict=True)
+        assert "magnitude_range" not in str(error.value)
+        missing = _old_learnable_range_state_dict()
+        del missing["op._param_generator.degrees"]
+        with pytest.raises(RuntimeError, match=r"Missing key.*op\._param_generator\.degrees"):
+            wrapper.load_state_dict(missing, strict=True)
+
+    def test_state_dict_round_trip(self, device, dtype):
+        source = _wrapper_with_learnable_range(0.0, 20.0).to(device=device, dtype=dtype)
+        state = source.state_dict()
+        assert set(state) == {"_magnitude", "_probability", "temperature", "op._param_generator.degrees"}
+        loaded = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        loaded.load_state_dict(state, strict=True)
+        self.assert_close(loaded.magnitude_range, source.magnitude_range)
+
+    def test_optimizer_on_the_moved_wrapper_holds_each_parameter_once(self, device, dtype):
+        wrapper = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        optimizer = torch.optim.SGD(wrapper.parameters(), lr=0.1)
+        held = [parameter for group in optimizer.param_groups for parameter in group["params"]]
+        assert {id(parameter) for parameter in held} == {
+            id(wrapper._magnitude),
+            id(wrapper._probability),
+            id(wrapper.magnitude_range),
+        }
+        assert len(held) == 3
+        assert all(parameter.device == device for parameter in held)
+        wrapper(torch.rand(2, 3, 16, 16, device=device, dtype=dtype)).square().sum().backward()
+        before = wrapper._magnitude.detach().clone()
+        optimizer.step()
+        assert not torch.equal(wrapper._magnitude, before)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("learnable", [True, False], ids=["parameter", "buffer"])
+    def test_wrapper_pickled_with_the_old_attribute(self, learnable):
+        # A whole module saved before #6297 brings the attribute back with it: in ``_parameters`` for a parameter range,
+        # where it would demand the old key from every later load, and otherwise as a stale tensor in ``__dict__``.
+        wrapper = _wrapper_with_learnable_range() if learnable else ops.Brightness()
+        generator_range = wrapper.magnitude_range
+        state = dict(wrapper.__dict__)
+        if learnable:
+            state["_parameters"] = {"magnitude_range": generator_range, **state["_parameters"]}
+        else:
+            state["magnitude_range"] = generator_range.clone()
+        restored = type(wrapper).__new__(type(wrapper))
+        restored.__setstate__(state)
+        assert restored.magnitude_range is generator_range
+        assert "magnitude_range" not in restored.state_dict()
+        assert "magnitude_range" not in dict(restored.named_parameters())
+        restored.load_state_dict(wrapper.state_dict(), strict=True)
