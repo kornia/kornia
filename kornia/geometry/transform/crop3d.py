@@ -459,7 +459,9 @@ def _crop_by_boxes3d_to_size(
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
-    dst_trans_src: torch.Tensor = get_perspective_transform3d(*_widen_one_voxel_axes(src_box, dst_box))
+    # only an output axis of one voxel can be flat in dst_box, so every other crop keeps its exact solve and graph
+    solve_src, solve_dst = _widen_one_voxel_axes(src_box, dst_box) if 1 in out_size else (src_box, dst_box)
+    dst_trans_src: torch.Tensor = get_perspective_transform3d(solve_src, solve_dst)
     _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
