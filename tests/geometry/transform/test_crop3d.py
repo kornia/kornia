@@ -679,7 +679,8 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         ],
     )
     def test_wart_one_voxel_axis_on_one_side_raises_4747(self, box_size, size, device, dtype):
-        # No affine map takes a flat box onto a thick one or back, so these still raise.
+        # The box homography is solved from src to dst and no invertible map relates a flat box and a thick one,
+        # so these still raise.
         volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
         box = self._box((1, 1, 1), box_size, device, dtype)
         with pytest.raises(torch.linalg.LinAlgError):

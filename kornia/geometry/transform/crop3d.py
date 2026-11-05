@@ -478,7 +478,7 @@ def _widen_one_voxel_axes(src_box: torch.Tensor, dst_box: torch.Tensor) -> Tuple
     # ``torch.linalg.LinAlgError`` (#4747). Where that axis has one voxel in both boxes, the crop only moves it, so
     # push the far corners of both boxes one voxel out along it: the solved map then sends the axis onto itself,
     # and still sends the corners of the flat source box onto those of the flat destination box. An axis that has
-    # one voxel in only one of the boxes has no affine map and keeps raising. The offset is a constant chosen by
+    # one voxel in only one of the boxes has no invertible map and keeps raising. The offset is a constant chosen by
     # comparisons, so it reads nothing back from the device and adds nothing to the box gradient.
     if src_box.shape != dst_box.shape:
         # leave the shape error to get_perspective_transform3d instead of broadcasting the boxes
