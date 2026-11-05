@@ -263,7 +263,7 @@ def _empty_warp_output_3d(
     padding_mode: str,
     align_corners: bool,
 ) -> torch.Tensor:
-    """Return an empty volume warp with normal validation and autograd links."""
+    """Return an empty volume warp with normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
     # As in the 2-D helper: an integral ``src`` cannot reach cpu/cuda ``grid_sample`` on either
@@ -272,30 +272,14 @@ def _empty_warp_output_3d(
         raise NotImplementedError(f"Expected a floating point src, got {src.dtype}.")
     if src.dtype != transform.dtype:
         raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
-    src_batch = src.shape[0]
-    if transform.shape[0] != src_batch:
-        raise RuntimeError(
-            f"Expected src and transform with the same batch size, got {src_batch} and {transform.shape[0]}."
-        )
+    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
+    grid = grid_zero.reshape(1, 1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], dsize[2], 3)
 
-    # MPS has no 3-D grid sampler before torch 2.9, so even nonempty stand-ins cannot validate an empty warp there.
-    # Keep grid_sample's option errors while avoiding an operation that cannot contribute a sampled value.
-    if mode not in ("bilinear", "nearest", "bicubic"):
-        raise ValueError(
-            f"nn.functional.grid_sample(): expected mode to be 'bilinear', 'nearest' or 'bicubic', but got: {mode}"
-        )
-    if padding_mode not in ("zeros", "border", "reflection"):
-        raise ValueError(
-            "nn.functional.grid_sample(): expected padding_mode to be 'zeros', 'border', or 'reflection', "
-            f"but got: {padding_mode}"
-        )
-    if mode == "bicubic":
-        raise RuntimeError("grid_sampler(): bicubic interpolation only supports 4D input")
-    if align_corners is not None and not isinstance(align_corners, bool):
-        raise TypeError("grid_sampler(): argument 'align_corners' (position 5) must be bool")
-
-    out_zero = src.reshape(-1)[:1].sum() * 0.0 + transform.reshape(-1)[:1].sum() * 0.0
-    return out_zero.reshape(1, 1, 1, 1, 1).expand(src_batch, src.shape[1], dsize[0], dsize[1], dsize[2])
+    sample_src = src
+    if src.shape[-3] == 0 or src.shape[-2] == 0 or src.shape[-1] == 0:
+        src_zero = src.reshape(-1)[:1].sum() * 0.0
+        sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1, 1)
+    return _torch_grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
 def warp_perspective(

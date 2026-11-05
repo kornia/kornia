@@ -419,14 +419,17 @@ class TestCenterCrop(BaseTester):
 
 class TestCropByBoxes(BaseTester):
     def test_crop_by_boxes_empty_batch_6266(self, device, dtype):
-        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype)
-        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype)
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype, requires_grad=True)
 
         patches = kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes)
 
         assert patches.shape == (0, 3, 0, 0)
         assert patches.dtype == inp.dtype
         assert patches.device == inp.device
+        patches.sum().backward()
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
 
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.tensor(

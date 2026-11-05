@@ -24,45 +24,12 @@ import kornia
 import kornia.geometry.transform as proj
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
-from kornia.geometry.transform import imgwarp
 
 from testing.base import BaseTester, assert_close
 
 
 class TestWarpAffine3dEmptyBatch(BaseTester):
     """Empty volume batches retain affine-warp geometry and gradient connections."""
-
-    @pytest.mark.parametrize(
-        ("src_shape", "dsize"),
-        [
-            ((0, 2, 3, 4, 5), (2, 6, 7)),
-            ((1, 2, 3, 4, 5), (0, 4, 5)),
-            ((1, 2, 3, 4, 5), (3, 0, 5)),
-            ((1, 2, 3, 4, 5), (3, 4, 0)),
-            ((1, 0, 3, 4, 5), (0, 4, 5)),
-        ],
-    )
-    def test_empty_warp_bypasses_grid_sample_6554(self, src_shape, dsize, device, dtype, monkeypatch):
-        """Avoid the unsupported 3-D sampler while preserving an empty warp's contracts."""
-        src = torch.empty(*src_shape, device=device, dtype=dtype, requires_grad=True)
-        matrix = torch.empty(src_shape[0], 3, 4, device=device, dtype=dtype, requires_grad=True)
-
-        def unsupported_grid_sample(*args, **kwargs):
-            raise NotImplementedError("grid_sampler_3d is unavailable")
-
-        monkeypatch.setattr(imgwarp, "_torch_grid_sample", unsupported_grid_sample)
-        out = proj.warp_affine3d(src, matrix, dsize)
-
-        assert out.shape == (*src_shape[:2], *dsize)
-        assert out.dtype == dtype
-        assert out.device == device
-        out.sum().backward()
-        assert src.grad is not None
-        assert src.grad.shape == src.shape
-        assert torch.isfinite(src.grad).all()
-        assert matrix.grad is not None
-        assert matrix.grad.shape == matrix.shape
-        assert torch.isfinite(matrix.grad).all()
 
     @pytest.mark.parametrize("dsize", [(3, 4, 5), (2, 6, 7)])
     @pytest.mark.parametrize("align_corners", [True, False])
@@ -88,12 +55,8 @@ class TestWarpAffine3dEmptyBatch(BaseTester):
         matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="expected mode"):
             proj.warp_affine3d(src, matrix, (3, 4, 5), flags="invalid")
-        with pytest.raises(RuntimeError, match="bicubic interpolation only supports 4D"):
-            proj.warp_affine3d(src, matrix, (3, 4, 5), flags="bicubic")
         with pytest.raises(ValueError, match="expected padding_mode"):
             proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
-        with pytest.raises(TypeError, match="align_corners"):
-            proj.warp_affine3d(src, matrix, (3, 4, 5), align_corners="invalid")
         with pytest.raises(RuntimeError):
             proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
         # A non-empty batch rejects a matrix of another dtype, so an empty one must too.

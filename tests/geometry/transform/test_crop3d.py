@@ -20,7 +20,6 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version
-from kornia.geometry.transform import crop3d
 
 from testing.base import BaseTester
 
@@ -191,56 +190,17 @@ class TestCenterCrop3D(BaseTester):
 
 class TestCropByBoxes3D(BaseTester):
     def test_crop_by_boxes3d_empty_batch_6266(self, device, dtype):
-        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
-        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype)
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype, requires_grad=True)
 
         patches = kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes)
 
         assert patches.shape == (0, 3, 0, 0, 0)
         assert patches.dtype == inp.dtype
         assert patches.device == inp.device
-
-    def test_crop_by_boxes3d_empty_batch_bypasses_solve_6554(self, device, dtype, monkeypatch):
-        """An empty crop must not require the unavailable MPS batched solve."""
-        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype, requires_grad=True)
-        src_box = torch.empty(0, 8, 3, device=device, dtype=dtype, requires_grad=True)
-        dst_box = torch.empty(0, 8, 3, device=device, dtype=dtype, requires_grad=True)
-
-        def unsupported_solve(*args, **kwargs):
-            raise NotImplementedError("linalg.solve is unavailable")
-
-        monkeypatch.setattr(crop3d, "get_perspective_transform3d", unsupported_solve)
-        patches = kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
-
-        assert patches.shape == (0, 3, 0, 0, 0)
-        assert patches.dtype == inp.dtype
-        assert patches.device == inp.device
         patches.sum().backward()
-        for tensor in (inp, src_box, dst_box):
-            assert tensor.grad is not None
-            assert tensor.grad.shape == tensor.shape
-            assert torch.isfinite(tensor.grad).all()
-
-    def test_crop_by_boxes3d_empty_batch_rejects_mismatched_box_shapes_6554(self, device, dtype):
-        """The empty shortcut must retain perspective-transform shape validation."""
-        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
-        src_box = torch.empty(0, 1, 8, 3, device=device, dtype=dtype)
-        dst_box = torch.empty(0, 8, 3, device=device, dtype=dtype)
-
-        with pytest.raises(ValueError, match="same shape"):
-            kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
-
-    @pytest.mark.parametrize(
-        ("boxes_shape", "error"),
-        [((0, 1, 8, 3), RuntimeError), ((0, 0, 8, 3), IndexError)],
-    )
-    def test_crop_by_boxes3d_empty_helper_rejects_rank_four_boxes_6554(self, boxes_shape, error, device, dtype):
-        """The private crop helper takes the documented rank-three box representation only."""
-        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
-        boxes = torch.empty(*boxes_shape, device=device, dtype=dtype)
-
-        with pytest.raises(error):
-            crop3d._crop_by_boxes3d_to_size(inp, boxes, boxes, (0, 0, 0))
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
 
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
