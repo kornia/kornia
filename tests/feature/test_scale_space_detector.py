@@ -659,6 +659,8 @@ class TestScaleSpaceDetector(BaseTester):
     @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("region_dtype", [torch.float16, torch.bfloat16])
     def test_float16_image_gradient_in_a_region_6143(self, device, subpix, region_dtype):
+        if device.type == "cuda" and region_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("bfloat16 autocast is not supported on this CUDA device")
         # Autocast would turn the float32 copy's convolutions back to its own dtype, and float16 overflows there too.
         image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0)).to(device)
         reference = image.clone().requires_grad_()
