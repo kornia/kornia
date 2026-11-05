@@ -248,9 +248,9 @@ class InterpolateSparse2d(nn.Module):
           ``h`` and width ``w``. A position ``(px, py)`` is read at ``px * w / (W - 1) - 0.5`` and
           ``py * h / (H - 1) - 0.5`` in the map's pixel frame: ``normgrid``'s ``2 p / (W - 1) - 1`` sampled with
           ``align_corners=False``, the convention the pretrained XFeat weights use.
-        - Known defects: on CPU, float16 and bfloat16 maps go to torch's ``grid_sample`` without an upcast: the
-          half-precision kernel can return wrong values, NaN or overflow, and where torch has none the call raises
-          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - A float16 or bfloat16 map is sampled in float32 and returned in its dtype, and float16 or bfloat16 positions
+          are normalised in float32: torch's half-precision ``grid_sample`` can return wrong values, NaN or overflow on
+          CPU, and a half-precision grid is off by a pixel or more on a large map.
 
     Args:
         mode: interpolation mode for :func:`torch.nn.functional.grid_sample`.
@@ -299,11 +299,12 @@ class InterpolateSparse2d(nn.Module):
         Returns:
             Sampled features ``(B, N, C)``.
         """
-        grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
+        wide = torch.promote_types(x.dtype, torch.float32)
+        grid = self.normgrid(pos.to(torch.promote_types(pos.dtype, torch.float32)), H, W).unsqueeze(-2).to(wide)
         # align_corners=False is intentional: the pretrained XFeat weights were trained
         # with normgrid using the (W-1) denominator but grid_sample using align_corners=False.
         # Changing either side would break compatibility with the pretrained weights.
-        x = F.grid_sample(x, grid, mode=self.mode, align_corners=False)
+        x = F.grid_sample(x.to(wide), grid, mode=self.mode, align_corners=False).to(x.dtype)
         return x.permute(0, 2, 3, 1).squeeze(-2)
 
 
@@ -338,7 +339,11 @@ class XFeat(nn.Module):
           intensities with a positive gain changes its maps only through the norm's ``eps``, which weighs more the
           lower the image's contrast. With the pretrained weights and ``top_k=2048``, the :math:`[0, 1]` and
           :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
-          with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01. Every output is float32.
+          with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01.
+        - Keypoints are float32. Scores and descriptors have the dtype of the weights, and the resized image is cast to
+          it, so a float16 or bfloat16 model runs on an image of any float dtype. With the pretrained weights,
+          ``top_k=2048`` and four Oxford sequences on an Apple M1, :meth:`match_xfeat` keeps its inliers at 3 px within
+          0.4 % of float32. Half precision takes about 15 times as long as float32 on that CPU and about as long on MPS.
         - :meth:`detectAndCompute` keypoints are integer pixels of the resized image, strict maxima of the keypoint
           heatmap in their 5 x 5 window (see the note), reported in the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
@@ -359,9 +364,7 @@ class XFeat(nn.Module):
           descriptors are not normalised. The reference implementation gives the 1.3 scale ``int(0.8 * top_k)`` and
           reads a share of 0 as "every cell"; kornia does not, because that returns more keypoints than ``top_k`` asks
           for.
-        - Known defects: converting the model to float16 or bfloat16 makes every extraction raise, because
-          ``_preprocess_tensor`` passes float32 input to the half-precision weights
-          (`#5957 <https://github.com/kornia/kornia/issues/5957>`_). Autograd cannot save the inference tensors of
+        - Known defects: autograd cannot save the inference tensors of
           the four methods above for a backward pass, so :class:`~kornia.feature.LightGlueMatcher`, whose parameters
           require gradients, raises on them with gradients enabled, the default grad mode: call it under
           ``torch.no_grad()`` or ``torch.inference_mode()``, or ``clone()`` the outputs first
@@ -453,7 +456,7 @@ class XFeat(nn.Module):
         _H, _W = max(32, (H // 32) * 32), max(32, (W // 32) * 32)
         rh, rw = H / _H, W / _W
         x = F.interpolate(x.float(), (_H, _W), mode="bilinear", align_corners=False)
-        return x, rh, rw
+        return x.to(next(self.net.parameters()).dtype), rh, rw
 
     @staticmethod
     def _get_kpts_heatmap(kpts: torch.Tensor, softmax_temp: float = 1.0) -> torch.Tensor:

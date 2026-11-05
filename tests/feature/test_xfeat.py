@@ -157,6 +157,21 @@ class TestInterpolateSparse2d(BaseTester):
 # ---------------------------------------------------------------------------
 
 
+class TestInterpolateSparse2dHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("mode, half, atol", [("bicubic", torch.bfloat16, 1e-2), ("bilinear", torch.float16, 1e-3)])
+    def test_half_map_matches_float32_sampling_5810(self, device, mode, half, atol):
+        # A map this large gets NaN and values up to 3e38 from torch's CPU half kernel, and a half-precision grid is
+        # off by a pixel or more on every device. The positions are rounded to half first, as the caller's would be.
+        g = torch.Generator().manual_seed(0)
+        H, W = 256, 320
+        x = torch.rand(1, 64, H, W, generator=g).to(device, half)
+        pos = (torch.rand(1, 2000, 2, generator=g) * torch.tensor([W * 8 - 1.0, H * 8 - 1.0])).to(device, half)
+        interp = InterpolateSparse2d(mode)
+        out = interp(x, pos, H * 8, W * 8)
+        assert out.dtype == half
+        self.assert_close(out.float(), interp(x.float(), pos.float(), H * 8, W * 8), rtol=0.0, atol=atol)
+
+
 class TestXFeat(BaseTester):
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
@@ -217,14 +232,26 @@ class TestXFeat(BaseTester):
             model.detectAndCompute(torch.rand(3, 64, 64, device=device))  # missing batch dim
 
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
-    def test_wart_half_weights_raise_5957(self, half, device):
-        # Known defect #5957: _preprocess_tensor calls x.float(), so half-precision weights meet float32 input.
-        # CPU: "expected scalar type Float but found Half"; MPS and CUDA: "Input type (...) and weight type (...)".
-        model = XFeat().to(device, half).eval()
-        with pytest.raises(
-            RuntimeError, match=r"expected scalar type Float but found|Input type \(.*\) and weight type"
+    @pytest.mark.parametrize("image_dtype", [None, torch.float32])
+    def test_half_weights_5957(self, half, image_dtype, device):
+        # A half-precision model casts the resized image to its dtype, whatever the image's dtype.
+        model = XFeat(detection_threshold=0.0).to(device, half).eval()
+        g = torch.Generator().manual_seed(0)
+        images = torch.rand(2, 3, 96, 128, generator=g).to(device, image_dtype or half)
+        for out in model.detectAndCompute(images, top_k=50):
+            assert out["keypoints"].shape[0] > 0
+            assert out["keypoints"].dtype == torch.float32
+            assert out["scores"].dtype == half
+            assert out["descriptors"].dtype == half
+            assert out["descriptors"].isfinite().all()
+        dense = model.detectAndComputeDense(images, top_k=50)
+        assert dense["keypoints"].dtype == torch.float32
+        assert dense["descriptors"].dtype == half
+        for matches in (
+            model.match_xfeat(images[:1], images[1:], top_k=50),
+            model.match_xfeat_star(images[:1], images[1:], top_k=50),
         ):
-            model.detectAndCompute(torch.rand(1, 3, 96, 128, device=device, dtype=half), top_k=50)
+            assert all(points.dtype == torch.float32 and points.isfinite().all() for points in matches)
 
     def test_gradcheck(self, device):
         pass  # inference_mode on detectAndCompute; gradcheck not applicable
@@ -875,13 +902,13 @@ class TestConventionsXFeat(BaseTester):
             out_t = interp(ramp.flip(1).transpose(-1, -2).to(device, dtype), pos.flip(-1).to(device, dtype), W, H)
             self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
 
-    @pytest.mark.parametrize("sampler", ["InterpolateSparse2d", "ALIKED", "SOLD2"])
+    @pytest.mark.parametrize("sampler", ["ALIKED", "SOLD2"])
     def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
-        # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
-        # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead, and so does
-        # ALIKED's deformable convolution without autograd (#6464).
+        # maps (#5810), and torch 2.5.1 has no such kernel. ALIKED (DKD scores and SDDH descriptors) and SOLD2.match
+        # call it with the half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use,
+        # samples CPU half in float32 instead, and so do XFeat's InterpolateSparse2d and ALIKED's deformable
+        # convolution without autograd (#6464).
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
@@ -904,11 +931,7 @@ class TestConventionsXFeat(BaseTester):
                 return func(source.float(), grid.float(), *rest, **kwargs).to(source.dtype)
 
         with torch.no_grad(), GridSampleRecorder():
-            if sampler == "InterpolateSparse2d":
-                InterpolateSparse2d()(
-                    torch.rand(1, 8, 8, 12, dtype=dtype), torch.tensor([[[22.0, 13.0]]], dtype=dtype), 64, 96
-                )
-            elif sampler == "ALIKED":
+            if sampler == "ALIKED":
                 ALIKED(model_name="aliked-t16").to(dtype=dtype).eval()(torch.rand(1, 3, 64, 96, dtype=dtype))
             else:
                 segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]])
