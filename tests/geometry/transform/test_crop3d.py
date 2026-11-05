@@ -21,7 +21,7 @@ import torch
 import kornia
 from kornia.core._compat import torch_version
 
-from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_unit_size_3d_affine_grid
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample
 
 
 class TestCropAndResize3D(BaseTester):
@@ -627,8 +627,6 @@ class TestCrop3DOneVoxelAxis(BaseTester):
     def _skip_unsupported(device, dtype):
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
-        if not supports_unit_size_3d_affine_grid(device, dtype):
-            pytest.skip("3D affine_grid cannot build a size-1 axis for this device and dtype")
 
     @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 4), (1, 1, 1)])
     def test_center_crop3d_size_one_axis_4747(self, size, device, dtype):
