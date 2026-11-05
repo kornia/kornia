@@ -662,6 +662,14 @@ Serializing an augmentation
   wrapper in it does, and a wrapper does when its magnitude mapping is
   picklable (the built-in mappings are). What lazily computed matrices retain
   is described in :doc:`/augmentation.base`.
+- A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
+  augmentation or container with an ``nn.Parameter`` range owns a copy of
+  that parameter, and its gradients reach that copy rather than the
+  original. It draws from the value the parameter had when it was copied: as
+  in the original, an in-place update such as an optimizer step or
+  ``AveragedModel.update_parameters`` does not reach the draws
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). The ``_params``
+  it inherits from the last call keep their values, detached.
 
 Morphology
 ----------

@@ -48,6 +48,52 @@ AdaLAM shares the linear fitting primitive but retains its specialized loop:
 its local 2x2 models are constrained by a matched seed, and its variable-size
 neighborhoods, sampling and confidence-based inlier selection are unchanged.
 
+Affine fundamental matrices
+---------------------------
+
+``model_type="fundamental_affine"`` estimates the fundamental matrix of two affine
+cameras, ``[[0, 0, a], [0, 0, b], [c, d, e]]``: views in parallel projection,
+such as weak-perspective views of a distant scene (aerial or satellite images
+taken with a long focal length) or images through a telecentric lens. Its epipolar
+lines are parallel in each image, and it has four degrees of freedom against seven
+for a general fundamental matrix. Each four-point sample is solved, and each new
+best model refitted on its inliers, by
+:func:`~kornia.geometry.epipolar.find_fundamental` with ``method="AFFINE"``:
+orthogonal regression on the stacked correspondences ``(x2, y2, x1, y1)``, the
+Gold Standard estimate of Hartley and Zisserman's algorithm 14.1. A
+correspondence's Sampson distance is then exact: the smallest total displacement
+of its two points that makes them correspond, the distance ``inl_th`` bounds.
+Like any fundamental matrix, it is not determined by correspondences on one plane,
+which a single 2D affine map relates (``model_type="affine"`` tests for that).
+A matrix with ``(a, b)`` or ``(c, d)`` near zero ignores one image: it is a line in
+the other, which every mismatch along that line fits, so a line of mismatches
+(along an edge, say) could outvote the true geometry. Such a model gets no
+inliers: each image's term of the distance, ``(a x2 + b y2)`` and
+``(c x1 + d y1)`` over ``|(a, b, c, d)|``, must vary over the keypoints by at
+least two inlier thresholds (a standard deviation). In 1000 px images with 30
+true correspondences, 40 mismatches within 0.3 px of a line and 30 random ones
+(ten scenes, the line in either image, ``inl_th`` of 1 or 2), it keeps 27 to 30
+of the true ones and 0 to 2 of the line; without the check, 0 to 1 and all 40.
+A true geometry whose keypoints spread less than that across its epipolar lines
+is rejected too, and RANSAC then returns zeros. With 200 correspondences, 0.5 px
+noise and ``inl_th=2.0``, that happens to a 15 px patch and to a second view at
+1/100 of the first one's scale, but not to a 30 px patch or a scale of 1/20.
+It suits views that are close to parallel projection. On synthetic pinhole views of
+a 60 m scene from 45 degrees off nadir (1000 px images, 0.5 px noise,
+``inl_th=2.0``), it kept 99% of the true correspondences from 3000 m away,
+89% from 1500 m and 49% from 500 m, where ``"fundamental"`` kept all of them;
+on exactly affine views both kept all of them, ``"fundamental_affine"`` with a more
+accurate matrix, several times faster.
+It uses ``local_optimization="dlt"``; ``"lm"``, ``compile=True`` and DEGENSAC
+are not supported.
+
+.. code-block:: python
+
+    from kornia.geometry import RANSAC
+
+    estimator = RANSAC("fundamental_affine", inl_th=2.0, seed=0)
+    F, inliers = estimator(points1, points2)
+
 Batches, scores, and refinement
 -------------------------------
 
@@ -102,8 +148,8 @@ endpoints to the target segment's line; zero-length target segments are outliers
 Their local optimization re-weights segments by the same distance.
 
 A model is accepted only with more inliers than its minimal sample (three
-correspondences for affine transforms, four for homographies, five for essential and seven or eight for
-fundamental matrices): a model fitted to a sample always fits that sample, so
+correspondences for affine transforms, four for homographies and affine fundamental matrices, five for essential
+and seven or eight for fundamental matrices): a model fitted to a sample always fits that sample, so
 only further inliers show a consensus. Without one, the estimator returns the
 all-zero matrix and an empty mask.
 

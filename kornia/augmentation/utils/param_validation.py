@@ -15,7 +15,8 @@
 # limitations under the License.
 #
 
-from typing import Any, List, Optional, Tuple, Union
+from functools import partial
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -124,6 +125,58 @@ def _range_bound(
             raise NotImplementedError(f"methods '{check}' not implemented.")
 
     return factor_bound
+
+
+def _learnable_range_bound(
+    factor: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+    name: str,
+    center: Optional[float] = 0.0,
+    bounds: Optional[Tuple[float, float]] = (0, float("inf")),
+) -> Tuple[torch.Tensor, Optional[float], Optional[Tuple[float, float]]]:
+    r"""Check a sampling range like :func:`_range_bound`, keeping a learnable one as the leaf that was passed.
+
+    Returns the range to keep on the module, then the ``center`` and ``bounds`` that ``PlainUniformGenerator`` still
+    has to apply when it builds its samplers. :func:`_range_bound` converts a range to the default device and dtype and
+    derives ``[center - factor, center + factor]`` from a number, which turns an ``nn.Parameter`` into a tensor that the
+    module does not own and a copy cannot take. A parameter is therefore checked on a detached copy and kept as it is:
+    a ``(2,)`` one is the range itself, and the range of a 0-d one is derived in ``make_samplers``, on the generator's
+    device and dtype, from the parameter of whichever module builds the samplers. Any other input returns the
+    :func:`_range_bound` result with no ``center`` or ``bounds`` left to apply.
+    """
+    if not isinstance(factor, torch.nn.Parameter):
+        return _range_bound(factor, name, center=center, bounds=bounds), None, None
+    _range_bound(factor.detach(), name, center=center, bounds=bounds)
+    if factor.dim() == 0:
+        return factor, center, bounds
+    return factor, None, None
+
+
+def _load_unowned_learnable_range(module: torch.nn.Module, name: str, center: Optional[float]) -> None:
+    r"""Let ``module`` strict-load a checkpoint saved when it did not own its learnable range ``name`` yet.
+
+    Use it after :func:`_learnable_range_bound`, with the ``center`` it returned. The colour augmentations used to keep
+    an ``nn.Parameter`` range only when it was a ``(2,)`` CPU tensor in the default dtype. Their other checkpoints hold
+    no ``name`` entry, only the generator's ``<name>_factor``: the range as a ``(2,)`` tensor, and for a 0-d parameter
+    the range derived from it, ``[max(center - f, low), center + f]``. A load pre-hook fills ``name`` from that entry,
+    and for a 0-d parameter recovers ``f`` as the upper end minus ``center``, because the upper end is never clamped.
+    Nothing is registered for a range that is not a parameter, whose checkpoint layout did not change.
+    """
+    if isinstance(module._parameters.get(name), torch.nn.Parameter):
+        module._register_load_state_dict_pre_hook(partial(_fill_unowned_learnable_range, name, center))
+
+
+def _fill_unowned_learnable_range(
+    name: str, center: Optional[float], state_dict: Dict[str, Any], prefix: str, *args: Any
+) -> None:
+    key, factor_key = prefix + name, f"{prefix}_param_generator.{name}_factor"
+    if key in state_dict or factor_key not in state_dict:
+        return
+    saved = state_dict[factor_key]
+    # ``center`` is only returned for a 0-d parameter; a (2,) entry for it is the range the old layout derived.
+    if center is not None and isinstance(saved, torch.Tensor) and saved.shape == (2,):
+        saved = saved.detach()[1] - center
+        state_dict[factor_key] = saved
+    state_dict[key] = saved
 
 
 def _shear_bound(

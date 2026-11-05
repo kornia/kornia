@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
 from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_contrast
 
@@ -96,8 +96,10 @@ class RandomContrast(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.contrast: torch.Tensor = _range_bound(contrast, "contrast", center=1.0)
-        self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(contrast, "contrast", center=1.0)
+        self.contrast: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", center, bounds))
+        _load_unowned_learnable_range(self, "contrast", center)
 
         self.clip_output = clip_output
 
