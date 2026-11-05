@@ -636,7 +636,8 @@ class TestCrop3DAffineBoxes(BaseTester):
         volume = self._coordinate_volume(device, torch.float32)
         cube = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, torch.float32)
         skewed = self._skewed_box(device, torch.float32)
-        with torch.autocast(device.type, dtype=getattr(torch, region_dtype)), pytest.raises(
-            AssertionError, match="affine map"
+        with (
+            torch.autocast(device.type, dtype=getattr(torch, region_dtype)),
+            pytest.raises(AssertionError, match="affine map"),
         ):
             kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
