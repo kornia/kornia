@@ -370,7 +370,7 @@ def warp_perspective(
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
-          (there, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
+          (in the region, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -541,7 +541,7 @@ def warp_affine(
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
-          (there, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
+          (in the region, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -2301,7 +2301,7 @@ def warp_perspective3d(
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
-          (there, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
+          (in the region, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -2403,7 +2403,7 @@ def homography_warp(
           under a half default dtype and in a caller's autocast region, and then cast to the homography's dtype
         - with ``normalized_coordinates=True`` a caller's autocast region does not change the sampling grid, outside
           TorchScript
-          (there, a patch and homography that mix float32 and half dtypes run in float32)
+          (in the region, a patch and homography that mix float32 and half dtypes run in float32)
         - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
           than one pixel, a pixel homography samples the same positions under both settings, which then differ
           only in ``padding_mode="reflection"`` and, with ``mode="nearest"``, in which pixel a sample exactly
@@ -2549,7 +2549,7 @@ def homography_warp3d(
           the homography's dtype
         - with ``normalized_coordinates=True`` a caller's autocast region does not change the sampling grid, outside
           TorchScript
-          (there, a patch and homography that mix float32 and half dtypes run in float32)
+          (in the region, a patch and homography that mix float32 and half dtypes run in float32)
         - align_corners: ``False`` by default. With ``normalized_coordinates=False`` and a source axis
           longer than one voxel, a voxel homography samples the same positions under both settings,
           which then differ only in ``padding_mode="reflection"`` and, with ``mode="nearest"``, in which voxel a
