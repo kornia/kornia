@@ -657,6 +657,16 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         out = kornia.geometry.transform.crop_by_boxes3d(volume, boxes, boxes - boxes[:, :1], align_corners=True)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("z", [256, 2048])
+    def test_box_crops_flat_axis_far_from_origin_4747(self, z, device, dtype):
+        # one voxel past 256 (bfloat16) or 2048 (float16) rounds back onto the box in the half types
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(z + 2, device=device, dtype=dtype).view(1, 1, z + 2, 1, 1).expand(1, 1, z + 2, 2, 3)
+        box = self._box((0, 0, z), (1, 2, 3), device, dtype)
+
+        out = kornia.geometry.transform.crop_by_boxes3d(volume, box, box - box[:, :1], align_corners=True)
+        self.assert_close(out, volume[..., z : z + 1, :, :])
+
     def test_crop_and_resize3d_resizes_the_other_axes_of_a_flat_box_4747(self, device, dtype):
         # The one-voxel depth keeps its place, and the (2, 3) face is resized to (3, 5), as for a 2-voxel-deep box.
         self._skip_unsupported(device, dtype)

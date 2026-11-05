@@ -460,7 +460,11 @@ def _crop_by_boxes3d_to_size(
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
     # only an output axis of one voxel can be flat in dst_box, so every other crop keeps its exact solve and graph
-    solve_src, solve_dst = _widen_one_voxel_axes(src_box, dst_box) if 1 in out_size else (src_box, dst_box)
+    solve_src, solve_dst = src_box, dst_box
+    if 1 in out_size:
+        # widen in at least float32: one voxel past 256 rounds back onto the box in bfloat16 (past 2048 in float16)
+        solve_dtype = torch.promote_types(src_box.dtype, torch.float32)
+        solve_src, solve_dst = _widen_one_voxel_axes(src_box.to(solve_dtype), dst_box.to(solve_dtype))
     dst_trans_src: torch.Tensor = get_perspective_transform3d(solve_src, solve_dst)
     _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
     # simulate broadcasting
