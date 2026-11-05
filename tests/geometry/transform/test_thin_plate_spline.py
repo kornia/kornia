@@ -181,11 +181,11 @@ class TestThinPlateSplineAutocast(BaseTester):
         "entry", ["get_tps_transform", "warp_points_tps", "warp_image_tps", "RandomThinPlateSpline"]
     )
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_autocast_does_not_change_the_result_6573(self, entry, autocast_dtype, device):
+    def test_region_does_not_change_the_result_6573(self, entry, autocast_dtype, device):
         # The one matrix product of _pair_square_euclidean ran in the autocast dtype: in bfloat16, a float32
         # warp_image_tps of a 256 px [0, 1] image was 0.08 off and a seeded RandomThinPlateSpline 0.29.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
@@ -218,8 +218,8 @@ class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
 

@@ -578,11 +578,11 @@ class TestHomographyWarper(BaseTester):
 
     @pytest.mark.parametrize("entry", ["homography_warp", "module", "precomputed", "warp_grid"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_autocast_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
         # warp_grid's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp of a 256 px
         # [0, 1] image was 0.73 off. A grid cached inside the region kept the error outside it.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
@@ -617,11 +617,11 @@ class TestHomographyWarper(BaseTester):
         [(torch.float32, "bfloat16"), (torch.float32, "float16"), (torch.bfloat16, "float32")],
     )
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
         self, normalized_coordinates, patch_dtype, matrix_dtype, autocast_dtype, device
     ):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         image = torch.rand(1, 3, 96, 96, generator=torch.Generator().manual_seed(0)).to(device)
@@ -1115,11 +1115,11 @@ class TestHomographyWarp3dAutocast(BaseTester):
 
     @pytest.mark.parametrize("entry", ["homography_warp3d", "warp_grid3d"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_autocast_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
         # warp_grid3d's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp3d of a 32 voxel
         # [0, 1] volume was 0.11 off.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         generator = torch.Generator().manual_seed(0)
@@ -1150,11 +1150,11 @@ class TestHomographyWarp3dMixedDtypesAutocast(BaseTester):
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     @pytest.mark.parametrize("matrix_dtype", ["bfloat16", "float16"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
         self, normalized_coordinates, matrix_dtype, autocast_dtype, device
     ):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         volume = torch.rand(1, 1, 16, 16, 16, generator=torch.Generator().manual_seed(0)).to(device)

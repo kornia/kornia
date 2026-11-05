@@ -1458,8 +1458,8 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
 
@@ -1479,7 +1479,7 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
     @pytest.mark.parametrize("op_name", ["rotate", "scale", "rotate3d"])
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_autocast_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
         # In bfloat16, float32 rotate, scale and rotate3d of [0, 1] inputs were off by 0.11, 0.36 and 0.14.
         self._skip_unsupported(device, autocast_dtype)
         if (

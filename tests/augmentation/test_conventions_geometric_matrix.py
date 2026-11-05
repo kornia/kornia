@@ -46,11 +46,11 @@ class TestGeometricAugmentationAutocast(BaseTester):
         ids=lambda case: case if isinstance(case, str) else "",
     )
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_autocast_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
+    def test_region_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
         # In bfloat16 a seeded float32 RandomRotation of a 256 px [0, 1] image was up to 0.83 off, RandomAffine 0.41
         # and RandomPerspective 0.94, from the half-precision products of the matrix builders and the warps.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         generator = torch.Generator().manual_seed(0)

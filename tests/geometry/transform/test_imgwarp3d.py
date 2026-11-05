@@ -890,8 +890,8 @@ class TestWarp3dAutocast(BaseTester):
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
 
@@ -916,10 +916,12 @@ class TestWarp3dAutocast(BaseTester):
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     @pytest.mark.parametrize("align_corners", [True, False])
-    def test_autocast_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, align_corners, device):
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, align_corners, device):
         # normalize_homography3d's matrix products and the grid, from F.affine_grid or transform_points, ran in the
         # autocast dtype: up to 0.17 off in bfloat16 for a float32 volume of [0, 1] values, whose output stayed float32.
         self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         volume, matrix = self._warp_inputs(op_name, device, src_dtype)
         expected = self._warp(op_name, volume, matrix, align_corners)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -939,7 +941,7 @@ class TestWarp3dAutocast(BaseTester):
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_mixed_dtypes_run_in_float32_under_autocast_6573(
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
         self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
     ):
         # The 3D grid takes the matrix dtype, so a half volume with a matrix of the other half dtype reached grid_sample
@@ -954,7 +956,7 @@ class TestWarp3dAutocast(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
-    def test_autocast_does_not_change_the_gradient_6573(self, op_name, device):
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
         self._skip_unsupported(device, "bfloat16")
         volume, matrix = self._warp_inputs(op_name, device, torch.float32)
         matrix.requires_grad_()
@@ -973,8 +975,10 @@ class TestWarp3dAutocast(BaseTester):
 
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_dynamo_under_autocast_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
         self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
         volume, matrix = self._warp_inputs(op_name, device, torch.float32)
         op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
         expected = self._warp(op_name, volume, matrix)
