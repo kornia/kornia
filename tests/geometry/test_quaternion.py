@@ -45,7 +45,14 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.vec, q_data[..., 1:])
 
     def test_from_coeffs_integer_and_types(self, device: torch.device, dtype: torch.dtype) -> None:
-        # 1. Four integer coefficients produce a floating-point tensor with the default dtype
+        # 1. Normal Python float coefficients produce (4,)
+        q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
+        assert q_float.data.is_floating_point()
+        assert q_float.data.dtype == torch.get_default_dtype()
+        assert q_float.data.shape == (4,)
+        self.assert_close(q_float.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+        # 2. Integer-only coefficients produce floating-point data with default dtype
         q_int = Quaternion.from_coeffs(1, 0, 0, 0)
         assert q_int.data.is_floating_point()
         assert q_int.data.dtype == torch.get_default_dtype()
@@ -55,81 +62,35 @@ class TestQuaternion(BaseTester):
         self.assert_close(q_int.matrix(), torch.eye(3))
         self.assert_close(q_int.to_axis_angle(), torch.zeros(3))
 
-        # 2. Four floating-point coefficients
-        q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
-        assert q_float.data.is_floating_point()
-        assert q_float.data.dtype == torch.get_default_dtype()
-        assert q_float.data.shape == (4,)
-        self.assert_close(q_float.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
-
         # Mixed float and int coefficients
         q_mixed = Quaternion.from_coeffs(1, 0.0, 0, 0.0)
         assert q_mixed.data.is_floating_point()
         assert q_mixed.data.dtype == torch.get_default_dtype()
 
-        # 3. Four tensor coefficients preserve device, dtype, and autograd
-        w = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
-        x = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
-        y = torch.tensor(0.0, device=device, dtype=dtype)
-        z = torch.tensor(0.0, device=device, dtype=dtype)
-        q_tensor = Quaternion.from_coeffs(w, x, y, z)
-        assert q_tensor.data.device == w.device
-        assert q_tensor.data.dtype == dtype
-        self.assert_close(q_tensor.data, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
-        loss = q_tensor.data.sum()
-        loss.backward()
-        assert w.grad is not None
-        assert w.grad == 1.0
-        assert x.grad is not None
-        assert x.grad == 1.0
-
-        # 4. Mixed Python scalars and tensor coefficients
-        w_grad = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
-        q_mixed_t = Quaternion.from_coeffs(w_grad, 0.0, 0, 0.0)
-        assert q_mixed_t.data.device == w_grad.device
-        assert q_mixed_t.data.dtype == dtype
-        assert q_mixed_t.data.shape == (4,)
-        self.assert_close(q_mixed_t.data, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
-        loss_mixed = q_mixed_t.data.sum()
-        loss_mixed.backward()
-        assert w_grad.grad is not None
-        assert w_grad.grad == 1.0
-
-        # 5. Mixed scalar/tensor inputs on CUDA when CUDA is available
-        if torch.cuda.is_available():
-            w_cuda = torch.tensor(1.0, device="cuda", dtype=torch.float32, requires_grad=True)
-            q_cuda = Quaternion.from_coeffs(w_cuda, 0.0, 0.0, 0.0)
-            assert q_cuda.data.device.type == "cuda"
-            assert q_cuda.data.dtype == torch.float32
-            loss_cuda = q_cuda.data.sum()
-            loss_cuda.backward()
-            assert w_cuda.grad is not None
-            assert w_cuda.grad == 1.0
-
-        # Tensor integer inputs convert to default float dtype
-        ti = torch.tensor(1)
-        zi = torch.tensor(0)
-        q_ti = Quaternion.from_coeffs(ti, zi, zi, zi)
-        assert q_ti.data.is_floating_point()
-        assert q_ti.data.dtype == torch.get_default_dtype()
-
-        # Incompatible tensor dtypes raise ValueError
-        with pytest.raises(ValueError, match="matching floating-point dtypes"):
-            Quaternion.from_coeffs(
-                torch.tensor(1.0, dtype=torch.float32),
-                torch.tensor(0.0, dtype=torch.float64),
-                torch.tensor(0.0, dtype=torch.float32),
-                torch.tensor(0.0, dtype=torch.float32),
-            )
-
-        # Complex inputs must be rejected
-        with pytest.raises(ValueError, match="complex scalar"):
+        # 3. Complex Python scalar coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
             Quaternion.from_coeffs(1 + 2j, 0, 0, 0)
 
-        with pytest.raises(ValueError, match="complex tensor"):
+        # 4. Complex tensor coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
             Quaternion.from_coeffs(torch.tensor(1.0 + 1.0j), 0.0, 0.0, 0.0)
 
-        # 6. Default floating-point dtype behavior
+        # 5. Four tensor coefficients of shape (1,) preserve original upstream behavior
+        t_w = torch.tensor([1.0])
+        t_z = torch.tensor([0.0])
+        q_1d = Quaternion.from_coeffs(t_w, t_z, t_z, t_z)
+        expected_shape = torch.tensor([t_w, t_z, t_z, t_z]).shape
+        assert q_1d.data.shape == expected_shape
+
+        # 6. Mixed float32 and float64 tensor coefficients preserve original behavior (promote to float64)
+        t_f32 = torch.tensor(1.0, dtype=torch.float32)
+        t_f64 = torch.tensor(0.0, dtype=torch.float64)
+        q_promoted = Quaternion.from_coeffs(t_f32, t_f64, t_f32, t_f32)
+        expected_promoted = torch.tensor([t_f32, t_f64, t_f32, t_f32])
+        assert q_promoted.data.dtype == expected_promoted.dtype
+        assert q_promoted.data.dtype == torch.float64
+
+        # Default floating-point dtype behavior when default is changed
         orig_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)

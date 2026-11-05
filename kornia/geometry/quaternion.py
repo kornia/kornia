@@ -582,20 +582,14 @@ class Quaternion(nn.Module):
         return cls(data)
 
     @classmethod
-    def from_coeffs(
-        cls,
-        w: Union[float, torch.Tensor],
-        x: Union[float, torch.Tensor],
-        y: Union[float, torch.Tensor],
-        z: Union[float, torch.Tensor],
-    ) -> "Quaternion":
+    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> "Quaternion":
         """Create a quaternion from the data coefficients.
 
         Args:
-            w: a float or tensor representing the :math:`q_w` component.
-            x: a float or tensor representing the :math:`q_x` component.
-            y: a float or tensor representing the :math:`q_y` component.
-            z: a float or tensor representing the :math:`q_z` component.
+            w: a float representing the :math:`q_w` component.
+            x: a float representing the :math:`q_x` component.
+            y: a float representing the :math:`q_y` component.
+            z: a float representing the :math:`q_z` component.
 
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
@@ -612,53 +606,9 @@ class Quaternion(nn.Module):
                     f"Quaternion coefficients must be real-valued, got complex tensor with dtype {c.dtype}"
                 )
 
-        tensor_coeffs = [c for c in coeffs if isinstance(c, torch.Tensor)]
-
-        if not tensor_coeffs:
-            data = torch.tensor(coeffs)
-            if not data.is_floating_point():
-                data = data.to(torch.get_default_dtype())
-            return cls(data)
-
-        target_device = tensor_coeffs[0].device
-        for t in tensor_coeffs[1:]:
-            if t.device != target_device:
-                devices = [c.device for c in tensor_coeffs]
-                raise ValueError(f"Tensor coefficients must be on the same device, got {devices}")
-
-        target_dtype = None
-        for t in tensor_coeffs:
-            if t.is_floating_point():
-                if target_dtype is None:
-                    target_dtype = t.dtype
-                elif t.dtype != target_dtype:
-                    dtypes = [c.dtype for c in tensor_coeffs]
-                    raise ValueError(f"Tensor coefficients must have matching floating-point dtypes, got {dtypes}")
-        if target_dtype is None:
-            target_dtype = torch.get_default_dtype()
-
-        try:
-            common_shape = torch.broadcast_shapes(*(t.shape for t in tensor_coeffs))
-        except RuntimeError:
-            raise ValueError(
-                f"Tensor coefficients have incompatible shapes: {[t.shape for t in tensor_coeffs]}"
-            ) from None
-
-        tensors = []
-        for c in coeffs:
-            if isinstance(c, torch.Tensor):
-                if not c.is_floating_point():
-                    c = c.to(dtype=target_dtype)
-                if c.shape != common_shape:
-                    c = c.expand(common_shape)
-                tensors.append(c)
-            else:
-                c_tensor = torch.as_tensor(c, device=target_device, dtype=target_dtype)
-                if common_shape:
-                    c_tensor = c_tensor.expand(common_shape)
-                tensors.append(c_tensor)
-
-        data = torch.stack(tensors, dim=-1)
+        data = torch.tensor([w, x, y, z])
+        if not data.is_floating_point():
+            data = data.to(torch.get_default_dtype())
         return cls(data)
 
     # TODO: update signature
@@ -839,9 +789,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
           the same as ``q``.
 
     Args:
-        Q (Quaternion): quaternion object containing data of shape (M, 4).
-        w (torch.Tensor, optional): Non-negative weights of shape (M,) or (M, 1).
-            If None, uniform weights are used.
+        Q: quaternions of shape ``(M, 4)``.
+        w: weights of shape ``(M,)`` or ``(M, 1)``. If None, uniform weights are used.
 
     Returns:
         the averaged quaternion, of unit norm and shape ``(1, 4)``.

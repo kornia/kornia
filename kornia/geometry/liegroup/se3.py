@@ -36,22 +36,15 @@ from kornia.geometry.vector import Vector3
 
 def _check_se3_r_t_shape(r: Quaternion | So3, t: torch.Tensor) -> None:
     q = r.q if isinstance(r, So3) else r
-    r_shape = q.data.shape
-    r_batch = r_shape[:-1]
-    t_batch = t.shape[:-1]
-    if len(r_batch) == 0 and len(t_batch) == 0:
-        return
-    if len(r_batch) > 0 and len(t_batch) > 0:
-        try:
-            torch.broadcast_shapes(r_batch, t_batch)
-            return
-        except RuntimeError:
-            raise ValueError(f"Incompatible rotation shape {r_shape} and translation shape {t.shape}.") from None
-    if (len(r_batch) == 0 and t_batch == (1,)) or (r_batch == (1,) and len(t_batch) == 0):
-        return
-    raise ValueError(
-        f"Incompatible rotation shape {r_shape} and translation shape {t.shape}: both must be batched or unbatched."
-    )
+    r_batch = q.data.shape[:-1]
+
+    try:
+        torch.broadcast_shapes(r_batch, t.shape[:-1])
+    except RuntimeError:
+        raise ValueError(
+            f"Expected a translation whose batch broadcasts with the rotation batch {tuple(r_batch)}. "
+            f"Got translation of shape {tuple(t.shape)}."
+        ) from None
 
 
 def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
@@ -151,13 +144,15 @@ class Se3(nn.Module):
         Args:
             rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is stored as given, and
                 a non-unit quaternion stands for the rotation of its direction.
-            translation: translation torch.Tensor with the shape of ``(B, 3)``, or a Vector3 wrapping one; the
-                tensor is what gets stored. It must have the rotation's dtype and device. Its batch is not checked
-                against the rotation's: a mismatch fails later, in ``matrix()``
-                (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
+            translation: translation torch.Tensor with shape ``(B, 3)``, or ``(3,)`` for an unbatched translation,
+                or a Vector3 wrapping one; the tensor is what gets stored. Multidimensional batch shapes ``(*, 3)``
+                are also accepted. The rotation and translation batch shapes must be broadcastable (an unbatched side
+                may broadcast against a batched side). Incompatible batch shapes raise a ``ValueError`` at
+                construction time. It must have the rotation's dtype and device.
 
         Raises:
-            ValueError: if rotation and translation batch shapes are incompatible.
+            ValueError: if translation shape does not end in 3, or rotation and translation batch shapes cannot be
+                broadcast.
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
                 dtype differs from the rotation's (``inverse``, ``adjoint`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
@@ -247,9 +242,11 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            _check_points_layout(so3.q, _right_data)
+            b_batch = torch.broadcast_shapes(so3.q.data.shape[:-1], t.shape[:-1])
+            q = so3.q if so3.q.data.shape[:-1] == b_batch else Quaternion(so3.q.data.expand(b_batch + (4,)))
+            _check_points_layout(q, _right_data)
             # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
-            out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
+            out = (_so3_rotate(q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Unsupported type: {type(right)}")
 
@@ -519,7 +516,7 @@ class Se3(nn.Module):
 
         """
         r_inv = self.r.inverse()
-        return Se3(r_inv, r_inv * (-1 * self.t))
+        return Se3(r_inv, _so3_rotate(r_inv.q, -self.t).to(self.t.dtype))
 
     @classmethod
     def random(
