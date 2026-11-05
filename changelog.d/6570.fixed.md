@@ -1,0 +1,1 @@
+`SolarizeAdd` (including RandAugment's `solarize_add` policy) now adds only to pixels below a fixed threshold of `128 / 255`, clamps the sum, and leaves brighter pixels unchanged instead of drawing random thresholds and inverting pixels. `RandomSolarize` and `enhance.solarize` are unchanged.
