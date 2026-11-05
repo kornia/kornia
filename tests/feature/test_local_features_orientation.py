@@ -304,8 +304,9 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         assert angles.dtype == torch.float32
         self.assert_close(angles, expected)
         # MPS gradients vary from run to run, by about 1e-5 in the smoothing weights.
-        self.assert_close(grads[0], expected_grads[0], atol=1e-3, rtol=1e-2)
-        self.assert_close(grads[1], expected_grads[1], atol=1e-3, rtol=1e-2)
+        tolerances = {"atol": 1e-3, "rtol": 1e-2} if device.type == "mps" else {}
+        self.assert_close(grads[0], expected_grads[0], **tolerances)
+        self.assert_close(grads[1], expected_grads[1], **tolerances)
 
 
 class TestOrientationKernelBuffer(BaseTester):
