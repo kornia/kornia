@@ -142,7 +142,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
@@ -262,4 +262,4 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))

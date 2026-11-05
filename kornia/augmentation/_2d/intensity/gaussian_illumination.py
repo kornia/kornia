@@ -25,6 +25,7 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, 
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
+from kornia.enhance.adjust import _clip_unit_fresh
 
 
 def _apply_gaussian_illumination(
@@ -40,7 +41,7 @@ def _apply_gaussian_illumination(
 
     # Out-of-place add: in-place would mutate the caller's tensor and corrupt
     # the non-transformed branch, which shares the same input.
-    return input.add(gradient).clamp_(0, 1)
+    return _clip_unit_fresh(input.add(gradient))
 
 
 class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
