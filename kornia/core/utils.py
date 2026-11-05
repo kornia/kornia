@@ -543,8 +543,8 @@ def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
     unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
     Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
-    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS and under Inductor (CPU and CUDA),
-    while eager CPU and CUDA keep ``-0.0``.
+    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS, under Inductor (CPU and CUDA) and in the
+    SIMD lanes of eager arm64 CPU, while eager x86 CPU and CUDA keep ``-0.0``.
     """
     if not _needs_derivatives(input):
         return input.clamp(0.0, 1.0)
