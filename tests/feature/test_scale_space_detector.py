@@ -643,8 +643,8 @@ class TestScaleSpaceDetector(BaseTester):
         assert responses.dtype == torch.float16
 
     @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d])
-    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
-    def test_float16_image_gradient_under_autocast_6143(self, device, subpix, autocast_dtype):
+    @pytest.mark.parametrize("region_dtype", [torch.float16, torch.bfloat16])
+    def test_float16_image_gradient_in_a_region_6143(self, device, subpix, region_dtype):
         # Autocast would turn the float32 copy's convolutions back to its own dtype, and float16 overflows there too.
         image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0)).to(device)
         reference = image.clone().requires_grad_()
@@ -652,7 +652,7 @@ class TestScaleSpaceDetector(BaseTester):
         expected = torch.autograd.grad(lafs.sum() + responses.sum(), reference)[0]
 
         x = image.to(torch.float16).clone().requires_grad_()
-        with torch.autocast(device.type, dtype=autocast_dtype):
+        with torch.autocast(device.type, dtype=region_dtype):
             lafs, responses = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)(x)
         assert lafs.dtype == torch.float32
         assert responses.dtype == torch.float16
