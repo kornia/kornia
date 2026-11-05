@@ -528,10 +528,22 @@ class TestTrackedGradientNoise6598(BaseTester):
 
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
     def test_tracked_gradient_matches_spatial_gradient(self, device, dtype, mode):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("spatial_gradient pads with replication, absent for this dtype")
         image = torch.rand(3, 2, 8, 9, generator=torch.Generator().manual_seed(0)).to(device, dtype)
         tracked = _exact_first_order_gradient(image.clone().requires_grad_(), mode)
         assert tracked.dtype == dtype
         self.assert_close(tracked.detach(), spatial_gradient(image, mode))
+
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_tracked_float16_differences_do_not_overflow(self, device, mode):
+        # A value the result can hold, whose differences float16 cannot: 32768 next to -32768.
+        row = torch.tensor([-32768.0, -32768.0, 32768.0, 32768.0], device=device, dtype=torch.float16)
+        image = row.repeat(4, 1)[None, None].requires_grad_()
+        gx = _exact_first_order_gradient(image, mode)[0, 0, 0]
+        assert gx.dtype == torch.float16
+        assert gx.isfinite().all()
+        assert gx.abs().max().item() == 32768.0
 
     @pytest.mark.parametrize(
         "build", [lambda: PatchDominantGradientOrientation(32), lambda: SIFTDescriptor(32), DenseSIFTDescriptor]

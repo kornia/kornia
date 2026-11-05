@@ -80,7 +80,8 @@ def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
     """
     if not (input.requires_grad and torch.is_grad_enabled()):
         return spatial_gradient(input, mode)
-    padded = F.pad(input, (1, 1, 1, 1), "replicate")
+    # Half precision runs in float32: the convolution scales before it adds, so these differences would overflow first.
+    padded = F.pad(input.to(torch.promote_types(input.dtype, torch.float32)), (1, 1, 1, 1), "replicate")
     dx = padded[..., 2:] - padded[..., :-2]
     dy = padded[..., 2:, :] - padded[..., :-2, :]
     if mode == "sobel":
@@ -89,7 +90,7 @@ def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
     else:
         gx = dx[..., 1:-1, :] / 2.0
         gy = dy[..., 1:-1] / 2.0
-    return torch.stack((gx, gy), 2)
+    return torch.stack((gx, gy), 2).to(input.dtype)
 
 
 def _dense_sift_histograms_from_gradients(
