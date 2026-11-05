@@ -876,6 +876,14 @@ class Boxes:
         axis-aligned and still yields an export that differs from :attr:`data`, because the reduction
         re-canonicalizes the vertex order.
 
+        .. warning::
+            Before torch 2.10, ``torch.compile(..., fullgraph=True)`` around the trimmed export of boxes built from a
+            list raises, because that export reads its rows with ``nonzero``, whose output size depends on the data.
+            Setting ``torch._dynamo.config.capture_dynamic_output_shape_ops``, as the error suggests, still raises.
+            Setting ``capture_scalar_outputs`` as well makes it compile, and on torch 2.5 and 2.6 it then returns wrong
+            rows with no error, from a miscompile of ``nonzero`` in torch. ``as_padded_sequence=True`` and default
+            ``torch.compile`` return the right rows on every one of these versions.
+
         Args:
             mode: the output box format, or ``None`` to reuse :attr:`mode`. That attribute depends on the
                 construction path: the constructor defaults to ``'vertices_plus'``, while :meth:`from_tensor`
