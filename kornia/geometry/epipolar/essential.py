@@ -934,7 +934,8 @@ def motion_from_essential_choose_solution(
         - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
           ``E_mat``.
         - The first and second derivatives with respect to ``E_mat`` are finite and correct as for
-          :func:`motion_from_essential`; a third derivative is not correct.
+          :func:`motion_from_essential`, while the selected candidate stays the same and the points triangulate to
+          finite positions, which a point at infinity does not; a third derivative is not correct.
 
     Args:
         E_mat: The essential matrix in the form of ``(B, 3, 3)``, or ``(3, 3)`` with every other input
