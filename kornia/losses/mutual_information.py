@@ -157,12 +157,11 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
 
 def _contract_kernels_in_chunks(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int) -> torch.Tensor:
     """Return ``einsum("...in,...jn->...ij", vals_1, vals_2)``, contracting at most ``chunk_size`` samples at a time."""
-    joint_histogram = torch.einsum("...in,...jn->...ij", vals_1[..., :chunk_size], vals_2[..., :chunk_size])
-    for start in range(chunk_size, vals_1.shape[-1], chunk_size):
-        stop = start + chunk_size
-        joint_histogram = joint_histogram + torch.einsum(
-            "...in,...jn->...ij", vals_1[..., start:stop], vals_2[..., start:stop]
-        )
+    # One split, not a slice per chunk: the backward of a slice allocates a gradient of the full tensor for each chunk.
+    chunks = zip(vals_1.split(chunk_size, dim=-1), vals_2.split(chunk_size, dim=-1))
+    joint_histogram = torch.einsum("...in,...jn->...ij", *next(chunks))
+    for chunk_1, chunk_2 in chunks:
+        joint_histogram = joint_histogram + torch.einsum("...in,...jn->...ij", chunk_1, chunk_2)
     return joint_histogram
 
 
