@@ -231,6 +231,18 @@ class TestKMeans(BaseTester):
         # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
         self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_autocast_preserves_cluster_sum_precision(self, device, dtype, autocast_dtype):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast precision regression is exercised on CPU and CUDA")
+        x = torch.full((100000, 3), 0.75, device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(1, torch.zeros_like(x[:1]), tolerance=None, max_iterations=1)
+
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            kmeans.fit(x)
+
+        self.assert_close(kmeans.cluster_centers, x[:1], rtol=0.0, atol=0.0)
+
     @staticmethod
     def _create_data(device, dtype):
         # create example dataset
