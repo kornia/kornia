@@ -101,7 +101,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                       when the requested count exceeds the number of children that can be drawn: the children with a
                       nonzero selection weight, mix augmentations not counted, plus one place when the count and the
                       mix augmentations together reach the number of children, since a mix augmentation is then
-                      certain to take a place. The weights are relative, so their scale plays no part.
+                      certain to take a place. With only mix children one of them is drawn, and with all weights 0 and
+                      no mix child nothing is. The weights are relative, so their scale plays no part.
                       If int, a fixed number of transformations will be selected.
                       If (a,), x number of transformations (a <= x <= len(args)) will be selected.
                       If (a, b), x number of transformations (a <= x <= b) will be selected.
