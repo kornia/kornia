@@ -521,11 +521,11 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     Convention:
         - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
         - A caller's autocast region does not change the result, outside TorchScript.
-        - The derivatives at an exact essential matrix are finite and correct, also where its two largest singular
-          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate, up to the second
-          order; a third derivative is not correct. They need the smallest singular value to differ from the other
-          two; without that, as for a matrix of rank 1, there is no derivative and the gradient is finite but not
-          meaningful. A scripted call differentiates through the SVD instead.
+        - First and second derivatives at an exact essential matrix are finite and correct, also where its two largest
+          singular values are equal and the backward of :func:`torch.linalg.svd` divides by zero; a third derivative
+          is not correct. They need the smallest singular value to differ from the other two; without that, as for a
+          matrix of rank 1, there is no derivative and the gradient is finite but not meaningful. A scripted call
+          differentiates through the SVD instead.
 
     Args:
         E_mat: The matrices to project with shape ``(*, 3, 3)``.
@@ -597,12 +597,12 @@ def _pair_invariant_terms(
 
     The projection onto essential matrices is :math:`P = M / 2`, the rotations are
     :math:`u_3 v_3^\top \pm [u_3]_\times P / m` with :math:`m = (s_1 + s_2) / 2 = \|P\|_F / \sqrt{2}`, and the
-    translation is :math:`u_3`. :math:`P` is built from :math:`E / 2`, so it stays in range for every finite :math:`E`,
-    where :math:`M` can overflow. All of this holds for any :math:`E`, so these expressions have the derivatives of the
-    SVD wherever the backward of :func:`torch.linalg.svd` is correct, but they never divide by the difference of the
-    two largest singular values, which that backward does. Only the derivatives of :math:`u_3` and :math:`v_3` divide,
-    by the gaps to :math:`s_3`: :func:`~kornia.core.utils._symmetric_eigenvector` gives them to second order, and leaves
-    out a gap that is exactly zero.
+    translation is :math:`u_3`. :math:`P` is built from :math:`E / 2`, so it stays in range while the singular values
+    of :math:`E` do, where :math:`M` can overflow. All of this holds for any :math:`E`, so these expressions have the
+    derivatives of the SVD wherever the backward of :func:`torch.linalg.svd` is correct, but they never divide by the
+    difference of the two largest singular values, which that backward does. Only the derivatives of :math:`u_3` and
+    :math:`v_3` divide, by the gaps to :math:`s_3`: :func:`~kornia.core.utils._symmetric_eigenvector` gives them to
+    second order, and leaves out a gap that is exactly zero.
 
     Args:
         E_mat: the matrices ``(*, 3, 3)``.
@@ -650,12 +650,11 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           compares OpenCV's labels.
         - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
           float32 rotations.
-        - The derivatives at an exact essential matrix are finite and correct, also where its two largest singular
-          values are equal, which the backward of :func:`torch.linalg.svd` cannot differentiate, up to the second
-          order; a third derivative is not correct. They are those of the labeling the call returned. They need the
-          smallest singular value to differ from the other two; without that, as for a matrix of rank 1, there is no
-          derivative and the gradient is finite but not meaningful. A scripted call differentiates through the SVD
-          instead.
+        - First and second derivatives at an exact essential matrix are finite and correct, also where its two largest
+          singular values are equal and the backward of :func:`torch.linalg.svd` divides by zero; a third derivative
+          is not correct. They are those of the labeling the call returned. They need the smallest singular value to
+          differ from the other two; without that, as for a matrix of rank 1, there is no derivative and the gradient
+          is finite but not meaningful. A scripted call differentiates through the SVD instead.
 
     Args:
        E_mat: The essential matrix in the form of ``(*, 3, 3)``.
@@ -933,6 +932,8 @@ def motion_from_essential_choose_solution(
           :func:`motion_from_essential`, not a recovered motion.
         - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
           ``E_mat``.
+        - The first and second derivatives with respect to ``E_mat`` are finite and correct as for
+          :func:`motion_from_essential`; a third derivative is not correct.
 
     Args:
         E_mat: The essential matrix in the form of ``(B, 3, 3)``, or ``(3, 3)`` with every other input
