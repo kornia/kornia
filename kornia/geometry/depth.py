@@ -578,6 +578,10 @@ class DepthWarper(nn.Module):
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
           Both cameras use only the top-left 3x3 block of their intrinsics, embedded in
           homogeneous 4x4 form; the stored fourth row and column are ignored.
+        - :meth:`compute_subpixel_step` is half a pixel divided by how far the image centre,
+          ``((W - 1) / 2, (H - 1) / 2)``, moves in the destination image per unit of inverse depth around
+          inverse depth 1, the smallest over the batch. Two cameras with no baseline have no parallax, so it
+          is ``inf``. With focal length ``f`` and baseline ``b``, a rectified pair gives ``0.5 / (f * b)``.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
@@ -697,13 +701,19 @@ class DepthWarper(nn.Module):
         self._dst_proj_src = dst_proj_src
         return self
 
-    def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
+    def _source_points(self, x: float, y: float, invds: tuple[float, ...]) -> torch.Tensor:
+        """Return the homogeneous source-frame points of pixel ``(x, y)`` at each inverse depth, ``(B, 4, N)``."""
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
-        point = torch.tensor(
-            [[[x], [y], [invd], [1.0]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
-        )
+        device, dtype = self._dst_proj_src.device, self._dst_proj_src.dtype
+        pixel = torch.tensor([[x], [y], [1.0], [0.0]], device=device, dtype=dtype)
+        rays = torch.matmul(self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel)
+        steps = torch.tensor(invds, device=device, dtype=dtype).expand(rays.shape[0], 1, -1)
+        return torch.cat([rays[:, :3].expand(-1, -1, len(invds)), steps], dim=1)
+
+    def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
+        point = self._source_points(x, y, (invd,))
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1.0 / flow[:, 2]
         _x = flow[:, 0] * z
@@ -722,21 +732,13 @@ class DepthWarper(nn.Module):
             raise RuntimeError("Expected torch.Tensor, but got None Type from the projection matrix")
 
         delta_d = 0.01
-        center_x = self.width / 2
-        center_y = self.height / 2
+        center_x = (self.width - 1) / 2
+        center_y = (self.height - 1) / 2
 
         # Batch both invds in one call (for potential fused kernels in future) for efficiency
         invds = (1.0 - delta_d, 1.0 + delta_d)
         # Instead of two calls, process both at once with minimal tensor construction
-        points = (
-            torch.tensor(
-                [[center_x, center_y, invds[0], 1.0], [center_x, center_y, invds[1], 1.0]],
-                dtype=self._dst_proj_src.dtype,
-                device=self._dst_proj_src.device,
-            )
-            .transpose(0, 1)
-            .unsqueeze(0)
-        )  # (1, 4, 2)
+        points = self._source_points(center_x, center_y, invds)  # (B, 4, 2)
         # Repeat projection matrix for batch
         proj = self._dst_proj_src
         flow = torch.matmul(proj, points)  # (N, 3/4, 2)
