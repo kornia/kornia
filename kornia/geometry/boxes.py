@@ -314,6 +314,8 @@ class Boxes:
           update and return ``self``. :meth:`pad` and :meth:`unpad` always shift ``self``. The constructor wraps a
           floating-point tensor without copying it, so item assignment and the in-place updates of :meth:`pad`,
           :meth:`unpad`, :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`index_put` reach the caller's tensor.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 4, 2)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` differs from torchvision, COCO and albumentations:
@@ -434,11 +436,17 @@ class Boxes:
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         selected = self._data[key]
+        # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
+        one_box = selected.ndim == 2 and not isinstance(key, tuple)
+        if one_box:
+            selected = selected.unsqueeze(0)
         new_box = type(self)(selected, False)
         new_box._mode = self._mode
-        new_box._valid = self._valid[key]
+        valid = self._valid[key]
+        new_box._valid = valid.unsqueeze(0) if one_box else valid
         if self._padding is not None:
-            new_box._padding = self._padding[_key_on_host(key)]
+            padding = self._padding[_key_on_host(key)]
+            new_box._padding = padding.unsqueeze(0) if one_box else padding
         if new_box._data is not selected:  # the constructor cast integer coordinates, into a copy
             new_box._detach_masks()
         return new_box
@@ -1422,6 +1430,8 @@ class Boxes3D:
           or ``float64`` when that is the default dtype.
         - :meth:`transform_boxes` returns a new object labelled ``'xyzxyz_plus'``; :meth:`transform_boxes_`
           rebinds the internal tensor of ``self`` and keeps the label.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 8, 3)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` is `#3934 <https://github.com/kornia/kornia/issues/3934>`_ and the ``'vertices'``
@@ -1466,7 +1476,11 @@ class Boxes3D:
         self._mode = mode
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes3D:
-        new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
+        data = self._data[key]
+        if data.ndim == 2 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
+            data = data.unsqueeze(0)
+        new_box = Boxes3D(data, False, mode="xyzxyz_plus")
         new_box._mode = self._mode
         return new_box
 

@@ -147,7 +147,7 @@ measurement of the whole test suite is [below](#cuda-test-suite-measurement).
 | `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
+| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT solver accuracy, including iterated and line-based variants |
 | `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
