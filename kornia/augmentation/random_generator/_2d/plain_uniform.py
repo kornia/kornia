@@ -22,7 +22,7 @@ from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
 
@@ -94,7 +94,9 @@ class PlainUniformGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
 
+        # The draws are made on the generator's device and returned on the device of the ranges. The two differ for a
+        # learnable range made on CUDA in a module left on the CPU; the copy to CUDA then does not wait for the GPU.
         return {
-            name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(device=_device, dtype=_dtype)
+            name: _to_device_nonblocking(_adapted_rsampling((batch_size,), dist, same_on_batch), _device, _dtype)
             for name, dist in self.sampler_dict.items()
         }

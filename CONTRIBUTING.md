@@ -100,7 +100,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi install -e py313  # Python 3.13
     pixi run -e py313 install
 
-    # For CUDA development (requires reinstall of PyTorch)
+    # For CUDA development
     pixi run -e cuda install
     ```
 
@@ -164,13 +164,20 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
 
-    **CUDA:** Run `pixi run -e cuda install` to install the CUDA 12.1 PyTorch build into the project `.venv`,
-    which is also used by `pixi run -e cuda test-cuda`. That index stops at torch 2.5.1, the oldest version
-    Kornia supports, so CUDA runs test the floor rather than the locked PyTorch. Pixi's `.pixi/envs/cuda`
-    supplies the tools, not the Python dependencies under test. Commands run with `-e cuda` disable automatic uv
-    synchronization so the CUDA build is preserved. Re-run the CUDA install task after changing dependencies or
-    using a default-environment command that synchronizes `.venv`. For focused CUDA tests, use
-    `pixi run -e cuda test-module tests/<path> --device=cuda`.
+    **CUDA:** Run `pixi run -e cuda install` to install the locked PyTorch as a CUDA build into the project `.venv`,
+    which is also used by `pixi run -e cuda test-cuda`. PyPI's Linux wheels are already CUDA builds, so on Linux the
+    task only syncs the lock, reinstalling every package so that removing a stale wheel cannot take files a locked
+    wheel needs. PyPI's Windows wheels are CPU-only, so on Windows the task then replaces torch with the same version
+    from the PyTorch CUDA index; a lock update to a new PyTorch has to update that version and index in `pixi.toml`
+    and the index in `pyproject.toml` too. Pixi's `.pixi/envs/cuda` supplies the tools, not the Python dependencies
+    under test. Commands run with `-e cuda` do not synchronize `.venv` automatically, so re-run the CUDA install task
+    after a dependency or lock change. On Windows this is what preserves the CUDA build, and a default-environment
+    command that synchronizes `.venv` replaces it, so re-run the task after one of those too. For focused CUDA tests,
+    use `pixi run -e cuda test-module tests/<path> --device=cuda`.
+
+    The locked build needs an NVIDIA driver from the R580 branch or newer and a Turing or newer GPU. Check
+    `torch.cuda.is_available()` after installing: when it is false, a `--device=cuda` run skips its tests and still
+    exits 0.
 
 5. **Develop and test:**
 

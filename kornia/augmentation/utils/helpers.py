@@ -579,6 +579,62 @@ class MultiprocessWrapper:
         super().__init__(*args, **kwargs)
 
 
+def _holds_graph_tensor(value: Any) -> bool:
+    """Whether ``value`` holds a tensor with autograd history, directly, in a container or in a distribution.
+
+    ``copy.deepcopy`` refuses such a tensor, and pickle turns it into a leaf cut off from the graph.
+    """
+    if isinstance(value, torch.Tensor):
+        return not value.is_leaf
+    if isinstance(value, dict):
+        return any(_holds_graph_tensor(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds_graph_tensor(item) for item in value)
+    if isinstance(value, torch.distributions.Distribution):
+        return any(_holds_graph_tensor(item) for item in vars(value).values())
+    return False
+
+
+def _detach_graph_tensors(value: Any, memo: Dict[int, Any]) -> Any:
+    """Return ``value`` with each tensor that has autograd history detached; ``memo`` keeps shared values shared.
+
+    Dicts, lists and tuples (named tuples included) on the way to such a tensor are rebuilt; anything else is
+    returned as it is.
+    """
+    if not _holds_graph_tensor(value):
+        return value
+    if id(value) in memo:
+        return memo[id(value)]
+    out: Any
+    if isinstance(value, torch.Tensor):
+        out = value.detach()
+    elif isinstance(value, dict):
+        out = type(value)((key, _detach_graph_tensors(item, memo)) for key, item in value.items())
+    elif isinstance(value, list):
+        out = [_detach_graph_tensors(item, memo) for item in value]
+    elif isinstance(value, tuple):
+        items = [_detach_graph_tensors(item, memo) for item in value]
+        out = type(value)(*items) if hasattr(value, "_fields") else tuple(items)
+    else:
+        out = value
+    memo[id(value)] = out
+    return out
+
+
+def _detach_recorded_graph_tensors(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Detach the autograd history in a module state's plain attributes, for ``__getstate__``.
+
+    With a learnable range, what a forward records on the module (the drawn parameters, the transformation matrix)
+    is part of the autograd graph of that call. A copy cannot extend the original's graph, and ``copy.deepcopy``
+    refuses such tensors, so the copy keeps their values, detached. Parameters, buffers and submodules follow their
+    own copy protocol and are left alone.
+    """
+    memo: Dict[int, Any] = {}
+    for name in [name for name in state if name not in ("_parameters", "_buffers", "_modules")]:
+        state[name] = _detach_graph_tensors(state[name], memo)
+    return state
+
+
 #: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
 #: ``filter2d`` and ``filter3d`` pad an even kernel asymmetrically -- ``(k - 1) // 2`` in front and
 #: ``k // 2`` behind -- so the constraint is against the wider of the two, ``k // 2``, not against the
