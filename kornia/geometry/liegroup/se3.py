@@ -242,11 +242,9 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            b_batch = torch.broadcast_shapes(so3.q.data.shape[:-1], t.shape[:-1])
-            q = so3.q if so3.q.data.shape[:-1] == b_batch else Quaternion(so3.q.data.expand(b_batch + (4,)))
-            _check_points_layout(q, _right_data)
+            _check_points_layout(so3.q, _right_data)
             # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
-            out = (_so3_rotate(q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
+            out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Unsupported type: {type(right)}")
 

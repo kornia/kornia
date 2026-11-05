@@ -801,7 +801,9 @@ class TestSe3(BaseTester):
         self.assert_close(pose_unb_r * pts5, ref_unb_r * pts5)
         pts1 = torch.rand(1, 3, device=device, dtype=dtype)
         self.assert_close(pose_unb_r * pts1, ref_unb_r * pts1)
-        with pytest.raises(ValueError):
+        # an unbatched rotation keeps taking one point for all the translations, as on main
+        self.assert_close(pose_unb_r * pts5[0], ref_unb_r * pts5[0].expand(5, 3))
+        with pytest.raises(RuntimeError):
             _ = pose_unb_r * torch.rand(4, 3, device=device, dtype=dtype)
 
         for i in range(5):
