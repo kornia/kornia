@@ -70,6 +70,28 @@ def _gradient_magnitude_orientation(
     return mag.to(dtype), ori.to(dtype)
 
 
+def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
+    """Return ``spatial_gradient(input, mode)`` for ``"sobel"`` or ``"diff"``, exact on flat pixels under autograd.
+
+    ``F.conv2d`` picks its backend by whether autograd tracks the input. On macOS arm64 CPU the backend of a tracked
+    float32 batch of 16 or more leaves rounding noise on pixels whose exact response is zero, so a guard such as
+    ``sq > 0`` in :func:`_gradient_magnitude_orientation` lets them vote with an arbitrary direction and a derivative
+    of ``1 / |g|``. Tracked input therefore takes the differences directly, and untracked input keeps the convolution.
+    """
+    if not (input.requires_grad and torch.is_grad_enabled()):
+        return spatial_gradient(input, mode)
+    padded = F.pad(input, (1, 1, 1, 1), "replicate")
+    dx = padded[..., 2:] - padded[..., :-2]
+    dy = padded[..., 2:, :] - padded[..., :-2, :]
+    if mode == "sobel":
+        gx = (dx[..., :-2, :] + 2.0 * dx[..., 1:-1, :] + dx[..., 2:, :]) / 8.0
+        gy = (dy[..., :-2] + 2.0 * dy[..., 1:-1] + dy[..., 2:]) / 8.0
+    else:
+        gx = dx[..., 1:-1, :] / 2.0
+        gy = dy[..., 1:-1] / 2.0
+    return torch.stack((gx, gy), 2)
+
+
 def _dense_sift_histograms_from_gradients(
     gx: torch.Tensor, gy: torch.Tensor, num_ang_bins: int, eps: float
 ) -> torch.Tensor:
@@ -97,7 +119,7 @@ def _dense_sift_histograms_from_gradients(
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
-    grads = spatial_gradient(input, "diff")
+    grads = _exact_first_order_gradient(input, "diff")
     return _dense_sift_histograms_from_gradients(grads[:, :, 0], grads[:, :, 1], num_ang_bins, eps)
 
 
@@ -322,7 +344,7 @@ class SIFTDescriptor(nn.Module):
         if pk_bias is not None:
             pk_bias = pk_bias.to(input.dtype).to(input.device)
 
-        grads = spatial_gradient(input, "diff")
+        grads = _exact_first_order_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]

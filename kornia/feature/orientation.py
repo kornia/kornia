@@ -24,12 +24,12 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
-from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
+from kornia.filters import get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
 from ._layout import _patch_conv_layout
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
-from .siftdesc import _gradient_magnitude_orientation
+from .siftdesc import _exact_first_order_gradient, _gradient_magnitude_orientation
 
 urls: Dict[str, str | list[str]] = {}
 urls["orinet"] = [
@@ -117,7 +117,6 @@ class PatchDominantGradientOrientation(nn.Module):
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
-        self.gradient = SpatialGradient("sobel", 1)
         self.eps = eps
         self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
@@ -158,7 +157,7 @@ class PatchDominantGradientOrientation(nn.Module):
         angular_smooth_bias = self.angular_smooth.bias
         if angular_smooth_bias is not None:
             angular_smooth_bias = angular_smooth_bias.to(patch.dtype).to(patch.device)
-        grads: torch.Tensor = self.gradient(patch)
+        grads: torch.Tensor = _exact_first_order_gradient(patch, "sobel")
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]

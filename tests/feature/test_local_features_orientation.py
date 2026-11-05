@@ -16,6 +16,7 @@
 #
 
 import math
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -23,6 +24,8 @@ import torch
 import kornia
 from kornia.core.exceptions import ShapeError
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
+from kornia.feature.siftdesc import DenseSIFTDescriptor, SIFTDescriptor, _exact_first_order_gradient
+from kornia.filters import spatial_gradient
 from kornia.geometry.conversions import rad2deg
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
@@ -512,3 +515,45 @@ class TestConventionsOrientation(BaseTester):
         patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
         angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
         assert math.pi < angle <= math.pi + math.pi / 8
+
+
+class TestTrackedGradientNoise6598(BaseTester):
+    @staticmethod
+    def _flat_lattice_patches(batch):
+        # Low-contrast patches rounded to float16 steps around mid-grey: many neighbours are exactly equal, so many
+        # exact Sobel responses are exactly zero.
+        generator = torch.Generator().manual_seed(0)
+        noise = torch.rand(batch, 1, 32, 32, generator=generator, dtype=torch.float64) * 3e-4
+        return (0.5 + noise).to(torch.float16).float()
+
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_tracked_gradient_matches_spatial_gradient(self, device, dtype, mode):
+        image = torch.rand(3, 2, 8, 9, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        tracked = _exact_first_order_gradient(image.clone().requires_grad_(), mode)
+        assert tracked.dtype == dtype
+        self.assert_close(tracked.detach(), spatial_gradient(image, mode))
+
+    @pytest.mark.parametrize(
+        "build", [lambda: PatchDominantGradientOrientation(32), lambda: SIFTDescriptor(32), DenseSIFTDescriptor]
+    )
+    def test_requires_grad_changes_neither_output_nor_gradient_scale(self, device, build):
+        patches = self._flat_lattice_patches(64)
+        module = build().to(device)
+        plain = module(patches.to(device))
+        tracked_input = patches.to(device).requires_grad_()
+        tracked = module(tracked_input)
+        # One float32 rounding step at most; the noise this guards against moves an angle by up to 3 radians.
+        self.assert_close(tracked.detach(), plain, rtol=0, atol=1e-5)
+        gradient = torch.autograd.grad(tracked.sum(), tracked_input)[0].flatten(1).abs().amax(1).median()
+        # The float64 reference runs on the CPU, as MPS has no float64.
+        reference_input = patches.double().requires_grad_()
+        reference = build().double()(reference_input)
+        expected = torch.autograd.grad(reference.sum(), reference_input)[0].flatten(1).abs().amax(1).median()
+        assert gradient.item() < 10 * expected.item()
+
+    def test_untracked_input_keeps_the_convolution(self, device):
+        image = torch.rand(2, 1, 8, 8, device=device).requires_grad_()
+        with torch.no_grad(), patch("kornia.feature.siftdesc.spatial_gradient", wraps=spatial_gradient) as convolved:
+            _exact_first_order_gradient(image, "sobel")
+            _exact_first_order_gradient(image.detach(), "sobel")
+        assert convolved.call_count == 2
