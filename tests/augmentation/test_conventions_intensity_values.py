@@ -367,8 +367,7 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert torch.equal(out[1], image[1])
         out.sum().backward()
         assert torch.isfinite(image.grad).all()
-        # Exclude x=1, where adjust_gamma's clamp derivative differs across torch releases.
-        self.assert_close(image.grad[0, ..., :2], 0.5 / image[0, ..., :2].detach().sqrt())
+        self.assert_close(image.grad[0], 0.5 / image[0].detach().sqrt())
         self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
 
     @pytest.mark.parametrize(
