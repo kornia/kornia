@@ -171,6 +171,21 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
         assert out.dtype == half
         self.assert_close(out.float(), interp(x.float(), pos.float(), H * 8, W * 8), rtol=0.0, atol=atol)
 
+    def test_integer_positions_normalise_in_the_default_dtype(self, device):
+        # Only half-precision positions go through float32: integer ones divide in the default dtype, as they did.
+        g = torch.Generator().manual_seed(0)
+        x = torch.rand(1, 8, 24, 32, generator=g, dtype=torch.float64).to(device)
+        pos = (torch.rand(1, 50, 2, generator=g) * torch.tensor([255.0, 191.0])).long().to(device)
+        torch.set_default_dtype(torch.float64)
+        try:
+            out = InterpolateSparse2d("bilinear")(x, pos, 192, 256)
+        finally:
+            torch.set_default_dtype(torch.float32)
+        size = torch.tensor([255.0, 191.0], device=device, dtype=torch.float64)
+        grid = (2.0 * (pos.double() / size) - 1.0).unsqueeze(-2)
+        expected = torch.nn.functional.grid_sample(x, grid, mode="bilinear", align_corners=False)
+        assert torch.equal(out, expected.permute(0, 2, 3, 1).squeeze(-2))
+
 
 class TestXFeat(BaseTester):
     def test_empty_batch_6266(self, device, dtype):
@@ -252,6 +267,31 @@ class TestXFeat(BaseTester):
             model.match_xfeat_star(images[:1], images[1:], top_k=50),
         ):
             assert all(points.dtype == torch.float32 and points.isfinite().all() for points in matches)
+
+    def test_float32_model_keeps_its_dtype_under_autocast(self, device):
+        # Autocast gives the sampler half-precision maps, and it returns them in that dtype; the model's outputs do not.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("bfloat16 autocast is exercised on CPU and CUDA")
+        model = XFeat(detection_threshold=0.0).to(device).eval()
+        g = torch.Generator().manual_seed(0)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["keypoints"].shape[0] > 0
+        assert out["scores"].dtype == torch.float32
+        assert out["descriptors"].dtype == torch.float32
+
+    def test_float16_zero_descriptor_map_stays_zero(self, device):
+        # F.normalize's default eps of 1e-12 rounds to zero in float16, and 0 / 0 made a zero descriptor NaN.
+        model = XFeat(detection_threshold=0.0).eval()
+        last = model.net.block_fusion[2]
+        torch.nn.init.zeros_(last.weight)
+        torch.nn.init.zeros_(last.bias)
+        model = model.to(device, torch.float16)
+        g = torch.Generator().manual_seed(0)
+        out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["descriptors"].shape[0] > 0
+        assert out["descriptors"].dtype == torch.float16
+        assert (out["descriptors"] == 0).all()
 
     def test_gradcheck(self, device):
         pass  # inference_mode on detectAndCompute; gradcheck not applicable

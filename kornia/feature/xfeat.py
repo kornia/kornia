@@ -39,6 +39,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32
 from kornia.geometry.subpix import nms2d
 
 
@@ -299,8 +300,8 @@ class InterpolateSparse2d(nn.Module):
         Returns:
             Sampled features ``(B, N, C)``.
         """
-        wide = torch.promote_types(x.dtype, torch.float32)
-        grid = self.normgrid(pos.to(torch.promote_types(pos.dtype, torch.float32)), H, W).unsqueeze(-2).to(wide)
+        wide = torch.float32 if _samples_half_in_float32(x) else x.dtype
+        grid = self.normgrid(pos.float() if _samples_half_in_float32(pos) else pos, H, W).unsqueeze(-2).to(wide)
         # align_corners=False is intentional: the pretrained XFeat weights were trained
         # with normgrid using the (W-1) denominator but grid_sample using align_corners=False.
         # Changing either side would break compatibility with the pretrained weights.
@@ -341,9 +342,12 @@ class XFeat(nn.Module):
           :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
           with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01.
         - Keypoints are float32. Scores and descriptors have the dtype of the weights, and the resized image is cast to
-          it, so a float16 or bfloat16 model runs on an image of any float dtype. With the pretrained weights,
-          ``top_k=2048`` and four Oxford sequences on an Apple M1, :meth:`match_xfeat` keeps its inliers at 3 px within
-          0.4 % of float32. Half precision takes about 15 times as long as float32 on that CPU and about as long on MPS.
+          it, so a float16 or bfloat16 model runs on an image of any float dtype; under autocast, the descriptors of
+          :meth:`detectAndComputeDense` have the dtype autocast gives the network. With the pretrained weights,
+          ``top_k=2048`` and the 290 HPatches pairs on an RTX 4090 with torch 2.15, :meth:`match_xfeat` keeps its
+          inliers at 3 px within 0.6 % of float32, and float16 and bfloat16 keep 99.4 % and 95.0 % of its keypoints. On
+          an Apple M1 half precision takes about 15 times as long as float32 on the CPU and about as long on MPS. On
+          torch 2.5.1 the CPU float16 instance norm is wrong: a ``[0, 255]`` image gave no keypoints on HPatches.
         - :meth:`detectAndCompute` keypoints are integer pixels of the resized image, strict maxima of the keypoint
           heatmap in their 5 x 5 window (see the note), reported in the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
@@ -654,12 +658,13 @@ class XFeat(nn.Module):
         B, _, _H1, _W1 = x.shape
 
         M1, K1, H1 = self.net(x)
-        M1 = F.normalize(M1, dim=1)
+        # x has the weights' dtype, and autocast can give the maps another one
+        M1 = _l2_normalize(M1.to(x.dtype), dim=1)
 
         K1h = self._get_kpts_heatmap(K1)
         mkpts = self._nms(K1h, threshold=detection_threshold, kernel_size=5)
 
-        scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1)
+        scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1).to(x.dtype)
         scores[torch.all(mkpts == -1, dim=-1)] = -1
 
         k = min(top_k, scores.shape[-1])
@@ -669,7 +674,7 @@ class XFeat(nn.Module):
         mkpts = torch.cat([mkpts_x[..., None], mkpts_y[..., None]], dim=-1)
 
         feats = self.interpolator(M1, mkpts, H=_H1, W=_W1)
-        feats = F.normalize(feats, dim=-1)
+        feats = _l2_normalize(feats, dim=-1)
 
         mkpts = mkpts * torch.tensor([rw1, rh1], device=mkpts.device).view(1, 1, -1)
 
