@@ -45,7 +45,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _autocast_disabled, is_compiling
 from kornia.geometry.bbox import _validate_bbox3d, infer_bbox_shape3d
 
 from .imgwarp import get_perspective_transform3d, warp_affine3d
@@ -488,8 +488,10 @@ def _check_boxes_related_by_affine(src_box: torch.Tensor, dst_box: torch.Tensor,
     mat = dst_trans_src[:, :3].detach().to(work_dtype)
     src, dst = src_box.detach().to(work_dtype), dst_box.detach().to(work_dtype)
     linear, translation = mat[..., :3].transpose(-1, -2), mat[..., 3:].transpose(-1, -2)
-    miss = (src @ linear + translation - dst).abs().amax((-2, -1))
-    scale = (src.abs() @ linear.abs() + translation.abs() + dst.abs()).amax((-2, -1))
+    # The products stay out of a caller's autocast region: in bfloat16 their rounding alone exceeds the tolerance.
+    with _autocast_disabled(src.device.type):
+        miss = (src @ linear + translation - dst).abs().amax((-2, -1))
+        scale = (src.abs() @ linear.abs() + translation.abs() + dst.abs()).amax((-2, -1))
     tolerance = max(torch.finfo(dst_trans_src.dtype).eps, torch.finfo(torch.float32).eps) ** 0.5 * scale
     if bool((miss > tolerance).any()):
         raise AssertionError(
