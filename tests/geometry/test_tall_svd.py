@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ValueCheckError
 from kornia.geometry import find_essential, fit_plane, solve_pnp_dlt
 
 from testing.base import BaseTester
@@ -103,3 +104,63 @@ class TestTallCudaSvd(BaseTester):
             actual_vectors[..., :, None] * actual_vectors[..., None, :],
             expected_vectors[..., :, None] * expected_vectors[..., None, :],
         )
+
+    def test_tall_rank_checks_reject_degenerate_points_6559(self, device, dtype):
+        # With 40 points, CUDA reduces both rank checks by QR; they must still reject degenerate sets.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The PnP input contract is float32/float64")
+        points = torch.rand(2, 40, 3, device=device, dtype=dtype) * 2 - 1
+        planar = torch.stack((points[..., 0], points[..., 1], torch.full_like(points[..., 0], 5.0)), -1)
+        intrinsics = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3)
+        with pytest.raises(AssertionError, match="last singular value"):
+            solve_pnp_dlt(planar, planar[..., :2] / planar[..., 2:], intrinsics)
+        collinear = points[..., :1] * points.new_tensor([0.3, -0.5, 0.8]) + points.new_tensor([1.0, 2.0, 3.0])
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(collinear)
+
+    @pytest.mark.parametrize("operation", ["plane", "essential"])
+    def test_dynamic_export_keeps_point_count_range_6559(self, operation, device, dtype):
+        # The tall-CUDA size checks must not become guards that narrow an exported dynamic point count.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Checked in float32/float64")
+        count = torch.export.Dim("count", min=9, max=100000)
+
+        def scene(n):
+            points = torch.rand(2, n, 3, device=device, dtype=dtype) * 2 - 1
+            points[..., 2] = 1 + 0.2 * points[..., 0] - 0.3 * points[..., 1]
+            return points
+
+        if operation == "plane":
+
+            class Plane(torch.nn.Module):
+                def forward(self, points):
+                    plane = fit_plane(points)
+                    return plane.normal.data, plane.offset.data
+
+            program = torch.export.export(Plane(), (scene(40),), dynamic_shapes=({1: count},)).module()
+            for n in (40, 33, 32, 20, 9):
+                points = scene(n)
+                normal, offset = program(points)
+                distances = torch.einsum("bi,bni->bn", normal, points) + offset[:, None]
+                self.assert_close(distances, torch.zeros_like(distances))
+        else:
+
+            class Essential(torch.nn.Module):
+                def forward(self, points1, points2):
+                    return find_essential(points1, points2)
+
+            def views(n):
+                camera = torch.rand(2, n, 3, device=device, dtype=dtype) * 2 - 1
+                camera = camera + camera.new_tensor([0, 0, 6])
+                camera2 = camera + camera.new_tensor([0.4, 0.1, 0.05])
+                return camera[..., :2] / camera[..., 2:], camera2[..., :2] / camera2[..., 2:]
+
+            program = torch.export.export(Essential(), views(40), dynamic_shapes=({1: count}, {1: count})).module()
+            for n in (40, 33, 32, 12, 9):
+                image1, image2 = views(n)
+                candidates = program(image1, image2)
+                ones = torch.ones_like(image1[..., :1])
+                x1, x2 = torch.cat((image1, ones), -1), torch.cat((image2, ones), -1)
+                residual = torch.einsum("bni,bkij,bnj->bkn", x2, candidates, x1)
+                best = residual.square().mean(-1).nan_to_num(nan=float("inf")).min(-1).values
+                self.assert_close(best, torch.zeros_like(best))
