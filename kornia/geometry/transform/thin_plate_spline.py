@@ -106,7 +106,8 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           related by an affine map give zero kernel weights, except a constant map of more than three points, whose
           equal ``points_dst`` make the system singular
         - a caller's autocast region does not change the result, outside TorchScript
-          (in the region, mixed float32 and half points meet in float32)
+          (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
+          dtype other than the region's)
         - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
           set of points all on one line, make it singular too, but round-off can hide that, and the solve then
           returns huge affine weights that throw points off that line far away and may miss the landmarks themselves
@@ -291,7 +292,8 @@ def warp_image_tps(
           warp of the right shape
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
         - a caller's autocast region does not change the sampling positions, outside TorchScript
-          (in the region, mixed float32 and half points meet in float32)
+          (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
+          ``image`` of a dtype other than the region's)
 
     Args:
         image: input image torch.Tensor ``(B, C, H, W)``.
