@@ -44,6 +44,61 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
+    def test_from_coeffs_integer_and_types(self, device: torch.device, dtype: torch.dtype) -> None:
+        # 1. Normal Python float coefficients produce (4,)
+        q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
+        assert q_float.data.is_floating_point()
+        assert q_float.data.dtype == torch.get_default_dtype()
+        assert q_float.data.shape == (4,)
+        self.assert_close(q_float.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+        # 2. Integer-only coefficients produce floating-point data with default dtype
+        q_int = Quaternion.from_coeffs(1, 0, 0, 0)
+        assert q_int.data.is_floating_point()
+        assert q_int.data.dtype == torch.get_default_dtype()
+        assert q_int.data.shape == (4,)
+        self.assert_close(q_int.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+        # Operations on integer-constructed quaternion must succeed
+        self.assert_close(q_int.matrix(), torch.eye(3))
+        self.assert_close(q_int.to_axis_angle(), torch.zeros(3))
+
+        # Mixed float and int coefficients
+        q_mixed = Quaternion.from_coeffs(1, 0.0, 0, 0.0)
+        assert q_mixed.data.is_floating_point()
+        assert q_mixed.data.dtype == torch.get_default_dtype()
+
+        # 3. Complex Python scalar coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
+            Quaternion.from_coeffs(1 + 2j, 0, 0, 0)
+
+        # 4. Complex tensor coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
+            Quaternion.from_coeffs(torch.tensor(1.0 + 1.0j), 0.0, 0.0, 0.0)
+
+        # 5. Four tensor coefficients of shape (1,) preserve original upstream behavior
+        t_w = torch.tensor([1.0])
+        t_z = torch.tensor([0.0])
+        q_1d = Quaternion.from_coeffs(t_w, t_z, t_z, t_z)
+        expected_shape = torch.tensor([t_w, t_z, t_z, t_z]).shape
+        assert q_1d.data.shape == expected_shape
+
+        # 6. Mixed float32 and float64 tensor coefficients preserve original behavior (promote to float64)
+        t_f32 = torch.tensor(1.0, dtype=torch.float32)
+        t_f64 = torch.tensor(0.0, dtype=torch.float64)
+        q_promoted = Quaternion.from_coeffs(t_f32, t_f64, t_f32, t_f32)
+        expected_promoted = torch.tensor([t_f32, t_f64, t_f32, t_f32])
+        assert q_promoted.data.dtype == expected_promoted.dtype
+        assert q_promoted.data.dtype == torch.float64
+
+        # Default floating-point dtype behavior when default is changed
+        orig_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            q_f64_default = Quaternion.from_coeffs(1, 0, 0, 0)
+            assert q_f64_default.data.dtype == torch.float64
+        finally:
+            torch.set_default_dtype(orig_default)
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
@@ -756,6 +811,40 @@ class TestQuaternionAverage(BaseTester):
             average_quaternions(Q, w=torch.tensor([1.0, -0.5, 0.5], device=device, dtype=dtype))
         with pytest.raises(ValueError, match="zero"):
             average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
+
+    def test_average_quaternions_weight_shapes(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Issue 6482 reproduction: Quaternion.random(6) with torch.ones(6, 1)
+        q6 = Quaternion.random(6, device=device, dtype=dtype)
+        w6_2d = torch.ones(6, 1, device=device, dtype=dtype)
+        w6_1d = torch.ones(6, device=device, dtype=dtype)
+        out6_2d = average_quaternions(q6, w=w6_2d)
+        out6_1d = average_quaternions(q6, w=w6_1d)
+        self.assert_close(out6_2d.data, out6_1d.data)
+
+        Q = Quaternion.random(3, device=device, dtype=dtype)
+        w_1d = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        w_2d = torch.tensor([[1.0], [2.0], [3.0]], device=device, dtype=dtype)
+
+        # (M, 1) weights must match (M,) weights
+        out_1d = average_quaternions(Q, w=w_1d)
+        out_2d = average_quaternions(Q, w=w_2d)
+        self.assert_close(out_1d.data, out_2d.data)
+
+        # Incompatible shapes must raise ValueError mentioning the expected shape
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 2), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 1, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2,), device=device, dtype=dtype))
 
     def test_member_norm_is_not_a_weight_4974(self, device, dtype):
         # #4974: the members were used as stored, so a member stored as 3 q counted 9 times (the result was scipy's

@@ -598,7 +598,19 @@ class Quaternion(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(torch.tensor([w, x, y, z]))
+        coeffs = (w, x, y, z)
+        for c in coeffs:
+            if isinstance(c, complex):
+                raise ValueError(f"Quaternion coefficients must be real-valued, got complex scalar {c}")
+            if isinstance(c, torch.Tensor) and c.is_complex():
+                raise ValueError(
+                    f"Quaternion coefficients must be real-valued, got complex tensor with dtype {c.dtype}"
+                )
+
+        data = torch.tensor([w, x, y, z])
+        if not data.is_floating_point():
+            data = data.to(torch.get_default_dtype())
+        return cls(data)
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
@@ -765,8 +777,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     r"""Average quaternions as their weighted chordal mean rotation, whatever their signs.
 
     ``q_mean = average_quaternions(Q, w)`` takes a :class:`Quaternion` of ``M`` quaternions, ``(M, 4)``, and optional
-    non-negative weights ``w`` of shape ``(M,)``, uniform by default, and returns their mean rotation as a unit
-    :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
+    non-negative weights ``w`` of shape ``(M,)`` or ``(M, 1)``, uniform by default, and returns their mean rotation as
+    a unit :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
     :meth:`Quaternion.slerp`.
 
     Convention:
@@ -779,8 +791,7 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
 
     Args:
         Q: quaternions of shape ``(M, 4)``.
-        w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
-            ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
+        w: weights of shape ``(M,)`` or ``(M, 1)``. If None, uniform weights are used.
 
     Returns:
         the averaged quaternion, of unit norm and shape ``(1, 4)``.
@@ -811,9 +822,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     if w is None:
         A = (data.T @ data) / M
     else:
+        if w.shape == (M, 1):
+            w = w.squeeze(-1)
+        elif w.shape != (M,):
+            raise ValueError(f"weights shape {tuple(w.shape)} must be ({M},) or ({M}, 1)")
         w = w.to(data.device, dtype=data.dtype)
-        if w.numel() != M:
-            raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
         if bool((w < 0).any()):
             raise ValueError("weights must be non-negative")
         w_sum = w.sum()
