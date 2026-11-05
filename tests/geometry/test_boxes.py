@@ -894,6 +894,7 @@ class TestBoxes2D(BaseTester):
         def export(first, second, written):
             boxes = Boxes([first, second])
             boxes[0, 1:2] = Boxes(written)
+            assert [len(rows) for rows in boxes.to_tensor("xyxy")] == [2, 2]
             return tuple(boxes.to_tensor("xyxy"))
 
         corners = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=torch.float64)
@@ -901,6 +902,47 @@ class TestBoxes2D(BaseTester):
         second = torch.cat([corners + 1.0, corners + 2.0]).requires_grad_()
         written = (corners + 3.0).requires_grad_()
         self.gradcheck(export, (first, second, written))
+
+    def test_padded_helper_zeroes_list_padding_6283(self, device, dtype):
+        from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
+
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        second = torch.tensor([_B0, _B1], device=device, dtype=dtype)
+        exported = _boxes_to_padded_tensor(Boxes.from_tensor([first, second], mode="xyxy"), "xyxy")
+        assert exported.shape == (2, 2, 4)
+        assert (exported[0, 1] == 0).all()
+        self.assert_close(exported[1], second)
+
+    def test_tuple_key_of_device_tensors_on_list_boxes_6283(self, device, dtype):
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        second = torch.tensor([_B0, _B1], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor([first, second], mode="xyxy")
+        selected = boxes[(torch.tensor([1], device=device), torch.tensor([1], device=device))]
+        self.assert_close(selected.to_tensor("xyxy", as_padded_sequence=True), second[1:])
+
+    def test_loaded_list_boxes_keep_their_padding_on_the_cpu_6283(self, device, dtype):
+        first = torch.tensor([_A], device=device, dtype=dtype)
+        second = torch.tensor([_B0, _B1], device=device, dtype=dtype)
+        buffer = io.BytesIO()
+        torch.save(Boxes.from_tensor([first, second], mode="xyxy"), buffer)
+        buffer.seek(0)
+        loaded = torch.load(buffer, map_location=device, weights_only=False)
+        assert loaded._padding.device.type == "cpu"
+        assert loaded._N == [1, 0]
+
+    def test_scalar_selection_of_a_list_view_keeps_its_padding_6283(self, device, dtype):
+        # A scalar selection of an unbatched object keeps a box axis (#6478). The padding mask takes that axis as
+        # ``_valid`` does and stays shared, so a write through the selection marks the row of the parent as real.
+        for key in (1, -2, torch.tensor(1, device=device)):
+            boxes = self._padding_boxes(device, dtype)
+            selected = boxes[0][key]
+            assert selected.shape == (1, 4, 2)
+            assert selected._padding.shape == selected._valid.shape == (1,)
+            assert _same_storage(selected.data, boxes.data)
+            assert _same_storage(selected._valid, boxes._valid)
+            assert _same_storage(selected._padding, boxes._padding)
+            selected[0] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+            self._assert_padding_rows(boxes, [[_A, _NEW, None], _SAMPLE_1], device, dtype)
 
     def test_view_sweep_lists_every_public_method_6283(self):
         listed = {method for method, _ in _IN_PLACE_OPERATIONS.values()} | _LEAVES_THE_OBJECT_ALONE
@@ -3051,6 +3093,15 @@ class TestVideoBoxes(BaseTester):
         assert exported.shape == (2, 1, 2, 4)
         assert exported[0, 0, 1].count_nonzero() == 0
         assert exported[1, 0, 1].count_nonzero() > 0
+
+    def test_integer_video_selection_shares_nothing_6283(self, device):
+        from kornia.augmentation.utils.helpers import _frame_boxes
+
+        boxes = VideoBoxes.from_tensor(torch.ones(2, 3, 1, 4, 2, device=device)).type(torch.long)
+        for derived in (boxes[0], _frame_boxes(boxes)):
+            assert derived.data.is_floating_point()
+            assert not _same_storage(derived.data, boxes.data)
+            assert not _same_storage(derived._valid, boxes._valid)
 
     @pytest.mark.parametrize(
         "rebind",
