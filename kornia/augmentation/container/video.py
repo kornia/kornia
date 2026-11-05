@@ -59,7 +59,12 @@ class VideoSequential(ImageSequential):
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If None, the whole list of args will be processed as a sequence.
+            If True, the whole list of args will be processed as a sequence in a random order. With a non-mix child of
+            weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some may be
+            left out.
+            If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
             :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 

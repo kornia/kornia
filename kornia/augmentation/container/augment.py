@@ -109,6 +109,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                       non-mix child of weight 0 or more than one mix augmentation, that count cannot be filled:
                       children repeat and some may be left out.
                       If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: selection weights for each child, as in
+                              :class:`~kornia.augmentation.container.ImageSequential`.
 
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.

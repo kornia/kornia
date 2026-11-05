@@ -95,10 +95,16 @@ class PatchSequential(ImageSequential):
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
-            If ``True``, the whole list of args will be processed in a random order.
+            If ``True`` and not ``patchwise_apply``, the whole list of args will be processed in a random order. With a
+            non-mix child of weight 0 or more than one mix augmentation, that count cannot be filled: children repeat
+            and some may be left out.
+            If ``True`` and ``patchwise_apply``, 1 to 4 transformations will be selected per patch. Once a patch has
+            drawn a mix augmentation, later patches count no place for one.
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
 
     Convention:
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
