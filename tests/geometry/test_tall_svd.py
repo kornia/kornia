@@ -21,7 +21,7 @@ import torch
 from kornia.core.exceptions import ValueCheckError
 from kornia.geometry import find_essential, fit_plane, solve_pnp_dlt
 
-from testing.base import BaseTester
+from testing.base import DYNAMIC_EXPORT_UNAVAILABLE_REASON, BaseTester, dynamic_export_is_available
 
 
 class TestTallCudaSvd(BaseTester):
@@ -118,12 +118,17 @@ class TestTallCudaSvd(BaseTester):
         with pytest.raises(ValueCheckError, match="not collinear"):
             fit_plane(collinear)
 
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("operation", ["plane", "essential"])
     def test_dynamic_export_keeps_point_count_range_6559(self, operation, device, dtype):
         # The tall-CUDA size checks must not become guards that narrow an exported dynamic point count.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("Checked in float32/float64")
-        count = torch.export.Dim("count", min=9, max=100000)
+        if device.type == "mps" and operation == "plane":
+            pytest.skip("Exporting fit_plane on MPS adds a guard of its own, 6 * count < 8192")
+        # Non-strict, the default from torch 2.9: strict export in 2.5 cannot trace Hyperplane. The range starts at
+        # 10 because torch 2.5 adds a guard count > 9 to find_essential, with or without the tall-CUDA reduction.
+        count = torch.export.Dim("count", min=10, max=100000)
 
         def scene(n):
             points = torch.rand(2, n, 3, device=device, dtype=dtype) * 2 - 1
@@ -137,8 +142,8 @@ class TestTallCudaSvd(BaseTester):
                     plane = fit_plane(points)
                     return plane.normal.data, plane.offset.data
 
-            program = torch.export.export(Plane(), (scene(40),), dynamic_shapes=({1: count},)).module()
-            for n in (40, 33, 32, 20, 9):
+            program = torch.export.export(Plane(), (scene(40),), dynamic_shapes=({1: count},), strict=False).module()
+            for n in (40, 33, 32, 20, 10):
                 points = scene(n)
                 normal, offset = program(points)
                 distances = torch.einsum("bi,bni->bn", normal, points) + offset[:, None]
@@ -155,8 +160,10 @@ class TestTallCudaSvd(BaseTester):
                 camera2 = camera + camera.new_tensor([0.4, 0.1, 0.05])
                 return camera[..., :2] / camera[..., 2:], camera2[..., :2] / camera2[..., 2:]
 
-            program = torch.export.export(Essential(), views(40), dynamic_shapes=({1: count}, {1: count})).module()
-            for n in (40, 33, 32, 12, 9):
+            program = torch.export.export(
+                Essential(), views(40), dynamic_shapes=({1: count}, {1: count}), strict=False
+            ).module()
+            for n in (40, 33, 32, 12, 10):
                 image1, image2 = views(n)
                 candidates = program(image1, image2)
                 ones = torch.ones_like(image1[..., :1])
