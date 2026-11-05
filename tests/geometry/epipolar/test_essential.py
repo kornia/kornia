@@ -1713,6 +1713,15 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
             assert torch.equal(out, ref)
             assert torch.equal(out.signbit(), ref.signbit())
 
+    def test_value_keeps_a_negative_zero_6251(self, device, dtype):
+        from kornia.geometry.epipolar.essential import _with_derivatives_of
+
+        value = torch.tensor([-0.0, 0.0, -1.0], device=device, dtype=dtype)
+        smooth = torch.ones(3, device=device, dtype=dtype, requires_grad=True)
+        out = _with_derivatives_of(value, smooth)
+        assert torch.equal(out, value)
+        assert torch.equal(out.signbit(), value.signbit())
+
     def test_no_grad_call_records_nothing_6251(self, device, dtype):
         E_mat = _exact_essential_6251(4, device, dtype).requires_grad_()
         with torch.no_grad():
@@ -1818,15 +1827,14 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
 
     def test_gradient_follows_the_float64_one_in_every_dtype_6251(self, device, dtype):
         # float32 is decomposed in float64 and half precision in float32, so the gradient keeps that precision.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64 for the reference")
+        # The reference comes from the CPU: MPS has no float64.
         tolerances = {torch.float16: 1e-2, torch.bfloat16: 2e-2, torch.float32: 1e-5, torch.float64: 1e-12}
         E_mat = _exact_essential_6251(4, device, dtype)
         jacobian = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat)
         assert jacobian.dtype == dtype
-        expected = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat.to(torch.float64))
+        expected = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat.cpu().double())
         atol = tolerances[dtype]
-        self.assert_close(jacobian.to(torch.float64), expected, atol=atol, rtol=atol)
+        self.assert_close(jacobian.cpu().double(), expected, atol=atol, rtol=atol)
 
     def test_forward_mode_and_torch_func_6251(self, device):
         if device.type == "mps":
