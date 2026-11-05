@@ -1661,8 +1661,8 @@ class TestIntensityInputClamping(BaseTester):
         (grad,) = torch.autograd.grad(out.sum(), image)
         self.assert_close(grad, torch.ones_like(image))
 
-    # RandomPlasmaContrast has no neutral factor, but a replayed flat map of 0.25 gives a contrast of 1, which returns the
-    # input with its exact 0 and 1 pixels on the bounds of the clamp.
+    # RandomPlasmaContrast has no neutral factor, but a replayed flat map of 0.25 gives a contrast of 1, which returns
+    # the input with its exact 0 and 1 pixels on the bounds of the clamp.
     def test_plasma_contrast_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
         row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
         image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
