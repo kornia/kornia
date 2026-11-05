@@ -24,6 +24,7 @@ import operator
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.linalg import euclidean_distance
 
 
@@ -259,7 +260,8 @@ class KMeans:
             one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
             if work_dtype.is_floating_point:
-                cluster_sums = one_hot.to(work_dtype).t() @ X_work
+                with _autocast_disabled(X.device.type):
+                    cluster_sums = one_hot.to(work_dtype).t() @ X_work
             else:
                 # integer sums are exact with scatter_add_; MPS lacks integer matmul and index_add_ on torch 2.5
                 index = cluster_assignment[:, None].expand(-1, X_work.shape[1])

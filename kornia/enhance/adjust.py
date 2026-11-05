@@ -862,7 +862,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     Args:
         input: image or batched images to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
@@ -914,11 +914,11 @@ def solarize(
     Args:
         input: image torch.Tensor with shapes like ``(*, C, H, W)`` to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
         additions: in the closed range [-0.5, 0.5], endpoints included.
             If None, no addition will be performed.
-            If int or one element torch.Tensor, same addition will be added across the whole batch.
+            If a float or one-element torch.Tensor, same addition will be added across the whole batch.
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
