@@ -697,7 +697,9 @@ class TestOperationAfterTo6297(BaseTester):
     def test_builtin_policy(self, make_policy, device, dtype):
         moved = make_policy().to(device=device, dtype=dtype)
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        assert moved(image).device == device
+        output = moved(image)
+        assert output.device == device
+        self.assert_close(moved(image, params=moved._params), output)
         params = moved.forward_parameters(image.shape)
         self.assert_close(moved(image, params=params), moved(image, params=params))
 
@@ -790,6 +792,11 @@ class TestOperationAfterTo6297(BaseTester):
         wrapper = operation(None, 1.0, symmetric_megnitude=False)
         factor = wrapper.forward_parameters(torch.Size([2, 3, 8, 8]), mag=0.25)[wrapper._factor_name]
         assert factor.shape == (2,)
+
+    @pytest.mark.device_agnostic
+    def test_factor_name_the_generator_lacks_raises_at_construction(self):
+        with pytest.raises(AttributeError, match="nonsense"):
+            OperationBase(K.RandomRotation(30.0), initial_magnitude=[("nonsense", 1.0)])
 
     @pytest.mark.device_agnostic
     def test_state_dict_keys_stay_the_same(self):
@@ -909,6 +916,7 @@ class TestLearnableMagnitudeRangeCheckpoint6297(BaseTester):
             state["magnitude_range"] = generator_range.clone()
         restored = type(wrapper).__new__(type(wrapper))
         restored.__setstate__(state)
+        assert "magnitude_range" not in restored.__dict__
         assert restored.magnitude_range is generator_range
         assert "magnitude_range" not in restored.state_dict()
         assert "magnitude_range" not in dict(restored.named_parameters())
