@@ -291,6 +291,8 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         # bins as a float16 one, whatever its own dtype.
         if device.type not in ("cpu", "cuda", "mps"):
             pytest.skip(f"no float16 and bfloat16 autocast on {device.type}")
+        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16 autocast")
         torch.manual_seed(0)
         patches = torch.rand(8, 1, 32, 32).to(device).requires_grad_(True)
         model = PatchDominantGradientOrientation(32).to(device)
