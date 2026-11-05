@@ -32,7 +32,7 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _torch_grid_sample
+from kornia.core.utils import _samples_half_in_float32, _torch_grid_sample
 from kornia.filters import filter2d_separable
 from kornia.filters.kernels import get_gaussian_kernel1d
 
@@ -63,6 +63,8 @@ def elastic_transform2d(
     .. image:: _static/img/elastic_transform2d.png
 
     Convention:
+        - a ``float16``/``bfloat16`` image with a noise field of its dtype builds its grid and samples in ``float32``
+          on every device and returns the input dtype: a half-precision grid is off by half a pixel or more at 256 px
         - image: ``(B, C, H, W)``; ``noise``: ``(B, 2, H, W)`` with
           channel 0 the x- and channel 1 the y-displacement of the sampling
           grid (positive x-noise shifts image content left)
@@ -121,6 +123,11 @@ def elastic_transform2d(
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(noise, ["B", "C", "H", "W"])
 
+    # A half image and field are warped in float32: a half-precision sampling grid is off by half a pixel or more.
+    out_dtype = image.dtype
+    if _samples_half_in_float32(image) and noise.dtype == image.dtype:
+        image, noise = image.float(), noise.float()
+
     device, dtype = image.device, image.dtype
 
     # Normalise sigma to a (B, 2) = (sigma_y, sigma_x) tensor, matching get_gaussian_kernel2d.
@@ -171,4 +178,6 @@ def elastic_transform2d(
     identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
     grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
     grid = grid.to(image.dtype)
-    return _torch_grid_sample(image, grid + disp, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return _torch_grid_sample(image, grid + disp, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+        out_dtype
+    )

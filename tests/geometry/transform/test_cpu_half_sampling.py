@@ -108,7 +108,7 @@ class TestHalfSampling(BaseTester):
             return aug(image)
         raise AssertionError(operation)
 
-    # These operations hand grid_sample a grid they built in the image dtype; only the sampling moves to float32.
+    # Whatever these operations build, their samples are what float32 grid_sample returns for that grid.
     @pytest.mark.parametrize(
         "operation", ["homography", "cached_homography", "elastic", "tps", "depth", "depth_warper"]
     )
@@ -180,11 +180,68 @@ class TestHalfSampling(BaseTester):
             return homography_warp3d(
                 volume, matrix.to(param_dtype).to(image), (64, 32, 32), align_corners=align_corners
             )
+        return TestHalfSampling._normalized_grid_warp(image, operation, align_corners, param_dtype)
+
+    @staticmethod
+    def _normalized_grid_warp(image, operation, align_corners, param_dtype):
+        # The warps that take a normalized transform, a field or a depth map, rounded as in ``_float32_warp``.
+        batch, _, height, width = image.shape
+        options = {"align_corners": align_corners}
+        normalized = torch.tensor([[[0.98, -0.1, 0.02], [0.1, 0.98, -0.01], [0.0, 0.0, 1.0]]], dtype=torch.float64)
+        normalized = normalized.to(param_dtype).to(image)
+        if operation == "homography_normalized":
+            return homography_warp(image, normalized, (height, width), **options)
+        if operation == "homography_warper":
+            return HomographyWarper(height, width, **options)(image, normalized)
+        if operation == "homography_warper_cached":
+            warper = HomographyWarper(height, width, **options)
+            warper.grid = warper.grid.to(image.device)
+            warper.precompute_warp_grid(normalized)
+            return warper(image)
+        if operation == "elastic_noise":
+            generator = torch.Generator().manual_seed(0)
+            noise = torch.rand(batch, 2, height, width, generator=generator, dtype=torch.float64) * 2 - 1
+            return elastic_transform2d(image, noise.to(param_dtype).to(image), **options)
+        if operation == "tps_bent":
+            centers = torch.tensor([[[-1.0, -1.0], [1.0, -1.0], [0.0, 0.5]]], dtype=torch.float64)
+            weights = torch.tensor([[[0.02, -0.01], [-0.03, 0.02], [0.01, 0.03]]], dtype=torch.float64)
+            affine = torch.tensor([[[0.01, -0.02], [0.98, 0.05], [-0.04, 1.02]]], dtype=torch.float64)
+            centers, weights, affine = (t.to(param_dtype).to(image) for t in (centers, weights, affine))
+            return warp_image_tps(image, centers, weights, affine, **options)
+        generator = torch.Generator().manual_seed(0)
+        depth = 1.0 + 0.2 * torch.rand(batch, 1, height, width, generator=generator, dtype=torch.float64)
+        depth = depth.to(param_dtype).to(image)
+        intrinsics = torch.tensor([[200.0, 0.0, 128.0], [0.0, 200.0, 128.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        pose = torch.eye(4, dtype=torch.float64)[None]
+        pose[0, 0, 3] = 0.02
+        if operation == "depth_pose":
+            return warp_frame_depth(
+                image, depth, pose.to(param_dtype).to(image), intrinsics[None].to(param_dtype).to(image)
+            )
+        if operation == "depth_cameras":
+            embedded = torch.eye(4, dtype=torch.float64)[None]
+            embedded[0, :3, :3] = intrinsics
+            size = torch.tensor([float(height)], dtype=torch.float64).to(param_dtype).to(image)
+
+            def camera(extrinsics):
+                return PinholeCamera(
+                    embedded.to(param_dtype).to(image), extrinsics.to(param_dtype).to(image), size, size
+                )
+
+            warper = DepthWarper(camera(torch.eye(4, dtype=torch.float64)[None]), height, width)
+            return warper.compute_projection_matrix(camera(pose))(depth, image)
         raise AssertionError(operation)
 
     @pytest.mark.parametrize(
         "operation",
         [
+            "homography_normalized",
+            "homography_warper",
+            "homography_warper_cached",
+            "elastic_noise",
+            "tps_bent",
+            "depth_pose",
+            "depth_cameras",
             "affine",
             "affine_fill",
             "perspective",
@@ -198,9 +255,9 @@ class TestHalfSampling(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_half_warp_matches_float64(self, device, dtype, operation, align_corners):
         # torch's CPU half grid_sample is corrupt from about 128 px, and on every device a half grid is off by more
-        # than half a pixel at 256 px in bfloat16 (#5751, #5814): the matrix warps and remap build their grid and
-        # sample in float32, so they agree with a float64 run of the same half inputs to the output rounding. The
-        # float64 reference runs on the CPU, as MPS has no float64.
+        # than half a pixel at 256 px in bfloat16 (#5751, #5814): every warp builds its grid and samples in float32,
+        # so it agrees with a float64 run of the same half inputs to the output rounding. The float64 reference runs
+        # on the CPU, as MPS has no float64.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("float16/bfloat16 warps run in float32")
         if operation.endswith("3d") and not supports_bilinear_3d_grid_sample(device, torch.float32):
@@ -293,6 +350,14 @@ class TestHalfSampling(BaseTester):
             warp_affine(image, matrix[:, :2], (4, 4))
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|same type|grid_sampler_2d_cpu not implemented)"):
             warp_perspective(image, matrix, (4, 4))
+
+    def test_mismatched_normalized_homography_dtype(self, device, dtype):
+        # Only a transform of the image's own half dtype moves to float32; a mismatch is still rejected.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 warps run in float32")
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            homography_warp(image, torch.eye(3, device=device)[None], (8, 8))
 
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
     def test_every_device_samples_half_in_float32(self, half):

@@ -1,0 +1,1 @@
+`homography_warp` with a normalized homography, `HomographyWarper`, `elastic_transform2d`, `warp_image_tps`, `warp_frame_depth`, `DepthWarper` and `depth_warp` now build their sampling grid and sample in float32 for a float16 or bfloat16 call on every device, and return the input dtype. In bfloat16 at 256 px their results were off by 0.46 to 1.0 on a [0, 1] image.

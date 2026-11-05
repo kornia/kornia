@@ -1031,7 +1031,10 @@ class TestWarpPerspective(BaseTester):
 
         Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
-        self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
+        # A half warp samples in float32 on the normalized inverse the caller rounded, so it inherits that rounding:
+        # a float64 warp of the same rounded inverse is off from these literals by 0.0029 in float16, 0.053 in bfloat16.
+        atol = {torch.float16: 4e-3, torch.bfloat16: 7e-2}.get(dtype, 1e-4)
+        self.assert_close(hw, expected, atol=atol, rtol=1e-4)
 
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("align_corners", [True, False])

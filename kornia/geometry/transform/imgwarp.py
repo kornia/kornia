@@ -2319,6 +2319,8 @@ def homography_warp(
           exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
         - ``src_homo_dst`` has the batch of ``patch_src``: a ``(1, 3, 3)`` homography is not shared by a larger
           batch
+        - a ``float16``/``bfloat16`` patch with a homography of its dtype builds its grid and samples in ``float32`` on
+          every device and returns the input dtype
         - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32, also
           under a half default dtype and in a caller's autocast region, and then cast to the homography's dtype
         - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
@@ -2375,6 +2377,9 @@ def homography_warp(
             f"src_H_dst.device: {src_homo_dst.device}."
         )
     if normalized_homography:
+        out_dtype = patch_src.dtype
+        if _runs_in_float32(patch_src, src_homo_dst):
+            patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
         height, width = dsize
         if normalized_coordinates:
             grid = create_meshgrid(
@@ -2396,7 +2401,7 @@ def homography_warp(
 
         return _torch_grid_sample(
             patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-        )
+        ).to(out_dtype)
     return warp_perspective(
         patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )

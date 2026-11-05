@@ -662,16 +662,17 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
         # The default normalized path is grid_sample over warp_grid of a normalized meshgrid, bit for bit; the
-        # pixel-mode normalization must not reach it (#6170).
+        # pixel-mode normalization must not reach it (#6170). A half warp does all of it in float32.
+        wide = torch.promote_types(dtype, torch.float32)
         image = (torch.arange(2 * 5 * 6, device=device, dtype=dtype).view(1, 2, 5, 6) % 7) / 7
         src_homo_dst = torch.tensor(
             [[[0.95, 0.05, 0.1], [-0.03, 1.05, -0.08], [0.02, -0.01, 1.0]]], device=device, dtype=dtype
         )
         grid = kornia.geometry.create_meshgrid(
-            4, 3, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
+            4, 3, normalized_coordinates=True, device=device, dtype=wide, align_corners=align_corners
         )
-        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst)
-        expected = _torch_grid_sample(image, warped_grid, align_corners=align_corners)
+        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst.to(wide))
+        expected = _torch_grid_sample(image.to(wide), warped_grid, align_corners=align_corners).to(dtype)
 
         actual = kornia.geometry.transform.homography_warp(image, src_homo_dst, (4, 3), align_corners=align_corners)
         warper = kornia.geometry.transform.HomographyWarper(4, 3, align_corners=align_corners)
@@ -680,8 +681,10 @@ class TestHomographyWarper(BaseTester):
         precomputed = warper(image)
         # the cached path warps the module's own base grid, built once in the default dtype
         expected_precomputed = _torch_grid_sample(
-            image, kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst), align_corners=align_corners
-        )
+            image.to(wide),
+            kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst.to(wide)),
+            align_corners=align_corners,
+        ).to(dtype)
 
         self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(direct, expected, rtol=0, atol=0)

@@ -63,7 +63,9 @@ class TestDepthWarper(BaseTester):
         dst_proj_src_expected[..., 0, -2] += pinhole_src.cx
         dst_proj_src_expected[..., 1, -2] += pinhole_src.cy
         dst_proj_src_expected[..., 0, -1] += 1.0  # offset to x-axis
-        self.assert_close(dst_proj_src, dst_proj_src_expected)
+        # half-precision cameras compose in float32
+        assert dst_proj_src.dtype == torch.promote_types(dtype, torch.float32)
+        self.assert_close(dst_proj_src.to(dtype), dst_proj_src_expected)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_warp_grid_offset_x1_depth1(self, batch_size, device, dtype):
