@@ -577,8 +577,9 @@ def _project_to_essential_differentiable(E_mat: torch.Tensor) -> torch.Tensor:
 def _with_derivatives_of(value: torch.Tensor, smooth: torch.Tensor) -> torch.Tensor:
     """Return ``value`` with the derivatives of ``smooth``, another expression of the same quantity.
 
-    This is the detached-value pattern of #4229. ``smooth.detach() - smooth`` is ``+0.0``; subtracting it, unlike adding
-    it, also leaves a ``-0.0`` of ``value`` as it is, so that ``value`` stays bitwise unchanged.
+    This is the detached-value pattern of #4229. For a finite ``smooth``, ``smooth.detach() - smooth`` is ``+0.0``;
+    subtracting it, unlike adding it, also leaves a ``-0.0`` of ``value`` as it is, so that ``value`` stays bitwise
+    unchanged.
     """
     return value - (smooth.detach() - smooth).to(value.dtype)
 
