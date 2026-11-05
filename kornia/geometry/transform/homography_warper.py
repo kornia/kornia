@@ -255,8 +255,13 @@ class HomographyWarper(BaseWarper):
                 _warped_grid = _normalize_warped_pixel_grid(
                     _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
                 )
-                if warped_grid_dtype is not None and not in_float32:
-                    _warped_grid = _warped_grid.to(warped_grid_dtype)
+            # A patch of another dtype than the homography's is rejected, as in the direct path.
+            to_homography_dtype = not self.normalized_coordinates or warped_grid_dtype in (
+                torch.float16,
+                torch.bfloat16,
+            )
+            if warped_grid_dtype is not None and not in_float32 and to_homography_dtype:
+                _warped_grid = _warped_grid.to(warped_grid_dtype)
             warped_patch = _torch_grid_sample(
                 patch_src.float() if in_float32 else patch_src,
                 _warped_grid.float() if in_float32 else _warped_grid,

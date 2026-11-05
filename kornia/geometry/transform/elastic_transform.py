@@ -127,6 +127,10 @@ def elastic_transform2d(
     out_dtype = image.dtype
     if _samples_half_in_float32(image) and noise.dtype == image.dtype:
         image, noise = image.float(), noise.float()
+        if isinstance(sigma, torch.Tensor) and _samples_half_in_float32(sigma):
+            sigma = sigma.float()
+        if isinstance(alpha, torch.Tensor) and _samples_half_in_float32(alpha):
+            alpha = alpha.float()
 
     device, dtype = image.device, image.dtype
 

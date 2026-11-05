@@ -202,6 +202,12 @@ class TestHalfSampling(BaseTester):
             generator = torch.Generator().manual_seed(0)
             noise = torch.rand(batch, 2, height, width, generator=generator, dtype=torch.float64) * 2 - 1
             return elastic_transform2d(image, noise.to(param_dtype).to(image), **options)
+        if operation == "elastic_tensor_parameters":
+            generator = torch.Generator().manual_seed(0)
+            noise = torch.rand(batch, 2, height, width, generator=generator, dtype=torch.float64) * 2 - 1
+            sigma = torch.tensor([32.0, 16.0], dtype=torch.float64).to(param_dtype).to(image)
+            alpha = torch.tensor([1.1, 0.9], dtype=torch.float64).to(param_dtype).to(image)
+            return elastic_transform2d(image, noise.to(param_dtype).to(image), sigma=sigma, alpha=alpha, **options)
         if operation == "tps_bent":
             centers = torch.tensor([[[-1.0, -1.0], [1.0, -1.0], [0.0, 0.5]]], dtype=torch.float64)
             weights = torch.tensor([[[0.02, -0.01], [-0.03, 0.02], [0.01, 0.03]]], dtype=torch.float64)
@@ -239,6 +245,7 @@ class TestHalfSampling(BaseTester):
             "homography_warper",
             "homography_warper_cached",
             "elastic_noise",
+            "elastic_tensor_parameters",
             "tps_bent",
             "depth_pose",
             "depth_cameras",
@@ -355,9 +362,24 @@ class TestHalfSampling(BaseTester):
         # Only a transform of the image's own half dtype moves to float32; a mismatch is still rejected.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("float16/bfloat16 warps run in float32")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("this backend accepts a mismatched grid dtype")
         image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             homography_warp(image, torch.eye(3, device=device)[None], (8, 8))
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_cached_half_homography_rejects_a_float32_patch(self, device, dtype, normalized_coordinates):
+        # The direct path rejects this, so the cached path, whose grid is float32 inside, does too.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 warps run in float32")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("this backend accepts a mismatched grid dtype")
+        warper = HomographyWarper(8, 8, normalized_coordinates=normalized_coordinates)
+        warper.grid = warper.grid.to(device)
+        warper.precompute_warp_grid(torch.eye(3, device=device, dtype=dtype)[None])
+        with pytest.raises(RuntimeError):
+            warper(torch.rand(1, 1, 8, 8, device=device))
 
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
     def test_every_device_samples_half_in_float32(self, half):
