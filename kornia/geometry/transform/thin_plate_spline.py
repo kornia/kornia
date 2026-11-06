@@ -105,7 +105,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           identity mapping gives zero kernel weights and an identity affine up to solver round-off, and any pairs
           related by an affine map give zero kernel weights, except a constant map of more than three points, whose
           equal ``points_dst`` make the system singular
-        - a caller's autocast region does not change the result, outside TorchScript
+        - for float32 points, a caller's autocast region does not change the result, outside TorchScript
           (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
           dtype other than the region's)
         - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
@@ -196,7 +196,7 @@ def warp_points_tps(
           order; no normalization is applied, and the output is in the same frame, not clamped
         - ``kernel_centers`` must be the second argument passed to :func:`get_tps_transform`
           (see its Convention block)
-        - a caller's autocast region does not change the result, outside TorchScript
+        - for float32 points, a caller's autocast region does not change the result, outside TorchScript
           (in the region, mixed float32 and half points meet in float32)
 
     Args:
@@ -291,7 +291,7 @@ def warp_image_tps(
           :math:`[-1, 1]` sample the padding. Pixel-space control points silently give a wrong
           warp of the right shape
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
-        - a caller's autocast region does not change the sampling positions, outside TorchScript
+        - for float32 points, a caller's autocast region does not change the sampling positions, outside TorchScript
           (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
           ``image`` of a dtype other than the region's)
 
