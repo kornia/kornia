@@ -864,6 +864,40 @@ class TestConventionImageSequential(BaseTester):
             assert selected == [names[i] for i in expected]
             assert torch.equal(state, torch.get_rng_state())
 
+    @pytest.mark.parametrize(
+        ("weights", "random_apply", "num_mix"),
+        [
+            (None, True, 1),
+            ([0.5, 0.3, 0.2, 0.5], True, 1),
+            ([7.0, 2.0, 1.0, 4.0], True, 1),
+            ([7.0, 0.0, 3.0, 1.0], 3, 1),
+            ([5.0, 5.0, 5.0, 5.0, 5.0], 4, 2),
+        ],
+    )
+    def test_random_apply_stays_within_the_torch_multinomial_limit_6114(self, weights, random_apply, num_mix, monkeypatch):
+        # The torch.multinomial docs limit a draw without replacement to the nonzero weights. The place of a certain mix
+        # insertion is reserved, not drawn past that limit and overwritten.
+        real_multinomial = torch.multinomial
+        reserved = []
+
+        def checked_multinomial(input, num_samples, replacement=False, **kwargs):
+            assert replacement or num_samples <= int(torch.count_nonzero(input))
+            reserved.append(num_samples)
+            return real_multinomial(input, num_samples, replacement=replacement, **kwargs)
+
+        monkeypatch.setattr(torch, "multinomial", checked_multinomial)
+        seq = K.ImageSequential(
+            *self._random_apply_members(num_mix), random_apply=random_apply, random_apply_weights=weights
+        )
+        count = len(seq) if random_apply is True else random_apply
+        for seed in range(10):
+            torch.manual_seed(seed)
+            children, mix_added = seq.get_random_forward_sequence()
+            names = [name for name, _ in children]
+            assert mix_added
+            assert len(names) == len(set(names)) == count
+        assert reserved
+
     @staticmethod
     def _exponential_stream_is_known():
         # Without replacement, and for a count of 1, torch.multinomial scores the weights with Tensor.exponential_,

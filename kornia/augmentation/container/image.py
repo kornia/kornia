@@ -270,10 +270,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum().item()
-        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
-        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
-        # place more can then be drawn without replacement. That place is last because the draw keeps the top
-        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights, as its docs
+        # say. A certain mix insertion below takes one place, so one place more than those can be filled without
+        # replacement; the draw leaves that place to the insertion.
         num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
         num_mix = len(mix_indices) if with_mix else 0
         mix_place = int(num_mix != 0 and num_mix + num_samples >= len(self))
@@ -287,9 +286,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             self._warn_if_sum_rule_changes_a_draw(self.random_apply, total_weight, num_nonzero, num_mix)
         # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
         if total_weight == 0 or num_samples == 0:
+            count = 0
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
-            indices = torch.multinomial(multinomial_weights, num_samples, replacement=replacement)
+            count = num_samples
+            drawn = num_samples if replacement else min(num_samples, num_nonzero)
+            indices = torch.multinomial(multinomial_weights, drawn, replacement=replacement)
 
         mix_added = False
         # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
@@ -297,7 +299,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             with_mix
             and num_samples > 0
             and len(mix_indices) != 0
-            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+            and (torch.rand(1) < ((len(mix_indices) + count) / len(self))).item()
         ):
             # Draw among the mix members only: an ordinary member with weight 0 is also 0 in
             # ``multinomial_weights`` and must not be inserted in their place.
@@ -306,6 +308,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             mix_idx = torch.multinomial(mix_mask, 1)
             if len(indices) == 0:
                 indices = mix_idx
+            elif len(indices) < count:
+                indices = torch.cat([indices, mix_idx])
             else:
                 indices[-1] = mix_idx
             indices = indices[torch.randperm(len(indices))]
