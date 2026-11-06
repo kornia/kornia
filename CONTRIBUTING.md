@@ -13,6 +13,8 @@ Above all, we ask you to care. Good work done with care makes the world better; 
 
 The rest of this guide contains practical and technical guidance so nobody has to guess. If you have experience with open source, you probably already know most of it.
 
+Coding agents should also follow the [execution checklist in AGENTS.md](AGENTS.md).
+
 ## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
@@ -25,186 +27,77 @@ The rest of this guide contains practical and technical guidance so nobody has t
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
-- Pull requests are marked stale after 15 quiet days to keep the queue usable. **We do not close pull requests for inactivity** — the label is a triage signal and nothing else, and it clears itself as soon as you comment or push. Maintainers can add `pinned` when a pull request should be exempt from the sweep entirely. A quiet pull request is often waiting on us, so take the label as a nudge to ping us, not as a deadline.
+- Review and closure decisions belong to maintainers; see [Review Process](#review-process).
 
 ## Ways to Contribute
 
-1. **Ask/Answer questions:**
-   - [GitHub Discussions](https://github.com/kornia/kornia/discussions)
-   - `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
-   - [Discord](https://discord.gg/HfnywwpBnD)
-   - Don't use GitHub issues for Q&A.
-
-2. **Report bugs** via [GitHub issues](https://github.com/kornia/kornia/issues):
-   - Search for existing issues first.
-   - Use the bug report template.
-   - Include: clear description, reproduction steps, package versions, and code sample.
-
-3. **Fix bugs or add features:**
-   - Check [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) for starting points.
-   - Follow the [development setup](#developing-kornia) below.
-   - See the [Pull Request](#pull-request) section for practical guidance.
-
-4. **Donate resources:**
-   - [Open Collective](https://opencollective.com/kornia)
-   - [GitHub Sponsors](https://github.com/sponsors/kornia)
-   - We're looking for CUDA server donations for testing.
+- Ask or answer questions in [GitHub Discussions](https://github.com/kornia/kornia/discussions),
+  [PyTorch Discuss](https://discuss.pytorch.org) (`#kornia`), or [Discord](https://discord.gg/HfnywwpBnD).
+  Use issues for bug reports rather than Q&A.
+- Report bugs through the [issue templates](https://github.com/kornia/kornia/issues/new/choose),
+  with a minimal reproduction and the requested environment details. Follow the
+  [privacy-conscious diagnostic guidance](TESTING.md#diagnosing-reported-problems).
+- Find work in the [roadmap](ROADMAP.md#areas-seeking-contributors) and
+  [help wanted issues](https://github.com/kornia/kornia/labels/help%20wanted); check reservations first.
+- Support the project through [Open Collective](https://opencollective.com/kornia),
+  [GitHub Sponsors](https://github.com/sponsors/kornia), or CUDA testing resources.
 
 ## Developing kornia
 
 ### Setup
 
-1. **Fork** the [repository](https://github.com/kornia/kornia/fork)
+Fork [kornia](https://github.com/kornia/kornia/fork), clone your fork, and branch from upstream:
 
-2. **Clone your fork** and add upstream:
-    ```bash
-    $ git clone git@github.com:<your GitHub username>/kornia.git
-    $ cd kornia
-    $ git remote add upstream https://github.com/kornia/kornia.git
-    ```
+```bash
+git clone git@github.com:<your GitHub username>/kornia.git
+cd kornia
+git remote add upstream https://github.com/kornia/kornia.git
+git fetch upstream
+git switch -c fix/my-fix upstream/main
+```
 
-3. **Create a branch** (don't work on `main`):
-   ```bash
-   git checkout upstream/main -b feat/foo_feature
-   # or
-   git checkout upstream/main -b fix/bar_bug
-   ```
+Install [Pixi](https://pixi.sh), then set up the project environment:
 
-4. **Development environment**
+```bash
+pixi install
+pixi run -e default install
+# Optional versioned environments
+pixi install -e py312
+pixi run -e py312 install
+pixi install -e py313
+pixi run -e py313 install
+# CUDA development
+pixi run -e cuda install
+```
 
-    We use [pixi](https://pixi.sh) for package and environment management.
+Python dependencies under test live in `.venv` or `.venv-py*`, not `.pixi`.
+Before CUDA work, read the [environment and CUDA installation details](TESTING.md#environment-and-validation-tasks),
+including resynchronization, Windows wheel replacement, and availability checks.
 
-    **Install Pixi:**
+### Development Workflow
 
-    ```bash
-    # On Linux/macOS
-    curl -fsSL https://pixi.sh/install.sh | bash
+Keep each PR focused. Search for existing Kornia operations, follow nearby contracts,
+and run focused validation before broad checks:
 
-    # On Windows (PowerShell)
-    irm https://pixi.sh/install.ps1 | iex
+```bash
+pixi run test-module tests/path/to/test_file.py --device=cpu --dtype=float32,float64
+pixi run pre-commit-all
+pixi run typecheck
+```
 
-    # Or using conda/mamba
-    conda install -c conda-forge pixi
-    ```
-
-    **Set up the development environment:**
-
-    ```bash
-    # Create the default Pixi environment, then install development dependencies
-    pixi install
-    pixi run -e default install
-
-    # For specific Python versions
-    pixi install -e py312  # Python 3.12
-    pixi run -e py312 install
-    pixi install -e py313  # Python 3.13
-    pixi run -e py313 install
-
-    # For CUDA development
-    pixi run -e cuda install
-    ```
-
-    The `py312` and `py313` environments use isolated `.venv-py312` and `.venv-py313` project environments automatically.
-
-    **Available tasks:**
-
-    kornia provides several tasks via pixi for common development workflows:
-
-    ```bash
-    # Installation
-    pixi run -e default install # Install dev dependencies
-    pixi run -e default install-docs # Install dev + docs dependencies
-
-    # Testing
-    pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
-    pixi run test-f32         # Run tests with float32
-    pixi run test-f64         # Run tests with float64
-    pixi run test-slow        # Run slow tests
-    pixi run test-quick       # Run quick tests (same as `pixi run test`)
-    pixi run test-module tests/<path>  # Run a focused test path
-    pixi run test-half        # Run CPU float16/bfloat16 tests
-
-    # CUDA testing (requires cuda environment)
-    pixi run -e cuda test-cuda      # Run tests on CUDA
-    pixi run -e cuda test-cuda-f32  # Run CUDA tests with float32
-    pixi run -e cuda test-cuda-f64  # Run CUDA tests with float64
-    pixi run -e cuda test-cuda-half # Run isolated CUDA float16/bfloat16 tests
-
-    # Code quality
-    pixi run lint             # Run ruff linting
-    pixi run pre-commit-all   # Run all repository pre-commit checks
-    pixi run pre-commit-install  # Install the pre-commit Git hook
-    pixi run typecheck        # Run type checking with ty
-    pixi run doctest          # Run doctests
-
-    # Documentation
-    pixi run -e default build-docs # Build documentation
-
-    # Utilities
-    pixi run clean            # Clean Python cache files
-    ```
-
-    **Environment variables for tests:**
-
-    Tests can be configured using environment variables:
-
-    ```bash
-    # Set device (cpu, cuda, mps, tpu)
-    export KORNIA_TEST_DEVICE=cuda
-
-    # Set dtype (float32, float64, float16, bfloat16)
-    export KORNIA_TEST_DTYPE=float32
-
-    # Run slow tests
-    export KORNIA_TEST_RUNSLOW=true
-
-    # Then run tests
-    pixi run test
-    ```
-
-    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run -e default install`.
-
-    **CUDA:** Run `pixi run -e cuda install` to install the locked PyTorch as a CUDA build into the project `.venv`,
-    which is also used by `pixi run -e cuda test-cuda`. PyPI's Linux wheels are already CUDA builds, so on Linux the
-    task only syncs the lock, reinstalling every package so that removing a stale wheel cannot take files a locked
-    wheel needs. PyPI's Windows wheels are CPU-only, so on Windows the task then replaces torch with the same version
-    from the PyTorch CUDA index; a lock update to a new PyTorch has to update that version and index in `pixi.toml`
-    and the index in `pyproject.toml` too. Pixi's `.pixi/envs/cuda` supplies the tools, not the Python dependencies
-    under test. Commands run with `-e cuda` do not synchronize `.venv` automatically, so re-run the CUDA install task
-    after a dependency or lock change. On Windows this is what preserves the CUDA build, and a default-environment
-    command that synchronizes `.venv` replaces it, so re-run the task after one of those too. For focused CUDA tests,
-    use `pixi run -e cuda test-module tests/<path> --device=cuda`.
-
-    The locked build needs an NVIDIA driver from the R580 branch or newer and a Turing or newer GPU. Check
-    `torch.cuda.is_available()` after installing: when it is false, a `--device=cuda` run skips its tests and still
-    exits 0.
-
-5. **Develop and test:**
-
-    Create test cases for your code. Run tests with:
-    ```bash
-    # Run all tests
-    pixi run test
-
-    # Run specific test file
-    pixi run test-module tests/<TEST_TO_RUN>.py
-
-    # For specific test with pytest options
-    pixi run test-module tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
-    ```
-
-    **dtype options:** `bfloat16`, `float16`, `float32`, `float64`, `all`
-    **device options:** `cpu`, `cuda`, `tpu`, `mps`, `all`
-
-    We use [pre-commit](https://pre-commit.com) for code quality. Install its Git hook with `pixi run pre-commit-install`. See [coding standards](#coding-standards) below.
+Run full pre-commit checks before presenting a code change as finished; `pixi run lint`
+checks only Ruff. [TESTING.md](TESTING.md) owns test selection, device/dtype profiles,
+compile/ONNX coverage, doctests, and revision comparisons. Performance changes use the
+same benchmark on base and branch under [the benchmark methodology](benchmarks/README.md).
 
 ## Contributing to Documentation
 
-1. Set up your development environment (see [above](#developing-kornia))
-2. Edit files in `docs/`
-3. Build docs: `pixi run -e default build-docs`
-4. Preview: `open docs/build/html/index.html`
-5. Submit a PR following the [Pull Request](#pull-request) guidelines
+Edit `docs/`, build with `pixi run -e default build-docs`, and preview
+`docs/build/html/index.html`. Read the Docs treats Sphinx warnings as failures and uses
+the locked docs dependencies. Public classes/functions must appear in the corresponding
+`docs/source/*.rst` API page. For a new feature detector or descriptor, also update the
+`responses` list and matching visualization branch in `docs/generate_examples.py`,
+following DISK/ALIKED/XFeat and preserving `(B, 3, H, W)` images.
 
 ### Docstring style
 
@@ -221,245 +114,78 @@ A docstring is how a reader, human or agent, decides which function to call, so 
 - **Module docstrings** open with a title line, then the conventions the module's functions share, then "Which function to use", grouped by task, one line each, naming every entry of the `__all__` of the namespace users import from as a role (`` :func:`name` ``) or a literal (``` ``name`` ```). A namespace without `__all__` (`kornia.geometry`, `kornia.geometry.transform`) catalogs its subpackages and main entry points instead; a defining file without `__all__` gets no catalog.
 - **Shapes** are literals such as ``` ``(B, 1, H, W)`` ```. Keep `:math:` for formulas, and for a tuple that is a value, such as a point's `` :math:`(X, Y, Z)` ``; write a value range as an interval, `` :math:`[0, 1]` ``.
 
-What `tests/test_docstring_style.py` checks:
-
-- every package of `kornia` is assigned to in scope or excluded (global);
-- a converted module has no function or class, exported by an `__all__` or documented on a docs page, without a docstring;
-- each public function and class of a converted module has a `See Also:` whose entries carry an explanation and name a kornia object, with no self-link or private target; an exception needs a non-empty reason, and an ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.`` title line replaces the `See Also:`;
-- every Python-domain object role (`:func:`, `:class:`, `:meth:`, `:attr:`, `:data:`, `:const:`, `:exc:`, `:obj:`) in a converted object's docstring, and in those of the methods, properties and attributes autodoc documents under a converted class, resolves as Sphinx resolves it. It must name either an object registered by the `.rst` pages under `docs/source`, or a torch, Python or NumPy object in the cached intersphinx inventories (`docs/source/_intersphinx`). Registered objects include the data attributes autodoc documents: enum members and dataclass fields under `:undoc-members:`, and variables with a `#:` comment or a docstring. An intersphinx object must be of a type the role links to: a function for `:func:`, a method for `:meth:`, an attribute or property for `:attr:`, and nothing for `:const:`. Only `:func:` and `:meth:` drop a trailing `()`. Roles in a catalog module docstring must import;
-- no `kornia/**/*.py` file or `docs/source` page writes a shape tuple as `:math:`, comments included (global); a tuple that reads as a shape but is a value is listed with what it is in `MATH_NON_SHAPES` (`testing/docstring_rollout.py`), and an entry that no longer occurs fails;
-- a catalog namespace's module docstring names every export of its `__all__` inside a role or a double-backtick literal, where a qualified name must be a path to that export (`torch.nn.functional.normalize` does not catalog `kornia.enhance.normalize`); the same word in plain prose or in single backticks does not count.
-
-Read the Docs builds with `fail_on_warning: true` (`readthedocs.yml`) and the docs dependencies pinned in `uv.lock`, the same versions as `pixi run build-docs`, so a Sphinx warning fails the docs check. A module joins these checks when it is added to the lists in `testing/docstring_rollout.py`: `DOCSTRING_MODULES` (defining-module prefixes: `See Also:` and references) and `CATALOG_NAMESPACES` (namespaces whose `__all__` the module docstring must name). An object that needs no `See Also:` goes into `SEE_ALSO_EXCEPTIONS` with a reason. The package inventory is `IN_SCOPE_PACKAGES` and `EXCLUDED_PACKAGES`. The helpers are in `testing/docstring_style.py`; its `sphinx_registry` raises on an autodoc option it does not model, so a docs page that adds one (`:no-index:`, `:exclude-members:`, `:inherited-members:`) needs the registry taught first.
+Enforcement, rollout tables, and reference-resolution rules are in [Docstring checks](TESTING.md#docstring-checks).
 
 ## Coding Standards
 
-- **Write small incremental changes:**
-  - Commit small, logical changes
-  - Write clear commit messages
-  - Avoid large files
-
-- **Add tests:**
-  - Write unit tests for each functionality
-  - Use helpers from [testing/](./testing/)
-  - Put test utilities (not tests or fixtures) in `testing/`
-
-    ```python
-    from testing.base import BaseTester
-
-
-    class TestMyFunction(BaseTester):
-        # To compare the actual and expected tensors use `self.assert_close(...)`
-
-        def test_smoke(self, device, dtype):
-            # test the function with different parameters arguments, to check if the function at least runs with all the
-            # arguments allowed.
-            pass
-
-        def test_exception(self, device, dtype):
-            # tests the exceptions which can occur on your function
-
-            # example of how to properly test your exceptions
-            # with pytest.raises(<raised Error>) as errinfo:
-            #     your_function(<set of parameters that raise the error>)
-            # assert '<msg of error>' in str(errinfo)
-
-            pass
-
-        def test_cardinality(self, device, dtype):
-            # test if with different parameters the shape of the output is the expected
-            pass
-
-        def test_feature_foo(self, device, dtype):
-            # test basic functionality
-            pass
-
-        def test_feature_bar(self, device, dtype):
-            # test another functionality
-            pass
-
-        def test_gradcheck(self, device):
-            # test the functionality gradients
-            # Uses `self.gradcheck(...)`
-            pass
-
-        def test_dynamo(self, device, dtype, torch_optimizer):
-            #  test the functionality using dynamo optimizer
-
-            # Example of how to properly test your function for dynamo
-            # inputs = (...)
-            # op = your_function
-            # op_optimized = torch_optimizer(op)
-            # self.assert_close(op(inputs), op_optimized(inputs))
-
-            pass
-    ```
-
-- **Test coverage:** Cover different devices, dtypes, and batch sizes. Use `--dtype` and `--device` pytest arguments to generate test combinations:
-
-    ```python
-    import pytest
-
-
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_smoke(batch_size, device, dtype):
-        x = torch.rand(batch_size, 2, 3, device=device, dtype=dtype)
-        assert x.shape == (batch_size, 2, 3)
-    ```
-
-- **Type hints** (Python >= 3.11):
-  - Use typing when it improves readability
-  - **Use `torch.Tensor` directly** for type hints (preferred) or import from `kornia.core` for backward compatibility
-  - Use `torch.nn.Module` directly for module classes (preferred) or import from `kornia.core` for backward compatibility
-  - For non-JIT modules, use `from __future__ import annotations`
-  - **Always** type function inputs and outputs:
-  - Run type checking with `pixi run typecheck` (uses `ty`)
-    ```python
-    from __future__ import annotations
-    import torch
-
-    def homography_warp(
-      patch_src: torch.Tensor,
-      dst_homo_src: torch.Tensor,
-      dsize: tuple[int, int],
-      mode: str = 'bilinear',
-      padding_mode: str = 'zeros'
-    ) -> torch.Tensor:
-    ```
-
-    For module classes:
-    ```python
-    from __future__ import annotations
-    import torch.nn as nn
-
-
-    class MyModule(nn.Module):
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            return x
-    ```
-
-- **Code style:**
-  - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
-  - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
-  - Line length: 120 characters
-  - Write comments in English so they are useful to the whole community
-  - Prefer comments that explain why; remove comments that merely repeat the code or no longer match it
-  - W504 (line break after binary operator) is sometimes acceptable. Example:
-
-    ```python
-    determinant = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -
-                  A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
-    ```
-
-- **Dependencies:** Avoid adding runtime dependencies. If one is useful, explain why existing dependencies are not enough and discuss the trade-off first.
-
-## Best Practices
-
-This section provides guidance for contributing to kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
-
-### Before You Start
-
-1. **Start Small**: If you're new to the project, a small bug fix or documentation improvement is a good way to learn the codebase and contribution process.
-
-2. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
-
-3. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`.
-
-### Development Workflow
-
-1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
-
-2. **Test Locally**: Run the checks that are relevant to your change:
-   ```bash
-   pixi run lint          # Run the Ruff hooks
-   pixi run pre-commit-all  # Run the full repository checks
-   pixi run test          # Run all tests
-   pixi run typecheck     # Verify type checking
-   ```
-
-3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
+- Use existing Kornia operations and nearby batching, broadcasting, shape, dtype, and device conventions.
+  Preserve the caller's dtype/device; do not create implicit CPU/default-dtype tensors.
+- Public APIs need annotated inputs/outputs, docstrings, exports, and rendered API entries.
+  Use `torch.Tensor` and `torch.nn.Module` directly where practical; follow TorchScript's
+  stricter types in scripted modules. Non-JIT modules use `from __future__ import annotations`.
+- Keep 120-character lines, Apache 2.0 source headers, and comments that explain why.
+  Ruff and `ty` enforce style and types. Prefer clear code; profile before optimizing.
+  Validate autograd, aliasing, and compile behavior before introducing in-place operations.
+- For new algorithms, name a defining paper or reference implementation. Do not copy a
+  reference's bug: decide the intended behavior and document deliberate departures.
+  For example, Kornia's non-maxima suppression keeps strict maxima.
+- Avoid new runtime dependencies. Explain why the existing stack is insufficient and
+  consider install, build, and platform costs before proposing one.
+- Follow [the stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html)
+  for API changes and [Public API inventory](TESTING.md#public-api-inventory) for export removals.
+  Inventory acknowledgements do not replace deprecation or release notes.
+- Follow [Test Structure](TESTING.md#test-structure) and the relevant device/precision guidance
+  for tests, and [Dynamic-shape check messages](TESTING.md#dynamic-shape-check-messages) when adding validation.
 
 ### Changelog entries
 
-For a user-visible change, add a short Markdown file such as `changelog.d/1234.fixed.md`,
-where `1234` is the PR number (not an issue number). Use `added`, `fixed`, or `breaking` for the type.
-Write what changes for the user; breaking changes must describe the old and new behavior.
-Only release PRs edit `CHANGELOG.md`: separate files prevent unrelated PRs
-from conflicting on the same lines.
+User-visible changes need a fragment; internal changes may explain their omission and
+use `no-changelog`. Follow [the fragment guide](changelog.d/README.md) for names, types,
+pre-PR filenames, and release handling. Only release PRs assemble `CHANGELOG.md`.
 
-If the PR number is not known yet, use a unique name such as `+fix-camera-shape.fixed.md`
-and rename it to the PR number before merging. Internal refactors, tests, and CI-only changes can omit
-an entry; explain why in the PR description and ask a maintainer to apply `no-changelog`.
-CI still validates fragment names and rendering when this label is present.
+### Closing a documented defect
 
-Run `pixi run changelog-preview` to preview the notes without changing any files.
-See [the fragment guide](changelog.d/README.md) for examples and release instructions.
-
-### Code Quality
-
-1. **Performance Considerations**:
-   - Prefer in-place operations when possible (e.g., `tensor.add_(other)` vs `tensor = tensor.add(other)`)
-   - Use tensor views and slicing instead of copying when possible
-   - Leverage PyTorch's vectorized operations over Python loops
-   - Profile before optimizing (use `torch.profiler` or `cProfile`)
-   - Consider memory efficiency for large tensors (use appropriate dtypes, avoid unnecessary copies)
-   - Use `torch.jit.script` or `torch.compile` for performance-critical paths when appropriate
-
-2. **Code Clarity**:
-   - Use descriptive variable and function names that convey intent
-   - Keep functions focused and single-purpose
-   - Prefer clear code over comments; when comments are needed, explain "why" not "what"
-   - Avoid over-engineering; start simple and refactor when needed
-
-3. **Tensor Operations**:
-   - Use `kornia` utilities instead of reimplementing common operations
-   - Ensure operations are device-agnostic (work on CPU, CUDA, MPS, etc.)
-   - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
-   - Handle batched and non-batched inputs consistently
-
-### Testing Best Practices
-
-- Write tests for happy paths, error cases, edge conditions, boundary conditions, and integration scenarios
-- Use `BaseTester` from `testing.base` for consistent test structure (see [Coding Standards](#coding-standards) for examples)
-- Test across different devices and dtypes using pytest parametrization (see [Coding Standards](#coding-standards) for examples)
-- Make tests deterministic, fast, and independent
-- Use descriptive test names; test both forward pass and gradients when applicable
-
-### Review Process
-
-- Review your own PR first: check for typos and formatting, run relevant tests, and update affected documentation
-- Respond to review feedback when you can
-- Be open to feedback and explain your decisions when questioned
-- Remember that review is done by people with limited time and may not happen quickly
-- Pull requests are reviewed by maintainers. Please do not post reviews or approvals on other contributors' pull requests; if you found a problem in one, describe it on the linked issue instead
-
-### Working with AI
-
-- AI tools are welcome. Read their output, check it in the same way you would check your own work, and state in the pull request which part was done by a human, if any, and which by AI.
-- Useful details include whether you diagnosed the problem, designed the approach, edited the diff, or checked the result yourself, or whether an agent did the whole task from a prompt. We do not need a percentage.
-
-### Communication
-
-- Write a clear, concise pull request description
-- Link related issues or discussions when they exist
-- Ask questions in Discord, GitHub Discussions, or pull request comments when useful
+Before merging a fix that closes an issue, search its number in library code and tests,
+for example `rg -n '#NNNN|issues/NNNN' kornia/ tests/`. Check every hit: stale defect prose
+in docstrings or errors must be corrected, strict xfails removed when fixed, and wart
+assertions updated. Tests may keep the issue number to record the regression. Search
+by number, not wording; a link label and its URL can disagree. No test hits is a valid
+result, not a reason to invent coverage. See the test-name conventions in nearby files.
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and state which part was done by a human, if any, and which by AI. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
+Fill in the [PR template](.github/pull_request_template.md) in the PR body, never a committed
+`PR.md`. Describe the behavior, evidence, compatibility/performance tradeoffs, and checks
+run or unverified. Include a failing-before regression when appropriate and explain the
+independent expected result for numerical work. Keep generated logs, benchmark output,
+and investigation notes outside the library diff.
 
-For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
+### Working with AI
 
-Reviewers may ask for changes, tests, documentation, or a smaller scope. They may also decide that a contribution does not fit the project. We will try to explain why, but review is not guaranteed. Pull requests that have been quiet for a while may be closed and can be reopened later.
+AI tools are welcome. Check their output as you would your own and state what the human
+actually diagnosed, designed, edited, or verified; do not imply that agent work was human
+work. The PR template asks for this distinction, not a percentage.
 
-**PR checks and merge requirements:**
-- Code changes run the CPU test matrix, dynamo/compile tests, and type checking with `ty`
-- Pre-commit checks formatting, linting, license headers, spelling, and repository file hygiene
-- Documentation changes run the documentation build
-- Every non-draft pull request gets an automated Copilot review when opened or marked ready and needs one maintainer approval
-- Pull requests are squash-merged
+Every agent-authored GitHub PR description, issue, comment, and review on a user's behalf
+ends with `Posted on behalf of @<github-handle> by <Agent> (<actual model>).` Use the actual
+handle, agent, and model rather than a generic generated-by footer.
 
-If a check fails because of your change, please fix it or explain what you found.
+### Review Process
+
+Review your diff and validation before submission. Maintainers review PRs; contributors
+should report problems in another contributor's PR on its linked issue rather than post
+reviews or approvals. Respond to feedback and explain decisions; maintainers may request
+a smaller scope or decline work, and review or merge is not guaranteed.
+
+PRs are marked stale after 15 quiet days as a triage signal; activity clears the label,
+and maintainers can use `pinned` to exempt a PR. There is **no automatic closure for
+inactivity**. A maintainer may close a quiet PR at their discretion; it may be reopened.
+A quiet PR may be waiting on us, so the label is a nudge to follow up, not a deadline.
+
+Code changes run CPU, compile, and type checks; pre-commit checks formatting, spelling,
+headers, and file hygiene. Documentation changes run the docs build. Every non-draft PR
+gets automated Copilot review when opened or marked ready and needs a maintainer approval.
+PRs are squash-merged. Fix failures caused by your change or explain them.
 
 ## License
 
