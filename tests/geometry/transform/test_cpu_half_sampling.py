@@ -23,7 +23,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import RandomAffine
+from kornia.augmentation import RandomAffine, RandomFisheye
 from kornia.core.utils import _torch_grid_sample
 from kornia.geometry import DepthWarper, PinholeCamera, warp_frame_depth
 from kornia.geometry.grid import create_meshgrid
@@ -236,6 +236,10 @@ class TestHalfSampling(BaseTester):
 
             warper = DepthWarper(camera(torch.eye(4, dtype=torch.float64)[None]), height, width)
             return warper.compute_projection_matrix(camera(pose))(depth, image)
+        if operation == "fisheye":
+            # Degenerate ranges, exact in every dtype, so both runs get the same parameters. Its align_corners is fixed.
+            center, gamma = torch.tensor([0.125, 0.125]), torch.tensor([1.0, 1.0])
+            return RandomFisheye(center, center, gamma, p=1.0)(image)
         raise AssertionError(operation)
 
     @pytest.mark.parametrize(
@@ -249,6 +253,7 @@ class TestHalfSampling(BaseTester):
             "tps_bent",
             "depth_pose",
             "depth_cameras",
+            "fisheye",
             "affine",
             "affine_fill",
             "perspective",
