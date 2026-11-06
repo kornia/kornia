@@ -25,7 +25,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core.exceptions import BaseError, TypeCheckError
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from kornia.filters import (
     BlurPool2D,
     EdgeAwareBlurPool2D,
@@ -350,6 +350,17 @@ class TestBlurPool(BaseTester):
         with pytest.raises(Exception) as errinfo:
             BlurPool2D((3, 5))(data)
         assert "Invalid kernel shape. Expect CxC_(out, None)xNxN" in str(errinfo)
+
+    @pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
+    def test_rank_check_module(self, module_cls):
+        # A 3D (C, H, W) input must raise instead of being misread as (B, C, H, W).
+        # With C == H it previously ran and returned a wrong-shaped result.
+        with pytest.raises(ShapeError):
+            module_cls(3)(torch.rand(8, 8, 9))
+
+    def test_rank_check_functional(self):
+        with pytest.raises(ShapeError):
+            blur_pool2d(torch.rand(8, 8, 9), 3)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):

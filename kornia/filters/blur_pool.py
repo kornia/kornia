@@ -95,6 +95,7 @@ class BlurPool2D(nn.Module):
             the sizes given in the Shape section of the class. They depend only
             on the input size and ``self.stride``.
         """
+        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         _check_floating_feature_map(input, "BlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
         # ONNX requires constant convolution groups and kernel shape, even with dynamic batch or spatial axes.
@@ -180,6 +181,7 @@ class MaxBlurPool2D(nn.Module):
             class. They depend only on the input size, ``self.max_pool_size``
             and ``self.stride``.
         """
+        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         _check_floating_feature_map(input, "MaxBlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
         channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
@@ -290,6 +292,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                   [0.0000, 0.0625, 0.3125]]]])
 
     """
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_floating_feature_map(input, "blur_pool2d")
     channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(

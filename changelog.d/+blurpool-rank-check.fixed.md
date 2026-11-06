@@ -1,0 +1,1 @@
+`blur_pool2d`, `BlurPool2D` and `MaxBlurPool2D` now raise `ShapeError` on an input that is not `(B, C, H, W)`, matching `max_blur_pool2d` and `edge_aware_blur_pool2d`. A 3D `(C, H, W)` input previously failed inside `conv2d` with a confusing message, or silently produced a wrong-shaped result when the channel and height sizes happened to match.
