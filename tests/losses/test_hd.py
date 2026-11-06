@@ -256,6 +256,8 @@ class TestHausdorffLoss(BaseTester):
         # Quantized predictions land the dilation exactly on the 0.5 threshold, where the derivative of
         # the soft threshold is version-dependent for clamp (#4229). Pin it against the reference: zero
         # the negatives through a boolean index, whose gradient at the tie is 1.
+        if dtype == torch.float64:
+            pytest.skip("float64 sums hit 0.5 exactly only in some summation orders, which differ between backends")
         # In float32 the tie needs real float32 convolutions. With cuDNN's TF32 default, CUDA's conv3d rounds the 1/7
         # weight to 0.142822265625, so every sum that is exactly 0.5 in float32 lands on 0.4998779296875 and nothing
         # reaches the tie. TF32 is switched off rather than following --tf32, since a TF32 run would have no tie to
