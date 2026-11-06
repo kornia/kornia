@@ -874,7 +874,9 @@ class TestConventionImageSequential(BaseTester):
             ([5.0, 5.0, 5.0, 5.0, 5.0], 4, 2),
         ],
     )
-    def test_random_apply_stays_within_the_torch_multinomial_limit_6114(self, weights, random_apply, num_mix, monkeypatch):
+    def test_random_apply_stays_within_the_torch_multinomial_limit_6114(
+        self, weights, random_apply, num_mix, monkeypatch
+    ):
         # The torch.multinomial docs limit a draw without replacement to the nonzero weights. The place of a certain mix
         # insertion is reserved, not drawn past that limit and overwritten.
         real_multinomial = torch.multinomial
@@ -1107,6 +1109,32 @@ class TestConventionImageSequential(BaseTester):
             names = self._applied_names(seq)
             assert len(names) == (len(seq) if random_apply is True else random_apply)
             assert len(set(names)) == len(names)
+
+    @pytest.mark.parametrize("weight_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("as_parameter", [False, True])
+    def test_random_apply_weight_kinds_take_the_same_route_6114(self, weight_dtype, as_parameter, device):
+        # The route follows the stored count and the weights' value, whatever tensor holds them.
+        if device.type == "mps" and weight_dtype != torch.float32:
+            pytest.skip("MPS has no float64 and its half-precision multinomial is not part of this contract")
+
+        def weights():
+            values = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=weight_dtype)
+            return torch.nn.Parameter(values) if as_parameter else values
+
+        whole_list = K.ImageSequential(*self._random_apply_members(), random_apply=True, random_apply_weights=weights())
+        below = K.ImageSequential(*self._random_apply_members(), random_apply=2, random_apply_weights=weights())
+        repeated = 0
+        for seed in range(30):
+            torch.manual_seed(seed)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", FutureWarning)
+                names = self._drawn_names(whole_list)
+            assert len(names) == len(set(names)) == 3
+            with pytest.warns(FutureWarning, match=_SUM_RULE_WARNING):
+                names = self._drawn_names(below)
+            assert len(names) == 2
+            repeated += len(set(names)) < 2
+        assert repeated > 0
 
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
