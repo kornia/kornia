@@ -75,14 +75,22 @@ class _HausdorffERLossBase(nn.Module):
         self.reduction = reduction
         self.register_buffer("kernel", self.get_kernel())
 
-    def get_kernel(self) -> torch.Tensor:
-        """Get kernel for image morphology convolution."""
+    def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
+        """Get kernel for image morphology convolution.
+
+        Args:
+            dtype: dtype of the kernel; ``None`` gives the default dtype. ``forward`` calls
+                ``get_kernel(torch.float64)`` for a float64 prediction, so an override must accept ``dtype``.
+        """
         raise NotImplementedError
 
     def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         bound = (pred - target) ** 2
 
-        kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
+        # The buffer holds the kernel built in the default dtype, normally float32, and ``.double()`` keeps that
+        # rounding, so a float64 prediction gets a kernel built in float64 instead.
+        kernel = self.get_kernel(torch.float64) if pred.dtype == torch.float64 else self.kernel
+        kernel = torch.as_tensor(kernel, device=pred.device, dtype=pred.dtype)
         eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
@@ -228,9 +236,13 @@ class HausdorffERLoss(_HausdorffERLossBase):
         # Equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-2, -1), keepdim=True)
 
-    def get_kernel(self) -> torch.Tensor:
-        """Get kernel for image morphology convolution."""
-        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
+    def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
+        """Get kernel for image morphology convolution.
+
+        Args:
+            dtype: dtype of the kernel; ``None`` gives the default dtype.
+        """
+        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]], dtype=dtype)
         kernel = cross * 0.2
         return kernel[None]
 
@@ -307,10 +319,14 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         # Equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-3, -2, -1), keepdim=True)
 
-    def get_kernel(self) -> torch.Tensor:
-        """Get kernel for image morphology convolution."""
-        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
-        bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
+    def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
+        """Get kernel for image morphology convolution.
+
+        Args:
+            dtype: dtype of the kernel; ``None`` gives the default dtype.
+        """
+        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]], dtype=dtype)
+        bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]], dtype=dtype)
         # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
         #    which Jian suspect it is wrongly implemented.
         # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94

@@ -176,6 +176,23 @@ class TestMS_SSIMLoss(BaseTester):
             assert loss.dtype == torch.float32
             self.assert_close(loss, criterion(img1.double(), img2.double()).float(), atol=0.0, rtol=0.0)
 
+    def test_float64_images_match_a_float64_built_loss(self, device):
+        # The Gaussian mask buffer is rounded to float32, also after ``.double()``; float64 images are filtered with
+        # masks built in float64, as in a loss constructed under a float64 default dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            reference = kornia.losses.MS_SSIMLoss().to(device)
+        finally:
+            torch.set_default_dtype(previous)
+        for criterion in (kornia.losses.MS_SSIMLoss(), kornia.losses.MS_SSIMLoss().double()):
+            self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
+
     def test_autocast_keeps_msssim_convolutions_in_float32(self):
         generator = torch.Generator().manual_seed(0)
         img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()

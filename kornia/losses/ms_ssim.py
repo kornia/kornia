@@ -123,6 +123,7 @@ class MS_SSIMLoss(nn.Module):
         self.C1: float = (K[0] * data_range) ** 2
         self.C2: float = (K[1] * data_range) ** 2
         self.pad = int(2 * sigmas[-1])
+        self.sigmas = [float(sigma) for sigma in sigmas]
         self.alpha: float = alpha
         self.compensation: float = compensation
         self.reduction: str = reduction
@@ -241,11 +242,19 @@ class MS_SSIMLoss(nn.Module):
             compute_dtype = torch.promote_types(output_dtype, mask_dtype)
             if compute_dtype in (torch.float16, torch.bfloat16):
                 compute_dtype = torch.float32
-            g_masks = self._g_masks.to(compute_dtype)
-            if mask_dtype in (torch.float16, torch.bfloat16):
-                # Rounded to half precision, the masks no longer sum to one (in bfloat16 only to within 2.4e-3),
-                # which shifts every variance by about (1 - sum) * mu^2: renormalise the float32 copy.
-                g_masks = g_masks / g_masks.sum(dim=(-2, -1), keepdim=True)
+            if compute_dtype == torch.float64:
+                # Built in float64: ``.double()`` casts the buffer but keeps its float32 rounding.
+                size = 2 * self.pad + 1
+                device = self._g_masks.device
+                g_masks = torch.stack(
+                    [self._fspecial_gauss_2d(size, sigma, device, torch.float64) for sigma in self.sigmas]
+                ).unsqueeze(1)
+            else:
+                g_masks = self._g_masks.to(compute_dtype)
+                if mask_dtype in (torch.float16, torch.bfloat16):
+                    # Rounded to half precision, the masks no longer sum to one (in bfloat16 only to within 2.4e-3),
+                    # which shifts every variance by about (1 - sum) * mu^2: renormalise the float32 copy.
+                    g_masks = g_masks / g_masks.sum(dim=(-2, -1), keepdim=True)
 
         img1 = img1.to(compute_dtype)
         img2 = img2.to(compute_dtype)
