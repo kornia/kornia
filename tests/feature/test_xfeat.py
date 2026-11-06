@@ -282,6 +282,22 @@ class TestXFeat(BaseTester):
         assert out["scores"].dtype == torch.float32
         assert out["descriptors"].dtype == torch.float32
 
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_model_keeps_its_dtype_under_autocast(self, device, half):
+        # On CUDA, autocast takes F.normalize's norm in float32, which promotes a bfloat16 map and descriptor.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 and bfloat16 autocast are exercised on CPU and CUDA")
+        model = XFeat(detection_threshold=0.0).to(device, half).eval()
+        sampled = []
+        model.interpolator.register_forward_pre_hook(lambda _, args: sampled.append(args[0].dtype))
+        g = torch.Generator().manual_seed(0)
+        with torch.autocast(device.type, dtype=half):
+            out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["keypoints"].shape[0] > 0
+        assert sampled == [half]
+        assert out["scores"].dtype == half
+        assert out["descriptors"].dtype == half
+
     def test_float16_zero_descriptor_map_stays_zero(self, device):
         # F.normalize's default eps of 1e-12 rounds to zero in float16, and 0 / 0 made a zero descriptor NaN.
         model = XFeat(detection_threshold=0.0).eval()

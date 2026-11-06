@@ -660,8 +660,14 @@ class XFeat(nn.Module):
         B, _, _H1, _W1 = x.shape
 
         M1, K1, H1 = self.net(x)
-        # x has the weights' dtype, and autocast can give the maps another one
-        M1 = _l2_normalize(M1.to(x.dtype), dim=1)
+        # F.normalize's default eps rounds to zero in float16 and a zero descriptor became NaN, so only float16 takes
+        # _l2_normalize. Its zero-gradient mask costs float32, with bitwise-equal output, on CUDA (torch 2.15, min over
+        # 7 rounds of 300 calls): 82.0 against 32.3 us on the (1, 64, 60, 80) map, 87.6 against 30.6 us on the
+        # (1, 2048, 64) features. Dropping the mask from the helper would lose its gradient contract for other callers.
+        normalize = _l2_normalize if x.dtype == torch.float16 else F.normalize
+        # x has the weights' dtype. Autocast can give the maps another one, and on CUDA it takes F.normalize's norm in
+        # float32, which promotes a bfloat16 quotient: cast both sides.
+        M1 = normalize(M1.to(x.dtype), dim=1).to(x.dtype)
 
         K1h = self._get_kpts_heatmap(K1)
         mkpts = self._nms(K1h, threshold=detection_threshold, kernel_size=5)
@@ -676,7 +682,7 @@ class XFeat(nn.Module):
         mkpts = torch.cat([mkpts_x[..., None], mkpts_y[..., None]], dim=-1)
 
         feats = self.interpolator(M1, mkpts, H=_H1, W=_W1)
-        feats = _l2_normalize(feats, dim=-1)
+        feats = normalize(feats, dim=-1).to(x.dtype)
 
         mkpts = mkpts * torch.tensor([rw1, rh1], device=mkpts.device).view(1, 1, -1)
 
