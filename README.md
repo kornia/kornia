@@ -363,7 +363,7 @@ Kornia's differentiated value is its geometry core: warping and sampling, homogr
 - **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially useful.
 - **Convention pinning tests and conformance vectors** for core geometry operations.
 - **Corrective error messages**: upgrade bare shape assertions into errors that state what was wrong, what was expected, and which convention applies.
-- **Classical vision in the core domain**: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, and Hough transforms. An early design discussion can be useful for work of this size.
+- **Documented CUDA and half-precision failures**: fix existing CUDA reports and `float16`/`bfloat16` xfail issues under the [correctness policy](ROADMAP.md#correctness-and-backend-support). Take CUDA work only with a CUDA device available for reproduction and validation; remove the corresponding xfail or manifest entry after verifying the fix.
 
 See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
 
