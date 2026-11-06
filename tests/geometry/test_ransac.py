@@ -295,7 +295,7 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         t1 = torch.tensor([[0.01, 0.0, -3.2], [0.0, 0.01, -2.4], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         t2 = torch.tensor([[0.01, 0.0, -4.2], [0.0, 0.01, -2.9], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         pixel = t2.T @ torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.04, 0.06)]) @ t1
-        near = ransac_module._pixel_fundamental_near_rank_one(kp1, kp2, pixel, 1.0)
+        near = ransac_module._pixel_fundamental_near_rank_one(ransac_module._rank_test_frame(kp1, kp2), pixel, 1.0)
         assert near.tolist() == [True, False]
 
     def test_non_finite_model_is_not_flagged(self, device):
@@ -389,6 +389,46 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         model, mask = RANSAC("fundamental", seed=0)(kp1, kp2)
         assert model.abs().amax() > 0
         assert mask.all()
+
+    def test_dlt_normalizes_the_keypoints_once_per_call(self, device, dtype, monkeypatch):
+        # Scoring every batch must not repeat the normalization, and a finished call holds no keypoints.
+        calls = []
+        original = ransac_module._rank_test_frame
+
+        def counted(kp1, kp2):
+            calls.append(1)
+            return original(kp1, kp2)
+
+        monkeypatch.setattr(ransac_module, "_rank_test_frame", counted)
+        generator = torch.Generator().manual_seed(0)
+        kp1 = (torch.rand(64, 2, generator=generator) * 100).to(device, dtype)
+        kp2 = (torch.rand(64, 2, generator=generator) * 100).to(device, dtype)
+        ransac = RANSAC(
+            "fundamental_8pt", inl_th=1.0, max_samples=256, confidence=1.0, seed=0, local_optimization="dlt"
+        )
+        ransac(kp1, kp2)
+        assert len(calls) == 1
+        assert ransac._dlt_rank_frame is None
+
+    def test_verify_reads_only_the_frame_of_its_own_keypoints(self, device, dtype, monkeypatch):
+        # A module shared between threads: the frame held for another call's keypoints must not be read.
+        generator = torch.Generator().manual_seed(0)
+        kp1 = (torch.rand(64, 2, generator=generator) * 100).to(device, dtype)
+        kp2 = (torch.rand(64, 2, generator=generator) * 100).to(device, dtype)
+        model = torch.rand(1, 3, 3, generator=generator).to(device, dtype)
+        ransac = RANSAC("fundamental_8pt", inl_th=1.0, local_optimization="dlt")
+        frame = ransac_module._rank_test_frame(kp1, kp2)
+        calls = []
+        original = ransac_module._rank_test_frame
+        monkeypatch.setattr(ransac_module, "_rank_test_frame", lambda a, b: calls.append(1) or original(a, b))
+        ransac._dlt_rank_frame = (kp1, kp2, frame)
+        ransac.verify(kp1, kp2, model, 1.0)
+        assert len(calls) == 0
+        for held in ((kp1.clone(), kp2), (kp1, kp2.clone())):
+            calls.clear()
+            ransac._dlt_rank_frame = (*held, frame)
+            ransac.verify(kp1, kp2, model, 1.0)
+            assert len(calls) == 1
 
     def test_verify_counts_no_inliers_for_a_rank_one_pixel_model(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):

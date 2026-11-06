@@ -177,18 +177,26 @@ def _unnormalizer(transform: torch.Tensor) -> torch.Tensor:
     return inverse
 
 
-def _pixel_fundamental_near_rank_one(
-    kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
-) -> torch.Tensor:
-    """:func:`_fundamental_near_rank_one` of pixel models, for ``kp1``, ``kp2`` ``(N, 2)`` and a squared ``inl_th``.
+def _rank_test_frame(kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """The inverse normalizations and the scale of :func:`_pixel_fundamental_near_rank_one`, for ``(N, 2)`` keypoints.
 
     The frame is the shared-scale one of ``local_optimization="lm"``, whose models the test sees directly.
     """
     with _autocast_disabled(kp1.device.type):
-        work = torch.promote_types(torch.promote_types(kp1.dtype, models.dtype), torch.float32)
+        work = torch.promote_types(kp1.dtype, torch.float32)
         _, _, t1, t2, scales = _normalize_correspondences_core(kp1.to(work), kp2.to(work), True)
-        normalized = _unnormalizer(t2).mT @ models.to(work) @ _unnormalizer(t1)
-        return _fundamental_near_rank_one(normalized, inl_th / scales[0].square())
+        return _unnormalizer(t1), _unnormalizer(t2), scales[0]
+
+
+def _pixel_fundamental_near_rank_one(
+    frame: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], models: torch.Tensor, inl_th: float
+) -> torch.Tensor:
+    """:func:`_fundamental_near_rank_one` of pixel models, in a :func:`_rank_test_frame`, for a squared ``inl_th``."""
+    unnormalizer1, unnormalizer2, scale = frame
+    with _autocast_disabled(models.device.type):
+        work = torch.promote_types(torch.promote_types(scale.dtype, models.dtype), torch.float32)
+        normalized = unnormalizer2.to(work).mT @ models.to(work) @ unnormalizer1.to(work)
+        return _fundamental_near_rank_one(normalized, inl_th / scale.to(work).square())
 
 
 def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
@@ -852,6 +860,9 @@ class RANSAC(nn.Module):
         batch_size, sample_size = kp1.shape[:2]
         return self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
 
+    # (kp1, kp2, frame) during a call of _forward_dlt on a rank-tested model; see forward.
+    _dlt_rank_frame: Optional[Tuple[torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None
+
     def verify(
         self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
     ) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
@@ -873,6 +884,7 @@ class RANSAC(nn.Module):
         """
         if not math.isfinite(inl_th) or inl_th <= 0:
             raise ValueError("The squared inlier threshold must be positive and finite")
+        kp1_input, kp2_input = kp1, kp2
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -894,7 +906,10 @@ class RANSAC(nn.Module):
             inl_mask = inl_mask & _affine_fundamental_ties_both_images(kp1, kp2, models, math.sqrt(inl_th))[:, None]
         elif self.model_type in _RANK_TESTED_MODELS:
             # A matrix of (nearly) rank one is a line in each image, which a line of mismatches fits.
-            inl_mask = inl_mask & ~_pixel_fundamental_near_rank_one(kp1[0], kp2[0], models, inl_th)[:, None]
+            held = self._dlt_rank_frame
+            frame = held[2] if held is not None and held[0] is kp1_input and held[1] is kp2_input else None
+            frame = _rank_test_frame(kp1[0], kp2[0]) if frame is None else frame
+            inl_mask = inl_mask & ~_pixel_fundamental_near_rank_one(frame, models, inl_th)[:, None]
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             # Equivalent to minimizing the truncated squared loss (MSAC), normalized
@@ -1116,7 +1131,16 @@ class RANSAC(nn.Module):
                         with torch.inference_mode(False), torch.no_grad():
                             return self._forward_compiled(kp1, kp2)
                     return self._forward_lm(kp1, kp2)
-            return self._forward_dlt(kp1, kp2)
+            if self.model_type not in _RANK_TESTED_MODELS:
+                return self._forward_dlt(kp1, kp2)
+            # Normalizing the keypoints for every scored batch took a further 10 to 20 % of a call. The frame is held
+            # with the keypoints it belongs to, so that a module shared between threads recomputes rather than reads
+            # another call's frame.
+            self._dlt_rank_frame = (kp1, kp2, _rank_test_frame(kp1, kp2))
+            try:
+                return self._forward_dlt(kp1, kp2)
+            finally:
+                self._dlt_rank_frame = None
 
     def _forward_dlt(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """:meth:`forward` with ``local_optimization="dlt"``."""
