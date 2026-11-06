@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Tests for the ``kornia.core._compat.deprecated`` decorator."""
+"""Tests for ``kornia.core._compat``: the ``deprecated`` decorator and the attention helper."""
 
 from __future__ import annotations
 
@@ -25,15 +25,20 @@ import enum
 import functools
 import inspect
 import pickle
+import re
 import warnings
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Iterator, Self
 
 import pytest
 import torch
 
+import kornia
 import kornia.utils
-from kornia.core._compat import deprecated
+from kornia.core._compat import deprecated, scaled_dot_product_attention
+
+from testing.base import BaseTester
 
 _HEAD = "Since kornia 0.8.3 the `old` is deprecated in favor of `new`."
 
@@ -833,3 +838,76 @@ class TestDeprecatedClassLimits:
         with _caught() as caught, pytest.raises(TypeError, match=r"Point\(\) takes no arguments"):
             Point(1)
         assert len(caught) == 1
+
+
+class TestScaledDotProductAttention(BaseTester):
+    """The helper that keeps kornia off the faulty float64 CPU kernel of torch 2.5 on Windows (#5992)."""
+
+    @staticmethod
+    def _simulate_the_fault(monkeypatch, faulty_platform: bool) -> list[int]:
+        # Reproduce the kernel's fault on any host: a 4-D float64 CPU query gives NaN, as it selects the fused kernel.
+        monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", faulty_platform)
+        real = torch.nn.functional.scaled_dot_product_attention
+        ndims = []
+
+        def faulty(query, key, value, **kwargs):
+            ndims.append(query.ndim)
+            if query.ndim == 4 and query.dtype == torch.float64 and query.device.type == "cpu":
+                return torch.full_like(query, float("nan"))
+            return real(query, key, value, **kwargs)
+
+        monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", faulty)
+        return ndims
+
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("scale", [None, 0.25])
+    def test_faulty_kernel_is_avoided(self, device, monkeypatch, masked, scale):
+        if device.type != "cpu":
+            pytest.skip("the kernel is CPU-only")
+        dtype = torch.float64
+        q, k, v = (torch.rand(2, 3, 5, 8, device=device, dtype=dtype) for _ in range(3))
+        mask = None
+        scores = q @ k.transpose(-2, -1) * (8**-0.5 if scale is None else scale)
+        if masked:
+            mask = torch.rand(2, 3, 5, 5, device=device) > 0.5
+            mask[..., 0] = True
+            scores = scores.masked_fill(~mask, -torch.inf)
+        expected = scores.softmax(-1) @ v
+        self._simulate_the_fault(monkeypatch, faulty_platform=True)
+        self.assert_close(scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=scale), expected)
+
+    @pytest.mark.parametrize(
+        "faulty_platform, shape, dtype, expected_ndim",
+        [
+            (True, (1, 2, 3, 4), torch.float64, 5),
+            (True, (1, 2, 3, 4), torch.float32, 4),
+            (True, (2, 3, 4), torch.float64, 3),
+            (False, (1, 2, 3, 4), torch.float32, 4),
+        ],
+    )
+    def test_only_the_faulty_input_is_rerouted(self, device, monkeypatch, faulty_platform, shape, dtype, expected_ndim):
+        if device.type != "cpu":
+            pytest.skip("the kernel is CPU-only")
+        ndims = self._simulate_the_fault(monkeypatch, faulty_platform)
+        q = torch.rand(*shape, device=device, dtype=dtype)
+        assert scaled_dot_product_attention(q, q, q).shape == q.shape
+        assert ndims == [expected_ndim]
+
+    def test_gradcheck(self, device, monkeypatch):
+        if device.type != "cpu":
+            pytest.skip("the kernel is CPU-only")
+        self._simulate_the_fault(monkeypatch, faulty_platform=True)
+        q, k, v = (torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3))
+        self.gradcheck(scaled_dot_product_attention, (q, k, v))
+
+    def test_kornia_calls_the_helper_rather_than_the_torch_function(self):
+        # DeDoDe gained a direct call after LightGlue got the workaround, and the models had always had one: a CI leg
+        # that needs Windows and torch 2.5, and runs only on the schedule, is too late and too far to catch the next.
+        root = Path(kornia.__file__).parent
+        pattern = re.compile(r"\b(F|functional)\.scaled_dot_product_attention\(")
+        callers = [
+            str(path.relative_to(root))
+            for path in sorted(root.rglob("*.py"))
+            if path.name != "_compat.py" and pattern.search(path.read_text(encoding="utf-8"))
+        ]
+        assert not callers, f"use kornia.core._compat.scaled_dot_product_attention in {callers}"

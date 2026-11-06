@@ -16,12 +16,14 @@
 #
 
 
+import sys
 import warnings
 from functools import wraps
 from inspect import isclass, isfunction
 from typing import Any, Callable, Optional, Tuple, cast
 
 import torch
+import torch.nn.functional as F
 
 
 def torch_version() -> str:
@@ -126,6 +128,63 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
     if patch is None:
         return _TORCH_VERSION[:2] >= (major, minor)
     return _TORCH_VERSION >= (major, minor, patch)
+
+
+# The fused CPU kernel of torch 2.5 on Windows can return NaNs or wrong finite values for valid float64 inputs (#5992).
+_SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY: bool = sys.platform == "win32" and torch_version_lt(2, 6, 0)
+
+
+def scaled_dot_product_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+) -> torch.Tensor:
+    """Compute scaled dot-product attention around the faulty float64 kernel of torch 2.5 on Windows.
+
+    Takes the arguments of :func:`torch.nn.functional.scaled_dot_product_attention` and returns its result. Kornia calls
+    this instead of the torch function, which ``tests/core/test_compat.py`` enforces. On Windows with torch older than
+    2.6, a 4-D float64 query on the CPU would select a fused kernel that returns NaNs or wrong finite values, so it gets
+    a singleton leading dimension: that kernel accepts only 4-D inputs, so torch takes its math implementation, without
+    a process-wide backend flag or a context manager, which torch 2.5 cannot compile. The mask broadcasts as before.
+    Every other input goes straight to the torch function.
+
+    Args:
+        query: Query tensor with shape ``(..., N_q, D)``.
+        key: Key tensor with shape ``(..., N_k, D)``.
+        value: Value tensor with shape ``(..., N_k, D_v)``.
+        attn_mask: Optional mask broadcastable to ``(..., N_q, N_k)``.
+        dropout_p: Dropout probability of the attention weights.
+        is_causal: Whether to apply a causal mask, in which case ``attn_mask`` must be ``None``.
+        scale: Scale of the scores, ``1 / sqrt(D)`` if ``None``.
+
+    Returns:
+        Attention output with shape ``(..., N_q, D_v)``.
+
+    See Also:
+        :func:`torch.nn.functional.scaled_dot_product_attention`: the function this calls, for the full contract.
+    """
+    if (
+        _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
+        and query.ndim == 4
+        and query.dtype == torch.float64
+        and query.device.type == "cpu"
+    ):
+        return F.scaled_dot_product_attention(
+            query.unsqueeze(0),
+            key.unsqueeze(0),
+            value.unsqueeze(0),
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+        ).squeeze(0)
+    return F.scaled_dot_product_attention(
+        query, key, value, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=is_causal, scale=scale
+    )
 
 
 def _emit_deprecation_warning(
