@@ -1828,13 +1828,28 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     def test_gradient_follows_the_float64_one_in_every_dtype_6251(self, device, dtype):
         # float32 is decomposed in float64 and half precision in float32, so the gradient keeps that precision.
         # The reference comes from the CPU: MPS has no float64.
-        tolerances = {torch.float16: 1e-2, torch.bfloat16: 2e-2, torch.float32: 1e-5, torch.float64: 1e-12}
+        # The half tolerances sit between the error of the float32 work dtype and that of working in the half dtype, in
+        # absolute terms: at the pose below, 2.3e-04 against 4.8e-04 for float16 and 8.6e-04 against 3.8e-03 for bfloat16.
+        tolerances = {torch.float16: 3.5e-4, torch.bfloat16: 2e-3, torch.float32: 1e-5, torch.float64: 1e-12}
         E_mat = _exact_essential_6251(4, device, dtype)
         jacobian = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat)
         assert jacobian.dtype == dtype
         expected = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat.cpu().double())
         atol = tolerances[dtype]
-        self.assert_close(jacobian.cpu().double(), expected, atol=atol, rtol=atol)
+        self.assert_close(jacobian.cpu().double(), expected, atol=atol, rtol=0.0)
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("diagonal", [(2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0), (2.0, 1.0, 1.0)])
+    def test_convention_no_derivative_gradient_is_finite_6251(self, device, dtype, name, diagonal):
+        # With s2 == s3 the singular vector u3 is not unique, so no derivative exists. The choice is a finite gradient
+        # instead of NaN; its value is not part of the convention, as it depends on the basis the SVD returns.
+        if name != "project_to_essential":
+            _skip_half(dtype, _NO_HALF_LU.format(name))
+        E_mat = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))[None].requires_grad_()
+        outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+        (grad,) = torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)
+        assert torch.isfinite(grad).all()
 
     def test_forward_mode_and_torch_func_6251(self, device):
         if device.type == "mps":

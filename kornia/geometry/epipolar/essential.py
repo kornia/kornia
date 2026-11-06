@@ -548,6 +548,9 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     if torch.jit.is_scripting():
         return _project_to_essential(E_mat)
     with _autocast_disabled(E_mat.device.type):
+        # The SVD backward is NaN or wrong where the two largest singular values are equal, so a call that records a
+        # derivative takes it from _pair_invariant_terms: about 3x, forward and backward (batch 64, x86 CPU and CUDA). A
+        # call that records none skips those terms, which would cost it 1.8x (x86 CPU), and RANSAC polishing runs here.
         if _needs_derivatives(E_mat):
             return _project_to_essential_differentiable(E_mat)
         return _project_to_essential(E_mat)
@@ -678,6 +681,9 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     if torch.jit.is_scripting():
         return _decompose_essential_matrix(E_mat)
     with _autocast_disabled(E_mat.device.type):
+        # The SVD backward is NaN or wrong where the two largest singular values are equal, so a call that records a
+        # derivative takes it from _pair_invariant_terms: about 3x, forward and backward (batch 64, x86 CPU and CUDA). A
+        # call that records none skips those terms, which would cost it 1.8x (x86 CPU), and RANSAC polishing runs here.
         if _needs_derivatives(E_mat):
             return _decompose_essential_matrix_differentiable(E_mat)
         return _decompose_essential_matrix(E_mat)
