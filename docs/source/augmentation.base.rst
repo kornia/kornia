@@ -104,7 +104,7 @@ value in `apply_transform`:
            super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
            # A PlainUniformGenerator sampler is a 4-tuple ``(range, name, center, bound)``:
            # sample a value inside ``range`` and expose it as ``params[name]``. ``center`` and
-           # ``bound`` (``None`` here) are optional constraints for centred/bounded ranges.
+           # ``bound`` (``None`` here) are optional constraints for centered/bounded ranges.
            self._param_generator = rg.PlainUniformGenerator((add_range, "add", None, None))
 
        def apply_transform(

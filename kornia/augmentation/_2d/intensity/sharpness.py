@@ -20,13 +20,17 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _check_filter_min_size
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
     r"""Blend each sample with a ``3 x 3`` smoothed copy by a random factor, with probability ``p`` (default 0.5).
+
+    ``output = RandomSharpness(sharpness, ...)(input)`` blends each selected ``(B, C, H, W)`` image with its local
+    smooth version.
 
     A drawn factor above ``1`` sharpens and a factor below ``1`` blurs; the default
     ``sharpness=0.5`` draws from ``[0, 0.5]`` and therefore only ever blurs.
@@ -64,6 +68,9 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.sharpness`.
+
+    See Also:
+        - :class:`RandomBoxBlur`: smooths rather than blends an image with its smoothed copy.
 
     Examples:
         >>> rng = torch.manual_seed(0)

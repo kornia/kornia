@@ -27,6 +27,9 @@ from kornia.core.ops import _device_literal
 class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
     r"""Flip 3D volumes horizontally, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomHorizontalFlip3D(...)(input)`` reverses the ``W`` axis of selected volumes shaped
+    ``(B, C, D, H, W)``.
+
     Args:
         p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
@@ -46,6 +49,11 @@ class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
         - flips the width ``W`` axis (tensor axis ``-1``, coordinate ``x``). Its matrix maps ``x`` to
           ``W - 1 - x`` in inclusive voxel coordinates, rounded where the dtype cannot
           represent it (see the base).
+
+    See Also:
+        - :class:`RandomHorizontalFlip`: reverses image columns in 2D.
+        - :class:`RandomVerticalFlip3D`: reverses the height axis.
+        - :class:`RandomDepthicalFlip3D`: reverses the depth axis.
 
     Examples:
         >>> import torch

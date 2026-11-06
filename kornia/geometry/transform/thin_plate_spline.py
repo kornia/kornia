@@ -41,7 +41,13 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core.utils import _samples_half_in_float32, _torch_grid_sample, _torch_solve_cast
+from kornia.core.utils import (
+    _autocast_disabled,
+    _reconcile_under_autocast,
+    _samples_half_in_float32,
+    _torch_grid_sample,
+    _torch_solve_cast,
+)
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
@@ -54,10 +60,19 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
 
     Tensors with shapes (B, N, C) and (B, M, C).
     """
+    if not torch.jit.is_scripting():
+        tensor1, tensor2 = _reconcile_under_autocast(tensor1, tensor2)
     # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
     t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
-    t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
+    # A caller's autocast region would run this product in half precision and the kernels with it: in bfloat16, a
+    # float32 warp_image_tps of a 256 px [0, 1] image was 0.08 off. TorchScript has no context managers; a scripted call
+    # keeps the caller's precision.
+    if torch.jit.is_scripting():
+        t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
+    else:
+        with _autocast_disabled(tensor1.device.type):
+            t1_t2 = tensor1.matmul(tensor2.transpose(1, 2))
     square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
     return square_dist.clamp(min=0)  # handle possible numerical errors
 
@@ -96,6 +111,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           identity mapping gives zero kernel weights and an identity affine up to solver round-off, and any pairs
           related by an affine map give zero kernel weights, except a constant map of more than three points, whose
           equal ``points_dst`` make the system singular
+        - for float32 points, a caller's autocast region does not change the result, outside TorchScript
+          (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
+          dtype other than the region's)
         - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
           set of points all on one line, make it singular too, but round-off can hide that, and the solve then
           returns huge affine weights that throw points off that line far away and may miss the landmarks themselves
@@ -184,6 +202,8 @@ def warp_points_tps(
           order; no normalization is applied, and the output is in the same frame, not clamped
         - ``kernel_centers`` must be the second argument passed to :func:`get_tps_transform`
           (see its Convention block)
+        - for float32 points, a caller's autocast region does not change the result, outside TorchScript
+          (in the region, mixed float32 and half points meet in float32)
 
     Args:
         points_src: torch.Tensor of source points ``(B, N, 2)``.
@@ -280,6 +300,9 @@ def warp_image_tps(
           :math:`[-1, 1]` sample the padding. Pixel-space control points silently give a wrong
           warp of the right shape
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
+        - for float32 points, a caller's autocast region does not change the sampling positions, outside TorchScript
+          (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
+          ``image`` of a dtype other than the region's)
 
     Args:
         image: input image torch.Tensor ``(B, C, H, W)``.

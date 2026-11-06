@@ -1622,6 +1622,290 @@ class TestGetPerspectiveTransformAutocast(BaseTester):
         self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
 
 
+class TestWarpAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of warp_affine and warp_perspective (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _warp_inputs(op_name, device, dtype):
+        # A 25-degree rotation of a 256 px image: the normalized matrix needs more digits than half precision keeps.
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0))
+        center, angle, scale = torch.tensor([[127.5, 127.5]]), torch.tensor([25.0]), torch.ones(1, 2)
+        matrix = kornia.geometry.transform.get_rotation_matrix2d(center, angle, scale)
+        if op_name == "warp_perspective":
+            matrix = torch.cat([matrix, torch.tensor([[[1e-4, 0.0, 1.0]]])], dim=1)
+        return image.to(device=device, dtype=dtype), matrix.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _warp(op_name, image, matrix):
+        return getattr(kornia.geometry.transform, op_name)(image, matrix, (256, 256), align_corners=False)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # normalize_homography's matrix products ran in the autocast dtype: 0.55 off in bfloat16 for a float32 image of
+        # [0, 1] values, without a sign of it, as the output is still float32. A half image runs in float32 and got the
+        # same matrix. Autocast does not cast a float64 one, so its result never changed.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        image, matrix = self._warp_inputs(op_name, device, src_dtype)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # A half matrix from a model under AMP with a float32 image is a normal training setup. It ran its products in
+        # the autocast dtype, 0.38 off in bfloat16; autocast reconciled the operands, so leaving the region must too.
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        image, matrix = image.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, image.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        matrix.requires_grad_()
+        expected = torch.autograd.grad(self._warp(op_name, image, matrix).sum(), matrix)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = self._warp(op_name, image, matrix)
+        actual = torch.autograd.grad(out.sum(), matrix)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_trace_in_a_region_6573(self, op_name, device):
+        # Tracing takes the other grid path, F.affine_grid or transform_points, both matrix products. A trace taken in
+        # the region recorded their half-precision casts, which stayed in the graph after the region.
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=torch.bfloat16, cache_enabled=False):
+            traced = torch.jit.trace(lambda x, m: self._warp(op_name, x, m), (image, matrix), check_trace=False)
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(traced(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_still_scriptable_6573(self, op_name, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image = torch.rand(1, 2, 5, 6, device=device, dtype=dtype)
+        rows = 2 if op_name == "warp_affine" else 3
+        matrix = torch.eye(3, device=device, dtype=dtype)[None, :rows]
+        op = getattr(kornia.geometry.transform, op_name)
+        scripted = torch.jit.script(op)
+        self.assert_close(scripted(image, matrix, (4, 3)), op(image, matrix, (4, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_mixed_dtypes_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        half_matrix = matrix.to(getattr(torch, autocast_dtype))
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, half_matrix.float())
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, half_matrix)
+        assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, matrix)
+        assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+
+class TestMatrixBuildersAutocast(BaseTester):
+    """A caller's autocast region does not reach the products of the affine matrix builders (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _builder(op_name, device, dtype):
+        # A centre far from the origin gives translation entries that need more digits than half precision keeps.
+        def tensor(*values):
+            return torch.tensor(values, device=device, dtype=dtype)
+
+        shear_a, shear_b = tensor(0.13), tensor(0.07)
+        center2, center3 = tensor([319.5, 239.5]), tensor([319.5, 239.5, 15.5])
+        angle2, angle3 = tensor(25.0), tensor([10.0, 20.0, 25.0])
+        scale2, scale3 = tensor([1.13, 0.87]), tensor([1.13, 0.87, 1.05])
+        move2, move3 = tensor([3.3, 1.7]), tensor([3.3, 1.7, 0.9])
+        transform = kornia.geometry.transform
+        builders = {
+            "get_rotation_matrix2d": lambda: transform.get_rotation_matrix2d(center2, angle2, scale2),
+            "get_affine_matrix2d": lambda: transform.get_affine_matrix2d(move2, center2, scale2, angle2),
+            "get_affine_matrix2d_shear": lambda: transform.get_affine_matrix2d(
+                move2, center2, scale2, angle2, shear_a, shear_b
+            ),
+            "get_projective_transform": lambda: transform.get_projective_transform(center3, angle3, scale3),
+            "get_affine_matrix3d": lambda: transform.get_affine_matrix3d(move3, center3, scale3, angle3),
+            "get_affine_matrix3d_shear": lambda: transform.get_affine_matrix3d(
+                move3, center3, scale3, angle3, shear_a, shear_b, shear_a, shear_b, shear_a, shear_b
+            ),
+        }
+        return builders[op_name], angle2 if "2d" in op_name else angle3
+
+    @staticmethod
+    def _shear_builder(op_name, device):
+        def build(dtype, shear_dtype, promote=False):
+            def tensor(values, value_dtype=dtype):
+                return torch.tensor([values], device=device, dtype=torch.float32).to(value_dtype)
+
+            first, second = tensor(0.13, shear_dtype), tensor(0.07, shear_dtype)
+            if promote:
+                first, second = first.float(), second.float()
+            transform = kornia.geometry.transform
+            if op_name == "get_affine_matrix2d":
+                center, scale, angle = tensor([319.5, 239.5]), tensor([1.13, 0.87]), tensor(25.0)
+                return transform.get_affine_matrix2d(tensor([3.3, 1.7]), center, scale, angle, first, second)
+            center, scale, angle = tensor([319.5, 239.5, 15.5]), tensor([1.13, 0.87, 1.05]), tensor([10.0, 20.0, 25.0])
+            shears = (first, second, first, second, first, second)
+            return transform.get_affine_matrix3d(tensor([3.3, 1.7, 0.9]), center, scale, angle, *shears)
+
+        return build
+
+    _builders = (
+        "get_rotation_matrix2d",
+        "get_affine_matrix2d",
+        "get_affine_matrix2d_shear",
+        "get_projective_transform",
+        "get_affine_matrix3d",
+        "get_affine_matrix3d_shear",
+    )
+
+    @pytest.mark.parametrize("op_name", _builders)
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_matrix_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # The matrix products ran in the autocast dtype and the matrix came back in it: in bfloat16, a rotation about
+        # the center of a 640 x 480 image moved its corner by about 1 px, and rotate, scale and the affine
+        # augmentations warped by that matrix.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        if (
+            device.type == "cpu"
+            and src_dtype in (torch.float16, torch.bfloat16)
+            and src_dtype != getattr(torch, autocast_dtype)
+        ):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build, _ = self._builder(op_name, device, src_dtype)
+        expected = build()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build()
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("shear_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_half_shear_with_float32_center_in_a_region_6573(self, op_name, shear_dtype, autocast_dtype, device):
+        # Autocast cast both sides of the shear product, so half shears with a float32 center ran; they meet in float32.
+        self._skip_unsupported(device, autocast_dtype)
+        shear_dtype = getattr(torch, shear_dtype)
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float32, shear_dtype, promote=True)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(torch.float32, shear_dtype)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("center_dtype", [torch.bfloat16, torch.float16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_float32_shear_with_half_center_in_a_region_6573(self, op_name, center_dtype, autocast_dtype, device):
+        # The reverse mismatch raised under the guard, while the base ran it in the autocast dtype.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("the reference is in float64, which MPS does not support")
+        if device.type == "cpu" and center_dtype != getattr(torch, autocast_dtype):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float64, torch.float64)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(center_dtype, torch.float32)
+        assert actual.dtype == torch.float32
+        # The rotation part is still built in the half dtype of its inputs, as outside autocast.
+        self.assert_close(actual.double(), expected, rtol=0, atol=2.0)
+
+    @pytest.mark.parametrize("op_name", _builders)
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        build, angle = self._builder(op_name, device, torch.float32)
+        angle.requires_grad_()
+        expected = torch.autograd.grad(build().sum(), angle)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = build()
+        actual = torch.autograd.grad(out.sum(), angle)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["get_rotation_matrix2d", "get_affine_matrix2d_shear"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        build, _ = self._builder(op_name, device, torch.float32)
+        expected = build()
+        op = torch_optimizer(build)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op()
+        assert actual.dtype == torch.float32
+        # A compiled graph differs from eager by up to 6.1e-05 on entries near 200, inside the float32 default's
+        # relative tolerance; this keeps the tolerance of the 2D warps, which need it.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+
+
 class TestGetTranslationMatrix2d(BaseTester):
     @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
     def test_rejects_unsupported_shape(self, shape, device, dtype):
