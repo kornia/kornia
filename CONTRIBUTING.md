@@ -145,8 +145,15 @@ pre-PR filenames, and release handling. Only release PRs assemble `CHANGELOG.md`
 
 ### Closing a documented defect
 
-Before merging a fix that closes an issue, search its number in library code and tests,
-for example `grep -rnE '#NNNN|issues/NNNN' kornia/ tests/`. Check every hit: stale defect prose
+Before merging a fix that closes an issue, search its number in references and test-name
+suffixes (replace `NNNN` with the issue number):
+
+```bash
+grep -rnE '(#|issues/)NNNN([^0-9]|$)|test_[[:alnum:]_]*_NNNN([^0-9]|$)' kornia/ tests/
+```
+
+This includes names such as `test_wart_example_NNNN` without matching bare numerical constants.
+Check every hit: stale defect prose
 in docstrings or errors must be corrected, strict xfails removed when fixed, and wart
 assertions updated. Tests may keep the issue number to record the regression. Search
 by number, not wording; a link label and its URL can disagree. No test hits is a valid

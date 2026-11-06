@@ -194,15 +194,23 @@ their importers, including committed, staged, unstaged, and untracked files. Use
 `upstream/main` from the contributor setup, or `origin/main` when `origin` is Kornia itself:
 
 ```bash
-conformance_base=$(git merge-base upstream/main HEAD)
-conformance_paths=$(
-  git diff --name-only "$conformance_base"
-  git ls-files --others --exclude-standard
+(
+  set -eu
+  conformance_target=upstream/main
+  # For a direct clone of Kornia, use this instead:
+  # conformance_target=origin/main
+  conformance_base=$(git merge-base "$conformance_target" HEAD)
+  conformance_paths=$(
+    git diff --no-renames --name-only "$conformance_base" &&
+      git ls-files --others --exclude-standard
+  )
+  printf '%s\n' "$conformance_paths" | python3 .github/scripts/conformance_packages.py onnx
+  printf '%s\n' "$conformance_paths" | python3 .github/scripts/conformance_packages.py compile
 )
-printf '%s\n' "$conformance_paths" | python .github/scripts/conformance_packages.py onnx
-printf '%s\n' "$conformance_paths" | python .github/scripts/conformance_packages.py compile
 ```
 
+The subshell stops if the base cannot be resolved; check the selected remote and fetch it
+before retrying. `--no-renames` includes both the old and new paths of a moved file, as CI does.
 Each command prints the corresponding conformance option's package value (`all`, a
 comma-separated list, or empty when no promised operator is affected). Recompute after edits.
 

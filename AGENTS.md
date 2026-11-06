@@ -62,8 +62,10 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
    the report: math/semantics, numerical formulation, upstream behavior, or no defect.
 2. Check scope and existing solutions before coding. Stop for excluded inputs until an
    explicit scope decision; demonstrate benefit over existing options before adding a solver.
-3. For upstream failures, test latest stable and available next PyTorch on the affected
-   backend; record gaps. Follow the roadmap's fixed-upstream rule before adding a workaround.
+3. Expected autocast precision changes and SVD backward limitations at repeated singular
+   values are not by themselves evidence of an upstream defect. For suspected upstream
+   failures, test latest stable and available next PyTorch on the affected backend;
+   record gaps. Follow the roadmap's fixed-upstream rule before adding a workaround.
 4. Name the workflow, inputs, dtype/device, and grad/autocast mode. Separate synthetic
    proof, real-data exposure, and downstream impact; do not invent user frequency.
 5. Pin independent expected results in focused tests (`test_convention_*` for conventions).

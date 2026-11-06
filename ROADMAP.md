@@ -128,9 +128,9 @@ issues own live status and acceptance decisions.
 
 - **Coordinated repairs and Tier A v1:** settle box, camera, sampling, and augmentation
   conventions with executable old/new examples and a collective migration note. Concrete
-  cases include bbox width arithmetic ([#3934](https://github.com/kornia/kornia/issues/3934),
-  reserved for maintainers) and `pyrdown` output rounding; the closed TPS identity-warp
-  repair ([#3928](https://github.com/kornia/kornia/issues/3928)) is a completed example. Follow
+  cases include bbox width arithmetic ([#3934](https://github.com/kornia/kornia/issues/3934))
+  and the split `align_corners` defaults in augmentation ([#4412](https://github.com/kornia/kornia/issues/4412)),
+  both reserved for maintainer implementation. Follow
   the stability policy's warning period and minor boundary for deliberate changes;
   use its correctness exception only for proven defects. Publish tiers after the repairs.
 - **Portable conformance corpus:** define inputs, independent expected results,
@@ -141,9 +141,11 @@ issues own live status and acceptance decisions.
   `llms-full.txt` aligned. Derive validated workflow skills from those sources rather
   than duplicate conventions; assess them through completed user tasks.
 - **Compile/export design:** finish data-dependent augmentation and feature paths,
-  tracked in [#5137](https://github.com/kornia/kornia/issues/5137): `RandomCrop`/`crop_by_indices`
-  and `AugmentationSequential` dispatch. That issue records fullgraph CPU/MPS results for
-  `RandomAffine`, `RandomPerspective`, and `RandomResizedCrop`; these do not promise CUDA coverage.
+  tracked in [#5137](https://github.com/kornia/kornia/issues/5137): partial application in
+  `RandomCrop` (`p < 1`), `ColorJiggle`'s random order, and `AugmentationSequential`'s
+  `random_apply` dispatch. Recorded fullgraph runs of `RandomAffine`, `RandomPerspective`,
+  and `RandomResizedCrop` include CUDA successes; these are evidence for the tested cases,
+  not a blanket CUDA promise. `crop_by_indices` needs an explicit `size` to avoid value-dependent output shapes.
   Redesign the shared implementation instead of accumulating guards. Handle multi-output
   export generically, converge on a modern ONNX opset, and extend CI promises only with evidence.
 - **Augmentation throughput:** reduce wrapper/transform bookkeeping and kernel-launch
