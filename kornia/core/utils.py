@@ -535,9 +535,10 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
 def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     """Clamp ``input`` into ``[0, 1]`` with an identity gradient on the closed range.
 
-    ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14.0, and valid images
-    often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
-    so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
+    A clamp has no derivative at a bound: its one-sided derivatives are 0 and 1. torch returned 1 up to 2.13 and returns
+    0 from 2.14, its documented minimum-norm rule (pytorch/pytorch#191142). Kornia uses the derivative from inside the
+    range on every version: at an identity factor it is the only one on the documented input domain, and it lets a pixel
+    on a bound move back. Values outside the range get the bound and a zero gradient.
 
     The values always equal ``input.clamp(0, 1)``, ``NaN`` included, so a call that records no gradient and
     carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
@@ -548,10 +549,13 @@ def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     """
     # A captured graph keeps the plain clamp: ``torch.jit.trace``'s check reruns under ``no_grad``, and an inference
     # graph has no use for the selection. The gradient through a traced module then follows ``torch.clamp``.
+    # Selecting without a derivative costs 5 times a plain clamp or more on the CPU and about 3 to 4 times on CUDA
+    # (i7-14700K, RTX 4090).
     if _is_tracing_or_exporting() or not _needs_derivatives(input):
         return input.clamp(0.0, 1.0)
     # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
-    # backward of a recorded clamp made a forward and backward pass about twice as slow.
+    # backward of a recorded clamp made a forward and backward pass 1.7 to 2.5 times as slow on the CPU and 1.2 to 1.7
+    # times on CUDA.
     clamped = input.detach().clamp(0.0, 1.0)
     return torch.where(clamped == input, input, clamped)
 

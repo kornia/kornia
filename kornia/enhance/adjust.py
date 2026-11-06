@@ -500,7 +500,7 @@ def adjust_gamma(
     # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
     # below would pass on. Black pixels then take the power of a safe base, keep their value 0 ** gamma = 0 and get a
     # zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the masking only runs when
-    # autograd can ask for a derivative through the input.
+    # autograd can ask for a derivative through the input. The mask costs 5 times or more without a derivative.
     if _needs_derivatives(input):
         black = (input == 0) & (gamma > 0) & (gamma < 1)
         power = torch.where(
