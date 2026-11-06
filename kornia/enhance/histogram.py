@@ -191,7 +191,7 @@ def histogram2d(
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    return joint_pdf(kernel_values1, kernel_values2).to(kernel_dtype)
+    return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
 
 
 def _check_image_rank(image: torch.Tensor) -> None:
