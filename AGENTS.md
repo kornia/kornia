@@ -130,6 +130,38 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - For non-JIT modules, use `from __future__ import annotations`.
 - Avoid new runtime dependencies. If a dependency is genuinely useful, explain why the existing stack is insufficient and consider its install, build, and platform cost.
 
+## Correctness triage and fixes
+
+Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support).
+Kornia owns both its mathematical contracts and their stable numerical implementation;
+backend workarounds are scoped compatibility commitments.
+
+- Classify the cause before proposing a fix: mathematical/semantic defect, unstable
+  numerical formulation or unsuitable working precision, or demonstrated upstream
+  defect. A report can involve more than one. Expected autocast behavior, generic SVD
+  derivative limitations, and normal rounding are not by themselves PyTorch bugs.
+- Separate proof of a defect from exposure and impact. Name the supported workflow,
+  inputs, device/dtype, grad/autocast mode, and affected versions; distinguish a
+  synthetic reproducer from real-data evidence and measured downstream consequences.
+  Do not infer user frequency from a failing test or invent it when unknown.
+- Derive expected behavior independently from the intended contract, mathematics, or
+  an appropriate reference. An unchanged matching/training benchmark does not veto a
+  proven correction; use it to assess consequences and regressions. Follow the existing
+  discussion-first rule for numerical edge cases outside realistic input ranges.
+- At nonsmooth or degenerate points, establish whether the value or derivative exists
+  and is unique. Document any chosen convention or fallback. A finite gradient alone
+  does not establish correctness, and a preferred convention does not bypass the
+  stability policy.
+- For an upstream workaround, isolate the failure from Kornia where possible and
+  record the upstream reproducer/issue, verified version/device scope, performance
+  cost, and removal or reassessment condition. Consider a documented limitation or
+  supported alternative without silently weakening existing guarantees. A general
+  stable formulation is preferable when it fixes the cause without backend branches.
+- Use practical exposure, severity, core relevance, and maintenance cost to prioritize
+  work. Measure substantial costs on realistic affected and unaffected paths using
+  the benchmark methodology. Keep justified test-tolerance repairs distinct from
+  library defects; valid floating-point implementations need not agree bitwise.
+
 ## Responding to review
 
 - Treat a fix that a reviewer suggests, whether a maintainer, a bot or another agent, as a hypothesis about the cause. Before applying it, check whether kornia already maintains the invariant it protects. For example, `Boxes._valid` marks rows that are not boxes: every indexed read and write carries it and every export zeroes those rows, so rows that must never export as boxes do not need a separate count that each write path would have to keep in sync.

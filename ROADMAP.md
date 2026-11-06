@@ -127,6 +127,56 @@ maintainer with model-work capacity joins the project. Contributions already in
 flight before the freeze (an open issue plus a PR under review) are grandfathered
 and finish under the rules they started under.
 
+## Correctness and backend support
+
+Kornia owns its mathematical contracts and the numerical formulations needed to
+implement them. Practical impact sets scheduling priority; independently justified
+correctness evidence sets the expected behavior. A small or synthetic reproducer can
+prove a core defect without establishing how often users encounter it. An unchanged
+matching or training benchmark does not invalidate that proof: downstream evaluation
+checks consequences and regression risk, and need not improve for a correction to be
+worth making.
+
+Triage and fixes distinguish three kinds of work:
+
+- **Mathematical and semantic correctness:** the algorithm, coordinate conventions,
+  and documented operation must agree. Wrong pixel-center mappings, an identity warp
+  that moves pixels, or a spline that implements the wrong equations directly concern
+  the reference-core mission. Establish the intended contract with an independent
+  derivation, reference, or invariant and pin it with conformance tests.
+- **Numerical implementation correctness:** choose stable formulations and working
+  precision for the supported input domain. Autocast lowering a matrix product's
+  precision or a generic SVD backward failing at repeated singular values does not
+  alone establish a PyTorch defect. Kornia may need a different formulation to compute
+  its geometric result and derivatives reliably. Ordinary floating-point rounding is
+  not itself a bug; assess its amplification and the operation's error requirements.
+- **Backend compatibility workarounds:** compensate for an independently demonstrated
+  upstream defect where user impact justifies the ongoing cost. Record a minimal
+  upstream reproducer and tracking issue, affected versions/devices, the fallback's
+  scope, measured cost, and a condition for removal or reassessment. A documented
+  limitation or supported alternative can be preferable to a permanent compatibility
+  branch. Do not weaken an existing support promise silently.
+
+Some boundaries require an explicit convention: clipping at a bound, an orientation
+on a flat patch, or a degenerate geometric configuration may have no unique value or
+derivative. State the chosen behavior and where a derivative exists; do not present a
+finite fallback as the uniquely correct mathematical answer. Deliberate convention
+changes still follow the stability policy.
+
+For each report, distinguish a proven defect, a realistic path that reaches it, and a
+measured downstream consequence. Record unknown incidence as unknown. Prioritize
+supported core workflows, confirmed regressions, and severe failures; weigh narrower
+cases against review, performance, and maintenance costs. Numerical edge cases outside
+realistic input ranges still follow the discussion-first rule in
+[CONTRIBUTING.md](CONTRIBUTING.md#practical-guidelines).
+
+Prefer a shared stable formulation over accumulating device, version, or grad-mode
+branches. Measure affected realistic workloads before accepting substantial overhead,
+including unaffected common paths. Test conformance with justified tolerances rather
+than requiring bitwise agreement between valid floating-point implementations. Backend
+workarounds and test-tolerance maintenance support the mission, but their volume is not
+a measure of progress toward mathematical correctness.
+
 ## Short term — 0.9.1 maintenance candidates
 
 These are priorities to investigate and validate, not a promise that every item
