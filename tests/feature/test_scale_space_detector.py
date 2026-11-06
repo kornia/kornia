@@ -624,7 +624,21 @@ class TestScaleSpaceDetector(BaseTester):
             assert responses.dtype == image_dtype
             gradients[image_dtype] = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
         assert gradients[torch.float16].isfinite().all()
-        self.assert_close(gradients[torch.float16].float(), gradients[torch.float32], rtol=0.05, atol=0.05)
+        # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
+        self.assert_close(gradients[torch.float16].float(), gradients[torch.float32], rtol=0, atol=0.05)
+
+    def test_float16_image_fills_as_many_slots_as_float32_at_low_contrast(self, device):
+        # Rounding the response to float16 before NMS merges maxima closer than one float16 step: 4 slots here, not 7.
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0))
+        image = (0.5 + (image - 0.5) * 0.01).to(device)
+        filled = {}
+        for image_dtype in (torch.float32, torch.float16):
+            x = image.to(image_dtype).clone().requires_grad_()
+            lafs, responses = ScaleSpaceDetector(10, subpix_module=ConvQuadInterp3d()).to(device)(x)
+            filled[image_dtype] = int(kornia.feature.laf_is_filled(lafs).sum())
+            gradient = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
+            assert gradient.isfinite().all()
+        assert filled[torch.float16] == filled[torch.float32]
 
     def test_float16_custom_response_keeps_its_dtype_and_nms_precision(self, device):
         # A custom response is not rounded to float16: an isolated peak of 1.0001 on a floor of 1.0 stays a maximum.
@@ -674,7 +688,8 @@ class TestScaleSpaceDetector(BaseTester):
         assert responses.dtype == torch.float16
         gradient = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
         assert gradient.isfinite().all()
-        self.assert_close(gradient.float(), expected, rtol=0.05, atol=0.05)
+        # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
+        self.assert_close(gradient.float(), expected, rtol=0, atol=0.05)
 
     @pytest.mark.parametrize("response_dtype", [torch.float32, torch.float64])
     def test_float16_image_keeps_a_wider_custom_response(self, device, response_dtype):

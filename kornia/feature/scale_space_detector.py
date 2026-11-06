@@ -220,6 +220,10 @@ def _detects_float16_in_float32(pyramid: nn.Module, response: nn.Module, subpix:
     non-scalar ``k``, which promotes a float16 response. The refiner gets the response in at least float32 on every
     path, so its class does not matter; only autocast changes for it, and turning that off would make float16 weights
     reject the input they now get cast for.
+
+    Measured on a float16 image, CPU and CUDA: with ``isinstance``, a subclass with a float16 weight raises and a subclass
+    returning a wider response has its float32 score of 1.0001 rounded to 1.0; the exact check costs an unmodified
+    subclass the fix (5120 of 5120 non-finite, as on main).
     """
     return (
         type(getattr(pyramid, "_orig_mod", pyramid)) is ScalePyramid
@@ -268,11 +272,12 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32. With :class:`~kornia.geometry.transform.ScalePyramid`, a :class:`BlobHessian`,
-          :class:`BlobDoG`, :class:`CornerHarris` or :class:`CornerGFTT` response and a refiner without weights, a
-          float16 image is detected in float32 with autocast off and its scores are returned in float16, because the
-          gradient overflows float16 on the way through the scale space. With any other pyramid or response function, a
-          subclass included, or a refiner with weights, the detector passes the float16 image on, in the caller's
-          autocast region.
+          :class:`BlobDoG`, :class:`CornerHarris` or :class:`CornerGFTT` response, and a response and refiner holding
+          only scalar parameters and buffers, a float16 image is detected in float32 with autocast off and its scores
+          are returned in float16, because the gradient overflows float16 on the way through the scale space. A
+          candidate whose score is zero in float16 is dropped. With any other pyramid or response function, a subclass
+          or a :class:`CornerHarris` with a non-scalar ``k`` included, or a refiner with non-scalar state, the detector
+          passes the float16 image on, in the caller's autocast region.
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
@@ -505,9 +510,12 @@ class ScaleSpaceDetector(nn.Module):
         #   and drives the sparse top-K below.
         max_nms_mask: torch.Tensor
         min_nms_mask: torch.Tensor
-        # A float16 image detected in float32 selects its candidates on the float16 score: the rounding noise of its
-        # flat regions is below that score's resolution, where it does not make a maximum.
-        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp.to(torch.float16).float() if float16_scores else oct_resp)
+        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp)
+        if float16_scores:
+            # Quantisation noise makes weak maxima here, with scores below float16's resolution. Rounding before NMS would
+            # also merge real maxima: Harris fills 252 slots against float32's 825 on HPatches, this 545.
+            scored = oct_resp.to(torch.float16) != 0
+            max_nms_mask, min_nms_mask = max_nms_mask & scored, min_nms_mask & scored
 
         # The mask is applied to the candidates, not to the response the NMS reads: multiplying the
         # response first would carve a hard edge into it, and every response pixel next to a zeroed
