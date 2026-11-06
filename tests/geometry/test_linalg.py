@@ -357,7 +357,9 @@ class TestTransformPointsAutocast(BaseTester):
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer):
+    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("a scripted call keeps the caller's precision; test_still_scriptable_6601 covers TorchScript")
         skip_unsupported_autocast(device, autocast_dtype)
         if device.type == "mps":
             pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
