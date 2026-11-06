@@ -116,10 +116,14 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
 
     images_t = []
     for img in images:
-        if isinstance(img, np.ndarray) and any(stride < 0 for stride in img.strides):
-            img = img.copy()
         if not torch.is_tensor(img):
-            img = torch.as_tensor(img)
+            try:
+                img = torch.as_tensor(img)
+            except ValueError:
+                # A negative stride. Checking img.strides up front would fail fullgraph torch.compile on any array.
+                if not isinstance(img, np.ndarray):
+                    raise
+                img = torch.as_tensor(img.copy())
         images_t.append(img)
 
     shape = images_t[0].shape

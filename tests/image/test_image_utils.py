@@ -54,7 +54,7 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
 
 class TestImageListViews(BaseTester):
     @pytest.mark.parametrize("shape", [(2, 4, 3), (1, 4, 1)])
-    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("axis", [0, 1, 2, None])
     @pytest.mark.parametrize("input_dtype", [np.uint8, np.float32, np.float64])
     def test_flipped_numpy_images(self, shape, axis, input_dtype):
         """Convert flipped views accurately and keep the batch independent of input storage."""
@@ -78,6 +78,17 @@ class TestImageListViews(BaseTester):
         self.assert_close(actual[1], torch.from_numpy(array.copy()).permute(2, 0, 1))
         actual.sum().backward()
         self.assert_close(tensor.grad, torch.ones_like(tensor))
+
+    def test_other_conversion_errors_stay_value_errors(self):
+        with pytest.raises(ValueError):
+            kornia.image.image_list_to_tensor([memoryview(np.zeros((2, 4, 3), dtype=np.float32))])
+
+    def test_dynamo_fullgraph_accepts_numpy_images(self):
+        # Dynamo's NumPy wrapper cannot evaluate a check on img.strides, which would fail the graph for every array.
+        torch._dynamo.reset()
+        image = np.arange(24, dtype=np.float32).reshape(2, 4, 3)
+        compiled = torch.compile(lambda a: kornia.image.image_list_to_tensor([a, a]), fullgraph=True, backend="eager")
+        self.assert_close(compiled(image), torch.from_numpy(np.stack([image, image])).permute(0, 3, 1, 2))
 
 
 @pytest.mark.parametrize(
