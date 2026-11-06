@@ -81,7 +81,14 @@ _VOLUME_BATCH_SHAPES = "either (D, H, W) or (B, C, D, H, W)"
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
-    r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
+    r"""Augment aligned images, masks, boxes, keypoints and labels with one parameter draw.
+
+    ``augmented = AugmentationSequential(*transforms, data_keys=keys)(*inputs)`` applies each selected child to the
+    aligned positional inputs and returns them in the same order. ``data_keys`` supports images, masks, boxes,
+    keypoints and class labels; inversion only reverses supported geometric children, so it is not generally a lossless
+    round trip. It records the selected children and their sampled parameters in ``_params`` for replay; use
+    :class:`~kornia.augmentation.container.ImageSequential` for an image tensor alone, or
+    :class:`~kornia.augmentation.container.VideoSequential` for a video tensor alone.
 
     .. image:: _static/img/AugmentationSequential.png
 
@@ -164,7 +171,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
           in that working dtype raise ``RuntimeError`` instead of being rounded, unless checks are disabled
-          (:func:`~kornia.core.check.disable_checks`, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
+          (``kornia.core.check.disable_checks``, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
           asynchronous assertion may report by the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
@@ -172,7 +179,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           nested sequences, auto-augment policies, replay and inverse. Full-batch mask tensors must use
           separate ``mask`` data keys; a list with incompatible length or entry shape raises ``ValueError``,
           also in an inverse without an image. Video, mix and 3D children, and a geometric
-          :class:`~kornia.augmentation.PatchSequential`, do not support mask lists and raise
+          :class:`~kornia.augmentation.container.PatchSequential`, do not support mask lists and raise
           ``NotImplementedError``. Inverse warps can only approximately restore resampled pixels and
           cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
@@ -212,6 +219,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_augmentation_sequential.html>`__.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains transforms for an image tensor only.
+        - :class:`~kornia.augmentation.container.VideoSequential`: chains transforms for a video tensor only.
 
     Examples:
         >>> import kornia

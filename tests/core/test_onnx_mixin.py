@@ -124,7 +124,7 @@ _NOT_CALL_STATE = {
     "ImageSequential.disable_features": (("_disable_features",), "a property setter"),
     "SequentialBase.keepdim": (("_keepdim",), "a property setter"),
     "SequentialBase.same_on_batch": (("_same_on_batch",), "a property setter"),
-    "OperationBase._init_magnitude": (("_factor_name", "_magnitude", "magnitude_range"), "a constructor helper"),
+    "OperationBase._init_magnitude": (("_factor_name", "_magnitude"), "a constructor helper"),
     "TransformMatrixMinIn._parse_transformation_matrix_mode": (("_transformation_matrix_arg",), "a constructor helper"),
     "ImageSequentialBase.transform_inputs": (
         ("_sequence_matrices",),

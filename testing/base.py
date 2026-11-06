@@ -41,6 +41,16 @@ DYNAMIC_EXPORT_UNAVAILABLE_REASON = (
 )
 
 
+# gradcheck computes the analytical Jacobian twice and, with its default nondet_tol=0, fails when the two differ at all.
+# On CUDA, cuDNN's default convolution algorithms and the backward kernels that accumulate with atomics need not repeat
+# their rounding: two backward passes of raw_to_rgb differed by up to 8.9e-16 (gradients up to 5), and of
+# HausdorffERLoss3D by up to 4.3e-19, in 1 to 3 % of random float64 cases. This tolerance is 1e5 times that and 1e5
+# times below gradcheck's own atol, so the default kernels, the ones users run, stay under test. Deterministic
+# algorithms are no substitute: they swap in other kernels, and torch's deterministic reflection_pad2d backward returns
+# wrong gradients for large pads (pytorch/pytorch#203421).
+CUDA_GRADCHECK_NONDET_TOL = 1e-10
+
+
 @contextmanager
 def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
     """Run the block with deterministic algorithms on CUDA, and restore the caller's mode afterwards.
@@ -502,4 +512,6 @@ class BaseTester:
                 for i, r, d in zip(inputs, requires_grad, dtypes)
             ]
 
+        if any(isinstance(t, torch.Tensor) and t.device.type == "cuda" for t in _all_inputs):
+            kwargs.setdefault("nondet_tol", CUDA_GRADCHECK_NONDET_TOL)
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)

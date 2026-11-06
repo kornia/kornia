@@ -29,6 +29,7 @@ from kornia.core.utils import (
     _extract_device_dtype,
     _inverse_3x3_closed_form,
     _is_singular,
+    _reconcile_under_autocast,
     _torch_histc_cast,
     _torch_inverse_cast,
     _torch_linalg_svdvals,
@@ -1033,6 +1034,55 @@ def test_autocast_disabled_covers_other_autocast_device_types(device_type):
     # find_affine turned off the autocast region of any device type before it used this helper.
     with torch.autocast(device_type, dtype=torch.bfloat16), _autocast_disabled(device_type):
         assert not torch.is_autocast_enabled(device_type)
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        (torch.float32, torch.bfloat16),
+        (torch.bfloat16, torch.float32),
+        (torch.float32, torch.float16),
+        (torch.bfloat16, torch.float16),
+    ],
+)
+def test_reconcile_under_autocast_meets_in_float32(first, second):
+    a, b = torch.ones(2, 2, dtype=first), torch.ones(2, 2, dtype=second)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out_a, out_none, out_b = _reconcile_under_autocast(a, None, b)
+    assert out_a.dtype == out_b.dtype == torch.float32
+    assert out_none is None
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        # One dtype has nothing to reconcile, and without a half operand autocast leaves the pair alone.
+        (torch.bfloat16, torch.bfloat16),
+        (torch.float32, torch.float32),
+        # Autocast does not cast float64 or integer operands, so these mismatches keep raising where they did.
+        (torch.float64, torch.bfloat16),
+        (torch.float64, torch.float32),
+        (torch.int64, torch.bfloat16),
+    ],
+)
+def test_reconcile_under_autocast_leaves_what_autocast_leaves(first, second):
+    a, b = torch.ones(2, 2, dtype=first), torch.ones(2, 2, dtype=second)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out_a, out_b = _reconcile_under_autocast(a, b)
+    assert out_a is a
+    assert out_b is b
+
+
+def test_reconcile_under_autocast_does_nothing_outside_autocast():
+    a, b = torch.ones(2, 2, dtype=torch.float32), torch.ones(2, 2, dtype=torch.bfloat16)
+    out_a, out_b = _reconcile_under_autocast(a, b)
+    assert out_a is a
+    assert out_b is b
+    # The region of another device type is not this tensor's region either.
+    with torch.autocast("cuda", dtype=torch.float16):
+        out_a, out_b = _reconcile_under_autocast(a, b)
+    assert out_a is a
+    assert out_b is b
 
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)

@@ -24,6 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import _autocast_disabled
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
@@ -89,9 +90,13 @@ class PatchDominantGradientOrientation(nn.Module):
           :math:`\pi` from its empty histogram. A nearly flat patch gets an arbitrary angle set by rounding noise: a
           constant float64 patch can have nonzero rounding-level gradients, and so does a patch sampled from a flat
           image region by :func:`~kornia.feature.extract_patches_from_pyramid`.
-        - Known defect: in float16 the gradients with respect to a textured patch and to the smoothing weights are
-          NaN, because the histogram is cast back to float16 before the peak is refined
-          (`#6455 <https://github.com/kornia/kornia/issues/6455>`_).
+        - A float16 or bfloat16 patch is computed in float32, whatever the module's dtype and any enclosing autocast,
+          and only the returned angle is cast back: the histogram bins of a textured patch are subnormal in float16.
+          A float32 patch under autocast gets its float32 result.
+        - The backward casts the patch gradient to float16 too, so a gradient above 65504 becomes ``inf``: on any device
+          for a patch of very low amplitude, and on macOS arm64 CPU also for a low-contrast patch, where the float32
+          Sobel convolution of a large grad-enabled batch leaves rounding noise on flat pixels (#6598). Through
+          :func:`~kornia.feature.extract_patches_from_pyramid` it reaches the image gradient as ``inf`` and NaN.
 
     Args:
         patch_size: size of the (square) input patch.
@@ -151,6 +156,15 @@ class PatchDominantGradientOrientation(nn.Module):
             raise TypeError(
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
+        # The smoothed bins of a 32 x 32 patch are about 5e-6, below float16's smallest normal, and the square of the
+        # refinement's denominator underflows to 0 in the division's backward, so half inputs are computed in float32.
+        # The Sobel and smoothing convolutions would be downcast again by an enclosing autocast.
+        with _autocast_disabled(patch.device.type):
+            return self._dominant_angle(patch.to(torch.promote_types(patch.dtype, torch.float32))).to(patch.dtype)
+
+    def _dominant_angle(self, patch: torch.Tensor) -> torch.Tensor:
+        """Return the refined histogram peak of float32 or float64 patches, ``(B,)`` in radians."""
+        _, _, W, H = patch.size()
         # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
         # whichever tensor was passed last, and is a `torch.compile` guard hazard.
         weighting = self.weighting.to(patch.dtype).to(patch.device)
@@ -163,9 +177,6 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        # float16 is lifted to float32 inside: the squared gradient of a flat patch underflows
-        # and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and, through
-        # `atan2`, in the forward as well. bfloat16 holds both and takes the plain expression.
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * weighting
 
@@ -177,20 +188,14 @@ class PatchDominantGradientOrientation(nn.Module):
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
         # Each pixel votes into just two bins. Accumulate those votes directly instead
-        # of scanning the entire patch once per angular bin. Like average pooling,
-        # accumulate half-precision inputs in float32, then divide before casting back.
-        accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
-        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
+        # of scanning the entire patch once per angular bin.
+        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=patch.dtype)
         # The `%` after the integer conversion only keeps the index in range: a NaN orientation
         # casts to an arbitrary integer. A patch with NaN pixels returns a finite but arbitrary
         # angle, as it did before this accumulation; the `max`/`where` below do not propagate NaN.
-        ang_bins.scatter_add_(
-            1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
-        )
-        ang_bins.scatter_add_(
-            1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1).to(accumulation_dtype)
-        )
-        ang_bins = (ang_bins / (W * H)).to(patch.dtype).view(-1, 1, self.num_ang_bins)
+        ang_bins.scatter_add_(1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1))
+        ang_bins.scatter_add_(1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1))
+        ang_bins = (ang_bins / (W * H)).view(-1, 1, self.num_ang_bins)
         angular_smooth_padding = self.angular_smooth.padding
         if self.angular_smooth.padding_mode != "zeros":
             ang_bins = F.pad(
