@@ -936,6 +936,7 @@ def get_gaussian_kernel1d(
         - :func:`get_gaussian_discrete_kernel1d`: Lindeberg's discrete Gaussian, for discrete scale space.
         - :func:`gaussian`: the same samples around a chosen ``mean``, without the size check.
         - :func:`get_gaussian_kernel2d`: the outer product of two of these kernels.
+        - :func:`gaussian_blur2d`: the blur that applies it along each axis.
 
     Examples:
         >>> get_gaussian_kernel1d(3, 2.5)
