@@ -105,8 +105,8 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           ``w.sum(1) == 0`` and ``w.mT @ points_src == 0``, so the warp leaves its affine part only like ``log r`` far
           from the landmarks
         - for float32 points, a caller's autocast region does not change the result, outside TorchScript
-          (in the region, mixed float32 and half points meet in float32); any other dtype mismatch raises
-          ``RuntimeError``
+          (in the region, a mix of float32, float16 and bfloat16 points meets in float32); any other dtype mismatch
+          raises ``RuntimeError``
         - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
           set of ``points_src`` all on one line, make it singular too, but round-off can hide that, and the solve then
           returns huge affine weights that throw points off that line far away and may miss the landmarks themselves.
@@ -203,9 +203,10 @@ def warp_points_tps(
           (see its Convention block). Nothing checks this and any other tensor of that shape gives a wrong warp of the
           right shape, in particular the second argument, which earlier versions needed
           (`#6404 <https://github.com/kornia/kornia/issues/6404>`_). The right centres give
-          ``kernel_weights.mT @ kernel_centers`` of zero up to round-off, which a caller can assert
+          ``kernel_weights.mT @ kernel_centers`` of zero up to round-off. A caller can assert that to catch the second
+          argument, but it does not identify the centres, as a translated set passes it too
         - for float32 points, a caller's autocast region does not change the result, outside TorchScript
-          (in the region, mixed float32 and half points meet in float32)
+          (in the region, a mix of float32, float16 and bfloat16 points meets in float32)
 
     Args:
         points_src: torch.Tensor of source points ``(B, N, 2)``.
@@ -300,8 +301,8 @@ def warp_image_tps(
           warp of the right shape
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
         - for float32 points, a caller's autocast region does not change the sampling positions, outside TorchScript
-          (in the region, mixed float32 and half points meet in float32, except that CPU autocast raises on a half
-          ``image`` of a dtype other than the region's)
+          (in the region, a mix of float32, float16 and bfloat16 points meets in float32, except that CPU autocast
+          raises on a half ``image`` of a dtype other than the region's)
 
     Args:
         image: input image torch.Tensor ``(B, C, H, W)``.

@@ -110,7 +110,8 @@ class TestBooksteinSpline(BaseTester):
 
     def test_convention_side_conditions_hold_on_the_fit_points(self, device, dtype):
         # sum_i w_i = 0 and sum_i w_i c_i = 0 are what make the spline approach its affine part far away. They hold on
-        # the first argument, so a kernel_centers other than the first argument gets a warp without them.
+        # the first argument and fail on the second, though translating the first keeps them, since the weights sum to
+        # zero. So they catch the old call without identifying the centres.
         src = torch.tensor([_SRC], device=device, dtype=dtype)
         dst = torch.tensor([_DST], device=device, dtype=dtype)
         kernel, _ = kornia.geometry.transform.get_tps_transform(src, dst)
@@ -405,7 +406,7 @@ class TestThinPlateSplineAutocast(BaseTester):
 
 
 class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
-    """Half points with float32 ones meet in float32 in a caller's autocast region, which casts both sides (#6573)."""
+    """float32, float16 and bfloat16 points meet in float32 in a caller's autocast region, which casts all (#6573)."""
 
     # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
 
@@ -442,7 +443,16 @@ class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0, atol=0)
 
-    @pytest.mark.parametrize("first,second", [("float32", "bfloat16"), ("bfloat16", "float32"), ("float32", "float16")])
+    @pytest.mark.parametrize(
+        "first,second",
+        [
+            ("float32", "bfloat16"),
+            ("bfloat16", "float32"),
+            ("float32", "float16"),
+            ("float16", "bfloat16"),
+            ("bfloat16", "float16"),
+        ],
+    )
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_mixed_points_6573(self, first, second, autocast_dtype, device):
         self._skip_unsupported(device, autocast_dtype)
