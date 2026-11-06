@@ -361,8 +361,7 @@ class VideoKeypoints(Keypoints):
             the video keypoints.
 
         """
-        # TorchScript cannot compile the warning helper, so a scripted call stays silent, as in ``crop_by_boxes``.
-        if not torch.jit.is_scripting() and validate_boxes is not None:
+        if validate_boxes is not None:
             _emit_deprecation_warning(
                 "VideoKeypoints.from_tensor(validate_boxes=...)",
                 None,
