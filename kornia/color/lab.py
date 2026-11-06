@@ -34,24 +34,29 @@ from .xyz import rgb_to_xyz, xyz_to_rgb
 
 
 def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert a RGB image to Lab.
+    r"""Convert an sRGB image to Lab.
+
+    ``lab = rgb_to_lab(image)`` converts a ``(*, 3, H, W)`` sRGB image in :math:`[0, 1]` to CIE Lab with the D65 white
+    point and the 2° observer. L is in :math:`[0, 100]`, and a and b lie within :math:`[-128, 127]`.
 
     .. image:: _static/img/rgb_to_lab.png
 
-    The input RGB image is assumed to be in the range of :math:`[0, 1]`. Lab
-    color is computed using the D65 illuminant and Observer 2.
-
     Convention:
         Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
-        Input is nonlinear sRGB in RGB channel order at axis -3; this function first converts
-        it to linear RGB. Output channels are L*, a*, b* using D65 / 2° reference white.
+        Channels are ``L``, ``a``, ``b`` at axis -3. The sRGB curve is removed inside, so pass sRGB, not linear RGB.
+        The scale is that of OpenCV's float32 Lab, not of its 8-bit Lab, where L is scaled to 0..255 and a and b are
+        offset by 128. Values match skimage ``rgb2lab``.
+        OpenCV 5's float ``COLOR_RGB2Lab`` quantizes its input, so it differs by less than 1 in each channel.
 
     Args:
-        image: RGB Image to be converted to Lab with shape ``(*, 3, H, W)``.
+        image: sRGB image with shape ``(*, 3, H, W)``.
 
     Returns:
-        Lab version of the image with shape ``(*, 3, H, W)``.
-        The L channel values are in the range 0..100. a and b are in the range -128..127.
+        Lab image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`lab_to_rgb`: the inverse.
+        - :class:`RgbToLab`: the module form.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -103,22 +108,25 @@ def _rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
 
 def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
-    r"""Convert a Lab image to RGB.
+    r"""Convert a Lab image to sRGB.
 
-    The L channel is assumed to be in the range of :math:`[0, 100]`.
-    a and b channels are in the range of :math:`[-128, 127]`.
+    ``rgb = lab_to_rgb(image)`` converts a ``(*, 3, H, W)`` CIE Lab image with the D65 white point and the 2° observer
+    to sRGB. L is expected in :math:`[0, 100]`, and a and b in :math:`[-128, 127]`.
 
     Convention:
         Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
-        Input channels are L*, a*, b* at axis -3 using D65 / 2° reference white. Set clip to
-        false to skip the final [0, 1] clamp of the sRGB output.
+        Channels are ``L``, ``a``, ``b`` at axis -3.
 
     Args:
-        image: Lab image to be converted to RGB with shape ``(*, 3, H, W)``.
-        clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
+        image: Lab image with shape ``(*, 3, H, W)``.
+        clip: clamp the result to :math:`[0, 1]`. With ``False``, out-of-gamut Lab values give RGB values outside it.
 
     Returns:
-        RGB version of the image with shape ``(*, 3, H, W)``, in :math:`[0, 1]` when ``clip`` is True.
+        sRGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_lab`: the inverse.
+        - :class:`LabToRgb`: the module form, which takes ``clip`` when called.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -180,26 +188,27 @@ def _lab_to_rgb(image: torch.Tensor, clip: bool) -> torch.Tensor:
 
 
 class RgbToLab(nn.Module):
-    r"""Convert an image from RGB to Lab.
+    r"""Convert an image from sRGB to Lab (module form).
 
-    See the Convention block on :func:`rgb_to_lab`.
+    ``out = RgbToLab()(image)`` is :func:`rgb_to_lab`.
 
-    The image data is assumed to be in the range of :math:`[0, 1]`. Lab
-    color is computed using the D65 illuminant and Observer 2.
-
-    Returns:
-        Lab version of the image.
+    Convention:
+        - See the convention block of :func:`rgb_to_lab`.
 
     Shape:
         - image: ``(*, 3, H, W)``
         - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`rgb_to_lab`: the one-call form.
+        - :class:`LabToRgb`: the inverse.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> lab = RgbToLab()
         >>> output = lab(input)  # 2x3x4x5
 
-    Reference:
+    References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
         [2] https://www.easyrgb.com/en/math.php
@@ -226,16 +235,21 @@ class RgbToLab(nn.Module):
 
 
 class LabToRgb(nn.Module):
-    r"""Convert an image from Lab to RGB.
+    r"""Convert an image from Lab to sRGB (module form).
 
-    See the Convention block on :func:`lab_to_rgb`.
+    ``out = LabToRgb()(image, clip)`` is :func:`lab_to_rgb`. ``clip`` is an argument of the call, not of the
+    constructor.
 
-    Returns:
-        RGB version of the image, clipped to :math:`[0, 1]` unless ``clip`` is False.
+    Convention:
+        - See the convention block of :func:`lab_to_rgb`.
 
     Shape:
         - image: ``(*, 3, H, W)``
         - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`lab_to_rgb`: the one-call form.
+        - :class:`RgbToLab`: the inverse.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
