@@ -181,6 +181,11 @@ Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), exis
 and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
 not approval for a new API; establish the concrete need and check reservations first.
 
+- **Documented CUDA and half-precision failures:** fix existing CUDA reports and
+  `float16`/`bfloat16` xfail issues. Take CUDA work only when a CUDA device is available
+  for reproduction and validation. Apply the [correctness policy](#correctness-and-backend-support)
+  and [precision testing guidance](TESTING.md#7-half-precision-dtypes-float16--bfloat16);
+  remove the corresponding xfail or manifest entry after verifying the fix.
 - **Reference evidence:** convention tests, independent expected vectors, corrective
   error messages, and hardware benchmark contributions, especially CUDA. Use the
   benchmark suite's `--contribute` workflow.
