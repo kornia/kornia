@@ -348,7 +348,8 @@ class XFeat(nn.Module):
           inliers at 3 px within 0.6 % of float32, and float16 and bfloat16 keep 99.4 % and 95.0 % of its keypoints. On
           an Apple M1 half precision takes about 15 times as long as float32 on the CPU and about as long on MPS. On
           torch 2.5.1 the CPU float16 instance norm is wrong: on HPatches a ``[0, 255]`` image gave no keypoints and a
-          ``[0, 1]`` one 18 % of the inliers.
+          ``[0, 1]`` one 18 % of the inliers. Use float32 or bfloat16 weights there. torch 2.15 and a 2.16 nightly are
+          correct; versions in between were not checked.
         - :meth:`detectAndCompute` keypoints are integer pixels of the resized image, strict maxima of the keypoint
           heatmap in their 5 x 5 window (see the note), reported in the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
