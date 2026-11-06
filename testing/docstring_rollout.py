@@ -105,6 +105,9 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.augmentation",
+    "kornia.color.gray",
+    "kornia.color.rgb",
+    "kornia.color.sepia",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
     "kornia.feature.aliked",
