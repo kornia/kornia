@@ -47,6 +47,9 @@ def _apply_gaussian_illumination(
 class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Add a random Gaussian-shaped illumination pattern, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomGaussianIllumination(gain, center, sigma, ...)(input)`` adds a sampled Gaussian field to each
+    selected ``(B, C, H, W)`` image and clamps it to ``[0, 1]``.
+
     .. image:: _static/img/RandomGaussianIllumination.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -79,7 +82,7 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
           multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
           narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
-        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-centre position
+        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-center position
           ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
           and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
           pixel nearest that position, split between two pixels when it falls halfway.
@@ -88,6 +91,10 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomLinearIllumination`: uses a linear rather than Gaussian-shaped field.
+        - :class:`RandomGaussianNoise`: adds unstructured noise rather than an illumination field.
 
     Examples:
         >>> rng = torch.manual_seed(1)

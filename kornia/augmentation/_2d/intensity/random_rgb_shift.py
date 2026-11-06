@@ -38,6 +38,10 @@ def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[fl
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Shift each RGB channel by a random offset, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomRGBShift(r_shift_limit, g_shift_limit, b_shift_limit, ...)(input)`` offsets the channels of
+    selected RGB images ``(B, 3, H, W)`` separately and clamps their output to ``[0, 1]``. Use
+    :class:`RandomBrightness` for one shared additive offset.
+
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
@@ -62,6 +66,10 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           negative limit raises a ``ValueError`` at construction.
         - a ``(low, high)`` pair, as in ``albumentations.RGBShift``, is the sampling range itself. It must be
           finite with ``low <= high``, otherwise it raises a ``ValueError`` at construction.
+
+    See Also:
+        - :class:`RandomBrightness`: offsets all channels equally instead of each RGB channel separately.
+        - :class:`ColorJiggle`: combines RGB color adjustments with HSV operations.
 
     Examples:
         >>> import torch

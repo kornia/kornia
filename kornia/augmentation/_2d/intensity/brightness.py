@@ -27,11 +27,11 @@ from kornia.enhance.adjust import adjust_brightness
 
 
 class RandomBrightness(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness of a torch.Tensor image.
+    r"""Shift brightness by an additive random offset.
 
-    The shift is additive: the output is ``input + (factor - 1)``, before the default clamp. torchvision's and
-    PIL's brightness is multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that
-    formula.
+    ``output = RandomBrightness(brightness)(input)`` computes ``input + (factor - 1)`` for each selected image
+    using a sampled brightness factor, with clamping enabled by default. Use :class:`ColorJitter` for
+    torchvision-compatible multiplicative brightness, ``input * factor``.
 
     .. image:: _static/img/RandomBrightness.png
 
@@ -52,7 +52,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         - with ``clip_output=True``, input values are clamped into ``[0, 1]`` before the operation
           as well as afterwards. With ``clip_output=False``, the arithmetic is range-independent:
           neither input nor output is clamped.
-        - ``brightness`` is centred on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
+        - ``brightness`` is centered on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
           :func:`kornia.enhance.adjust_brightness`, whose own identity is ``0.0``, so the same number passed
           straight to the primitive means something else.
         - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
@@ -60,6 +60,11 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
+
+    See Also:
+        - :class:`RandomContrast`: scales values instead of adding an offset.
+        - :class:`ColorJiggle`: combines this additive brightness step with color adjustments.
+        - :class:`ColorJitter`: uses torchvision-compatible multiplicative brightness.
 
     Examples:
         >>> rng = torch.manual_seed(0)

@@ -120,7 +120,10 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Randomly shift brightness, scale contrast and HSV saturation, and rotate the hue of an image.
+    r"""Jiggle color with Kornia's additive-brightness and HSV formulas.
+
+    ``output = ColorJiggle(brightness, contrast, saturation, hue)(input)`` applies a sampled order of enabled color
+    steps. Use :class:`ColorJitter` when reproducing torchvision's multiplicative and grayscale-blend formulas.
 
     .. image:: _static/img/ColorJiggle.png
 
@@ -168,6 +171,11 @@ class ColorJiggle(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.adjust_brightness`,
         :func:`kornia.enhance.adjust_contrast`. :func:`kornia.enhance.adjust_saturation`,
         :func:`kornia.enhance.adjust_hue`.
+
+    See Also:
+        - :class:`ColorJitter`: torchvision-compatible alternative with different brightness, contrast and saturation.
+        - :class:`RandomBrightness`: applies only the additive brightness step.
+        - :class:`RandomHue`: applies only an HSV hue rotation.
 
     Examples:
         >>> rng = torch.manual_seed(0)

@@ -27,6 +27,9 @@ from kornia.enhance import equalize
 class RandomEqualize(IntensityAugmentationBase2D):
     r"""Equalize the histogram of each image channel, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomEqualize(...)(input)`` equalizes every selected channel of an image ``(B, C, H, W)`` after
+    clamping it to ``[0, 1]``. Use :class:`RandomClahe` to equalize local tiles with contrast limiting.
+
     .. image:: _static/img/RandomEqualize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -49,6 +52,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.
+
+    See Also:
+        - :class:`RandomEqualize3D`: equalizes volume intensities.
+        - :class:`RandomClahe`: uses local contrast-limited histogram equalization.
 
     Examples:
         >>> rng = torch.manual_seed(0)

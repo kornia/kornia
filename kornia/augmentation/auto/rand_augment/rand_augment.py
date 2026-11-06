@@ -49,7 +49,14 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 
 
 class RandAugment(PolicyAugmentBase):
-    """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
+    """Sample a fixed number of RandAugment operations at one global magnitude.
+
+    ``output = RandAugment(n, m)(input)`` draws ``n`` operations from the supported pool and applies them in draw
+    order with magnitude ``m`` to a floating ``(B, C, H, W)`` image batch. Use
+    :class:`~kornia.augmentation.auto.AutoAugment` for a fixed searched sub-policy, or
+    :class:`~kornia.augmentation.auto.TrivialAugment` for one operation.
+
+    The policy follows :cite:`cubuk2020randaugment`.
 
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 
@@ -79,6 +86,10 @@ class RandAugment(PolicyAugmentBase):
                                     If `rigid`, the result is the same for a policy: every operation wrapper
                                     contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.AutoAugment`: chooses a searched, dataset-specific sub-policy.
+        - :class:`~kornia.augmentation.auto.TrivialAugment`: chooses a single operation.
 
     Examples:
         >>> import torch

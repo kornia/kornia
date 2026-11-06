@@ -213,7 +213,8 @@ def test_only_func_and_meth_drop_parentheses():
 
 
 def test_short_names_need_a_documented_object():
-    reg = _registry()
+    # Keep this object deliberately unregistered even as the real documentation grows.
+    reg = {name: obj for name, obj in _registry().items() if obj is not AutoContrast}
     assert is_documented(depth_to_3d, reg)
     assert not is_documented(AutoContrast, reg)
     # With no page, and so no scope, only a full name resolves from its docstring.

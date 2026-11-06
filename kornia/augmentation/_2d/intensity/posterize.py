@@ -28,6 +28,8 @@ from kornia.enhance import posterize
 class RandomPosterize(IntensityAugmentationBase2D):
     r"""Posterize images to a random number of bits, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomPosterize(bits, ...)(input)`` reduces the retained bit depth of selected images.
+
     .. image:: _static/img/RandomPosterize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -61,6 +63,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
+
+    See Also:
+        - :class:`RandomSolarize`: thresholds values rather than reducing their bit depth.
 
     Examples:
         >>> rng = torch.manual_seed(0)

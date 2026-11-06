@@ -501,9 +501,14 @@ def _shape_validation(param: torch.Tensor, shape: Union[Tuple[int, ...], List[in
 
 
 def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Perform deep copy on any dict.
+    """Copy an augmentation parameter dictionary while cloning tensor values.
 
-    Support torch.Tensor copying here.
+    ``copied = deepcopy_dict(params)`` returns a new dictionary whose tensor values are ``clone()`` copies; non-tensor
+    values are kept by reference. Use ``override_parameters`` to copy and replace selected entries.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: stores parameter dictionaries for replay.
+
     """
     out = {}
     for k, v in params.items():
@@ -521,14 +526,21 @@ def override_parameters(
     if_none_exist: str = "ignore",
     in_place: bool = False,
 ) -> Dict[str, Any]:
-    """Override params dict w.r.t params_override.
+    """Replace selected entries of an augmentation parameter dictionary.
+
+    ``updated = override_parameters(params, params_override)`` returns a copied dictionary with every supplied key
+    replaced, unless ``in_place=True``. With no override it returns ``params`` itself; use ``deepcopy_dict`` when a
+    new dictionary with cloned tensor values is needed without replacement. Cloning preserves autograd history;
+    non-tensor values remain shared.
 
     Args:
         params: source parameters.
         params_override: key-values to override the source parameters.
-        if_none_exist: behaviour if the key in `params_override` does not exist in `params`.
-            'raise' | 'ignore'.
+        if_none_exist: currently unused; every override key is inserted, including keys absent from ``params``.
         in_place: if to override in-place or not.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: accepts recorded parameter lists for replay.
 
     """
     # Nothing to override (None or an empty kwargs dict — the common forward path): return the

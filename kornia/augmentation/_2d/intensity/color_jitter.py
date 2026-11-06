@@ -62,10 +62,11 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Randomly adjust brightness, contrast, saturation and hue using torchvision-compatible formulas.
 
-    The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
-    with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this
-    is the class to port ``torchvision.transforms.ColorJitter`` code to. It is not actively maintained; prefer
-    :class:`ColorJiggle` for new code.
+    ``output = ColorJitter(brightness, contrast, saturation, hue)(input)`` applies four sampled adjustments in a
+    sampled or fixed order using torchvision's formulas. Brightness multiplies the image by a factor, contrast
+    blends it with its grayscale mean, saturation blends it with its grayscale, and hue uses torchvision's
+    ``adjust_hue`` shift. Use this class to port ``torchvision.transforms.ColorJitter`` code; it is not actively
+    maintained, so prefer :class:`ColorJiggle` for new code.
 
     .. image:: _static/img/ColorJitter.png
 
@@ -105,6 +106,11 @@ class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
         :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`,
         :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`,
         :func:`kornia.enhance.adjust_hue`.
+
+    See Also:
+        - :class:`ColorJiggle`: Kornia's alternative with additive brightness and raw-value contrast.
+        - :class:`RandomBrightness`: applies Kornia's additive brightness alone.
+        - :class:`RandomSaturation`: applies HSV saturation scaling alone.
 
     Examples:
         >>> rng = torch.manual_seed(0)

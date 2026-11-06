@@ -28,6 +28,9 @@ from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 class RandomLinearIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomLinearIllumination(...)(input)`` adds a sampled edge-to-edge ramp to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
+
     .. image:: _static/img/RandomLinearIllumination.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -59,6 +62,10 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomGaussianIllumination`: adds a smooth Gaussian-shaped illumination field.
+        - :class:`RandomLinearCornerIllumination`: starts its ramp from a corner.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -148,6 +155,9 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomLinearCornerIllumination(...)(input)`` adds a sampled ramp from one corner to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
+
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -179,6 +189,9 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomLinearIllumination`: starts the linear illumination ramp from an edge.
 
     Examples:
         >>> rng = torch.manual_seed(1)

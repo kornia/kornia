@@ -30,17 +30,7 @@ from kornia.geometry.transform import remap
 class RandomFisheye(AugmentationBase2D):
     r"""Add a random radial (fisheye) distortion, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomFisheye.png
-
-    Convention:
-        Coordinates are normalized to ``[-1, 1]`` with corner pixel centres at the endpoints.
-        At output coordinate ``(x, y)``, let ``r`` be its distance from the sampled centre.
-        The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
-        the centre changes the distance, but scaling is about the coordinate origin.
-        Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
-        There is no ``transform_matrix`` or ``inverse``. A ``mask``, keypoint or box data key raises
-        ``NotImplementedError`` identifying this augmentation, even at ``p=0``
-        (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+    ``output = RandomFisheye(...)(input)`` radially distorts each selected image of shape ``(B, C, H, W)``.
 
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
@@ -50,6 +40,21 @@ class RandomFisheye(AugmentationBase2D):
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    .. image:: _static/img/RandomFisheye.png
+
+    Convention:
+        Coordinates are normalized to ``[-1, 1]`` with corner pixel centers at the endpoints.
+        At output coordinate ``(x, y)``, let ``r`` be its distance from the sampled center.
+        The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
+        the center changes the distance, but scaling is about the coordinate origin.
+        Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
+        There is no ``transform_matrix`` or ``inverse``. A ``mask``, keypoint or box data key raises
+        ``NotImplementedError`` identifying this augmentation, even at ``p=0``
+        (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+
+    See Also:
+        - :class:`RandomPerspective`: samples a projective rather than radial warp.
 
     Examples:
         >>> import torch
