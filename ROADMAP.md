@@ -129,70 +129,71 @@ and finish under the rules they started under.
 
 ## Correctness and backend support
 
-Kornia owns its mathematical contracts and the numerical formulations needed to
-implement them. Practical impact sets scheduling priority; independently justified
-correctness evidence sets the expected behavior. A small or synthetic reproducer can
-prove a core defect without establishing how often users encounter it. An unchanged
-matching or training benchmark does not invalidate that proof: downstream evaluation
-checks consequences and regression risk, and need not improve for a correction to be
-worth making.
+**Maintain correct, useful behavior within Kornia's agreed scope.** Distinguish
+mathematical defects, numerical instability, and upstream workarounds.
 
-Triage and fixes distinguish three kinds of work:
+1. **Check the contract.** Establish supported inputs, output dtype, conventions, and
+   accuracy requirements. Separate wrong mathematics or avoidable instability from
+   rounding, dtype limits, and undefined behavior. Compare with plain PyTorch where
+   applicable: a sum exceeding float16's range does not justify widening its output.
+   This does not excuse unstable computation of a representable result.
+2. **Do not expand support through bug fixes.** Do not add integer-input support or
+   special paths solely for extreme magnitudes such as `1e20` image values or pixel
+   coordinates. Stop implementation and explain the supported input form. Expanding
+   scope requires an explicit maintainer decision backed by a concrete application.
+   A synthetic failure is insufficient; documented exceptions remain supported.
+3. **Check the existing solution first.** If a supported dtype conversion, parameter
+   such as `num_iters`, or workflow adequately solves the reported need, do not add
+   another implementation without demonstrated benefit. Value and maintenance cost
+   can justify declining a proposal, not merely postponing it.
+4. **Check upstream before adding a workaround.** Isolate suspected PyTorch failures
+   on latest stable and an available next-version build (pre-release or nightly) on the
+   affected backend; record unavailable checks. If fixed upstream, default to documenting
+   affected versions and alternatives without a new workaround or silently weakening
+   existing promises. Record accepted workarounds' upstream issue, verified scope,
+   measured cost, and retirement/reassessment condition beside the code. This also
+   applies to backend performance workarounds.
+5. **Prove the correction and report consequences.** Derive expected results independently
+   and pin conventions with `test_convention_*` tests. An unchanged or worse downstream
+   benchmark does not disprove a correction. Report results with uncertainty where
+   applicable, investigate regressions, and leave acceptance to a maintainer; release
+   notes state accepted tradeoffs. Prefer a shared stable formulation; extra device,
+   version, size, or grad-mode branches need a measured reason stated beside the branch.
+6. **Choose the outcome explicitly.** Repair the implementation, document a limitation, propose
+   a scope change, or make no change. Measure performance on affected and common
+   unaffected paths. Use justified dtype tolerances, not blanket bitwise equality.
+   Unknown user incidence stays unknown.
 
-- **Mathematical and semantic correctness:** the algorithm, coordinate conventions,
-  and documented operation must agree. Wrong pixel-center mappings, an identity warp
-  that moves pixels, or a spline that implements the wrong equations directly concern
-  the reference-core mission. Establish the intended contract with an independent
-  derivation, reference, or invariant and pin it with conformance tests.
-- **Numerical implementation correctness:** choose stable formulations and working
-  precision for the supported input domain. Autocast lowering a matrix product's
-  precision or a generic SVD backward failing at repeated singular values does not
-  alone establish a PyTorch defect. Kornia may need a different formulation to compute
-  its geometric result and derivatives reliably. Ordinary floating-point rounding is
-  not itself a bug; assess its amplification and the operation's error requirements.
-- **Backend compatibility workarounds:** compensate for an independently demonstrated
-  upstream defect where user impact justifies the ongoing cost. Record a minimal
-  upstream reproducer and tracking issue, affected versions/devices, the fallback's
-  scope, measured cost, and a condition for removal or reassessment. A documented
-  limitation or supported alternative can be preferable to a permanent compatibility
-  branch. Do not weaken an existing support promise silently.
+For ambiguous boundary behavior, document the chosen convention and consult the
+[stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html):
+a proven contract violation uses the correctness-fix route; changing a working
+convention uses deprecation. Missing documentation or variation across PyTorch versions
+alone does not authorize a silent change; unresolved cases need a maintainer decision.
 
-Some boundaries require an explicit convention: clipping at a bound, an orientation
-on a flat patch, or a degenerate geometric configuration may have no unique value or
-derivative. State the chosen behavior and where a derivative exists; do not present a
-finite fallback as the uniquely correct mathematical answer. Deliberate convention
-changes still follow the stability policy.
+## Short term — maintenance and correctness candidates
 
-For each report, distinguish a proven defect, a realistic path that reaches it, and a
-measured downstream consequence. Record unknown incidence as unknown. Prioritize
-supported core workflows, confirmed regressions, and severe failures; weigh narrower
-cases against review, performance, and maintenance costs. Numerical edge cases outside
-realistic input ranges still follow the discussion-first rule in
-[CONTRIBUTING.md](CONTRIBUTING.md#practical-guidelines).
+These are priorities to investigate and validate, not commitments to a particular
+release. Confirmed downstream regressions take precedence. Existing issue reservations
+and ownership remain in force for every candidate below.
 
-Prefer a shared stable formulation over accumulating device, version, or grad-mode
-branches. Measure affected realistic workloads before accepting substantial overhead,
-including unaffected common paths. Test conformance with justified tolerances rather
-than requiring bitwise agreement between valid floating-point implementations. Backend
-workarounds and test-tolerance maintenance support the mission, but their volume is not
-a measure of progress toward mathematical correctness.
-
-## Short term — 0.9.1 maintenance candidates
-
-These are priorities to investigate and validate, not a promise that every item
-will ship in 0.9.1. Confirmed downstream regressions take precedence.
-
-- **Bilateral-filter half gradients:** restore accuracy for learnable tensor sigmas
-  without losing backend performance ([#6284](https://github.com/kornia/kornia/issues/6284)).
-  Float32 sigmas remain the documented workaround until a fix is verified.
+- **Coordinate correctness:** repair feature pixel-center mappings
+  ([#6536](https://github.com/kornia/kornia/issues/6536),
+  [#6537](https://github.com/kornia/kornia/issues/6537)) with matching/pose measurements;
+  coordinate the depth-warp identity fix
+  ([#6317](https://github.com/kornia/kornia/issues/6317)) with the existing
+  [#6371](https://github.com/kornia/kornia/pull/6371) author, not a competing PR.
+- **Core mathematical defects:** validate the thin-plate-spline repair
+  ([#6404](https://github.com/kornia/kornia/issues/6404)) and fundamental-matrix RANSAC
+  degeneracy handling ([#6574](https://github.com/kornia/kornia/issues/6574)), including
+  downstream effects and release treatment.
 - **Compiled RANSAC cache safety:** isolate the CPU-to-CUDA cache collision and
   verify a fix or mitigation ([#6278](https://github.com/kornia/kornia/issues/6278)).
   Separate `TORCHINDUCTOR_CACHE_DIR` directories per device, or `KORNIA_RANSAC_AOT=0`,
   remain the current workarounds.
-- **CUDA reliability:** triage the Kannala-Brandt TorchScript second-call hang
-  ([#6257](https://github.com/kornia/kornia/issues/6257)); consolidate the 29 recorded
-  pre-existing CUDA-half test failures into explicit tracking and coverage work.
-  CUDA-half support is not a blanket patch-release guarantee.
+- **CUDA reliability:** follow the current
+  [precision and coverage evidence](https://kornia.readthedocs.io/en/latest/get-started/precision.html)
+  when selecting remaining failures for investigation. CUDA-half support is not a
+  blanket patch-release guarantee.
 - **Post-release checks and documentation:** confirm the next scheduled cross-platform
   PyPI-package test, retain the verified release evidence, and decide how stable/versioned
   LLM documents should link to their matching documentation rather than `/en/latest/`.

@@ -132,35 +132,22 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 
 ## Correctness triage and fixes
 
-Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support).
-Kornia owns both its mathematical contracts and their stable numerical implementation;
-backend workarounds are scoped compatibility commitments.
+Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-support) in order:
 
-- Classify the cause before proposing a fix: mathematical/semantic defect, unstable
-  numerical formulation or unsuitable working precision, or demonstrated upstream
-  defect. A report can involve more than one. Expected autocast behavior, generic SVD
-  derivative limitations, and normal rounding are not by themselves PyTorch bugs.
-- Separate proof of a defect from exposure and impact. Name the supported workflow,
-  inputs, device/dtype, grad/autocast mode, and affected versions; distinguish a
-  synthetic reproducer from real-data evidence and measured downstream consequences.
-  Do not infer user frequency from a failing test or invent it when unknown.
-- Derive expected behavior independently from the intended contract, mathematics, or
-  an appropriate reference. An unchanged matching/training benchmark does not veto a
-  proven correction; use it to assess consequences and regressions. Follow the existing
-  discussion-first rule for numerical edge cases outside realistic input ranges.
-- At nonsmooth or degenerate points, establish whether the value or derivative exists
-  and is unique. Document any chosen convention or fallback. A finite gradient alone
-  does not establish correctness, and a preferred convention does not bypass the
-  stability policy.
-- For an upstream workaround, isolate the failure from Kornia where possible and
-  record the upstream reproducer/issue, verified version/device scope, performance
-  cost, and removal or reassessment condition. Consider a documented limitation or
-  supported alternative without silently weakening existing guarantees. A general
-  stable formulation is preferable when it fixes the cause without backend branches.
-- Use practical exposure, severity, core relevance, and maintenance cost to prioritize
-  work. Measure substantial costs on realistic affected and unaffected paths using
-  the benchmark methodology. Keep justified test-tolerance repairs distinct from
-  library defects; valid floating-point implementations need not agree bitwise.
+1. Check the contract and equivalent plain-PyTorch operation where applicable. Classify
+   the report: math/semantics, numerical formulation, upstream behavior, or no defect.
+2. Check scope and existing solutions before coding. Stop for excluded inputs until an
+   explicit scope decision; demonstrate benefit over existing options before adding a solver.
+3. For upstream failures, test latest stable and available next PyTorch on the affected
+   backend; record gaps. Follow the roadmap's fixed-upstream rule before adding a workaround.
+4. Name the workflow, inputs, dtype/device, and grad/autocast mode. Separate synthetic
+   proof, real-data exposure, and downstream impact; do not invent user frequency.
+5. Pin independent expected results in focused tests (`test_convention_*` for conventions).
+   Use `self.assert_close()`'s dtype tolerances or justify an override. Report worse
+   downstream results and unresolved convention choices for maintainer judgment.
+6. Record branch rationale and workaround scope/retirement beside the code; put measured
+   costs and tradeoffs in the PR and accepted behavior changes in release notes. State
+   the outcome explicitly, including a supported alternative or no change.
 
 ## Responding to review
 
