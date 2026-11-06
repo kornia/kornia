@@ -627,7 +627,7 @@ class TestTrackedGradientNoise6598(BaseTester):
     def test_tracked_gradient_scale_without_mkldnn(self, device, build):
         # With MKLDNN disabled, x86 CPU takes NNPACK at batch >= 16, whose convolution leaves rounding noise on flat
         # pixels as macOS arm64 CPU does. This is a Linux proxy for that backend: a call site going back to the
-        # convolution reads 3 to 5 orders of magnitude above float64 here.
+        # convolution reads 920 to 6.7e4 times float64 here.
         if device.type != "cpu":
             pytest.skip("the flag selects a CPU convolution backend")
         patches = self._flat_lattice_patches(64).to(device)
