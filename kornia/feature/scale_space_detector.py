@@ -881,13 +881,11 @@ class MultiResolutionDetector(nn.Module):
           features as well, such as a difference of Gaussians, pass its magnitude, as
           :class:`~kornia.feature.SIFTFeature` does.
         - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size ``(H_l, W_l)``, without a
-          sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the ``(H, W)`` input, in the frame
-          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
-          That is the centre of the level pixel only on a level of the input's size; otherwise that centre is at
-          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`. The Key.Net reference maps it the same way.
-          The reported point minus that centre, :math:`-0.5 (f - 1)` px along x for :math:`f = W / W_l` and likewise
-          along y, is a known defect (`#6536 <https://github.com/kornia/kornia/issues/6536>`_): about +0.15 px on the
-          default up level, and increasingly below centre at lower levels.
+          sub-pixel step. It is reported at the centre of that level pixel,
+          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)` of the ``(H, W)`` input, in the frame of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          The Key.Net reference reports :math:`(u W / W_l, v H / H_l)` instead, :math:`0.5 (f - 1)` px up and to the
+          left of that centre for :math:`f = W / W_l` (likewise along y), about 1.5 px on the default coarsest level.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 
@@ -1008,7 +1006,8 @@ class MultiResolutionDetector(nn.Module):
             level_img: Image tensor for a single pyramid level.
             num_kp: Number of keypoints requested from this pyramid level.
             factor: Per-axis factor ``(W / W_l, H / H_l)`` from the current pyramid level to the original image:
-                level pixel :math:`(u, v)` is reported at ``(u * factor[0], v * factor[1])``.
+                level pixel :math:`(u, v)` is reported at its centre,
+                ``((u + 0.5) * factor[0] - 0.5, (v + 0.5) * factor[1] - 0.5)``.
             mask: Optional mask with shape ``(1, 1, H, W)`` at the *original* image resolution, saying where a
                 detection may be. It is resampled onto this level conservatively and applied to the non-maxima
                 suppression output, so a zero region drops every maximum within one level pixel of it and a
@@ -1066,13 +1065,15 @@ class MultiResolutionDetector(nn.Module):
         valid = top_scores > self.score_threshold
         top_scores = torch.where(valid, top_scores, torch.zeros_like(top_scores))
 
-        # Convert flat indices to (y, x) pixel coordinates and project them to the original
-        # resolution. The LAFs are built in at least float32: a half-precision dtype cannot hold a
-        # pixel index times a scale factor, nor an odd pixel above 256 (bfloat16) or 2048 (float16).
+        # Convert flat indices to (y, x) pixel coordinates and project the centres of those level pixels
+        # to the original resolution: every level is resampled with align_corners=False, so a level
+        # pixel's centre is (u + 0.5) * f - 0.5 in the input, and u itself when f is 1. The LAFs are built
+        # in at least float32: a half-precision dtype cannot hold a pixel index times a scale factor, nor
+        # an odd pixel above 256 (bfloat16) or 2048 (float16).
         yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
         wide = torch.promote_types(level_img.dtype, torch.float32)
         fx = torch.tensor([factor[0], factor[1]], device=level_img.device, dtype=wide)
-        xy_projected = yx.view(1, k, 2).flip(2).to(wide) * fx
+        xy_projected = (yx.view(1, k, 2).flip(2).to(wide) + 0.5) * fx - 0.5
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
         scale = torch.full((1, k, 1, 1), scale_val, device=level_img.device, dtype=wide)
         lafs = laf_from_center_scale_ori(xy_projected, scale, scale.new_zeros(1, k, 1))
