@@ -1075,6 +1075,22 @@ class TestConventionsMutualInformation(BaseTester):
 
 
 class TestMutualInformationLargeSampleCounts(BaseTester):
+    @pytest.mark.skipif(
+        not dynamo_is_available() or torch_version_lt(2, 9, 0), reason="Dynamo traces the gathers from 2.9"
+    )
+    def test_reference_keeps_a_static_sample_count_under_capture(self, device):
+        # The MPS chunk gate and split read this size, so a data-dependent one would stop ``fullgraph`` capture there.
+        def loss(x, y):
+            module = MILossFromRef(y)
+            return module(x) if module.signal.shape[-1] > 1 else x.sum()
+
+        signal = torch.rand(1, 50, device=device, dtype=torch.float32)
+        target = signal**2
+        torch._dynamo.reset()
+        with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True):
+            compiled = torch.compile(loss, backend="eager", fullgraph=True)
+            self.assert_close(compiled(signal, target), loss(signal, target))
+
     @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
     def test_chunked_contraction_matches_einsum(self, device, chunk_size):
         # float32 on every leg: half-precision losses accumulate their histogram in float32.

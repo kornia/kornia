@@ -26,7 +26,10 @@ from kornia.core.utils import is_exporting
 
 # On Apple M1 and M2, an MPS batched matmul that contracts 32767 or more samples adds memory past the end of its
 # operands to the result whenever both output dimensions are at least 16, so the error depends on what the allocator
-# put there. pytorch/pytorch#195163, not fixed in torch 2.15.
+# put there (pytorch/pytorch#195163). Seen on an M1 with torch 2.5.1, 2.9.1, 2.14, 2.15 and nightly 2.16.0.dev20261012.
+# M3 and later do not show it upstream but take this path too. Reassess when pytorch/pytorch#195012 ships: it routes
+# these shapes to slower Metal kernels, so keep the chunks unless they lose to that route, and remove them only once
+# the oldest supported torch has a fix.
 _MPS_MAX_CONTRACTED_SAMPLES = 16384
 
 
