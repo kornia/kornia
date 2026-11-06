@@ -221,9 +221,9 @@ def _detects_float16_in_float32(pyramid: nn.Module, response: nn.Module, subpix:
     path, so its class does not matter; only autocast changes for it, and turning that off would make float16 weights
     reject the input they now get cast for.
 
-    Measured on a float16 image, CPU and CUDA: with ``isinstance``, a subclass with a float16 weight raises and a subclass
-    returning a wider response has its float32 score of 1.0001 rounded to 1.0; the exact check costs an unmodified
-    subclass the fix (5120 of 5120 non-finite, as on main).
+    Measured on a float16 image, CPU and CUDA: with ``isinstance``, a subclass with a float16 weight raises and a
+    subclass returning a wider response has its float32 score of 1.0001 rounded to 1.0; the exact check costs an
+    unmodified subclass the fix (5120 of 5120 non-finite, as on main).
     """
     return (
         type(getattr(pyramid, "_orig_mod", pyramid)) is ScalePyramid
@@ -231,6 +231,20 @@ def _detects_float16_in_float32(pyramid: nn.Module, response: nn.Module, subpix:
         and _holds_only_scalars(response)
         and _holds_only_scalars(subpix)
     )
+
+
+def _nms_candidates(response: torch.Tensor, float16_scores: bool) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the masks of the strict maxima and minima of ``response``, an octave's response in at least float32.
+
+    With ``float16_scores`` it comes from a float16 image, whose quantisation noise makes weak maxima with scores below
+    float16's resolution, so only those are dropped. Rounding the response before NMS would also merge real maxima:
+    Harris fills 252 slots against float32's 825 on HPatches, this 545.
+    """
+    max_mask, min_mask = nms3d_minmax(response)
+    if float16_scores:
+        scored = response.to(torch.float16) != 0
+        return max_mask & scored, min_mask & scored
+    return max_mask, min_mask
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -510,12 +524,7 @@ class ScaleSpaceDetector(nn.Module):
         #   and drives the sparse top-K below.
         max_nms_mask: torch.Tensor
         min_nms_mask: torch.Tensor
-        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp)
-        if float16_scores:
-            # Quantisation noise makes weak maxima here, with scores below float16's resolution. Rounding before NMS would
-            # also merge real maxima: Harris fills 252 slots against float32's 825 on HPatches, this 545.
-            scored = oct_resp.to(torch.float16) != 0
-            max_nms_mask, min_nms_mask = max_nms_mask & scored, min_nms_mask & scored
+        max_nms_mask, min_nms_mask = _nms_candidates(oct_resp, float16_scores)
 
         # The mask is applied to the candidates, not to the response the NMS reads: multiplying the
         # response first would carve a hard edge into it, and every response pixel next to a zeroed
