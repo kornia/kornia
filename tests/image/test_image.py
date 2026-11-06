@@ -33,6 +33,47 @@ from testing.base import BaseTester
 
 
 class TestImage(BaseTester):
+    @pytest.mark.parametrize("channels,color_space", [(1, ColorSpace.GRAY), (3, ColorSpace.RGB)])
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_to_numpy_preserves_layout_and_values(self, device, dtype, channels, color_space, order):
+        """Preserve layout and metadata while bfloat16 exports use independent float32 storage."""
+        data = torch.arange(channels * 6, device=device, dtype=dtype).reshape(channels, 2, 3)
+        if order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(1, 2, 0)
+        data.requires_grad_()
+        image = make_image(data, color_space, order)
+        stored_data = image.data
+
+        actual = image.to_numpy()
+
+        expected = data.detach().cpu()
+        if dtype == torch.bfloat16:
+            expected = expected.float()
+        self.assert_close(torch.from_numpy(actual), expected)
+        assert image.data is stored_data
+        assert image.dtype == dtype
+        assert image.channels_order == order
+        assert image.pixel_format.color_space == color_space
+        if dtype == torch.bfloat16:
+            actual.fill(-1)
+            assert (image.data >= 0).all()
+
+    @pytest.mark.parametrize("array_dtype", [np.uint8, np.float32, np.float64])
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_to_numpy_keeps_supported_cpu_dtypes_shared(self, array_dtype, order):
+        """Keep supported CPU dtypes and their shared-memory NumPy view."""
+        data = np.arange(18, dtype=array_dtype).reshape(3, 2, 3)
+        if order == ChannelsOrder.CHANNELS_LAST:
+            data = data.transpose(1, 2, 0)
+        image = Image.from_numpy(data, channels_order=order)
+
+        actual = image.to_numpy()
+
+        assert actual.dtype == data.dtype
+        assert np.shares_memory(actual, data)
+        actual[0, 0, 0] = 42
+        assert data[0, 0, 0] == 42
+
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=8)
