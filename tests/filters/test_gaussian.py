@@ -285,6 +285,48 @@ def test_get_discrete_gaussian_erf_kernel1d_tensor(window_size, sigma, device, d
     assert_close(actual.sum(), expected.sum())
 
 
+@pytest.mark.parametrize(
+    "window_size, expected",
+    [
+        # On an even window a tap edge sits on the centre, so the infinite slope used to give inf * 0 = nan there,
+        # and the normalization spread it to every tap.
+        (2, [0.5, 0.5]),
+        (4, [0.0, 0.5, 0.5, 0.0]),
+        (6, [0.0, 0.0, 0.5, 0.5, 0.0, 0.0]),
+        (5, [0.0, 0.0, 1.0, 0.0, 0.0]),
+        (1, [1.0]),
+    ],
+)
+def test_gaussian_erf_sigma_zero_is_the_impulse_limit_6619(window_size, expected, device, dtype):
+    expected = torch.tensor([expected], device=device, dtype=dtype)
+    # sigma == 0 exactly, and the smallest subnormal sigma, whose reciprocal overflows to inf in every float dtype.
+    smallest = torch.finfo(dtype).tiny * torch.finfo(dtype).eps
+    for sigma in (0.0, -0.0, smallest):
+        actual = get_gaussian_erf_kernel1d(window_size, sigma, force_even=True, device=device, dtype=dtype)
+        assert_close(actual, expected, rtol=0, atol=0)
+
+
+def test_gaussian_erf_sigma_zero_in_a_batch_6619(device, dtype):
+    # Only the sigma == 0 row is the impulse; the other row is the ordinary kernel.
+    sigma = torch.tensor([[0.0], [1.0]], device=device, dtype=dtype)
+    actual = get_gaussian_erf_kernel1d(4, sigma, force_even=True)
+    assert_close(actual[0], torch.tensor([0.0, 0.5, 0.5, 0.0], device=device, dtype=dtype), rtol=0, atol=0)
+    assert_close(actual[1:], get_gaussian_erf_kernel1d(4, 1.0, force_even=True, device=device, dtype=dtype))
+
+
+@pytest.mark.parametrize("window_size", [4, 5])
+def test_gaussian_erf_sigma_gradient_is_zero_at_zero_6619(window_size, device, dtype):
+    # Dividing by sigma left an inf on the graph, so the sigma gradient was nan even on an odd window, whose forward
+    # value was already the impulse. The continuous limit is flat at sigma == 0, as in `gaussian`.
+    sigma = torch.zeros(1, 1, device=device, dtype=dtype, requires_grad=True)
+
+    out = gaussian_discrete_erf(window_size, sigma)
+    (out * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+
+    assert torch.isfinite(out).all()
+    assert_close(sigma.grad, torch.zeros_like(sigma.grad), rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_discrete_kernel1d_float(window_size, sigma, device, dtype):

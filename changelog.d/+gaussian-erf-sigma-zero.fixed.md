@@ -1,0 +1,1 @@
+`get_gaussian_erf_kernel1d` with `sigma = 0` (or a subnormal `sigma`) on an even window now returns the unit-impulse kernel, split between the two centre taps, instead of all NaN, and the gradient with respect to `sigma` there is 0 instead of NaN on any window.

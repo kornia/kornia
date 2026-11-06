@@ -259,10 +259,19 @@ def gaussian_discrete_erf(
     centre = (window_size - 1) / 2
     x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - centre).expand(batch_size, -1)
 
-    t = 0.70710678 / sigma.abs()
+    # An infinite slope is the unit-impulse limit of the kernel: sigma == 0 exactly, or a sigma so small that
+    # 1 / sigma overflows the working dtype. There a tap edge at x +- 0.5 == 0 gives inf * 0 = NaN, which the
+    # normalization spreads to every tap. As in `gaussian_discrete`, divide by a stand-in and select the
+    # limit, so the sigma gradient is the 0 of the limit, not NaN. On the window's integer or half-integer
+    # taps that limit, 0.5 * (sign(x + 0.5) - sign(x - 0.5)), is 1 - |x| clamped at 0: 1 on the centre tap of
+    # an odd window and 0.5 on the two centre taps of an even one. A NaN sigma is not caught and still propagates.
+    sigma_abs = sigma.abs()
+    is_impulse = (0.70710678 / sigma_abs).isinf()
+    t = 0.70710678 / torch.where(is_impulse, torch.ones_like(sigma_abs), sigma_abs)
     # t = torch.tensor(2, device=sigma.device, dtype=sigma.dtype).sqrt() / (sigma.abs() * 2)
 
     gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
+    gauss = torch.where(is_impulse, (1 - x.abs()).clamp(min=0), gauss)
     gauss = gauss.clamp(min=0)
 
     return gauss / gauss.sum(-1, keepdim=True)
