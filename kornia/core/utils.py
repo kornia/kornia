@@ -849,6 +849,19 @@ def is_autocast_enabled(both: bool = True) -> bool:
     return torch.is_autocast_enabled()
 
 
+def _caller_autocast_on(device_type: str) -> bool:
+    """Return whether a caller's autocast region is on for ``device_type``; a device type without autocast has none."""
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
+    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
+    # instead of passing it to the ``except``.
+    if device_type == "meta":
+        return False
+    try:
+        return torch.is_autocast_enabled(device_type)
+    except RuntimeError:  # a device type without autocast, such as ``meta``
+        return False
+
+
 def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     """Return a context that turns off the caller's autocast region for ``device_type``, if one is on.
 
@@ -857,18 +870,34 @@ def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
     too.
     """
-    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
-    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
-    # instead of passing it to the ``except``.
-    if device_type == "meta":
-        return nullcontext()
-    try:
-        enabled = torch.is_autocast_enabled(device_type)
-    except RuntimeError:  # a device type without autocast, such as ``meta``
-        enabled = False
-    if enabled:
+    if _caller_autocast_on(device_type):
         return torch.autocast(device_type=device_type, enabled=False)
     return nullcontext()
+
+
+def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ...]:
+    """Return ``tensors`` in float32 if a caller's autocast region would have cast them to one dtype, else unchanged.
+
+    A matrix product in an autocast region casts its float16, bfloat16 and float32 operands to the autocast dtype, so a
+    half-precision matrix from a model under AMP multiplies with a float32 one there, and raises under
+    :func:`_autocast_disabled`. Call this before leaving the region: such operands then meet in float32, which also
+    keeps the arithmetic accurate. Autocast does not cast float64 or integer operands, so a mismatch with those, a
+    mismatch outside autocast, and operands of one dtype all return unchanged and behave as they did. ``None`` entries
+    pass through. TorchScript cannot compile this; a scripted call stays in the caller's region.
+    """
+    first = None
+    mismatched = False
+    for tensor in tensors:
+        if tensor is None:
+            continue
+        if tensor.dtype not in (torch.float32, torch.float16, torch.bfloat16):
+            return tensors
+        if first is None:
+            first = tensor
+        mismatched = mismatched or tensor.dtype != first.dtype
+    if first is None or not (mismatched and _caller_autocast_on(first.device.type)):
+        return tensors
+    return tuple(None if tensor is None else tensor.float() for tensor in tensors)
 
 
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.
