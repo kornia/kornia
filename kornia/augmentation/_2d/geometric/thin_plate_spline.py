@@ -126,9 +126,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
     ) -> torch.Tensor:
         src = _to_device_nonblocking(params["src"], input.device, input.dtype)
         dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
-        # NOTE: warp_image_tps need to use inverse parameters
+        # NOTE: warp_image_tps need to use inverse parameters; the kernels sit on the first argument of the fit
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
+        return warp_image_tps(input, dst, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
 
     def apply_transform_mask(
         self,
