@@ -114,13 +114,15 @@ class OperationBase(nn.Module):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
         # A module pickled when ``magnitude_range`` was an attribute brings it back, and ``_parameters`` would go on
-        # demanding the key below from every later load. The property reads the same range from the generator.
+        # demanding the key below from every later load. The property reads the generator's range, which is the same one
+        # unless the attribute was assigned; an assigned range is dropped.
         self._parameters.pop("magnitude_range", None)
         self.__dict__.pop("magnitude_range", None)
 
     def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
         # ``magnitude_range`` was an attribute, so ``nn.Module`` registered a parameter range under that name as well.
-        # Checkpoints from then hold the same values under the generator's own key, which is the one that loads.
+        # Checkpoints from then hold the same values under the generator's own key, unless a parameter was assigned to
+        # the attribute. The generator's key is the one that loads.
         state_dict.pop(f"{prefix}magnitude_range", None)
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
