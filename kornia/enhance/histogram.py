@@ -159,7 +159,8 @@ def histogram2d(
     Convention:
         x1 and x2 supply one sample row per batch element and return
         (B, N_bins, N_bins), where the first bin axis belongs to x1.
-        When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and
+        The output dtype is the promoted dtype of ``x1``, ``x2`` and ``bins``. When that dtype is float16 or
+        bfloat16, the kernels, joint counts and
         normalization are evaluated in float32 and the result is cast back to that promoted dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
@@ -185,9 +186,11 @@ def histogram2d(
     """
     # In float16 the joint counts and their normalization overflow on ordinary images, and the gradient reaches the
     # samples through per-bin terms below the float16 normal range: evaluate the kernels in float32 as well.
-    kernel_dtype = torch.promote_types(x1.dtype, bins.dtype)
+    kernel_dtype = torch.promote_types(torch.promote_types(x1.dtype, x2.dtype), bins.dtype)
     if kernel_dtype in (torch.float16, torch.bfloat16):
         x1, x2, bins, bandwidth = x1.float(), x2.float(), bins.float(), bandwidth.float()
+    else:
+        x1, x2 = x1.to(kernel_dtype), x2.to(kernel_dtype)
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 

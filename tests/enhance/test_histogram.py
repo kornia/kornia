@@ -283,6 +283,35 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    @pytest.mark.parametrize(
+        "dtypes",
+        [
+            (torch.float32, torch.float64),
+            (torch.float64, torch.float32),
+            (torch.float16, torch.float64),
+            (torch.float16, torch.bfloat16),
+        ],
+    )
+    def test_mixed_sample_dtypes(self, device, dtypes):
+        if device.type == "mps" and torch.float64 in dtypes:
+            pytest.skip("MPS has no float64")
+        if device.type == "mps" and torch.bfloat16 in dtypes and torch_version_lt(2, 14, 0):
+            pytest.skip("MPS bfloat16 requires torch 2.14")
+        x1 = torch.tensor([[0.2, 0.8]], device=device, dtype=dtypes[0], requires_grad=True)
+        x2 = torch.tensor([[0.3, 0.6]], device=device, dtype=dtypes[1], requires_grad=True)
+        bins = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtypes[0])
+        bandwidth = torch.tensor(0.2, device=device)
+
+        actual = TestHistogram2d.fcn(x1, x2, bins, bandwidth)
+        expected_dtype = torch.promote_types(*dtypes)
+        expected = TestHistogram2d.fcn(x1.to(expected_dtype), x2.to(expected_dtype), bins.to(expected_dtype), bandwidth)
+        assert actual.dtype == expected_dtype
+        self.assert_close(actual, expected)
+        actual_grads = torch.autograd.grad(actual[0, 0, 1], (x1, x2))
+        expected_grads = torch.autograd.grad(expected[0, 0, 1], (x1, x2))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
     @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
     def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):
         # The first case overflows the normalization sum in float16; the second overflows each matrix entry.
