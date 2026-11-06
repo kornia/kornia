@@ -832,7 +832,13 @@ class TestBoxes2D(BaseTester):
         restored[1] = merged[0:3]
         self._assert_padding_rows(restored, [_SAMPLE_0, _SAMPLE_0], device, dtype)
 
-    def test_list_padding_is_not_filter_validity_6283(self, device, dtype):
+    def test_rebatched_selection_of_list_boxes_is_the_slice_6283(self, device, dtype):
+        boxes = self._padding_boxes(device, dtype)
+        rebatched = boxes[0][None].to_tensor("xyxy")
+        assert isinstance(rebatched, list)
+        self.assert_close(rebatched[0], boxes[0:1].to_tensor("xyxy")[0], atol=0.0, rtol=0.0)
+
+    def test_convention_list_padding_is_not_filter_validity_6283(self, device, dtype):
         # The two record different things and export differently. A filtered row stays where it is as a zero row. A
         # padding row is trimmed from the default export and stays a stored row in the padded one, so ``_valid`` alone
         # could not express it.
@@ -848,7 +854,7 @@ class TestBoxes2D(BaseTester):
         assert masks[0, 1:].count_nonzero() == 0
         assert masks[1, 2].count_nonzero() == 0
 
-    def test_index_put_raw_tensor_keeps_the_padding_6283(self, device, dtype):
+    def test_convention_index_put_raw_tensor_keeps_the_padding_6283(self, device, dtype):
         # A raw tensor brings coordinates and nothing else: padding stays padding, as a filtered row stays filtered, so
         # shifting a whole sample moves its padding rows without turning them into boxes.
         boxes = self._padding_boxes(device, dtype)
@@ -859,7 +865,7 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     @pytest.mark.parametrize("index_put", [False, True])
-    def test_padding_written_to_dense_boxes_is_invalid_6283(self, index_put, mode, device, dtype):
+    def test_convention_padding_written_to_dense_boxes_is_invalid_6283(self, index_put, mode, device, dtype):
         # A dense container has no trimmed export, so a padding row written to it is not a box: it exports as an exact
         # zero row instead of the stored zero corners' one-pixel box, and it draws no mask.
         list_boxes = self._padding_boxes(device, dtype)
@@ -1033,7 +1039,9 @@ class TestBoxes2D(BaseTester):
         # The object is built outside the graph, so its mask is an input of it. One compiled function follows objects
         # whose padding differs, an object that was written to included.
         if export == "trimmed" and torch_version_lt(2, 10, 0):
-            pytest.skip("torch.compile captures the dynamic shapes of this export by default from torch 2.10")
+            pytest.skip(
+                "fullgraph raises Unsupported at nonzero on torch 2.5.1 to 2.9.1 (measured); it passes from 2.10.0"
+            )
         functions = {
             "trimmed": lambda boxes: boxes.to_tensor("xyxy"),
             "padded": lambda boxes: boxes.to_tensor("xyxy", as_padded_sequence=True),
@@ -1056,7 +1064,8 @@ class TestBoxes2D(BaseTester):
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.skipif(
         torch_version_lt(2, 10, 0),
-        reason="Before torch 2.10, torch.compile does not capture the dynamic shapes of a written object's export",
+        reason="fullgraph raises Unsupported at nonzero for any list-built object on torch 2.5.1 to 2.9.1 (measured); "
+        "it passes from 2.10.0",
     )
     def test_dynamo_list_padding_is_fullgraph_6283(self, device, dtype, torch_optimizer):
         # Writes, merges and both exports stay in one graph, for a written object as for one nothing touched.
