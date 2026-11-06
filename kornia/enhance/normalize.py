@@ -47,6 +47,8 @@ class Normalize(nn.Module):
         The channel axis is dimension 1: inputs are ``(B, C, *)`` and one statistic
         per channel has shape (C,) (or (B, C) for separate batch statistics).
         See :func:`normalize` for the functional contract.
+        An ``nn.Parameter`` statistic stays a registered parameter for optimizers and checkpoints;
+        ordinary tensor statistics are non-persistent buffers.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -86,12 +88,12 @@ class Normalize(nn.Module):
     ) -> None:
         super().__init__()
 
-        if isinstance(mean, torch.Tensor):
+        if isinstance(mean, torch.Tensor) and not isinstance(mean, nn.Parameter):
             self.register_buffer("mean", mean, persistent=False)
         else:
             self.mean = mean
 
-        if isinstance(std, torch.Tensor):
+        if isinstance(std, torch.Tensor) and not isinstance(std, nn.Parameter):
             self.register_buffer("std", std, persistent=False)
         else:
             self.std = std
@@ -232,6 +234,10 @@ class Denormalize(nn.Module):
 
     Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
+    Note:
+        An ``nn.Parameter`` statistic stays a registered parameter for optimizers and checkpoints;
+        ordinary tensor statistics are non-persistent buffers.
+
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
@@ -261,12 +267,12 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        if isinstance(mean, torch.Tensor):
+        if isinstance(mean, torch.Tensor) and not isinstance(mean, nn.Parameter):
             self.register_buffer("mean", mean, persistent=False)
         else:
             self.mean = mean
 
-        if isinstance(std, torch.Tensor):
+        if isinstance(std, torch.Tensor) and not isinstance(std, nn.Parameter):
             self.register_buffer("std", std, persistent=False)
         else:
             self.std = std
