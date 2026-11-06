@@ -69,8 +69,9 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
 5. Pin independent expected results in focused tests (`test_convention_*` for conventions).
    Use `self.assert_close()`'s dtype tolerances or justify an override. Report worse
    downstream results and unresolved convention choices for maintainer judgment.
-6. Record branch rationale and workaround scope/retirement beside the code; put measured
-   costs and tradeoffs in the PR and accepted behavior changes in release notes. State
+6. Record branch rationale and workaround scope, retirement, and a short measured-cost
+   summary beside the code; put detailed results and tradeoffs in the PR and accepted
+   behavior changes in release notes. State
    the outcome explicitly, including a supported alternative or no change.
 
 ## Review and completion
@@ -82,7 +83,8 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
   stop patching cases. State the invariant and redesign the responsible code before
   pushing again, reverting previous fixes when simpler.
 - Follow the [PR and AI disclosure rules](CONTRIBUTING.md#pull-request), including the
-  required attribution footer on agent-authored GitHub posts and an accurate human-work statement.
+  accurate human-work statement. End agent-authored GitHub posts with the literal form:
+  `Posted on behalf of @<github-handle> by <Agent> (<actual model>).`
 - Apply the [changelog rules](changelog.d/README.md), register public APIs in the matching
   docs page, and update detector/descriptor examples as described in
   [Contributing to Documentation](CONTRIBUTING.md#contributing-to-documentation).

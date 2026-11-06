@@ -118,13 +118,18 @@ elsewhere. Only then does the leading empty `sys.path` entry -- the working dire
 the editable install:
 
 ```bash
+# From the primary checkout; select .venv-py* here if that is the environment under test.
+comparison_python="$PWD/.venv/bin/python"
 git worktree add /tmp/base-wt <base-revision>
-cd /tmp/base-wt && python - <<'EOF'
+cd /tmp/base-wt && "$comparison_python" - <<'EOF'
+import sys
 import kornia
+print(sys.executable)
 print(kornia.__file__)  # must name the worktree, not the primary checkout
 EOF
 ```
 
+On Windows, use the environment's `Scripts/python.exe` instead of `bin/python`.
 Print `kornia.__file__` inside every measurement block and check that it names the tree you
 meant. A `cd` into the worktree is not by itself enough, and neither is putting the worktree on
 `PYTHONPATH` while the script still lives somewhere else. The same applies to `sys.executable`
@@ -138,9 +143,13 @@ through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever t
 point -- `clamp(min=0).sqrt()`, `clamp(-1, 1).acos()`, `clamp(-1, 1).asin()` -- the clamp bounds the value only,
 so the unbounded derivative still reaches the backward pass as `inf` or `nan` on the older half of the supported
 range while 2.14 masks it. A floor below the dtype's smallest subnormal is no guard either: `clamp(min=1e-12)`
-underflows to `0` in `float16`. Substitute a safe argument into the expression that gets differentiated and take
-the value from a `.detach()`ed copy, or from the other arm of a `torch.where`, instead; that is
-version-independent by construction. A CPU float32 run on a recent torch does not exercise any of this -- the
+underflows to `0` in `float16`. Substitute a safe argument before evaluating the singular expression;
+take any value-only correction from a detached copy. `torch.where` does not protect an
+unselected arm's backward pass: both differentiated arms must have finite derivatives.
+For example, `safe = torch.where(x > 0, x, torch.ones_like(x))` followed by
+`torch.where(x > 0, safe.sqrt(), torch.zeros_like(x))` chooses a zero derivative at zero
+without evaluating `sqrt(0)` in autograd; that convention still needs a contract justification.
+A CPU float32 run on a recent torch does not exercise the version difference -- the
 2.5.1 leg is what discriminates. The measurements and the audit of the pattern are in #4229.
 
 ## Repository contract checks
@@ -178,16 +187,31 @@ Read the Docs builds with `fail_on_warning: true` (`readthedocs.yml`) and the do
 | `@pytest.mark.onnx_conformance` | Part of the ONNX conformance test; deselected unless `--onnx-conformance` selects packages |
 | `@pytest.mark.compile_conformance` | Part of the torch.compile conformance test; deselected unless `--compile-conformance` selects packages |
 
+### Selecting conformance packages
+
+From the repository root after fetching the target branch, select changed packages and
+their importers, including committed, staged, unstaged, and untracked files. Use
+`upstream/main` from the contributor setup, or `origin/main` when `origin` is Kornia itself:
+
+```bash
+conformance_base=$(git merge-base upstream/main HEAD)
+conformance_paths=$(
+  git diff --name-only "$conformance_base"
+  git ls-files --others --exclude-standard
+)
+printf '%s\n' "$conformance_paths" | python .github/scripts/conformance_packages.py onnx
+printf '%s\n' "$conformance_paths" | python .github/scripts/conformance_packages.py compile
+```
+
+Each command prints the corresponding conformance option's package value (`all`, a
+comma-separated list, or empty when no promised operator is affected). Recompute after edits.
+
 ### ONNX conformance (#5819)
 
 Before changing export behavior, inspect `kornia/onnx/`, its mixins in `kornia/core/`,
 and existing ONNX tests. Development uses optional `onnx`, `onnxruntime`, and
 `onnxscript`; verify graph construction/export and runtime behavior when both change.
-Run the conformance checks for changed packages and their importers:
-
-```bash
-git diff --name-only origin/main... | python .github/scripts/conformance_packages.py onnx
-```
+Use the [package selection](#selecting-conformance-packages) for changed packages and their importers.
 
 `tests/onnx/test_conformance.py` holds kornia's ONNX promise: every *promised* case -- a record of the survey
 snapshot `docs/source/_data/export_support.json` with ONNX status `ok` in a stable-core package
@@ -229,11 +253,8 @@ promised operator is a regression to fix.
 
 ### torch.compile conformance (#5819)
 
-Run this check for changed packages and their importers. Obtain the selection with:
-
-```bash
-git diff --name-only origin/main... | python .github/scripts/conformance_packages.py compile
-```
+Run this check for changed packages and their importers using the
+[package selection](#selecting-conformance-packages).
 
 `tests/test_inductor_conformance.py` holds the torch.compile promise the same way: every record of the survey snapshot
 with compile status `ok` in a stable-core package, without anything built from pretrained weights or listed in
@@ -269,7 +290,7 @@ conformance jobs run with `--timeout=600`.
 
 **Effect on tests.** Numerically sensitive tests that compare float32 outputs of matrix operations against hardcoded expected values (or against a CPU reference) can fail because the accumulated rounding error exceeds the test tolerance.
 
-**In Kornia's test suite.** TF32 matmul is **off by default**; cuDNN convolutions retain PyTorch's TF32 default. Pass `--tf32` (or set `KORNIA_TEST_TF32=true`) to enable it. Tests that are known to be sensitive to TF32 are marked `@pytest.mark.tf32`; without `--tf32` they are marked non-strict `xfail`, so a default run reports neither their failure nor their recovery.
+**In Kornia's test suite.** TF32 is **off by default** for both matmul and cuDNN convolutions. Pass `--tf32` (or set `KORNIA_TEST_TF32=true`) to enable it. Tests that are known to be sensitive to TF32 are marked `@pytest.mark.tf32`; without `--tf32` they are marked non-strict `xfail`, so a default run reports neither their failure nor their recovery.
 
 **Fixing a TF32-sensitive test.** Prefer fixing the test data over relaxing tolerances:
 

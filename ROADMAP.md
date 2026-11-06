@@ -21,7 +21,9 @@ evidence, and follow-ups. Patch releases prioritize confirmed regressions and co
 
 ## Guiding themes
 
-1. **Reference core.** Document actual behavior and known defects, repair the contracts,
+1. **Reference core.** Pixel-centre, coordinate-frame, and sampling convention mistakes
+   let code run while producing mathematically wrong results; agents can reproduce those
+   mistakes. Document actual behavior and known defects, repair the contracts,
    then freeze a small dependable surface. Coordinate convention changes and migration
    examples under the stability policy; the repair window does not waive it. Convention
    tests and independent expected results are the foundation of a future portable corpus
@@ -41,8 +43,9 @@ evidence, and follow-ups. Patch releases prioritize confirmed regressions and co
 wrappers remain maintained under a usable-or-deleted rule. A new integration requires
 an explicitly named maintainer sponsor who accepts ongoing ownership; a contributor's
 implementation alone does not reopen the surface. The freeze lifts when a maintainer
-with model-work capacity joins. Work approved before the freeze remains grandfathered
-under its original scope; the named commitments are listed below.
+with model-work capacity joins. Contributions already in flight before the freeze
+(an open issue plus a PR under review) are grandfathered under their original rules;
+the named pre-freeze commitments are listed below.
 
 **Tier A/B/C is proposed, not in force.** The current stable-core / best-effort /
 experimental stability policy remains authoritative. A future Tier A starts small and
@@ -59,15 +62,20 @@ mathematical defects, numerical instability, and upstream workarounds.
    applicable: a sum exceeding float16's range does not justify widening its output.
    This does not excuse unstable computation of a representable result.
 2. **Do not expand support through bug fixes.** Do not add integer-input support or
-   special paths solely for extreme magnitudes such as `1e20` image values or pixel
-   coordinates. Stop implementation and explain the supported input form. Expanding
+   special paths solely for synthetic extremes: half-precision overflow far beyond
+   image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
+   scaled by `1e15`. These are examples, not universal magnitude cutoffs; `1e5` already
+   exceeds float16's finite range. Stop implementation and explain the supported input form. Expanding
    scope requires an explicit maintainer decision backed by a concrete application.
    A synthetic failure is insufficient; documented exceptions remain supported.
 3. **Check the existing solution first.** If a supported dtype conversion, parameter
    such as `num_iters`, or workflow adequately solves the reported need, do not add
    another implementation without demonstrated benefit. Value and maintenance cost
    can justify declining a proposal, not merely postponing it.
-4. **Check upstream before adding a workaround.** Isolate suspected PyTorch failures
+4. **Check upstream before adding a workaround.** Expected autocast precision changes
+   and SVD backward limitations at repeated singular values are not by themselves PyTorch
+   defects. Kornia owns choosing a formulation and working precision that meet its contract.
+   Isolate suspected PyTorch failures
    on latest stable and an available next-version build (pre-release or nightly) on the
    affected backend; record unavailable checks. If fixed upstream, default to documenting
    affected versions and alternatives without a new workaround or silently weakening
@@ -83,9 +91,11 @@ mathematical defects, numerical instability, and upstream workarounds.
 6. **Choose the outcome explicitly.** Repair the implementation, document a limitation, propose
    a scope change, or make no change. Measure performance on affected and common
    unaffected paths. Use justified dtype tolerances, not blanket bitwise equality.
-   Unknown user incidence stays unknown.
+   Exposure sets priority, not whether a proven defect exists. Unknown user incidence stays unknown.
 
-For ambiguous boundary behavior, document the chosen convention and consult the
+At degenerate or nonsmooth points, establish whether the value or derivative exists
+and is unique. A finite fallback alone does not prove correctness; document the choice.
+For ambiguous boundary behavior, consult the
 [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html):
 a proven contract violation uses the correctness-fix route; changing a working
 convention uses deprecation. Missing documentation or variation across PyTorch versions
@@ -117,7 +127,10 @@ issues own live status and acceptance decisions.
 ## Medium term — ~6 months
 
 - **Coordinated repairs and Tier A v1:** settle box, camera, sampling, and augmentation
-  conventions with executable old/new examples and a collective migration note. Follow
+  conventions with executable old/new examples and a collective migration note. Concrete
+  cases include bbox width arithmetic ([#3934](https://github.com/kornia/kornia/issues/3934),
+  reserved for maintainers) and `pyrdown` output rounding; the closed TPS identity-warp
+  repair ([#3928](https://github.com/kornia/kornia/issues/3928)) is a completed example. Follow
   the stability policy's warning period and minor boundary for deliberate changes;
   use its correctness exception only for proven defects. Publish tiers after the repairs.
 - **Portable conformance corpus:** define inputs, independent expected results,
@@ -128,17 +141,24 @@ issues own live status and acceptance decisions.
   `llms-full.txt` aligned. Derive validated workflow skills from those sources rather
   than duplicate conventions; assess them through completed user tasks.
 - **Compile/export design:** finish data-dependent augmentation and feature paths,
-  including crops and container dispatch ([#5137](https://github.com/kornia/kornia/issues/5137)).
+  tracked in [#5137](https://github.com/kornia/kornia/issues/5137): `RandomCrop`/`crop_by_indices`
+  and `AugmentationSequential` dispatch. That issue records fullgraph CPU/MPS results for
+  `RandomAffine`, `RandomPerspective`, and `RandomResizedCrop`; these do not promise CUDA coverage.
   Redesign the shared implementation instead of accumulating guards. Handle multi-output
   export generically, converge on a modern ONNX opset, and extend CI promises only with evidence.
 - **Augmentation throughput:** reduce wrapper/transform bookkeeping and kernel-launch
-  overhead, with CUDA-graph capture where useful. Keep eager and compiled comparisons
+  overhead, with CUDA-graph capture where useful. The [recorded GPU profile](benchmarks/augmentation/README.md#known-improvement-opportunities-the-improve-later-list)
+  attributes about 78% of `RandomHorizontalFlip` forward to orchestration and 22% to the raw
+  flip; a transform-matrix fast path has partially addressed it. Remeasure after changes.
+  Keep eager and compiled comparisons
   in the benchmark evidence rather than promising uniform speedups.
 - **Optional specialized execution:** evaluate a `kornia-rs` backend for non-differentiable
   CPU/`uint8` workloads only after conformance validation and at least a 5x improvement
   including conversion. This is an explicit backend proposal, not permission to add integer
   paths to ordinary operators. Limit hand-written Triton work to 2–3 measured kernel
-  bottlenecks, with registered ops, backward, and conformance evidence; experimental until validated.
+  bottlenecks, such as `median_blur` and `canny`, with registered ops, backward, and conformance
+  evidence; experimental until validated. The [benchmark evidence](benchmarks/README.md#the-honest-reading-across-apple-silicon-l4-rtx-pro-6000-rtx-4090wsl2)
+  requires remeasuring `rotate` with matched interpolation before treating it as an outlier.
 - **Batched RANSAC:** vectorize hypothesis sampling, solving, and scoring with chunked
   execution and confidence-based stopping. Choose eager/scripted/compiled variants by
   correctness and benchmarks, without requiring a compiler for the basic batched path.
@@ -147,6 +167,7 @@ issues own live status and acceptance decisions.
 
 - A reference implementation whose conformance data makes correct geometric vision
   easier to implement across frameworks, languages, and human/agent workflows.
+  Success is fewer convention bugs in users' code, not more modules in the package.
 - A compilable and exportable core with per-symbol, CI-enforced guarantees, scoped to
   semantics ONNX can represent; best-effort and experimental coverage grows with evidence.
 - A leading differentiable, GPU-batched augmentation stack, with reproducible evidence
@@ -158,8 +179,9 @@ Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), exis
 and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
 not approval for a new API; establish the concrete need and check reservations first.
 
-- **Classical core:** camera intrinsic calibration (Zhang/checkerboard/ChArUco), fiducial
-  markers, classical tracking ([#1381](https://github.com/kornia/kornia/issues/1381)),
+- **Classical core (highest priority for new contributions):** camera intrinsic calibration
+  (Zhang/checkerboard/ChArUco) remains the largest gap in the camera core. Other areas are
+  fiducial markers, classical tracking ([#1381](https://github.com/kornia/kornia/issues/1381)),
   dense stereo, Hough transforms, contours, and template matching.
 - **Reference evidence:** convention tests, independent expected vectors, corrective
   error messages, and hardware benchmark contributions, especially CUDA. Use the

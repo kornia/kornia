@@ -20,7 +20,7 @@ Coding agents should also follow the [execution checklist in AGENTS.md](AGENTS.m
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
 - You do not need to ask before working on an issue that is not reserved. Say on the issue that you are taking it, then open a pull request, as a draft if you still have questions. If a claim has no pull request after two weeks, anyone may take the issue; say so on the issue when you do.
 - Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
-- Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support) before implementing a numerical fix or backend workaround. Repairs within the supported contract are welcome directly as pull requests, subject to existing issue reservations. Do not add special paths solely for extreme magnitudes such as `1e20` image values or pixel coordinates; first obtain an explicit maintainer scope decision on an issue with a concrete application and reproducer. A failing synthetic test alone does not justify expanding support.
+- Follow [Correctness and backend support](ROADMAP.md#correctness-and-backend-support) before implementing a numerical fix or backend workaround. Repairs within the supported contract are welcome directly as pull requests, subject to existing issue reservations. Do not add special paths solely for synthetic extremes: half-precision overflow far beyond image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix scaled by `1e15`. These are examples, not universal magnitude cutoffs. First obtain an explicit maintainer scope decision on an issue with a concrete application and reproducer. A failing synthetic test alone does not justify expanding support.
 - Kornia functions take floating-point tensors, and images are floats in `[0, 1]` (see [Conventions & Pitfalls](https://kornia.readthedocs.io/en/latest/get-started/conventions.html)). Integer input is not a goal: a few cheap, scale-free image filters accept it, and we do not accept pull requests that add integer-input support anywhere else, especially for `int8` and other narrow integer types. If a function misbehaves on an integer tensor, convert the input to float first.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
@@ -123,7 +123,7 @@ Enforcement, rollout tables, and reference-resolution rules are in [Docstring ch
 - Public APIs need annotated inputs/outputs, docstrings, exports, and rendered API entries.
   Use `torch.Tensor` and `torch.nn.Module` directly where practical; follow TorchScript's
   stricter types in scripted modules. Non-JIT modules use `from __future__ import annotations`.
-- Keep 120-character lines, Apache 2.0 source headers, and comments that explain why.
+- Keep 120-character lines, Apache 2.0 source headers, and English comments that explain why.
   Ruff and `ty` enforce style and types. Prefer clear code; profile before optimizing.
   Validate autograd, aliasing, and compile behavior before introducing in-place operations.
 - For new algorithms, name a defining paper or reference implementation. Do not copy a
@@ -146,7 +146,7 @@ pre-PR filenames, and release handling. Only release PRs assemble `CHANGELOG.md`
 ### Closing a documented defect
 
 Before merging a fix that closes an issue, search its number in library code and tests,
-for example `rg -n '#NNNN|issues/NNNN' kornia/ tests/`. Check every hit: stale defect prose
+for example `grep -rnE '#NNNN|issues/NNNN' kornia/ tests/`. Check every hit: stale defect prose
 in docstrings or errors must be corrected, strict xfails removed when fixed, and wart
 assertions updated. Tests may keep the issue number to record the regression. Search
 by number, not wording; a link label and its URL can disagree. No test hits is a valid

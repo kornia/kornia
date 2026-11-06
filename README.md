@@ -280,7 +280,7 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   pixi run -e cuda test-cuda
   ```
 
-These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
+These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [TESTING.md](TESTING.md#environment-and-validation-tasks).
 
 #### From Github url (latest version)
 
