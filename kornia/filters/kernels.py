@@ -261,7 +261,7 @@ def gaussian_discrete_erf(
 
     # An infinite slope is the unit-impulse limit of the kernel: sigma == 0 exactly, or a sigma so small that
     # 1 / sigma overflows the working dtype. There a tap edge at x +- 0.5 == 0 gives inf * 0 = NaN, which the
-    # normalization spreads to every tap. As in `gaussian_discrete`, divide by a stand-in and select the
+    # normalization spreads to every tap. As in `gaussian`, divide by a stand-in and select the
     # limit, so the sigma gradient is the 0 of the limit, not NaN. On the window's integer or half-integer
     # taps that limit, 0.5 * (sign(x + 0.5) - sign(x - 0.5)), is 1 - |x| clamped at 0: 1 on the centre tap of
     # an odd window and 0.5 on the two centre taps of an even one. A NaN sigma is not caught and still propagates.
