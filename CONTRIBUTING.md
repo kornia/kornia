@@ -169,9 +169,12 @@ and investigation notes outside the library diff.
 
 ### Working with AI
 
-AI tools are welcome. Check their output as you would your own and state what the human
-actually diagnosed, designed, edited, or verified; do not imply that agent work was human
-work. The PR template asks for this distinction, not a percentage.
+AI tools are welcome. Check their output as you would your own and describe the actual
+human contribution and its effect: steering, diagnosis, design decisions, edits, review,
+or supervision. Arranging another model's review is distinct from personally verifying
+the result; credit AI-generated findings and tests to the AI. Merely requesting the task
+or directing an agent to follow reviews can mean zero substantive human technical
+contribution. The PR template asks for this distinction, not a percentage or a chat transcript.
 
 Every agent-authored GitHub PR description, issue, comment, and review on a user's behalf
 ends with `Posted on behalf of @<github-handle> by <Agent> (<actual model>).` Use the actual

@@ -87,6 +87,13 @@ Apply [Correctness and backend support](ROADMAP.md#correctness-and-backend-suppo
 - Follow the [PR and AI disclosure rules](CONTRIBUTING.md#pull-request), including the
   accurate human-work statement. End agent-authored GitHub posts with the literal form:
   `Posted on behalf of @<github-handle> by <Agent> (<actual model>).`
+- Base the PR's human-involvement section on the actual interaction and its outcome,
+  updating it after scope or review decisions. Name substantive steering, diagnosis,
+  design decisions, and supervision, even without human file edits. Distinguish reviews
+  the human arranged with another model from agent-initiated checks and personal human
+  verification; credit the model for its findings and tests. If the human only requested
+  the task or said "follow the reviews", report no substantive human technical contribution
+  and describe that limited role. Do not infer human review or testing from approval alone.
 - Apply the [changelog rules](changelog.d/README.md), register public APIs in the matching
   docs page, and update detector/descriptor examples as described in
   [Contributing to Documentation](CONTRIBUTING.md#contributing-to-documentation).
