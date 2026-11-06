@@ -2460,12 +2460,11 @@ def homography_warp(
             f"src_H_dst.device: {src_homo_dst.device}."
         )
     if normalized_homography:
+        if not torch.jit.is_scripting():
+            patch_src, src_homo_dst = _reconcile_under_autocast(patch_src, src_homo_dst)
         out_dtype = patch_src.dtype
         if _runs_in_float32(patch_src, src_homo_dst):
             patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
-        elif not torch.jit.is_scripting():
-            patch_src, src_homo_dst = _reconcile_under_autocast(patch_src, src_homo_dst)
-            out_dtype = patch_src.dtype
         height, width = dsize
         if normalized_coordinates:
             grid = create_meshgrid(
