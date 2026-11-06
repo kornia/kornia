@@ -39,6 +39,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
     @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
     @pytest.mark.parametrize("ignore_index", [-100, 255])
     def test_ignored_non_finite_logits(self, device, dtype, value, reduction, gamma, ignore_index):
+        """Ignored non-finite logits contribute neither loss nor logit gradients."""
         # Include both a partly ignored sample and an entirely ignored sample.
         logits = torch.tensor(
             [[[0.0, value], [0.0, value]], [[value, value], [value, value]]],
@@ -155,6 +156,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
 
     @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
     def test_dynamo_ignored_non_finite_logits(self, device, dtype, torch_optimizer, gamma):
+        """Compiled forward and backward passes exclude ignored non-finite logits."""
         logits = torch.tensor(
             [[0.0, float("nan"), float("inf"), -float("inf")]], device=device, dtype=dtype, requires_grad=True
         )
