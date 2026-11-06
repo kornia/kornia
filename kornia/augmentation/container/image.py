@@ -24,6 +24,7 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
 from kornia.augmentation.utils import override_parameters
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
@@ -236,11 +237,20 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         if isinstance(self.random_apply, tuple):
-            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
+            num_samples = int(
+                torch.randint(
+                    *self.random_apply,
+                    (1,),
+                    device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
+                ).item()
+            )
         else:
             raise TypeError(f"random apply should be a tuple. Got {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
+        if self._generator is not None:
+            multinomial_weights = multinomial_weights.to(self._generator.device)
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
 
@@ -261,6 +271,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 multinomial_weights,
                 num_samples,
                 replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
+                **_generator_kwargs(self._generator),
             )
 
         mix_added = False
@@ -269,18 +280,31 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             with_mix
             and num_samples > 0
             and len(mix_indices) != 0
-            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+            and (
+                torch.rand(
+                    1,
+                    device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
+                )
+                < ((len(mix_indices) + len(indices)) / len(self))
+            ).item()
         ):
             # Draw among the mix members only: an ordinary member with weight 0 is also 0 in
             # ``multinomial_weights`` and must not be inserted in their place.
             mix_mask = torch.zeros_like(multinomial_weights, dtype=torch.float32)
             mix_mask[mix_indices] = 1.0
-            mix_idx = torch.multinomial(mix_mask, 1)
+            mix_idx = torch.multinomial(mix_mask, 1, **_generator_kwargs(self._generator))
             if len(indices) == 0:
                 indices = mix_idx
             else:
                 indices[-1] = mix_idx
-            indices = indices[torch.randperm(len(indices))]
+            indices = indices[
+                torch.randperm(
+                    len(indices),
+                    device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
+                )
+            ]
             mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
@@ -324,11 +348,15 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[ParamItem]:
         """Generate parameters for all modules in the chosen sequence.
 
         Args:
             batch_shape: Input batch shape.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Parameter list aligned with the execution order.

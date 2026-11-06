@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["PlanckianJitterGenerator"]
 
@@ -43,9 +44,12 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         _joint_range_check(idx_range, "idx_range", (0, self.domain[1]))
         self.pl_idx_dist = UniformDistribution(idx_range[0], idx_range[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        pl_idx = _adapted_rsampling((batch_size,), self.pl_idx_dist, same_on_batch)
+        pl_idx = _adapted_rsampling((batch_size,), self.pl_idx_dist, same_on_batch, generator=self._generator)
 
         return {"idx": pl_idx.long()}

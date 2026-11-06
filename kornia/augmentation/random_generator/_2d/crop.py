@@ -29,6 +29,7 @@ from kornia.augmentation.utils import (
     _truncate_to_start,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -75,7 +76,10 @@ class CropGenerator(RandomGeneratorBase):
             torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         return self._crop_parameters(batch_shape, same_on_batch, self.size)
 
     def _crop_parameters(
@@ -123,11 +127,21 @@ class CropGenerator(RandomGeneratorBase):
         # dtype first, a draw close to 1 rounds up to 1.0 and the start lands one past the last valid position.
         if same_on_batch:
             # If same_on_batch, select the first then repeat.
-            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff[0])
-            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff[0])
+            x_start = _truncate_to_start(
+                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator),
+                x_diff[0],
+            )
+            y_start = _truncate_to_start(
+                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator),
+                y_diff[0],
+            )
         else:
-            x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
-            y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
+            x_start = _truncate_to_start(
+                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator), x_diff
+            )
+            y_start = _truncate_to_start(
+                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator), y_diff
+            )
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
@@ -252,7 +266,10 @@ class ResizedCropGenerator(CropGenerator):
         )
         self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         size = (batch_shape[-2], batch_shape[-1])
         _device, _dtype = _extract_device_dtype([self.scale, self.ratio])
@@ -264,18 +281,18 @@ class ResizedCropGenerator(CropGenerator):
                 "size": torch.zeros([0, 2], device=_device, dtype=_dtype),
             }
 
-        rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        rand_tensor = _adapted_rsampling(
+            (batch_size, 10), self.rand_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
         scale_tensor = (
             self.scale.to(device=_device, dtype=_dtype)
             if isinstance(self.scale, torch.Tensor)
             else _constant_tensor(self.scale, device=_device, dtype=_dtype)
         )
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
-        log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        log_ratio = _adapted_rsampling(
+            (batch_size, 10), self.log_ratio_sampler, same_on_batch, generator=self._generator
+        ).to(device=_device, dtype=_dtype)
         aspect_ratio = torch.exp(log_ratio)
 
         w = torch.sqrt(area * aspect_ratio).round().floor()

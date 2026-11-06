@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _tuple_range_reader,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -174,7 +175,10 @@ class AffineGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -187,20 +191,24 @@ class AffineGenerator3D(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.degrees, self.translate, self.scale, self.shears])
 
         # degrees = degrees.to(device=device, dtype=dtype)
-        yaw = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch)
-        pitch = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch)
-        roll = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch)
+        yaw = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch, generator=self._generator)
+        pitch = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch, generator=self._generator)
+        roll = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch, generator=self._generator)
         angles = torch.stack([yaw, pitch, roll], dim=1)
 
         # compute tensor ranges
         if self._scale is not None and self._isotropic_scale:
-            scale = _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch).unsqueeze(1).repeat(1, 3)
+            scale = (
+                _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch, generator=self._generator)
+                .unsqueeze(1)
+                .repeat(1, 3)
+            )
         elif self._scale is not None:
             scale = torch.stack(
                 [
-                    _adapted_rsampling((batch_size,), self.scale_1_sampler, same_on_batch),
-                    _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch),
-                    _adapted_rsampling((batch_size,), self.scale_3_sampler, same_on_batch),
+                    _adapted_rsampling((batch_size,), self.scale_1_sampler, same_on_batch, generator=self._generator),
+                    _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch, generator=self._generator),
+                    _adapted_rsampling((batch_size,), self.scale_3_sampler, same_on_batch, generator=self._generator),
                 ],
                 dim=1,
             )
@@ -214,9 +222,30 @@ class AffineGenerator3D(RandomGeneratorBase):
             # translations should be in x,y,z
             translations = torch.stack(
                 [
-                    (_adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch) - 0.5) * max_dx * 2,
-                    (_adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch) - 0.5) * max_dy * 2,
-                    (_adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch) - 0.5) * max_dz * 2,
+                    (
+                        _adapted_rsampling(
+                            (batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator
+                        )
+                        - 0.5
+                    )
+                    * max_dx
+                    * 2,
+                    (
+                        _adapted_rsampling(
+                            (batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator
+                        )
+                        - 0.5
+                    )
+                    * max_dy
+                    * 2,
+                    (
+                        _adapted_rsampling(
+                            (batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator
+                        )
+                        - 0.5
+                    )
+                    * max_dz
+                    * 2,
                 ],
                 dim=1,
             )
@@ -230,12 +259,12 @@ class AffineGenerator3D(RandomGeneratorBase):
         center = center.expand(batch_size, -1)
 
         if self.shears is not None:
-            sxy = _adapted_rsampling((batch_size,), self.sxy_sampler, same_on_batch)
-            sxz = _adapted_rsampling((batch_size,), self.sxz_sampler, same_on_batch)
-            syx = _adapted_rsampling((batch_size,), self.syx_sampler, same_on_batch)
-            syz = _adapted_rsampling((batch_size,), self.syz_sampler, same_on_batch)
-            szx = _adapted_rsampling((batch_size,), self.szx_sampler, same_on_batch)
-            szy = _adapted_rsampling((batch_size,), self.szy_sampler, same_on_batch)
+            sxy = _adapted_rsampling((batch_size,), self.sxy_sampler, same_on_batch, generator=self._generator)
+            sxz = _adapted_rsampling((batch_size,), self.sxz_sampler, same_on_batch, generator=self._generator)
+            syx = _adapted_rsampling((batch_size,), self.syx_sampler, same_on_batch, generator=self._generator)
+            syz = _adapted_rsampling((batch_size,), self.syz_sampler, same_on_batch, generator=self._generator)
+            szx = _adapted_rsampling((batch_size,), self.szx_sampler, same_on_batch, generator=self._generator)
+            szy = _adapted_rsampling((batch_size,), self.szy_sampler, same_on_batch, generator=self._generator)
         else:
             sxy = sxz = syx = syz = szx = szy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 

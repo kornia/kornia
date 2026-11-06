@@ -22,6 +22,7 @@ from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
@@ -89,7 +90,10 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
@@ -97,6 +101,8 @@ class PlainUniformGenerator(RandomGeneratorBase):
         # The draws are made on the generator's device and returned on the device of the ranges. The two differ for a
         # learnable range made on CUDA in a module left on the CPU; the copy to CUDA then does not wait for the GPU.
         return {
-            name: _to_device_nonblocking(_adapted_rsampling((batch_size,), dist, same_on_batch), _device, _dtype)
+            name: _to_device_nonblocking(
+                _adapted_rsampling((batch_size,), dist, same_on_batch, generator=self._generator), _device, _dtype
+            )
             for name, dist in self.sampler_dict.items()
         }

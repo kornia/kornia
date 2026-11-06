@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound, _tuple_range_reader
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -112,26 +113,33 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.roll_sampler = UniformDistribution(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
         _device, _dtype = _extract_device_dtype([self.angle, self.direction])
-        yaw_factor = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch)
-        pitch_factor = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch)
-        roll_factor = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch)
+        yaw_factor = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch, generator=self._generator)
+        pitch_factor = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch, generator=self._generator)
+        roll_factor = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch, generator=self._generator)
         angle_factor = torch.stack([yaw_factor, pitch_factor, roll_factor], 1)
 
-        direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
+        direction_factor = _adapted_rsampling(
+            (batch_size,), self.direction_sampler, same_on_batch, generator=self._generator
+        )
 
         if isinstance(self.kernel_size, tuple):
             # A ranged kernel size is sampled once per call and shared across the batch.
-            ksize_half = _adapted_rsampling((1,), self.ksize_sampler, same_on_batch).floor()
+            ksize_half = _adapted_rsampling((1,), self.ksize_sampler, same_on_batch, generator=self._generator).floor()
             # A float32 draw can round up onto the open upper end, hi + 1; keep it inside the closed range.
             ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
             ksize_factor = ksize_factor.expand(batch_size)
         else:
-            ksize_half = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).floor()
+            ksize_half = _adapted_rsampling(
+                (batch_size,), self.ksize_sampler, same_on_batch, generator=self._generator
+            ).floor()
             ksize_factor = ksize_half.clamp_max(self._ksize_half_max).int() * 2 + 1
 
         return {

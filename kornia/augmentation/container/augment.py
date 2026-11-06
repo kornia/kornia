@@ -29,6 +29,7 @@ from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateS
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor, _raise_input_rank_error
+from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
@@ -771,11 +772,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return "(" + ", ".join(videos[0].data_format) + ")"
         return _VOLUME_BATCH_SHAPES
 
+    @_with_generator
     def forward(
         self,
         *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
+        generator: torch.Generator | None = None,
     ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``.
 
