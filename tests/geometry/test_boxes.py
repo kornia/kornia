@@ -762,7 +762,9 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close(masks.sum((-1, -2)), expected, atol=0.0, rtol=0.0)
 
-    def test_dynamo_unbatched_selection_mask_6602(self, device, dtype, torch_optimizer):
+    def test_dynamo_unbatched_selection_mask_6602(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile a Boxes method")
         boxes = self._padding_boxes(device, dtype)
         function = lambda selected: selected.to_mask(8, 8)  # noqa: E731
         compiled = torch_optimizer(function, fullgraph=True)
