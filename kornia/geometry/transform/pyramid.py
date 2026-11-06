@@ -70,8 +70,8 @@ _LAPLACIAN_POWER_OF_TWO_PADDING_MESSAGE = (
     "`build_laplacian_pyramid` pads this input to the next power of two per side, more than `max_level` needs. This is "
     "deprecated since kornia 0.9.1: a future minor release pads a side only when it does not divide by "
     "`2 ** (max_level - 1)`, to the next multiple of that, which changes the shape of every returned level for this "
-    "input. `minimal_padding=True` gives that behavior now. Code that crops the levels back to the input size is not "
-    "affected (kornia#6319)."
+    "input. `minimal_padding=True` gives that behavior now. An image rebuilt from the levels and cropped to the input "
+    "size stays the same, but the values of each level change, even after cropping (kornia#6319)."
 )
 
 

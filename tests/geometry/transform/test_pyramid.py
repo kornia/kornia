@@ -793,9 +793,24 @@ class TestBuildLaplacianPyramid(BaseTester):
         for captured, eager in zip(traced(sample), model(sample), strict=True):
             self.assert_close(captured, eager)
 
+    def test_convention_rebuilt_crop_keeps_the_input_under_both_padding_rules_6319(self, device, dtype):
+        # The warning's promise: a rebuilt image cropped to the input size does not depend on the padding rule. The
+        # levels themselves do, even cropped, as each is a difference with a blur that sees the padding. Rows of this
+        # 5x8 image hold their index, and row 4 of level 0 goes from 1.298828125 to 0.9453125 in float32.
+        sample = torch.arange(5, device=device, dtype=dtype).view(1, 1, 5, 1).expand(1, 1, 5, 8).contiguous()
+        with pytest.warns(FutureWarning, match="kornia#6319"):
+            current = kornia.geometry.transform.build_laplacian_pyramid(sample, 2)
+        minimal = kornia.geometry.transform.build_laplacian_pyramid(sample, 2, minimal_padding=True)
+        for levels in (current, minimal):
+            rebuilt = kornia.geometry.transform.pyrup(levels[1]) + levels[0]
+            self.assert_close(rebuilt[..., :5, :8], sample)
+        assert (current[0][..., :5, :8] - minimal[0][..., :5, :8]).abs().max() > 0.1
+
     @pytest.mark.parametrize("minimal_padding", [False, True])
     @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
-    def test_dynamo(self, height, width, max_level, minimal_padding, device, dtype, torch_optimizer):
+    def test_dynamo(self, height, width, max_level, minimal_padding, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
         sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
 
         def pyramid(x):
