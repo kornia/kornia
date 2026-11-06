@@ -2213,7 +2213,9 @@ class TestWarpOnePixelSourceAxis6433(BaseTester):
 
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
-    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer):
+    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
         warp = getattr(kornia.geometry.transform, op_name)
         matrix = self._matrix(op_name, [0.2], [0.6], device, dtype)
 

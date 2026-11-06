@@ -1385,7 +1385,9 @@ class TestWarp3dOneVoxelSourceAxis6433(BaseTester):
 
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
-    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer):
+    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
         matrix = self._shift(0.2, 0.3, 0.6, device, dtype)
 
         def op(volume, transform):
