@@ -2278,7 +2278,7 @@ class TestUnitRangeClampGradient(BaseTester):
     )
 
     @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
-    def test_identity_factor_keeps_the_identity_gradient(self, device, dtype, op):
+    def test_convention_identity_factor_keeps_the_identity_gradient(self, device, dtype, op):
         image = _black_grey_white(device, dtype).requires_grad_()
         out = self._AT_IDENTITY[op](image)
         (grad,) = torch.autograd.grad(out.sum(), image)
@@ -2286,7 +2286,7 @@ class TestUnitRangeClampGradient(BaseTester):
         self.assert_close(grad, torch.ones_like(image))
 
     @pytest.mark.parametrize("op", sorted(_AWAY_FROM_IDENTITY))
-    def test_result_on_a_bound_keeps_the_derivative_of_the_arithmetic(self, device, dtype, op):
+    def test_convention_result_on_a_bound_keeps_the_derivative_of_the_arithmetic(self, device, dtype, op):
         call, expected = self._AWAY_FROM_IDENTITY[op]
         image = _black_grey_white(device, dtype).requires_grad_()
         (grad,) = torch.autograd.grad(call(image).sum(), image)

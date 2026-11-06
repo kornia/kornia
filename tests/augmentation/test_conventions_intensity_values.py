@@ -1653,7 +1653,7 @@ class TestIntensityInputClamping(BaseTester):
             "RandomPlasmaShadow",
         ],
     )
-    def test_kernel_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype, factory):
+    def test_convention_kernel_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype, factory):
         row = torch.tensor([0.0, 0.25, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
         image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
         out = factory()(image)
