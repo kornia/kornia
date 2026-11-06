@@ -43,7 +43,13 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
-from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
+from kornia.core.utils import (
+    _svd_work_dtype,
+    _symmetric_eigenvector,
+    _torch_svd_cast,
+    is_compiling,
+    register_module_state,
+)
 from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
@@ -277,9 +283,9 @@ class ParametrizedLine(nn.Module):
 
         Return:
             The pair ``(lambda, point)``. ``lambda`` is the line parameter of the intersection in units of the stored
-            direction, ``()`` for one unbatched line and one unbatched plane, and ``(B,)`` for the broadcast batch,
-            which for one unbatched line is the batch of the planes. ``point`` is the intersection
-            ``point_at(lambda)``, ``(3,)`` or ``(B, 3)`` with the same batch.
+            direction, ``()`` for one unbatched line and one unbatched plane, and otherwise the broadcast batch
+            ``(...)``, which for one unbatched line is the batch of the planes, over any number of axes. ``point`` is
+            the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
@@ -299,7 +305,10 @@ class ParametrizedLine(nn.Module):
             torch.zeros_like(dot_prod),
         )
 
-        res_point = self.point_at(res_lambda)
+        # Not point_at: it reads a multi-axis step element-wise against the direction, as it reads a (B, 1) step. A 0-d
+        # step stays 0-d, so that a float64 plane does not promote the point of a float32 line.
+        step = res_lambda if res_lambda.ndim == 0 else res_lambda[..., None]
+        res_point = self.origin + self.direction * step
         return res_lambda, res_point
 
 
@@ -530,11 +539,14 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     A = (A.transpose(-2, -1) * work_weights[..., None, :]) @ A if weights is not None else A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, _, V = _torch_svd_cast(A)
-    V = V.transpose(-2, -1)
+    # The scatter matrix is positive semidefinite, so its singular values are its eigenvalues. The SVD is of the
+    # detached matrix: the direction's gradient comes from _symmetric_eigenvector, which stays finite when the other
+    # eigenvalues are equal, as for points along a coordinate axis.
+    work = A.detach().to(_svd_work_dtype(A))
+    _, S, V = _torch_svd_cast(work)
 
     # the first left eigenvector is the direction on the fitted line
-    direction = V[..., 0, :].to(out_dtype)  # BxD
+    direction = _symmetric_eigenvector(A, S, V, 0).to(compute_dtype).to(out_dtype)  # BxD
     origin = mean[..., 0, :].to(out_dtype)  # BxD
 
     return ParametrizedLine(origin, direction)

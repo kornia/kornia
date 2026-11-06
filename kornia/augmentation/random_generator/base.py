@@ -21,10 +21,12 @@ import torch
 from torch import nn
 from torch.distributions import Distribution, Uniform
 
-from kornia.augmentation.utils.helpers import MultiprocessWrapper
+from kornia.augmentation.utils.helpers import MultiprocessWrapper, _holds_graph_tensor
 from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
 
 T = TypeVar("T")
+
+_UNSET = object()
 
 
 class _PostInitInjectionMetaClass(type):
@@ -62,9 +64,40 @@ class RandomGeneratorBase(_GeneratorMixin, nn.Module, metaclass=_PostInitInjecti
         if device is None:
             device = torch.device("cpu")
         if self.device != device or self.dtype != dtype:
+            before = dict(self.__dict__)
             self.make_samplers(device, dtype)
+            # What ``make_samplers`` assigns is derived from the ranges, device and dtype; ``__getstate__`` reads
+            # the names to know what it may leave out of a copy and have ``__setstate__`` rebuild.
+            made = {name for name, value in self.__dict__.items() if before.get(name, _UNSET) is not value}
+            self._sampler_attrs = tuple(sorted(made.union(self.__dict__.get("_sampler_attrs", ()))))
             self.device = device
             self.dtype = dtype
+
+    def __getstate__(self) -> Dict[str, Any]:
+        # A range that requires grad, such as a learnable ``nn.Parameter``, makes the samplers autograd views of it.
+        # ``copy.deepcopy`` refuses those, and pickle turns them into leaves that the copy's own range never reaches.
+        # Leave them out: ``__setstate__`` rebuilds them from the copy's range, so gradients from the copy reach the
+        # copy's parameter. Samplers without autograd history are copied as they are.
+        state = super().__getstate__()
+        dropped = [name for name in state.get("_sampler_attrs", ()) if _holds_graph_tensor(state.get(name))]
+        for name in dropped:
+            del state[name]
+        if dropped:
+            # ``torch.load(map_location=...)`` moves the tensors of the state but not ``self.device``. An empty tensor
+            # on that device moves with them and tells ``__setstate__`` where the samplers would have gone.
+            state["_sampler_device_probe"] = torch.empty(0, device=self.device)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        probe = state.pop("_sampler_device_probe", None)
+        super().__setstate__(state)
+        if any(name not in self.__dict__ for name in self.__dict__.get("_sampler_attrs", ())):
+            if probe is not None:
+                self.device = probe.device
+            # Only samplers with autograd history were left out, so they are rebuilt with it, whatever the grad mode
+            # of the copy: under ``torch.no_grad()`` the copy's range would otherwise never receive a gradient.
+            with torch.enable_grad():
+                self.make_samplers(self.device, self.dtype)
 
     def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
         """Update sampler device and dtype using ``torch.nn.Module.to`` semantics.
@@ -89,6 +122,9 @@ class RandomGeneratorBase(_GeneratorMixin, nn.Module, metaclass=_PostInitInjecti
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         """Create distribution samplers for the given device and dtype.
+
+        Assign the samplers to attributes of the generator, new or replaced, rather than writing them into an object
+        it already holds: a copy of the generator rebuilds the attributes this call assigns, and only those.
 
         Args:
             device: Target device.

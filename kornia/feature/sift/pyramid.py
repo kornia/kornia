@@ -45,13 +45,19 @@ from kornia.geometry.transform import pyrdown
 
 
 class SIFTDescriptorFromPyramid(nn.Module):
-    """Extract sparse SIFT descriptors from a shared image-gradient pyramid.
+    """Describe given LAFs with SIFT from a shared gradient pyramid, without sampling patches.
 
-    This module does not detect keypoints or return a dense descriptor map.
-    ``forward(image, lafs)`` describes the supplied, already oriented LAFs.
-    :meth:`orient_and_describe` additionally assigns their orientation while
-    sharing one pyramid between orientation assignment and description. The
-    pyramid belongs to this descriptor; it is not reused from the detector.
+    ``sift = SIFTDescriptorFromPyramid()``, then ``descs = sift(image, lafs)`` takes grayscale images
+    ``(B, 1, H, W)`` and their already oriented LAFs ``(B, N, 2, 3)`` in pixels and returns one descriptor per LAF,
+    ``(B, N, num_ang_bins * num_spatial_bins ** 2)``: ``(B, N, 128)`` by default, in the image dtype, RootSIFT by
+    default, in kornia's angle-major layout. ``lafs, descs = sift.orient_and_describe(image, lafs)`` also gives each
+    LAF the orientation of its dominant gradient first, sharing one pyramid between the two steps. Each LAF reads
+    histograms pooled at one octave of a pyramid that this module builds from ``image``, not reused from a detector:
+    it describes the square ``c + A [-1, 1]^2`` that :class:`SIFTDescriptor` sees in the patch of
+    :func:`extract_patches_from_pyramid`, without sampling that patch, so its values approximate those of
+    :class:`SIFTDescriptor` without equalling them. For the patch descriptors themselves, use
+    ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)`` (:class:`LAFDescriptor`) instead. :class:`SIFTFeature`'s
+    ``"patch"`` backend uses that descriptor, and its ``"pyramid"`` backend uses this module.
 
     The performance and accuracy acceptance criteria of its automatic
     orientation are tracked in
@@ -78,7 +84,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
     image pyramid before the affine footprint is sampled.
 
     Convention:
-        - ``lafs`` are in the pixel frame of ``image``, with the layout of
+        - ``lafs`` use the pixel convention of ``image``, with the layout of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
           Cell ``(i, j)`` of the ``num_spatial_bins`` x ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)``
           with ``u_k = (2 k + 1) / num_spatial_bins - 1``, at whichever octave the LAF selects: the cell centres of a
@@ -111,7 +117,25 @@ class SIFTDescriptorFromPyramid(nn.Module):
     Shape:
         - image: ``(B, 1, H, W)``
         - lafs: ``(B, N, 2, 3)`` in image pixel coordinates
-        - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
+        - descriptors: ``(B, N, num_ang_bins * num_spatial_bins ** 2)``
+
+    See Also:
+        - :class:`SIFTDescriptor`: SIFT descriptors of given patches, such as those sampled from LAFs.
+        - :class:`LAFDescriptor`: the patch alternative for the same image and LAFs, with the exact values of a
+          :class:`SIFTDescriptor` on a patch sampled per LAF, as in the ``"patch"`` backend of :class:`SIFTFeature`.
+        - :class:`DenseSIFTDescriptor`: a SIFT descriptor at every position of an image, at one scale.
+        - :func:`convert_sift_descriptor_layout`: reorders the descriptors into OpenCV's layout.
+        - :class:`LAFOrienter`: orients LAFs from their patches, before a patch descriptor.
+        - :class:`SIFTFeature`: detects DoG keypoints and, with ``descriptor_backend="pyramid"``, orients and
+          describes them with :meth:`orient_and_describe`.
+
+    Example:
+        >>> image = torch.rand(1, 1, 64, 64)
+        >>> xy, scale = torch.tensor([[[32.0, 32.0]]]), torch.full((1, 1, 1, 1), 8.0)
+        >>> lafs = kornia.feature.laf_from_center_scale_ori(xy, scale)
+        >>> SIFTDescriptorFromPyramid()(image, lafs).shape
+        torch.Size([1, 1, 128])
+
     """
 
     def __init__(

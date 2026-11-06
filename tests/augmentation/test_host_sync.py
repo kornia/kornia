@@ -59,6 +59,15 @@ _EMPTY_BATCH_MIX = {
     "RandomCutMixV2": lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True),
     "RandomMixUpV2": lambda: K.RandomMixUpV2(p=1.0),
 }
+# Learnable ranges made on CUDA for an augmentation that stays on the CPU: ``PlainUniformGenerator`` samples on the CPU
+# and returns the draws on the device of the ranges.
+_RANGES_ON_CUDA = {
+    "RandomBrightness-range": lambda r: K.RandomBrightness(r(0.8, 1.2), p=1.0),
+    "RandomBrightness-half-width": lambda r: K.RandomBrightness(r(0.2), p=1.0),
+    "RandomHue-half-width": lambda r: K.RandomHue(r(0.1), p=1.0),
+    "RandomRotation": lambda r: K.RandomRotation(r(-10.0, 10.0), p=1.0),
+    "RandomGamma": lambda r: K.RandomGamma(r(0.8, 1.2), r(0.9, 1.1), p=1.0),
+}
 # Host reads that only happen because the caller moved the parameters to CUDA: the crop window and the padding set
 # the sizes of Python slices.
 _REPLAY_DEVICE_READS = {
@@ -129,6 +138,25 @@ class TestAugmentationHostSync(BaseTester):
         assert outputs[0].shape == x.shape
         assert outputs[0].device == x.device
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+
+    @pytest.mark.parametrize("name", sorted(_RANGES_ON_CUDA))
+    def test_learnable_range_on_cuda_with_the_module_on_the_cpu(self, name, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+
+        def learnable(*values):
+            value = values if len(values) > 1 else values[0]
+            return torch.nn.Parameter(torch.tensor(value, device=device, dtype=dtype))
+
+        op = _RANGES_ON_CUDA[name](learnable)
+        x = torch.rand(4, 3, 16, 16, device=device, dtype=dtype)
+        op(x)
+        torch.cuda.synchronize()
+        outputs = []
+        sites = sync_sites(lambda: outputs.append(op(x)))
+        assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+        outputs[0].sum().backward()
+        assert all(p.grad is not None for p in op.parameters())
 
     @pytest.mark.parametrize("same_on_batch", [False, True])
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])

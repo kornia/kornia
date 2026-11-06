@@ -50,6 +50,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_TYPE
+from kornia.core.utils import _symmetric_eigenvector
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
     euler_from_quaternion,
@@ -597,7 +598,19 @@ class Quaternion(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(torch.tensor([w, x, y, z]))
+        coeffs = (w, x, y, z)
+        for c in coeffs:
+            if isinstance(c, complex):
+                raise ValueError(f"Quaternion coefficients must be real-valued, got complex scalar {c}")
+            if isinstance(c, torch.Tensor) and c.is_complex():
+                raise ValueError(
+                    f"Quaternion coefficients must be real-valued, got complex tensor with dtype {c.dtype}"
+                )
+
+        data = torch.tensor([w, x, y, z])
+        if not data.is_floating_point():
+            data = data.to(torch.get_default_dtype())
+        return cls(data)
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
@@ -764,8 +777,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     r"""Average quaternions as their weighted chordal mean rotation, whatever their signs.
 
     ``q_mean = average_quaternions(Q, w)`` takes a :class:`Quaternion` of ``M`` quaternions, ``(M, 4)``, and optional
-    non-negative weights ``w`` of shape ``(M,)``, uniform by default, and returns their mean rotation as a unit
-    :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
+    non-negative weights ``w`` of shape ``(M,)`` or ``(M, 1)``, uniform by default, and returns their mean rotation as
+    a unit :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
     :meth:`Quaternion.slerp`.
 
     Convention:
@@ -778,8 +791,7 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
 
     Args:
         Q: quaternions of shape ``(M, 4)``.
-        w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
-            ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
+        w: weights of shape ``(M,)`` or ``(M, 1)``. If None, uniform weights are used.
 
     Returns:
         the averaged quaternion, of unit norm and shape ``(1, 4)``.
@@ -810,9 +822,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     if w is None:
         A = (data.T @ data) / M
     else:
+        if w.shape == (M, 1):
+            w = w.squeeze(-1)
+        elif w.shape != (M,):
+            raise ValueError(f"weights shape {tuple(w.shape)} must be ({M},) or ({M}, 1)")
         w = w.to(data.device, dtype=data.dtype)
-        if w.numel() != M:
-            raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
         if bool((w < 0).any()):
             raise ValueError("weights must be non-negative")
         w_sum = w.sum()
@@ -824,13 +838,13 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     orig_dtype = A.dtype
     if A.dtype in (torch.float16, torch.bfloat16):
         A = A.float()
-    eigenvalues, eigenvectors = torch.linalg.eigh(A)
+    # The decomposition is of the detached matrix: the mean's gradient comes from _symmetric_eigenvector, which stays
+    # finite when the other eigenvalues are equal, as for identical members or rotations about one axis.
+    eigenvalues, eigenvectors = torch.linalg.eigh(A.detach())
     # Use float32 eigenvalues for argmax to avoid half-precision rounding
     # changing which eigenvector is selected when eigenvalues are close.
     max_idx = torch.argmax(eigenvalues)
-    eigenvectors = eigenvectors.to(orig_dtype)
-    indices = max_idx.reshape(1, 1).expand(eigenvectors.shape[0], 1)
-    q_avg = torch.gather(eigenvectors, 1, indices).squeeze(1)
+    q_avg = _symmetric_eigenvector(A, eigenvalues, eigenvectors, max_idx.reshape(1)).to(orig_dtype)
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

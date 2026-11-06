@@ -467,10 +467,17 @@ def _select_pair(image: Dict[str, Any], k: int, b: int) -> Dict[str, Any]:
 
 
 class LightGlue(nn.Module):
-    """Implement the LightGlue matcher for sparse local features.
+    """Match the keypoints and descriptors of image pairs with the LightGlue transformer, given as dicts.
 
-    LightGlue is a deep network that matches local features across image pairs
-    using a series of transformer layers and an adaptive pruning mechanism.
+    ``lightglue = LightGlue("disk")`` loads the weights trained for that local feature and
+    ``out = lightglue({"image0": feats0, "image1": feats1})`` takes, for each image, a dict of ``keypoints``
+    ``(B, M, 2)`` as ``(x, y)`` pixels, ``descriptors`` ``(B, M, D)`` and ``image_size`` ``(B, 2)`` as ``(W, H)``,
+    and returns a dict whose ``matches0`` ``(B, M)`` holds the index in image1 of the match of each keypoint of
+    image0, ``-1`` for an unmatched one, with its score in ``matching_scores0`` ``(B, M)``; ``matches`` and
+    ``scores`` list the matched index pairs ``(S, 2)`` and scores ``(S,)`` of each pair of images. The network is a
+    series of transformer layers, with early stopping and point pruning unless the configuration turns them off.
+    For the call of the other kornia matchers, on descriptors and LAFs, use :class:`LightGlueMatcher`; for an
+    exported ONNX model run by onnxruntime, use :class:`OnnxLightGlue`.
 
     Convention:
         - Complete learned weights return the model in evaluation mode, even if derived buffers are absent from
@@ -496,20 +503,23 @@ class LightGlue(nn.Module):
           float64 scores for float64 descriptors, as on CPU, because autocast does not cast float64. An image without
           descriptors runs no layer, and its zero scores keep the descriptor dtype, also with ``mp=True``.
         - Each pair of a batch gives the matches and scores it gives on its own when point pruning can run, that is
-          with ``width_confidence > 0``, no padding to the static lengths of :meth:`compile`, and an image with more
-          keypoints than :meth:`pruning_min_kpts` of the device. Pruning keeps a different number of points in each
+          with ``width_confidence > 0``, no padding to the ``static_lengths`` of ``LightGlue.compile`` (which wraps
+          the transformer layers in :func:`torch.compile`), and an image with more keypoints than
+          ``pruning_min_kpts(device)`` returns: any number on CPU and MPS, more than 1536 on CUDA with the default
+          ``flash=True`` and more than 1024 without. Pruning keeps a different number of points in each
           pair, so then the pairs run one at a time: ``matches0``, ``matches1``, ``matching_scores0``,
           ``matching_scores1``, ``prune0`` and ``prune1`` stack the rows of the pairs, ``matches`` and ``scores`` list
           them, ``stop`` is the largest number of layers that a pair ran, and there is no ``log_assignment``.
           Otherwise a batch runs as one, and early stopping (``depth_confidence``) ends it at a layer only when every
           pair meets its own criterion. A pair can therefore run more layers in a batch than on its own, and its
-          matches can differ. Early stopping counts the real keypoints only, so padding to the static lengths of
-          :meth:`compile` does not change the layer at which a pair stops.
+          matches can differ. Early stopping counts the real keypoints only, so padding to the ``static_lengths`` of
+          ``LightGlue.compile`` does not change the layer at which a pair stops.
 
     Args:
-        features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
-            pretrained weights are loaded. ``None`` builds the model from ``default_conf`` and the keyword arguments
-            and downloads no weights.
+        features: The type of local features to match, whose configuration and pretrained weights are loaded: one of
+            ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"dog_affnet_hardnet"``, ``"doghardnet"``,
+            ``"keynet_affnet_hardnet"``, ``"raco-aliked"``, ``"sift"``, ``"superpoint"`` and ``"xfeat"``. ``None``
+            builds the model from ``default_conf`` and the keyword arguments and downloads no weights.
         **conf: keyword arguments that override entries of ``default_conf`` and of the configuration of
             ``features``, such as ``filter_threshold`` or ``depth_confidence``. The configuration of ``features`` sets
             the defaults, and an explicit keyword argument always wins, except ``weights``, which must name the
@@ -517,6 +527,12 @@ class LightGlue(nn.Module):
             counts as not given. This departs on purpose from cvg/LightGlue, which applies the configuration of
             ``features`` after the keyword arguments, so that the tuning knobs a preset sets, such as ``"xfeat"``'s
             ``width_confidence``, can be changed.
+
+    See Also:
+        - :class:`LightGlueMatcher`: the same network on descriptors and LAFs, returning scores and index pairs like
+          the other kornia matchers.
+        - :class:`OnnxLightGlue`: an exported LightGlue model run by onnxruntime, for one image pair on CPU or CUDA.
+        - :class:`LoFTR`: a transformer matcher that takes the images themselves, without a detector.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {

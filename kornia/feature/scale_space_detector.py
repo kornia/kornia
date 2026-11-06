@@ -164,7 +164,7 @@ def _check_mask(mask: torch.Tensor, img: torch.Tensor) -> None:
 
 
 def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
-    r"""Replace the LAFs of the slots no detection filled with the zero LAF.
+    r"""Replace unused detection slots with zero LAFs.
 
     ``filled`` is a ``(B, N)`` boolean mask of the slots a detection actually filled. The
     affine-shape and orientation modules may normalise or propagate invalid padding frames
@@ -201,14 +201,20 @@ def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
 
 
 class ScaleSpaceDetector(nn.Module):
-    r"""nn.Module for differentiable local feature detection.
+    r"""Detect LAFs at the sub-pixel scale-space maxima of a pluggable response, for a batch of images.
 
-    It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
-    sub-pixel localization, affine shape estimator and patch orientation estimator.
-    Each of those modules could be replaced with a learned custom one, as long as
-    they respect output shape.
+    ``detector = ScaleSpaceDetector(num_features)`` builds a detector with a Hessian response by default.
+    ``lafs, responses = detector(img)`` takes grayscale images ``(B, 1, H, W)`` and returns LAFs
+    ``(B, num_features, 2, 3)`` in input pixels and responses ``(B, num_features)``, strongest first.
+    Use :func:`laf_is_filled` to keep detected features and discard padded slots in both outputs.
+    For per-level 2D maxima, use :class:`MultiResolutionDetector`; for SIFT detection and description,
+    use :class:`SIFTFeatureScaleSpace`.
 
     Convention:
+        - The modules run in this order: ``scale_pyr_module``, ``resp_module``, ``subpix_module``, ``aff_module``,
+          then ``ori_module``. The last two default to :class:`PassLAF`, which leaves frames unchanged.
+          ``detector.detect(img, num_feats)`` returns ``(responses, lafs)`` before shape and orientation estimation;
+          note the reversed output order compared with ``detector(img)``.
         - The candidates are the strict :math:`3 \times 3 \times 3` maxima of the response over level, row and column
           (:func:`~kornia.geometry.subpix.nms3d_minmax`) on the levels given under ``scale_pyr_module``, whatever their
           sign. With ``minima_are_also_good`` a strict minimum is a candidate too when its negated response after
@@ -217,11 +223,12 @@ class ScaleSpaceDetector(nn.Module):
           refinement extrapolates it below minus its sampled value. There is no response threshold. The
           ``num_features`` strongest candidates of all octaves are kept; a minimum is ranked and returned with its
           refined response negated.
-        - The default Hessian response is a maximum at bright and dark blobs alike. A DoG response
+        - The default Hessian response is a maximum at bright and dark blobs alike. It keeps the channels, so a
+          multi-channel image needs a ``resp_module`` that returns one map. A DoG response
           (:class:`~kornia.feature.BlobDoG`) is a maximum at a dark blob and a minimum at a bright one, which only
           ``minima_are_also_good=True`` detects.
         - A LAF centre is the refined sub-pixel position, mapped to input pixels as given under
-          ``scale_pyr_module``, in the frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          ``scale_pyr_module``, using the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`). Before ``aff_module`` and ``ori_module`` run, the
           frame is diagonal: ``mr_size`` times the detection scale, mapped to input pixels along each axis like the
           centre.
@@ -232,6 +239,7 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32.
+        - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
@@ -243,11 +251,11 @@ class ScaleSpaceDetector(nn.Module):
           output would always have num_features output, even for completely homogeneous images.
         mr_size: multiplier from the detection scale to the LAF scale. The default 6.0 gives a frame of about six
           times the :math:`\sigma` of a detected Gaussian blob.
-        scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details.
+        scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.transform.ScalePyramid` for details.
           Default: ``ScalePyramid(3, 1.6, 16, extra_levels=3)`` with a scale-space response,
           ``extra_levels=2`` without. A detection at octave pixel :math:`(u, v)` is reported at
           :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))` in the input, the map of
-          :class:`~kornia.geometry.ScalePyramid`'s ``align_corners=True`` resizes; a custom pyramid has to
+          :class:`~kornia.geometry.transform.ScalePyramid`'s ``align_corners=True`` resizes; a custom pyramid has to
           resize the same way. Each octave searches ``n_levels`` response levels, levels
           ``1..n_levels``; the levels below and above them are NMS neighbours only, and any further
           level is ignored. A per-level response therefore needs ``extra_levels >= 2``, and DoG,
@@ -262,20 +270,30 @@ class ScaleSpaceDetector(nn.Module):
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
         minima_are_also_good: if True, then both response function minima and maxima are detected.
             A DoG response needs it to detect bright blobs. Default is False.
-            With a built-in ``subpix_module`` both signs are refined in one stacked call, which
-            roughly doubles the peak memory of the refinement step: the response volume and its
-            three coordinate maps are materialised for ``2B`` images at once.
+            Refining both signs can use roughly twice the peak memory of refining maxima alone.
         scale_space_response: if True, ``resp_module`` gets each whole octave ``(B, C, L, H, W)`` with its
-            sigmas :math:`(B \cdot L)` and returns a :math:`(B, 1, L', H, W)` scale-space response, as
+            sigmas ``(B * L,)`` and returns a ``(B, 1, L', H, W)`` scale-space response, as
             :class:`~kornia.feature.BlobDoG` does. If False (the default), it gets the octave's levels
-            ``0 .. n_levels + 1`` as :math:`(B \cdot L, C, H, W)` images, :math:`L = n_{levels} + 2`, with their sigmas
-            and returns :math:`(B \cdot L, 1, H, W)`.
+            ``0 .. n_levels + 1`` as ``(B * L, C, H, W)`` images, ``L = n_levels + 2``, with their sigmas
+            and returns ``(B * L, 1, H, W)``.
         compile_modules: selects which sub-modules to wrap with :func:`torch.compile`.
             Pass ``True`` to compile every sub-module, ``False`` (default) for none, or a list
             containing any subset of ``["scale_pyr", "resp", "subpix", "ori", "aff"]``.
-            Compiling ``subpix`` fuses the iteration loop of :func:`~kornia.geometry.subpix.conv_quad_interp3d`, which
-            the default :class:`~kornia.geometry.subpix.AdaptiveQuadInterp3d` runs on CUDA.
-            The first call incurs a one-time compilation cost; subsequent calls are fast.
+            The first call compiles, and a new input shape, such as another batch size, can compile again.
+
+    See Also:
+        - :class:`MultiResolutionDetector`: one image per call, the 2D maxima of a response on each level of an image
+          pyramid, at integer level pixels and without scale selection.
+        - :class:`KeyNetDetector`: that detector on the learned KeyNet response.
+        - :class:`SIFTFeatureScaleSpace`: SIFT, whose ``"patch"`` backend is this detector on a DoG response.
+        - :class:`DoGHardNet`: this detector on a DoG response, with HardNet descriptors.
+        - :class:`~kornia.geometry.subpix.ConvSoftArgmax3d`: a ``subpix_module`` that takes the soft-argmax of a
+          window instead of a quadratic fit.
+
+    Example:
+        >>> lafs, responses = ScaleSpaceDetector(num_features=100)(torch.rand(2, 1, 64, 64))
+        >>> lafs.shape, responses.shape
+        (torch.Size([2, 100, 2, 3]), torch.Size([2, 100]))
 
     """
 
@@ -685,23 +703,24 @@ class ScaleSpaceDetector(nn.Module):
         """Detect local features in an image batch.
 
         Args:
-            img: Input image tensor with shape `(B, C, H, W)`.
+            img: Input image tensor with shape ``(B, C, H, W)``.
             num_feats: Number of features requested from the detector.
-            mask: Optional mask with shape `(1 or B, 1, H, W)` saying where a detection may be. A boolean or integer
+            mask: Optional mask with shape ``(1 or B, 1, H, W)`` saying where a detection may be. A boolean or integer
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on the
-                detection scores: a weight in `(0, 1]` scales a score toward the worst (a non-negative score is
+                detection scores: a weight in ``(0, 1]`` scales a score toward the worst (a non-negative score is
                 multiplied by it, a negative one divided), so a down-weighted candidate never outranks a full-weight
                 one, and a zero or negative weight suppresses. Weights above one are clamped to one, so a float
-                0/255 mask means what the integer one means. The weights are cast to the image dtype. The mask is
+                0/255 mask means what the integer one means. The weights are cast to the response's dtype. The mask is
                 resampled onto every octave conservatively, so a zero region suppresses every candidate within one
                 octave pixel of it.
 
         Returns:
-            Tuple containing detection scores and local affine frames, shaped `(B, num_feats)` and `(B, num_feats,
-            2, 3)`. A slot that no detection filled -- there were fewer candidates than requested, or the border or
-            mask test rejected a candidate -- carries a zero response and a zero LAF, and sorts after every real
-            detection. The converse does not hold: a signed response function can peak at exactly zero, and that
-            slot keeps its frame. A batch of zero images returns empty outputs of these shapes.
+            Tuple containing detection scores and local affine frames, shaped ``(B, num_feats)`` and
+            ``(B, num_feats, 2, 3)``, in that order, the reverse of ``forward``'s. A slot that no detection filled --
+            there were fewer candidates than requested, or the border or mask test rejected a candidate -- carries a
+            zero response and a zero LAF, and sorts after every real detection. The converse does not hold: a signed
+            response function can peak at exactly zero, and that slot keeps its frame. A batch of zero images returns
+            empty outputs of these shapes.
         """
         responses, lafs, _ = self._detect(img, num_feats, mask)
         return responses, lafs
@@ -713,15 +732,15 @@ class ScaleSpaceDetector(nn.Module):
         Then affine shape and orientation.
 
         Args:
-            img: image to extract features with shape [BxCxHxW]
-            mask: a mask saying where a detection may be, shape [1x1xHxW] or [Bx1xHxW]. A boolean or integer mask
-                is binary, a floating-point mask weights the detection scores; see :meth:`detect`.
+            img: image to extract features with shape ``(B, C, H, W)``.
+            mask: a mask saying where a detection may be, shape ``(1, 1, H, W)`` or ``(B, 1, H, W)``. A boolean or
+                integer mask is binary, a floating-point mask weights the detection scores; see :meth:`detect`.
 
         Returns:
-            Tuple of ``lafs`` with shape [BxNx2x3], the detected local affine frames, and ``responses`` with shape
-            [BxN], the response function values for the corresponding lafs. When an image yields fewer maxima than
-            ``num_features``, the remaining slots hold a zero response and a zero LAF, whichever affine-shape and
-            orientation modules are configured.
+            Tuple of ``lafs`` with shape ``(B, N, 2, 3)``, the detected local affine frames, and ``responses`` with
+            shape ``(B, N)``, the response function values for the corresponding lafs, with ``N = num_features``.
+            When fewer detections than ``num_features`` survive for an image, the remaining slots hold a zero
+            response and a zero LAF, whichever affine-shape and orientation modules are configured.
 
         """
         # `detect` is the public extension point used by subclasses. Infer occupancy from its
@@ -736,11 +755,14 @@ class ScaleSpaceDetector(nn.Module):
 
 
 class Detector_config(TypedDict):
-    """Configuration for the Scale Space Detector.
+    """Configuration for the multi-resolution detector, the ``config`` of :class:`MultiResolutionDetector`.
 
     Attributes:
-        nms_size: The size of the Non-Maximum Suppression window.
-        pyramid_levels: The number of levels in the image pyramid.
+        nms_size: The size of the Non-Maximum Suppression window, in level pixels.
+        pyramid_levels: The number of image-pyramid levels below the input.
+        up_levels: The number of image-pyramid levels above the input, upscaled.
+        scale_factor_levels: The scale factor between adjacent levels.
+        s_mult: The LAF scale, in level pixels.
     """
 
     nms_size: int
@@ -757,11 +779,18 @@ def get_default_detector_config() -> Detector_config:
 
 
 class MultiResolutionDetector(nn.Module):
-    """Multi-scale feature detector, based on KeyNet, for a response function that returns one map of its input's size.
+    """Detect LAFs at the 2D maxima of a response on each level of an image pyramid, one image per call.
 
-    This is based on the original code from paper
-    "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
-    See :cite:`KeyNet2019` for more details.
+    ``detector = MultiResolutionDetector(model, num_features)`` builds an image pyramid detector from a response
+    model. ``lafs, responses = detector(img)`` takes one image ``(1, C, H, W)`` and returns LAFs
+    ``(1, num_features, 2, 3)`` in input pixels and responses ``(1, num_features)``, strongest first.
+    Use :func:`laf_is_filled` to keep detected features and discard padded slots in both outputs.
+    Detections lie at integer pixels of each pyramid level, without scale selection or subpixel refinement.
+    For a batch or refined centres and scales, use :class:`ScaleSpaceDetector`; for KeyNet responses,
+    use :class:`KeyNetDetector`.
+
+    This is based on the original code from the paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN
+    Filters". See :cite:`KeyNet2019` for more details.
 
     The Key.Net reference code zeroes a 15 px strip along each side of a level before the non-maxima
     suppression, which reports a "maximum" beside the strip wherever the response rises into it. This
@@ -769,14 +798,22 @@ class MultiResolutionDetector(nn.Module):
     see :meth:`detect_features_on_single_level`.
 
     Convention:
+        - ``model`` maps each pyramid level ``(1, C, H_l, W_l)`` to a response ``(1, 1, H_l, W_l)``.
+          Only responses carry gradients; the selected centres and scales do not.
+          ``aff_module`` and then ``ori_module`` modify the upright frames; both default to :class:`PassLAF`.
+          ``detector.detect(img)`` returns ``(responses, lafs)`` before those two modules run, reversing the output
+          order of ``detector(img)``.
         - Detections are maxima of the response above ``score_threshold``. For a signed response whose minima are
           features as well, such as a difference of Gaussians, pass its magnitude, as
           :class:`~kornia.feature.SIFTFeature` does.
         - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size ``(H_l, W_l)``, without a
           sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the ``(H, W)`` input, in the frame
-          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`),
-          and not at the level pixel's centre :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`; the Key.Net
-          reference maps it the same way.
+          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          That is the centre of the level pixel only on a level of the input's size; otherwise that centre is at
+          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`. The Key.Net reference maps it the same way.
+          The reported point minus that centre, :math:`-0.5 (f - 1)` px along x for :math:`f = W / W_l` and likewise
+          along y, is a known defect (`#6536 <https://github.com/kornia/kornia/issues/6536>`_): about +0.15 px on the
+          default up level, and increasingly below centre at lower levels.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 
@@ -788,7 +825,11 @@ class MultiResolutionDetector(nn.Module):
             of the vector for any larger one. Which detection carries a given response is not pinned
             when responses tie: ``topk`` breaks a tie by position, and the positions it ranks over
             depend on ``num_features``.
-        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
+        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing. The
+            pyramid has ``up_levels`` levels (1 by default) upscaled by successive powers of ``scale_factor_levels``
+            (``sqrt(2)``), the input, and ``pyramid_levels`` levels (4) below it, each the previous one downscaled by
+            ``scale_factor_levels`` with :func:`~kornia.geometry.transform.pyrdown`; ``nms_size`` (15) is the side of
+            the suppression window in level pixels, and ``s_mult`` (22) the frame scale, in level pixels.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
@@ -796,7 +837,19 @@ class MultiResolutionDetector(nn.Module):
         compile_model: wrap the response function and the non-maxima suppression with :func:`torch.compile`.
         score_threshold: minimum response for a position to count as a detection. Must be non-negative:
             non-maxima suppression writes an exact zero at every suppressed position, so a negative
-            threshold would admit all of them.
+            threshold would admit all of them; it raises ``ValueError``.
+
+    See Also:
+        - :class:`ScaleSpaceDetector`: a batch of images, the sub-pixel maxima of a response over a Gaussian scale
+          space, with scale selection across levels.
+        - :class:`KeyNetDetector`: this detector on the learned KeyNet response.
+        - :class:`SIFTFeature`: this detector on the magnitude of a DoG response, with SIFT descriptors.
+
+    Example:
+        >>> detector = MultiResolutionDetector(BlobHessian(), num_features=50)
+        >>> lafs, responses = detector(torch.rand(1, 1, 64, 64))
+        >>> lafs.shape, responses.shape
+        (torch.Size([1, 50, 2, 3]), torch.Size([1, 50]))
 
     """
 
@@ -889,8 +942,8 @@ class MultiResolutionDetector(nn.Module):
 
         Returns:
             Tuple containing scores and local affine frames detected at the requested pyramid level, with
-            ``min(num_kp, H * W)`` slots. When the level holds fewer above-threshold maxima than that, the remaining
-            slots are padded with a zero response and a zero LAF.
+            ``min(num_kp, H_l * W_l)`` slots for a level of size ``(H_l, W_l)``. When the level holds fewer
+            above-threshold maxima than that, the remaining slots are padded with a zero response and a zero LAF.
         """
         resp_map = self.model(level_img)
         KORNIA_CHECK(
@@ -962,25 +1015,25 @@ class MultiResolutionDetector(nn.Module):
         return self.detect_features_on_single_level(level_img, num_kp, factor, mask=mask)
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Detect local features in an image batch.
+        """Detect local features in one image, a batch of one.
 
         Args:
-            img: Input image tensor with shape `(1, C, H, W)`.
-            mask: Optional mask with shape `(1, 1, H, W)` saying where a detection may be. A boolean or integer
+            img: Input image tensor with shape ``(1, C, H, W)``.
+            mask: Optional mask with shape ``(1, 1, H, W)`` saying where a detection may be. A boolean or integer
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on
-                the detection scores: a weight in `(0, 1]` scales a score toward the worst, so a down-weighted
+                the detection scores: a weight in ``(0, 1]`` scales a score toward the worst, so a down-weighted
                 maximum never outranks a full-weight one, and a zero or negative weight suppresses. Weights above
                 one are clamped to one, so a float 0/255 mask means what the integer one means. The weights are
-                cast to the image dtype. The mask is resampled onto every pyramid level conservatively, so a zero
-                region suppresses every maximum within one level pixel of it.
+                cast to the response's dtype. The mask is resampled onto every pyramid level conservatively, so a
+                zero region suppresses every maximum within one level pixel of it.
 
         Returns:
-            Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and
-            `(1, num_features, 2, 3)`, holding the `num_features` highest responses in the image and sorted by
-            response, descending. The shape holds even when the image yields fewer above-threshold maxima
-            than requested: those slots carry a zero response and a zero LAF, and sort after every real detection.
-            The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep
-            the response function's dtype.
+            Tuple containing detection scores and local affine frames, shaped ``(1, num_features)`` and
+            ``(1, num_features, 2, 3)``, in that order, the reverse of ``forward``'s, holding the ``num_features``
+            highest responses in the image and sorted by response, descending. The shape holds even when the image
+            yields fewer above-threshold maxima than requested: those slots carry a zero response and a zero LAF,
+            and sort after every real detection. The LAFs are float32 for a float16 or bfloat16 image and float64
+            for a float64 one; the responses keep the response function's dtype.
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
@@ -1052,15 +1105,16 @@ class MultiResolutionDetector(nn.Module):
         Then affine shape and orientation.
 
         Args:
-            img: image to extract features with shape [1xCxHxW]. Only a batch of one image is accepted.
-            mask: a mask saying where a detection may be, shape [1x1xHxW]. A boolean or integer mask is binary, a
-                floating-point mask weights the detection scores; see :meth:`detect`.
+            img: image to extract features with shape ``(1, C, H, W)``. Only a batch of one image is accepted.
+            mask: a mask saying where a detection may be, shape ``(1, 1, H, W)``. A boolean or integer mask is
+                binary, a floating-point mask weights the detection scores; see
+                :meth:`~kornia.feature.MultiResolutionDetector.detect`.
 
         Returns:
-            Tuple of ``lafs`` with shape [1xNx2x3], the detected local affine frames, and ``responses`` with shape
-            [1xN], the response function values for the corresponding lafs. When the image yields fewer
-            above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF,
-            whichever affine-shape and orientation modules are configured.
+            Tuple of ``lafs`` with shape ``(1, N, 2, 3)``, the detected local affine frames, and ``responses`` with
+            shape ``(1, N)``, the response function values for the corresponding lafs, with ``N = num_features``.
+            When the image yields fewer above-threshold maxima than ``num_features``, the remaining slots hold a zero
+            response and a zero LAF, whichever affine-shape and orientation modules are configured.
 
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])

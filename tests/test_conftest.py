@@ -25,7 +25,7 @@ import torch
 
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 pytest_plugins = ["pytester"]
 # Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
@@ -55,6 +55,29 @@ def _neutral_runner_env(monkeypatch):
     """
     for var in ("KORNIA_TEST_ISOLATE_HALF", "KORNIA_TEST_RUN_DEVICE_AGNOSTIC"):
         monkeypatch.delenv(var, raising=False)
+
+
+class _LastBitsVaryingBackward(torch.autograd.Function):
+    """Double the input; successive backward passes differ by 1e-12 relative, as an atomic-add kernel can."""
+
+    calls = 0
+
+    @staticmethod
+    def forward(ctx, x):
+        return 2 * x
+
+    @staticmethod
+    def backward(ctx, grad):
+        _LastBitsVaryingBackward.calls += 1
+        return grad * (2 + 2e-12 * (_LastBitsVaryingBackward.calls % 2))
+
+
+def test_base_tester_gradcheck_tolerates_last_bits_nondeterminism_on_cuda_only(device):
+    # CUDA_GRADCHECK_NONDET_TOL: on CUDA two backward passes may round differently; CPU keeps nondet_tol=0.
+    inputs = (torch.rand(3, device=device),)
+    assert BaseTester.gradcheck(_LastBitsVaryingBackward.apply, inputs, raise_exception=False) == (
+        device.type == "cuda"
+    )
 
 
 @pytest.mark.device_agnostic

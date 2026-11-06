@@ -24,7 +24,12 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils.helpers import _IMAGE_SHAPES, _VOLUME_SHAPES, _raise_input_rank_error
+from kornia.augmentation.utils.helpers import (
+    _IMAGE_SHAPES,
+    _VOLUME_SHAPES,
+    _detach_recorded_graph_tensors,
+    _raise_input_rank_error,
+)
 from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
@@ -53,6 +58,11 @@ class BasicSequentialBase(_GeneratorMixin, nn.Sequential):
             _args.update({f"{mod.__class__.__name__}_{idx}": mod})
         super().__init__(_args)
         self._params: Optional[List[ParamItem]] = None
+
+    def __getstate__(self) -> Dict[str, Any]:
+        # With a learnable range, ``_params`` and the matrix state recorded by the last call are part of its graph;
+        # a copy keeps their values, detached.
+        return _detach_recorded_graph_tensors(super().__getstate__())
 
     def get_submodule(self, target: str) -> nn.Module:
         """Get submodule.

@@ -18,6 +18,9 @@
 """Explicit augmentation RNG streams and their isolation from global state."""
 
 import concurrent.futures
+import copy
+import io
+import pickle
 from unittest import mock
 
 import pytest
@@ -135,6 +138,48 @@ class TestExplicitGenerator(BaseTester):
         assert torch.equal(state, child_generator.get_state())
         seq.set_generator(None)
         assert all(m._generator is None for m in seq.modules() if hasattr(m, "_generator"))
+
+    @pytest.mark.parametrize("serialization", ["deepcopy", "pickle", "torch"])
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_copy_with_learnable_range(self, serialization, nested, device, dtype):
+        """A copy retains its stream and differentiates through its own learnable range."""
+        bounds = torch.nn.Parameter(torch.tensor([0.8, 1.2], device=device, dtype=dtype))
+        aug = K.RandomBrightness(bounds, p=1.0)
+        module = K.ImageSequential(aug) if nested else aug
+        module.set_generator(torch.Generator().manual_seed(3))
+        image = torch.full((2, 1, 4, 4), 0.25, device=device, dtype=dtype)
+        global_state = torch.random.get_rng_state().clone()
+        module(image)
+
+        with torch.no_grad():
+            if serialization == "deepcopy":
+                clone = copy.deepcopy(module)
+            elif serialization == "pickle":
+                clone = pickle.loads(pickle.dumps(module))  # noqa: S301
+            else:
+                buffer = io.BytesIO()
+                torch.save(module, buffer)
+                buffer.seek(0)
+                clone = torch.load(buffer, weights_only=False)
+
+        assert clone._generator is not module._generator
+        assert torch.equal(clone._generator.get_state(), module._generator.get_state())
+        child = clone[0] if nested else clone
+        assert child._generator is clone._generator
+        assert child._param_generator._generator is clone._generator
+        expected = module(image)
+        expected_grad = torch.autograd.grad(expected.sum(), bounds)[0]
+        original_state = module._generator.get_state().clone()
+        actual = clone(image)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        assert torch.equal(original_state, module._generator.get_state())
+        assert torch.equal(global_state, torch.random.get_rng_state())
+        actual.sum().backward()
+        (copied_bounds,) = clone.parameters()
+        assert copied_bounds is not bounds
+        assert bounds.grad is None
+        assert bool(copied_bounds.grad.ne(0).any())
+        self.assert_close(copied_bounds.grad, expected_grad)
 
     @pytest.mark.parametrize("container", ["video", "patch"])
     def test_video_and_patch_streams(self, container, device, dtype):
