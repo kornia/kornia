@@ -93,10 +93,9 @@ class PatchDominantGradientOrientation(nn.Module):
         - A float16 or bfloat16 patch is computed in float32, whatever the module's dtype and any enclosing autocast,
           and only the returned angle is cast back: the histogram bins of a textured patch are subnormal in float16.
           A float32 patch under autocast gets its float32 result.
-        - The backward casts the patch gradient to float16 too, so a gradient above 65504 becomes ``inf``: on any device
-          for a patch of very low amplitude, and on macOS arm64 CPU also for a low-contrast patch, where the float32
-          Sobel convolution of a large grad-enabled batch leaves rounding noise on flat pixels (#6598). Through
-          :func:`~kornia.feature.extract_patches_from_pyramid` it reaches the image gradient as ``inf`` and NaN.
+        - The backward casts the patch gradient to float16 too, so a gradient above 65504 becomes ``inf`` for a patch of
+          very low amplitude. Through :func:`~kornia.feature.extract_patches_from_pyramid` it reaches the image gradient
+          as ``inf`` and NaN.
 
     Args:
         patch_size: size of the (square) input patch.

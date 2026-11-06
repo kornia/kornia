@@ -73,10 +73,12 @@ def _gradient_magnitude_orientation(
 def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
     """Return ``spatial_gradient(input, mode)`` for ``"sobel"`` or ``"diff"``, exact on flat pixels under autograd.
 
-    ``F.conv2d`` picks its backend by whether autograd tracks the input. On macOS arm64 CPU the backend of a tracked
-    float32 batch of 16 or more leaves rounding noise on pixels whose exact response is zero, so a guard such as
-    ``sq > 0`` in :func:`_gradient_magnitude_orientation` lets them vote with an arbitrary direction and a derivative
-    of ``1 / |g|``. Tracked input therefore takes the differences directly, and untracked input keeps the convolution.
+    A guard such as ``sq > 0`` in :func:`_gradient_magnitude_orientation` reads exactness from this result: a nonzero
+    pixel votes with its direction and gets a derivative of ``1 / |g|``. A convolution result cannot supply that, as it
+    rounds: a pixel whose exact response is zero can come out nonzero, such as 9.31e-10 on half the Sobel entries of a
+    constant 0.1 patch on x86 CPU and CUDA. This was found on macOS arm64 CPU, where the ``F.conv2d`` backend for a
+    tracked float32 batch of 16 or more leaves about 1e-7 on low-contrast patches. Tracked input therefore takes the
+    differences directly. Untracked input keeps the convolution, and that rounding on its flat pixels.
     """
     if not (input.requires_grad and torch.is_grad_enabled()):
         return spatial_gradient(input, mode)
