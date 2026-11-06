@@ -576,6 +576,70 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(cached, direct, rtol=0, atol=0)
         self.assert_close(cached[..., 1:-1], image[..., 1:-1])
 
+    @pytest.mark.parametrize("entry", ["homography_warp", "module", "precomputed", "warp_grid"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+        # warp_grid's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp of a 256 px
+        # [0, 1] image was 0.73 off. A grid cached inside the region kept the error outside it.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.01], [0.42, 0.9, -0.02], [1e-3, 0.0, 1.0]]], device=device, dtype=torch.float32
+        )
+        transform = kornia.geometry.transform
+
+        def warp():
+            if entry == "homography_warp":
+                return transform.homography_warp(image, homography, (256, 256), align_corners=True)
+            warper = transform.HomographyWarper(256, 256, align_corners=True)
+            if entry == "module":
+                return warper(image, homography)
+            if entry == "warp_grid":
+                return transform.warp_grid(warper.grid.to(image), homography)
+            warper.precompute_warp_grid(homography)
+            return warper
+
+        expected = warp()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp()
+        if entry == "precomputed":
+            # the grid was built in the region; the sampling happens outside it
+            expected, actual = expected(image), actual(image)
+        assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize(
+        "patch_dtype,matrix_dtype",
+        [(torch.float32, "bfloat16"), (torch.float32, "float16"), (torch.bfloat16, "float32")],
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, normalized_coordinates, patch_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 96, 96, generator=torch.Generator().manual_seed(0)).to(device)
+        values = [[0.9, -0.42, 0.01], [0.42, 0.9, -0.02], [1e-3, 0.0, 1.0]]
+        if not normalized_coordinates:
+            values = [[0.9, -0.42, 30.0], [0.42, 0.9, -20.0], [1e-4, 0.0, 1.0]]
+        homography = torch.tensor([values], device=device, dtype=torch.float32).to(getattr(torch, matrix_dtype))
+        image = image.to(patch_dtype)
+        warp = kornia.geometry.transform.homography_warp
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(image.float(), homography.float(), (96, 96), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(image, homography, (96, 96), **options)
+        assert actual.dtype == torch.float32
+        # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
     def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
         # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
@@ -620,7 +684,10 @@ class TestHomographyWarper(BaseTester):
             image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
         )
 
-        with torch.autocast(device.type, dtype=autocast_dtype):
+        # The parametrizations share one scripted function. Once TorchScript has profiled it, its CUDA fuser fuses the
+        # float32 grid arithmetic and rounds it a few ulps from eager; the comparison is about autocast, so it runs
+        # unfused.
+        with torch.jit.fuser("none"), torch.autocast(device.type, dtype=autocast_dtype):
             actual = scripted(
                 image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
             )
@@ -1043,6 +1110,72 @@ class TestHomographyWarper3D(BaseTester):
         self.assert_close(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)
+
+
+class TestHomographyWarp3dAutocast(BaseTester):
+    """A caller's autocast region does not reach the normalized grid of homography_warp3d and warp_grid3d (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @pytest.mark.parametrize("entry", ["homography_warp3d", "warp_grid3d"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+        # warp_grid3d's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp3d of a 32 voxel
+        # [0, 1] volume was 0.11 off.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        generator = torch.Generator().manual_seed(0)
+        volume = torch.rand(1, 1, 32, 32, 32, generator=generator).to(device)
+        grid = (torch.rand(1, 32, 32, 32, 3, generator=generator).to(device) * 2.0) - 1.0
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.0, 0.01], [0.42, 0.9, 0.0, -0.02], [0.0, 0.0, 1.0, 0.03], [1e-3, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        transform = kornia.geometry.transform
+
+        def warp():
+            if entry == "warp_grid3d":
+                return transform.warp_grid3d(grid, homography)
+            return transform.homography_warp3d(volume, homography, (32, 32, 32), align_corners=True)
+
+        expected = warp()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
+class TestHomographyWarp3dMixedDtypesAutocast(BaseTester):
+    """A half homography with a float32 volume runs in float32 in a caller's autocast region (#6573)."""
+
+    # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize("matrix_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, normalized_coordinates, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = torch.rand(1, 1, 16, 16, 16, generator=torch.Generator().manual_seed(0)).to(device)
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.0, 0.01], [0.42, 0.9, 0.0, -0.02], [0.0, 0.0, 1.0, 0.03], [1e-3, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=torch.float32,
+        ).to(getattr(torch, matrix_dtype))
+        warp = kornia.geometry.transform.homography_warp3d
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(volume, homography.float(), (16, 16, 16), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(volume, homography, (16, 16, 16), **options)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
 
 
 class TestHomographyShapeChecks(BaseTester):

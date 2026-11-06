@@ -266,9 +266,13 @@ class TestLoFTR(BaseTester):
             single = model.extract_features(images[1:])
         assert batched["coarse"].shape == (2, 256, 13, 9)
         assert batched["fine"].shape == (2, 128, 50, 34)
-        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size)
-        self.assert_close(batched["coarse"][1:], single["coarse"])
-        self.assert_close(batched["fine"][1:], single["fine"])
+        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size).
+        # CUDA half convolutions accumulate in an order that depends on the batch size, so batched and single
+        # features differ by up to about eps times the largest feature (0.003 in float16, 0.03 in bfloat16), less
+        # than half features differ from float32 ones (0.006 and 0.05); CPU gives the same features for both.
+        low_tolerance = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(batched["coarse"][1:], single["coarse"], low_tolerance=low_tolerance)
+        self.assert_close(batched["fine"][1:], single["fine"], low_tolerance=low_tolerance)
 
     def test_inputs_are_validated(self, device, dtype):
         model = _loftr_matching_every_cell(device, dtype)

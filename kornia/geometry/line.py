@@ -283,9 +283,9 @@ class ParametrizedLine(nn.Module):
 
         Return:
             The pair ``(lambda, point)``. ``lambda`` is the line parameter of the intersection in units of the stored
-            direction, ``()`` for one unbatched line and one unbatched plane, and ``(B,)`` for the broadcast batch,
-            which for one unbatched line is the batch of the planes. ``point`` is the intersection
-            ``point_at(lambda)``, ``(3,)`` or ``(B, 3)`` with the same batch.
+            direction, ``()`` for one unbatched line and one unbatched plane, and otherwise the broadcast batch
+            ``(...)``, which for one unbatched line is the batch of the planes, over any number of axes. ``point`` is
+            the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
@@ -305,7 +305,10 @@ class ParametrizedLine(nn.Module):
             torch.zeros_like(dot_prod),
         )
 
-        res_point = self.point_at(res_lambda)
+        # Not point_at: it reads a multi-axis step element-wise against the direction, as it reads a (B, 1) step. A 0-d
+        # step stays 0-d, so that a float64 plane does not promote the point of a float32 line.
+        step = res_lambda if res_lambda.ndim == 0 else res_lambda[..., None]
+        res_point = self.origin + self.direction * step
         return res_lambda, res_point
 
 

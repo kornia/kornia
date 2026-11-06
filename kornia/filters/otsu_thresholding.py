@@ -80,7 +80,12 @@ class OtsuThreshold(torch.nn.Module):
         min_values, max_values = min_values / scale, max_values / scale
         widths = max_values - min_values
         safe_widths = torch.where(widths > 0, widths, torch.ones_like(widths))
-        indices = ((values - min_values) * bins / safe_widths).to(torch.int64).clamp(0, bins - 1)
+        # A pixel on a bin edge has a coordinate that is an integer only when the division is correctly rounded.
+        # Triton lowers float32 `/` to an approximate division, so under torch.compile on CUDA such a pixel can fall
+        # into the bin below; Inductor lowers addcdiv's division correctly rounded, and adding 0 is exact, so eager
+        # and compiled bin it alike.
+        coordinates = torch.addcdiv(values.new_zeros(()), (values - min_values) * bins, safe_widths)
+        indices = coordinates.to(torch.int64).clamp(0, bins - 1)
         histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
 
         # Match linspace's symmetric interpolation and exact end points with the arithmetic of `_upper_edge`'s

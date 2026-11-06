@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch import nn
@@ -67,13 +67,17 @@ class OperationBase(nn.Module):
           no part in sampling and receives no gradient: the gate is drawn from the wrapped augmentation's own
           ``p`` and ``p_batch`` as a hard ``0`` or ``1``. ``magnitude``, where the operation has one, is clamped to
           the wrapped generator's range and receives a gradient where the wrapped augmentation is differentiable
-          in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw.
+          in it; ``forward_parameters`` substitutes it into the wrapped augmentation's draw. The substituted factor
+          is on the device of the magnitude, while the other parameters stay where the generator returns them.
         - ``forward`` linearly blends the wrapped output with the input using ``batch_prob``. The wrapped
           augmentation transforms every row whose gate is above ``0``, so the same supplied fractional
           ``batch_prob`` produces the same soft blend whatever the wrapped ``p`` or ``p_batch``. Below ``p = 1`` the
           wrapped augmentation skips a row with gate ``0``, so that row's matrix stays the identity.
           Consequently, a wrapped operation that changes spatial dimensions cannot be used, even when
           ``is_batch_operation=True``.
+        - ``magnitude_range`` is read-only and reads the wrapped generator on each access. A range that is an
+          ``nn.Parameter`` belongs to the generator, so ``state_dict()`` and ``named_parameters()`` have no
+          ``magnitude_range`` entry for it; a checkpoint or pickle that still has the former entry loads.
         - a symmetric magnitude applies the magnitude mapping first and then a random sign per row, so a mapping
           that quantizes to zero stays zero (``Posterize`` maps ``0.5`` to ``0`` bits with ``magnitude_range=(0, 8)``).
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
@@ -118,6 +122,21 @@ class OperationBase(nn.Module):
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # A module pickled when ``magnitude_range`` was an attribute brings it back, and ``_parameters`` would go on
+        # demanding the key below from every later load. The property reads the generator's range, which is the same one
+        # unless the attribute was assigned; an assigned range is dropped.
+        self._parameters.pop("magnitude_range", None)
+        self.__dict__.pop("magnitude_range", None)
+
+    def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
+        # ``magnitude_range`` was an attribute, so ``nn.Module`` registered a parameter range under that name as well.
+        # Checkpoints from then hold the same values under the generator's own key, unless a parameter was assigned to
+        # the attribute. The generator's key is the one that loads.
+        state_dict.pop(f"{prefix}magnitude_range", None)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
     def _init_magnitude_fn(
         self, magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]]
     ) -> Callable[[torch.Tensor], torch.Tensor]:
@@ -139,13 +158,12 @@ class OperationBase(nn.Module):
         if initial_magnitude is None:
             self._factor_name = None
             self._magnitude = None
-            self.magnitude_range = None
         else:
             self._factor_name = initial_magnitude[0][0]
-            if self.op._param_generator is not None:
-                self.magnitude_range = getattr(self.op._param_generator, self._factor_name)
-            else:
+            if self.op._param_generator is None:
                 raise ValueError(f"No valid magnitude `{self._factor_name}` found in `{self.op._param_generator}`.")
+            # Reject a name the generator does not have now, rather than at the first call of ``magnitude_range``.
+            getattr(self.op._param_generator, self._factor_name)
 
             self._magnitude = None
             if initial_magnitude[0][1] is not None:
@@ -172,7 +190,11 @@ class OperationBase(nn.Module):
         if mag is not None:
             if self._factor_name is None:
                 raise RuntimeError("No factor found in the params while `mag` is provided.")
-            params[self._factor_name] = params[self._factor_name].zero_() + mag
+            # The generator returns its draw on its own device (the CPU by default, even after ``.to()``), so build the
+            # replacement on the device of ``mag``: this copies nothing and waits for nothing.
+            draw = params[self._factor_name]
+            device = mag.device if isinstance(mag, torch.Tensor) else draw.device
+            params[self._factor_name] = torch.zeros_like(draw, device=device) + mag
 
         if self._factor_name is not None:
             params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
@@ -218,6 +240,21 @@ class OperationBase(nn.Module):
         return None
 
     @property
+    def magnitude_range(self) -> Optional[Union[torch.Tensor, Tuple[float, float]]]:
+        """Return the wrapped generator's range for the magnitude, as it holds it at this moment.
+
+        It is read on every access rather than stored: ``.to()`` replaces the tensors of the generator, so a reference
+        kept here would go on pointing at the tensor from before the move.
+
+        Returns:
+            A tensor of shape ``(2,)`` on the device the generator keeps it on, or the ``(low, high)`` pair of a
+            generator that keeps the constructor's numbers. ``None`` when this operation has no magnitude.
+        """
+        if self._factor_name is None:
+            return None
+        return getattr(self.op._param_generator, self._factor_name)
+
+    @property
     def magnitude(self) -> Optional[torch.Tensor]:
         """Return the learned magnitude value for the operation.
 
@@ -229,9 +266,13 @@ class OperationBase(nn.Module):
         if self._magnitude is None:
             return None
         mag = self._magnitude
-        if self.magnitude_range is not None:
-            return mag.clamp(*self.magnitude_range)
-        return mag
+        bounds = self.magnitude_range
+        if bounds is None:
+            return mag
+        # ``set_rng_device_and_dtype`` can move a range without moving this parameter.
+        if isinstance(bounds, torch.Tensor):
+            bounds = _to_device_nonblocking(bounds, mag.device)
+        return mag.clamp(*bounds)
 
     @property
     def probability(self) -> torch.Tensor:

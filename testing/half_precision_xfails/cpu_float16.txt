@@ -78,7 +78,6 @@ call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::Te
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-6]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_smoke[cpu-float16-20]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_smoke[cpu-float16-6]
-call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortImage::test_shape_extra_dims[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_all_coeff[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_five_coeff[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_stereo[cpu-float16]

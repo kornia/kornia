@@ -20,9 +20,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
-from kornia.core.utils import _to_device_nonblocking
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_brightness
 
 
@@ -101,8 +101,10 @@ class RandomBrightness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.brightness: torch.Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
-        self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
+        self.brightness: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", center, bounds))
+        _load_unowned_learnable_range(self, "brightness", center)
 
         self.clip_output = clip_output
 

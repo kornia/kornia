@@ -474,6 +474,10 @@ Enhancement
   adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
   correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
   variants.
+- A result of these intensity ops exactly on ``0`` or ``1`` has no unique derivative. These ops use the
+  one-sided derivative from inside the range on every torch version; plain ``torch.clamp`` gives 0 there
+  from torch 2.14. A result outside the range gets the bound and a zero gradient. A graph captured by
+  ``torch.jit.trace`` or ``torch.export`` keeps the plain clamp.
 - :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
   (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
   operate on HSV data.
@@ -662,6 +666,14 @@ Serializing an augmentation
   wrapper in it does, and a wrapper does when its magnitude mapping is
   picklable (the built-in mappings are). What lazily computed matrices retain
   is described in :doc:`/augmentation.base`.
+- A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
+  augmentation or container with an ``nn.Parameter`` range owns a copy of
+  that parameter, and its gradients reach that copy rather than the
+  original. It draws from the value the parameter had when it was copied: as
+  in the original, an in-place update such as an optimizer step or
+  ``AveragedModel.update_parameters`` does not reach the draws
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). The ``_params``
+  it inherits from the last call keep their values, detached.
 
 Morphology
 ----------

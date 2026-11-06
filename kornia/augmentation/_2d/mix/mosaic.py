@@ -170,12 +170,8 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _offset[idx, 1] = batch_shapes_idx[:, -2] * j - src_box_idx[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
+                # A list input pads each sample to the longest one; the tile keeps its source's padding.
                 _box[params["permutation"][:, 0]] = input[params["permutation"][:, _idx]]
-                if input._N is not None:
-                    # A list input pads each sample to the longest one; the tile keeps its source's padding count.
-                    _box._N = list(input._N)
-                    for dst, src in params["permutation"][:, [0, _idx]].tolist():
-                        _box._N[dst] = input._N[src]
                 _box.translate(_offset, inplace=True)
                 if maybe_out_boxes is None:
                     maybe_out_boxes = _box
@@ -187,19 +183,17 @@ class RandomMosaic(MixAugmentationBaseV2):
 
         if not bool(to_apply.all()):
             # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
-            # The padding is recorded in ``_N`` and marked invalid, so every export gives all-zero rows for it, also
-            # after a later geometric transform and in a container such as VideoBoxes that does not keep ``_N``.
+            # That padding is recorded and also marked invalid, so every export gives all-zero rows for it, also
+            # after a later geometric transform and in a container such as VideoBoxes that keeps no padding.
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
             out_boxes._valid[~to_apply, :num_boxes] = input._valid[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
             out_boxes._valid[~to_apply, num_boxes:] = False
-            padding = out_boxes._data.shape[1] - num_boxes
-            merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
-            input_padding = input._N if input._N is not None else [0] * len(to_apply)
-            out_boxes._N = [
-                merged if bool(selected) else own + padding
-                for selected, merged, own in zip(to_apply, merged_padding, input_padding)
-            ]
+            skipped = ~to_apply.cpu()
+            padding = out_boxes._padding_or_real()
+            padding[skipped, :num_boxes] = input._padding_or_real()[skipped]
+            padding[skipped, num_boxes:] = True
+            out_boxes._set_padding(padding)
 
         return out_boxes
 

@@ -59,6 +59,26 @@ _EMPTY_BATCH_MIX = {
     "RandomCutMixV2": lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True),
     "RandomMixUpV2": lambda: K.RandomMixUpV2(p=1.0),
 }
+# Learnable ranges made on CUDA for an augmentation that stays on the CPU: ``PlainUniformGenerator`` samples on the CPU
+# and returns the draws on the device of the ranges.
+_RANGES_ON_CUDA = {
+    "RandomBrightness-range": lambda r: K.RandomBrightness(r(0.8, 1.2), p=1.0),
+    "RandomBrightness-half-width": lambda r: K.RandomBrightness(r(0.2), p=1.0),
+    "RandomHue-half-width": lambda r: K.RandomHue(r(0.1), p=1.0),
+    "RandomRotation": lambda r: K.RandomRotation(r(-10.0, 10.0), p=1.0),
+    "RandomGamma": lambda r: K.RandomGamma(r(0.8, 1.2), r(0.9, 1.1), p=1.0),
+}
+# Auto operations and policies moved to CUDA as a whole (#6297). The range they read from their generator is on CUDA,
+# where reading its values on the host would wait for the GPU.
+_MOVED_AUTO = {
+    "Brightness": lambda: KAuto.operations.ops.Brightness(initial_probability=1.0),
+    "Posterize": lambda: KAuto.operations.ops.Posterize(initial_probability=1.0),
+    "ShearX": lambda: KAuto.operations.ops.ShearX(initial_probability=1.0),
+    "TranslateX": lambda: KAuto.operations.ops.TranslateX(initial_probability=1.0),
+    "RandAugment-rotate": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("rotate", -30.0, 30.0)]]),
+    "RandAugment-shear_x": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("shear_x", -0.3, 0.3)]]),
+    "RandAugment-posterize": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("posterize", 4.0, 8.0)]]),
+}
 # Host reads that only happen because the caller moved the parameters to CUDA: the crop window and the padding set
 # the sizes of Python slices.
 _REPLAY_DEVICE_READS = {
@@ -130,6 +150,37 @@ class TestAugmentationHostSync(BaseTester):
         assert outputs[0].device == x.device
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
 
+    @pytest.mark.parametrize("name", sorted(_RANGES_ON_CUDA))
+    def test_learnable_range_on_cuda_with_the_module_on_the_cpu(self, name, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+
+        def learnable(*values):
+            value = values if len(values) > 1 else values[0]
+            return torch.nn.Parameter(torch.tensor(value, device=device, dtype=dtype))
+
+        op = _RANGES_ON_CUDA[name](learnable)
+        x = torch.rand(4, 3, 16, 16, device=device, dtype=dtype)
+        op(x)
+        torch.cuda.synchronize()
+        outputs = []
+        sites = sync_sites(lambda: outputs.append(op(x)))
+        assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
+        outputs[0].sum().backward()
+        assert all(p.grad is not None for p in op.parameters())
+
+    @pytest.mark.parametrize("name", sorted(_MOVED_AUTO))
+    def test_moved_auto_operation_adds_no_sync_of_its_own(self, name, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        module = _MOVED_AUTO[name]().to(device=device, dtype=dtype)
+        x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
+        module(x)
+        torch.cuda.synchronize()
+        sites = sync_sites(lambda: module(x))
+        # The generators return their draws on the CPU (see the conventions page), which is not the wrapper's doing.
+        assert not [site for site in sites if site.startswith("augmentation/auto/")], dict(sites)
+
     @pytest.mark.parametrize("same_on_batch", [False, True])
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     @pytest.mark.parametrize("name", sorted(_GATED))
@@ -182,6 +233,41 @@ class TestMaskWritesWithoutHostReads(BaseTester):
         assert torch.equal(out[~changed], x[~changed])
         params = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in rain._params.items()}
         assert torch.equal(rain(x.cpu(), params=params), out.cpu())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA host synchronizations need a CUDA device")
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda: K.RandomHorizontalFlip(p=1.0), id="flip"),
+        pytest.param(lambda: K.RandomAffine(15.0, p=0.5), id="affine_half"),
+        pytest.param(lambda: K.RandomMosaic(output_size=(16, 16), p=1.0), id="mosaic"),
+        pytest.param(lambda: K.RandomMosaic(output_size=(16, 16), p=0.5), id="mosaic_half"),
+    ],
+)
+def test_list_boxes_add_no_host_sync_to_dense_boxes(build) -> None:
+    # The padding mask of a list input lives on the host, so following it and trimming the export read nothing from the
+    # device: a list costs what a tensor costs, apart from validating each of its tensors on its own.
+    device = torch.device("cuda")
+    x = torch.rand(4, 3, 16, 16, device=device)
+    first = torch.tensor([[1.0, 1.0, 5.0, 5.0]], device=device)
+    second = torch.tensor([[2.0, 2.0, 6.0, 7.0], [3.0, 1.0, 8.0, 4.0]], device=device)
+    aug = K.AugmentationSequential(build(), data_keys=["input", "bbox_xyxy"])
+
+    def sites(boxes) -> dict[str, int]:
+        def call() -> None:
+            # Several draws, so that a gate of p=0.5 runs its skipped, selected and partial paths.
+            torch.manual_seed(0)
+            for _ in range(8):
+                aug(x, boxes)
+
+        call()
+        torch.cuda.synchronize()
+        counted = sync_sites(call)
+        del counted["geometry/boxes.py:_validate_box_values"]
+        return dict(counted)
+
+    assert sites([first, second, second[:0], first]) == sites(second[:1].expand(4, -1, -1))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="host-to-device copies need a CUDA device")

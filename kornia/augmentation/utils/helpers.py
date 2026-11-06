@@ -25,7 +25,7 @@ from torch.distributions import Beta, Uniform
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.exceptions import InputRankError
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -63,7 +63,7 @@ def _pad_with_fill(
 def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
-    :class:`~kornia.geometry.boxes.Boxes` records per-sample trailing padding in ``_N`` and its default export
+    :class:`~kornia.geometry.boxes.Boxes` records which rows are list padding in ``_padding`` and its default export
     returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
     zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
     ``'vertices'`` modes, which reads as a real one-pixel box.
@@ -71,13 +71,10 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     out = boxes.to_tensor(mode, as_padded_sequence=True)
     if not isinstance(out, torch.Tensor):
         raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
-    if boxes._N is None:
+    if boxes._padding is None or not boxes._is_batched:
         return out
-    num_boxes = out.shape[1]
-    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
-    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
-    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
-    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
+    padding = _to_device_nonblocking(boxes._padding, out.device)
+    return out.masked_fill(padding.reshape(padding.shape + (1,) * (out.dim() - 2)), 0.0)
 
 
 def _frame_boxes(boxes: VideoBoxes) -> Boxes:
@@ -88,8 +85,9 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
     videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
     frames = Boxes(boxes._data, False, mode=boxes._mode)
-    frames._N = boxes._N
     frames._valid = boxes._valid
+    if frames._data is not boxes._data:  # the constructor cast integer coordinates, into a copy
+        frames._detach_masks()
     frames._is_batched = boxes._is_batched
     return frames
 
@@ -97,12 +95,13 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
 def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
     """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
 
-    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
-    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
-    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    A ``VideoBoxes`` is a dense container and keeps no list padding. Padding a child adds, such as the rows a partial
+    ``RandomMosaic`` gate pads a skipped frame with, is marked invalid instead; every export zeroes invalid rows and
+    every indexed read or write carries them.
     """
     boxes = VideoBoxes(frames._data, False, mode=frames._mode)
     boxes._valid = frames._valid
+    boxes._set_padding(frames._padding)
     boxes._is_batched = frames._is_batched
     boxes.temporal_channel_size = temporal_channel_size
     return boxes
@@ -589,6 +588,62 @@ class MultiprocessWrapper:
         kwargs = {key: val.clone() if isinstance(val, torch.Tensor) else val for key, val in kwargs.items()}
 
         super().__init__(*args, **kwargs)
+
+
+def _holds_graph_tensor(value: Any) -> bool:
+    """Whether ``value`` holds a tensor with autograd history, directly, in a container or in a distribution.
+
+    ``copy.deepcopy`` refuses such a tensor, and pickle turns it into a leaf cut off from the graph.
+    """
+    if isinstance(value, torch.Tensor):
+        return not value.is_leaf
+    if isinstance(value, dict):
+        return any(_holds_graph_tensor(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds_graph_tensor(item) for item in value)
+    if isinstance(value, torch.distributions.Distribution):
+        return any(_holds_graph_tensor(item) for item in vars(value).values())
+    return False
+
+
+def _detach_graph_tensors(value: Any, memo: Dict[int, Any]) -> Any:
+    """Return ``value`` with each tensor that has autograd history detached; ``memo`` keeps shared values shared.
+
+    Dicts, lists and tuples (named tuples included) on the way to such a tensor are rebuilt; anything else is
+    returned as it is.
+    """
+    if not _holds_graph_tensor(value):
+        return value
+    if id(value) in memo:
+        return memo[id(value)]
+    out: Any
+    if isinstance(value, torch.Tensor):
+        out = value.detach()
+    elif isinstance(value, dict):
+        out = type(value)((key, _detach_graph_tensors(item, memo)) for key, item in value.items())
+    elif isinstance(value, list):
+        out = [_detach_graph_tensors(item, memo) for item in value]
+    elif isinstance(value, tuple):
+        items = [_detach_graph_tensors(item, memo) for item in value]
+        out = type(value)(*items) if hasattr(value, "_fields") else tuple(items)
+    else:
+        out = value
+    memo[id(value)] = out
+    return out
+
+
+def _detach_recorded_graph_tensors(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Detach the autograd history in a module state's plain attributes, for ``__getstate__``.
+
+    With a learnable range, what a forward records on the module (the drawn parameters, the transformation matrix)
+    is part of the autograd graph of that call. A copy cannot extend the original's graph, and ``copy.deepcopy``
+    refuses such tensors, so the copy keeps their values, detached. Parameters, buffers and submodules follow their
+    own copy protocol and are left alone.
+    """
+    memo: Dict[int, Any] = {}
+    for name in [name for name in state if name not in ("_parameters", "_buffers", "_modules")]:
+        state[name] = _detach_graph_tensors(state[name], memo)
+    return state
 
 
 #: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.

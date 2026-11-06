@@ -219,7 +219,9 @@ def _geometric_cases() -> list[AugCase]:
         _aug(K.PadTo, (40, 40), cases=("forward", "inverse", "seq_annotations", "seq_inverse")),
         _aug(K.RandomAffine, 15.0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10.0, p=1.0, cases=GEOMETRIC_2D),
         _aug(K.RandomCrop, (16, 16), p=1.0, cases=GEOMETRIC_2D),
-        _aug(K.RandomElasticTransform, p=1.0),
+        # A sequential call passes keypoints and boxes, which the non-rigid warps refuse (#4420), so they run
+        # the forward cases only.
+        _aug(K.RandomElasticTransform, p=1.0, cases=FORWARD_P),
         _aug(K.RandomFisheye, **fisheye, p=1.0, cases=FORWARD_P),
         _aug(K.RandomHorizontalFlip, p=1.0, cases=GEOMETRIC_2D),
         _aug(K.RandomPerspective, 0.5, p=1.0, cases=GEOMETRIC_2D),
@@ -418,7 +420,9 @@ INHERENT_SITES: dict[str, str] = {
 
 # Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of
 # them, so that INHERENT_SITES names the caller, which is what decides whether the synchronization is inherent.
-PASS_THROUGH: frozenset[str] = frozenset({"core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"})
+PASS_THROUGH: frozenset[str] = frozenset(
+    {"core/utils.py:_to_device_nonblocking", "core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"}
+)
 
 
 def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
