@@ -16,6 +16,7 @@
 #
 
 import operator
+import warnings
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
@@ -34,6 +35,13 @@ from .base import ImageSequentialBase
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
+
+_RANDOM_APPLY_SUM_RULE_MESSAGE = (
+    "`random_apply` samples with replacement when the drawn count is above the sum of `random_apply_weights`, so "
+    "children repeat although they could fill the count. This is deprecated since kornia 0.9.1: a future minor release "
+    "stops these repeats, which changes what the call selects for a given seed and how often each child runs. Weights "
+    "that sum to at least the largest count give that behavior now (kornia#6114)."
+)
 
 
 class ImageModuleForSequentialMixIn(ImageModuleMixIn):
@@ -72,16 +80,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
-            than the number of children with a nonzero weight, mix augmentations not counted.
+            ``random_apply_weights``. Selections repeat when the requested count is larger than the number of children
+            that can be drawn: the children with a nonzero weight, mix augmentations not counted, plus one place when
+            the count and the mix augmentations together reach the number of children, since a mix augmentation is then
+            certain to take a place. With only mix children one of them is drawn, and with all weights 0 and no mix
+            child nothing is.
+            An int or a range that is not fixed to the number of children also repeats when the drawn count is larger
+            than the sum of the weights. That rule is deprecated since kornia 0.9.1: the calls whose draw it changes
+            emit a ``FutureWarning``, and a future minor release stops them repeating, which changes what they select
+            for a given seed and how often each child runs. Weights that sum to at least the largest count give the
+            future behavior now.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If True, the whole list of args will be processed as a sequence in a random order.
+            If True, the whole list of args will be processed as a sequence in a random order, whatever the scale of
+            the weights, and so will a count fixed to the number of children. With a non-mix child of weight 0 or more
+            than one mix augmentation, that count cannot be filled: children repeat and some may be left out.
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
-            length shall be as same as the number of operations. Integer and boolean weights are converted to floating
-            point. By default, operations are sampled uniformly.
+            length shall be as same as the number of operations. Multiplying the weights by a constant does not change
+            the selection probabilities; it changes whether selections repeat only through the deprecated rule of
+            ``random_apply``. Integer and boolean weights are converted to floating point. By default, operations are
+            sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -238,6 +258,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
         """Get a forward sequence when random apply is in need.
 
+        Whether the draw samples with replacement follows the ``random_apply`` argument's description, including its
+        deprecated rule for counts above the sum of the weights.
+
         Args:
             with_mix: if to require a mix augmentation for the sequence.
 
@@ -256,22 +279,29 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         multinomial_weights[mix_indices] = 0
 
-        total_weight = multinomial_weights.sum()
-        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
-        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
-        # place more can then be drawn without replacement. That place is last because the draw keeps the top
-        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        total_weight = multinomial_weights.sum().item()
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights, as its docs
+        # say. A certain mix insertion below takes one place, so one place more than those can be filled without
+        # replacement; the draw leaves that place to the insertion.
         num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
-        mix_place = int(with_mix and len(mix_indices) != 0 and len(mix_indices) + num_samples >= len(self))
+        num_mix = len(mix_indices) if with_mix else 0
+        mix_place = int(num_mix != 0 and num_mix + num_samples >= len(self))
+        replacement = num_samples > num_nonzero + mix_place
+        # A range fixed to the number of children is what True stores. It promises the whole list, so repeating a member
+        # because of the weights' scale breaks that contract (#6114). Any other count keeps the sum rule until the
+        # deprecation window closes, including a range's draw of the number of children, whose seeded run moves with
+        # the rest of that range.
+        if self.random_apply != (len(self), len(self) + 1):
+            replacement = replacement or num_samples > total_weight
+            self._warn_if_sum_rule_changes_a_draw(self.random_apply, total_weight, num_nonzero, num_mix)
         # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
         if total_weight == 0 or num_samples == 0:
+            count = 0
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
-            indices = torch.multinomial(
-                multinomial_weights,
-                num_samples,
-                replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
-            )
+            count = num_samples
+            drawn = num_samples if replacement else min(num_samples, num_nonzero)
+            indices = torch.multinomial(multinomial_weights, drawn, replacement=replacement)
 
         mix_added = False
         # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
@@ -279,7 +309,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             with_mix
             and num_samples > 0
             and len(mix_indices) != 0
-            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+            and (torch.rand(1) < ((len(mix_indices) + count) / len(self))).item()
         ):
             # Draw among the mix members only: an ordinary member with weight 0 is also 0 in
             # ``multinomial_weights`` and must not be inserted in their place.
@@ -288,12 +318,34 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             mix_idx = torch.multinomial(mix_mask, 1)
             if len(indices) == 0:
                 indices = mix_idx
+            elif len(indices) < count:
+                indices = torch.cat([indices, mix_idx])
             else:
                 indices[-1] = mix_idx
             indices = indices[torch.randperm(len(indices))]
             mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
+
+    def _warn_if_sum_rule_changes_a_draw(
+        self, count_range: Tuple[int, int], total_weight: float, num_nonzero: int, num_mix: int
+    ) -> None:
+        """Warn if ``count_range``, with its exclusive end, holds a count whose draw the deprecated sum rule changes.
+
+        The rule changes a drawn count above ``total_weight`` that the members can fill without repeating. Those counts
+        run up to ``num_nonzero``, plus one when the certain mix place is open at that count, so the largest one in the
+        range decides. A count of 1 does not change, since ``torch.multinomial`` draws it the same way with and without
+        replacement, and neither do all-zero weights, which skip the draw. The whole range warns and not only the count
+        drawn in this call: a seeded run moves at the first draw of such a count.
+
+        This takes a few comparisons of values the draw has already read: no host conversion and no random number, so
+        the unaffected path keeps its draw. The message is a constant, so the default filter prints it once per
+        location.
+        """
+        drawable = num_nonzero + int(num_mix != 0 and num_mix + num_nonzero + 1 >= len(self))
+        changes_up_to = min(count_range[1] - 1, drawable)
+        if total_weight != 0 and changes_up_to > total_weight and changes_up_to >= max(count_range[0], 2):
+            warnings.warn(_RANDOM_APPLY_SUM_RULE_MESSAGE, FutureWarning, stacklevel=3)
 
     def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> List[int]:
         """Get all the mix augmentations since they are label-involved.

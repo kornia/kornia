@@ -86,16 +86,28 @@ class PatchSequential(ImageSequential):
         patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
-        random_apply: randomly select children to apply in random order. Selections may repeat when the requested
-            count is larger than the sum of the selection weights or than the number of children with a nonzero
-            weight, mix augmentations not counted.
+        random_apply: randomly select children to apply in random order. Selections repeat when the requested count is
+            larger than the number of children that can be drawn: the children with a nonzero selection weight, mix
+            augmentations not counted, plus one place when the count and the mix augmentations together reach the number
+            of children, since a mix augmentation is then certain to take a place. With only mix children one of them is
+            drawn, and with all weights 0 and no mix child nothing is.
+            An int or a range that is not fixed to the number of children also repeats when the drawn count is larger
+            than the sum of the weights. That rule is deprecated since kornia 0.9.1, with a ``FutureWarning`` on the
+            calls whose draw it changes, as in :class:`~kornia.augmentation.container.ImageSequential`.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
-            If ``True``, the whole list of args will be processed in a random order.
+            If ``True`` and not ``patchwise_apply``, the whole list of args will be processed in a random order,
+            whatever the scale of the weights, and so will a count fixed to the number of children. With a non-mix child
+            of weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some may be
+            left out.
+            If ``True`` and ``patchwise_apply``, 1 to 4 transformations will be selected per patch, a range under the
+            deprecated rule above. Once a patch has drawn a mix augmentation, later patches count no place for one.
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
 
     Convention:
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has

@@ -54,11 +54,19 @@ class VideoSequential(ImageSequential):
         data_format: only BCTHW and BTCHW are supported.
         same_on_frame: share each clip's sampled transform parameters across its temporal frames.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+            apply transformation. Selections repeat when the requested count is larger than the number of children
+            that can be drawn, or, for an int or a range that is not fixed to the number of children, than the sum of
+            the weights. That second rule is deprecated since kornia 0.9.1, with a ``FutureWarning`` on the calls whose
+            draw it changes. See :class:`~kornia.augmentation.container.ImageSequential`.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If None, the whole list of args will be processed as a sequence.
+            If True, the whole list of args will be processed as a sequence in a random order, whatever the scale of
+            the weights, and so will a count fixed to the number of children. With a non-mix child of weight 0 or more
+            than one mix augmentation, that count cannot be filled: children repeat and some may be left out.
+            If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
             :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 
