@@ -68,6 +68,17 @@ _RANGES_ON_CUDA = {
     "RandomRotation": lambda r: K.RandomRotation(r(-10.0, 10.0), p=1.0),
     "RandomGamma": lambda r: K.RandomGamma(r(0.8, 1.2), r(0.9, 1.1), p=1.0),
 }
+# Auto operations and policies moved to CUDA as a whole (#6297). The range they read from their generator is on CUDA,
+# where reading its values on the host would wait for the GPU.
+_MOVED_AUTO = {
+    "Brightness": lambda: KAuto.operations.ops.Brightness(initial_probability=1.0),
+    "Posterize": lambda: KAuto.operations.ops.Posterize(initial_probability=1.0),
+    "ShearX": lambda: KAuto.operations.ops.ShearX(initial_probability=1.0),
+    "TranslateX": lambda: KAuto.operations.ops.TranslateX(initial_probability=1.0),
+    "RandAugment-rotate": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("rotate", -30.0, 30.0)]]),
+    "RandAugment-shear_x": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("shear_x", -0.3, 0.3)]]),
+    "RandAugment-posterize": lambda: KAuto.RandAugment(n=1, m=10, policy=[[("posterize", 4.0, 8.0)]]),
+}
 # Host reads that only happen because the caller moved the parameters to CUDA: the crop window and the padding set
 # the sizes of Python slices.
 _REPLAY_DEVICE_READS = {
@@ -157,6 +168,18 @@ class TestAugmentationHostSync(BaseTester):
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
         outputs[0].sum().backward()
         assert all(p.grad is not None for p in op.parameters())
+
+    @pytest.mark.parametrize("name", sorted(_MOVED_AUTO))
+    def test_moved_auto_operation_adds_no_sync_of_its_own(self, name, device, dtype) -> None:
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        module = _MOVED_AUTO[name]().to(device=device, dtype=dtype)
+        x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
+        module(x)
+        torch.cuda.synchronize()
+        sites = sync_sites(lambda: module(x))
+        # The generators return their draws on the CPU (see the conventions page), which is not the wrapper's doing.
+        assert not [site for site in sites if site.startswith("augmentation/auto/")], dict(sites)
 
     @pytest.mark.parametrize("same_on_batch", [False, True])
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])

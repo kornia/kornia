@@ -420,7 +420,9 @@ INHERENT_SITES: dict[str, str] = {
 
 # Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of
 # them, so that INHERENT_SITES names the caller, which is what decides whether the synchronization is inherent.
-PASS_THROUGH: frozenset[str] = frozenset({"core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"})
+PASS_THROUGH: frozenset[str] = frozenset(
+    {"core/utils.py:_to_device_nonblocking", "core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"}
+)
 
 
 def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
