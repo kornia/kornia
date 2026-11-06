@@ -1898,8 +1898,8 @@ class TestMatrixBuildersAutocast(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = op()
         assert actual.dtype == torch.float32
-        # A compiled graph differs from eager by up to 6.1e-05 on entries near 200, inside the float32 default's relative
-        # tolerance; this keeps the tolerance of the 2D warps, which need it.
+        # A compiled graph differs from eager by up to 6.1e-05 on entries near 200, inside the float32 default's
+        # relative tolerance; this keeps the tolerance of the 2D warps, which need it.
         self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
 
 

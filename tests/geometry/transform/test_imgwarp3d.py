@@ -987,8 +987,8 @@ class TestWarp3dAutocast(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = op(volume, matrix)
         assert actual.dtype == torch.float32
-        # A compiled graph differs from eager by up to 6.3e-06 here, inside the float32 default; this keeps the tolerance
-        # of the 2D warps, which need it.
+        # A compiled graph differs from eager by up to 6.3e-06 here, inside the float32 default; this keeps the
+        # tolerance of the 2D warps, which need it.
         self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
         self.assert_close(op(volume, matrix), expected, rtol=1e-3, atol=1e-3)
 
