@@ -63,8 +63,9 @@ def elastic_transform2d(
     .. image:: _static/img/elastic_transform2d.png
 
     Convention:
-        - a ``float16``/``bfloat16`` image with a noise field of its dtype builds its grid and samples in ``float32``
-          on every device and returns the input dtype: a half-precision grid is off by half a pixel or more at 256 px
+        - a ``float16``/``bfloat16`` image with a noise field of its dtype, outside a caller's autocast region (#6601),
+          builds its grid and samples in ``float32`` on every device and returns the input dtype: a half-precision grid
+          is off by half a pixel or more at 256 px
         - image: ``(B, C, H, W)``; ``noise``: ``(B, 2, H, W)`` with
           channel 0 the x- and channel 1 the y-displacement of the sampling
           grid (positive x-noise shifts image content left)

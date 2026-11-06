@@ -493,8 +493,9 @@ def warp_frame_depth(
     Return:
         ``image_src`` resampled onto the destination pixel grid, with shape ``(B, D, H, W)``.
 
-    A ``float16``/``bfloat16`` call with every input in that dtype runs in ``float32`` on every device and returns the
-    input dtype: half-precision pixel coordinates and a half-precision grid are off by a pixel or more at 256 px.
+    A ``float16``/``bfloat16`` call with every input in that dtype, outside a caller's autocast region (#6601), runs in
+    ``float32`` on every device and returns the input dtype: half-precision pixel coordinates and a half-precision grid
+    are off by a pixel or more at 256 px.
 
     See Also:
         - :class:`DepthWarper`, :func:`depth_warp`: the same warp from two pinhole camera models.
@@ -569,9 +570,9 @@ class DepthWarper(nn.Module):
         - the depth lives in the **source** frame and the image in the **destination** frame.
         - until :meth:`compute_projection_matrix` has been called, :meth:`warp_grid` raises ``ValueError`` and
           :meth:`compute_subpixel_step` raises ``RuntimeError``.
-        - Half-precision cameras compose in ``float32``, and a ``float16``/``bfloat16`` patch with depth of its dtype
-          builds its grid and samples in ``float32`` on every device and returns the input dtype. :meth:`warp_grid`
-          casts the grid back to the depth's dtype.
+        - Half-precision cameras of one dtype compose in ``float32``, and a ``float16``/``bfloat16`` patch with depth of
+          its dtype builds its grid and samples in ``float32`` on every device and returns the input dtype, outside a
+          caller's autocast region (#6601). :meth:`warp_grid` casts the grid back to the depth's dtype.
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
