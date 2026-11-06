@@ -235,6 +235,41 @@ class TestMaskWritesWithoutHostReads(BaseTester):
         assert torch.equal(rain(x.cpu(), params=params), out.cpu())
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA host synchronizations need a CUDA device")
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda: K.RandomHorizontalFlip(p=1.0), id="flip"),
+        pytest.param(lambda: K.RandomAffine(15.0, p=0.5), id="affine_half"),
+        pytest.param(lambda: K.RandomMosaic(output_size=(16, 16), p=1.0), id="mosaic"),
+        pytest.param(lambda: K.RandomMosaic(output_size=(16, 16), p=0.5), id="mosaic_half"),
+    ],
+)
+def test_list_boxes_add_no_host_sync_to_dense_boxes(build) -> None:
+    # The padding mask of a list input lives on the host, so following it and trimming the export read nothing from the
+    # device: a list costs what a tensor costs, apart from validating each of its tensors on its own.
+    device = torch.device("cuda")
+    x = torch.rand(4, 3, 16, 16, device=device)
+    first = torch.tensor([[1.0, 1.0, 5.0, 5.0]], device=device)
+    second = torch.tensor([[2.0, 2.0, 6.0, 7.0], [3.0, 1.0, 8.0, 4.0]], device=device)
+    aug = K.AugmentationSequential(build(), data_keys=["input", "bbox_xyxy"])
+
+    def sites(boxes) -> dict[str, int]:
+        def call() -> None:
+            # Several draws, so that a gate of p=0.5 runs its skipped, selected and partial paths.
+            torch.manual_seed(0)
+            for _ in range(8):
+                aug(x, boxes)
+
+        call()
+        torch.cuda.synchronize()
+        counted = sync_sites(call)
+        del counted["geometry/boxes.py:_validate_box_values"]
+        return dict(counted)
+
+    assert sites([first, second, second[:0], first]) == sites(second[:1].expand(4, -1, -1))
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="host-to-device copies need a CUDA device")
 def test_erasing_copies_box_parameters_not_masks(tmp_path) -> None:
     # A large pageable copy stalls the host while the driver stages it, without any cudaStreamSynchronize: the

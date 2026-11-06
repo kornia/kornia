@@ -542,7 +542,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
 
-        # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
+        # Reuse the not-transformed Boxes container (preserves mode/_padding/is_batched/etc.)
         # and swap in the blended data, same effect as the index_put on .data.
         output = output_not_transformed.clone()
         output._data = blended_data
