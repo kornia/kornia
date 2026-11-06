@@ -97,18 +97,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
                  If None, it will not overwrite the function-wise settings.
 
-        random_apply: randomly select children to apply. The selected children run in random order and repeat only
-                      when the requested count exceeds the number of children that can be drawn: the children with a
-                      nonzero selection weight, mix augmentations not counted, plus one place when the count and the
-                      mix augmentations together reach the number of children, since a mix augmentation is then
-                      certain to take a place. With only mix children one of them is drawn, and with all weights 0 and
-                      no mix child nothing is. The weights are relative, so their scale plays no part.
+        random_apply: randomly select children to apply. The selected children run in random order and repeat when the
+                      requested count exceeds the number of children that can be drawn: the children with a nonzero
+                      selection weight, mix augmentations not counted, plus one place when the count and the mix
+                      augmentations together reach the number of children, since a mix augmentation is then certain to
+                      take a place. With only mix children one of them is drawn, and with all weights 0 and no mix child
+                      nothing is.
+                      An int or a range that is not fixed to the number of children also repeats when the drawn count
+                      exceeds the sum of the weights. That rule is deprecated since kornia 0.9.1, with a
+                      ``FutureWarning`` on the calls whose draw it changes, as in
+                      :class:`~kornia.augmentation.container.ImageSequential`.
                       If int, a fixed number of transformations will be selected.
                       If (a,), x number of transformations (a <= x <= len(args)) will be selected.
                       If (a, b), x number of transformations (a <= x <= b) will be selected.
-                      If True, the whole list of args will be processed as a sequence in a random order. With a
-                      non-mix child of weight 0 or more than one mix augmentation, that count cannot be filled:
-                      children repeat and some may be left out.
+                      If True, the whole list of args will be processed as a sequence in a random order, whatever the
+                      scale of the weights, and so will a count fixed to the number of children. With a non-mix child of
+                      weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some
+                      may be left out.
                       If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: selection weights for each child, as in
                               :class:`~kornia.augmentation.container.ImageSequential`.
