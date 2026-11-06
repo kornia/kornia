@@ -140,12 +140,13 @@ issues own live status and acceptance decisions.
 - **Knowledge for users and agents:** keep package help, canonical docs, `llms.txt`, and
   `llms-full.txt` aligned. Derive validated workflow skills from those sources rather
   than duplicate conventions; assess them through completed user tasks.
-- **Compile/export design:** finish data-dependent augmentation and feature paths,
+- **Compile/export design:** finish data-dependent augmentation paths,
   tracked in [#5137](https://github.com/kornia/kornia/issues/5137): partial application in
   `RandomCrop` (`p < 1`), `ColorJiggle`'s random order, and `AugmentationSequential`'s
   `random_apply` dispatch. Recorded fullgraph runs of `RandomAffine`, `RandomPerspective`,
   and `RandomResizedCrop` include CUDA successes; these are evidence for the tested cases,
   not a blanket CUDA promise. `crop_by_indices` needs an explicit `size` to avoid value-dependent output shapes.
+  Dynamic-shape feature detectors remain separate design work.
   Redesign the shared implementation instead of accumulating guards. Handle multi-output
   export generically, converge on a modern ONNX opset, and extend CI promises only with evidence.
 - **Augmentation throughput:** reduce wrapper/transform bookkeeping and kernel-launch
@@ -181,8 +182,10 @@ Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), exis
 and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
 not approval for a new API; establish the concrete need and check reservations first.
 
-- **Documented CUDA and half-precision failures:** fix existing CUDA reports and
-  `float16`/`bfloat16` xfail issues. Take CUDA work only when a CUDA device is available
+- **Documented CUDA and half-precision failures:** fix existing CUDA reports, open
+  half-precision issues, and entries in the known-failure manifests for
+  [`float16`](testing/half_precision_xfails/cpu_float16.txt) and
+  [`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt). Take CUDA work only when a CUDA device is available
   for reproduction and validation. Apply the [correctness policy](#correctness-and-backend-support)
   and [precision testing guidance](TESTING.md#7-half-precision-dtypes-float16--bfloat16);
   remove the corresponding xfail or manifest entry after verifying the fix.

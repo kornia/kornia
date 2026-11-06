@@ -40,14 +40,14 @@
 当手写实现变得冗长或容易出错，或者替代方案需要将数据移出 GPU 时，Kornia 尤其适用：
 
 - **覆盖面广。** 提供 1,200 多个公开算子，大多数在 torchvision 中没有对应实现：相机模型与对极几何、最小求解器与 RANSAC、特征检测、描述与匹配、边缘检测、形态学、Lab 与 Bayer 颜色处理，以及图像损失函数和评估指标。与 torchvision 重叠的功能主要是缩放、裁剪、翻转、颜色扰动和模糊。
-- **一次批量调用即可为每个样本使用不同参数。** `gaussian_blur2d(x, (9, 9), sigma)` 接受形状为 `(B, 2)` 的 `sigma`；`rotate` 接受 `(B,)` 的角度，`warp_affine` / `warp_perspective` 接受 `(B, 2, 3)` / `(B, 3, 3)` 的矩阵，`adjust_brightness` 接受 `(B,)` 的系数。torchvision 的函数式算子在每次调用中使用同一组参数。从 Kornia 0.9.1 起，`sigma` 张量以及增强参数的取值检查（gamma、contrast、solarize）均在设备上完成，因此 CUDA 调用以及 PyTorch ≥ 2.13 上的 MPS 调用无需为这些检查与主机同步。
+- **一次批量调用即可为每个样本使用不同参数。** `gaussian_blur2d(x, (9, 9), sigma)` 接受形状为 `(B, 2)` 的 `sigma`；`rotate` 接受 `(B,)` 的角度，`warp_affine` / `warp_perspective` 接受 `(B, 2, 3)` / `(B, 3, 3)` 的矩阵，`adjust_brightness` 接受 `(B,)` 的系数。torchvision 的函数式算子在每次调用中使用同一组参数。从 Kornia 0.9.1 起，`sigma` 张量以及图像增强函数的取值检查（gamma、contrast、solarize）均在设备上完成，因此 CUDA 调用以及 PyTorch ≥ 2.13 上的 MPS 调用无需为这些检查与主机同步。
 - **批量最小求解器与鲁棒估计。** `find_fundamental(x1, x2, method="7POINT")` 求解形状为 `(B, 7, 2)` 的样本，将全部实数解返回为 `(B, 3, 3, 3)`，未使用的位置填充零矩阵；还提供 8 点法、5 点本质矩阵求解器（`find_essential`）、DLT 单应性求解器和 PnP 求解器（`solve_pnp_dlt`）。`RANSAC`（支持单应矩阵、基础矩阵和本质矩阵模型）在设备上采样和评分候选模型；默认情况下，细化与最终选择在主机上以 float64 进行，而 `compile=True`（PyTorch ≥ 2.14，CPU 和 CUDA）将整个估计过程作为一个编译图在设备上执行。
 - **可微分几何。** 深度与三维坐标之间的转换（`depth_to_3d_v2`、`unproject_points`、`project_points`）、`warp_frame_depth`、`remap`、具有 Brown–Conrady 和 Kannala–Brandt 畸变的相机模型，以及李群（`So3`、`Se3`）均保留相对于深度、位姿和相机参数的梯度。
 - **带标注的数据增强。** 在二维场景中，`AugmentationSequential` 将同一次采样得到的变换同步应用于图像、掩码、边界框和关键点，并可执行逆变换；三维增强用于变换体数据，不支持标注或逆变换。在 CUDA 上，增强操作会将采样参数传到 GPU，而不阻塞 GPU；同步检查测试确保每个公开增强操作都不会产生可避免的主机同步。
 - **GPU 上的局部特征。** 支持 SIFT 和 HardNet、DISK、ALIKED、XFeat、DeDoDe、LoFTR 与 LightGlue，以及互为最近邻和比率测试匹配器。
 - **形态学。** 支持在批量张量上使用任意结构元素。
 - **编译与导出。** 几乎所有已探测的算子配置都可在 `torch.compile` 下运行，并与 eager 执行结果一致；超过 1,000 个配置可导出为 ONNX。每个算子的结果都列在[导出支持页面](https://kornia.readthedocs.io/en/latest/get-started/export-support.html)。
-- **在目标场景中表现出色：GPU 上的批量张量。** 在已发布的 0.9.0 旗舰基准测试中（RTX 4090，批量大小 32），许多滤波器、图像变换、特征匹配步骤和图像指标在 eager 模式下，比 CPU 上逐张执行的 OpenCV 或 scikit-image 快约 10× 至 70×；使用 `torch.compile` 后，其中一些超过 100×。在同一 GPU 上与 torchvision 重叠的少量操作中，eager Kornia 较慢；编译后的 Kornia 在色调调整、颜色扰动和高斯模糊上较快，在翻转、裁剪和亮度调整上仍较慢。对于 CPU 上的单张 `uint8` 图像处理，OpenCV 更快。结果会随硬件和工作负载而变化；所有数值、优势和劣势都公开在[性能页面](https://kornia.readthedocs.io/en/latest/get-started/performance.html)。
+- **在设计目标场景中速度快：GPU 上的批量张量。** 在已发布的 0.9.0 旗舰基准测试中（RTX 4090，批量大小 32），许多滤波器、图像变换、特征匹配步骤和图像指标在 eager 模式下，比 CPU 上逐张执行的 OpenCV 或 scikit-image 快约 10× 至 70×；使用 `torch.compile` 后，其中一些超过 100×。在同一 GPU 上与 torchvision 重叠的少量操作中，eager Kornia 较慢；编译后的 Kornia 在色调调整、颜色扰动和高斯模糊上较快，在翻转、裁剪和亮度调整上仍较慢。对于 CPU 上的单张 `uint8` 图像处理，OpenCV 更快。结果会随硬件和工作负载而变化；所有数值、优势和劣势都公开在[性能页面](https://kornia.readthedocs.io/en/latest/get-started/performance.html)。
 
 这些算子在输入所在的设备上运行，无需经由 NumPy 往返转换，且大多数可微分；鲁棒估计（`RANSAC`）以及 DeDoDe、XFeat 等学习型特征的提取方法不计算梯度。对于参数固定的单个操作，例如一次模糊或缩放，几行 PyTorch 或 torchvision 代码也同样合适。
 
@@ -57,7 +57,7 @@
    Kornia 提供全面的图像处理算子，支持微分，可集成到深度学习流水线中。
     - **滤波器**：高斯、Sobel、中值、方框模糊等。
     - **变换**：仿射、单应性、透视等。
-    - **增强**：直方图均衡化、CLAHE、伽马校正等。
+    - **图像增强**：直方图均衡化、CLAHE、伽马校正等。
     - **边缘检测**：Canny、拉普拉斯、Sobel 等。
     - 更多内容请参阅[文档](https://kornia.readthedocs.io)。
 2. **高级数据增强**<br>
@@ -101,7 +101,7 @@
 ## CUDA 与半精度支持
 
 下表按模块统计 Linux CPU 已知失败清单中的条目（[`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt)、[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)），对应固定的 Python 3.11 和 PyTorch 2.15.0 环境。
-清单记录了 **243 个 float16 失败和 255 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
+清单记录了 **242 个 float16 失败和 255 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
 没有 CI 任务覆盖 CUDA 或 MPS 半精度；CPU 结果不能证明这些后端的支持情况。完整测试套件的一次本地 CUDA 测量见[下文](#cuda-测试套件测量)。
 
 | 模块 | float16 | bfloat16 | 已知失败（fp16 / bf16） | 说明 |
@@ -124,7 +124,7 @@
 | `kornia.geometry (other)` | ⚠️ | ⚠️ | 6 / 13 | 边界框变换和深度的精度问题 |
 | `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | 圆／椭圆多边形填充的比较使用半精度计算的顶点和参考掩码 |
 | `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16：总变分精度问题 |
-| `kornia.feature` | ✅ | ✅ | 0 / 0 | 匹配对半精度 dtype 使用手动实现的 cdist 回退路径；LightGlue 的 float16 测试被跳过 |
+| `kornia.feature` | ✅ | ✅ | 0 / 0 | 特征匹配在半精度 dtype 下使用手动实现的 cdist 回退路径；LightGlue 的 float16 测试被跳过 |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16：RT-DETR RepVGG 融合精度问题 |
 | `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16：直方图匹配和 _torch_svd_cast 精度问题 |
@@ -211,17 +211,17 @@ Kornia 是一个由志愿者开发和维护的开源项目。无论您是将其�
 开发 Kornia 时，我们使用 [pixi](https://pixi.sh) 进行快速的 Python 包与环境管理。项目包含一个 `pixi.toml` 配置文件，以实现可复现的依赖管理。
 
   ```bash
-  # Install pixi (if not already installed)
+  # 安装 pixi（如果尚未安装）
   curl -fsSL https://pixi.sh/install.sh | bash
 
-  # Create the Pixi environment and install development dependencies
+  # 创建 Pixi 环境并安装开发依赖
   pixi install
   pixi run -e default install
 
-  # Run tests
+  # 运行测试
   pixi run test
 
-  # For CUDA development
+  # 用于 CUDA 开发
   pixi run -e cuda install
   pixi run -e cuda test-cuda
   ```
@@ -309,7 +309,7 @@ Kornia 的差异化价值在于其几何核心：图像变换与采样、单应�
 - **来自您硬件的基准测试结果**：使用 `--contribute` 运行基准测试套件并发送 JSON——来自不同 GPU 的 CUDA 数据尤其有价值。
 - 为核心几何操作编写**锁定约定行为的测试和一致性测试向量**。
 - **有助于纠正问题的错误信息**：将简单的形状断言升级为说明错误之处、预期内容及适用约定的错误信息。
-- **已记录的 CUDA 和半精度失败**：根据[正确性策略](ROADMAP.md#correctness-and-backend-support)修复现有 CUDA 报告中的问题和 `float16`/`bfloat16` xfail 问题。仅在有 CUDA 设备可用于复现和验证时开展 CUDA 修复；在验证修复后，移除相应的 xfail 或清单条目。
+- **已记录的 CUDA 和半精度失败**：根据[正确性策略](ROADMAP.md#correctness-and-backend-support)修复现有 CUDA 报告和未关闭的半精度议题中的问题，以及 [`float16`](testing/half_precision_xfails/cpu_float16.txt)/[`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt) 已知失败清单中的条目。仅在有 CUDA 设备可用于复现和验证时开展 CUDA 修复；在验证修复后，移除相应的 xfail 或清单条目。
 
 更多项目背景请参阅[路线图中面向贡献者的领域](ROADMAP.md#areas-seeking-contributors)。
 
@@ -341,9 +341,9 @@ Kornia 的基础在于其丰富的经典计算机视觉算子集合，为图像�
 
 ## 社区
 
-- **Discord：**与使用和开发 Kornia 的人交流。[加入服务器](https://discord.gg/HfnywwpBnD)
-- **GitHub Issues：**报告错误并提出具体更改。[创建 Issue](https://github.com/kornia/kornia/issues/new/choose)
-- **GitHub Discussions：**提出问题并讨论实现、研究和想法。[参与讨论](https://github.com/kornia/kornia/discussions)
+- **Discord**：与使用和开发 Kornia 的人交流。[加入服务器](https://discord.gg/HfnywwpBnD)
+- **GitHub Issues**：报告错误并提出具体更改。[创建 Issue](https://github.com/kornia/kornia/issues/new/choose)
+- **GitHub Discussions**：提出问题并讨论实现、研究和想法。[参与讨论](https://github.com/kornia/kornia/discussions)
 
 <a href="https://github.com/Kornia/kornia/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=Kornia/kornia" width="60%" />

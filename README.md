@@ -132,7 +132,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **243 float16 and 255 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **242 float16 and 255 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. [#4153](https://github.com/kornia/kornia/issues/4153) tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -363,7 +363,7 @@ Kornia's differentiated value is its geometry core: warping and sampling, homogr
 - **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially useful.
 - **Convention pinning tests and conformance vectors** for core geometry operations.
 - **Corrective error messages**: upgrade bare shape assertions into errors that state what was wrong, what was expected, and which convention applies.
-- **Documented CUDA and half-precision failures**: fix existing CUDA reports and `float16`/`bfloat16` xfail issues under the [correctness policy](ROADMAP.md#correctness-and-backend-support). Take CUDA work only with a CUDA device available for reproduction and validation; remove the corresponding xfail or manifest entry after verifying the fix.
+- **Documented CUDA and half-precision failures**: fix existing CUDA reports, open half-precision issues, and entries in the [`float16`](testing/half_precision_xfails/cpu_float16.txt)/[`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt) known-failure manifests under the [correctness policy](ROADMAP.md#correctness-and-backend-support). Take CUDA work only with a CUDA device available for reproduction and validation; remove the corresponding xfail or manifest entry after verifying the fix.
 
 See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
 

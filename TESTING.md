@@ -204,11 +204,12 @@ their importers, including committed, staged, unstaged, and untracked files. Use
     git diff --no-renames --name-only "$conformance_base" &&
       git ls-files --others --exclude-standard
   )
-  printf '%s\n' "$conformance_paths" | python3 .github/scripts/conformance_packages.py onnx
-  printf '%s\n' "$conformance_paths" | python3 .github/scripts/conformance_packages.py compile
+  printf '%s\n' "$conformance_paths" | pixi run python .github/scripts/conformance_packages.py onnx
+  printf '%s\n' "$conformance_paths" | pixi run python .github/scripts/conformance_packages.py compile
 )
 ```
 
+The selectors use Pixi's Python so they can parse the repository's Python syntax.
 The subshell stops if the base cannot be resolved; check the selected remote and fetch it
 before retrying. `--no-renames` includes both the old and new paths of a moved file, as CI does.
 Each command prints the corresponding conformance option's package value (`all`, a
