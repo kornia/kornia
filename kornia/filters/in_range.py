@@ -83,22 +83,18 @@ def in_range(
     upper: Union[tuple[Any, ...], torch.Tensor],
     return_mask: bool = False,
 ) -> torch.Tensor:
-    r"""Create a mask indicating whether elements of the input torch.Tensor are within the specified range.
+    r"""Keep the pixels whose channels all lie in an inclusive range.
+
+    ``out = in_range(input, lower, upper)`` multiplies ``input`` by a mask that is 1 where every channel lies between
+    its ``lower`` and ``upper`` bounds, and 0 elsewhere. With ``return_mask=True`` it returns the mask instead.
 
     .. image:: _static/img/in_range.png
 
-    The formula applied for single-channel torch.Tensor is:
+    For an input with ``C`` channels the mask at pixel :math:`I` is:
 
     .. math::
-        \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \leq \text{upper}(I)
-
-    The formula applied for multi-channel torch.Tensor is:
-
-    .. math::
-        \text{out}(I) = \bigwedge_{c=0}^{C-1}
+        \text{mask}(I) = \bigwedge_{c=0}^{C-1}
         \left( \text{lower}_c(I) \leq \text{input}_c(I) \leq \text{upper}_c(I) \right)
-
-    where `C` is the number of channels. Both comparisons are inclusive.
 
     Convention:
         - A NaN channel fails its pixel. The mask has the input's dtype, 1 for a pass. For floating input, bounds
@@ -111,14 +107,14 @@ def in_range(
           an empty mask.
 
     Args:
-        input: The input torch.Tensor to be filtered in the shape of ``(*, *, H, W)``.
-        lower: The lower bounds of the filter (inclusive).
-        upper: The upper bounds of the filter (inclusive).
-        return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
+        input: image with shape ``(*, C, H, W)``.
+        lower: inclusive lower bounds, a tuple with one entry per channel or a tensor; see the note.
+        upper: inclusive upper bounds, in the same form as ``lower``.
+        return_mask: if ``True``, return the mask; otherwise return the masked image.
 
     Returns:
-        A binary mask ``(*, 1, H, W)`` of input indicating whether elements are within the range
-        or filtered input image ``(*, *, H, W)``.
+        the mask with shape ``(*, 1, H, W)`` if ``return_mask`` is ``True``, otherwise the masked image with the
+        shape of ``input``.
 
     Raises:
         TypeError: If `lower` or `upper` is neither a tuple nor a torch.Tensor, if one is a tuple and the other a
@@ -127,28 +123,29 @@ def in_range(
             input as described in the note.
 
     .. note::
-        Clarification of `lower` and `upper`:
+        The forms of ``lower`` and ``upper``:
 
-        - If provided as a tuple, it should have the same number of elements as the channels in the input torch.Tensor.
-          This bound is then applied uniformly across all batches.
+        - A tuple has one entry per channel and applies to every sample.
 
-        - When provided as a torch.Tensor, it allows for different bounds to be applied to each batch.
-          The torch.Tensor shape should be (B, C, 1, 1), where B is the batch size and C is
-          the number of channels.
+        - A tensor of shape ``(B, C, 1, 1)`` gives each sample its own bounds.
 
-        - A 1-D torch.Tensor is read per channel, never per column: its shape is (C,) (or one element, for the
-          same bound in every channel) and the same bound is applied across all batches. A 1-D bound of any other
-          length, such as (W,) when W is neither C nor 1, raises. When W == C, a (W,) bound is the (C,) bound, not a
+        - A 1-D tensor is read per channel, never per column: its shape is ``(C,)``, or one element for the same
+          bound in every channel, and it applies to every sample. Any other 1-D length, such as ``(W,)`` when ``W``
+          is neither ``C`` nor 1, raises. When ``W == C``, a ``(W,)`` bound is the ``(C,)`` bound, not a
           per-column one.
 
-        - Any other torch.Tensor with at most four dimensions is aligned with the input ``(B, C, H, W)`` from the
-          last dimension, and every dimension must be 1 or the input's. For example (1, C, 1, 1) and (C, 1, 1) apply
-          the same per-channel bound to all batches, (B, C, H, W), (C, H, W) and (H, W) give a different bound at each
-          pixel, and a 0-d torch.Tensor applies one bound everywhere.
+        - Any other tensor with at most four dimensions is aligned with the input ``(B, C, H, W)`` from the last
+          dimension, and every dimension must be 1 or the input's. For example ``(1, C, 1, 1)`` and ``(C, 1, 1)``
+          apply the same per-channel bound to all samples, ``(B, C, H, W)``, ``(C, H, W)`` and ``(H, W)`` give a
+          different bound at each pixel, and a 0-d tensor applies one bound everywhere.
 
-        - Each torch.Tensor bound is checked on its own, so a mis-shaped one raises whatever the other bound is.
-          The input is read as ``(B, C, H, W)``: a 3-D input is ``(1, C, H, W)``, a 2-D input is
-          ``(1, 1, H, W)``, and for more than four dimensions the leading dimensions are flattened into B.
+        - Each tensor bound is checked on its own, so a mis-shaped one raises whatever the other bound is.
+          The input is read as ``(B, C, H, W)``: a 3-D input is ``(1, C, H, W)``, a 2-D input is ``(1, 1, H, W)``
+          and gives a 2-D output, and for more than four dimensions the leading dimensions are flattened into ``B``.
+
+    See Also:
+        - :class:`InRange`: the module form.
+        - :func:`otsu_threshold`: picks the threshold from the image histogram instead of taking bounds.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -215,22 +212,26 @@ def in_range(
 
 
 class InRange(nn.Module):
-    r"""Create a module for applying lower and upper bounds to input tensors.
+    r"""Keep the pixels whose channels all lie in stored inclusive bounds (module form).
+
+    ``keep = InRange(lower, upper, return_mask)`` stores its arguments, and ``out = keep(input)`` is :func:`in_range`
+    on an image with shape ``(*, C, H, W)``.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.in_range`.
 
     Args:
-        lower: The lower bounds of the filter (inclusive).
-        upper: The upper bounds of the filter (inclusive).
-        return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
+        lower: inclusive lower bounds, as in :func:`in_range`.
+        upper: inclusive upper bounds, as in :func:`in_range`.
+        return_mask: if ``True``, return the mask; otherwise return the masked image.
 
-    Returns:
-        A binary mask ``(*, 1, H, W)`` of input indicating whether elements are within the range
-        or filtered input image ``(*, *, H, W)``.
+    Shape:
+        - Input: ``(*, C, H, W)``
+        - Output: ``(*, 1, H, W)`` with ``return_mask=True``, otherwise the shape of the input.
 
-    .. note::
-        View complete documentation in :func:`kornia.filters.in_range`.
+    See Also:
+        - :func:`in_range`: the one-call form, with the forms the bounds can take.
+        - :class:`OtsuThreshold`: picks the threshold from the image histogram.
 
     Examples:
         >>> rng = torch.manual_seed(1)

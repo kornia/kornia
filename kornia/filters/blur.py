@@ -114,8 +114,6 @@ def box_blur(
     ``out = box_blur(input, kernel_size)`` averages each channel of a ``(B, C, H, W)`` image over a window and returns
     an image of the same shape. Every pixel of the window has the same weight:
 
-    .. image:: _static/img/box_blur.png
-
     .. math::
         K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
         \begin{bmatrix}
@@ -124,6 +122,8 @@ def box_blur(
             \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
+
+    .. image:: _static/img/box_blur.png
 
     Convention:
         - ``kernel_size`` is ``(kH, kW)``. An even extent is anchored at ``(k - 1) // 2`` and the output keeps the
