@@ -46,9 +46,10 @@ def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches in an image torch.Tensor and resizes to a given size.
+    r"""Crop random image patches and resize them, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/RandomResizedCrop.png
+    ``output = RandomResizedCrop(size, scale, ratio, ...)(input)`` samples regions from images of shape
+    ``(B, C, H, W)`` and resamples them to ``size``. Use :class:`RandomCrop` to preserve the sampled patch size.
 
     Args:
         size: Desired output size (out_h, out_w) of each edge.
@@ -58,7 +59,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         resample: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of the augmentation been applied.
+        p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
@@ -68,7 +69,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
     Shape:
         - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
-        - Output: :math:`(B, C, out_h, out_w)`
+        - Output: ``(B, C, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -86,24 +87,28 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         width (input narrower than ``min(ratio)``) or its full height (wider than ``max(ratio)``). So
         ``scale=(1.0, 1.0)`` keeps an input within ``ratio`` whole, except that a candidate rounded a pixel or two
         short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
-        torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
+        torchvision, which centers the fallback crop, it is placed at a random position like any other crop.
 
         Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
         ``align_corners`` for ``resample="nearest"``. With bilinear or bicubic interpolation, each mode's image
         follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
         mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
-        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
-        onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
-        ``nearest-exact`` interpolation. With corner alignment, an axis where the output is one pixel long samples
-        the crop's first row or column, and one where the crop is one pixel long repeats it, as ``F.interpolate``
-        does, in both modes. Both modes support
-        :meth:`inverse`, which warps the output back onto the original canvas with the inverse of the mode's
-        ``transform_matrix`` and cannot recover discarded information.
+        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centers onto
+        the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's ``nearest-exact``
+        interpolation. With corner alignment, an axis where the output is one pixel long samples the crop's first row
+        or column, and one where the crop is one pixel long repeats it, as ``F.interpolate`` does, in both modes. Both
+        modes support ``inverse()``, which warps the output back onto the original canvas with the inverse of the
+        mode's ``transform_matrix`` and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
         not bitwise. Eager execution retains native slicing and resizing for performance;
         the tensorized compiled path avoids recompilation as crop coordinates change.
+
+    See Also:
+        - :class:`RandomCrop`: samples a fixed-size patch without resizing it.
+
+    .. image:: _static/img/RandomResizedCrop.png
 
     Example:
         >>> rng = torch.manual_seed(0)

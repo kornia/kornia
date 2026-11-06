@@ -17,13 +17,15 @@
 
 import copy
 import inspect
+import pickle
 from typing import List
 
 import pytest
 import torch
 
+import kornia.augmentation as K
 from kornia.augmentation.auto.autoaugment import AutoAugment
-from kornia.augmentation.auto.operations import OperationBase, ops
+from kornia.augmentation.auto.operations import OperationBase, PolicySequential, ops
 from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
 from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
@@ -296,9 +298,7 @@ def test_operation_preserves_input_dtype(device, low_dtype):
     # input to float32. float32 / float64 inputs are unaffected (promotion goes
     # up), which is why this only shows below float32. Covers RandAugment /
     # AutoAugment / TrivialAugment / AugMix, which all route through this method.
-    # dtype preservation is device-independent; check it on CPU (the auto-augment
-    # RNG state of a freshly built ``_find_all_ops()`` op does not fully follow a
-    # post-hoc ``.to(non-cpu)``).
+    # dtype preservation is device-independent; check it on CPU.
     if torch.device(device).type != "cpu":
         pytest.skip("dtype-preservation check runs on CPU")
     checked = 0
@@ -564,6 +564,18 @@ def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
     assert aug.op.p_batch == 1.0
 
 
+@pytest.mark.parametrize("operation", [ops.Brightness, ops.Contrast, ops.Saturate])
+def test_auto_enhancer_keeps_the_identity_gradient_at_exact_0_and_1_6296(operation, device, dtype):
+    """Return the input at the neutral magnitude with an identity gradient on black and white pixels too."""
+    row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+    image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+    aug = operation(initial_magnitude=1.0, initial_probability=1.0).to(dtype=dtype)
+    out = aug(image)
+    (gradient,) = torch.autograd.grad(out.sum(), image)
+    assert_close(out, image)
+    assert_close(gradient, torch.ones_like(image))
+
+
 @pytest.mark.parametrize("policy", ["auto", "rand", "trivial"])
 def test_policy_brightness_uses_multiplicative_factor_6253(policy, device, dtype):
     """Use multiplicative brightness through all three policy containers."""
@@ -579,3 +591,345 @@ def test_policy_brightness_uses_multiplicative_factor_6253(policy, device, dtype
     factor = params[0].data[0].data["brightness_factor"].to(image)
     expected = (image * factor[:, None, None, None]).clamp(0, 1)
     assert_close(aug(image, params=params), expected)
+
+
+# Every wrapper with a magnitude. ``Posterize`` truncates it with ``long`` and ``Solarize`` compares against it, so
+# their output carries no gradient for it on any device.
+_MAGNITUDE_OPS = [
+    op
+    for _, op in inspect.getmembers(ops, inspect.isclass)
+    if issubclass(op, OperationBase)
+    and op is not OperationBase
+    and "initial_magnitude" in inspect.signature(op).parameters
+]
+_NOT_DIFFERENTIABLE_IN_MAGNITUDE = (ops.Posterize, ops.Solarize)
+_DIFFERENTIABLE_OPS = [op for op in _MAGNITUDE_OPS if op not in _NOT_DIFFERENTIABLE_IN_MAGNITUDE]
+_MAGNITUDE_OP_IDS = [op.__name__ for op in _MAGNITUDE_OPS]
+# One wrapper per place a generator keeps its range: a buffer, an attribute ``make_samplers`` rebuilds, a raw tuple.
+_RANGE_KINDS = [ops.Brightness, ops.ShearX, ops.Posterize, ops.TranslateX]
+
+
+def _round_trip_pickle(module):
+    return pickle.loads(pickle.dumps(module))  # noqa: S301
+
+
+def _assert_magnitude_gradient(output, operation):
+    (gradient,) = torch.autograd.grad(output.square().sum(), operation._magnitude)
+    assert torch.isfinite(gradient).all(), type(operation).__name__
+    assert gradient.abs().sum() > 0, type(operation).__name__
+
+
+class TestOperationAfterTo6297(BaseTester):
+    """``.to()`` moves a wrapper's magnitude, range and generator together.
+
+    The range was a plain attribute holding the tensor from before the move, and the generators hand their draws back
+    on the CPU after one. A run on the CPU alone cannot fail most of these, so they need ``--device`` of an accelerator.
+    """
+
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_forward_parameters_puts_the_factor_with_the_magnitude(self, operation, device, dtype):
+        moved = operation(initial_probability=1.0).to(device=device, dtype=dtype)
+        params = moved.forward_parameters(torch.Size([2, 3, 16, 16]))
+        assert params[moved._factor_name].device == moved._magnitude.device == device
+        assert params[moved._factor_name].shape == (2,)
+
+    @pytest.mark.parametrize("probability", [1.0, 0.5])
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_forward_and_replay(self, operation, probability, device, dtype):
+        moved = operation(initial_probability=probability).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        assert moved(image).device == device
+        params = moved.forward_parameters(image.shape)
+        self.assert_close(moved(image, params=params), moved(image, params=params))
+
+    @pytest.mark.parametrize("operation", _DIFFERENTIABLE_OPS, ids=[op.__name__ for op in _DIFFERENTIABLE_OPS])
+    def test_magnitude_keeps_its_gradient(self, operation, device, dtype):
+        moved = operation(initial_probability=1.0).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        _assert_magnitude_gradient(moved(image), moved)
+        params = moved.forward_parameters(image.shape)
+        _assert_magnitude_gradient(moved(image, params=params), moved)
+
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_magnitude_stays_clamped_to_the_range(self, operation, device, dtype):
+        moved = operation(initial_probability=1.0).to(device=device, dtype=dtype)
+        low, high = moved.magnitude_range
+        with torch.no_grad():
+            moved._magnitude.fill_(float(high) + 1.0)
+        self.assert_close(moved.magnitude, torch.full((1,), float(high), device=device, dtype=dtype))
+        with torch.no_grad():
+            moved._magnitude.fill_(float(low) - 1.0)
+        self.assert_close(moved.magnitude, torch.full((1,), float(low), device=device, dtype=dtype))
+
+    def test_magnitude_on_the_device_with_the_operation_elsewhere(self, device, dtype):
+        # ``mag`` overrides the draw of a wrapper left where it was built, so the factor follows ``mag``.
+        operation = ops.Brightness(None, 1.0)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        mag = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        params = operation.forward_parameters(image.shape, mag=mag)
+        assert params["brightness_factor"].device == device
+        (gradient,) = torch.autograd.grad(operation(image, params=params).sum(), mag)
+        assert gradient.abs() > 0
+
+    @pytest.mark.parametrize("operation", _RANGE_KINDS, ids=[op.__name__ for op in _RANGE_KINDS])
+    def test_generator_moved_on_its_own(self, operation, device, dtype):
+        # ``set_rng_device_and_dtype`` moves the draws and, for ``ShearGenerator``, the range they come from, but not
+        # the magnitude of the wrapper. The clamp has to work across that.
+        wrapper = operation(initial_probability=1.0)
+        wrapper.op.set_rng_device_and_dtype(device, dtype)
+        assert wrapper.magnitude.device == wrapper._magnitude.device
+        wrapper.forward_parameters(torch.Size([2, 3, 16, 16]))
+
+    def test_policy_sequential_keeps_every_magnitude_gradient(self, device, dtype):
+        # ``Posterize`` runs first: its output has a gradient of zero, which would cut the graph of what runs before it.
+        learnable = (ops.Brightness, ops.ShearX, ops.TranslateY, ops.Rotate)
+        policy = PolicySequential(
+            ops.Posterize(initial_probability=1.0), *[op(initial_probability=1.0) for op in learnable]
+        ).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        params = policy.forward_parameters(image.shape)
+        assert len(params) == len(learnable) + 1
+        self.assert_close(policy(image, params=params), policy(image, params=params))
+        output = policy(image)
+        assert output.device == device
+        magnitudes = [operation._magnitude for operation in list(policy.children())[1:]]
+        gradients = torch.autograd.grad(output.square().sum(), magnitudes)
+        for gradient in gradients:
+            assert torch.isfinite(gradient).all()
+            assert gradient.abs().sum() > 0
+
+    @pytest.mark.parametrize(
+        "make_policy",
+        [
+            pytest.param(lambda: RandAugment(n=len(randaug_config), m=15), id="RandAugment"),
+            pytest.param(TrivialAugment, id="TrivialAugment"),
+            pytest.param(AutoAugment, id="AutoAugment"),
+        ],
+    )
+    def test_builtin_policy(self, make_policy, device, dtype):
+        moved = make_policy().to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        output = moved(image)
+        assert output.device == device
+        self.assert_close(moved(image, params=moved._params), output)
+        params = moved.forward_parameters(image.shape)
+        self.assert_close(moved(image, params=params), moved(image, params=params))
+
+    @pytest.mark.parametrize(
+        "make_policy",
+        [
+            pytest.param(lambda: RandAugment(n=3, m=15), id="RandAugment"),
+            pytest.param(TrivialAugment, id="TrivialAugment"),
+            pytest.param(AutoAugment, id="AutoAugment"),
+        ],
+    )
+    def test_builtin_policy_in_a_container(self, make_policy, device, dtype):
+        _test_sequential(make_policy().to(device=device, dtype=dtype), device=device, dtype=dtype)
+
+    def test_transformation_matrix_of_a_policy_with_magnitudes(self, device, dtype):
+        policy = PolicySequential(
+            ops.TranslateX(initial_probability=1.0),
+            ops.ShearY(initial_probability=1.0),
+            ops.Rotate(initial_probability=1.0),
+        ).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        params = policy.forward_parameters(image.shape)
+        policy(image, params=params)
+        recomputed = policy.get_transformation_matrix(image, params=params, recompute=True)
+        self.assert_close(policy.transform_matrix, recomputed)
+
+    @pytest.mark.parametrize("candidate", randaug_config, ids=[subpolicy[0][0] for subpolicy in randaug_config])
+    def test_rand_augment_magnitude_matches_the_unmoved_policy(self, candidate, device, dtype):
+        # A draw selects ``n`` candidates, so go through each. The range of a moved policy is on the device: reading it
+        # has to neither mix devices nor change the magnitude ``m`` selects from it.
+        moved = RandAugment(n=1, m=10, policy=[candidate]).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        params = moved.forward_parameters(image.shape)
+        self.assert_close(moved(image, params=params), moved(image, params=params))
+        factor = moved[0][0]._factor_name
+        if factor is None:
+            return
+        unmoved = RandAugment(n=1, m=10, policy=[candidate]).forward_parameters(image.shape)
+        self.assert_close(
+            params[0].data[0].data[factor].abs().to(device=device, dtype=dtype),
+            unmoved[0].data[0].data[factor].abs().to(device=device, dtype=dtype),
+        )
+
+    @pytest.mark.parametrize("copier", [copy.deepcopy, _round_trip_pickle], ids=["deepcopy", "pickle"])
+    @pytest.mark.parametrize("operation", _RANGE_KINDS, ids=[op.__name__ for op in _RANGE_KINDS])
+    def test_copy_of_a_moved_operation_owns_its_magnitude(self, operation, copier, device, dtype):
+        moved = operation(initial_probability=1.0).to(device=device, dtype=dtype)
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        moved(image)
+        clone = copier(moved)
+        assert clone._magnitude is not moved._magnitude
+        assert clone._magnitude.device == device
+        assert clone.magnitude_range is getattr(clone.op._param_generator, clone._factor_name)
+        output = clone(image)
+        if operation in _NOT_DIFFERENTIABLE_IN_MAGNITUDE:
+            return
+        _assert_magnitude_gradient(output, clone)
+        assert moved._magnitude.grad is None
+
+    def test_state_dict_round_trip_after_to(self, device, dtype):
+        source = ops.Brightness(initial_probability=1.0, magnitude_range=(0.4, 0.6)).to(device=device, dtype=dtype)
+        loaded = ops.Brightness(initial_probability=1.0, magnitude_range=(0.2, 1.8)).to(device=device, dtype=dtype)
+        loaded.load_state_dict(source.state_dict(), strict=True)
+        self.assert_close(loaded.magnitude_range, source.magnitude_range)
+        self.assert_close(loaded.magnitude, source.magnitude)
+        loaded(torch.rand(2, 3, 16, 16, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_range_follows_a_dtype_move(self, operation):
+        # What the CPU can see of the stale range: ``.to()`` replaces the tensors of the generator, on any device.
+        moved = operation(initial_probability=1.0).to(torch.float64)
+        assert moved.magnitude_range is getattr(moved.op._param_generator, moved._factor_name)
+        assert moved.magnitude.dtype == torch.float64
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_factor_follows_a_magnitude_on_another_device(self, operation):
+        # What the CPU can see of the draw's placement: a magnitude on ``meta`` meets a draw on the CPU.
+        wrapper = operation(None, 1.0)
+        params = wrapper.forward_parameters(torch.Size([2, 3, 8, 8]), mag=torch.zeros(1, device="meta"))
+        factor = params[wrapper._factor_name]
+        assert factor.device.type == "meta"
+        assert factor.shape == (2,)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("operation", _MAGNITUDE_OPS, ids=_MAGNITUDE_OP_IDS)
+    def test_a_number_still_replaces_the_draw(self, operation):
+        # The annotation says tensor, but a plain number has always worked, as it has no device to follow.
+        wrapper = operation(None, 1.0, symmetric_megnitude=False)
+        factor = wrapper.forward_parameters(torch.Size([2, 3, 8, 8]), mag=0.25)[wrapper._factor_name]
+        assert factor.shape == (2,)
+
+    @pytest.mark.device_agnostic
+    def test_factor_name_the_generator_lacks_raises_at_construction(self):
+        with pytest.raises(AttributeError, match="nonsense"):
+            OperationBase(K.RandomRotation(30.0), initial_magnitude=[("nonsense", 1.0)])
+
+    @pytest.mark.device_agnostic
+    def test_state_dict_keys_stay_the_same(self):
+        # Checkpoints embed these names, so following a range that is not a parameter must not add one. A parameter
+        # range did have a key of its own, which the tests below cover.
+        common = {"_magnitude", "_probability", "temperature"}
+        assert set(ops.Brightness().state_dict()) == common | {"op._param_generator.brightness_factor"}
+        assert set(ops.ShearX().state_dict()) == common
+        assert set(ops.Posterize().state_dict()) == common
+        assert set(ops.TranslateX().state_dict()) == common
+
+    @pytest.mark.device_agnostic
+    def test_deepcopy_with_a_learnable_shear_range(self):
+        # ``ShearGenerator`` derives the range in ``make_samplers``, so with a parameter it holds autograd history. A
+        # copy of the generator rebuilds it (#6541), and the wrapper must not keep a reference of its own.
+        wrapper = OperationBase(
+            K.RandomShear(torch.nn.Parameter(torch.tensor([0.0, 0.3])), p=1.0, align_corners=True),
+            initial_magnitude=[("shear_x", 0.1)],
+        )
+        clone = copy.deepcopy(wrapper)
+        assert clone.magnitude_range is clone.op._param_generator.shear_x
+        assert clone.magnitude_range is not wrapper.magnitude_range
+
+
+def _wrapper_with_learnable_range(low=0.0, high=30.0):
+    return OperationBase(
+        K.RandomRotation(torch.nn.Parameter(torch.tensor([low, high])), p=1.0), initial_magnitude=[("degrees", 5.0)]
+    )
+
+
+# The ``state_dict`` of ``_wrapper_with_learnable_range`` before #6297. ``magnitude_range`` was an attribute, so
+# ``nn.Module`` registered a parameter range on the wrapper too, and checkpoints hold that alias beside the generator's.
+_OLD_LEARNABLE_RANGE_KEYS = (
+    "magnitude_range",
+    "_magnitude",
+    "_probability",
+    "temperature",
+    "op._param_generator.degrees",
+)
+
+
+def _old_learnable_range_state_dict(prefix=""):
+    return {
+        f"{prefix}magnitude_range": torch.tensor([0.0, 20.0]),
+        f"{prefix}_magnitude": torch.tensor([7.0]),
+        f"{prefix}_probability": torch.tensor([0.5]),
+        f"{prefix}temperature": torch.tensor([0.1]),
+        f"{prefix}op._param_generator.degrees": torch.tensor([0.0, 20.0]),
+    }
+
+
+class TestLearnableMagnitudeRangeCheckpoint6297(BaseTester):
+    def test_old_state_dict_loads_strictly(self, device, dtype):
+        old = _old_learnable_range_state_dict()
+        assert tuple(old) == _OLD_LEARNABLE_RANGE_KEYS
+        wrapper = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        wrapper.load_state_dict(old, strict=True)
+        expected = torch.tensor([0.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(wrapper.magnitude_range, expected)
+        self.assert_close(wrapper.op._param_generator.degrees, expected)
+        self.assert_close(wrapper._magnitude, torch.tensor([7.0], device=device, dtype=dtype))
+        assert "magnitude_range" in old, "the caller's dict stays as it was"
+
+    def test_old_state_dict_loads_strictly_inside_a_policy(self, device, dtype):
+        policy = PolicySequential(_wrapper_with_learnable_range()).to(device=device, dtype=dtype)
+        name = next(iter(policy._modules))
+        policy.load_state_dict(_old_learnable_range_state_dict(f"{name}."), strict=True)
+        self.assert_close(policy[0].magnitude_range, torch.tensor([0.0, 20.0], device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_only_the_old_key_is_forgiven(self):
+        wrapper = _wrapper_with_learnable_range()
+        unexpected = {**_old_learnable_range_state_dict(), "nonsense": torch.zeros(1)}
+        with pytest.raises(RuntimeError, match=r'Unexpected key.*"nonsense"') as error:
+            wrapper.load_state_dict(unexpected, strict=True)
+        assert "magnitude_range" not in str(error.value)
+        missing = _old_learnable_range_state_dict()
+        del missing["op._param_generator.degrees"]
+        with pytest.raises(RuntimeError, match=r"Missing key.*op\._param_generator\.degrees"):
+            wrapper.load_state_dict(missing, strict=True)
+
+    def test_state_dict_round_trip(self, device, dtype):
+        source = _wrapper_with_learnable_range(0.0, 20.0).to(device=device, dtype=dtype)
+        state = source.state_dict()
+        assert set(state) == {"_magnitude", "_probability", "temperature", "op._param_generator.degrees"}
+        loaded = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        loaded.load_state_dict(state, strict=True)
+        self.assert_close(loaded.magnitude_range, source.magnitude_range)
+
+    def test_optimizer_on_the_moved_wrapper_holds_each_parameter_once(self, device, dtype):
+        wrapper = _wrapper_with_learnable_range().to(device=device, dtype=dtype)
+        optimizer = torch.optim.SGD(wrapper.parameters(), lr=0.1)
+        held = [parameter for group in optimizer.param_groups for parameter in group["params"]]
+        assert {id(parameter) for parameter in held} == {
+            id(wrapper._magnitude),
+            id(wrapper._probability),
+            id(wrapper.magnitude_range),
+        }
+        assert len(held) == 3
+        assert all(parameter.device == device for parameter in held)
+        wrapper(torch.rand(2, 3, 16, 16, device=device, dtype=dtype)).square().sum().backward()
+        before = wrapper._magnitude.detach().clone()
+        optimizer.step()
+        assert not torch.equal(wrapper._magnitude, before)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("learnable", [True, False], ids=["parameter", "buffer"])
+    def test_wrapper_pickled_with_the_old_attribute(self, learnable):
+        # A whole module saved before #6297 brings the attribute back with it: in ``_parameters`` for a parameter range,
+        # where it would demand the old key from every later load, and otherwise as a stale tensor in ``__dict__``.
+        wrapper = _wrapper_with_learnable_range() if learnable else ops.Brightness()
+        generator_range = wrapper.magnitude_range
+        state = dict(wrapper.__dict__)
+        if learnable:
+            state["_parameters"] = {"magnitude_range": generator_range, **state["_parameters"]}
+        else:
+            state["magnitude_range"] = generator_range.clone()
+        restored = type(wrapper).__new__(type(wrapper))
+        restored.__setstate__(state)
+        assert "magnitude_range" not in restored.__dict__
+        assert restored.magnitude_range is generator_range
+        assert "magnitude_range" not in restored.state_dict()
+        assert "magnitude_range" not in dict(restored.named_parameters())
+        restored.load_state_dict(wrapper.state_dict(), strict=True)

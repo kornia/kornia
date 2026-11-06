@@ -30,6 +30,9 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomRain(IntensityAugmentationBase2D):
     r"""Draw random rain-drop streaks on images, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomRain(...)(input)`` draws sampled streaks over selected one- or three-channel images
+    ``(B, C, H, W)``.
+
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
@@ -60,6 +63,9 @@ class RandomRain(IntensityAugmentationBase2D):
           and the default ``drop_width=(-5, 5)`` reaches both ends. With the defaults an image 20 pixels tall, or
           5 pixels wide, therefore raises on some draws. A range that is reversed, fractional or non-finite
           raises ``ValueError`` at construction.
+
+    See Also:
+        - :class:`RandomSnow`: creates a snow effect rather than rain streaks.
 
     Examples:
         >>> rng = torch.manual_seed(0)

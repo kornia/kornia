@@ -20,12 +20,16 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.filters import StableDiffusionDissolving
 
 
 class RandomDissolving(IntensityAugmentationBase2D):
     r"""Dissolve images with a Stable Diffusion model, applied to the whole batch with probability ``p`` (default 0.5).
+
+    ``output = RandomDissolving(step_range, version, ...)(input)`` applies one sampled reverse-diffusion step to the
+    selected batch of images. It needs the optional ``diffusers`` dependency and a compatible Stable Diffusion model.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -69,6 +73,9 @@ class RandomDissolving(IntensityAugmentationBase2D):
         builds: instantiating this class needs the optional ``diffusers`` package and, on a cold cache,
         downloads a Stable Diffusion checkpoint at that point -- the ``from_pretrained`` call is in that
         class's own constructor, not on the first forward.
+
+    See Also:
+        - :class:`RandomErasing`: removes a rectangle without a diffusion model.
 
     """
 

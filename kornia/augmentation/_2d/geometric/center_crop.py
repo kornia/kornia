@@ -28,9 +28,10 @@ from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _cr
 
 
 class CenterCrop(GeometricAugmentationBase2D):
-    r"""Crop a given image torch.Tensor at the center.
+    r"""Crop the centered patch of each image, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/CenterCrop.png
+    ``output = CenterCrop(size)(input)`` extracts a centered patch of size ``size`` from images of shape
+    ``(B, C, H, W)``. Use :class:`RandomCrop` to sample the crop position instead.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -48,7 +49,7 @@ class CenterCrop(GeometricAugmentationBase2D):
 
     Shape:
         - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
-        - Output: :math:`(B, C, out_h, out_w)`
+        - Output: ``(B, C, out_h, out_w)``
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
@@ -60,9 +61,15 @@ class CenterCrop(GeometricAugmentationBase2D):
 
         ``cropping_mode="slice"`` indexes the input and returns a copy, so writing to the result leaves the input
         unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Both
-        modes support :meth:`inverse`, which warps the crop back onto the original canvas with the inverse of
+        modes support ``inverse()``, which warps the crop back onto the original canvas with the inverse of
         ``transform_matrix`` (zero padding unless the call passes ``padding_mode``) and cannot restore discarded
         data.
+
+    .. image:: _static/img/CenterCrop.png
+
+    See Also:
+        - :class:`RandomCrop`: samples a crop position for each selected image.
+        - :class:`CenterCrop3D`: extracts a centered subvolume.
 
     Examples:
         >>> import torch

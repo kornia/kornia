@@ -4,7 +4,12 @@
 .. currentmodule:: kornia.augmentation
 
 Transforms that change pixel values but keep every pixel where it is, so masks, boxes and keypoints pass through
-unchanged.
+unchanged. With default arguments, 24 of the 37 transforms on this page clamp their output to ``[0, 1]``. These 13
+do not: the four blurs, ``RandomGaussianNoise``, ``RandomSaltAndPepperNoise``, ``RandomGrayscale``, ``RandomInvert``,
+``RandomChannelShuffle``, ``RandomChannelDropout``, ``RandomRain``, ``Normalize`` and ``Denormalize``.
+
+``ColorJiggle`` and ``ColorJitter`` both jitter brightness, contrast, saturation and hue; ``ColorJitter`` uses
+torchvision's formulas. ``RandomEqualize`` equalizes whole channels, ``RandomClahe`` local tiles.
 
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
