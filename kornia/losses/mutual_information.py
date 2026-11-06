@@ -29,7 +29,7 @@ from kornia.core.utils import is_exporting
 # put there (pytorch/pytorch#195163). Seen on an M1 with torch 2.5.1, 2.9.1, 2.14, 2.15 and nightly 2.16.0.dev20261012.
 # M3 and later do not show it upstream but take this path too. Reassess when pytorch/pytorch#195012 ships: it routes
 # these shapes to slower Metal kernels, so keep the chunks unless they lose to that route, and remove them only once
-# the oldest supported torch has a fix. Chunks against one contraction on an M1, torch 2.15: forward 1.00 to 1.03 at
+# the oldest supported torch has a fix. Chunks against one contraction on an M1, torch 2.15: forward 0.97 to 1.00 at
 # 33856 samples and 1.05 to 1.08 at 262144; forward and backward 0.88 to 0.90 and 0.82 to 0.83.
 _MPS_MAX_CONTRACTED_SAMPLES = 16384
 
