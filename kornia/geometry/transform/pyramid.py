@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import math
 import operator
+import warnings
 from typing import Any
 
 import torch
@@ -49,6 +50,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ValueCheckError
+from kornia.core.utils import is_compiling
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
@@ -63,6 +65,14 @@ __all__ = [
     "pyrdown",
     "pyrup",
 ]
+
+_LAPLACIAN_POWER_OF_TWO_PADDING_MESSAGE = (
+    "`build_laplacian_pyramid` pads this input to the next power of two per side, more than `max_level` needs. This is "
+    "deprecated since kornia 0.9.1: a future minor release pads a side only when it does not divide by "
+    "`2 ** (max_level - 1)`, to the next multiple of that, which changes the shape of every returned level for this "
+    "input. `minimal_padding=True` gives that behavior now. Code that crops the levels back to the input size is not "
+    "affected (kornia#6319)."
+)
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -746,8 +756,39 @@ def find_next_powerof_two(x: int) -> int:
     return 1 << (x - 1).bit_length()
 
 
+def _pad_to_stride(input: torch.Tensor, max_level: int, border_type: str) -> torch.Tensor:
+    """Pad the bottom and right of ``input`` to the next multiple of ``2 ** (max_level - 1)``, the rule of #6319."""
+    height = input.size()[2]
+    width = input.size()[3]
+    stride = 1 << (max_level - 1)
+    # The levels end at a side of padded_side / stride, and the level above it goes through the blur of `pyrdown`, and
+    # comes out of the one of `pyrup`. That blur reflects two pixels, which takes a side of at least three.
+    KORNIA_CHECK(
+        max_level == 1 or border_type != "reflect" or (height > stride and width > stride),
+        lambda: (
+            f"Invalid max_level for this input: border_type='reflect' needs each side above 2 ** (max_level - 1) "
+            f"for the blur of every level. Got: side sizes {height} and {width} with max_level {max_level}. Use a "
+            "smaller max_level or another border_type."
+        ),
+    )
+    pad_height = -height % stride
+    pad_width = -width % stride
+    # `F.pad` cannot reflect a padding at least as large as the side, so such a side repeats its last row or column.
+    # The check above leaves this to the border types whose blur takes the small levels that follow from it.
+    if pad_height != 0:
+        input = F.pad(input, (0, 0, 0, pad_height), "reflect" if pad_height < height else "replicate")
+    if pad_width != 0:
+        input = F.pad(input, (0, pad_width, 0, 0), "reflect" if pad_width < width else "replicate")
+    return input
+
+
 def build_laplacian_pyramid(
-    input: torch.Tensor, max_level: int, border_type: str = "reflect", align_corners: bool = False
+    input: torch.Tensor,
+    max_level: int,
+    border_type: str = "reflect",
+    align_corners: bool = False,
+    *,
+    minimal_padding: bool = False,
 ) -> list[torch.Tensor]:
     r"""Build a Laplacian pyramid: band-pass differences of Gaussian levels, ending with the coarsest level.
 
@@ -758,8 +799,10 @@ def build_laplacian_pyramid(
     ``border_type`` and ``align_corners`` the pyramid was built with, rebuilds the input up to float rounding. The
     input is first reflect-padded at the right and bottom to the next power of two per side when neither side is a
     power of two or a side does not halve evenly ``max_level - 1`` times (see Convention); every level is then shaped
-    from the padded size, and the rebuilt image is the padded one. For the Gaussian levels themselves, use
-    :func:`build_pyramid`.
+    from the padded size, and the rebuilt image is the padded one. That rule is deprecated since kornia 0.9.1: an eager
+    call whose shapes it changes emits a ``FutureWarning``, and ``minimal_padding=True`` gives the rule of a future
+    minor release, which pads only to the next multiple of ``2 ** (max_level - 1)``. For the Gaussian levels
+    themselves, use :func:`build_pyramid`.
 
     See :cite:`burt1987laplacian` for more details.
 
@@ -778,6 +821,13 @@ def build_laplacian_pyramid(
           and a side is not divisible by ``2 ** (max_level - 1)``. When
           padding is applied, every returned level — including level 0 — is
           shaped from the padded size
+        - with ``minimal_padding=True``, the input is padded only when a side is not
+          divisible by ``2 ** (max_level - 1)``, and only that side, to the next multiple.
+          So 480x640 at 3 levels stays 480x640, where the rule above gives 512x1024.
+          A side too small for the padding to reflect, which needs ``border_type`` other than
+          ``'reflect'``, repeats its last row or column instead. With ``'reflect'`` and
+          ``max_level > 1``, a side of at most ``2 ** (max_level - 1)`` raises, as the
+          blur of a level of side 1 or 2 fails under the rule above too
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
@@ -789,6 +839,8 @@ def build_laplacian_pyramid(
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
+        minimal_padding: pad only as ``max_level`` needs (see Convention above), which is the future default.
+          With ``False``, the current default, a call that this would change warns.
 
     Return:
         Output: ``[(B, C, H', W'), (B, C, H' / 2, W' / 2), ...]``, where
@@ -800,6 +852,11 @@ def build_laplacian_pyramid(
         - :func:`pyrup`: the upsampling step between levels, also the one that rebuilds the image.
         - :class:`ScalePyramid`: octaves of blurred levels for keypoint detection, with their sigmas.
 
+    Example:
+        >>> levels = build_laplacian_pyramid(torch.rand(1, 1, 480, 640), 3, minimal_padding=True)
+        >>> [tuple(level.shape[-2:]) for level in levels]
+        [(480, 640), (240, 320), (120, 160)]
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
@@ -807,20 +864,28 @@ def build_laplacian_pyramid(
         lambda: f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
-    h = input.size()[2]
-    w = input.size()[3]
-    require_padding = not (is_powerof_two(w) or is_powerof_two(h))
-    if max_level > 1:
-        # pyrdown halves each side with floor division, while pyrup doubles it.
-        # Every side subtracted from an upsampled level must therefore be even.
+    shape_will_change = False
+    if minimal_padding:
+        input = _pad_to_stride(input, max_level, border_type)
+    else:
+        h = input.size()[2]
+        w = input.size()[3]
         stride = 1 << (max_level - 1)
-        require_padding = require_padding or h % stride != 0 or w % stride != 0
+        require_padding = not (is_powerof_two(w) or is_powerof_two(h))
+        if max_level > 1:
+            # pyrdown halves each side with floor division, while pyrup doubles it.
+            # Every side subtracted from an upsampled level must therefore be even.
+            require_padding = require_padding or h % stride != 0 or w % stride != 0
 
-    if require_padding:
-        # in case of arbitrary shape torch.Tensor image need to be padded.
-        # Reference: https://stackoverflow.com/a/29967555
-        padding = (0, find_next_powerof_two(w) - w, 0, find_next_powerof_two(h) - h)
-        input = F.pad(input, padding, "reflect")
+        if require_padding:
+            # in case of arbitrary shape torch.Tensor image need to be padded.
+            # Reference: https://stackoverflow.com/a/29967555
+            padding = (0, find_next_powerof_two(w) - w, 0, find_next_powerof_two(h) - h)
+            input = F.pad(input, padding, "reflect")
+            # Only a call that pads can change. A graph capture does not warn and does not compare the sizes, so that
+            # no guard enters an exported program. `torch.jit.trace` does not get here: `find_next_powerof_two` raises
+            # on its tensor sizes.
+            shape_will_change = not is_compiling() and padding != (0, -w % stride, 0, -h % stride)
 
     # create gaussian pyramid
     gaussian_pyramid: list[torch.Tensor] = build_pyramid(input, max_level, border_type, align_corners)
@@ -833,4 +898,7 @@ def build_laplacian_pyramid(
         laplacian: torch.Tensor = gaussian_pyramid[i] - img_expand
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
+    # Warned only here: a call that raises on the way, for a level too small for its blur, has no shape to change.
+    if shape_will_change:
+        warnings.warn(_LAPLACIAN_POWER_OF_TWO_PADDING_MESSAGE, FutureWarning, stacklevel=2)
     return laplacian_pyramid

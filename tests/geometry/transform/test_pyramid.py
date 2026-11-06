@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import numpy as np
 import pytest
 import torch
@@ -24,7 +26,7 @@ from kornia.core._compat import torch_version_lt
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError, ValueCheckError
 
-from testing.base import BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestPyrUp(BaseTester):
@@ -574,6 +576,261 @@ class TestBuildLaplacianPyramid(BaseTester):
         pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
         assert [img.shape[-2:] for img in pyramid] == list(level_sizes)
 
+    # The default rule until the #6319 deprecation ends. The sizes are worked out by hand from the rule, and the first
+    # rows are the table of the issue.
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
+            (96, 96, 3, ((128, 128), (64, 64), (32, 32))),
+            (480, 640, 1, ((512, 1024),)),
+            (480, 640, 3, ((512, 1024), (256, 512), (128, 256))),
+            (5, 8, 2, ((8, 8), (4, 4))),
+            (20, 64, 4, ((32, 64), (16, 32), (8, 16), (4, 8))),
+        ],
+    )
+    def test_default_warns_when_the_shape_will_change(self, height, width, max_level, level_sizes, device, dtype):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        with pytest.warns(FutureWarning, match="minimal_padding=True") as record:
+            pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
+        assert len(record) == 1
+        assert record[0].filename == __file__
+        assert [tuple(img.shape[-2:]) for img in pyramid] == list(level_sizes)
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
+            (64, 96, 3, ((64, 96), (32, 48), (16, 24))),
+            (96, 64, 3, ((96, 64), (48, 32), (24, 16))),
+            (64, 100, 1, ((64, 100),)),
+            (64, 64, 3, ((64, 64), (32, 32), (16, 16))),
+            # Both rules pad to the same size: (7, 8) to (8, 8) with a stride of 4, and (3, 8) to (4, 8) with one of 2.
+            (7, 8, 3, ((8, 8), (4, 4), (2, 2))),
+            (3, 8, 2, ((4, 8), (2, 4))),
+        ],
+    )
+    def test_default_stays_silent_when_the_shape_will_not_change(
+        self, height, width, max_level, level_sizes, device, dtype
+    ):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
+            minimal = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+        assert [tuple(img.shape[-2:]) for img in pyramid] == list(level_sizes)
+        for default_level, minimal_level in zip(pyramid, minimal, strict=True):
+            assert torch.equal(default_level, minimal_level)
+
+    @pytest.mark.device_agnostic
+    def test_default_warns_exactly_when_a_returned_shape_differs(self):
+        # A call that raises under the default rule has no shape to change, so it must not warn either.
+        build = kornia.geometry.transform.build_laplacian_pyramid
+        for border_type in ("reflect", "replicate"):
+            for max_level in (1, 2, 3, 4):
+                for height in range(1, 18):
+                    for width in range(1, 18):
+                        sample = torch.zeros(1, 1, height, width)
+                        with warnings.catch_warnings(record=True) as record:
+                            warnings.simplefilter("always")
+                            try:
+                                default = [img.shape for img in build(sample, max_level, border_type)]
+                            except RuntimeError:
+                                assert not any("`build_laplacian_pyramid`" in str(item.message) for item in record)
+                                continue
+                        minimal = [img.shape for img in build(sample, max_level, border_type, minimal_padding=True)]
+                        warned = any("`build_laplacian_pyramid`" in str(item.message) for item in record)
+                        assert warned == (default != minimal), (height, width, max_level, border_type)
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
+            (96, 96, 3, ((96, 96), (48, 48), (24, 24))),
+            (64, 96, 3, ((64, 96), (32, 48), (16, 24))),
+            (480, 640, 1, ((480, 640),)),
+            (480, 640, 3, ((480, 640), (240, 320), (120, 160))),
+            (64, 100, 1, ((64, 100),)),
+            (7, 9, 1, ((7, 9),)),
+            (5, 8, 2, ((6, 8), (3, 4))),
+            (3, 8, 2, ((4, 8), (2, 4))),
+            (7, 9, 3, ((8, 12), (4, 6), (2, 3))),
+            (20, 64, 4, ((24, 64), (12, 32), (6, 16), (3, 8))),
+            (17, 100, 4, ((24, 104), (12, 52), (6, 26), (3, 13))),
+        ],
+    )
+    def test_minimal_padding_sizes(self, height, width, max_level, level_sizes, device, dtype):
+        sample = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+        assert [img.shape for img in pyramid] == [torch.Size((2, 3, *size)) for size in level_sizes]
+
+    def test_minimal_padding_one_level_is_the_input(self, device, dtype):
+        sample = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, 1, minimal_padding=True)
+        assert len(pyramid) == 1
+        assert torch.equal(pyramid[0], sample)
+
+    # The expected padded image is written by hand: reflection repeats the rows and columns before the last one.
+    @pytest.mark.parametrize(
+        "height,width,max_level,rows,columns",
+        [
+            (5, 8, 2, [0, 1, 2, 3, 4, 3], list(range(8))),
+            (8, 5, 2, list(range(8)), [0, 1, 2, 3, 4, 3]),
+            (7, 9, 3, [0, 1, 2, 3, 4, 5, 6, 5], [0, 1, 2, 3, 4, 5, 6, 7, 8, 7, 6, 5]),
+        ],
+    )
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_minimal_padding_rebuilds_the_reflected_image(
+        self, height, width, max_level, rows, columns, align_corners, device, dtype
+    ):
+        sample = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(
+            sample, max_level, "reflect", align_corners, minimal_padding=True
+        )
+        rebuilt = pyramid[-1]
+        for level in reversed(pyramid[:-1]):
+            rebuilt = kornia.geometry.transform.pyrup(rebuilt, "reflect", align_corners) + level
+        self.assert_close(rebuilt, sample[:, :, rows][:, :, :, columns])
+
+    # F.pad cannot reflect a padding at least as large as the side, so such a side repeats its last row or column.
+    # With `border_type="reflect"` these sizes raise instead (see the next test): only these border types get here.
+    @pytest.mark.parametrize(
+        "height,width,max_level,rows,columns",
+        [
+            (1, 8, 2, [0, 0], list(range(8))),
+            (8, 1, 2, list(range(8)), [0, 0]),
+            (1, 8, 3, [0, 0, 0, 0], list(range(8))),
+            (8, 1, 3, list(range(8)), [0, 0, 0, 0]),
+            (1, 1, 3, [0, 0, 0, 0], [0, 0, 0, 0]),
+            (2, 8, 3, [0, 1, 1, 1], list(range(8))),
+            (8, 2, 3, list(range(8)), [0, 1, 1, 1]),
+            (3, 8, 4, [0, 1, 2, 2, 2, 2, 2, 2], list(range(8))),
+            # The padding of the height stays below the side and reflects, that of the width does not.
+            (3, 1, 3, [0, 1, 2, 1], [0, 0, 0, 0]),
+        ],
+    )
+    @pytest.mark.parametrize("border_type", ["constant", "replicate", "circular"])
+    def test_minimal_padding_repeats_a_side_too_small_to_reflect(
+        self, height, width, max_level, rows, columns, border_type, device, dtype
+    ):
+        sample = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+        build = kornia.geometry.transform.build_laplacian_pyramid
+        pyramid = build(sample, max_level, border_type, minimal_padding=True)
+        assert pyramid[0].shape[-2:] == (len(rows), len(columns))
+        rebuilt = pyramid[-1]
+        for level in reversed(pyramid[:-1]):
+            rebuilt = kornia.geometry.transform.pyrup(rebuilt, border_type) + level
+        self.assert_close(rebuilt, sample[:, :, rows][:, :, :, columns])
+
+    # The blur of `pyrdown` and `pyrup` reflects two pixels, so it needs at least three: `(4, 4, 3)` raises from torch
+    # by way of its side-2 level under the default rule too, and only the message is new here.
+    @pytest.mark.parametrize(
+        "height,width,max_level",
+        [(1, 8, 2), (8, 1, 2), (2, 8, 2), (1, 8, 3), (4, 4, 3), (4, 16, 3), (16, 4, 3), (8, 8, 4), (1, 1, 2)],
+    )
+    def test_minimal_padding_reflect_border_rejects_a_side_too_small(self, height, width, max_level, device, dtype):
+        sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="border_type"):
+            kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
+            # The smallest sides that the blur of each level takes.
+            (3, 3, 2, ((4, 4), (2, 2))),
+            (5, 5, 3, ((8, 8), (4, 4), (2, 2))),
+            (1, 5, 1, ((1, 5),)),
+            (1, 1, 1, ((1, 1),)),
+        ],
+    )
+    def test_minimal_padding_reflect_border_smallest_sides(self, height, width, max_level, level_sizes, device, dtype):
+        sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+        assert [tuple(img.shape[-2:]) for img in pyramid] == list(level_sizes)
+
+    def test_minimal_padding_empty_batch(self, device, dtype):
+        sample = torch.rand(0, 3, 5, 8, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, 2, minimal_padding=True)
+        assert [img.shape for img in pyramid] == [torch.Size((0, 3, 6, 8)), torch.Size((0, 3, 3, 4))]
+
+    def test_default_jit_trace(self, device, dtype):
+        class Pyramid(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.gain = torch.nn.Parameter(torch.tensor(2.0, device=device, dtype=dtype))
+
+            def forward(self, x):
+                return kornia.geometry.transform.build_laplacian_pyramid(self.gain * x, 3)
+
+        model = Pyramid()
+        sample = torch.rand(1, 1, 64, 96, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            warnings.simplefilter("ignore", torch.jit.TracerWarning)
+            traced = torch.jit.trace(model, sample, check_trace=False)
+            # The default rule cannot pad under a trace: its sizes are tensors there, without `bit_length`. This goes
+            # away with the rule (#6319), and `minimal_padding=True` traces these sizes today.
+            with pytest.raises(AttributeError, match="bit_length"):
+                torch.jit.trace(model, torch.rand(1, 1, 96, 96, device=device, dtype=dtype), check_trace=False)
+        for captured, eager in zip(traced(sample), model(sample), strict=True):
+            self.assert_close(captured, eager)
+
+    @pytest.mark.parametrize("height,width,max_level", [(96, 96, 3), (5, 8, 2), (64, 96, 3), (480, 640, 1)])
+    def test_minimal_padding_jit_trace_with_parameters(self, height, width, max_level, device, dtype):
+        # A module whose parameter feeds the op: the traced graph must run with the parameter's dtype and device.
+        class Pyramid(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.gain = torch.nn.Parameter(torch.tensor(2.0, device=device, dtype=dtype))
+
+            def forward(self, x):
+                return kornia.geometry.transform.build_laplacian_pyramid(self.gain * x, max_level, minimal_padding=True)
+
+        sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        model = Pyramid()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", torch.jit.TracerWarning)
+            traced = torch.jit.trace(model, sample, check_trace=False)
+        for captured, eager in zip(traced(sample), model(sample), strict=True):
+            self.assert_close(captured, eager)
+
+    @pytest.mark.parametrize("minimal_padding", [False, True])
+    @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
+    def test_dynamo(self, height, width, max_level, minimal_padding, device, dtype, torch_optimizer):
+        sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+
+        def pyramid(x):
+            return kornia.geometry.transform.build_laplacian_pyramid(x, max_level, minimal_padding=minimal_padding)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            expected = pyramid(sample)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            actual = torch_optimizer(pyramid)(sample)
+        for actual_level, expected_level in zip(actual, expected, strict=True):
+            self.assert_close(actual_level, expected_level)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("minimal_padding", [False, True])
+    @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
+    def test_export_with_dynamic_sizes_does_not_warn(self, height, width, max_level, minimal_padding, device, dtype):
+        class Pyramid(torch.nn.Module):
+            def forward(self, x):
+                return kornia.geometry.transform.build_laplacian_pyramid(x, max_level, minimal_padding=minimal_padding)
+
+        sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            program = torch.export.export(
+                Pyramid(), (sample,), dynamic_shapes={"x": {2: torch.export.Dim.AUTO, 3: torch.export.Dim.AUTO}}
+            )
+            actual = program.module()(sample)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            expected = Pyramid()(sample)
+        for actual_level, expected_level in zip(actual, expected, strict=True):
+            self.assert_close(actual_level, expected_level)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     @pytest.mark.parametrize("channels", [1, 3])
     @pytest.mark.parametrize("max_level", [2, 3, 4])
@@ -593,3 +850,11 @@ class TestBuildLaplacianPyramid(BaseTester):
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,border_type", [(5, 8, 2, "reflect"), (7, 9, 1, "reflect"), (1, 3, 2, "replicate")]
+    )
+    def test_gradcheck_minimal_padding(self, height, width, max_level, border_type, device):
+        img = torch.rand(1, 2, height, width, device=device, dtype=torch.float64)
+        build = kornia.geometry.transform.build_laplacian_pyramid
+        self.gradcheck(lambda x: build(x, max_level, border_type, minimal_padding=True), (img,), nondet_tol=1e-8)
