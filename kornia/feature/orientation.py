@@ -25,12 +25,12 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import _autocast_disabled
-from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
+from kornia.filters import get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
 from ._layout import _patch_conv_layout
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
-from .siftdesc import _gradient_magnitude_orientation
+from .siftdesc import _exact_first_order_gradient, _gradient_magnitude_orientation
 
 urls: Dict[str, str | list[str]] = {}
 urls["orinet"] = [
@@ -87,16 +87,15 @@ class PatchDominantGradientOrientation(nn.Module):
         - The angle is not wrapped into :math:`(-\pi, \pi]`: it can exceed :math:`\pi` by up to
           ``pi / num_angular_bins``.
         - A patch whose Sobel gradients are all exactly zero, such as an all-zero patch, gets the angle
-          :math:`\pi` from its empty histogram. A nearly flat patch gets an arbitrary angle set by rounding noise: a
-          constant float64 patch can have nonzero rounding-level gradients, and so does a patch sampled from a flat
-          image region by :func:`~kornia.feature.extract_patches_from_pyramid`.
+          :math:`\pi` from its empty histogram, as does any constant patch. A nearly flat patch gets an arbitrary angle
+          set by rounding noise, such as a patch sampled from a flat image region by
+          :func:`~kornia.feature.extract_patches_from_pyramid`.
         - A float16 or bfloat16 patch is computed in float32, whatever the module's dtype and any enclosing autocast,
           and only the returned angle is cast back: the histogram bins of a textured patch are subnormal in float16.
           A float32 patch under autocast gets its float32 result.
-        - The backward casts the patch gradient to float16 too, so a gradient above 65504 becomes ``inf``: on any device
-          for a patch of very low amplitude, and on macOS arm64 CPU also for a low-contrast patch, where the float32
-          Sobel convolution of a large grad-enabled batch leaves rounding noise on flat pixels (#6598). Through
-          :func:`~kornia.feature.extract_patches_from_pyramid` it reaches the image gradient as ``inf`` and NaN.
+        - The backward casts the patch gradient to float16 too, so a gradient above 65504 becomes ``inf`` for a patch of
+          very low amplitude. Through :func:`~kornia.feature.extract_patches_from_pyramid` it reaches the image gradient
+          as ``inf`` and NaN.
 
     Args:
         patch_size: size of the (square) input patch.
@@ -122,7 +121,6 @@ class PatchDominantGradientOrientation(nn.Module):
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
-        self.gradient = SpatialGradient("sobel", 1)
         self.eps = eps
         self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
@@ -172,7 +170,7 @@ class PatchDominantGradientOrientation(nn.Module):
         angular_smooth_bias = self.angular_smooth.bias
         if angular_smooth_bias is not None:
             angular_smooth_bias = angular_smooth_bias.to(patch.dtype).to(patch.device)
-        grads: torch.Tensor = self.gradient(patch)
+        grads: torch.Tensor = _exact_first_order_gradient(patch, "sobel")
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]

@@ -162,7 +162,7 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         lafs = torch.tensor([[[[6.0, 0, 40], [0, 6.0, 40]]]], device=device, dtype=dtype)
         calls = []
         pyrdown_calls = []
-        original = implementation.spatial_gradient
+        original = implementation._exact_first_order_gradient
         original_pyrdown = implementation.pyrdown
 
         def gradient(level, *args, **kwargs):
@@ -173,7 +173,7 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             pyrdown_calls.append(level.shape)
             return original_pyrdown(level, *args, **kwargs)
 
-        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        monkeypatch.setattr(implementation, "_exact_first_order_gradient", gradient)
         monkeypatch.setattr(implementation, "pyrdown", counted_pyrdown)
         actual = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
         assert calls == [image.shape]
@@ -195,13 +195,13 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert levels.flatten().tolist() == [2]
 
         shapes = []
-        original = implementation.spatial_gradient
+        original = implementation._exact_first_order_gradient
 
         def gradient(level, *args, **kwargs):
             shapes.append(tuple(level.shape[-2:]))
             return original(level, *args, **kwargs)
 
-        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        monkeypatch.setattr(implementation, "_exact_first_order_gradient", gradient)
         oriented, descriptors = feature.orient_and_describe(image, lafs)
         # Description and orientation use distinct gradient maps at the used octave.
         assert shapes == [(40, 40), (40, 40)]

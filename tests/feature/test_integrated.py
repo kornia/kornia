@@ -460,23 +460,14 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         else:
             module = torch.jit.trace(SIFTDescriptor(32).to(device), patch)
         before = self._state(module)
-        if kind == "trace_sift" and image_dtype == torch.float64:
-            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did; the
-            # CPU and CUDA convolutions word the dtype mismatch differently
-            with pytest.raises(
-                RuntimeError,
-                match=r"Double but found Float|Input type \(\S*DoubleTensor\) and weight type \(\S*FloatTensor\)",
-            ):
-                get_laf_descriptors(img, lafs, module, 32)
-            self._assert_state_equal(before, self._state(module))
-            return
         out = get_laf_descriptors(img, lafs, module, 32)
         self._assert_state_equal(before, self._state(module))
         reference = copy.deepcopy(module).to(img).eval()
         patches = extract_patches_from_pyramid(img, lafs, 32)
         B, N, C, H, W = patches.shape
         self.assert_close(out, reference(patches.view(B * N, C, H, W)).view(B, N, -1))
-        assert out.dtype == image_dtype
+        # the trace holds its float32 casts, so a float64 image gets a float32 descriptor
+        assert out.dtype == (torch.float32 if kind == "trace_sift" else image_dtype)
 
     def test_empty_lafs_leave_the_module_alone_5724(self, device):
         if torch.device(device).type == "mps":

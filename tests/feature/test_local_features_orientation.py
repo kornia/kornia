@@ -23,6 +23,8 @@ import torch
 import kornia
 from kornia.core.exceptions import ShapeError
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
+from kornia.feature.siftdesc import DenseSIFTDescriptor, SIFTDescriptor, _exact_first_order_gradient
+from kornia.filters import spatial_gradient
 from kornia.geometry.conversions import rad2deg
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
@@ -350,7 +352,7 @@ class TestOrientationKernelBuffer(BaseTester):
             expected = ref(patches)
 
         assert out.dtype == torch.float64
-        assert torch.equal(out, expected)
+        self.assert_close(out, expected)
         assert mod.angular_smooth.weight.dtype == torch.float32
         assert mod.angular_smooth.weight.device == device
         out.sum().backward()
@@ -558,3 +560,78 @@ class TestConventionsOrientation(BaseTester):
         patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
         angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
         assert math.pi < angle <= math.pi + math.pi / 8
+
+
+class TestTrackedGradientNoise6598(BaseTester):
+    @staticmethod
+    def _flat_lattice_patches(batch):
+        # Low-contrast patches rounded to float16 steps around mid-grey: many neighbours are exactly equal, so many
+        # exact Sobel responses are exactly zero.
+        generator = torch.Generator().manual_seed(0)
+        noise = torch.rand(batch, 1, 32, 32, generator=generator, dtype=torch.float64) * 3e-4
+        return (0.5 + noise).to(torch.float16).float()
+
+    @staticmethod
+    def _median_largest_gradient(module, patches):
+        # The median over the batch of each patch's largest gradient.
+        tracked = patches.clone().requires_grad_()
+        gradient = torch.autograd.grad(module(tracked).sum(), tracked)[0]
+        return gradient.flatten(1).abs().amax(1).median().item()
+
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_tracked_gradient_matches_spatial_gradient(self, device, dtype, mode):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("spatial_gradient pads with replication, absent for this dtype")
+        image = torch.rand(3, 2, 8, 9, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        tracked = _exact_first_order_gradient(image.clone().requires_grad_(), mode)
+        assert tracked.dtype == dtype
+        self.assert_close(tracked.detach(), spatial_gradient(image, mode))
+
+    @pytest.mark.parametrize("requires_grad", [True, False])
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_flat_pixels_have_exactly_zero_gradients(self, device, mode, requires_grad):
+        # 0.1 is not binary-exact: the Sobel convolution leaves 9.31e-10 on half of these entries on x86 and CUDA.
+        image = torch.full((16, 1, 32, 32), 0.1, device=device, dtype=torch.float32, requires_grad=requires_grad)
+        gradient = _exact_first_order_gradient(image, mode)
+        assert torch.equal(gradient, torch.zeros_like(gradient))
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_tracked_float16_differences_do_not_overflow(self, device, half_dtype, mode):
+        # A value the result can hold, whose differences float16 cannot: 32768 next to -32768.
+        row = torch.tensor([-32768.0, -32768.0, 32768.0, 32768.0], device=device, dtype=half_dtype)
+        image = row.repeat(4, 1)[None, None].requires_grad_()
+        gx = _exact_first_order_gradient(image, mode)[0, 0, 0]
+        assert gx.dtype == half_dtype
+        assert gx.isfinite().all()
+        assert gx.abs().max().item() == 32768.0
+
+    @pytest.mark.parametrize(
+        "build", [lambda: PatchDominantGradientOrientation(32), lambda: SIFTDescriptor(32), DenseSIFTDescriptor]
+    )
+    def test_requires_grad_changes_neither_output_nor_gradient_scale(self, device, build):
+        patches = self._flat_lattice_patches(64)
+        module = build().to(device)
+        plain = module(patches.to(device))
+        tracked_input = patches.to(device).requires_grad_()
+        tracked = module(tracked_input)
+        # One float32 rounding step at most; the noise this guards against moves an angle by up to 3 radians.
+        self.assert_close(tracked.detach(), plain, rtol=0, atol=1e-5)
+        # The float64 reference runs on the CPU, as MPS has no float64.
+        expected = self._median_largest_gradient(build().double(), patches.double())
+        assert self._median_largest_gradient(module, patches.to(device)) < 10 * expected
+
+    @pytest.mark.parametrize(
+        "build", [lambda: PatchDominantGradientOrientation(32), lambda: SIFTDescriptor(32), DenseSIFTDescriptor]
+    )
+    def test_tracked_gradient_scale_without_mkldnn(self, device, build):
+        # With MKLDNN disabled, x86 CPU takes NNPACK at batch >= 16, whose convolution leaves rounding noise on flat
+        # pixels as macOS arm64 CPU does. This is a Linux proxy for that backend: a call site going back to the
+        # convolution reads 920 to 6.7e4 times float64 here.
+        if device.type != "cpu":
+            pytest.skip("the flag selects a CPU convolution backend")
+        patches = self._flat_lattice_patches(64).to(device)
+        with torch.backends.mkldnn.flags(enabled=False):
+            gradient = self._median_largest_gradient(build().to(device), patches)
+            expected = self._median_largest_gradient(build().to(device, torch.float64), patches.double())
+        assert gradient < 10 * expected

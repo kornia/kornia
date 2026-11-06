@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
-from kornia.filters import get_gaussian_kernel2d, spatial_gradient
+from kornia.filters import get_gaussian_kernel2d
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
@@ -70,6 +70,31 @@ def _gradient_magnitude_orientation(
     return mag.to(dtype), ori.to(dtype)
 
 
+def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
+    """Return ``spatial_gradient(input, mode)`` for ``"sobel"`` or ``"diff"``, exact on flat pixels.
+
+    A guard such as ``sq > 0`` in :func:`_gradient_magnitude_orientation` reads exactness from this result: a nonzero
+    pixel votes with its direction and gets a derivative of ``1 / |g|``. A convolution result cannot supply that, as it
+    rounds: a pixel whose exact response is zero can come out nonzero, such as 9.31e-10 on half the Sobel entries of a
+    constant 0.1 patch on x86 CPU and CUDA. This was found on macOS arm64 CPU, where the ``F.conv2d`` backend for a
+    tracked float32 batch of 16 or more leaves about 1e-7 on low-contrast patches. All input therefore takes the
+    differences directly, so that the result does not depend on ``requires_grad``.
+    """
+    # Half precision runs in float32: the convolution scales before it adds, so these differences would overflow first.
+    padded = F.pad(input.to(torch.promote_types(input.dtype, torch.float32)), (1, 1, 1, 1), "replicate")
+    dx = padded[..., 2:] - padded[..., :-2]
+    dy = padded[..., 2:, :] - padded[..., :-2, :]
+    if mode == "sobel":
+        gx = (dx[..., :-2, :] + 2.0 * dx[..., 1:-1, :] + dx[..., 2:, :]) / 8.0
+        gy = (dy[..., :-2] + 2.0 * dy[..., 1:-1] + dy[..., 2:]) / 8.0
+    else:
+        gx = dx[..., 1:-1, :] / 2.0
+        gy = dy[..., 1:-1] / 2.0
+    # Not `torch.stack`: on torch 2.15.0, on CUDA only, compiling a stack of differences of one padded tensor raises
+    # InductorError (RecursionError), without any kornia code involved. Reassess when torch moves on.
+    return torch.cat((gx.unsqueeze(2), gy.unsqueeze(2)), 2).to(input.dtype)
+
+
 def _dense_sift_histograms_from_gradients(
     gx: torch.Tensor, gy: torch.Tensor, num_ang_bins: int, eps: float
 ) -> torch.Tensor:
@@ -97,7 +122,7 @@ def _dense_sift_histograms_from_gradients(
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
-    grads = spatial_gradient(input, "diff")
+    grads = _exact_first_order_gradient(input, "diff")
     return _dense_sift_histograms_from_gradients(grads[:, :, 0], grads[:, :, 1], num_ang_bins, eps)
 
 
@@ -322,7 +347,7 @@ class SIFTDescriptor(nn.Module):
         if pk_bias is not None:
             pk_bias = pk_bias.to(input.dtype).to(input.device)
 
-        grads = spatial_gradient(input, "diff")
+        grads = _exact_first_order_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]

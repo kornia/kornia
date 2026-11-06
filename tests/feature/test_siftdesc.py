@@ -207,6 +207,19 @@ class TestSIFTDescriptor(BaseTester):
         # A 90-degree rotation of a random 41-pixel patch matched the permuted descriptor to a mean cosine of 0.989.
         self.assert_close(sift(moved), predict(sift(patches), 8, n_bins))
 
+    def test_dynamo_tracked_patch(self, device, dtype, torch_optimizer):
+        # Tracked input takes direct differences, whose `torch.stack` form crashes Inductor on CUDA on torch 2.15.0. The
+        # conformance suite runs on CPU tensors whatever --device says, so only this test sees that crash.
+        torch.manual_seed(0)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype).requires_grad_()
+        sift = SIFTDescriptor(32).to(device, dtype)
+        actual = torch_optimizer(sift, fullgraph=True)(patches)
+        expected = sift(patches)
+        self.assert_close(actual, expected)
+        self.assert_close(
+            torch.autograd.grad(actual.sum(), patches)[0], torch.autograd.grad(expected.sum(), patches)[0]
+        )
+
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
