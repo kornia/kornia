@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_COLOR
+from kornia.core.utils import _clamp_range, _clamp_unit_range
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
@@ -333,7 +334,7 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_IS_COLOR(image)
 
-    return (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
+    return _clamp_unit_range(0.5 * (image + 1.0)) * 255
 
 
 def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
@@ -354,7 +355,7 @@ def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    return (image * 255).clip(0.0, 255.0)
+    return _clamp_range(image * 255, 0.0, 255.0)
 
 
 def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:

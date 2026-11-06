@@ -1,0 +1,1 @@
+`ycbcr_to_rgb`, `lab_to_rgb`, `rgb_to_rgb255`, `normals_to_rgb255`, `hls_to_rgb` and the `RandomSnow` that uses it now give the same gradient on every torch version at a result exactly on a clamp bound, the one-sided derivative from inside the range: on torch 2.14 and later that gradient used to be 0. The values do not change.
