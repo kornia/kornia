@@ -533,7 +533,11 @@ def sync_sites(fn: Callable[[], Any]) -> collections.Counter[str]:
     def hook(message: Any, category: Any, filename: str, lineno: int, file: Any = None, line: Any = None) -> None:
         if _SYNC_MESSAGE not in str(message):
             return
-        keys = [f"{f.filename[len(root) :]}:{f.name}" for f in traceback.extract_stack() if f.filename.startswith(root)]
+        keys = [
+            f"{f.filename[len(root) :].replace(os.sep, '/')}:{f.name}"
+            for f in traceback.extract_stack()
+            if f.filename.startswith(root)
+        ]
         callers = [k for k in keys if k not in PASS_THROUGH]
         sites[callers[-1] if callers else keys[-1] if keys else "<outside kornia>"] += 1
 
