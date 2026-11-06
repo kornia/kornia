@@ -15,13 +15,14 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 import torch
 from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils.param_validation import _as_range_tensor
 from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
@@ -81,13 +82,24 @@ class PlainUniformGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
+            # The registered parameter, because ``torch.func.functional_call`` swaps it without touching ``samplers``.
+            factor = self._parameters.get(name, factor)
             if center is None and bound is None:
-                factor = torch.as_tensor(factor, device=device, dtype=dtype)
+                factor = _as_range_tensor(factor, device, dtype)
             elif center is None or bound is None:
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
+
+    def _ranges_loaded(self, names: Set[str]) -> None:
+        # ``make_samplers`` reads ``self.samplers``, whose numbers it needs in ``dtype`` as they were given, not rounded
+        # to float32 in a buffer. A loaded range is what the generator holds from now on.
+        self.samplers = tuple(
+            ({**self._parameters, **self._buffers}[name] if name in names else factor, name, center, bound)
+            for factor, name, center, bound in self.samplers
+        )
+        super()._ranges_loaded(names)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]

@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Set
 
 import torch
 
@@ -53,7 +53,14 @@ class Rotation90Generator(PlainUniformGenerator):
 
     def __init__(self, times: Any) -> None:
         super().__init__((times, "times", 0.0, (-3, 3)))
+        self._find_whole_range()
+
+    def _find_whole_range(self) -> None:
         self._whole_range = bool(self.times.to(torch.float64).round().eq(self.times).all())
+
+    def _ranges_loaded(self, names: Set[str]) -> None:
+        self._find_whole_range()
+        super()._ranges_loaded(names)
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         super().make_samplers(device, dtype)

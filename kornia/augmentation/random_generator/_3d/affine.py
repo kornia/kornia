@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _tuple_range_reader,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.param_validation import _as_range_tensor
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -139,14 +140,14 @@ class AffineGenerator3D(RandomGeneratorBase):
         # check translation range
         self._translate: Optional[torch.Tensor] = None
         if self.translate is not None:
-            self._translate = torch.as_tensor(self.translate, device=device, dtype=dtype)
+            self._translate = _as_range_tensor(self.translate, device, dtype)
             _singular_range_check(self._translate, "translate", bounds=(0, 1), mode="3d")
 
         # check scale range
         self._scale: Optional[torch.Tensor] = None
         self._isotropic_scale: bool = False
         if self.scale is not None:
-            _scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
+            _scale = _as_range_tensor(self.scale, device, dtype)
             if _scale.shape == torch.Size([2]):
                 # (a, b) is isotropic: one factor per sample is drawn and used on all three axes.
                 _singular_range_check(_scale, "scale", bounds=(0, float("inf")), mode="2d")
@@ -169,8 +170,8 @@ class AffineGenerator3D(RandomGeneratorBase):
         self.roll_sampler = UniformDistribution(degrees[2][0], degrees[2][1], validate_args=False)
 
         self.uniform_sampler = UniformDistribution(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
+            _constant_tensor(0, device=device, dtype=dtype),
+            _constant_tensor(1, device=device, dtype=dtype),
             validate_args=False,
         )
 

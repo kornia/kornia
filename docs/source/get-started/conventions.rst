@@ -658,8 +658,26 @@ Serializing an augmentation
   3D and mix augmentations have an empty ``state_dict()``. ``nn.Parameter``
   ranges (``RandomRotation`` and ``RandomAffine`` among others) are registered
   and receive gradients. Some numeric ranges are copied into
-  ``_param_generator.*`` buffers that loading does not feed back into the
-  samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+  ``_param_generator.*`` buffers, and loading one that differs builds the
+  samplers again from the loaded range. The constructor's domain check applies
+  to it where the class passes one to its generator, and a checkpoint that
+  holds the same range changes nothing. The auto policies' ``_probability``
+  entries are still not read back
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- A learnable range is read again before each draw, so an optimizer step, an
+  in-place update, ``load_state_dict`` and
+  ``AveragedModel.update_parameters`` all reach the next draw, for a ``(2,)``
+  range and for a 0-d half-width alike. Its value is checked only when the
+  augmentation is built: to read it on every call would wait for the GPU and
+  break a ``torch.compile`` graph, so a range that training takes out of its
+  domain (a negative half-width, say) is drawn from as it is. Keep it inside
+  with a parametrization or by clamping it after the optimizer step. There are
+  two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize`` and
+  ``RandomCutMixV2`` read their range when they build their samplers and pass it
+  no gradient, so an update reaches them through ``load_state_dict`` and copies
+  only. A range on an accelerator in an
+  augmentation left on the CPU (or the reverse) is copied to the generator's
+  device after an in-place update only, which waits for the GPU once per update.
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. This includes the
   ``kornia.augmentation.auto`` policies: a policy pickles when every operation
@@ -669,11 +687,8 @@ Serializing an augmentation
 - A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
   augmentation or container with an ``nn.Parameter`` range owns a copy of
   that parameter, and its gradients reach that copy rather than the
-  original. It draws from the value the parameter had when it was copied: as
-  in the original, an in-place update such as an optimizer step or
-  ``AveragedModel.update_parameters`` does not reach the draws
-  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). The ``_params``
-  it inherits from the last call keep their values, detached.
+  original. It draws from the current value of its own parameter. The
+  ``_params`` it inherits from the last call keep their values, detached.
 
 Morphology
 ----------

@@ -20,6 +20,38 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from kornia.core.ops import _constant_tensor
+
+# The device of the rebuild under way, or ``None``. ``RandomGeneratorBase`` builds the samplers of a learnable range
+# again on the forward path, from a range that was validated when it was first built. During a rebuild the validators
+# do not read the values of a range, because that would wait for the GPU and break a ``torch.compile`` graph on every
+# call, and the helpers below make numbers without a host-device copy. A plain module variable, like the switch in
+# ``kornia.core.check``, because Dynamo traces it: with threads, a validation that races a rebuild is merely skipped.
+_rebuild_device: Optional[torch.device] = None
+
+
+def _set_rebuild_device(device: Optional[torch.device]) -> None:
+    global _rebuild_device  # noqa: PLW0603
+    _rebuild_device = device
+
+
+def _in_sampler_rebuild() -> bool:
+    return _rebuild_device is not None
+
+
+def _numbers_to_tensor(data: Any, device: Optional[torch.device], dtype: Optional[torch.dtype]) -> torch.Tensor:
+    """Return ``torch.tensor(data, device=device, dtype=dtype)``, without a host-device copy during a rebuild."""
+    if _rebuild_device is None or dtype is None:
+        return torch.tensor(data, device=device, dtype=dtype)
+    return _constant_tensor(data, device=device, dtype=dtype)
+
+
+def _as_range_tensor(data: Any, device: Optional[torch.device], dtype: torch.dtype) -> torch.Tensor:
+    """Return ``torch.as_tensor(data, device=device, dtype=dtype)``, without a host-device copy during a rebuild."""
+    if _rebuild_device is None or isinstance(data, torch.Tensor):
+        return torch.as_tensor(data, device=device, dtype=dtype)
+    return _constant_tensor(data, device=device, dtype=dtype)
+
 
 def _check_positive_int_or_traced(value: Any, name: str) -> None:
     """Assert ``value`` is a non-negative Python int, or accept it as a traced dim.
@@ -82,26 +114,32 @@ def _range_bound(
     range itself, must likewise be finite, and is checked against ``bounds`` with ``check``. Finiteness
     is required of the range, not of ``bounds``: the domain is legitimately unbounded (the default is
     ``(0, inf)``), but a draw range that is not finite produces ``NaN`` at forward time.
+
+    During a rebuild of the samplers none of the values are checked (see ``_rebuild_device``).
     """
+    checked = _rebuild_device is None
     if device is None:
-        device = torch.device("cpu")
+        # Many generators pass no device and move the result themselves. A copy through the CPU in a rebuild would
+        # wait for the GPU on every forward.
+        device = torch.device("cpu") if checked else _rebuild_device
     if dtype is None:
         dtype = torch.get_default_dtype()
     if not isinstance(factor, (torch.Tensor)):
-        factor = torch.tensor(factor, device=device, dtype=dtype)
+        factor = _numbers_to_tensor(factor, device, dtype)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
-        if factor < 0:
-            raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
-        if not torch.isfinite(factor):
-            raise ValueError(f"If {name} is a single number, it must be finite. Got {factor}.")
+        if checked:
+            if factor < 0:
+                raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
+            if not torch.isfinite(factor):
+                raise ValueError(f"If {name} is a single number, it must be finite. Got {factor}.")
         if center is None or bounds is None:
             raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
-        factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
+        factor_bound = factor.repeat(2) * _numbers_to_tensor([-1.0, 1.0], factor.device, factor.dtype) + center
         # The lower end is floored at the domain floor; the upper end is never clamped, because a
         # magnitude that overshoots the domain is a mistake the explicit range form already rejects.
-        if factor_bound[1] > bounds[1]:
+        if checked and factor_bound[1] > bounds[1]:
             raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor_bound}.")
         factor_bound = factor_bound.clamp(min=bounds[0]).to(device=device, dtype=dtype)
     else:
@@ -113,10 +151,10 @@ def _range_bound(
         # Without it an `inf` endpoint slipped through exactly when `bounds[1]` was itself `inf`,
         # since the joint check then compares `inf >= inf`. A `nan` endpoint was already rejected,
         # but reported as "out of bounds", which named the domain rather than the real problem.
-        if not bool(torch.isfinite(factor_bound).all()):
+        if checked and not bool(torch.isfinite(factor_bound).all()):
             raise ValueError(f"If {name} is a range, it must be finite. Got {factor_bound}.")
 
-    if check is not None:
+    if checked and check is not None:
         if check == "joint":
             _joint_range_check(factor_bound, name, bounds)
         elif check == "singular":
@@ -189,7 +227,7 @@ def _shear_bound(
     A float or an (a, b) pair only shears along the x axis, (a, b, c, d) also gives a y-axis
     range, and a (2, 2) tensor already holds both ranges.
     """
-    shear = torch.as_tensor(shear, device=device, dtype=dtype)
+    shear = _as_range_tensor(shear, device, dtype)
     if shear.shape == torch.Size([2, 2]):
         shear_x = _range_bound(shear[0], "shear-x", 0, (-360, 360), device=device, dtype=dtype)
         shear_y = _range_bound(shear[1], "shear-y", 0, (-360, 360), device=device, dtype=dtype)
@@ -207,6 +245,8 @@ def _shear_bound(
 
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]."""
+    if _rebuild_device is not None:
+        return
     if bounds is None:
         bounds = (float("-inf"), float("inf"))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
@@ -229,6 +269,8 @@ def _singular_range_check(
     mode: str = "2d",
 ) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]."""
+    if _rebuild_device is not None:
+        return
     if mode == "2d":
         dim_size = 2
     elif mode == "3d":
@@ -279,10 +321,10 @@ def _tuple_range_reader(
 
     if isinstance(input_range, torch.Tensor):
         if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
-            if input_range < 0:
+            if _rebuild_device is None and input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = input_range.repeat(2).to(device=device, dtype=dtype) * torch.tensor(
-                [-1, 1], device=device, dtype=dtype
+            input_range_tmp = input_range.repeat(2).to(device=device, dtype=dtype) * _numbers_to_tensor(
+                [-1, 1], device, dtype
             )
             input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
 
@@ -290,8 +332,8 @@ def _tuple_range_reader(
             input_range_tmp = input_range.repeat(target_shape[0], 1).to(device=device, dtype=dtype)
 
         elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
-            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2).to(device=device, dtype=dtype) * torch.tensor(
-                [-1, 1], device=device, dtype=dtype
+            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2).to(device=device, dtype=dtype) * _numbers_to_tensor(
+                [-1, 1], device, dtype
             )
 
         elif input_range.shape == target_shape:
@@ -305,9 +347,7 @@ def _tuple_range_reader(
     elif isinstance(input_range, (float, int)):
         if input_range < 0:
             raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-        input_range_tmp = torch.tensor([-input_range, input_range], device=device, dtype=dtype).repeat(
-            target_shape[0], 1
-        )
+        input_range_tmp = _numbers_to_tensor([-input_range, input_range], device, dtype).repeat(target_shape[0], 1)
 
     elif (
         isinstance(input_range, (tuple, list))
@@ -315,21 +355,21 @@ def _tuple_range_reader(
         and isinstance(input_range[0], (float, int))
         and isinstance(input_range[1], (float, int))
     ):
-        input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
+        input_range_tmp = _numbers_to_tensor(input_range, device, dtype).repeat(target_shape[0], 1)
 
     elif (
         isinstance(input_range, (tuple, list))
         and len(input_range) == target_shape[0]
         and all(isinstance(x, (float, int)) for x in input_range)
     ):
-        input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
+        input_range_tmp = _numbers_to_tensor([(-s, s) for s in input_range], device, dtype)
 
     elif (
         isinstance(input_range, (tuple, list))
         and len(input_range) == target_shape[0]
         and all(isinstance(x, (tuple, list)) for x in input_range)
     ):
-        input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
+        input_range_tmp = _numbers_to_tensor(input_range, device, dtype)
 
     else:
         raise TypeError(
