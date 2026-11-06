@@ -381,6 +381,58 @@ class TestHalfSampling(BaseTester):
         with pytest.raises(RuntimeError):
             warper(torch.rand(1, 1, 8, 8, device=device))
 
+    @staticmethod
+    def _identity_camera(device, intrinsics_dtype, extrinsics_dtype):
+        size = torch.tensor([8.0], device=device, dtype=intrinsics_dtype)
+        intrinsics = torch.eye(4, device=device, dtype=intrinsics_dtype)[None]
+        return PinholeCamera(intrinsics, torch.eye(4, device=device, dtype=extrinsics_dtype)[None], size, size)
+
+    @pytest.mark.parametrize("operation", ["frame_depth", "depth_warper", "elastic", "tps", "cached_homography"])
+    def test_mismatched_parameter_dtype(self, device, dtype, operation):
+        # Only parameters of the image's own half dtype move to float32; a float32 one is still rejected.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 warps run in float32")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("this backend accepts a mismatched grid dtype")
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        depth = torch.ones(1, 1, 8, 8, device=device)
+        half_camera = self._identity_camera(device, dtype, dtype)
+        warper = DepthWarper(half_camera, 8, 8).compute_projection_matrix(half_camera)
+        homography_warper = HomographyWarper(8, 8)
+        homography_warper.grid = homography_warper.grid.to(device)
+        homography_warper.precompute_warp_grid(torch.eye(3, device=device)[None])
+        with pytest.raises(RuntimeError):
+            if operation == "frame_depth":
+                warp_frame_depth(image, depth, torch.eye(4, device=device)[None], torch.eye(3, device=device)[None])
+            elif operation == "depth_warper":
+                warper(depth, image)
+            elif operation == "elastic":
+                elastic_transform2d(image, torch.zeros(1, 2, 8, 8, device=device))
+            elif operation == "tps":
+                points = torch.zeros(1, 3, 2, device=device)
+                warp_image_tps(image, points, points, points)
+            else:
+                homography_warper(image)
+
+    @pytest.mark.parametrize("mismatched", ["src", "dst_intrinsics", "dst_extrinsics"])
+    @pytest.mark.parametrize("other", ["float32", "other_half"])
+    def test_mismatched_camera_dtype(self, device, dtype, mismatched, other):
+        # Half cameras compose in float32 only when they share one dtype; other mixes are still rejected.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 warps run in float32")
+        if not self._rejects_mismatched_grid(device, dtype):
+            pytest.skip("this backend accepts a mismatched grid dtype")
+        other_dtype = torch.float32 if other == "float32" else {torch.float16: torch.bfloat16}.get(dtype, torch.float16)
+        src_dtype = other_dtype if mismatched == "src" else dtype
+        src = self._identity_camera(device, src_dtype, src_dtype)
+        dst = self._identity_camera(
+            device,
+            other_dtype if mismatched == "dst_intrinsics" else dtype,
+            other_dtype if mismatched == "dst_extrinsics" else dtype,
+        )
+        with pytest.raises(RuntimeError):
+            DepthWarper(dst, 8, 8).compute_projection_matrix(src)
+
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
     def test_every_device_samples_half_in_float32(self, half):
         # Half warps move to float32 on every device, not only on the CPU and CUDA legs CI runs (#5751, #5814).

@@ -655,10 +655,14 @@ class DepthWarper(nn.Module):
 
         # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
         # Half cameras compose in float32: the product's rounding moves a warp's pixels by a large part of a pixel.
-        def wide(matrix: torch.Tensor) -> torch.Tensor:
-            return matrix.float() if _samples_half_in_float32(matrix) else matrix
-
-        src_extrinsics, dst_extrinsics = wide(pinhole_src.extrinsics), wide(self._pinhole_dst.extrinsics)
+        # Cameras of different dtypes are rejected as before.
+        src_extrinsics, dst_extrinsics = pinhole_src.extrinsics, self._pinhole_dst.extrinsics
+        dst_intrinsics = self._pinhole_dst.camera_matrix
+        if _samples_half_in_float32(src_extrinsics) and all(
+            t.dtype == src_extrinsics.dtype for t in (dst_extrinsics, dst_intrinsics)
+        ):
+            src_extrinsics, dst_extrinsics = src_extrinsics.float(), dst_extrinsics.float()
+            dst_intrinsics = dst_intrinsics.float()
         batch_shape = src_extrinsics.shape[:-2]
         device = src_extrinsics.device
         dtype = src_extrinsics.dtype
@@ -686,7 +690,7 @@ class DepthWarper(nn.Module):
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
 
-        dst_proj_src = torch.matmul(_embed_intrinsics(wide(self._pinhole_dst.camera_matrix)), dst_trans_src)
+        dst_proj_src = torch.matmul(_embed_intrinsics(dst_intrinsics), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
