@@ -181,16 +181,10 @@ Check [help wanted](https://github.com/kornia/kornia/labels/help%20wanted), exis
 and [the contribution rules](CONTRIBUTING.md) before implementation. A roadmap area is
 not approval for a new API; establish the concrete need and check reservations first.
 
-- **Classical core (highest priority for new contributions):** camera intrinsic calibration
-  (Zhang/checkerboard/ChArUco) remains the largest gap in the camera core. Other areas are
-  fiducial markers, classical tracking ([#1381](https://github.com/kornia/kornia/issues/1381)),
-  dense stereo, Hough transforms, contours, and template matching.
 - **Reference evidence:** convention tests, independent expected vectors, corrective
   error messages, and hardware benchmark contributions, especially CUDA. Use the
   benchmark suite's `--contribute` workflow.
-- **Code health:** Ruff coverage ([#2445](https://github.com/kornia/kornia/issues/2445)),
-  `BaseTester` migration ([#2752](https://github.com/kornia/kornia/issues/2752)),
-  compile/export coverage, and evaluating MkDocs ([#3454](https://github.com/kornia/kornia/issues/3454)).
+- **Code health:** compile/export coverage for existing operators.
 - **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
   distortions, weather/noise, and compression effects; the differentiated core remains
   differentiability, batching, and annotation consistency.
