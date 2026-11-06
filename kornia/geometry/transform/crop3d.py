@@ -45,7 +45,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.core.utils import _autocast_disabled, is_compiling
+from kornia.core.utils import _autocast_disabled, _samples_half_in_float32, is_compiling
 from kornia.geometry.bbox import _validate_bbox3d, infer_bbox_shape3d
 
 from .imgwarp import get_perspective_transform3d, warp_affine3d
@@ -464,10 +464,10 @@ def _crop_by_boxes3d_to_size(
     # only an output axis of one voxel can be flat in dst_box, so every other crop keeps its exact solve and graph
     if 1 in out_size:
         # Voxel 257 is not a bfloat16 value (2049 is not a float16 one): a half box would round onto its neighbour,
-        # and one voxel of widening would round back onto the box. So the boxes, the widening, the transform and the
-        # warp stay in at least float32, as the warp already samples half volumes, and the patch returns to the
-        # input dtype.
-        work_dtype = torch.promote_types(tensor.dtype, torch.float32)
+        # and one voxel of widening would round back onto the box. So for a half volume the boxes, the widening, the
+        # transform and the warp stay in float32, as the warp already samples half volumes, and the patch returns to
+        # the input dtype.
+        work_dtype = torch.float32 if _samples_half_in_float32(tensor) else tensor.dtype
         tensor = tensor.to(work_dtype)
         src_box, dst_box = src_box.to(work_dtype), dst_box.to(work_dtype)
         solve_src, solve_dst = _widen_one_voxel_axes(src_box, dst_box)

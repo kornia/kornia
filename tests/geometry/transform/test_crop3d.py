@@ -21,7 +21,7 @@ import torch
 import kornia
 from kornia.core._compat import torch_version
 
-from testing.base import BaseTester, supports_bilinear_3d_grid_sample
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
 
 
 class TestCropAndResize3D(BaseTester):
@@ -692,6 +692,12 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         self.assert_close(out, expected)
 
     @staticmethod
+    def _skip_without_nearest(device, dtype):
+        # a half volume samples in float32
+        if not supports_nearest_3d_grid_sample(device, torch.promote_types(dtype, torch.float32)):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+
+    @staticmethod
     def _slice_index_volume(depth, device, dtype):
         # each depth slice holds its index mod 5, small integers every dtype holds exactly, so neighbours differ
         values = torch.arange(depth, device=device) % 5
@@ -701,7 +707,9 @@ class TestCrop3DOneVoxelAxis(BaseTester):
     def test_box_crops_flat_axis_far_from_origin_4747(self, z, device, dtype):
         # Past 256 (bfloat16) or 2048 (float16) the half types skip voxels, so a half box or transform would land on
         # a neighbouring slice; the boxes come in float32, as from a detector. Nearest keeps the check to which slice
-        # is read: MPS samples bilinear float32 grids this far from the origin 0.06 voxel off.
+        # is read: MPS solves the box in float32, which at z = 256 scales the map by 1.2e-4, so a bilinear crop that
+        # touches the volume's edge blends in 2.4e-4 of the zero padding, for thick boxes as well.
+        self._skip_without_nearest(device, dtype)
         volume = self._slice_index_volume(z + 2, device, dtype)
         box = self._box((0, 0, z), (1, 2, 3), device, torch.float32)
 
@@ -714,12 +722,37 @@ class TestCrop3DOneVoxelAxis(BaseTester):
     @pytest.mark.parametrize("depth", [515, 4099])
     def test_center_crop3d_flat_axis_far_from_origin_4747(self, depth, device, dtype):
         # the centred slice is 257 (515) or 2049 (4099), neither a value of the half types
+        self._skip_without_nearest(device, dtype)
         volume = self._slice_index_volume(depth, device, dtype)
         z = depth // 2
 
         out = kornia.geometry.transform.center_crop3d(volume, (1, 2, 3), interpolation="nearest")
         assert out.dtype == dtype
         self.assert_close(out, volume[..., z : z + 1, :, :])
+
+    def test_thick_box_never_widens_4747(self, device, dtype, monkeypatch):
+        # Computing both boxes pushes the fused solve kernel of compile(crop_by_boxes3d) past Metal's buffer limit at
+        # B >= 2, so a crop with no one-voxel axis has to stay off the widening.
+        self._skip_unsupported(device, dtype)
+
+        def no_widening(src_box, dst_box):
+            raise AssertionError("a crop with no one-voxel axis has no flat axis to widen")
+
+        monkeypatch.setattr("kornia.geometry.transform.crop3d._widen_one_voxel_axes", no_widening)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), (2, 2, 3), device, dtype)
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, box, (2, 2, 3), align_corners=True)
+
+        self.assert_close(out, volume[..., 1:3, 1:3, 1:4])
+
+    @pytest.mark.parametrize("size", [(1, 2, 3), (2, 2, 3)])
+    def test_integer_volume_still_raises_4747(self, size, device):
+        # A float32 detour would crop it and truncate the samples: bilinear 11.0 returned as 10.
+        volume = torch.arange(120, device=device, dtype=torch.uint8).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), size, device, torch.float32)
+        with pytest.raises(ValueError, match="floating point"):
+            kornia.geometry.transform.crop_and_resize3d(volume, box, size, align_corners=True)
 
     def test_crop_and_resize3d_resizes_the_other_axes_of_a_flat_box_4747(self, device, dtype):
         # The one-voxel depth keeps its place, and the (2, 3) face is resized to (3, 5), as for a 2-voxel-deep box.
