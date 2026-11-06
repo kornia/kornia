@@ -1456,6 +1456,8 @@ class TestAffine2d(BaseTester):
 class TestWarpByBuiltMatrixAutocast(BaseTester):
     """rotate, scale and rotate3d build their matrix and warp by it, both outside a caller's autocast region (#6573)."""
 
+    # Exact: in and out of the region run the same arithmetic on one device.
+
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
         if device.type not in ("cpu", "cuda", "mps"):

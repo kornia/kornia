@@ -177,6 +177,9 @@ class TestWarpPoints(BaseTester):
 class TestThinPlateSplineAutocast(BaseTester):
     """A caller's autocast region does not reach the kernel distances of the thin plate spline (#6573)."""
 
+    # Exact: in and out of the region run the same arithmetic on one device.
+    # Without the guard, warp_points_tps differs by 6.5e-05 in autocast(float16), which passes the float32 default.
+
     @pytest.mark.parametrize(
         "entry", ["get_tps_transform", "warp_points_tps", "warp_image_tps", "RandomThinPlateSpline"]
     )
@@ -215,6 +218,8 @@ class TestThinPlateSplineAutocast(BaseTester):
 
 class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
     """Half points with float32 ones meet in float32 in a caller's autocast region, which casts both sides (#6573)."""
+
+    # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):

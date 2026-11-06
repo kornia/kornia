@@ -1622,6 +1622,8 @@ class TestGetPerspectiveTransformAutocast(BaseTester):
 class TestWarpAutocast(BaseTester):
     """A caller's autocast region does not reach the sampling grid of warp_affine and warp_perspective (#6573)."""
 
+    # Exact: in and out of the region run the same arithmetic on one device.
+
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
         if device.type not in ("cpu", "cuda", "mps"):
@@ -1706,6 +1708,7 @@ class TestWarpAutocast(BaseTester):
         expected = self._warp(op_name, image, matrix)
         with torch.autocast(device.type, dtype=torch.bfloat16, cache_enabled=False):
             traced = torch.jit.trace(lambda x, m: self._warp(op_name, x, m), (image, matrix), check_trace=False)
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
         self.assert_close(traced(image, matrix), expected, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
@@ -1731,6 +1734,7 @@ class TestWarpAutocast(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = op(image, half_matrix)
         assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
         self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
@@ -1745,12 +1749,15 @@ class TestWarpAutocast(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = op(image, matrix)
         assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
         self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
         self.assert_close(op(image, matrix), expected, rtol=1e-3, atol=1e-3)
 
 
 class TestMatrixBuildersAutocast(BaseTester):
     """A caller's autocast region does not reach the products of the affine matrix builders (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
@@ -1891,6 +1898,8 @@ class TestMatrixBuildersAutocast(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = op()
         assert actual.dtype == torch.float32
+        # A compiled graph differs from eager by up to 6.1e-05 on entries near 200, inside the float32 default's relative
+        # tolerance; this keeps the tolerance of the 2D warps, which need it.
         self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
 
 

@@ -32,6 +32,8 @@ from testing.base import BaseTester
 class TestGeometricAugmentationAutocast(BaseTester):
     """A caller's autocast region does not reach the matrix or the sampling grid of these augmentations (#6573)."""
 
+    # Exact: in and out of the region run the same arithmetic on one device.
+
     @pytest.mark.parametrize(
         "name,make",
         [

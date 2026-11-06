@@ -609,6 +609,7 @@ class TestHomographyWarper(BaseTester):
             # the grid was built in the region; the sampling happens outside it
             expected, actual = expected(image), actual(image)
         assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
@@ -636,6 +637,7 @@ class TestHomographyWarper(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = warp(image, homography, (96, 96), **options)
         assert actual.dtype == torch.float32
+        # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
@@ -1113,6 +1115,8 @@ class TestHomographyWarper3D(BaseTester):
 class TestHomographyWarp3dAutocast(BaseTester):
     """A caller's autocast region does not reach the normalized grid of homography_warp3d and warp_grid3d (#6573)."""
 
+    # Exact: in and out of the region run the same arithmetic on one device.
+
     @pytest.mark.parametrize("entry", ["homography_warp3d", "warp_grid3d"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
@@ -1146,6 +1150,8 @@ class TestHomographyWarp3dAutocast(BaseTester):
 
 class TestHomographyWarp3dMixedDtypesAutocast(BaseTester):
     """A half homography with a float32 volume runs in float32 in a caller's autocast region (#6573)."""
+
+    # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
 
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     @pytest.mark.parametrize("matrix_dtype", ["bfloat16", "float16"])

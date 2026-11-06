@@ -625,6 +625,7 @@ class TestCrop3DAffineBoxes(BaseTester):
         with torch.autocast(device.type, dtype=getattr(torch, region_dtype)):
             actual = kornia.geometry.transform.crop_by_boxes3d(volume, src, dst, align_corners=True)
         assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("region_dtype", ["bfloat16", "float16"])
