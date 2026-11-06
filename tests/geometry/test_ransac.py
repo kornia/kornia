@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 import pytest
 import torch
@@ -188,6 +189,245 @@ class TestRANSACHomographyLineSegments(BaseTester):
         model = RANSAC("homography_from_linesegments").to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC("homography_from_linesegments").to(device=device, dtype=dtype))
         self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
+
+
+def _line_mismatch_scene(seed: int, line_image: Optional[int] = 2):
+    """The scene of #6574 in float64: 30 true matches, then 40 mismatches along a line, then 30 random mismatches.
+
+    Pinhole cameras with ``f = 500``, principal point (320, 240), the second rotated by 10 degrees about ``y`` and
+    shifted by (1, 0.1, 0), with 0.3 px noise. The 40 mismatches have their points in image ``line_image`` on
+    ``y = 0.3 x + 100`` and in the other image uniform; ``line_image=None`` leaves them out.
+    """
+    generator = torch.Generator().manual_seed(seed)
+
+    def rand(*shape):
+        return torch.rand(*shape, generator=generator, dtype=torch.float64)
+
+    def noise(n):
+        return 0.3 * torch.randn(n, 2, generator=generator, dtype=torch.float64)
+
+    size = torch.tensor([640.0, 480.0], dtype=torch.float64)
+    K = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+    angle = torch.tensor(10.0, dtype=torch.float64).deg2rad()
+    cosine, sine = angle.cos(), angle.sin()
+    R = torch.tensor([[cosine, 0.0, sine], [0.0, 1.0, 0.0], [-sine, 0.0, cosine]], dtype=torch.float64)
+    t = torch.tensor([1.0, 0.1, 0.0], dtype=torch.float64)
+
+    def project(points):
+        return convert_points_from_homogeneous(points @ K.T)
+
+    X = rand(30, 3) * torch.tensor([4.0, 3.0, 4.0], dtype=torch.float64)
+    X = X + torch.tensor([-2.0, -1.5, 4.0], dtype=torch.float64)
+    true1, true2 = project(X) + noise(30), project(X @ R.T + t) + noise(30)
+    u = rand(40) * 640
+    on_line = torch.stack([u, 0.3 * u + 100], 1) + noise(40)
+    scattered = rand(40, 2) * size
+    random1, random2 = rand(30, 2) * size, rand(30, 2) * size
+    if line_image is None:
+        return torch.cat([true1, random1]), torch.cat([true2, random2])
+    line1, line2 = (on_line, scattered) if line_image == 1 else (scattered, on_line)
+    return torch.cat([true1, line1, random1]), torch.cat([true2, line2, random2])
+
+
+def _rank_one_of_the_line(points: torch.Tensor, line_image: int) -> torch.Tensor:
+    """The unit ``F = l m^T`` for the line fitted through homogeneous ``points`` ``(N, 3)`` of image ``line_image``.
+
+    Its other factor is an arbitrary fixed line: it fits every correspondence with its point in that image on the line.
+    """
+    line = torch.linalg.svd(points)[2][-1]
+    other = torch.tensor([1.0, 1.0, 0.0], dtype=line.dtype, device=line.device)
+    model = torch.outer(other, line) if line_image == 1 else torch.outer(line, other)
+    return model / model.norm()
+
+
+def _rank_ratio_model(ratio: float, dtype, device):
+    """``U diag(1, ratio, 0) V^T``, of ``s2 / s1 = ratio``, for two fixed rotations."""
+    U = torch.tensor([[0.36, 0.48, -0.8], [-0.8, 0.6, 0.0], [0.48, 0.64, 0.6]], dtype=dtype, device=device)
+    V = torch.tensor([[0.6, 0.0, 0.8], [0.0, 1.0, 0.0], [-0.8, 0.0, 0.6]], dtype=dtype, device=device)
+    return U @ torch.diag(torch.tensor([1.0, ratio, 0.0], dtype=dtype, device=device)) @ V.T
+
+
+class TestRANSACFundamentalNearRankOne(BaseTester):
+    """Rank-one matrices fit mismatches along a line in either image (#6574), and must not outvote the true geometry."""
+
+    @pytest.mark.parametrize(
+        "threshold, ratio, rejected",
+        [
+            # Five thresholds of 0.01 are a floor of 0.05 on s2 / s1, r / (1 + r^2) being the compared value.
+            (1e-2, 0.04, True),
+            (1e-2, 0.06, False),
+            # A smaller threshold lowers the floor, as what a model can tell apart shrinks with it.
+            (1e-3, 0.04, False),
+            (1e-3, 0.004, True),
+            # A threshold as wide as the keypoints stops at the limit 0.1 instead of rejecting every model.
+            (1.0, 0.09, True),
+            (1.0, 0.11, False),
+            (1.0, 1.0, False),
+        ],
+    )
+    def test_closed_form_compares_the_singular_values(self, device, dtype, threshold, ratio, rejected):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        model = _rank_ratio_model(ratio, dtype, device)
+        for scale in (1.0, 1e-3):
+            near = ransac_module._fundamental_near_rank_one((scale * model)[None], threshold**2)
+            assert near.tolist() == [rejected]
+
+    def test_tensor_threshold_gives_the_same_answer(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        models = torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.04, 0.06, 0.09, 0.11)])
+        for threshold in (1e-2, 1.0):
+            expected = ransac_module._fundamental_near_rank_one(models, threshold**2)
+            near = ransac_module._fundamental_near_rank_one(
+                models, torch.tensor(threshold**2, dtype=dtype, device=device)
+            )
+            assert torch.equal(near, expected)
+
+    def test_pixel_models_are_tested_in_the_normalized_frame(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        # Square corners of mean radius 100 sqrt(2): Hartley's scale is 0.01, and 1 px is a threshold of 0.01, whose
+        # five thresholds are a floor of 0.05 on s2 / s1 in the frame of these two literal normalizations.
+        corners = [[220.0, 140.0], [420.0, 140.0], [220.0, 340.0], [420.0, 340.0]]
+        kp1 = torch.tensor(corners, device=device, dtype=dtype)
+        kp2 = kp1 + torch.tensor([100.0, 50.0], device=device, dtype=dtype)
+        t1 = torch.tensor([[0.01, 0.0, -3.2], [0.0, 0.01, -2.4], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        t2 = torch.tensor([[0.01, 0.0, -4.2], [0.0, 0.01, -2.9], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        pixel = t2.T @ torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.04, 0.06)]) @ t1
+        near = ransac_module._pixel_fundamental_near_rank_one(kp1, kp2, pixel, 1.0)
+        assert near.tolist() == [True, False]
+
+    def test_non_finite_model_is_not_flagged(self, device):
+        models = torch.full((1, 3, 3), float("nan"), device=device)
+        assert ransac_module._fundamental_near_rank_one(models, 1e-4).tolist() == [False]
+
+    @pytest.mark.parametrize("line_image", [1, 2])
+    @pytest.mark.parametrize(
+        "model_type, options",
+        [
+            ("fundamental", {}),
+            ("fundamental_7pt", {}),
+            ("fundamental_8pt", {}),
+            ("fundamental", {"degensac": True}),
+            ("fundamental", {"local_optimization": "dlt"}),
+            ("fundamental_8pt", {"local_optimization": "dlt"}),
+        ],
+    )
+    def test_mismatches_along_a_line_do_not_outvote_the_true_geometry(
+        self, device, dtype, model_type, options, line_image
+    ):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
+        for seed in range(1 if options.get("local_optimization") == "dlt" else 3):
+            kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, line_image))
+            model, mask = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)(kp1, kp2)
+            mask = mask.cpu()
+            assert model.abs().amax() > 0
+            # On main, 0-6 of the 30 true matches and 38-40 of the 40 along the line.
+            assert mask[:30].sum() >= 27
+            assert mask[30:70].sum() <= 5
+
+    @pytest.mark.parametrize("line_image", [None, 2])
+    def test_the_frame_does_not_depend_on_the_pixel_scale(self, device, line_image):
+        # In pixels s2 / s1 of the true geometry scales with the images (9.4e-3 at 640 x 480): a pixel-space floor would
+        # reject it. Everything scaled together, with the threshold, is the same problem in the normalized frame.
+        results = []
+        kp1, kp2 = (kp.to(device) for kp in _line_mismatch_scene(0, line_image))
+        for scale in (1.0, 16.0, 0.0625):
+            _, mask = RANSAC("fundamental", inl_th=scale, max_iter=50, seed=0)(scale * kp1, scale * kp2)
+            results.append(mask.cpu())
+            assert mask[:30].sum() >= 27
+        assert torch.equal(results[0], results[1])
+        assert torch.equal(results[0], results[2])
+        # The dlt path tests pixel models, in the same frame.
+        _, mask = RANSAC("fundamental", inl_th=16.0, max_iter=50, seed=0, local_optimization="dlt")(
+            16.0 * kp1, 16.0 * kp2
+        )
+        assert mask[:30].sum() >= 27
+
+    @pytest.mark.parametrize("options", [{}, {"local_optimization": "dlt"}, {"degensac": True}])
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt"])
+    def test_scene_without_a_line_keeps_its_estimate(self, monkeypatch, device, dtype, model_type, options):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
+        if model_type == "fundamental_8pt" and "degensac" in options:
+            pytest.skip("DEGENSAC is for seven-point samples")
+        for seed in range(3):
+            kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, None))
+            ransac = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)
+            model, mask = ransac(kp1, kp2)
+            assert mask[:30].sum() >= 27
+            with monkeypatch.context() as patch:
+                patch.setattr(ransac_module, "_FUNDAMENTAL_MIN_RANK_SPREAD", 0.0)
+                untested_model, untested_mask = ransac(kp1, kp2)
+            assert torch.equal(mask, untested_mask)
+            assert torch.equal(model, untested_model)
+
+    @pytest.mark.parametrize("options", [{}, {"local_optimization": "dlt"}])
+    @pytest.mark.parametrize("line_image", [1, 2])
+    def test_correspondences_all_on_a_line_give_no_model(self, device, dtype, line_image, options):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        generator = torch.Generator().manual_seed(0)
+        u = torch.rand(50, generator=generator, dtype=torch.float64) * 640
+        on_line = torch.stack([u, 0.3 * u + 100], 1).to(device, dtype)
+        scattered = (torch.rand(50, 2, generator=generator, dtype=torch.float64) * 480).to(device, dtype)
+        kp1, kp2 = (on_line, scattered) if line_image == 1 else (scattered, on_line)
+        model, mask = RANSAC("fundamental_8pt", inl_th=1.0, max_iter=20, seed=0, **options)(kp1, kp2)
+        assert model.abs().amax() == 0
+        assert not mask.any()
+
+    def test_keypoints_inside_the_threshold_still_get_a_model(self, device, dtype):
+        # The limit of the floor: with unit-square keypoints and the default threshold of 2 px every correspondence is
+        # an inlier of most models, and five thresholds of that frame would otherwise reject all of them.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        generator = torch.Generator().manual_seed(0)
+        kp1 = torch.rand(30, 2, generator=generator, dtype=torch.float64).to(device, dtype)
+        kp2 = torch.rand(30, 2, generator=generator, dtype=torch.float64).to(device, dtype)
+        model, mask = RANSAC("fundamental", seed=0)(kp1, kp2)
+        assert model.abs().amax() > 0
+        assert mask.all()
+
+    def test_verify_counts_no_inliers_for_a_rank_one_pixel_model(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RANSAC scores models in at least float32")
+        kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(0, 2))
+        # l m^T for the mismatches' line, l = (0.3, -1, 100), and a line m through image 1.
+        line = torch.tensor([0.3, -1.0, 100.0], device=device, dtype=dtype)
+        rank_one = torch.outer(line, torch.tensor([1.0, 1.0, -500.0], device=device, dtype=dtype))
+        ransac = RANSAC("fundamental", inl_th=1.0)
+        errors = sampson_epipolar_distance(kp1, kp2, rank_one, squared=False)
+        assert (errors <= 1.0).sum() >= 30
+        _, inliers, _, support = ransac.verify(kp1, kp2, rank_one[None], 1.0)
+        assert support == 0
+        assert not inliers.any()
+
+    @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
+    @pytest.mark.parametrize("line_image", [1, 2])
+    def test_refinement_that_collapses_is_not_selected(self, monkeypatch, device, line_image, loss):
+        # The sampling loop tests minimal models; a refinement must not bring a rank-one model back in. Here each
+        # refinement of one kind returns the exact rank-one matrix of the mismatches' line, which outscores the true
+        # geometry (40 inliers to 30).
+        kp1, kp2 = (kp.to(device, torch.float64) for kp in _line_mismatch_scene(0, line_image))
+        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=50, seed=0)
+        original = ransac._lm_refine
+        calls = []
+
+        def collapse(models, x1, x2, mask, kind, scale2, iters):
+            if kind != loss:
+                return original(models, x1, x2, mask, kind, scale2, iters)
+            calls.append(kind)
+            collapsed = _rank_one_of_the_line((x1 if line_image == 1 else x2)[30:70], line_image)
+            return collapsed.expand(len(models), 3, 3)
+
+        monkeypatch.setattr(ransac, "_lm_refine", collapse)
+        model, mask = ransac(kp1, kp2)
+        assert calls
+        assert model.abs().amax() > 0
+        assert mask[:30].sum() >= 27
+        assert mask[30:70].sum() <= 5
 
 
 class TestRANSACFundamental(BaseTester):
@@ -2173,6 +2413,46 @@ class TestRANSACCompiled(BaseTester):
     compile whole programs from a cold cache are also marked ``slow``, so they run in the scheduled dynamo job
     rather than on every pull request.
     """
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("line_image", [1, 2])
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt"])
+    def test_compile_mismatches_along_a_line_do_not_outvote_the_true_geometry(self, device, model_type, line_image):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        for seed in range(3):
+            kp1, kp2 = (kp.to(device, torch.float32) for kp in _line_mismatch_scene(seed, line_image))
+            model, mask = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, compile=True)(kp1, kp2)
+            assert model.abs().amax() > 0
+            assert mask[:30].sum() >= 27
+            assert mask[30:70].sum() <= 5
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
+    @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
+    def test_compile_refinement_that_collapses_is_not_selected(self, monkeypatch, device, loss):
+        # As test_refinement_that_collapses_is_not_selected, in the graph: a fresh program traces the patched one.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the compiled program supports CPU and CUDA")
+        from kornia.geometry import _ransac_program
+
+        kp1, kp2 = (kp.to(device, torch.float64) for kp in _line_mismatch_scene(0, 2))
+        collapsed = _rank_one_of_the_line(_normalize_correspondences(kp1.cpu(), kp2.cpu(), True)[1][30:70], 2)
+        original = _ransac_program._lm_refine
+
+        def collapse(model_type, models, x1, x2, mask, kind, scale2, iters):
+            if kind != loss:
+                return original(model_type, models, x1, x2, mask, kind, scale2, iters)
+            return collapsed.to(models).expand(models.shape[0], 3, 3)
+
+        monkeypatch.setenv("KORNIA_RANSAC_AOT", "0")
+        monkeypatch.setattr(_ransac_program, "_PROGRAMS", {})
+        monkeypatch.setattr(_ransac_program, "_lm_refine", collapse)
+        model, mask = RANSAC("fundamental", inl_th=1.0, max_iter=50, seed=0, compile=True)(kp1, kp2)
+        assert model.abs().amax() > 0
+        assert mask[:30].sum() >= 27
+        assert mask[30:70].sum() <= 5
 
     def test_graph_mode_rejects_unsupported_configurations(self):
         if torch_version_lt(2, 14, 0):

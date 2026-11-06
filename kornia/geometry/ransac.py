@@ -105,6 +105,14 @@ _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
 # true geometry whose keypoints spread 3.7 thresholds across its epipolar lines is rejected.
 _AFFINE_FUNDAMENTAL_MIN_SPREAD = 2.0
 
+# The models whose rank-at-most-two solvers allow the rank-one matrices that mismatches along a line fit. Such a matrix
+# counts no inliers (_fundamental_near_rank_one) while s2 / s1 in the Hartley-normalized frame is below this many inlier
+# thresholds of that frame, up to the limit. The ground truth of the 170 PhotoTourism benchmark pairs has s2 / s1 of
+# 0.27 or more there, at 21 thresholds or more; the winning models of the line scene in the tests are below 2e-3.
+_RANK_TESTED_MODELS = ("fundamental", "fundamental_7pt", "fundamental_8pt")
+_FUNDAMENTAL_MIN_RANK_SPREAD = 5.0
+_FUNDAMENTAL_RANK_FLOOR_LIMIT = 0.1
+
 
 def _affine_fundamental_ties_both_images(
     kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
@@ -135,6 +143,52 @@ def _affine_fundamental_ties_both_images(
         floor = (_AFFINE_FUNDAMENTAL_MIN_SPREAD * inl_th) ** 2 * normal.square().sum(-1)
         n2, n1 = normal[:, :2], normal[:, 2:]
         return (((n2 @ covariance[:2, :2]) * n2).sum(-1) >= floor) & (((n1 @ covariance[2:, 2:]) * n1).sum(-1) >= floor)
+
+
+def _fundamental_near_rank_one(models: torch.Tensor, threshold: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Return which fundamental matrices ``(M, 3, 3)`` of Hartley-normalized points are nearly of rank one, ``(M,)``.
+
+    ``F = l m^T`` gives ``x2^T F x1 = (l^T x2) (m^T x1) = 0`` for every ``x2`` on the line ``l`` whatever ``x1`` is, and
+    for every ``x1`` on ``m`` whatever ``x2`` is, so mismatches along a line in either image all fit it and can outvote
+    the true geometry. With singular values ``s1 >= s2`` and ``s3 = 0``, what ties the two images together moves a
+    correspondence's distance by about ``s2 / s1`` over keypoints of about unit radius. The test compares that with
+    ``_FUNDAMENTAL_MIN_RANK_SPREAD`` inlier thresholds of the frame (``threshold`` is the squared one), or with
+    ``_FUNDAMENTAL_RANK_FLOOR_LIMIT`` if that is smaller: a threshold as wide as the keypoints fits nearly everything,
+    and without the limit it would reject every model. Pixel coordinates would not do, as the true geometry can have
+    ``s2 / s1 < 0.01`` there.
+
+    No SVD is needed: at rank two ``|cof F|_F = s1 s2`` and ``|F|_F^2 = s1^2 + s2^2``, whose ratio is ``r / (1 + r^2)``
+    for ``r = s2 / s1``. Both are compared squared. A NaN model compares False, and has no inliers anyway.
+    """
+    floor = _FUNDAMENTAL_MIN_RANK_SPREAD**2 * threshold
+    limit = _FUNDAMENTAL_RANK_FLOOR_LIMIT**2
+    # A tensor threshold is the compiled program's, whose graph does not depend on its value.
+    floor = floor.clamp_max(limit) if isinstance(floor, torch.Tensor) else min(floor, limit)
+    # roll would guard on the size of an unbacked batch in the compiled program.
+    cofactors = torch.linalg.cross(models, torch.cat([models[:, :, 1:], models[:, :, :1]], -1), dim=-2)
+    return cofactors.square().sum((-2, -1)) < floor * models.square().sum((-2, -1)).square()
+
+
+def _unnormalizer(transform: torch.Tensor) -> torch.Tensor:
+    """The inverse of a Hartley normalization ``[[a, 0, b], [0, a, c], [0, 0, 1]]``, without a solver."""
+    inverse = transform.clone()
+    inverse[:2, :2] = transform[:2, :2] / transform[0, 0].square()
+    inverse[:2, 2] = -transform[:2, 2] / transform[0, 0]
+    return inverse
+
+
+def _pixel_fundamental_near_rank_one(
+    kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
+) -> torch.Tensor:
+    """:func:`_fundamental_near_rank_one` of pixel models, for ``kp1``, ``kp2`` ``(N, 2)`` and a squared ``inl_th``.
+
+    The frame is the shared-scale one of ``local_optimization="lm"``, whose models the test sees directly.
+    """
+    with _autocast_disabled(kp1.device.type):
+        work = torch.promote_types(torch.promote_types(kp1.dtype, models.dtype), torch.float32)
+        _, _, t1, t2, scales = _normalize_correspondences_core(kp1.to(work), kp2.to(work), True)
+        normalized = _unnormalizer(t2).mT @ models.to(work) @ _unnormalizer(t1)
+        return _fundamental_near_rank_one(normalized, inl_th / scales[0].square())
 
 
 def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
@@ -289,6 +343,12 @@ class RANSAC(nn.Module):
           image's term of the distance must vary over the keypoints by at least two inlier thresholds (a standard
           deviation). A true geometry whose keypoints spread less across its epipolar lines, such as a 15 px patch
           at ``inl_th=2``, is rejected too, and RANSAC returns zeros.
+        - ``"fundamental"``, ``"fundamental_7pt"`` and ``"fundamental_8pt"`` count no inliers for a matrix of nearly
+          rank one. ``F = l m^T`` is the pair of lines ``l`` and ``m``, and fits every mismatch along either of them
+          whatever its point in the other image. With both images' points Hartley-normalized at a shared scale, the
+          ratio of ``F``'s singular values must reach five inlier thresholds of that frame, at most ``0.1``. A true
+          geometry whose view scales differ by much more than ten times can fall below it, and RANSAC then keeps
+          another model.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -832,6 +892,9 @@ class RANSAC(nn.Module):
         if self.model_type == "fundamental_affine":
             # A matrix that (nearly) ignores one image is a line in the other, which a line of mismatches fits.
             inl_mask = inl_mask & _affine_fundamental_ties_both_images(kp1, kp2, models, math.sqrt(inl_th))[:, None]
+        elif self.model_type in _RANK_TESTED_MODELS:
+            # A matrix of (nearly) rank one is a line in each image, which a line of mismatches fits.
+            inl_mask = inl_mask & ~_pixel_fundamental_near_rank_one(kp1[0], kp2[0], models, inl_th)[:, None]
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             # Equivalent to minimizing the truncated squared loss (MSAC), normalized
@@ -1267,6 +1330,7 @@ class RANSAC(nn.Module):
         masks: its stopping rule must use the same inlier decisions as the score, including at rounding boundaries.
         """
         planar = self.model_type == "homography"
+        rank_tested = self.model_type in _RANK_TESTED_MODELS
         n = basis.shape[1] // (3 if planar else 2)
         tile = max(1, max_residuals // max(n, 1)) if models.device.type == "cpu" else max(len(models), 1)
         scores, counts, masks = [], [], []
@@ -1275,6 +1339,8 @@ class RANSAC(nn.Module):
         for start in range(0, len(models), tile):
             errors = residual_fn(models[start : start + tile], basis)
             inliers = errors <= threshold
+            if rank_tested:
+                inliers = inliers & ~_fundamental_near_rank_one(models[start : start + tile], threshold)[:, None]
             support = inliers.sum(1, dtype=count_dtype)
             counts.append(support)
             scores.append(self._lm_score(errors, threshold) if self.score_type == "msac" else support.to(models.dtype))
@@ -1583,6 +1649,10 @@ class RANSAC(nn.Module):
             candidates = torch.cat([refits, candidates])
         errors = self._lm_errors(candidates, x1_host, x2_host)
         inliers = errors <= threshold
+        # A refit can collapse a model that the sampling loop let through.
+        rank_tested = self.model_type in _RANK_TESTED_MODELS
+        if rank_tested:
+            inliers = inliers & ~_fundamental_near_rank_one(candidates, threshold)[:, None]
         scores = self._lm_score(errors, threshold).masked_fill(inliers.sum(1) <= m, -1.0)
         best = int(scores.argmax())
         if scores[best] < 0:
@@ -1593,6 +1663,8 @@ class RANSAC(nn.Module):
             mask = inliers[None]
             refined = self._lm_refine(model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, self.refine_iters)
             refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
+            if rank_tested:
+                refined_inliers = refined_inliers & ~_fundamental_near_rank_one(refined, threshold)[0]
             if self._is_supported(int(refined_inliers.sum())):
                 model, inliers = refined[0], refined_inliers
         if essential:
