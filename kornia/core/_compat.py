@@ -142,6 +142,7 @@ def scaled_dot_product_attention(
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
+    kernel_is_faulty: bool = _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY,
 ) -> torch.Tensor:
     """Compute scaled dot-product attention around the faulty float64 kernel of torch 2.5 on Windows.
 
@@ -160,6 +161,8 @@ def scaled_dot_product_attention(
         dropout_p: Dropout probability of the attention weights.
         is_causal: Whether to apply a causal mask, in which case ``attn_mask`` must be ``None``.
         scale: Scale of the scores, ``1 / sqrt(D)`` if ``None``.
+        kernel_is_faulty: Whether this platform has the faulty kernel. A default argument and not a global read, because
+            TorchScript cannot read a Python global. Leave the default.
 
     Returns:
         Attention output with shape ``(..., N_q, D_v)``.
@@ -167,12 +170,7 @@ def scaled_dot_product_attention(
     See Also:
         :func:`torch.nn.functional.scaled_dot_product_attention`: the function this calls, for the full contract.
     """
-    if (
-        _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
-        and query.ndim == 4
-        and query.dtype == torch.float64
-        and query.device.type == "cpu"
-    ):
+    if kernel_is_faulty and query.ndim == 4 and query.dtype == torch.float64 and query.device.type == "cpu":
         return F.scaled_dot_product_attention(
             query.unsqueeze(0),
             key.unsqueeze(0),

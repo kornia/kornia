@@ -20,6 +20,7 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
@@ -219,6 +220,11 @@ def test_lightglue_leaves_global_flash_sdp_setting_alone(flash):
 # ---------------------------------------------------------------------------
 
 
+def _simulate_faulty_platform(monkeypatch) -> None:
+    defaults = scaled_dot_product_attention.__defaults__
+    monkeypatch.setattr(scaled_dot_product_attention, "__defaults__", (*defaults[:-1], True))
+
+
 class TestAttention(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("legacy_windows", [False, True])
@@ -253,7 +259,7 @@ class TestAttention(BaseTester):
         attention = Attention(allow_flash=True)
         if legacy_windows:
             # Exercise the real fallback on every host, as well as the native platform selection above.
-            monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", True)
+            _simulate_faulty_platform(monkeypatch)
         backend_flags = (
             torch.backends.cuda.flash_sdp_enabled(),
             torch.backends.cuda.math_sdp_enabled(),
@@ -275,7 +281,7 @@ class TestAttention(BaseTester):
     def test_windows_float64_fallback_gradcheck(self, device, monkeypatch, masked):
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
-        monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", True)
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
@@ -284,7 +290,7 @@ class TestAttention(BaseTester):
     def test_dynamo_windows_float64_fallback(self, device, monkeypatch, torch_optimizer, optimizer_backend):
         if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
             pytest.skip("the fallback needs CPU torch.compile coverage")
-        monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", True)
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device)
@@ -297,7 +303,7 @@ class TestAttention(BaseTester):
         # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
-        monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", True)
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device)

@@ -37,6 +37,10 @@ import torch
 import kornia
 import kornia.utils
 from kornia.core._compat import deprecated, scaled_dot_product_attention
+from kornia.feature.dedode.transformer.layers.attention import Attention as DeDoDeAttention
+from kornia.models.paligemma.configuration_paligemma import PaliGemmaConfig
+from kornia.models.paligemma.modeling_paligemma import GemmaAttention
+from kornia.models.qwen25.vision import Qwen25VisionAttention
 
 from testing.base import BaseTester
 
@@ -846,7 +850,8 @@ class TestScaledDotProductAttention(BaseTester):
     @staticmethod
     def _simulate_the_fault(monkeypatch, faulty_platform: bool) -> list[int]:
         # Reproduce the kernel's fault on any host: a 4-D float64 CPU query gives NaN, as it selects the fused kernel.
-        monkeypatch.setattr("kornia.core._compat._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY", faulty_platform)
+        defaults = scaled_dot_product_attention.__defaults__
+        monkeypatch.setattr(scaled_dot_product_attention, "__defaults__", (*defaults[:-1], faulty_platform))
         real = torch.nn.functional.scaled_dot_product_attention
         ndims = []
 
@@ -882,7 +887,7 @@ class TestScaledDotProductAttention(BaseTester):
             (True, (1, 2, 3, 4), torch.float64, 5),
             (True, (1, 2, 3, 4), torch.float32, 4),
             (True, (2, 3, 4), torch.float64, 3),
-            (False, (1, 2, 3, 4), torch.float32, 4),
+            (False, (1, 2, 3, 4), torch.float64, 4),
         ],
     )
     def test_only_the_faulty_input_is_rerouted(self, device, monkeypatch, faulty_platform, shape, dtype, expected_ndim):
@@ -892,6 +897,47 @@ class TestScaledDotProductAttention(BaseTester):
         q = torch.rand(*shape, device=device, dtype=dtype)
         assert scaled_dot_product_attention(q, q, q).shape == q.shape
         assert ndims == [expected_ndim]
+
+    def test_other_devices_are_not_rerouted(self, monkeypatch):
+        ndims = self._simulate_the_fault(monkeypatch, faulty_platform=True)
+        q = torch.empty(1, 2, 3, 4, device="meta", dtype=torch.float64)
+        scaled_dot_product_attention(q, q, q)
+        assert ndims == [4]
+
+    @pytest.mark.parametrize("faulty_platform", [False, True])
+    def test_options_reach_torch(self, monkeypatch, faulty_platform):
+        self._simulate_the_fault(monkeypatch, faulty_platform)
+        seen = []
+
+        def spy(query, key, value, **kwargs):
+            seen.append(kwargs)
+            return query
+
+        monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", spy)
+        q = torch.rand(1, 2, 3, 4, dtype=torch.float64)
+        mask = torch.ones(3, 3, dtype=torch.bool)
+        scaled_dot_product_attention(q, q, q, attn_mask=mask, dropout_p=0.5, is_causal=True, scale=0.25)
+        assert seen == [{"attn_mask": mask, "dropout_p": 0.5, "is_causal": True, "scale": 0.25}]
+
+    @pytest.mark.parametrize(
+        "make_module",
+        [
+            lambda: DeDoDeAttention(dim=16, num_heads=4),
+            lambda: Qwen25VisionAttention(16, 4),
+            lambda: GemmaAttention(PaliGemmaConfig(), 0),
+        ],
+        ids=["dedode", "qwen25", "gemma"],
+    )
+    def test_scripted_callers_compile(self, make_module):
+        # TorchScript cannot read a Python global, whatever its value: the helper takes the flag as a default argument.
+        torch.jit.script(make_module().eval())
+
+    @pytest.mark.parametrize("faulty_platform", [False, True])
+    def test_scripted_matches_eager(self, faulty_platform):
+        # Pass the flag: TorchScript keeps the first compile of a function, so patching the default would not reach it.
+        q, k, v = (torch.rand(2, 3, 5, 8, dtype=torch.float64) for _ in range(3))
+        actual = torch.jit.script(scaled_dot_product_attention)(q, k, v, kernel_is_faulty=faulty_platform)
+        self.assert_close(actual, scaled_dot_product_attention(q, k, v, kernel_is_faulty=faulty_platform))
 
     def test_gradcheck(self, device, monkeypatch):
         if device.type != "cpu":
