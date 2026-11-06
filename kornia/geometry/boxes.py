@@ -1013,7 +1013,7 @@ class Boxes:
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
-        if self._padding is not None and is_batched:
+        if self._padding is not None:
             # Padding is not a box, even when its coordinates have been changed by a transform.
             clipped_boxes_xyxy.masked_fill_(_to_device_nonblocking(self._padding, device)[..., None], 0)
 
