@@ -40,19 +40,19 @@ __all__ = ["VideoSequential"]
 
 
 class VideoSequential(ImageSequential):
-    r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
+    r"""Apply an image augmentation sequence to a video while optionally sharing draws across frames.
+
+    ``output = VideoSequential(*modules, data_format=...)(video)`` accepts ``(B, T, C, H, W)`` by default or
+    ``(B, C, T, H, W)`` with ``data_format="BCTHW"``, flattens it for the child modules, then restores that layout.
+    ``same_on_frame=True`` shares supported augmentation draws across each clip's frames; use
+    :class:`~kornia.augmentation.container.AugmentationSequential` to transform a video with aligned annotations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
-
-    `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
-    By default, `VideoSequential` enabled `same_on_frame` to make sure the same augmentations happen
-    across temporal dimension. Meanwhile, it will not affect other augmentation behaviours like the
-    settings on `same_on_batch`, etc.
 
     Args:
         *args: a list of augmentation module.
         data_format: only BCTHW and BTCHW are supported.
-        same_on_frame: apply the same transformation across the channel per frame.
+        same_on_frame: share each clip's sampled transform parameters across its temporal frames.
         random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
@@ -66,17 +66,19 @@ class VideoSequential(ImageSequential):
         - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
           (the default) and ``"BCTHW"``, case-insensitively; any other spelling raises ``AssertionError``.
           The output keeps the input layout.
-        - ``same_on_frame`` is ``True`` by default, so one draw is shared by every frame of a clip and the
-          clip stays temporally consistent. With ``same_on_frame=False`` each frame is drawn independently.
+        - ``same_on_frame`` is ``True`` by default, so supported Kornia augmentation parameters are shared by every
+          frame of a clip. With ``same_on_frame=False`` each frame draws parameters independently. It does not
+          synchronize randomness inside ordinary ``nn.Module`` children such as ``Dropout``. Nested
+          :class:`ImageSequential` and other ``SequentialBase`` children require ``same_on_frame=False``.
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
           no ``data_keys`` and no ``.transform_matrix`` attribute. Register a ``VideoSequential`` as a child of
           :class:`~kornia.augmentation.container.AugmentationSequential` to augment video masks, boxes and keypoints
           alongside the clip. For video boxes, use ``bbox`` vertices with shape ``(B, T, N, 4, 2)``;
           coordinate keys ``bbox_xyxy`` and ``bbox_xywh`` do not accept ``(B, T, N, 4)`` tensors.
 
-    Note:
-        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
-        Those transformations in ``kornia.geometry`` will not be taken into account.
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: applies the same kind of sequence to images.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: transforms a video with aligned annotations.
 
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each

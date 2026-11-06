@@ -59,24 +59,23 @@ def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device
 
 
 class PatchSequential(ImageSequential):
-    r"""Container for performing patch-level image data augmentation.
+    r"""Apply image transforms independently to a regular grid of image patches.
+
+    ``output = PatchSequential(*modules, grid_size=...)(input)`` splits each image into a grid, runs the configured
+    children on the patch batch, then joins the patches.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
     .. image:: _static/img/PatchSequential.png
 
-    PatchSequential breaks input images into patches by a given grid size, which will be resembled back
-    afterwards.
-
-    Different image processing and augmentation methods will be performed on each patch region as
-    in :cite:`lin2021patch`.
+    Processing runs on each patch region as in :cite:`lin2021patch`.
 
     Args:
         *args: a list of processing modules.
         grid_size: positive ``(rows, columns)`` of patches in each image.
         padding: ``"same"`` temporarily zero-pads to a multiple of ``grid_size`` and removes the added
             border after augmentation, preserving the input spatial size. ``"valid"`` crops the remainder
-            before augmentation and keeps the cropped spatial size. Padding and cropping are centred;
+            before augmentation and keeps the cropped spatial size. Padding and cropping are centered;
             an odd extra pixel is placed on the right or bottom. Both modes preserve the batch size.
             Geometric transforms can move the temporary zero border into the retained image; removing
             the added border does not undo that movement.
@@ -124,6 +123,10 @@ class PatchSequential(ImageSequential):
         child reads the patches at other positions, a flip for example, after an earlier child has written them
         (`pytorch/pytorch#198270 <https://github.com/pytorch/pytorch/issues/198270>`__). Eager execution,
         the ``aot_eager`` backend and torch 2.15 or later are not affected.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: applies its child sequence to whole images.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: transforms images with aligned annotations.
 
     Examples:
         >>> import kornia.augmentation as K

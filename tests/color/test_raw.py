@@ -18,7 +18,6 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 
@@ -159,7 +158,7 @@ class TestRawToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
@@ -204,7 +203,7 @@ class TestRgbToRaw(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

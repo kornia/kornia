@@ -29,6 +29,26 @@ from kornia.geometry.transform import elastic_transform2d
 class RandomElasticTransform(AugmentationBase2D):
     r"""Warp images with a random elastic displacement field, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomElasticTransform(kernel_size, sigma, alpha, ...)(input)`` displaces pixels in selected images
+    of shape ``(B, C, H, W)``.
+
+    Args:
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
+        sigma: The standard deviation of the Gaussian in the y and x directions,
+          respectively. Larger sigma results in smaller pixel displacements.
+        alpha: The scaling factor that controls the intensity of the deformation
+          in the x and y directions, respectively -- the opposite order to ``kernel_size`` and ``sigma``.
+        align_corners: Interpolation flag used by `grid_sample`.
+        resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
+        padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation to each sample.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
+
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
+
     .. image:: _static/img/RandomElasticTransform.png
 
     .. note::
@@ -47,22 +67,8 @@ class RandomElasticTransform(AugmentationBase2D):
         the ``align_corners`` split across classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are
         listed on :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
-    Args:
-        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
-        sigma: The standard deviation of the Gaussian in the y and x directions,
-          respectively. Larger sigma results in smaller pixel displacements.
-        alpha: The scaling factor that controls the intensity of the deformation
-          in the x and y directions, respectively -- the opposite order to ``kernel_size`` and ``sigma``.
-        align_corners: Interpolation flag used by `grid_sample`.
-        resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
-        padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
-        same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation to each sample.
-        keepdim: whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False).
-
-    .. note::
-        This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
+    See Also:
+        - :class:`RandomThinPlateSpline`: warps from sampled thin-plate-spline control points.
 
     Examples:
         >>> import torch

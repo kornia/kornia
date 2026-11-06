@@ -24,10 +24,10 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation.random_generator import PosterizeGenerator, RectangleEraseGenerator
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError, BaseError, ShapeError
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -367,8 +367,7 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert torch.equal(out[1], image[1])
         out.sum().backward()
         assert torch.isfinite(image.grad).all()
-        # Exclude x=1, where adjust_gamma's clamp derivative differs across torch releases.
-        self.assert_close(image.grad[0, ..., :2], 0.5 / image[0, ..., :2].detach().sqrt())
+        self.assert_close(image.grad[0], 0.5 / image[0].detach().sqrt())
         self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
 
     @pytest.mark.parametrize(
@@ -1624,6 +1623,74 @@ class TestIntensityInputClamping(BaseTester):
         self.assert_close(out, image.detach())
         out.sum().backward()
         self.assert_close(image.grad, torch.ones_like(image))
+
+    # The kernels of these classes clamp their result with the same helper as the input clamp (#6296), so a neutral
+    # factor leaves the identity gradient at exact 0 and 1 on every torch version.
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            lambda: K.RandomBrightness((1.0, 1.0), p=1.0),
+            lambda: K.RandomContrast((1.0, 1.0), p=1.0),
+            lambda: K.RandomGamma((1.0, 1.0), (1.0, 1.0), p=1.0),
+            lambda: K.RandomSharpness((1.0, 1.0), p=1.0),
+            lambda: K.RandomRGBShift(0.0, 0.0, 0.0, p=1.0),
+            lambda: K.RandomLinearIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomLinearCornerIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomGaussianIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomPlasmaBrightness(intensity=(0.0, 0.0), p=1.0),
+            lambda: K.RandomPlasmaShadow(shade_intensity=(0.0, 0.0), p=1.0),
+        ],
+        ids=[
+            "RandomBrightness",
+            "RandomContrast",
+            "RandomGamma",
+            "RandomSharpness",
+            "RandomRGBShift",
+            "RandomLinearIllumination",
+            "RandomLinearCornerIllumination",
+            "RandomGaussianIllumination",
+            "RandomPlasmaBrightness",
+            "RandomPlasmaShadow",
+        ],
+    )
+    def test_convention_kernel_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype, factory):
+        row = torch.tensor([0.0, 0.25, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        out = factory()(image)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    # RandomPlasmaContrast has no neutral factor, but a replayed flat map of 0.25 gives a contrast of 1, which returns
+    # the input with its exact 0 and 1 pixels on the bounds of the clamp.
+    def test_plasma_contrast_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        aug = K.RandomPlasmaContrast(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["plasma"] = torch.full_like(params["plasma"], 0.25)
+        out = aug(image, params=params)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    # RandomSnow at brightness 1 returns its input, and a black pixel's lightness stays on the bound of the clamp. At a
+    # grey pixel the max/min tie of the HLS round trip sends the gradient to one channel, so compare the sum.
+    def test_snow_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        out = K.RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(1.0, 1.0), p=1.0)(image)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad.sum(1), torch.full_like(grad[:, 0], 3.0))
+
+    # ColorJitter's brightness multiplies: black stays on its bound and keeps the factor, white leaves the range.
+    def test_color_jitter_keeps_the_factor_at_a_black_pixel_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        (grad,) = torch.autograd.grad(K.ColorJitter(brightness=(1.5, 1.5), p=1.0)(image).sum(), image)
+        expected = image.new_tensor([1.5, 1.5, 1.5, 0.0]).view(1, 1, 1, 4).expand_as(image)
+        self.assert_close(grad, expected)
 
     # Without a recorded gradient the input clamp is a single torch.clamp; with one it selects the input where the
     # clamp left it unchanged. Both must return the same values, and the recorded gradient is 1 inside [0, 1]

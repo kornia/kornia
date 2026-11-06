@@ -19,7 +19,11 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
-    r"""Base class for custom 3D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a 3D coordinate transform, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = MyAugmentation(...)(input)`` warps volumes of shape ``(B, C, D, H, W)`` once a subclass implements
+    ``compute_transformation`` and ``apply_transform``. The 3D base does not support image inversion.
+    Use :class:`IntensityAugmentationBase3D` for an operation that changes voxel values without moving coordinates.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 
@@ -44,5 +48,8 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
           roundoff in every floating dtype: a ``float16``/``bfloat16`` warp builds its grid and samples in
           ``float32`` on every device (`#5751 <https://github.com/kornia/kornia/issues/5751>`_,
           `#5814 <https://github.com/kornia/kornia/issues/5814>`_).
+
+    See Also:
+        - :class:`AugmentationBase3D`: base class for general 3D augmentations.
 
     """

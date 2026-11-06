@@ -609,6 +609,40 @@ class TestCrop3DAffineBoxes(BaseTester):
         with pytest.raises(AssertionError, match="affine map"):
             kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
 
+    @pytest.mark.parametrize("region_dtype", ["bfloat16", "float16"])
+    def test_crop_by_boxes3d_takes_fractional_corners_in_a_region_6573(self, region_dtype, device):
+        # The two matrix products of the affine check ran in the region's dtype: in bfloat16 their rounding alone failed
+        # the check on boxes with fractional corners, which pass outside it.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and region_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = torch.rand(1, 1, 64, 64, 64, generator=torch.Generator().manual_seed(0)).to(device)
+        edges = ((11, 0, 0), (0, 7, 0), (0, 0, 5))
+        src = self._box((13.37, 27.81, 41.59), edges, device, torch.float32)
+        dst = self._box((0, 0, 0), edges, device, torch.float32)
+        expected = kornia.geometry.transform.crop_by_boxes3d(volume, src, dst, align_corners=True)
+        with torch.autocast(device.type, dtype=getattr(torch, region_dtype)):
+            actual = kornia.geometry.transform.crop_by_boxes3d(volume, src, dst, align_corners=True)
+        assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("region_dtype", ["bfloat16", "float16"])
+    def test_crop_by_boxes3d_still_rejects_in_a_region_6573(self, region_dtype, device):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and region_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = self._coordinate_volume(device, torch.float32)
+        cube = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, torch.float32)
+        skewed = self._skewed_box(device, torch.float32)
+        with (
+            torch.autocast(device.type, dtype=getattr(torch, region_dtype)),
+            pytest.raises(AssertionError, match="affine map"),
+        ):
+            kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
+
 
 class TestCrop3DOneVoxelAxis(BaseTester):
     # A one-voxel axis makes the eight box corners coplanar, and solving the homography from them raised

@@ -34,17 +34,16 @@ from kornia.geometry.vector import Vector2
 
 
 def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
-    z_shape = r.z.shape
-    if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        # check_se2_t_shape
-        is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
-        is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
-        if not (is_batch_shape or is_single_shape):
-            raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
-    else:
+    KORNIA_CHECK_SHAPE(t, ["*", "2"])
+    r_batch = r.z.shape
+    t_batch = t.shape[:-1]
+    try:
+        torch.broadcast_shapes(r_batch, t_batch)
+    except RuntimeError:
         raise ValueError(
-            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
-        )
+            f"Expected a translation whose batch broadcasts with the rotation batch {tuple(r_batch)}. "
+            f"Got translation of shape {tuple(t.shape)}."
+        ) from None
 
 
 def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
@@ -140,16 +139,19 @@ class Se2(nn.Module):
 
         Args:
             rotation: So2 group encompassing a rotation.
-            translation: translation torch.Tensor with the shape of ``(B, 2)``, or a Vector2 wrapping one; the
-                tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
+            translation: translation torch.Tensor with shape ``(B, 2)``, or ``(2,)`` for an unbatched translation,
+                or a Vector2 wrapping one; the tensor is what gets stored. Multidimensional batch shapes ``(*, 2)``
+                are also accepted. The rotation and translation batch shapes must be broadcastable (an unbatched side
+                may broadcast against a batched side). Incompatible batch shapes raise a ``ValueError`` at
+                construction time. It must have the rotation's dtype (``z``'s real dtype) and device;
                 a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
                 is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
                 translation at the rotation's precision, and ``inverse`` and ``g * g`` return a translation of the
-                rotation's real dtype. It must be batched exactly when the rotation is (``ValueError`` otherwise), but
-                its batch size is not checked against the rotation's: a mismatch fails later, in ``matrix()``
-                (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
+                rotation's real dtype.
 
         Raises:
+            ValueError: if translation shape does not end in 2, or rotation and translation batch shapes cannot be
+                broadcast.
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
                 dtype differs from the rotation's (``log`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
@@ -180,15 +182,30 @@ class Se2(nn.Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx: int | slice) -> Se2:
-        return Se2(self._rotation[idx], self._translation[idx])
+        r = self._rotation
+        t = self._translation
+        r_batch = r.z.shape
+        t_batch = t.shape[:-1]
+        if len(r_batch) == 0 and len(t_batch) == 0:
+            return Se2(r[idx], t[idx])
+        r_b = (1,) if len(r_batch) == 0 else r_batch
+        t_b = (1,) if len(t_batch) == 0 else t_batch
+        b_batch = torch.broadcast_shapes(r_b, t_b)
+        z = r.z if r.z.shape == b_batch else r.z.expand(b_batch)
+        t_exp = t if t.shape[:-1] == b_batch else t.expand(b_batch + (2,))
+        return Se2(So2(z[idx]), t_exp[idx])
 
     def _mul_se2(self, right: Se2) -> Se2:
         so2 = self.so2
         t = self.t
         _r = so2 * right.so2
+        z = so2.z
+        real, imag = z.real, z.imag
+        x, y = right.t[..., 0], right.t[..., 1]
+        rot_t = torch.stack((real * x - imag * y, imag * x + real * y), -1)
         # the rotation's real dtype: beside a complex32 rotation, a bfloat16 translation (what ``.bfloat16()``
         # leaves) would otherwise be promoted to float32, which the constructor rejects
-        _t = (t + so2 * right.t).to(_r.z.real.dtype)
+        _t = (t + rot_t).to(_r.z.real.dtype)
         return Se2(_r, _t)
 
     @overload
@@ -215,8 +232,9 @@ class Se2(nn.Module):
             KORNIA_CHECK_TYPE(right, Se2)
             return self._mul_se2(right)
         if isinstance(right, (Vector2, torch.Tensor)):
-            # _check_se2_r_t_shape(so2, risght)
-            return so2 * right + t
+            b_batch = torch.broadcast_shapes(so2.z.shape, t.shape[:-1])
+            rot = so2 if so2.z.shape == b_batch else So2(so2.z.expand(b_batch))
+            return rot * right + t
         raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
@@ -314,6 +332,8 @@ class Se2(nn.Module):
         V_inv = torch.stack((row0, row1), -2)
         # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
         upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
+        if theta.shape != upsilon.shape[:-2]:
+            theta = theta.expand(upsilon.shape[:-2])
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -414,7 +434,13 @@ class Se2(nn.Module):
 
         """
         r_matrix = self.r.matrix()
-        rt = torch.cat((r_matrix, self.t.to(r_matrix.dtype)[..., None]), -1)
+        b_batch = torch.broadcast_shapes(r_matrix.shape[:-2], self.t.shape[:-1])
+        if r_matrix.shape[:-2] != b_batch:
+            r_matrix = r_matrix.expand(b_batch + (2, 2))
+        t = self.t.to(r_matrix.dtype)
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
+        rt = torch.cat((r_matrix, t[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -455,8 +481,12 @@ class Se2(nn.Module):
 
         """
         r_inv: So2 = self.r.inverse()
+        z = r_inv.z
+        real, imag = z.real, z.imag
+        x, y = -self.t[..., 0], -self.t[..., 1]
+        t_inv = torch.stack((real * x - imag * y, imag * x + real * y), -1)
         # the rotation's real dtype, as in ``__mul__``
-        return Se2(r_inv, (r_inv * (-1 * self.t)).to(r_inv.z.real.dtype))
+        return Se2(r_inv, t_inv.to(r_inv.z.real.dtype))
 
     @classmethod
     def random(
@@ -535,6 +565,9 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
+        b_batch = rt.shape[:-2]
         t = self.t
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
         rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

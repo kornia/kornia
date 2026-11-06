@@ -215,6 +215,9 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
+        - a float16 or bfloat16 image builds the map, distorts it and samples in float32, with ``K`` and ``dist``
+          cast to float32, and returns the image dtype; in half precision the pixel coordinates themselves round to
+          half pixels (float16, from 512) or whole pixels (bfloat16, from 128).
 
     Args:
         image: Input image with shape ``(*, C, H, W)``.
@@ -266,8 +269,14 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)
 
+    # Pixel coordinates reach the image size, where float16 rounds them to half pixels from 512 and bfloat16 to whole
+    # pixels from 128, so a half image builds and distorts its map and samples in float32, as the warps do.
+    work_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    if work_dtype != image.dtype:
+        K, dist = K.to(work_dtype), dist.to(work_dtype)
+
     # Create point coordinates for each pixel of the image
-    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
+    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, work_dtype)
     pts = xy_grid.reshape(-1, 2)  # (rows*cols)x2 matrix of pixel coordinates
 
     # Distort points and define maps
@@ -276,6 +285,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image.reshape(B, channels, rows, cols), mapx, mapy, align_corners=True)
+    out = remap(image.reshape(B, channels, rows, cols).to(work_dtype), mapx, mapy, align_corners=True)
 
-    return out.view_as(image)
+    return out.to(image.dtype).view_as(image)

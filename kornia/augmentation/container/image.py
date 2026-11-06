@@ -56,7 +56,12 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
 
 
 class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
-    r"""nn.Sequential for creating kornia image processing pipeline.
+    r"""Chain image augmentations and image-processing modules on one image tensor.
+
+    ``output = ImageSequential(*modules)(input)`` runs selected children on an image tensor and stores their order and
+    sampled Kornia augmentation parameters in ``_params`` for replay. Ordinary ``nn.Module`` children also run,
+    but their internal randomness is not recorded; use :class:`~kornia.augmentation.container.AugmentationSequential`
+    when masks, boxes or keypoints must receive the matching geometric transform.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -104,6 +109,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     Note:
         The output cache retains a detached reference to the last tensor output and is omitted when pickled.
         Setting ``disable_features = True`` clears it.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: also transforms aligned masks and annotations.
+        - :class:`~kornia.augmentation.container.PatchSequential`: runs transforms on a regular patch grid.
+        - :class:`~kornia.augmentation.container.VideoSequential`: runs transforms on videos.
 
     Examples:
         >>> _ = torch.manual_seed(77)

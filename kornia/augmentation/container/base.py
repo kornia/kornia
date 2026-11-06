@@ -15,6 +15,15 @@
 # limitations under the License.
 #
 
+"""Extend sequential augmentation containers with child settings and data handlers.
+
+Which class to use:
+
+- ``BasicSequentialBase`` names child modules and stores the recorded parameter list.
+- ``SequentialBase`` propagates batch and output-shape settings to compatible children.
+- ``ImageSequentialBase`` provides image, mask, box and keypoint dispatch methods for concrete containers.
+"""
+
 from collections import OrderedDict
 from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -41,10 +50,19 @@ __all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]
 
 
 class BasicSequentialBase(nn.Sequential):
-    r"""BasicSequential for creating kornia modulized processing pipeline.
+    r"""Provide child naming and recorded parameters for Kornia sequential containers.
+
+    Subclasses construct ``BasicSequentialBase(*modules)`` and use its named children with a list of
+    :class:`~kornia.augmentation.container.params.ParamItem` records. Use
+    :class:`~kornia.augmentation.container.ImageSequential` or
+    :class:`~kornia.augmentation.container.AugmentationSequential` as an application-facing container.
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.base.SequentialBase`: adds sequence-wide child settings.
+        - :class:`~kornia.augmentation.container.ImageSequential`: is the public image-only container.
 
     """
 
@@ -161,7 +179,11 @@ class BasicSequentialBase(nn.Sequential):
 
 
 class SequentialBase(BasicSequentialBase):
-    r"""SequentialBase for creating kornia modulized processing pipeline.
+    r"""Propagate batch and shape flags through a Kornia sequential container.
+
+    A subclass constructs ``SequentialBase(*modules, same_on_batch=..., keepdim=...)``; the supplied non-``None``
+    flags override compatible child augmentations, including nested sequential containers. Use
+    :class:`~kornia.augmentation.container.ImageSequential` to process an image tensor.
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
@@ -169,6 +191,10 @@ class SequentialBase(BasicSequentialBase):
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.base.BasicSequentialBase`: provides child and parameter bookkeeping.
+        - :class:`~kornia.augmentation.container.base.ImageSequentialBase`: supplies data-type-specific operations.
 
     """
 
@@ -237,10 +263,16 @@ class SequentialBase(BasicSequentialBase):
 
 
 class ImageSequentialBase(SequentialBase):
-    """Provide a base class for sequential image-only augmentations.
+    """Define image, mask, box and keypoint operations for a sequential container.
 
-    This class handles the logic for applying a series of transformations
-    sequentially to input tensors while managing the transformation matrices.
+    Subclasses provide child selection and parameter sampling; these methods apply the resulting parameter records to
+    their corresponding data type. Use :class:`~kornia.augmentation.container.AugmentationSequential` for public
+    multi-input augmentation, or :class:`~kornia.augmentation.container.ImageSequential` for images only.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: processes image tensors through its children.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: applies the operations to aligned data types.
+
     """
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:

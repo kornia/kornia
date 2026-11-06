@@ -51,6 +51,7 @@ import pytest
 import kornia
 
 from testing.docstring_rollout import (
+    CATALOG_EXCEPTIONS,
     CATALOG_NAMESPACES,
     DOCSTRING_MODULES,
     EXCLUDED_PACKAGES,
@@ -151,6 +152,7 @@ def test_rollout_lists_are_real() -> None:
     lists = {
         "DOCSTRING_MODULES": DOCSTRING_MODULES,
         "CATALOG_NAMESPACES": CATALOG_NAMESPACES,
+        "CATALOG_EXCEPTIONS": CATALOG_EXCEPTIONS,
     }
     for list_name, entries in lists.items():
         for entry in entries:
@@ -162,6 +164,10 @@ def test_rollout_lists_are_real() -> None:
             importlib.import_module(entry)
     for entry in CATALOG_NAMESPACES:
         assert hasattr(importlib.import_module(entry), "__all__"), f"CATALOG_NAMESPACES entry {entry!r} has no __all__"
+    for entry, reason in CATALOG_EXCEPTIONS.items():
+        assert entry not in CATALOG_NAMESPACES, f"{entry!r} is both catalogued and excepted"
+        assert reason.strip(), f"CATALOG_EXCEPTIONS entry {entry!r} needs a reason"
+        assert catalog_required(entry, CATALOG_NAMESPACES), f"{entry!r} no longer needs a catalog exception"
     converted = {qualified for qualified, _ in CONVERTED}
     for key, reason in SEE_ALSO_EXCEPTIONS.items():
         assert key in converted, f"SEE_ALSO_EXCEPTIONS key {key!r} is not a converted object"
@@ -302,11 +308,19 @@ def test_rollout_progress() -> None:
     """Print, per in-scope package, the converted objects and catalogued namespaces (read it with ``-s``)."""
     objects = [obj for obj, _ in rollout_objects(REGISTRY).values()]
     namespaces = modules_declaring_all()
-    print("\npackage        converted objects   catalogued namespaces")
+    print("\npackage        converted objects   catalogued namespaces   excepted namespaces")
     for package in IN_SCOPE_PACKAGES:
         prefix = f"kornia.{package}"
         in_package = [obj for obj in objects if covered(obj.__module__, [prefix])]
         done = [obj for obj in in_package if covered(obj.__module__, DOCSTRING_MODULES)]
-        required = [ns for ns in namespaces if covered(ns, [prefix]) and catalog_required(ns, CATALOG_NAMESPACES)]
+        excepted = [ns for ns in CATALOG_EXCEPTIONS if covered(ns, [prefix])]
+        required = [
+            ns
+            for ns in namespaces
+            if ns not in CATALOG_EXCEPTIONS and covered(ns, [prefix]) and catalog_required(ns, CATALOG_NAMESPACES)
+        ]
         catalogued = [ns for ns in required if ns in CATALOG_NAMESPACES]
-        print(f"{package:<14} {len(done):>4} / {len(in_package):<12} {len(catalogued):>4} / {len(required)}")
+        print(
+            f"{package:<14} {len(done):>4} / {len(in_package):<12} "
+            f"{len(catalogued):>4} / {len(required):<18} {len(excepted)}"
+        )
