@@ -1329,3 +1329,45 @@ class TestHomographyShapeChecks(BaseTester):
                     (2, 4, 5),
                     normalized_coordinates=normalized_coordinates,
                 )
+
+
+class TestHomographyWarpOnePixelSourceAxis6433(BaseTester):
+    """A pixel homography places a one-pixel source axis under ``align_corners=True`` too (#6433)."""
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_pixel_homography(self, padding_mode, shift, weight, device, dtype):
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        # Destination to source: a destination row samples the source row below it.
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)[None]
+        dst_homo_src[0, 1, 2] = shift
+        expected = row if padding_mode != "zeros" else weight * row
+        out = kornia.geometry.transform.homography_warp(
+            row, dst_homo_src, (1, 4), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+        warper = kornia.geometry.transform.HomographyWarper(
+            1, 4, padding_mode=padding_mode, normalized_coordinates=False, align_corners=True
+        )
+        self.assert_close(warper(row, dst_homo_src), expected)
+        warper.precompute_warp_grid(dst_homo_src)
+        self.assert_close(warper(row), expected)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_voxel_homography(self, padding_mode, shift, weight, device, dtype):
+        volume = (torch.arange(4, device=device, dtype=dtype) + 1).reshape(1, 1, 1, 2, 2)
+        src_homo_dst = torch.eye(4, device=device, dtype=dtype)[None]
+        src_homo_dst[0, 2, 3] = shift
+        expected = volume if padding_mode != "zeros" else weight * volume
+        out = kornia.geometry.transform.homography_warp3d(
+            volume, src_homo_dst, (1, 2, 2), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+
+    def test_normalized_homography_still_spans_the_axis(self, device, dtype):
+        # In normalized coordinates the whole range is the source, so the only row fills every output row.
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        out = kornia.geometry.transform.homography_warp(row, identity, (3, 4), align_corners=True)
+        self.assert_close(out, row.expand(1, 1, 3, 4))

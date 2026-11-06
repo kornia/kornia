@@ -41,7 +41,7 @@ from torch import nn
 from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
-from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_warp, warp_grid
+from .imgwarp import _normalize_warped_pixel_grid, _pad_one_pixel_axes, _warp_pixel_grid, homography_warp, warp_grid
 
 __all__ = ["BaseWarper", "HomographyWarper"]
 
@@ -246,6 +246,8 @@ class HomographyWarper(BaseWarper):
                 )
             if not self.normalized_coordinates:
                 # the cached grid holds source pixels; normalize them with the size of the patch being sampled
+                if self.align_corners:
+                    patch_src = _pad_one_pixel_axes(patch_src, self.padding_mode)
                 _warped_grid = _normalize_warped_pixel_grid(
                     _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
                 )
