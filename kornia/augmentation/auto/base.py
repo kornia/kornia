@@ -38,8 +38,10 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     """Build and replay image augmentation policies made of named operations.
 
     ``output = MyPolicy(policy)(input)`` applies :class:`~kornia.augmentation.auto.PolicySequential` children to
-    floating images of shape ``(B, C, H, W)`` once a subclass implements ``compose_subpolicy_sequential``. Concrete
-    subclasses define the policy family and may override parameter sampling to select its children.
+    floating images of shape ``(B, C, H, W)`` once a subclass implements two hooks: ``compose_subpolicy_sequential``,
+    which builds one sub-policy, and ``get_forward_sequence``, which picks the sub-policies for a call or, given
+    ``params``, returns the recorded ones. Without ``get_forward_sequence``, ``forward(input)`` raises
+    ``NotImplementedError``.
 
     Convention:
         - a concrete policy selects one or more :class:`~kornia.augmentation.auto.PolicySequential` children for each

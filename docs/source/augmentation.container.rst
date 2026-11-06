@@ -17,8 +17,11 @@ Augmentation Sequential
 
 ``AugmentationSequential`` samples its parameters once per call and applies them to every input named in
 ``data_keys``: images, masks, boxes and keypoints. It records the draw for replay, composes the matrices of its
-geometric steps, and undoes them with ``inverse()``. Inversion restores coordinates, not the pixels lost to cropping
-or resampling, and it leaves color changes in place.
+geometric steps, and undoes the 2D matrix-based ones with ``inverse()``. Keypoints and
+:class:`~kornia.geometry.boxes.Boxes` come back to their input coordinates. Tensor boxes are refit to axis-aligned
+boxes, so a rotation can enlarge them: a 12 × 8 box rotated by 45° comes back 20 × 20. A 3D geometric child raises
+``NotImplementedError``, and a mix child raises ``RuntimeError``. Inversion does not restore the pixels lost to
+cropping or resampling, and it leaves color changes and non-rigid warps in place.
 
 .. autoclass:: AugmentationSequential
 

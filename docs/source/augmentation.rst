@@ -11,8 +11,9 @@ and TrivialAugment policies. Most operators are differentiable with respect to t
 Every call records what it sampled. In eager mode, ``aug._params`` holds the last draw, and
 ``aug(image, params=aug._params)`` replays it; matrix-based geometric transforms also expose the draw as
 ``aug.transform_matrix``. :class:`~kornia.augmentation.container.AugmentationSequential` uses this record to apply
-one draw to an image and its masks, boxes and keypoints, and its ``inverse()`` undoes the matrix-based geometric
-steps. Inversion cannot restore pixels lost to cropping or resampling, and it leaves color changes in place.
+one draw to an image and its masks, boxes and keypoints, and its ``inverse()`` undoes the 2D matrix-based geometric
+steps; 3D geometric and mix children raise. Inversion cannot restore pixels lost to cropping or resampling, and it
+leaves color changes in place.
 For images alone, chain transforms with :class:`~kornia.augmentation.container.ImageSequential`; for video, apply
 them to every frame with :class:`~kornia.augmentation.container.VideoSequential`.
 
@@ -45,10 +46,11 @@ them to every frame with :class:`~kornia.augmentation.container.VideoSequential`
 Benchmark
 ---------
 
-Kornia is built for batches of float tensors on the GPU, with gradients through most operators. The libraries it is
-compared with target other regimes: albumentations, OpenCV, PIL and kornia-rs transform one ``uint8`` image at a
-time on the CPU, and torchvision v2 runs batched on the GPU but is not differentiable. Compare libraries at the
-same batch size and on the same device.
+Kornia is built for batches of float tensors on the GPU, with gradients through most operators. albumentations,
+OpenCV, PIL and kornia-rs transform one ``uint8`` image at a time on the CPU. torchvision v2 also runs batched on the
+GPU. In the benchmark's settings, gradients reach the input through five of its eight transforms, and the backward
+pass raises for ``RandomAffine``, ``RandomPerspective`` and ``ColorJitter`` with hue. Kornia passes a gradient through
+all eight.
 
 The scripts under
 `benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ print their git
@@ -59,15 +61,17 @@ commit, platform and device with every result:
 - ``vs_torchvision.py`` — each kornia op, eager and compiled, against torchvision v2.
 - ``pipeline.py`` — a multi-op training pipeline end to end, with compiled and ``--half`` (fp16/AMP) paths.
 
-In the RTX 4090 snapshot in ``benchmarks/augmentation/README.md`` (256 × 256 float32 images, batch 32), kornia on
-the GPU is 2–19× faster than the CPU ``uint8`` libraries on all eight operations, and faster than torchvision v2 on
-three of them: ``ColorJiggle``, Gaussian blur and perspective. On the CPU at batch 1, albumentations or OpenCV is
-faster on all eight.
+In the RTX 4090 snapshot in ``benchmarks/augmentation/README.md`` (256 × 256 float32 images, batch 32), compiled
+kornia on the GPU is 2.2–19.4× faster than the fastest CPU ``uint8`` library on all eight operations, and faster than
+torchvision v2 on three of them: ``ColorJiggle`` (1.20×), Gaussian blur (1.32×) and perspective (1.15×). Eager kornia
+on the GPU is 2.0–6.7× faster than the fastest CPU library on seven operations, reaches 0.52× of albumentations on
+``RandomResizedCrop``, and is slower than torchvision v2 on all eight. On the CPU at batch 1, albumentations or OpenCV
+is faster than both kornia modes on all eight.
 
 Deployment: torch.export, torch.compile, ONNX
 ---------------------------------------------
 
-Augmentations are ``nn.Module`` s, so the PyTorch capture tools apply to them, within these limits:
+Augmentations are ``nn.Module`` subclasses, so the PyTorch capture tools apply to them, within these limits:
 
 - **torch.export.** Deterministic transforms — ``Normalize``, ``Denormalize``, ``Resize``,
   ``CenterCrop``, ``PadTo`` — and an ``AugmentationSequential`` pipeline of them capture cleanly
@@ -88,10 +92,13 @@ Augmentations are ``nn.Module`` s, so the PyTorch capture tools apply to them, w
   is skipped during an export capture; the captured output is unchanged. Random augmentations and
   bounding-box/keypoint propagation through an exported graph are not covered.
 
-- **torch.compile.** In the :ref:`augmentation export survey <export-support-kornia-augmentation>`, most single
-  operators compile into one graph; ``AugmentationSequential``, the automatic policies and the mix transforms
-  compile with graph breaks. Compiling is not always faster: in the benchmark snapshot it slows CPU
-  ``RandomAffine`` to 0.45× of eager.
+- **torch.compile.** In the :ref:`augmentation export survey <export-support-kornia-augmentation>` (torch 2.9.1,
+  CPU), 60 of the 82 augmentation classes compile into one graph in every surveyed configuration, ``VideoSequential``
+  included. The other 22 break the graph, fail to compile, or give results that differ from eager in at least one
+  configuration: the other five containers, the three policies, the six mix transforms,
+  ``RandomTransplantation3D``, ``ColorJiggle``, ``ColorJitter``, ``RandomRain``, ``RandomSnow``, ``RandomClahe``,
+  ``RandomDissolving``, and ``RandomCrop`` with ``p=0.5``. Compiling is not always faster: in the benchmark snapshot
+  it slows CPU ``RandomAffine`` to 0.45× of eager at batch 32, and speeds it up 1.55× at batch 1.
 
 - **ONNX.** Export with ``torch.onnx.export(..., dynamo=True)`` and chain the file with
   :class:`~kornia.onnx.sequential.ONNXSequential`, which takes ONNX graphs, not augmentation modules. Without
