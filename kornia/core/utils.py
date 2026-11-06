@@ -518,6 +518,35 @@ def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
     return _normalize_to_float32_or_float64(input.dtype)
 
 
+def _reduce_tall_cuda_svd(input: torch.Tensor) -> bool:
+    """Return whether a tall CUDA matrix should be reduced by QR before its decomposition.
+
+    CUDA's SVD of a matrix with more than 32 rows and at most 32 columns is much slower than
+    the SVD of its square R factor. ``is_exporting()`` is checked before the sizes: otherwise
+    the size checks become guards that narrow a dynamic dimension in an exported program.
+    """
+    return input.device.type == "cuda" and not is_exporting() and input.shape[-2] > 32 and input.shape[-1] <= 32
+
+
+def _torch_svd_right(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return singular values and right vectors without CUDA's tall-matrix SVD path.
+
+    For a tall CUDA matrix with at most 32 columns, QR reduces the SVD to a small square matrix.
+    This preserves the singular values and right vectors without squaring the condition number.
+    R-only QR has no backward, so differentiable inputs retain the direct SVD. Callers supplying
+    detached inputs can attach their own derivatives to the returned vectors.
+    """
+    if _reduce_tall_cuda_svd(input) and not _needs_derivatives(input):
+        work = input.to(_svd_work_dtype(input))
+        _, r = torch.linalg.qr(work, mode="r")
+        # work already has the decomposition dtype; recasting a half input's
+        # float32 R through _torch_svd_cast would promote it a second time.
+        _, s, vh = torch.linalg.svd(r, full_matrices=False)
+        return s.to(input.dtype), vh.mH.to(input.dtype)
+    _, s, v = _torch_svd_cast(input, full_matrices=False)
+    return s, v
+
+
 def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 

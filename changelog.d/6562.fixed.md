@@ -1,0 +1,1 @@
+Speed up CUDA `fit_plane`, `solve_pnp_dlt`, and inference with `find_essential` for large point sets by reducing tall matrices with QR before SVD. Keep the existing derivative paths, CPU/MPS decomposition, and working precision.

@@ -49,6 +49,7 @@ from kornia.core.utils import (
     _svd_work_dtype,
     _torch_linalg_svdvals,
     _torch_svd_cast,
+    _torch_svd_right,
     is_compiling,
     register_module_state,
 )
@@ -418,7 +419,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     # avoiding an unused N-by-N left factor. The SVD is of the detached points: the normal's gradient comes from
     # _right_singular_vector, which stays finite when the two in-plane singular values are equal.
     work = points_centered.detach().to(_svd_work_dtype(points_centered))
-    _, S, V = _torch_svd_cast(work, full_matrices=False)
+    S, V = _torch_svd_right(work)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin
