@@ -67,7 +67,8 @@ class MotionBlur(nn.Module):
         border_type: the padding mode to be applied before convolving. The expected modes are:
              ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'reflect'``, which leaves
              a constant image constant like :func:`~kornia.filters.box_blur` and
-             :func:`~kornia.filters.gaussian_blur2d`, but needs each spatial axis longer than ``kernel_size // 2``.
+             :func:`~kornia.filters.gaussian_blur2d`, including singleton axes. Reflection and wrapping follow
+             :func:`~kornia.filters.filter2d` for any positive axis length.
              ``'constant'`` zero-pads, so pixels whose kernel reaches past an edge (at most
              ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
@@ -141,8 +142,8 @@ class MotionBlur3D(nn.Module):
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'replicate'``, which
             leaves a constant volume constant like :func:`~kornia.filters.filter3d`, at any volume size
-            (``'reflect'`` needs each axis longer than ``kernel_size // 2``, so it raises on a thin volume such as
-            ``D = 1``). ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
+            (including ``D = 1``). Reflection and wrapping follow :func:`~kornia.filters.filter2d` along each axis.
+            ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
             (at most ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
@@ -247,7 +248,8 @@ def motion_blur(
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'reflect'``, which leaves
             a constant image constant like :func:`~kornia.filters.box_blur` and
-            :func:`~kornia.filters.gaussian_blur2d`, but needs each spatial axis longer than ``kernel_size // 2``.
+            :func:`~kornia.filters.gaussian_blur2d`, including singleton axes. Reflection and wrapping follow
+            :func:`~kornia.filters.filter2d` for any positive axis length.
             ``'constant'`` zero-pads, so pixels whose kernel reaches past an edge (at most
             ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
@@ -302,8 +304,8 @@ def motion_blur3d(
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'replicate'``, which
             leaves a constant volume constant like :func:`~kornia.filters.filter3d`, at any volume size
-            (``'reflect'`` needs each axis longer than ``kernel_size // 2``, so it raises on a thin volume such as
-            ``D = 1``). ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
+            (including ``D = 1``). Reflection and wrapping follow :func:`~kornia.filters.filter2d` along each axis.
+            ``'constant'`` zero-pads, so voxels whose kernel reaches past a face
             (at most ``kernel_size // 2`` from it) are pulled toward ``0``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 

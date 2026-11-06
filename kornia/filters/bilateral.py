@@ -20,13 +20,12 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 
-from .filter import _to_floating
+from .filter import _pad, _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
@@ -102,12 +101,12 @@ def _bilateral_blur_taps(
     pad_y, pad_x = (ky - 1) // 2, (kx - 1) // 2
     # The unfold path returned a contiguous result for any input layout.
     image = image.contiguous()
-    padded_image = F.pad(image, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    padded_image = _pad(image, [pad_x, pad_x, pad_y, pad_y], border_type)
     if guide is None:
         guide, padded_guide = image, padded_image
     else:
         guide = guide.contiguous()
-        padded_guide = F.pad(guide, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+        padded_guide = _pad(guide, [pad_x, pad_x, pad_y, pad_y], border_type)
     if color_distance_type not in ("l1", "l2"):
         raise ValueError("color_distance_type only accepts l1 or l2")
 
@@ -275,14 +274,14 @@ def _bilateral_blur(
     # times slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256
     # batch with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one
     # at a time, on torch 2.14 and on a 2.16 nightly alike.
-    padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    padded_input = _pad(input, [pad_x, pad_x, pad_y, pad_y], border_type)
     unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)  # (B, C, H, Ky, W, Kx)
 
     if guidance is None:
         guidance = input
         unfolded_guidance = unfolded_input
     else:
-        padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+        padded_guidance = _pad(guidance, [pad_x, pad_x, pad_y, pad_y], border_type)
         unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)
     # After the padding, whose errors come first, as in the tap loop, and before any window arithmetic.
     if color_distance_type not in ("l1", "l2"):

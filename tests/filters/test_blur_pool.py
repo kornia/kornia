@@ -211,6 +211,12 @@ class TestBlurPoolKernelState(BaseTester):
 
 
 class TestMaxBlurPool(BaseTester):
+    def test_rectangular_max_pool_keeps_backend_support(self, device, dtype):
+        image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
+        expected = torch.tensor([[[[5.0625, 5.8125], [8.8125, 9.5625]]]], device=device, dtype=dtype)
+        self.assert_close(max_blur_pool2d(image, 3, max_pool_size=(2, 3)), expected, rtol=0, atol=0)
+        self.assert_close(MaxBlurPool2D(3, max_pool_size=(2, 3))(image), expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
     def test_smoke(self, kernel_size, device, dtype):
         data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)

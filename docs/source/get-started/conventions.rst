@@ -812,6 +812,10 @@ the same names for its non-``geodesic`` borders:
      - ``reflect``, the scipy default
      - ``BORDER_REFLECT``
 
+Filters extend ``reflect`` and ``circular`` borders to any positive axis length, even when a kernel reaches beyond
+one period of the input. Reflection has period ``2 * (n - 1)`` for an axis of length ``n > 1``; a singleton axis
+repeats its pixel. Circular padding has period ``n``. Calls accepted by ``F.pad`` retain that native path.
+
 An even kernel has no centre tap. The filters anchor a kernel ``k`` taps long at ``(k - 1) // 2``, the anchor of
 ``F.conv2d(padding='same')``. OpenCV and scipy anchor it at ``k // 2`` by default, and so does the default ``origin`` of
 :func:`~kornia.morphology.erosion` (see `Morphology`_), so along every even axis a correlated output sits one pixel
