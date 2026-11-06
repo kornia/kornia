@@ -691,14 +691,34 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         out = kornia.geometry.transform.crop_by_boxes3d(volume, boxes, boxes - boxes[:, :1], align_corners=True)
         self.assert_close(out, expected)
 
-    @pytest.mark.parametrize("z", [256, 2048])
-    def test_box_crops_flat_axis_far_from_origin_4747(self, z, device, dtype):
-        # one voxel past 256 (bfloat16) or 2048 (float16) rounds back onto the box in the half types
-        self._skip_unsupported(device, dtype)
-        volume = torch.arange(z + 2, device=device, dtype=dtype).view(1, 1, z + 2, 1, 1).expand(1, 1, z + 2, 2, 3)
-        box = self._box((0, 0, z), (1, 2, 3), device, dtype)
+    @staticmethod
+    def _slice_index_volume(depth, device, dtype):
+        # each depth slice holds its index mod 5, small integers every dtype holds exactly, so neighbours differ
+        values = torch.arange(depth, device=device) % 5
+        return values.to(dtype).view(1, 1, depth, 1, 1).expand(1, 1, depth, 2, 3)
 
-        out = kornia.geometry.transform.crop_by_boxes3d(volume, box, box - box[:, :1], align_corners=True)
+    @pytest.mark.parametrize("z", [256, 257, 2048, 2049])
+    def test_box_crops_flat_axis_far_from_origin_4747(self, z, device, dtype):
+        # Past 256 (bfloat16) or 2048 (float16) the half types skip voxels, so a half box or transform would land on
+        # a neighbouring slice; the boxes come in float32, as from a detector. Nearest keeps the check to which slice
+        # is read: MPS samples bilinear float32 grids this far from the origin 0.06 voxel off.
+        volume = self._slice_index_volume(z + 2, device, dtype)
+        box = self._box((0, 0, z), (1, 2, 3), device, torch.float32)
+
+        out = kornia.geometry.transform.crop_by_boxes3d(
+            volume, box, box - box[:, :1], interpolation="nearest", align_corners=True
+        )
+        assert out.dtype == dtype
+        self.assert_close(out, volume[..., z : z + 1, :, :])
+
+    @pytest.mark.parametrize("depth", [515, 4099])
+    def test_center_crop3d_flat_axis_far_from_origin_4747(self, depth, device, dtype):
+        # the centred slice is 257 (515) or 2049 (4099), neither a value of the half types
+        volume = self._slice_index_volume(depth, device, dtype)
+        z = depth // 2
+
+        out = kornia.geometry.transform.center_crop3d(volume, (1, 2, 3), interpolation="nearest")
+        assert out.dtype == dtype
         self.assert_close(out, volume[..., z : z + 1, :, :])
 
     def test_crop_and_resize3d_resizes_the_other_axes_of_a_flat_box_4747(self, device, dtype):

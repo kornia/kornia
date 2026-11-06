@@ -321,10 +321,12 @@ def center_crop3d(
         device=tensor.device,
     ).expand(points_src.shape[0], -1, -1)
 
+    # at least float32, so a half volume's one-voxel crop keeps voxel offsets the half types cannot hold
+    box_dtype = torch.promote_types(tensor.dtype, torch.float32)
     return _crop_by_boxes3d_to_size(
         tensor,
-        points_src.to(tensor.dtype),
-        points_dst.to(tensor.dtype),
+        points_src.to(box_dtype),
+        points_dst.to(box_dtype),
         (dst_d, dst_h, dst_w),
         interpolation,
         align_corners,
@@ -458,13 +460,20 @@ def _crop_by_boxes3d_to_size(
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
+    out_dtype = tensor.dtype
     # only an output axis of one voxel can be flat in dst_box, so every other crop keeps its exact solve and graph
-    solve_src, solve_dst = src_box, dst_box
     if 1 in out_size:
-        # widen in at least float32: one voxel past 256 rounds back onto the box in bfloat16 (past 2048 in float16)
-        solve_dtype = torch.promote_types(src_box.dtype, torch.float32)
-        solve_src, solve_dst = _widen_one_voxel_axes(src_box.to(solve_dtype), dst_box.to(solve_dtype))
+        # Voxel 257 is not a bfloat16 value (2049 is not a float16 one): a half box would round onto its neighbour,
+        # and one voxel of widening would round back onto the box. So the boxes, the widening, the transform and the
+        # warp stay in at least float32, as the warp already samples half volumes, and the patch returns to the
+        # input dtype.
+        work_dtype = torch.promote_types(tensor.dtype, torch.float32)
+        tensor = tensor.to(work_dtype)
+        src_box, dst_box = src_box.to(work_dtype), dst_box.to(work_dtype)
+        solve_src, solve_dst = _widen_one_voxel_axes(src_box, dst_box)
+    else:
+        src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
+        solve_src, solve_dst = src_box, dst_box
     dst_trans_src: torch.Tensor = get_perspective_transform3d(solve_src, solve_dst)
     _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
     # simulate broadcasting
@@ -474,7 +483,7 @@ def _crop_by_boxes3d_to_size(
         tensor, dst_trans_src, out_size, mode=interpolation, align_corners=align_corners
     )
 
-    return patches
+    return patches.to(out_dtype)
 
 
 def _widen_one_voxel_axes(src_box: torch.Tensor, dst_box: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
