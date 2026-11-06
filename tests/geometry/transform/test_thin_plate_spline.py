@@ -270,8 +270,8 @@ class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
             points = transform.warp_points_tps(src, dst, kernel, affine)
         assert points.dtype == torch.float32
         self.assert_close(points, expected_points, rtol=0, atol=0)
-        self.assert_close(weights[0].float(), expected_weights[0], rtol=1e-3, atol=1e-3)
-        self.assert_close(weights[1].float(), expected_weights[1], rtol=1e-3, atol=1e-3)
+        self.assert_close(weights[0].float(), expected_weights[0])
+        self.assert_close(weights[1].float(), expected_weights[1])
 
 
 class TestWarpImage(BaseTester):
