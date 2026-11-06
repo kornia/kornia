@@ -22,6 +22,7 @@ import torch
 from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
 
@@ -430,6 +431,18 @@ class TestCropByBoxes(BaseTester):
         patches.sum().backward()
         assert inp.grad.shape == inp.shape
         assert boxes.grad.shape == boxes.shape
+
+    def test_crop_by_boxes_empty_batch_keeps_checks_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype)
+        one_box = torch.zeros(1, 4, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, padding_mode="invalid")
+        with pytest.raises(BaseError, match="Source data shape"):
+            kornia.geometry.transform.crop_by_boxes(inp, one_box, boxes)
 
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.tensor(
