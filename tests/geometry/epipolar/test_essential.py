@@ -1828,8 +1828,8 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     def test_gradient_follows_the_float64_one_in_every_dtype_6251(self, device, dtype):
         # float32 is decomposed in float64 and half precision in float32, so the gradient keeps that precision.
         # The reference comes from the CPU: MPS has no float64.
-        # The half tolerances sit between the error of the float32 work dtype and that of working in the half dtype, in
-        # absolute terms: at the pose below, 2.3e-04 against 4.8e-04 for float16 and 8.6e-04 against 3.8e-03 for bfloat16.
+        # The half tolerances sit between the error of the float32 work dtype and that of working in the half dtype, at
+        # the pose below: 2.3e-04 against 4.8e-04 for float16 and 8.6e-04 against 3.8e-03 for bfloat16.
         tolerances = {torch.float16: 3.5e-4, torch.bfloat16: 2e-3, torch.float32: 1e-5, torch.float64: 1e-12}
         E_mat = _exact_essential_6251(4, device, dtype)
         jacobian = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat)
