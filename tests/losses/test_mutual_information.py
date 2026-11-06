@@ -31,6 +31,7 @@ from kornia.losses.mutual_information import (
     NMILossFromRef,
     NMILossFromRef2D,
     NMILossFromRef3D,
+    _contract_kernels_in_chunks,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
@@ -1071,3 +1072,63 @@ class TestConventionsMutualInformation(BaseTester):
         assert histogram.dtype == torch.float32
         self.assert_close(histogram.sum(), torch.tensor(70000.0), rtol=0, atol=0)
         self.assert_close(actual, signal.new_tensor(expected))
+
+
+class TestMutualInformationLargeSampleCounts(BaseTester):
+    @pytest.mark.skipif(
+        not dynamo_is_available() or torch_version_lt(2, 9, 0), reason="Dynamo traces the gathers from 2.9"
+    )
+    def test_reference_keeps_a_static_sample_count_under_capture(self, device):
+        # The MPS chunk gate and split read this size, so a data-dependent one would stop ``fullgraph`` capture there.
+        def loss(x, y):
+            module = MILossFromRef(y)
+            return module(x) if module.signal.shape[-1] > 1 else x.sum()
+
+        signal = torch.rand(1, 50, device=device, dtype=torch.float32)
+        target = signal**2
+        torch._dynamo.reset()
+        with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True):
+            compiled = torch.compile(loss, backend="eager", fullgraph=True)
+            self.assert_close(compiled(signal, target), loss(signal, target))
+
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_matches_einsum(self, device, chunk_size):
+        # float32 on every leg: half-precision losses accumulate their histogram in float32.
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        self.assert_close(
+            _contract_kernels_in_chunks(vals_1, vals_2, chunk_size), vals_1 @ vals_2.transpose(-1, -2).contiguous()
+        )
+
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_gradient_matches_einsum(self, device, chunk_size):
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        # Weight every histogram cell differently, so that each input sample has its own gradient.
+        weights = torch.rand(2, 8, 8, device=device, dtype=torch.float32)
+        chunked = (_contract_kernels_in_chunks(vals_1, vals_2, chunk_size) * weights).sum()
+        reference = (torch.einsum("...in,...jn->...ij", vals_1, vals_2) * weights).sum()
+        for actual, expected in zip(
+            torch.autograd.grad(chunked, (vals_1, vals_2)), torch.autograd.grad(reference, (vals_1, vals_2))
+        ):
+            self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
+    @pytest.mark.parametrize("num_samples", [33856, 70000])
+    def test_mps_large_sample_counts_match_cpu_5873(self, device, dtype, loss_fn, num_samples):
+        if device.type != "mps":
+            pytest.skip("pytorch/pytorch#195163 is an MPS matmul defect.")
+        generator = torch.Generator().manual_seed(0)
+        x = torch.rand(1, num_samples, generator=generator)
+        y = x**2 + 0.05 * torch.rand(1, num_samples, generator=generator)
+
+        def loss_and_gradients(on_device):
+            x_on, y_on = x.to(on_device, dtype).requires_grad_(), y.to(on_device, dtype).requires_grad_()
+            loss = loss_fn(x_on, y_on)
+            return (loss.detach().cpu(), *(grad.cpu() for grad in torch.autograd.grad(loss, (x_on, y_on))))
+
+        expected = loss_and_gradients("cpu")
+        # The defective matmul reads past its operands, so make what lies next to them non-zero.
+        torch.full((5_000_000,), 1000.0, device=device)
+        for actual, reference in zip(loss_and_gradients(device), expected):
+            self.assert_close(actual, reference)
