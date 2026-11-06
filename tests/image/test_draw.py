@@ -945,6 +945,7 @@ class TestFillConvexPolygon(BaseTester):
     @pytest.mark.parametrize("as_list", [False, True])
     @pytest.mark.parametrize("reverse", [False, True])
     def test_near_coincident_endpoints_close_independently(self, device, dtype, as_list, reverse):
+        """Fill the closing edge's scanline identically when drawn alone or in a batch."""
         polygon = torch.tensor(
             [[100.0, 100.0 - 1 / 2048], [200.0, 50.0], [200.0, 150.0], [100.0, 100.0 + 1 / 2048]],
             device=device,
