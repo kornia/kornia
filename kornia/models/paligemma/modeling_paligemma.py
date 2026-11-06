@@ -20,9 +20,9 @@ from __future__ import annotations
 from typing import Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_paligemma import PaliGemmaConfig
@@ -210,7 +210,7 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        attn_output = F.scaled_dot_product_attention(
+        attn_output = scaled_dot_product_attention(
             query_states,
             key_states,
             value_states,
