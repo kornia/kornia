@@ -406,18 +406,23 @@ class TestHalfSampling(BaseTester):
         homography_warper = HomographyWarper(8, 8)
         homography_warper.grid = homography_warper.grid.to(device)
         homography_warper.precompute_warp_grid(torch.eye(3, device=device)[None])
-        with pytest.raises(RuntimeError):
+
+        def warp():
             if operation == "frame_depth":
-                warp_frame_depth(image, depth, torch.eye(4, device=device)[None], torch.eye(3, device=device)[None])
-            elif operation == "depth_warper":
-                warper(depth, image)
-            elif operation == "elastic":
-                elastic_transform2d(image, torch.zeros(1, 2, 8, 8, device=device))
-            elif operation == "tps":
+                return warp_frame_depth(
+                    image, depth, torch.eye(4, device=device)[None], torch.eye(3, device=device)[None]
+                )
+            if operation == "depth_warper":
+                return warper(depth, image)
+            if operation == "elastic":
+                return elastic_transform2d(image, torch.zeros(1, 2, 8, 8, device=device))
+            if operation == "tps":
                 points = torch.zeros(1, 3, 2, device=device)
-                warp_image_tps(image, points, points, points)
-            else:
-                homography_warper(image)
+                return warp_image_tps(image, points, points, points)
+            return homography_warper(image)
+
+        with pytest.raises(RuntimeError):
+            warp()
 
     @pytest.mark.parametrize("mismatched", ["src", "dst_intrinsics", "dst_extrinsics"])
     @pytest.mark.parametrize("other", ["float32", "other_half"])
