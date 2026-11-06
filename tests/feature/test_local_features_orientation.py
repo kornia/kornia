@@ -572,6 +572,13 @@ class TestTrackedGradientNoise6598(BaseTester):
         noise = torch.rand(batch, 1, 32, 32, generator=generator, dtype=torch.float64) * 3e-4
         return (0.5 + noise).to(torch.float16).float()
 
+    @staticmethod
+    def _median_largest_gradient(module, patches):
+        # The median over the batch of each patch's largest gradient.
+        tracked = patches.clone().requires_grad_()
+        gradient = torch.autograd.grad(module(tracked).sum(), tracked)[0]
+        return gradient.flatten(1).abs().amax(1).median().item()
+
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
     def test_tracked_gradient_matches_spatial_gradient(self, device, dtype, mode):
         if not supports_replicate_padding(device, dtype):
@@ -582,12 +589,20 @@ class TestTrackedGradientNoise6598(BaseTester):
         self.assert_close(tracked.detach(), spatial_gradient(image, mode))
 
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
-    def test_tracked_float16_differences_do_not_overflow(self, device, mode):
+    def test_tracked_flat_pixels_have_exactly_zero_gradients(self, device, mode):
+        # 0.1 is not binary-exact: the Sobel convolution leaves 9.31e-10 on half of these entries on x86 and CUDA.
+        image = torch.full((16, 1, 32, 32), 0.1, device=device, dtype=torch.float32, requires_grad=True)
+        tracked = _exact_first_order_gradient(image, mode)
+        assert torch.equal(tracked, torch.zeros_like(tracked))
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    def test_tracked_float16_differences_do_not_overflow(self, device, half_dtype, mode):
         # A value the result can hold, whose differences float16 cannot: 32768 next to -32768.
-        row = torch.tensor([-32768.0, -32768.0, 32768.0, 32768.0], device=device, dtype=torch.float16)
+        row = torch.tensor([-32768.0, -32768.0, 32768.0, 32768.0], device=device, dtype=half_dtype)
         image = row.repeat(4, 1)[None, None].requires_grad_()
         gx = _exact_first_order_gradient(image, mode)[0, 0, 0]
-        assert gx.dtype == torch.float16
+        assert gx.dtype == half_dtype
         assert gx.isfinite().all()
         assert gx.abs().max().item() == 32768.0
 
@@ -602,12 +617,24 @@ class TestTrackedGradientNoise6598(BaseTester):
         tracked = module(tracked_input)
         # One float32 rounding step at most; the noise this guards against moves an angle by up to 3 radians.
         self.assert_close(tracked.detach(), plain, rtol=0, atol=1e-5)
-        gradient = torch.autograd.grad(tracked.sum(), tracked_input)[0].flatten(1).abs().amax(1).median()
         # The float64 reference runs on the CPU, as MPS has no float64.
-        reference_input = patches.double().requires_grad_()
-        reference = build().double()(reference_input)
-        expected = torch.autograd.grad(reference.sum(), reference_input)[0].flatten(1).abs().amax(1).median()
-        assert gradient.item() < 10 * expected.item()
+        expected = self._median_largest_gradient(build().double(), patches.double())
+        assert self._median_largest_gradient(module, patches.to(device)) < 10 * expected
+
+    @pytest.mark.parametrize(
+        "build", [lambda: PatchDominantGradientOrientation(32), lambda: SIFTDescriptor(32), DenseSIFTDescriptor]
+    )
+    def test_tracked_gradient_scale_without_mkldnn(self, device, build):
+        # With MKLDNN disabled, x86 CPU takes NNPACK at batch >= 16, whose convolution leaves rounding noise on flat
+        # pixels as macOS arm64 CPU does. This is a Linux proxy for that backend: a call site going back to the
+        # convolution reads 3 to 5 orders of magnitude above float64 here.
+        if device.type != "cpu":
+            pytest.skip("the flag selects a CPU convolution backend")
+        patches = self._flat_lattice_patches(64).to(device)
+        with torch.backends.mkldnn.flags(enabled=False):
+            gradient = self._median_largest_gradient(build().to(device), patches)
+            expected = self._median_largest_gradient(build().to(device, torch.float64), patches.double())
+        assert gradient < 10 * expected
 
     def test_untracked_input_keeps_the_convolution(self, device):
         image = torch.rand(2, 1, 8, 8, device=device).requires_grad_()
