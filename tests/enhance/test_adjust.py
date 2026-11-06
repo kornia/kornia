@@ -2388,6 +2388,43 @@ class TestUnitRangeClampGradient(BaseTester):
         expected = 1 / ((1 + image.detach()) * log(2.0)) if name == "adjust_log" else torch.ones_like(image)
         self.assert_close(grad, expected)
 
+    # adjust_brightness and adjust_contrast raised on the base as well: they reach _clip_unit_fresh, which took the
+    # in-place clamp only in the check under no_grad. The other nine traced on the base.
+    _CAPTURED = {
+        "adjust_brightness": lambda x: enhance.adjust_brightness(x, 0.1),
+        "adjust_contrast": lambda x: enhance.adjust_contrast(x, 1.2),
+        "adjust_brightness_accumulative": lambda x: enhance.adjust_brightness_accumulative(x, 1.2),
+        "adjust_contrast_with_mean_subtraction": lambda x: enhance.adjust_contrast_with_mean_subtraction(x, 1.2),
+        "adjust_saturation_with_gray_subtraction": lambda x: enhance.adjust_saturation_with_gray_subtraction(x, 1.2),
+        "adjust_saturation": lambda x: enhance.adjust_saturation(x, 1.2),
+        "adjust_saturation_raw": lambda x: enhance.adjust_saturation_raw(x, 1.2),
+        "adjust_log": enhance.adjust_log,
+        "sharpness": lambda x: enhance.sharpness(x, 1.0),
+        "shift_rgb": lambda x: enhance.shift_rgb(x, *_no_shift(x)),
+        "solarize": lambda x: enhance.solarize(x, 0.5, 0.1),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_CAPTURED))
+    def test_trace_of_a_module_with_parameters_passes_its_check(self, device, dtype, op):
+        # A parameter gives the op an input that requires grad, and torch.jit.trace checks its graph again under
+        # no_grad: a clamp that follows the grad mode records two different graphs, and the trace raises
+        # TracingCheckError.
+        call = self._CAPTURED[op]
+
+        class ConvThenOp(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 3, 1, bias=False)
+                torch.nn.init.dirac_(self.conv.weight)
+
+            def forward(self, x: Tensor) -> Tensor:
+                return call(self.conv(x))
+
+        module = ConvThenOp().to(device, dtype)
+        image = _black_grey_white(device, dtype)
+        traced = torch.jit.trace(module, (image,))
+        self.assert_close(traced(image), call(image))
+
     @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
     def test_vmap_of_grad_keeps_the_identity_gradient(self, device, dtype, op):
         image = _black_grey_white(device, dtype)[0]

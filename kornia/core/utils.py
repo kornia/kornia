@@ -546,7 +546,9 @@ def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS, under Inductor (CPU and CUDA) and in the
     SIMD lanes of eager arm64 CPU, while eager x86 CPU and CUDA keep ``-0.0``.
     """
-    if not _needs_derivatives(input):
+    # A captured graph keeps the plain clamp: ``torch.jit.trace``'s check reruns under ``no_grad``, and an inference
+    # graph has no use for the selection. The gradient through a traced module then follows ``torch.clamp``.
+    if _is_tracing_or_exporting() or not _needs_derivatives(input):
         return input.clamp(0.0, 1.0)
     # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
     # backward of a recorded clamp made a forward and backward pass about twice as slow.

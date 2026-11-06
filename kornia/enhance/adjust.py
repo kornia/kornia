@@ -37,6 +37,7 @@ from kornia.core.exceptions import TypeCheckError
 from kornia.core.ops import _device_literal
 from kornia.core.utils import (
     _clamp_unit_range,
+    _is_tracing_or_exporting,
     _needs_derivatives,
     _normalize_to_float32_or_float64,
     _to_device_nonblocking,
@@ -51,7 +52,8 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     The values equal ``image.clamp(0, 1)``. Without a recorded gradient or a forward-mode tangent the clamp reuses the
     fresh buffer instead of allocating another image-sized one: at batch 32 that third 25 MB temporary per call made
     glibc trim and re-fault the heap on every call. With one it is ``_clamp_unit_range``, whose derivative at a bound
-    does not depend on the torch version. Only call it on a tensor no caller can see.
+    does not depend on the torch version. A captured graph takes the same path whatever the grad mode, so that
+    ``torch.jit.trace``'s check under ``no_grad`` records the same clamp. Only call it on a tensor no caller can see.
 
     An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
     promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
@@ -61,6 +63,7 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if (
             image.is_floating_point()
+            and not _is_tracing_or_exporting()
             and not _needs_derivatives(image)
             and not torch._C._are_functorch_transforms_active()
         ):
