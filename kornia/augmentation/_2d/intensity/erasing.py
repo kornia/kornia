@@ -117,20 +117,22 @@ class RandomErasing(IntensityAugmentationBase2D):
         values = _to_device_nonblocking(params["values"].view(-1, 1, 1, 1), input.device, input.dtype)
 
         if self.same_on_batch:
-            # Every sample shares one rectangle, so write that single region directly instead of
-            # building a full-image mask and `where`-blending the whole tensor. Equivalent to the
-            # masked path (the mask covers [x, x+width) x [y, y+height), clipped to the image), but
-            # touches only the erased box — much cheaper for a batch (matches torchvision's slice).
-            # Read the four shared box coords in a single device sync (one ``tolist``) rather than
-            # four separate ``int(...)`` calls.
-            xs, ys, box_w, box_h = (
-                torch.stack([params["xs"][0], params["ys"][0], params["widths"][0], params["heights"][0]])
-                .long()
-                .tolist()
-            )
-            transformed = input.clone()
-            transformed[:, :, ys : ys + box_h, xs : xs + box_w] = values
-            return transformed
+            # Replayed parameters may have been sampled by another instance with a different
+            # same_on_batch setting. Only use the shared-rectangle fast path if they actually agree.
+            coords = [params[name] for name in ("xs", "ys", "widths", "heights")]
+            if coords[0].device.type == "cpu" and coords[0].numel() <= 128:
+                # Small CPU batches avoid the overhead of launching tensor comparisons.
+                lists = [coord.tolist() for coord in coords]
+                xs, ys, box_w, box_h = (int(coord[0]) for coord in lists)
+                all_shared = all(all(value == coord[0] for value in coord[1:]) for coord in lists)
+            else:
+                boxes = torch.stack(coords, dim=-1)
+                shared = (boxes == boxes[0]).all()
+                xs, ys, box_w, box_h, all_shared = torch.cat((boxes[0], shared.reshape(1))).long().tolist()
+            if all_shared:
+                transformed = input.clone()
+                transformed[:, :, ys : ys + box_h, xs : xs + box_w] = values
+                return transformed
 
         # Broadcast the per-sample fill value (B, 1, 1, 1) and the single-channel mask (B, 1, H, W)
         # directly in `torch.where` instead of `repeat`-materializing both to full (B, C, H, W).
