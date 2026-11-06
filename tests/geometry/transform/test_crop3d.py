@@ -189,6 +189,29 @@ class TestCenterCrop3D(BaseTester):
 
 
 class TestCropByBoxes3D(BaseTester):
+    def test_crop_by_boxes3d_empty_batch_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype, requires_grad=True)
+
+        patches = kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes)
+
+        assert patches.shape == (0, 3, 0, 0, 0)
+        assert patches.dtype == inp.dtype
+        assert patches.device == inp.device
+        patches.sum().backward()
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
+
+    def test_crop_by_boxes3d_empty_batch_keeps_checks_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype)
+        one_box = torch.zeros(1, 8, 3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes, interpolation="invalid")
+        with pytest.raises(ValueError, match="same shape"):
+            kornia.geometry.transform.crop_by_boxes3d(inp, one_box, boxes)
+
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
         src_box = torch.tensor(

@@ -338,6 +338,7 @@ def crop_by_boxes(
           :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
           image does not broadcast over a batch of boxes; ``src_box`` and ``dst_box`` have the same batch size
+        - an empty batch has no ``dst_box`` to read a size from and returns ``(0, C, 0, 0)``
         - a box axis of one pixel in one box but not in the other returns NaN (a meaningless finite value with
           ``mode='nearest'``), as in :func:`crop_and_resize`
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
@@ -404,6 +405,8 @@ def crop_by_boxes(
         )
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
+    if bbox[0].shape[0] == 0:
+        return _crop_by_boxes_to_size(input_tensor, src_box, dst_box, (0, 0), mode, padding_mode, align_corners)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
             f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}."
