@@ -17,7 +17,7 @@
 
 import pytest
 import torch
-from torch._dynamo.exc import BackendCompilerFailed, Unsupported, UserError
+from torch._dynamo.exc import BackendCompilerFailed, InternalTorchDynamoError, Unsupported, UserError
 
 import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
@@ -103,6 +103,11 @@ class TestKeypointsIndexing(BaseTester):
                 and "Could not extract specialized integer from data-dependent expression" in str(exc)
             ):
                 pytest.xfail("Dynamo cannot specialize a CUDA scalar tensor index, including raw tensor indexing")
+            raise
+        except InternalTorchDynamoError as exc:
+            if scalar_tensor and device.type == "cuda" and "PendingUnbackedSymbolNotFound" in str(exc):
+                # torch 2.14 and 2.15 raise this for raw ``x[index]`` with a 0-d CUDA index as well.
+                pytest.xfail("Dynamo cannot trace a CUDA scalar tensor index, including raw tensor indexing")
             raise
         except Unsupported as exc:
             if torch.__version__.startswith("2.5.") and "UserDefinedClassVariable" in str(exc):
