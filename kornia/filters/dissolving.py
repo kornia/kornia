@@ -208,7 +208,7 @@ class StableDiffusionDissolving(ImageModule):
 
     ``dissolved = StableDiffusionDissolving(version)(input, step_number)`` encodes a ``(B, 3, H, W)`` image with the
     model's VAE, takes one reverse-diffusion step at ``step_number``, an index into the model's 1000-step schedule from
-    0 to 999, and decodes the result in the same shape :cite:`shi2024dissolving`. It needs the optional ``diffusers``
+    0 to 999, and decodes the result :cite:`shi2024dissolving`. It needs the optional ``diffusers``
     package, and the constructor loads the checkpoint with ``from_pretrained``.
 
     .. list-table::

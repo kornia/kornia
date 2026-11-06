@@ -42,8 +42,9 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
         - :class:`Sepia`: the module form, with ``rescale`` and ``eps`` stored.
 
     Example:
+        >>> from kornia.color import sepia
         >>> input = torch.ones(3, 1, 1)
-        >>> sepia_from_rgb(input, rescale=False)
+        >>> sepia(input, rescale=False)
         tensor([[[1.3510]],
         <BLANKLINE>
                 [[1.2030]],

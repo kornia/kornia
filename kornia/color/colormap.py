@@ -111,8 +111,8 @@ class ColorMap:
         colors has shape (3, num_colors) in RGB channel order. Built-in names are case-insensitive;
         a custom base is an ordered list of RGB triples in :math:`[0, 1]` and is linearly resampled to num_colors.
         For ``num_colors > 1``, entry ``i`` sits at ``i / (num_colors - 1)`` along the base, so the first and
-        last colours of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
-        base's first colour.
+        last colors of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
+        base's first color.
 
     Args:
         base: list of RGB triples, or a built-in colormap as a :class:`ColorMapType` or its name.
@@ -181,7 +181,7 @@ class ColorMap:
         """
         dtype = self._dtype if self._dtype is not None else torch.get_default_dtype()
         tensor_colors = torch.tensor(list(base_colormap), dtype=dtype, device=self._device).T
-        # align_corners=True keeps the base's end colours at the ends of the map (#6556): cell-centre sampling
+        # align_corners=True keeps the base's end colors at the ends of the map (#6556): cell-centre sampling
         # repeated them when upsampling and dropped them when downsampling.
         return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear", align_corners=True)[0, ...]
 

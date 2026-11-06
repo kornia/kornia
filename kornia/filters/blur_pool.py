@@ -57,7 +57,7 @@ __all__ = [
 class BlurPool2D(nn.Module):
     r"""Blur a feature map and downsample it by a stored ``stride`` (module form).
 
-    ``pool = BlurPool2D(kernel_size, stride)`` stores ``stride`` and the normalized Pascal kernel as the buffer
+    ``pool = BlurPool2D(kernel_size, stride)`` stores ``stride`` and the normalized binomial kernel as the buffer
     ``kernel``, which is not in the state dict. ``out = pool(input)`` is :func:`blur_pool2d` on a ``(B, C, H, W)`` map.
 
     Convention:
@@ -121,7 +121,7 @@ class BlurPool2D(nn.Module):
 class MaxBlurPool2D(nn.Module):
     r"""Max-pool a feature map, then blur and downsample it (module form).
 
-    ``pool = MaxBlurPool2D(kernel_size, stride, max_pool_size)`` stores its arguments and the Pascal kernel buffer
+    ``pool = MaxBlurPool2D(kernel_size, stride, max_pool_size)`` stores its arguments and the binomial kernel buffer
     ``kernel`` of :class:`BlurPool2D`. ``out = pool(input)`` is :func:`max_blur_pool2d` on a ``(B, C, H, W)`` map, and
     equals ``nn.Sequential(nn.MaxPool2d(max_pool_size, stride=1), BlurPool2D(kernel_size, stride))``.
 

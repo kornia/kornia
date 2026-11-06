@@ -27,8 +27,9 @@ from kornia.core.check import KORNIA_CHECK
 class OtsuThreshold(torch.nn.Module):
     """Threshold an image at the level Otsu's method picks (module form).
 
-    ``otsu = OtsuThreshold()`` stores no settings, and ``thresholded, threshold = otsu(x, nbins,
-    slow_and_differentiable)`` is :func:`otsu_threshold` without ``return_mask``.
+    ``otsu = OtsuThreshold()`` stores no settings, and
+    ``thresholded, threshold = otsu(x, nbins, slow_and_differentiable)`` is :func:`otsu_threshold` without
+    ``return_mask``.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.otsu_threshold`.

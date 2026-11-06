@@ -91,14 +91,14 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
     Returns:
         Grayscale image with shape ``(*, 1, H, W)``.
 
+    .. note::
+       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
+
     See Also:
         - :func:`bgr_to_grayscale`: takes a BGR image, with the default weights only.
         - :func:`rgb_to_y`: the Y channel of YCbCr, which has the same default weights and no ``rgb_weights``.
         - :func:`grayscale_to_rgb`: repeats the channel back into three.
         - :class:`RgbToGrayscale`: the module form, with ``rgb_weights`` stored.
-
-    .. note::
-       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

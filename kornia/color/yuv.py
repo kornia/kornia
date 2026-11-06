@@ -131,7 +131,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     plane and the U and V planes at half the width.
 
     Convention:
-        Y, U and V are as in :func:`rgb_to_yuv`. Each UV value is the mean of two horizontal neighbours of U or V, and
+        Y, U and V are as in :func:`rgb_to_yuv`. Each UV value is the mean of two horizontal neighbors of U or V, and
         the two planes are stacked as two channels. Width must be even, and an odd width raises ``ShapeError``.
         Height may be odd.
 
@@ -509,14 +509,14 @@ class YuvToRgb(nn.Module):
 class Yuv420ToRgb(nn.Module):
     r"""Convert YUV 4:2:0 planes to RGB (module form).
 
-    ``rgb = Yuv420ToRgb()(imagey, imageuv)`` is :func:`yuv420_to_rgb`.
+    ``rgb = Yuv420ToRgb()(inputy, inputuv)`` is :func:`yuv420_to_rgb`.
 
     Convention:
         - See the convention block of :func:`yuv420_to_rgb`.
 
     Shape:
-        - imagey: ``(*, 1, H, W)``
-        - imageuv: ``(*, 2, H/2, W/2)``
+        - inputy: ``(*, 1, H, W)``
+        - inputuv: ``(*, 2, H/2, W/2)``
         - output: ``(*, 3, H, W)``
 
     See Also:
@@ -554,14 +554,14 @@ class Yuv420ToRgb(nn.Module):
 class Yuv422ToRgb(nn.Module):
     r"""Convert YUV 4:2:2 planes to RGB (module form).
 
-    ``rgb = Yuv422ToRgb()(imagey, imageuv)`` is :func:`yuv422_to_rgb`.
+    ``rgb = Yuv422ToRgb()(inputy, inputuv)`` is :func:`yuv422_to_rgb`.
 
     Convention:
         - See the convention block of :func:`yuv422_to_rgb`.
 
     Shape:
-        - imagey: ``(*, 1, H, W)``
-        - imageuv: ``(*, 2, H, W/2)``
+        - inputy: ``(*, 1, H, W)``
+        - inputuv: ``(*, 2, H, W/2)``
         - output: ``(*, 3, H, W)``
 
     See Also:

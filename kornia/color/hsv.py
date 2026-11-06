@@ -42,12 +42,12 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     Returns:
         HSV image with shape ``(*, 3, H, W)``.
 
+    .. note::
+       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
+
     See Also:
         - :func:`hsv_to_rgb`: the inverse.
         - :class:`RgbToHsv`: the module form, with ``eps`` stored.
-
-    .. note::
-       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

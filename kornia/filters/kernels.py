@@ -181,9 +181,6 @@ def gaussian(
     Returns:
         the kernels, each summing to 1, with shape ``(B, window_size)``.
 
-    See Also:
-        - :func:`get_gaussian_kernel1d`: the checked call.
-
     .. note::
         Float16 and bfloat16 kernels are computed in float32 and rounded once at return.
 
@@ -191,6 +188,9 @@ def gaussian(
         weight -- returns the unit-impulse limit of the kernel: all the mass on the sample nearest
         the mean, split evenly between the two centre taps when ``window_size`` is even. The
         gradient with respect to ``sigma`` is zero there, matching the continuous limit.
+
+    See Also:
+        - :func:`get_gaussian_kernel1d`: the checked call.
 
     """
     output_dtype = sigma.dtype if isinstance(sigma, torch.Tensor) else dtype or torch.get_default_dtype()
@@ -1484,7 +1484,7 @@ def get_hanning_kernel1d(
         - :func:`get_hanning_kernel2d`: the 2D window.
 
     Examples:
-        >>> get_hanning_kernel1d(4)
+        >>> get_hanning_kernel1d(4).round(decimals=4)
         tensor([0.0000, 0.7500, 0.7500, 0.0000])
 
     """

@@ -117,8 +117,8 @@ def in_range(
         shape of ``input``.
 
     Raises:
-        TypeError: If `lower` or `upper` is neither a tuple nor a torch.Tensor, if one is a tuple and the other a
-            torch.Tensor, or if `return_mask` is not a bool.
+        TypeError: If ``lower`` or ``upper`` is neither a tuple nor a torch.Tensor, if one is a tuple and the other a
+            torch.Tensor, or if ``return_mask`` is not a bool.
         ValueError: If a tuple bound does not have one element per channel, or a torch.Tensor bound does not fit the
             input as described in the note.
 
@@ -160,7 +160,7 @@ def in_range(
         >>> mask.shape
         torch.Size([1, 1, 3, 3])
 
-    Apply different bounds (`lower` and `upper`) for each batch:
+        Apply different bounds (``lower`` and ``upper``) for each batch:
 
         >>> rng = torch.manual_seed(1)
         >>> input_tensor = torch.rand((2, 3, 3, 3))

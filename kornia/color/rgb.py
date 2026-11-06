@@ -147,7 +147,7 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
 
 def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Convert a BGR image to RGBA, with the colour channels in RGB order.
+    r"""Convert a BGR image to RGBA, with the color channels in RGB order.
 
     ``rgba = bgr_to_rgba(image, alpha_val)`` reverses the channels of a ``(*, 3, H, W)`` BGR image and appends alpha.
 
@@ -194,15 +194,15 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     ``(*, 4, H, W)`` image, over white by default.
 
     Convention:
-        - Alpha is straight, not premultiplied, and in :math:`[0, 1]`; colour channels and ``background_color`` are
+        - Alpha is straight, not premultiplied, and in :math:`[0, 1]`; color channels and ``background_color`` are
           unit range.
         - ``background_color`` is a tuple or list of three floats, or a tensor with three channels at axis -3 that
-          broadcasts against the image, such as ``(3, 1, 1)``, ``(*, 3, 1, 1)`` or ``(*, 3, H, W)``. A 1D tensor
-          raises; reshape it to ``(3, 1, 1)``.
+          broadcasts against the image, such as ``(3, 1, 1)``, ``(*, 3, 1, 1)`` or ``(*, 3, H, W)``. A 1D or 2D tensor
+          raises (`#6621 <https://github.com/kornia/kornia/issues/6621>`_); reshape it to ``(3, 1, 1)``.
 
     Args:
         image: RGBA image with shape ``(*, 4, H, W)``.
-        background_color: background colour; ``None`` is white.
+        background_color: background color; ``None`` is white.
 
     Returns:
         RGB image with shape ``(*, 3, H, W)``.
@@ -258,7 +258,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     background: call :func:`rgba_to_rgb` with ``background_color`` and then :func:`rgb_to_bgr` for another one.
 
     Convention:
-        - Composites as :func:`rgba_to_rgb` does, so colour and alpha are unit range and alpha is straight.
+        - Composites as :func:`rgba_to_rgb` does, so color and alpha are unit range and alpha is straight.
 
     Args:
         image: RGBA image with shape ``(*, 4, H, W)``.
@@ -385,7 +385,6 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     See Also:
         - :func:`rgb255_to_normals`: the inverse for unit-length normals.
-        - :func:`rgb_to_rgb255`: scales colours from :math:`[0, 1]` rather than normals from :math:`[-1, 1]`.
         - :class:`NormalsToRgb255`: the module form.
 
     Example:
@@ -415,7 +414,6 @@ def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     See Also:
         - :func:`rgb255_to_rgb`: divides by 255 and does not clip.
-        - :func:`normals_to_rgb255`: maps normals from :math:`[-1, 1]` instead.
         - :class:`RgbToRgb255`: the module form.
 
     Example:
@@ -443,7 +441,6 @@ def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     See Also:
         - :func:`rgb_to_rgb255`: multiplies by 255 and clamps.
-        - :func:`rgb255_to_normals`: maps to unit normals instead of colours.
         - :class:`Rgb255ToRgb`: the module form.
 
     Example:
@@ -474,7 +471,6 @@ def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
 
     See Also:
         - :func:`normals_to_rgb255`: the inverse for unit-length normals; it does not normalize.
-        - :func:`rgb255_to_rgb`: divides by 255 and keeps colours.
         - :class:`Rgb255ToNormals`: the module form.
 
     Example:
@@ -969,7 +965,7 @@ class Rgb255ToNormals(nn.Module):
 
     See Also:
         - :func:`rgb255_to_normals`: the one-call form.
-        - :class:`NormalsToRgb255`: maps normals to colours.
+        - :class:`NormalsToRgb255`: maps normals to colors.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

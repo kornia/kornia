@@ -52,8 +52,8 @@ Which function to use, with the module form after the function:
 - CIE XYZ: :func:`rgb_to_xyz`, :class:`RgbToXyz`; :func:`xyz_to_rgb`, :class:`XyzToRgb`.
 - Full-range YCbCr: :func:`rgb_to_ycbcr`, :class:`RgbToYcbcr`; :func:`ycbcr_to_rgb`, :class:`YcbcrToRgb`.
 - Analog YUV: :func:`rgb_to_yuv`, :class:`RgbToYuv`; :func:`yuv_to_rgb`, :class:`YuvToRgb`.
-- YUV planes with half-resolution UV: 4:2:0 with :func:`rgb_to_yuv420`, :class:`RgbToYuv420`,
-  :func:`yuv420_to_rgb`, :class:`Yuv420ToRgb`; 4:2:2 with :func:`rgb_to_yuv422`, :class:`RgbToYuv422`,
+- YUV planes with subsampled UV: 4:2:0, half the height and width, with :func:`rgb_to_yuv420`, :class:`RgbToYuv420`,
+  :func:`yuv420_to_rgb`, :class:`Yuv420ToRgb`; 4:2:2, half the width, with :func:`rgb_to_yuv422`, :class:`RgbToYuv422`,
   :func:`yuv422_to_rgb`, :class:`Yuv422ToRgb`.
 - Sepia tone: :func:`sepia`, :class:`Sepia`.
 - Sample an RGB image into a Bayer mosaic: :func:`rgb_to_raw`, :class:`RgbToRaw`; demosaic it: :func:`raw_to_rgb`,
