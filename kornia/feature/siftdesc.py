@@ -90,7 +90,9 @@ def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
     else:
         gx = dx[..., 1:-1, :] / 2.0
         gy = dy[..., 1:-1] / 2.0
-    return torch.stack((gx, gy), 2).to(input.dtype)
+    # Not `torch.stack`: on torch 2.15.0, on CUDA only, compiling a stack of differences of one padded tensor raises
+    # InductorError (RecursionError), without any kornia code involved. Reassess when torch moves on.
+    return torch.cat((gx.unsqueeze(2), gy.unsqueeze(2)), 2).to(input.dtype)
 
 
 def _dense_sift_histograms_from_gradients(
