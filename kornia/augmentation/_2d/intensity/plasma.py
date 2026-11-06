@@ -20,9 +20,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
+from kornia.enhance.adjust import _clip_unit_fresh
 
 
 def _generate_plasma(
@@ -123,7 +124,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         intensity = _to_device_nonblocking(params["intensity"], image.device, image.dtype).view(-1, 1, 1, 1)
         brightness_map = 2 * _plasma_for_input(params["plasma"], image) - 1
         brightness_map = brightness_map * intensity
-        return (image + brightness_map).clamp_(0, 1)
+        return _clip_unit_fresh(image + brightness_map)
 
 
 class RandomPlasmaContrast(IntensityAugmentationBase2D):
@@ -190,7 +191,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         image = _clamp_unit_range(image)
         contrast_map = 4 * _plasma_for_input(params["plasma"], image)
-        return ((image - 0.5) * contrast_map + 0.5).clamp_(0, 1)
+        return _clip_unit_fresh((image - 0.5) * contrast_map + 0.5)
 
 
 class RandomPlasmaShadow(IntensityAugmentationBase2D):
@@ -271,4 +272,4 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         shade_quantity = _to_device_nonblocking(params["shade_quantity"], image.device, image.dtype).view(-1, 1, 1, 1)
         shade_map = _plasma_for_input(params["plasma"], image)
         shade_map = (shade_map < shade_quantity).to(image.dtype) * shade_intensity
-        return (image + shade_map).clamp_(0, 1)
+        return _clip_unit_fresh(image + shade_map)

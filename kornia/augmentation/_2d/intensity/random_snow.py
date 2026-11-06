@@ -20,10 +20,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 class RandomSnow(IntensityAugmentationBase2D):
@@ -104,7 +104,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         mask[:, 1, :, :] = torch.where(input_HLS[:, 1, :, :] < snow_coefficient[:, 0, :, :], 1, 0)
 
         # Increase Light channel of the image by given brightness for areas based on snow coefficient.
-        new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
+        new_light = _clamp_unit_range(input_HLS * mask * brightness)
         input_HLS = input_HLS * (1 - mask) + new_light
 
         return _clamp_unit_range(hls_to_rgb(input_HLS))
