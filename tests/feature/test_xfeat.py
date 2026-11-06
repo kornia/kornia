@@ -158,8 +158,8 @@ class TestInterpolateSparse2d(BaseTester):
 
 
 class TestInterpolateSparse2dHalfPrecision(BaseTester):
-    @pytest.mark.parametrize("mode, half, atol", [("bicubic", torch.bfloat16, 1e-2), ("bilinear", torch.float16, 1e-3)])
-    def test_half_map_matches_float32_sampling_5810(self, device, mode, half, atol):
+    @pytest.mark.parametrize("mode, half", [("bicubic", torch.bfloat16), ("bilinear", torch.float16)])
+    def test_half_map_matches_float32_sampling_5810(self, device, mode, half):
         # A map this large gets NaN and values up to 3e38 from torch's CPU half kernel, and a half-precision grid is
         # off by a pixel or more on every device. The positions are rounded to half first, as the caller's would be.
         g = torch.Generator().manual_seed(0)
@@ -169,9 +169,11 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
         interp = InterpolateSparse2d(mode)
         out = interp(x, pos, H * 8, W * 8)
         assert out.dtype == half
-        self.assert_close(out.float(), interp(x.float(), pos.float(), H * 8, W * 8), rtol=0.0, atol=atol)
+        self.assert_close(out, interp(x.float(), pos.float(), H * 8, W * 8).to(half))
 
     def test_integer_positions_normalise_in_the_default_dtype(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         # Only half-precision positions go through float32: integer ones divide in the default dtype, as they did.
         g = torch.Generator().manual_seed(0)
         x = torch.rand(1, 8, 24, 32, generator=g, dtype=torch.float64).to(device)
