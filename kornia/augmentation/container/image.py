@@ -31,7 +31,7 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
-from .base import ImageSequentialBase
+from .base import ImageSequentialBase, _chain_transform_matrices
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
@@ -454,7 +454,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
@@ -470,7 +470,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )
                 mat = module.identity_matrix(input) if _mat is None else _mat
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
         return res_mat
 
     def inverse_inputs(

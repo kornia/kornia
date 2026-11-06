@@ -33,7 +33,7 @@ from kornia.geometry.depth import (
     warp_frame_depth,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 
 
 def _k_asymmetric(device, dtype, fy=100.0):
@@ -896,6 +896,101 @@ class TestWarpFrameDepth(BaseTester):
         self.assert_close(warped[0, 0, 0], torch.tensor([1.0, 2.0, 3.0, 4.0, 0.0], device=device, dtype=dtype))
         assert (warped - image_src).abs().max().item() > 0.5
         assert torch.equal(warp_frame_depth(image_src, depth_dst, _eye4(device, dtype), camera_matrix), image_src)
+
+
+class TestDepthWarpAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of the depth warps (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device, dtype=torch.float32):
+        generator = torch.Generator().manual_seed(0)
+        theta = torch.tensor(0.4363)
+        pose = torch.eye(4)[None]
+        pose[:, :2, :2] = torch.tensor([[theta.cos(), -theta.sin()], [theta.sin(), theta.cos()]])
+        pose[:, :3, 3] = torch.tensor([0.3, -0.2, 1.1])
+        camera_matrix = torch.tensor([[[300.0, 0.0, 128.3], [0.0, 310.0, 127.7], [0.0, 0.0, 1.0]]])
+        image = torch.rand(1, 1, 256, 256, generator=generator)
+        depth = 2.5 * (1.0 + 0.1 * torch.rand(1, 1, 256, 256, generator=generator))
+        return tuple(x.to(device=device, dtype=dtype) for x in (image, depth, pose, camera_matrix))
+
+    @staticmethod
+    def _depth_warp(image, depth, pose, camera_matrix):
+        intrinsics = torch.eye(4, device=pose.device, dtype=pose.dtype)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=pose.device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=pose.device, dtype=pose.dtype)[None], size, size)
+        return kornia.geometry.depth.depth_warp(pinhole_dst, pinhole_src, depth, image, 256, 256)
+
+    @pytest.mark.parametrize("op_name", ["warp_frame_depth", "depth_warp"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6601(self, op_name, autocast_dtype, device):
+        # The result came back in float32, up to 0.68 (warp_frame_depth) and 0.88 (depth_warp) off in bfloat16 on a
+        # [0, 1] image: the products of transform_points and of DepthWarper.compute_projection_matrix.
+        skip_unsupported_autocast(device, autocast_dtype)
+        inputs = self._inputs(device)
+        op = self._depth_warp if op_name == "depth_warp" else kornia.geometry.depth.warp_frame_depth
+        expected = op(*inputs)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(*inputs)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_projection_matrix_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=device)[None], size, size)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, 256, 256)
+        expected = warper.compute_projection_matrix(pinhole_src)._dst_proj_src
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warper.compute_projection_matrix(pinhole_src)._dst_proj_src
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_cameras_of_different_dtypes_still_run_in_a_region_6601(self, autocast_dtype, device):
+        # Autocast reconciles them, and outside the region they raise. They stay in it, so a half pose from a model
+        # under AMP keeps working, with the caller's precision.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=device, dtype=half)[None], size, size)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, 256, 256)
+        with pytest.raises(RuntimeError):
+            warper.compute_projection_matrix(pinhole_src)
+        with torch.autocast(device.type, dtype=half):
+            warper.compute_projection_matrix(pinhole_src)
+        assert warper._dst_proj_src.dtype == half
+
+    def test_a_wrong_camera_type_still_raises_type_error_6601(self, device):
+        # The guard reads the cameras' dtypes, which must not come before this check's message.
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        warper = kornia.geometry.depth.DepthWarper(PinholeCamera(intrinsics, pose, size, size), 256, 256)
+        with pytest.raises(TypeError, match="pinhole_src expected to be of class PinholeCamera"):
+            warper.compute_projection_matrix("not a camera")
+
+    def test_still_scriptable_6601(self, device):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image, depth, pose, camera_matrix = self._inputs(device)
+        scripted = torch.jit.script(kornia.geometry.depth.warp_frame_depth)
+        self.assert_close(
+            scripted(image, depth, pose, camera_matrix),
+            kornia.geometry.depth.warp_frame_depth(image, depth, pose, camera_matrix),
+        )
 
 
 class TestDepthWarperConventions(BaseTester):

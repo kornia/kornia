@@ -20,7 +20,7 @@ import torch
 
 from kornia.geometry.transform import elastic_transform2d
 
-from testing.base import BaseTester, supports_2d_border_padding
+from testing.base import BaseTester, skip_unsupported_autocast, supports_2d_border_padding
 
 
 def _row_spread_std(out: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
@@ -31,6 +31,51 @@ def _row_spread_std(out: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
     weights = energy / energy.sum()
     mean = (weights * rows).sum()
     return (weights * (rows - mean) ** 2).sum().sqrt()
+
+
+class TestElasticTransformAutocast(BaseTester):
+    """A caller's autocast region does not reach the displacement field and the identity grid (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device):
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(1, 1, 256, 256, generator=generator).to(device)
+        return image, (torch.rand(1, 2, 256, 256, generator=generator) * 2 - 1).to(device)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6601(self, autocast_dtype, device):
+        # 0.018 off on a [0, 1] image in bfloat16, and still float32: nearly all of it from the convolutions of
+        # filter2d_separable, the rest from F.affine_grid.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, noise = self._inputs(device)
+        expected = elastic_transform2d(image, noise)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = elastic_transform2d(image, noise)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("half_image", [True, False], ids=["half-image", "half-noise"])
+    def test_mixed_dtypes_stay_in_the_image_dtype_in_a_region_6601(self, half_image, autocast_dtype, device):
+        # A mix raises outside the region and runs in it; the result stays in the image dtype, as autocast left it.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        image, noise = self._inputs(device)
+        image, noise = (image.to(half), noise) if half_image else (image, noise.to(half))
+        with torch.autocast(device.type, dtype=half):
+            actual = elastic_transform2d(image, noise)
+        assert actual.dtype == image.dtype
+
+    def test_region_of_the_other_half_dtype_still_runs_6601(self, device):
+        # The field leaves autocast, so its float16 convolution output reaches torch.cat in a bfloat16 region: the cat
+        # stays under the guard, where it would otherwise raise "Unexpected floating ScalarType".
+        skip_unsupported_autocast(device, "bfloat16")
+        image, noise = self._inputs(device)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = elastic_transform2d(image, noise.to(torch.float16))
+        assert actual.dtype == torch.float32
 
 
 class TestElasticTransform(BaseTester):

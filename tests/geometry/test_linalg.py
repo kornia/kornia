@@ -19,12 +19,13 @@ import math
 
 import pytest
 import torch
+from torch import nn
 
 import kornia
 import kornia.geometry.linalg as kgl
 from kornia.core._compat import torch_version_lt
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.geometry.create import create_random_homography
 from testing.geometry.linalg import euler_angles_to_rotation_matrix, identity_matrix
 
@@ -236,6 +237,138 @@ class TestTransformPoints(BaseTester):
         out = kgl.transform_points(trans, points_src)
         assert out.dtype == points_dtype
         self.assert_close(out.to(torch.float32), points_src.to(torch.float32), atol=1e-2, rtol=1e-2)
+
+
+class TestTransformPointsAutocast(BaseTester):
+    """A caller's autocast region does not reach the product of transform_points (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device, dtype=torch.float32):
+        # A 25-degree homography with a translation, points in a 256 px image.
+        theta = torch.tensor(0.4363)
+        homography = torch.tensor(
+            [[theta.cos(), -theta.sin(), 50.0], [theta.sin(), theta.cos(), 20.0], [1e-3, 2e-3, 1.0]]
+        )[None]
+        points = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)) * 256
+        return homography.to(device=device, dtype=dtype), points.to(device=device, dtype=dtype)
+
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_points_6601(self, input_dtype, autocast_dtype, device):
+        # float32 ran the bmm in the autocast dtype and came back in float32, up to 1.36 px off in bfloat16 and 0.18 in
+        # float16. Autocast does not cast float64, so that result never changed.
+        skip_unsupported_autocast(device, autocast_dtype)
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        homography, points = self._inputs(device, input_dtype)
+        expected = kgl.transform_points(homography, points)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = kgl.transform_points(homography, points)
+        assert actual.dtype == input_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_matches_the_literal_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        homography = torch.tensor(
+            [[0.9063078, -0.4226183, 50.0], [0.4226183, 0.9063078, 20.0], [1e-3, 2e-3, 1.0]], device=device
+        )[None]
+        points = torch.tensor([[[250.0, 30.0], [10.0, 240.0]]], device=device)
+        # Generated in float64 with plain Python:
+        # for x, y in ((250.0, 30.0), (10.0, 240.0)):
+        #     w = 1e-3 * x + 2e-3 * y + 1.0
+        #     print((0.9063078 * x - 0.4226183 * y + 50.0) / w, (0.4226183 * x + 0.9063078 * y + 20.0) / w)
+        expected = torch.tensor([[[201.4492, 116.6747], [-28.4331, 162.2416]]], device=device)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = kgl.transform_points(homography, points)
+        self.assert_close(actual, expected, rtol=0, atol=1e-3)
+
+    @pytest.mark.parametrize(
+        "matrix_dtype,points_dtype",
+        [(torch.float32, "half"), ("half", torch.float32), ("half", torch.float64), (torch.float64, "half")],
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_match_the_call_outside_the_region_6601(
+        self, matrix_dtype, points_dtype, autocast_dtype, device
+    ):
+        # The ``to`` before the product already gives both operands the matrix's dtype, so the guard needs no
+        # reconciliation, unlike the warps of #6573: a mix that autocast ran still runs.
+        skip_unsupported_autocast(device, autocast_dtype)
+        if device.type == "mps" and torch.float64 in (matrix_dtype, points_dtype):
+            pytest.skip("MPS does not support float64")
+        half = getattr(torch, autocast_dtype)
+        homography, points = self._inputs(device)
+        homography = homography.to(half if matrix_dtype == "half" else matrix_dtype)
+        points = points.to(half if points_dtype == "half" else points_dtype)
+        expected = kgl.transform_points(homography, points)
+        with torch.autocast(device.type, dtype=half):
+            actual = kgl.transform_points(homography, points)
+        assert actual.dtype == points.dtype
+        # CUDA autocast runs the reciprocal of the perspective divide in float32, for half operands only, so a half
+        # matrix differs in and out of the region there, on purpose and as it did before the guard.
+        if not (device.type == "cuda" and matrix_dtype == "half"):
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_region_does_not_change_the_gradient_6601(self, device):
+        skip_unsupported_autocast(device, "bfloat16")
+        homography, points = self._inputs(device)
+
+        def gradients(enabled):
+            matrix, inputs = homography.clone().requires_grad_(), points.clone().requires_grad_()
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=enabled):
+                loss = kgl.transform_points(matrix, inputs).sum()
+            loss.backward()
+            return matrix.grad, inputs.grad
+
+        for actual, expected in zip(gradients(True), gradients(False)):
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_trace_in_a_region_with_a_parameter_6601(self, device):
+        # A trace taken in the region recorded the half-precision casts, which stayed in the graph after the region.
+        skip_unsupported_autocast(device, "bfloat16")
+        homography, points = self._inputs(device)
+
+        class Warp(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.homography = nn.Parameter(homography.clone())
+
+            def forward(self, inputs):
+                return kgl.transform_points(self.homography, inputs)
+
+        module = Warp().to(device)
+        expected = module(points)
+        with torch.autocast(device.type, dtype=torch.bfloat16, cache_enabled=False):
+            traced = torch.jit.trace(module, (points,), check_trace=False)
+        self.assert_close(traced(points), expected, rtol=1e-3, atol=1e-3)
+        # A half-precision trace would not move with the parameter either, so check that it still does.
+        with torch.no_grad():
+            traced.homography[0, 0, 2] += 1.0
+            module.homography[0, 0, 2] += 1.0
+        self.assert_close(traced(points), module(points), rtol=1e-3, atol=1e-3)
+
+    def test_still_scriptable_6601(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        homography, points = self._inputs(device, dtype)
+        scripted = torch.jit.script(kgl.transform_points)
+        self.assert_close(scripted(homography, points), kgl.transform_points(homography, points))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer):
+        skip_unsupported_autocast(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        homography, points = self._inputs(device)
+        op = torch_optimizer(kgl.transform_points)
+        expected = kgl.transform_points(homography, points)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(homography, points)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(homography, points), expected, rtol=1e-3, atol=1e-3)
 
 
 class TestComposeTransforms(BaseTester):
