@@ -87,9 +87,9 @@ class PatchDominantGradientOrientation(nn.Module):
         - The angle is not wrapped into :math:`(-\pi, \pi]`: it can exceed :math:`\pi` by up to
           ``pi / num_angular_bins``.
         - A patch whose Sobel gradients are all exactly zero, such as an all-zero patch, gets the angle
-          :math:`\pi` from its empty histogram. A nearly flat patch gets an arbitrary angle set by rounding noise: a
-          constant float64 patch can have nonzero rounding-level gradients, and so does a patch sampled from a flat
-          image region by :func:`~kornia.feature.extract_patches_from_pyramid`.
+          :math:`\pi` from its empty histogram, as does any constant patch. A nearly flat patch gets an arbitrary angle
+          set by rounding noise, such as a patch sampled from a flat image region by
+          :func:`~kornia.feature.extract_patches_from_pyramid`.
         - A float16 or bfloat16 patch is computed in float32, whatever the module's dtype and any enclosing autocast,
           and only the returned angle is cast back: the histogram bins of a textured patch are subnormal in float16.
           A float32 patch under autocast gets its float32 result.

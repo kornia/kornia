@@ -16,7 +16,6 @@
 #
 
 import math
-from unittest.mock import patch
 
 import pytest
 import torch
@@ -353,7 +352,7 @@ class TestOrientationKernelBuffer(BaseTester):
             expected = ref(patches)
 
         assert out.dtype == torch.float64
-        assert torch.equal(out, expected)
+        self.assert_close(out, expected)
         assert mod.angular_smooth.weight.dtype == torch.float32
         assert mod.angular_smooth.weight.device == device
         out.sum().backward()
@@ -588,12 +587,13 @@ class TestTrackedGradientNoise6598(BaseTester):
         assert tracked.dtype == dtype
         self.assert_close(tracked.detach(), spatial_gradient(image, mode))
 
+    @pytest.mark.parametrize("requires_grad", [True, False])
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
-    def test_tracked_flat_pixels_have_exactly_zero_gradients(self, device, mode):
+    def test_flat_pixels_have_exactly_zero_gradients(self, device, mode, requires_grad):
         # 0.1 is not binary-exact: the Sobel convolution leaves 9.31e-10 on half of these entries on x86 and CUDA.
-        image = torch.full((16, 1, 32, 32), 0.1, device=device, dtype=torch.float32, requires_grad=True)
-        tracked = _exact_first_order_gradient(image, mode)
-        assert torch.equal(tracked, torch.zeros_like(tracked))
+        image = torch.full((16, 1, 32, 32), 0.1, device=device, dtype=torch.float32, requires_grad=requires_grad)
+        gradient = _exact_first_order_gradient(image, mode)
+        assert torch.equal(gradient, torch.zeros_like(gradient))
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
@@ -635,10 +635,3 @@ class TestTrackedGradientNoise6598(BaseTester):
             gradient = self._median_largest_gradient(build().to(device), patches)
             expected = self._median_largest_gradient(build().to(device, torch.float64), patches.double())
         assert gradient < 10 * expected
-
-    def test_untracked_input_keeps_the_convolution(self, device):
-        image = torch.rand(2, 1, 8, 8, device=device).requires_grad_()
-        with torch.no_grad(), patch("kornia.feature.siftdesc.spatial_gradient", wraps=spatial_gradient) as convolved:
-            _exact_first_order_gradient(image, "sobel")
-            _exact_first_order_gradient(image.detach(), "sobel")
-        assert convolved.call_count == 2
