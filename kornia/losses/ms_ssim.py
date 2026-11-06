@@ -156,6 +156,12 @@ class MS_SSIMLoss(nn.Module):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "sigmas" not in self.__dict__:
+            # An MS_SSIMLoss pickled before ``sigmas`` was stored keeps filtering float64 with its restored masks.
+            self.sigmas = []
+
     def _fspecial_gauss_1d(
         self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> torch.Tensor:
@@ -242,7 +248,7 @@ class MS_SSIMLoss(nn.Module):
             compute_dtype = torch.promote_types(output_dtype, mask_dtype)
             if compute_dtype in (torch.float16, torch.bfloat16):
                 compute_dtype = torch.float32
-            if compute_dtype == torch.float64:
+            if compute_dtype == torch.float64 and len(self.sigmas) > 0:
                 # Built in float64: ``.double()`` casts the buffer but keeps its float32 rounding.
                 size = 2 * self.pad + 1
                 device = self._g_masks.device
