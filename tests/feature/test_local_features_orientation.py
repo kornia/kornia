@@ -89,10 +89,7 @@ class TestPatchDominantGradientOrientation(BaseTester):
         # Kornia 601b5a4a reference: one masked adaptive-average-pool per angular bin, using the
         # deterministic patch generation below in float64. The literals hold in float32 to 8e-7 rad
         # on CPU and MPS (no peak is a near-tie), so the pin also runs on the MPS gate. Half precision
-        # quantises the histogram bins before the parabolic peak refinement and moves the angle by
-        # several half-precision ulps, so the literals do not apply there.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("float64 reference literals; half precision quantises the histogram bins")
+        # computes in float32 from the rounded patch (#6455), so they hold to its tolerance there too.
         t = torch.linspace(-1, 1, size, device=device, dtype=dtype)
         y, x = torch.meshgrid(t, t, indexing="ij")
         patches = torch.stack([torch.sin(3 * x + a) * torch.cos(4 * y - a) + 0.3 * x * y for a in [0, 0.4, 1.1, 2]])
@@ -125,8 +122,6 @@ class TestPatchDominantGradientOrientation(BaseTester):
 
     @pytest.mark.parametrize("value", [0.0, 0.5])
     def test_flat_patch_weight_gradient(self, device, dtype, value):
-        if not supports_replicate_padding(device, dtype):
-            pytest.skip(f"no replicate-pad kernel for {dtype} on {device.type}")
         patches = torch.full((2, 1, 32, 32), value, device=device, dtype=dtype, requires_grad=True)
         model = PatchDominantGradientOrientation(32).to(device, dtype)
 
@@ -139,8 +134,6 @@ class TestPatchDominantGradientOrientation(BaseTester):
         self.assert_close(weight_grad, torch.zeros_like(weight_grad), atol=0.0, rtol=0.0)
 
     def test_flat_patch_does_not_change_textured_weight_gradient(self, device, dtype):
-        if not supports_replicate_padding(device, dtype):
-            pytest.skip(f"no replicate-pad kernel for {dtype} on {device.type}")
         ramp = torch.linspace(0, 1, 32, device=device, dtype=dtype).expand(1, 1, 32, 32)
         model = PatchDominantGradientOrientation(32).to(device, dtype)
         expected_angle = model(ramp)
@@ -216,11 +209,6 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_flat_patch(self, device, half_dtype):
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_replicate_padding(device, half_dtype):
-            # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.
-            pytest.skip(f"no replicate-pad kernel for {half_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=half_dtype)
         out = PatchDominantGradientOrientation(32).to(device, half_dtype)(patches)
         assert out.dtype == half_dtype
@@ -230,10 +218,6 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
     def test_flat_patch_backward_is_finite(self, device, ori_dtype):
         # A flat patch has no orientation; `atan2`'s `1 / eps` derivative there is an artefact that
         # overflowed to `inf` through the float16 cast and reached the patch as NaN (all 1024 pixels).
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_replicate_padding(device, ori_dtype):
-            pytest.skip(f"no replicate-pad kernel for {ori_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=ori_dtype, requires_grad=True)
         out = PatchDominantGradientOrientation(32).to(device, ori_dtype)(patches)
         out.sum().backward()
@@ -243,13 +227,6 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_flat_image_laf(self, device, half_dtype):
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_replicate_padding(device, half_dtype):
-            # The orienter differentiates the extracted patches with a replicate pad, which torch
-            # 2.5.1 has no float16 CPU kernel for. Patch extraction itself samples half inputs in
-            # float32 and needs no `grid_sample` gate on any torch version.
-            pytest.skip(f"no replicate-pad kernel for {half_dtype} on {device.type}")
         img = torch.full((1, 1, 32, 32), 0.5, device=device, dtype=half_dtype)
         laf = torch.tensor([[[[5.0, 0.0, 16.0], [0.0, 5.0, 16.0]]]], device=device, dtype=half_dtype)
         out = LAFOrienter(19).to(device, half_dtype)(laf, img)
@@ -257,15 +234,84 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         assert torch.isfinite(out).all()
 
     def test_half_precision_matches_float32(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_replicate_padding(device, torch.float16):
-            pytest.skip(f"no float16 replicate-pad kernel on {device.type}")
         torch.manual_seed(0)
         patches = torch.rand(4, 1, 32, 32).to(device)
         ref = PatchDominantGradientOrientation(32).to(device)(patches)
         out = PatchDominantGradientOrientation(32).to(device, torch.float16)(patches.half())
         self.assert_close(out.float(), ref, atol=5e-2, rtol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("module_dtype", [None, torch.float32])
+    def test_textured_patch_backward_is_finite_6455(self, device, half_dtype, module_dtype):
+        # The smoothed bins of a textured patch are about 5e-6, subnormal in float16. The refinement's denominator
+        # squared in the division's backward underflowed to 0 there, so the gradients were NaN, for the patch and for
+        # the smoothing weights.
+        torch.manual_seed(0)
+        noise = torch.rand(16, 1, 32, 32, dtype=torch.float64)
+        t = torch.linspace(-3, 3, 32, dtype=torch.float64)
+        y, x = torch.meshgrid(t, t, indexing="ij")
+        blob = torch.exp(-(x**2 + (y - 0.3) ** 2) / 2)[None, None]
+        patches = torch.cat((noise, blob)).to(device, half_dtype).requires_grad_(True)
+        model = PatchDominantGradientOrientation(32).to(device, module_dtype or half_dtype)
+
+        angles = model(patches)
+        patch_grad, weight_grad = torch.autograd.grad(angles.sum(), (patches, model.angular_smooth.weight))
+
+        assert angles.dtype == half_dtype
+        assert patch_grad.dtype == half_dtype
+        assert weight_grad.dtype == (module_dtype or half_dtype)
+        assert torch.isfinite(patch_grad).all()
+        assert torch.isfinite(weight_grad).all()
+        # Every patch has a peak, so no patch may fall back on the flat-patch zero gradient.
+        assert (patch_grad.flatten(1) != 0).any(1).all()
+        assert weight_grad.count_nonzero() > 0
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_gradients_follow_float64_6455(self, device, half_dtype):
+        # The float64 reference holds the rounded patch and module state, so only the computation differs: bfloat16's
+        # 8-bit rounding alone moves the peak of some of these noise patches to another bin.
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        patches = torch.rand(16, 1, 32, 32, dtype=torch.float64).to(device, half_dtype).requires_grad_(True)
+        model = PatchDominantGradientOrientation(32).to(device, half_dtype)
+        reference_patches = patches.detach().double().requires_grad_(True)
+        reference = PatchDominantGradientOrientation(32).to(device, torch.float64)
+        reference.load_state_dict(model.state_dict())
+        reference.weighting.copy_(model.weighting)
+
+        grads = torch.autograd.grad(model(patches).sum(), (patches, model.angular_smooth.weight))
+        reference_grads = torch.autograd.grad(
+            reference(reference_patches).sum(), (reference_patches, reference.angular_smooth.weight)
+        )
+
+        for half, expected in zip(grads, reference_grads):
+            assert (half.double() - expected).norm() / expected.norm() < 0.01
+
+    @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
+    def test_amp_does_not_change_the_result_6455(self, device, amp_dtype):
+        # Autocast downcasts the Sobel and smoothing convolutions, which put a float32 patch through the same subnormal
+        # bins as a float16 one, whatever its own dtype.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip(f"no float16 and bfloat16 autocast on {device.type}")
+        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16 autocast")
+        torch.manual_seed(0)
+        patches = torch.rand(8, 1, 32, 32).to(device).requires_grad_(True)
+        model = PatchDominantGradientOrientation(32).to(device)
+        expected = model(patches)
+        expected_grads = torch.autograd.grad(expected.sum(), (patches, model.angular_smooth.weight))
+
+        with torch.autocast(device.type, dtype=amp_dtype):
+            angles = model(patches)
+        grads = torch.autograd.grad(angles.sum(), (patches, model.angular_smooth.weight))
+
+        assert angles.dtype == torch.float32
+        self.assert_close(angles, expected)
+        # MPS gradients vary from run to run, by about 1e-5 in the smoothing weights.
+        tolerances = {"atol": 1e-3, "rtol": 1e-2} if device.type == "mps" else {}
+        self.assert_close(grads[0], expected_grads[0], **tolerances)
+        self.assert_close(grads[1], expected_grads[1], **tolerances)
 
 
 class TestOrientationKernelBuffer(BaseTester):
