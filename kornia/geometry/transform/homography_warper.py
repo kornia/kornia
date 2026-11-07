@@ -38,7 +38,7 @@ from typing import Any, Optional
 import torch
 from torch import nn
 
-from kornia.core.utils import _torch_grid_sample
+from kornia.core.utils import _samples_half_in_float32, _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
 from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_warp, warp_grid
@@ -189,7 +189,10 @@ class HomographyWarper(BaseWarper):
 
         """
         if self.normalized_coordinates:
-            self._warped_grid = warp_grid(self.grid, src_homo_dst)
+            # A half homography is warped in float32 and sampled there, as homography_warp does.
+            homography = src_homo_dst.float() if _samples_half_in_float32(src_homo_dst) else src_homo_dst
+            self._warped_grid = warp_grid(self.grid, homography)
+            self._warped_grid_dtype = src_homo_dst.dtype
             return
         # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, unaffected by
         # autocast; not from self.grid, which a half default dtype has already rounded), kept until forward()
@@ -244,22 +247,28 @@ class HomographyWarper(BaseWarper):
                     " precompute_warp_grid() with the correct device for the homograhy"
                     " or change the patch device."
                 )
+            # getattr: a module pickled before this attribute existed has no _warped_grid_dtype
+            warped_grid_dtype = getattr(self, "_warped_grid_dtype", None)
+            in_float32 = _samples_half_in_float32(patch_src) and warped_grid_dtype == patch_src.dtype
             if not self.normalized_coordinates:
                 # the cached grid holds source pixels; normalize them with the size of the patch being sampled
                 _warped_grid = _normalize_warped_pixel_grid(
                     _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
                 )
-                # getattr: a module pickled before this attribute existed has no _warped_grid_dtype
-                warped_grid_dtype = getattr(self, "_warped_grid_dtype", None)
-                if warped_grid_dtype is not None:
-                    _warped_grid = _warped_grid.to(warped_grid_dtype)
+            # A patch of another dtype than the homography's is rejected, as in the direct path.
+            to_homography_dtype = not self.normalized_coordinates or warped_grid_dtype in (
+                torch.float16,
+                torch.bfloat16,
+            )
+            if warped_grid_dtype is not None and not in_float32 and to_homography_dtype:
+                _warped_grid = _warped_grid.to(warped_grid_dtype)
             warped_patch = _torch_grid_sample(
-                patch_src,
-                _warped_grid,
+                patch_src.float() if in_float32 else patch_src,
+                _warped_grid.float() if in_float32 else _warped_grid,
                 mode=self.mode,
                 padding_mode=self.padding_mode,
                 align_corners=self.align_corners,
-            )
+            ).to(patch_src.dtype)
         else:
             raise RuntimeError(
                 "Unknown warping. If homographies are not provided they must be preset"

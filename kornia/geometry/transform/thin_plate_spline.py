@@ -45,6 +45,7 @@ import torch
 from kornia.core.utils import (
     _autocast_disabled,
     _reconcile_under_autocast,
+    _samples_half_in_float32,
     _torch_grid_sample,
     _torch_solve_cast,
     is_compiling,
@@ -316,6 +317,9 @@ def warp_image_tps(
     .. image:: _static/img/warp_image_tps.png
 
     Convention:
+        - a ``float16``/``bfloat16`` image with centers and weights of its dtype builds its grid and samples in
+          ``float32`` on every device and returns the input dtype: a half-precision grid is off by half a pixel or more
+          at 256 px
         - image: ``(B, C, H, W)``; the weights come from :func:`get_tps_transform` called
           **reversed**, ``get_tps_transform(points_dst, points_src)``, and ``kernel_centers`` is
           ``points_dst``, the first argument of that call (see its Convention block). Earlier versions needed
@@ -382,6 +386,18 @@ def warp_image_tps(
     if not len(affine_weights.shape) == 3:
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
+    # A half warp runs in float32: a half-precision sampling grid is off by half a pixel or more.
+    out_dtype = image.dtype
+    if _samples_half_in_float32(image) and all(
+        t.dtype == image.dtype for t in (kernel_centers, kernel_weights, affine_weights)
+    ):
+        image = image.float()
+        kernel_centers, kernel_weights, affine_weights = (
+            kernel_centers.float(),
+            kernel_weights.float(),
+            affine_weights.float(),
+        )
+
     batch_size, _, h, w = image.shape
     coords: torch.Tensor = create_meshgrid(
         h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True, align_corners=align_corners
@@ -393,4 +409,4 @@ def warp_image_tps(
         image, warped, padding_mode=padding_mode, align_corners=align_corners
     )
 
-    return warped_image
+    return warped_image.to(out_dtype)
