@@ -195,6 +195,58 @@ class TestOnnxLightGlue:
             assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
 
     @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("device", "index"), [("cuda", 0), ("cuda:0", 0), ("cuda:1", 1)])
+    def test_cuda_provider_gets_the_device_index_6427(self, monkeypatch, tmp_path, device, index):
+        # #6427: the CUDA provider was created without a device_id, so onnxruntime ran every session on GPU 0.
+        # The session is replaced, so this needs neither a GPU nor onnxruntime-gpu.
+        created = []
+
+        class RecordingSession:
+            def __init__(self, path, providers):
+                created.append(providers)
+
+        monkeypatch.setattr(ort, "InferenceSession", RecordingSession)
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device=device)
+
+        assert matcher.device == torch.device("cuda", index)
+        assert created == [[("CUDAExecutionProvider", {"device_id": index}), "CPUExecutionProvider"]]
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    def test_inputs_on_another_gpu_raise_6427(self, monkeypatch, tmp_path):
+        # Only the device type was compared, so inputs on cuda:0 passed a cuda:1 matcher and were bound to the
+        # wrong GPU. The session is replaced, so one GPU is enough.
+        monkeypatch.setattr(ort, "InferenceSession", lambda path, providers: None)
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]], device="cuda:0"),
+            "descriptors": torch.ones(1, 2, 4, device="cuda:0"),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        with pytest.raises(Exception, match=r"Wrong device: the inputs are on cuda:0, the matcher on cuda:1"):
+            matcher({"image0": features, "image1": features})
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Test requires two CUDA GPUs")
+    def test_runs_on_the_requested_gpu_6427(self, tmp_path):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("OnnxLightGlue on CUDA requires onnxruntime-gpu with CUDAExecutionProvider")
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+        assert matcher.session.get_provider_options()["CUDAExecutionProvider"]["device_id"] == "1"
+
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]], device="cuda:1"),
+            "descriptors": torch.ones(1, 2, 4, device="cuda:1"),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        # The outputs are bound on the matcher's GPU; before the fix they came back on cuda:0.
+        assert result["matches"].device == torch.device("cuda:1")
+        assert result["scores"].device == torch.device("cuda:1")
+        torch.testing.assert_close(result["matches"].cpu(), torch.tensor([[0, 1]]))
+        torch.testing.assert_close(result["scores"].cpu(), torch.tensor([0.75]))
+
+    @pytest.mark.device_agnostic
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
         size = torch.tensor([[100, 100]])
