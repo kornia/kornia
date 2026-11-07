@@ -53,7 +53,7 @@ def _relative_path_components(name: str, label: str = "name") -> list[str]:
 
 
 class CachedDownloader:
-    """Downloads files from URLs to the local cache or .kornia_hub directory."""
+    """Downloads files from URLs to a cache directory, ``kornia_config.hub_cache_dir`` by default."""
 
     @classmethod
     def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: Optional[str] = None) -> str:
