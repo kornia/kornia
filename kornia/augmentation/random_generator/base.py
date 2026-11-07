@@ -22,7 +22,7 @@ from torch import nn
 from torch.distributions import Distribution, Uniform
 
 from kornia.augmentation.utils.helpers import MultiprocessWrapper, _holds_graph_tensor
-from kornia.augmentation.utils.param_validation import _set_rebuild_device
+from kornia.augmentation.utils.param_validation import _get_rebuild_device, _set_rebuild_device
 
 T = TypeVar("T")
 
@@ -57,8 +57,8 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     dtype: torch.dtype
 
     # Whether ``make_samplers`` can run on every forward without reading the values of a range, once the validators
-    # are off. A generator that branches on them turns this off, and a learnable range then reaches its draws through
-    # ``load_state_dict`` and copies only.
+    # are off. A generator that decides anything from them turns this off, and a learnable range then reaches its draws
+    # through ``load_state_dict`` and copies only.
     _follows_ranges_in_forward: bool = True
 
     def __init__(self) -> None:
@@ -97,11 +97,12 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     def _rebuild_samplers(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> None:
         # ``make_samplers`` from ranges that were validated when they were first built. A learnable range may have left
         # its domain since then, which raises nowhere after construction: it has to keep training, moving and copying.
+        outer = _get_rebuild_device()
         _set_rebuild_device(torch.device(device))
         try:
             self.make_samplers(device, dtype)
         finally:
-            _set_rebuild_device(None)
+            _set_rebuild_device(outer)
 
     def _follows_ranges(self) -> bool:
         return _rebuild_samplers_before_draw in self._forward_pre_hooks.values()
@@ -116,15 +117,23 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         if self._parameters or any(_holds_graph_tensor(self.__dict__.get(name)) for name in sampler_attrs):
             self.register_forward_pre_hook(_rebuild_samplers_before_draw)
 
+    def _assign_derived_range(self, name: str, value: torch.Tensor) -> None:
+        # ``make_samplers`` keeps a range moved to its device and dtype. That is the parameter itself when nothing had
+        # to move, which registers it under ``name`` too, and ``state_dict`` has held that key ever since. A tensor
+        # (the output of a parametrization, say) cannot be assigned to a registered name, so it replaces the name.
+        if not isinstance(value, nn.Parameter):
+            self._parameters.pop(name, None)
+        setattr(self, name, value)
+
     def _ranges_need_rebuild(self) -> bool:
         # A generator left on the CPU with a range on an accelerator (or the reverse) would wait for the GPU to copy
-        # that range before each draw. It keeps drawing where it is told to, and copies the range after an in-place
-        # update only, which the version counter of the range reveals without reading it.
+        # that range before each draw. It keeps drawing where it is told to, and copies the range only after an in-place
+        # update or a replacement of the parameter, which its identity and version counter reveal without reading it.
         device_type = torch.device(self.device).type
         ranges = [value for value in self._parameters.values() if value is not None]
         if all(value.device.type == device_type for value in ranges):
             return True
-        versions = tuple(value._version for value in ranges)
+        versions = tuple((id(value), value._version) for value in ranges)
         if versions == self.__dict__.get("_range_versions"):
             return False
         self._range_versions = versions

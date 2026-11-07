@@ -83,7 +83,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
         return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        self._assign_derived_range(
+            "_distortion_scale", torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        )
         if not _in_sampler_rebuild() and not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
         self.rand_val_sampler = Uniform(

@@ -140,7 +140,7 @@ class AffineGenerator3D(RandomGeneratorBase):
         # check translation range
         self._translate: Optional[torch.Tensor] = None
         if self.translate is not None:
-            self._translate = _as_range_tensor(self.translate, device, dtype)
+            self._assign_derived_range("_translate", _as_range_tensor(self.translate, device, dtype))
             _singular_range_check(self._translate, "translate", bounds=(0, 1), mode="3d")
 
         # check scale range
@@ -157,7 +157,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             elif _scale.shape != torch.Size([3, 2]):
                 raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
             else:
-                self._scale = _scale
+                self._assign_derived_range("_scale", _scale)
                 _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
                 _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
                 _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")

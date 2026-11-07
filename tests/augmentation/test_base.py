@@ -19,6 +19,7 @@ import contextlib
 import copy
 import io
 import pickle
+import threading
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -1986,6 +1987,29 @@ def _range_ends(value, center, floor):
     return torch.maximum(center - value, torch.full_like(value, floor)), center + value
 
 
+class _Clamped(torch.nn.Module):
+    """A parametrization that keeps a range inside ``[low, high]``."""
+
+    def __init__(self, low: float, high: float) -> None:
+        super().__init__()
+        self.low = low
+        self.high = high
+
+    def forward(self, value: torch.Tensor) -> torch.Tensor:
+        return value.clamp(self.low, self.high)
+
+
+def _make_constrained(make, name, form, limit, device, dtype):
+    # A range built outside ``limit``: the parametrization has to bring it back. A (2,) range is kept in
+    # ``[limit / 2, limit]``, a half-width in ``[0, limit]``.
+    start = (limit * 1.5, limit * 2.0) if form == "range" else limit * 1.5
+    param = torch.nn.Parameter(torch.tensor(start, device=device, dtype=dtype))
+    aug = make(param).to(device=device, dtype=dtype)
+    low = limit / 2 if form == "range" else 0.0
+    torch.nn.utils.parametrize.register_parametrization(aug._param_generator, name, _Clamped(low, limit))
+    return aug
+
+
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestLearnableRangeFollowsItsValue(BaseTester):
     """Every forward draws from the current value of a learnable range, so it trains for more than one step (#6572)."""
@@ -2138,9 +2162,11 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
             param.fill_(1.5)  # [-0.5, 2.5], past the (0, 2) bounds of the constructor
         self._assert_drawn_from(aug, "brightness_factor", torch.zeros_like(param), 1 + param.detach())
         self._assert_drawn_from(copy.deepcopy(aug), "brightness_factor", torch.zeros_like(param), 1 + param.detach())
-        other = torch.float32 if dtype == torch.float64 else torch.float64
-        moved = pickle.loads(pickle.dumps(aug)).to(dtype=other)  # noqa: S301
-        self._assert_drawn_from(moved, "brightness_factor", torch.tensor(0.0).to(param), 1 + param.detach())
+        clone = pickle.loads(pickle.dumps(aug))  # noqa: S301
+        self._assert_drawn_from(clone, "brightness_factor", torch.zeros_like(param), 1 + param.detach())
+        if device.type != "mps":  # MPS has no float64 to move to
+            moved = clone.to(dtype=torch.float32 if dtype == torch.float64 else torch.float64)
+            self._assert_drawn_from(moved, "brightness_factor", torch.tensor(0.0).to(param), 1 + param.detach())
         # A new module with that range is still refused.
         with pytest.raises(ValueError, match="out of bounds"):
             K.RandomBrightness(torch.nn.Parameter(param.detach().clone()), p=1.0)
@@ -2166,6 +2192,15 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         torch.manual_seed(0)
         drawn = aug.forward_parameters(torch.Size((2048, 3, 8, 8)))[key].detach()
         assert drawn.max() - drawn.min() >= abs(high - low) * 0.9
+
+    def test_load_of_a_learnable_range_outside_its_domain_draws_from_it(self, device, dtype):
+        # The ``ValueError`` of a load is for a range that is not learnable: a trained one may be out of its domain.
+        param = torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype))
+        aug = K.RandomRotation(param, p=1.0).to(device=device, dtype=dtype)
+        aug.load_state_dict({"_param_generator.degrees": torch.tensor(500.0)})
+        torch.manual_seed(0)
+        drawn = aug.forward_parameters(torch.Size((2048, 3, 8, 8)))["degrees"].detach()
+        assert drawn.max() > 360.0
 
     def test_volumetric_range_outside_its_domain_keeps_drawing(self, device, dtype):
         param = torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype))
@@ -2246,6 +2281,95 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         with pytest.raises(ValueError, match="out of bounds"):
             K.RandomRotation((-500.0, 500.0))
 
+    @staticmethod
+    def _out_of_domain(device, dtype):
+        param = torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype))
+        aug = K.RandomRotation(param, p=1.0).to(device=device, dtype=dtype)
+        with torch.no_grad():
+            param.fill_(400.0)  # A validator that runs on this raises.
+        return aug
+
+    def test_a_rebuild_leaves_other_threads_validating(self, device, dtype):
+        # Another thread's constructor and checkpoint load, while this thread's rebuild is inside ``make_samplers``.
+        aug = self._out_of_domain(device, dtype)
+        inside, release = threading.Event(), threading.Event()
+        make_samplers = K.random_generator.PlainUniformGenerator.make_samplers
+
+        def blocked(generator, *args):
+            if generator is aug._param_generator:
+                inside.set()
+                release.wait(30)
+            make_samplers(generator, *args)
+
+        errors = []
+
+        def draw():
+            try:
+                aug.forward_parameters(torch.Size((2, 3, 8, 8)))
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(K.random_generator.PlainUniformGenerator, "make_samplers", blocked):
+            thread = threading.Thread(target=draw)
+            thread.start()
+            try:
+                assert inside.wait(30)
+                with pytest.raises(ValueError, match="out of bounds"):
+                    K.RandomRotation((-500.0, 500.0))
+                with pytest.raises(ValueError, match="out of bounds"):
+                    K.RandomRotation((-10.0, 10.0)).load_state_dict(
+                        {"_param_generator.degrees": torch.tensor([-500.0, 500.0])}
+                    )
+            finally:
+                release.set()
+                thread.join()
+        assert not errors
+
+    def test_overlapping_rebuilds_do_not_end_each_other(self, device, dtype):
+        # A second thread's rebuild ends inside the first one's: the first must not start validating its range.
+        first, second = self._out_of_domain(device, dtype), self._out_of_domain(device, dtype)
+        inside, release = threading.Event(), threading.Event()
+        make_samplers = K.random_generator.PlainUniformGenerator.make_samplers
+
+        def blocked(generator, *args):
+            if generator is first._param_generator:
+                inside.set()
+                release.wait(30)
+            make_samplers(generator, *args)
+
+        errors = []
+
+        def draw():
+            try:
+                first.forward_parameters(torch.Size((2, 3, 8, 8)))
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(K.random_generator.PlainUniformGenerator, "make_samplers", blocked):
+            thread = threading.Thread(target=draw)
+            thread.start()
+            try:
+                assert inside.wait(30)
+                second.forward_parameters(torch.Size((2, 3, 8, 8)))
+            finally:
+                release.set()
+                thread.join()
+        assert not errors
+
+    def test_a_nested_rebuild_restores_the_outer_one(self, device, dtype):
+        outer, inner = self._out_of_domain(device, dtype), self._out_of_domain(device, dtype)
+        make_samplers = K.random_generator.PlainUniformGenerator.make_samplers
+
+        def nested(generator, *args):
+            if generator is outer._param_generator:
+                inner.forward_parameters(torch.Size((2, 3, 8, 8)))
+            make_samplers(generator, *args)
+
+        with patch.object(K.random_generator.PlainUniformGenerator, "make_samplers", nested):
+            outer.forward_parameters(torch.Size((2, 3, 8, 8)))
+        with pytest.raises(ValueError, match="out of bounds"):
+            K.RandomRotation((-500.0, 500.0))
+
     @pytest.mark.parametrize("volumetric, make", [(False, K.RandomRotation), (False, K.RandomBrightness)])
     def test_range_that_is_not_learnable_pays_nothing(self, volumetric, make, device, dtype):
         aug = make((0.8, 1.1), p=1.0).to(device=device, dtype=dtype)
@@ -2288,32 +2412,173 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         self.gradcheck(draw, (param.detach().clone(),), fast_mode=False)
 
     @pytest.mark.parametrize(
-        "make",
+        "make, loaded, read",
         [
-            _LEARNABLE_RANGES["RandomErasing"][0],
-            _LEARNABLE_RANGES["RandomResizedCrop"][0],
-            lambda: K.RandomCutMixV2(cut_size=_learnable(0.2, 0.8), p=1.0, use_correct_lambda=True),
-            lambda: K.RandomPosterize(_learnable(2.0, 6.0), p=1.0),
+            (
+                _LEARNABLE_RANGES["RandomErasing"][0],
+                {"scale": (0.25, 0.25), "ratio": (1.0, 1.0)},
+                lambda params: (params["widths"], params["heights"]),
+            ),
+            (
+                _LEARNABLE_RANGES["RandomResizedCrop"][0],
+                {"scale": (0.25, 0.25), "ratio": (1.0, 1.0)},
+                lambda params: (
+                    params["src"][:, 1, 0] - params["src"][:, 0, 0] + 1,
+                    params["src"][:, 2, 1] - params["src"][:, 1, 1] + 1,
+                ),
+            ),
+            (
+                lambda: K.RandomCutMixV2(cut_size=_learnable(0.2, 0.8), p=1.0, use_correct_lambda=True),
+                {"cut_size": (0.75, 0.75)},
+                lambda params: (params["crop_src"][..., 1, 0] - params["crop_src"][..., 0, 0] + 1,),
+            ),
         ],
-        ids=["RandomErasing", "RandomResizedCrop", "RandomCutMixV2", "RandomPosterize"],
+        ids=["RandomErasing", "RandomResizedCrop", "RandomCutMixV2"],
     )
-    def test_generator_that_reads_its_range_gets_it_from_a_load(self, make, device, dtype):
+    def test_generator_that_reads_its_range_gets_it_from_a_load(self, make, loaded, read, device, dtype):
+        # A quarter of the area of an 8 x 8 image with a ratio of 1 is a 4 x 4 box, and a lambda of 0.75 cuts 4 pixels.
         aug = make().to(device=device, dtype=dtype)
-        assert not aug._param_generator._forward_pre_hooks
-        before = dict(aug._param_generator.__dict__)
-        state = {key: value * 0.5 for key, value in aug.state_dict().items()}
+        generator = aug._param_generator
+        assert not generator._forward_pre_hooks
+        state = aug.state_dict()
+        for key in state:
+            state[key] = torch.tensor(loaded[key.split(".")[-1].lstrip("_")], device=device, dtype=dtype)
         aug.load_state_dict(state)
-        rebuilt = [key for key, value in aug._param_generator.__dict__.items() if before.get(key) is not value]
-        assert rebuilt
+        params = aug.forward_parameters(torch.Size((64, 3, 8, 8)))
+        for size in read(params):
+            self.assert_close(size.detach(), torch.full_like(size, 4.0))
+
+    @pytest.mark.parametrize(
+        "make, key, expected",
+        [
+            (lambda r: K.RandomPosterize(r, p=1.0), "bits_factor", (5.0, 5.0)),
+            (lambda r: K.RandomRotation90(r, p=1.0), "times", (1.0, 1.0)),
+        ],
+        ids=["RandomPosterize", "RandomRotation90"],
+    )
+    def test_whole_number_generator_gets_its_range_from_a_load(self, make, key, expected, device, dtype):
+        start = (2.0, 6.0) if key == "bits_factor" else (0.0, 0.0)
+        aug = make(torch.nn.Parameter(torch.tensor(start, device=device, dtype=dtype))).to(device=device, dtype=dtype)
+        assert not aug._param_generator._forward_pre_hooks
+        aug.load_state_dict({f"_param_generator.{key}": torch.tensor(expected)})
+        drawn = aug.forward_parameters(torch.Size((64, 3, 8, 8)))[key].detach()
+        assert drawn.min() == expected[0]
+        assert drawn.max() == expected[1]
+
+    @pytest.mark.parametrize("updated", [(0.5, 1.5), (1.0, 1.0)], ids=["fractional", "odd"])
+    def test_rotation90_in_place_update_leaves_its_decisions_consistent(self, updated, device, dtype):
+        # The bounds, the whole-range rule and the non-square check all come from the range as it was built. Refreshing
+        # the bounds alone drew 0 from a range of [0.5, 1.5], and a quarter turn silently cropped a non-square image.
+        param = torch.nn.Parameter(torch.zeros(2, device=device, dtype=dtype))
+        aug = K.RandomRotation90(param, p=1.0).to(device=device, dtype=dtype)
+        with torch.no_grad():
+            param.copy_(torch.tensor(updated, device=device, dtype=dtype))
+        image = torch.rand(1, 1, 4, 8, device=device, dtype=dtype)
+        aug(image)
+        assert aug._params["times"].detach().unique().tolist() == [0.0]
+        assert aug._param_generator._whole_range
+        # A load brings all of them over together.
+        with torch.no_grad():
+            param.zero_()
+        aug.load_state_dict({"_param_generator.times": torch.tensor(updated)})
+        with pytest.raises(ValueError, match="quarter turns"):
+            aug(image)
+
+    def test_rotation90_loads_a_range_without_float64(self, device, monkeypatch):
+        # MPS has no float64: a loaded range is on the device by then, so it cannot be converted to find if it is whole.
+        dtype = torch.float32
+        aug = K.RandomRotation90((0, 0), p=1.0).to(device=device, dtype=dtype)
+        original = torch.Tensor.to
+
+        def to_without_float64(tensor, *args, **kwargs):
+            if torch.float64 in args or kwargs.get("dtype") == torch.float64:
+                raise TypeError("Cannot convert to float64, as on MPS")
+            return original(tensor, *args, **kwargs)
+
+        monkeypatch.setattr(torch.Tensor, "to", to_without_float64)
+        aug.load_state_dict({"_param_generator.times": torch.tensor([0.5, 1.5], device=device, dtype=dtype)})
+        assert not aug._param_generator._whole_range
+
+    @pytest.mark.parametrize(
+        "make, name, key, limit",
+        [
+            (lambda r: K.RandomRotation(r, p=1.0), "degrees", "degrees", 10.0),
+            (lambda r: K.RandomAffine(r, p=1.0), "degrees", "angle", 10.0),
+            (lambda r: K.RandomBrightness(r, p=1.0), "brightness_factor", "brightness_factor", 0.1),
+            (lambda r: K.ColorJitter(r, p=1.0), "brightness", "brightness_factor", 0.1),
+        ],
+        ids=["RandomRotation", "RandomAffine", "RandomBrightness", "ColorJitter"],
+    )
+    @pytest.mark.parametrize("form", _RANGE_FORMS)
+    def test_parametrization_constrains_the_draws(self, make, name, key, limit, form, device, dtype):
+        # The docs recommend one for a range that training must keep inside its domain. It moves the parameter out of
+        # ``_parameters``, and the attribute is the constrained value.
+        aug = _make_constrained(make, name, form, limit, device, dtype)
+        center = 1.0 if "brightness" in name else 0.0
+        torch.manual_seed(0)
+        drawn = aug.forward_parameters(torch.Size((2048, 3, 8, 8)))[key].detach()
+        # A few units in the last place of the drawn values, which half precision needs around a center of 1.
+        slack = limit * 0.01 + 4 * torch.finfo(dtype).eps * max(center, limit)
+        if form == "half-width":
+            assert (drawn - center).abs().max() <= limit + slack
+            assert drawn.max() - drawn.min() >= 2 * limit * 0.9
+        else:
+            assert drawn.min() >= limit / 2 - slack
+            assert drawn.max() <= limit + slack
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
+        if name == "degrees" and not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            return
+        for _ in range(2):
+            aug(x).sum().backward()
+
+    @pytest.mark.parametrize(
+        "make, name, shape",
+        [
+            (lambda r: K.RandomPerspective(r, p=1.0), "distortion_scale", (2, 3, 8, 8)),
+            (lambda r: K.RandomPerspective3D(r, p=1.0), "distortion_scale", (2, 3, 4, 8, 8)),
+        ],
+        ids=["RandomPerspective", "RandomPerspective3D"],
+    )
+    def test_parametrization_of_a_range_kept_by_the_generator(self, make, name, shape, device, dtype):
+        # These generators assign the range itself to an attribute, which a parametrization's output cannot replace.
+        param = torch.nn.Parameter(torch.tensor(0.9, device=device, dtype=dtype))
+        aug = make(param).to(device=device, dtype=dtype)
+        generator = aug._param_generator
+        torch.nn.utils.parametrize.register_parametrization(generator, name, _Clamped(0.0, 0.1))
+        aug(torch.rand(shape, device=device, dtype=dtype))
+        self.assert_close(generator._distortion_scale.detach(), torch.tensor(0.1, device=device, dtype=dtype))
+
+    def test_parametrization_of_the_ranges_of_the_volumetric_affine(self, device, dtype):
+        aug = K.RandomAffine3D(10.0, _learnable(0.9, 0.9, 0.9), p=1.0).to(device=device, dtype=dtype)
+        generator = aug._param_generator
+        torch.nn.utils.parametrize.register_parametrization(generator, "translate", _Clamped(0.0, 0.1))
+        aug(torch.rand(2, 3, 4, 8, 8, device=device, dtype=dtype))
+        self.assert_close(generator._translate.detach(), torch.full((3,), 0.1, device=device, dtype=dtype))
+
+    def test_replaced_parameter_with_the_module_on_the_cpu_is_followed(self, device, dtype):
+        # The version counter of a new parameter can equal that of the old one.
+        if device.type == "cpu":
+            pytest.skip("needs a range on another device than the module")
+        aug = K.RandomRotation3D(torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype)), p=1.0)
+        aug(torch.rand(2, 3, 4, 8, 8, device=device, dtype=dtype))
+        aug._param_generator.degrees = torch.nn.Parameter(torch.tensor(40.0, device=device, dtype=dtype))
+        torch.manual_seed(0)
+        yaw = aug.forward_parameters(torch.Size((1024, 3, 4, 8, 8)))["yaw"].detach()
+        assert yaw.max() - yaw.min() >= 80.0 * 0.9
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_compile_of_a_learnable_range_trains_and_follows_it(self, device, dtype, torch_optimizer):
+    def test_compile_of_a_learnable_range_trains_and_follows_it(
+        self, device, dtype, torch_optimizer, optimizer_backend
+    ):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot script an augmentation")
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("grid_sample backward is unavailable for this device/dtype")
         for name in ("RandomBrightness", "RandomRotation", "RandomAffine"):
             for form in _RANGE_FORMS:
                 aug, param, key, (center, floor), wide = self._make(name, form, device, dtype)
-                compiled = torch_optimizer(aug)
+                # ``fullgraph``: a graph break in the rebuild raises here instead of running that part eagerly.
+                compiled = torch_optimizer(aug, fullgraph=True)
                 x = torch.rand(1024, 1, 4, 4, device=device, dtype=dtype, requires_grad=True)
                 if name == "RandomBrightness":
                     x = torch.rand(1024, 3, 4, 4, device=device, dtype=dtype, requires_grad=True)
@@ -2324,6 +2589,8 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
                     param.copy_(wide)
                 compiled(x).sum().backward()
                 assert param.grad is not None
+                if key not in aug._params:
+                    continue  # Dynamo in torch 2.5 does not write ``_params`` back; the graph above held in full.
                 drawn = aug._params[key].detach()
                 low, high = _range_ends(wide, center, floor)
                 assert drawn.min() >= low - (high - low) * 0.01
@@ -2396,6 +2663,8 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
     def test_load_of_the_same_range_changes_nothing(self, device):
         # The sampler keeps the given numbers in the generator's dtype: 0.1 exactly in float64, not 0.1 rounded to the
         # float32 of the buffer. A checkpoint that holds the same range, in either dtype, must keep them.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64, and the exact double is the point of this test")
         target = K.RandomRotation((-0.1, 0.1), p=1.0).to(device=device, dtype=torch.float64)
         samplers = dict(target._param_generator.sampler_dict)
         low = samplers["degrees"].low.item()

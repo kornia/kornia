@@ -15,40 +15,54 @@
 # limitations under the License.
 #
 
+import threading
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from kornia.core.ops import _constant_tensor
+from kornia.core.utils import is_compiling
 
-# The device of the rebuild under way, or ``None``. ``RandomGeneratorBase`` builds the samplers of a learnable range
-# again on the forward path, from a range that was validated when it was first built. During a rebuild the validators
-# do not read the values of a range, because that would wait for the GPU and break a ``torch.compile`` graph on every
-# call, and the helpers below make numbers without a host-device copy. A plain module variable, like the switch in
-# ``kornia.core.check``, because Dynamo traces it: with threads, a validation that races a rebuild is merely skipped.
-_rebuild_device: Optional[torch.device] = None
+# The device of the sampler rebuild under way in this thread, or ``None``. ``RandomGeneratorBase`` builds the samplers
+# of a learnable range again on the forward path, from a range validated when it was first built. During a rebuild
+# the validators do not read the values of a range, because that would wait for the GPU and break a ``torch.compile``
+# graph on every call, and the helpers below make numbers without a host-device copy. The state belongs to the thread:
+# as a plain module variable, another thread's constructor skipped its validation and another thread's finished rebuild
+# turned the validators back on under a running one. Under ``torch.compile`` it is a plain variable all the same, since
+# Dynamo on torch 2.5 cannot trace a write to a ``threading.local``, and an eager thread never reads that one.
+_thread_rebuild = threading.local()
+_compiling_rebuild_device: Optional[torch.device] = None
 
 
 def _set_rebuild_device(device: Optional[torch.device]) -> None:
-    global _rebuild_device  # noqa: PLW0603
-    _rebuild_device = device
+    if is_compiling():
+        global _compiling_rebuild_device  # noqa: PLW0603
+        _compiling_rebuild_device = device
+    else:
+        _thread_rebuild.device = device
+
+
+def _get_rebuild_device() -> Optional[torch.device]:
+    if is_compiling():
+        return _compiling_rebuild_device
+    return getattr(_thread_rebuild, "device", None)
 
 
 def _in_sampler_rebuild() -> bool:
-    return _rebuild_device is not None
+    return _get_rebuild_device() is not None
 
 
 def _numbers_to_tensor(data: Any, device: Optional[torch.device], dtype: Optional[torch.dtype]) -> torch.Tensor:
     """Return ``torch.tensor(data, device=device, dtype=dtype)``, without a host-device copy during a rebuild."""
-    if _rebuild_device is None or dtype is None:
+    if not _in_sampler_rebuild() or dtype is None:
         return torch.tensor(data, device=device, dtype=dtype)
     return _constant_tensor(data, device=device, dtype=dtype)
 
 
 def _as_range_tensor(data: Any, device: Optional[torch.device], dtype: torch.dtype) -> torch.Tensor:
     """Return ``torch.as_tensor(data, device=device, dtype=dtype)``, without a host-device copy during a rebuild."""
-    if _rebuild_device is None or isinstance(data, torch.Tensor):
+    if not _in_sampler_rebuild() or isinstance(data, torch.Tensor):
         return torch.as_tensor(data, device=device, dtype=dtype)
     return _constant_tensor(data, device=device, dtype=dtype)
 
@@ -115,13 +129,14 @@ def _range_bound(
     is required of the range, not of ``bounds``: the domain is legitimately unbounded (the default is
     ``(0, inf)``), but a draw range that is not finite produces ``NaN`` at forward time.
 
-    During a rebuild of the samplers none of the values are checked (see ``_rebuild_device``).
+    During a rebuild of the samplers none of the values are checked (see ``_thread_rebuild``).
     """
-    checked = _rebuild_device is None
+    rebuild_device = _get_rebuild_device()
+    checked = rebuild_device is None
     if device is None:
         # Many generators pass no device and move the result themselves. A copy through the CPU in a rebuild would
         # wait for the GPU on every forward.
-        device = torch.device("cpu") if checked else _rebuild_device
+        device = torch.device("cpu") if rebuild_device is None else rebuild_device
     if dtype is None:
         dtype = torch.get_default_dtype()
     if not isinstance(factor, (torch.Tensor)):
@@ -245,7 +260,7 @@ def _shear_bound(
 
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]."""
-    if _rebuild_device is not None:
+    if _in_sampler_rebuild():
         return
     if bounds is None:
         bounds = (float("-inf"), float("inf"))
@@ -269,7 +284,7 @@ def _singular_range_check(
     mode: str = "2d",
 ) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]."""
-    if _rebuild_device is not None:
+    if _in_sampler_rebuild():
         return
     if mode == "2d":
         dim_size = 2
@@ -321,7 +336,7 @@ def _tuple_range_reader(
 
     if isinstance(input_range, torch.Tensor):
         if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
-            if _rebuild_device is None and input_range < 0:
+            if not _in_sampler_rebuild() and input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
             input_range_tmp = input_range.repeat(2).to(device=device, dtype=dtype) * _numbers_to_tensor(
                 [-1, 1], device, dtype

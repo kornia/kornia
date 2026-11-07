@@ -51,12 +51,18 @@ class Rotation90Generator(PlainUniformGenerator):
 
     """
 
+    # Whether the range is whole, and in ``RandomRotation90`` whether it can draw an odd turn, are read from its values
+    # and decide how the draw is made and whether a non-square input is refused. The draw carries no gradient back to
+    # the range. An update of a learnable range reaches this generator through ``load_state_dict`` and copies only.
+    _follows_ranges_in_forward = False
+
     def __init__(self, times: Any) -> None:
         super().__init__((times, "times", 0.0, (-3, 3)))
         self._find_whole_range()
 
     def _find_whole_range(self) -> None:
-        self._whole_range = bool(self.times.to(torch.float64).round().eq(self.times).all())
+        # Read on the host, in Python floats: a loaded range may sit on MPS, which has no float64.
+        self._whole_range = all(float(value).is_integer() for value in self.times.reshape(-1).tolist())
 
     def _ranges_loaded(self, names: Set[str]) -> None:
         self._find_whole_range()

@@ -82,8 +82,10 @@ class PlainUniformGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
-            # The registered parameter, because ``torch.func.functional_call`` swaps it without touching ``samplers``.
-            factor = self._parameters.get(name, factor)
+            # The attribute, not the tuple: ``torch.func.functional_call`` swaps a parameter and a parametrization moves
+            # it. Numbers stay in the tuple, to be read in ``dtype``.
+            if isinstance(factor, torch.nn.Parameter):
+                factor = getattr(self, name)
             if center is None and bound is None:
                 factor = _as_range_tensor(factor, device, dtype)
             elif center is None or bound is None:

@@ -670,14 +670,18 @@ Serializing an augmentation
   range and for a 0-d half-width alike. Its value is checked only when the
   augmentation is built: to read it on every call would wait for the GPU and
   break a ``torch.compile`` graph, so a range that training takes out of its
-  domain (a negative half-width, say) is drawn from as it is. Keep it inside
-  with a parametrization or by clamping it after the optimizer step. There are
-  two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize`` and
-  ``RandomCutMixV2`` read their range when they build their samplers and pass it
-  no gradient, so an update reaches them through ``load_state_dict`` and copies
-  only. A range on an accelerator in an
-  augmentation left on the CPU (or the reverse) is copied to the generator's
-  device after an in-place update only, which waits for the GPU once per update.
+  domain (a negative half-width, say) is drawn from as it is. Keep it inside by
+  clamping it after the optimizer step, or with
+  ``torch.nn.utils.parametrize.register_parametrization`` on
+  ``aug._param_generator``; PyTorch then serializes that generator through
+  ``state_dict()`` only, and ``copy.deepcopy`` and ``pickle`` of it raise. There
+  are two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` decide things from the values of
+  their range when they build their samplers and pass it no gradient, so an
+  update reaches them through ``load_state_dict`` and copies only. A range on an
+  accelerator in an augmentation left on the CPU (or the reverse) is copied to
+  the generator's device after an in-place update only, which waits for the GPU
+  once per update.
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. This includes the
   ``kornia.augmentation.auto`` policies: a policy pickles when every operation

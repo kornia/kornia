@@ -205,12 +205,11 @@ class TestAugmentationHostSync(BaseTester):
         op(x)
         torch.cuda.synchronize()
         sites = sync_sites(lambda: op(x))
-        built = [
-            site
-            for site in sites
-            if ("random_generator" in site and "make_samplers" in site) or "param_validation" in site
-        ]
-        assert not built, dict(sites)
+        # Compared with the same call without the rebuild, so that no site below ``make_samplers`` can hide from this.
+        op._param_generator._forward_pre_hooks.clear()
+        torch.cuda.synchronize()
+        without = sync_sites(lambda: op(x))
+        assert not sites - without, (dict(sites), dict(without))
 
     @pytest.mark.parametrize("name", sorted(_MOVED_AUTO))
     def test_moved_auto_operation_adds_no_sync_of_its_own(self, name, device, dtype) -> None:
