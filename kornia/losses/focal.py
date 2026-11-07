@@ -448,8 +448,9 @@ def binary_focal_loss_with_logits(
           is the sigmoid of the logit.
         - ``pos_weight`` and ``weight`` are ``(C,)`` vectors applied along dim 1: ``pos_weight[c]`` scales the
           positive term of channel ``c`` and ``weight[c]`` its whole loss.
-        - A target entry equal to ``ignore_index`` (default ``-100``) contributes 0 and still counts in the
-          ``'mean'`` denominator, as in :func:`~kornia.losses.focal_loss`.
+        - A target entry equal to ``ignore_index`` (default ``-100``) contributes 0 with zero logit gradient,
+          including for non-finite ignored logits, and still counts in the ``'mean'`` denominator,
+          as in :func:`~kornia.losses.focal_loss`.
         - :ref:`Losses and metrics <losses-metrics-conventions>` maps this loss onto torchvision's
           ``sigmoid_focal_loss`` and torch's ``pos_weight``.
 
@@ -489,10 +490,15 @@ def binary_focal_loss_with_logits(
         f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
     )
 
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
+
+    if target_mask is not None:
+        # Exclude ignored logits before logsigmoid: multiplying their NaN/inf outputs by zero is not a mask,
+        # and masking only the outputs would still leave NaN gradients in logsigmoid's backward.
+        pred = pred.masked_fill(~target_mask, 0.0)
+
     log_probs_pos: torch.Tensor = nn.functional.logsigmoid(pred)
     log_probs_neg: torch.Tensor = nn.functional.logsigmoid(-pred)
-
-    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     if target_mask is not None:
         #  mask ignore pixels
