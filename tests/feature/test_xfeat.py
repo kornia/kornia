@@ -668,10 +668,10 @@ class TestConventionsXFeat(BaseTester):
             handle.remove()
         return out, seen[0]
 
-    def test_convention_xfeat_keypoints_are_pixels_of_the_resized_grid_times_the_resize_ratio(self, device, dtype):
+    def test_convention_xfeat_keypoints_are_the_centres_of_pixels_of_the_resized_grid(self, device, dtype):
         # detectAndCompute resizes to (max(32, 32 floor(H / 32)), max(32, 32 floor(W / 32))), takes integer heatmap
-        # pixels i there and reports i * (W / W', H / H') (the formula of verlab/accelerated_features e92685f): kornia's
-        # pixel frame when H and W are multiples of 32. The score is the keypoint heatmap value times the reliability,
+        # pixels i there and reports the centre of that pixel in the input, (i + 0.5) * (W / W', H / H') - 0.5 (#6537):
+        # exactly i when H and W are multiples of 32. The score is the keypoint heatmap value times the reliability,
         # keypoints come sorted by it, and outputs are float32 whatever the input dtype. Heatmap value of a peak with
         # logit v: exp(v) / (exp(v) + exp(10) + 63), the softmax over the 65 channels.
         peaks = [(22, 13, 11.0), (70, 41, 12.0)]  # in-cell offsets (6, 5) and (6, 1): x % 8 != y % 8
@@ -693,15 +693,45 @@ class TestConventionsXFeat(BaseTester):
         for threshold, expected in ((0.5, [[70.0, 41.0], [22.0, 13.0]]), (0.8, [[70.0, 41.0]])):
             out, _ = self._detect(image, self._net_outputs(peaks, 64, 96), detection_threshold=threshold)
             assert out["keypoints"].tolist() == expected
-        # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at (22 * 150 / 128, 13 * 100 / 96); its
-        # centre in the input's pixel frame would be (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5). A side below 32
-        # is enlarged to 32: 20 x 150 is resized to 32 x 128.
-        for h, w, h_resized in ((100, 150, 96), (20, 150, 32)):
+        # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at its centre in the input's pixel frame,
+        # (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5). A side below 32 is enlarged to 32: 20 x 150 to 32 x 128.
+        for h, w, h_resized, expected in (
+            (100, 150, 96, [[25.8671875, 13.5625]]),
+            (20, 150, 32, [[25.8671875, 7.9375]]),
+        ):
             image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
             out, seen = self._detect(image, self._net_outputs([(22, 13, 12.0)], h_resized, 128))
             assert seen.shape == (1, 3, h_resized, 128)
-            expected = torch.tensor([[22 * w / 128, 13 * h / h_resized]], device=device)
-            self.assert_close(out["keypoints"], expected)
+            self.assert_close(out["keypoints"], torch.tensor(expected, device=device))
+
+    @staticmethod
+    def _coordinate_ramp(h, w, device):
+        # Channels (x, y, x) of each input pixel: after a bilinear resize, an interior pixel holds the input coordinates
+        # of its centre, which is the measurement of #6537 and does not depend on any formula for the resize.
+        y, x = torch.meshgrid(
+            torch.arange(h, device=device, dtype=torch.float32),
+            torch.arange(w, device=device, dtype=torch.float32),
+            indexing="ij",
+        )
+        return torch.stack([x, y, x])[None]
+
+    @pytest.mark.parametrize(
+        "h, w, h_resized, w_resized, expected",
+        [
+            # (22.5 * w / w_resized - 0.5, 13.5 * h / h_resized - 0.5): the largest offset, nearly half a pixel
+            (63, 63, 32, 32, [43.796875, 26.078125]),
+            (100, 150, 96, 128, [25.8671875, 13.5625]),
+            (20, 150, 32, 128, [25.8671875, 7.9375]),
+            (96, 128, 96, 128, [22.0, 13.0]),
+        ],
+    )
+    def test_convention_xfeat_keypoint_holds_the_input_coordinates_of_its_resized_pixel_6537(
+        self, h, w, h_resized, w_resized, expected, device
+    ):
+        ramp = self._coordinate_ramp(h, w, device)
+        out, seen = self._detect(ramp, self._net_outputs([(22, 13, 12.0)], h_resized, w_resized))
+        self.assert_close(out["keypoints"], torch.tensor([expected], device=device), rtol=0, atol=1e-3)
+        self.assert_close(out["keypoints"][0], seen[0, :2, 13, 22], rtol=0, atol=1e-3)
 
     def test_convention_xfeat_dense_keypoints_are_the_top_left_pixels_of_their_8_pixel_cells(self, device, dtype):
         # detectAndComputeDense keeps the cells of highest reliability and reports cell (j, i) at (8 j, 8 i) times the
@@ -725,6 +755,78 @@ class TestConventionsXFeat(BaseTester):
             assert out["descriptors"].shape == (1, 2, 64)
             # the descriptors are the dense features of those cells, (j, i, 1, 0, ...), not normalised
             assert out["descriptors"][0, :, :3].tolist() == [[float(j0), float(i0), 1.0], [float(j1), float(i1), 1.0]]
+
+    def _dense_on_ramp(self, h, w, device, cell, top_k, multiscale):
+        # detectAndComputeDense on a coordinate ramp, with one cell (j, i) of highest reliability at every scale.
+        # Returns the output and the (resized) images the network saw, in the order the scales ran.
+        xfeat = XFeat().to(device).eval()
+        seen = []
+
+        def hook(module, inputs, output):
+            image = inputs[0]
+            seen.append(image)
+            feats, logits, reliability = self._net_outputs([], image.shape[-2], image.shape[-1], reliability=0.1)
+            reliability[0, 0, cell[1], cell[0]] = 0.9
+            return tuple(t.to(device) for t in (feats, logits, reliability))
+
+        handle = xfeat.net.register_forward_hook(hook)
+        try:
+            out = xfeat.detectAndComputeDense(self._coordinate_ramp(h, w, device), top_k, multiscale)
+        finally:
+            handle.remove()
+        return out, seen
+
+    def test_convention_xfeat_dense_reports_the_centre_of_the_cell_top_left_pixel_after_the_resize_6537(self, device):
+        # multiscale=False keeps the cell's top-left pixel (8 j, 8 i) of the resized image, and reports the centre of
+        # that pixel in the input: 100 x 150 is resized to 96 x 128, and cell (2, 1) is pixel (16, 8), so
+        # (16.5 * 150 / 128 - 0.5, 8.5 * 100 / 96 - 0.5). Multiples of 32 keep exactly 8 * (j, i), as the test above
+        # pins.
+        out, seen = self._dense_on_ramp(100, 150, device, (2, 1), 1, False)
+        assert seen[0].shape[-2:] == (96, 128)
+        expected = torch.tensor([[[18.8359375, 8.3541666667]]], device=device)
+        self.assert_close(out["keypoints"], expected, rtol=0, atol=1e-3)
+        self.assert_close(out["keypoints"][0, 0], seen[0][0, :2, 8, 16], rtol=0, atol=1e-3)
+
+    def test_wart_xfeat_dense_multiscale_divides_by_the_factor_instead_of_the_pixel_centre_6537(self, device):
+        # Cell (2, 1) is pixel (16, 8) of what the network sees. For 160 x 224 the 0.6 scale gives 96 x 134, resized to
+        # 96 x 128; the 1.3 scale gives 208 x 291, resized to 192 x 288. The resize to a multiple of 32 goes through the
+        # pixel centre, p = (i + 0.5) * W / W' - 0.5, and the rescale divides by its factor, p / s:
+        # 0.6: ((16.5 * (134 / 128) - 0.5) / 0.6, (8.5 - 0.5) / 0.6);
+        # 1.3: ((16.5 * (291 / 288) - 0.5) / 1.3, (8.5 * (208 / 192) - 0.5) / 1.3).
+        # top_k=5 gives one cell to the 0.6 scale and four to the 1.3 scale, which runs first and is reported second.
+        out, seen = self._dense_on_ramp(160, 224, device, (2, 1), 5, True)
+        assert seen[0].shape[-2:] == (192, 288)
+        assert seen[1].shape[-2:] == (96, 128)
+        keypoints = out["keypoints"][0]
+        expected = torch.tensor([[27.9557291667, 13.3333333333], [12.4399038, 6.6987179]], device=device)
+        self.assert_close(keypoints[:2], expected, rtol=0, atol=1e-3)
+        # The ramp holds the pixel centre in the input: p / s is 0.5 - 0.5 / s away from it (#6537, kept on purpose).
+        wart = torch.tensor([[0.5 - 0.5 / 0.6], [0.5 - 0.5 / 1.3]], device=device)
+        self.assert_close(keypoints[0] - seen[1][0, :2, 8, 16], wart[0].expand(2), rtol=0, atol=1e-3)
+        self.assert_close(keypoints[1] - seen[0][0, :2, 8, 16], wart[1].expand(2), rtol=0, atol=1e-3)
+        # the scales stay 1 / factor: they convert a refinement offset, not a position
+        assert (out["scales"][0, 0] == 1 / 0.6).all()
+        assert (out["scales"][0, 1:] == 1 / 1.3).all()
+
+    def test_convention_xfeat_star_moves_the_reported_keypoint_by_the_offset_times_its_scale_6537(self, device):
+        # The refinement adds its offset to the reported coarse keypoint of the first image, in input pixels; the
+        # keypoint of the second image stays where it is reported. A fine matcher peaked at bin (5, 2) gives (2, -1).
+        xfeat = XFeat().to(device).eval()
+
+        class Peak(torch.nn.Module):
+            def forward(self, x):
+                out = torch.zeros(x.shape[0], 64, device=x.device, dtype=x.dtype)
+                out[:, 2 * 8 + 5] = 20.0
+                return out
+
+        xfeat.net.fine_matcher = Peak()
+        torch.manual_seed(0)
+        out = xfeat.detectAndComputeDense(torch.rand(1, 3, 160, 224, device=device), 50)
+        idx = torch.arange(50, device=device)
+        refined = xfeat._refine_matches(out, out, [(idx, idx)], 0)
+        offset = torch.tensor([[2.0, -1.0]], device=device) * out["scales"][0][:, None]
+        self.assert_close(refined[:, :2], out["keypoints"][0] + offset, rtol=0, atol=1e-3)
+        self.assert_close(refined[:, 2:], out["keypoints"][0], rtol=0, atol=0)
 
     def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_and_divides_by_the_factor(
         self, device, dtype
