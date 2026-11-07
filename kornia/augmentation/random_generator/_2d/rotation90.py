@@ -52,8 +52,9 @@ class Rotation90Generator(PlainUniformGenerator):
     """
 
     # Whether the range is whole, and in ``RandomRotation90`` whether it can draw an odd turn, are read from its values
-    # and decide how the draw is made and whether a non-square input is refused. The draw carries no gradient back to
-    # the range. An update of a learnable range reaches this generator through ``load_state_dict`` and copies only.
+    # and decide how the draw is made and whether a non-square input is refused. The floored draw is piecewise constant
+    # in the range: only the clamp's tie on the top number reports a derivative. An update of a learnable range reaches
+    # this generator through ``load_state_dict`` and copies only.
     _follows_ranges_in_forward = False
 
     def __init__(self, times: Any) -> None:
