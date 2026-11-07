@@ -58,8 +58,8 @@ class OnnxLightGlue:
           :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
           or LAFs, and it runs on CPU or CUDA only.
         - A CUDA ``device`` names one GPU, and the session runs on it: ``"cuda:1"`` runs on GPU 1, and ``"cuda"``
-          without an index means GPU 0, which :attr:`device` then reports as ``cuda:0``. The inputs must be on that
-          same GPU; tensors on another GPU raise.
+          without an index means GPU 0, which the ``device`` attribute then reports as ``cuda:0``. The inputs must
+          be on that same GPU; tensors on another GPU raise.
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
