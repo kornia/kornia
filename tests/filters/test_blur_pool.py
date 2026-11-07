@@ -357,9 +357,9 @@ class TestBlurPool(BaseTester):
             pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
             pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
             pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
-            pytest.param(lambda x: BlurPool2D(3)(x), id="BlurPool2D"),
-            pytest.param(lambda x: MaxBlurPool2D(3)(x), id="MaxBlurPool2D"),
-            pytest.param(lambda x: EdgeAwareBlurPool2D(3)(x), id="EdgeAwareBlurPool2D"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
         ],
     )
     def test_accepts_unbatched_input(self, op, device, dtype):
@@ -377,9 +377,9 @@ class TestBlurPool(BaseTester):
             pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
             pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
             pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
-            pytest.param(lambda x: BlurPool2D(3)(x), id="BlurPool2D"),
-            pytest.param(lambda x: MaxBlurPool2D(3)(x), id="MaxBlurPool2D"),
-            pytest.param(lambda x: EdgeAwareBlurPool2D(3)(x), id="EdgeAwareBlurPool2D"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
         ],
     )
     def test_rejects_other_ranks(self, op, device, dtype):
