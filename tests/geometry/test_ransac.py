@@ -332,6 +332,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     def test_the_frame_does_not_depend_on_the_pixel_scale(self, device, line_image):
         # In pixels s2 / s1 of the true geometry scales with the images (9.4e-3 at 640 x 480): a pixel-space floor would
         # reject it. Everything scaled together, with the threshold, is the same problem in the normalized frame.
+        if device.type == "mps":
+            pytest.skip("the scene is in float64, which MPS does not support")
         results = []
         kp1, kp2 = (kp.to(device) for kp in _line_mismatch_scene(0, line_image))
         for scale in (1.0, 16.0, 0.0625):
@@ -450,6 +452,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         # The sampling loop tests minimal models; a refinement must not bring a rank-one model back in. Here each
         # refinement of one kind returns the exact rank-one matrix of the mismatches' line, which outscores the true
         # geometry (40 inliers to 30).
+        if device.type == "mps":
+            pytest.skip("the scene is in float64, which MPS does not support")
         kp1, kp2 = (kp.to(device, torch.float64) for kp in _line_mismatch_scene(0, line_image))
         ransac = RANSAC("fundamental", inl_th=1.0, max_iter=50, seed=0)
         original = ransac._lm_refine
