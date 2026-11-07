@@ -481,7 +481,8 @@ class TestEdgeAwareBlurPool(BaseTester):
     def test_exception(self):
         from kornia.core.exceptions import BaseError, ShapeError
 
-        data = torch.rand(1, 3, 3)
+        # A (C, H, W) input is now accepted (follows max_pool2d); only other ranks raise.
+        data = torch.rand(3, 3)
         with pytest.raises(ShapeError) as errinfo:
             edge_aware_blur_pool2d(data, 3)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
