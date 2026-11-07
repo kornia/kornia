@@ -195,8 +195,8 @@ class TestMS_SSIMLoss(BaseTester):
             self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
 
     def test_float64_images_match_the_numpy_reference(self, device):
-        # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks rounded
-        # to float32 are off by 8.0e-8. 1e-12 allows for the summation order. 0.3 and 0.7 are not float32 numbers.
+        # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks built
+        # in float32 are off by 1.9e-8. 1e-12 allows for the summation order. 0.3 and 0.7 are not float32 numbers.
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
         img1 = ((torch.arange(64, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 8, 8).to(device)
