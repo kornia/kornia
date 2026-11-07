@@ -189,6 +189,16 @@ class HomographyWarper(BaseWarper):
 
         """
         if self.normalized_coordinates:
+            if self.grid.dtype != src_homo_dst.dtype:
+                # Casting a grid rounded at construction cannot recover the homography's coordinate precision.
+                self.grid = create_meshgrid(
+                    self.height,
+                    self.width,
+                    normalized_coordinates=True,
+                    device=src_homo_dst.device,
+                    dtype=src_homo_dst.dtype,
+                    align_corners=self.align_corners,
+                )
             self._warped_grid = warp_grid(self.grid, src_homo_dst)
             return
         # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, unaffected by
