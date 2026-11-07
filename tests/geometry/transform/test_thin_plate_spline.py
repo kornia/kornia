@@ -16,14 +16,18 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
 
 import kornia
-from kornia.geometry.transform.thin_plate_spline import _kernel_distance
+from kornia.geometry.transform.thin_plate_spline import _KERNEL_CENTERS_NOTICE, _kernel_distance
 
 from testing.base import BaseTester, supports_2d_border_padding
+
+# The other tests fit a spline for what follows; TestKernelCentersNotice pins the notice itself.
+pytestmark = pytest.mark.filterwarnings("ignore:`get_tps_transform` centres its kernels:FutureWarning")
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -291,6 +295,61 @@ class TestTransformParameters(BaseTester):
         jit_output = op_jit(src, dst)
         self.assert_close(op_output[0], jit_output[0])
         self.assert_close(op_output[1], jit_output[1])
+
+
+class TestKernelCentersNotice(BaseTester):
+    """The one-release notice of #6404. Remove this class with the notice, after kornia 0.9.1."""
+
+    def test_fit_warns_at_the_caller(self, device, dtype):
+        src, dst = _sample_points(1, device, dtype)
+        with pytest.warns(FutureWarning, match="first argument") as record:
+            kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
+        notices = [w for w in record if str(w.message) == _KERNEL_CENTERS_NOTICE]
+        assert len(notices) == 1
+        assert notices[0].filename == __file__
+        # The notice does not change the fit.
+        expected = kornia.geometry.transform.thin_plate_spline._get_tps_transform(src, dst)
+        assert torch.equal(kernel, expected[0])
+        assert torch.equal(affine, expected[1])
+
+    def test_warps_and_augmentation_stay_silent(self, device, dtype):
+        src, dst = _sample_points(1, device, dtype)
+        kernel, affine = kornia.geometry.transform.thin_plate_spline._get_tps_transform(src, dst)
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            kornia.geometry.transform.warp_points_tps(src, src, kernel, affine)
+            kornia.geometry.transform.warp_image_tps(image, src, kernel, affine)
+            kornia.augmentation.RandomThinPlateSpline(p=1.0)(image)
+        assert [str(w.message) for w in record if str(w.message) == _KERNEL_CENTERS_NOTICE] == []
+
+    def test_traced_fit_warns(self, device, dtype):
+        # Tracing a fit is a call the caller can edit, and the warning records nothing in the graph.
+        src, dst = _sample_points(1, device, dtype)
+        with pytest.warns(FutureWarning, match="first argument") as record:
+            traced = torch.jit.trace(kornia.geometry.transform.get_tps_transform, (src, dst), check_trace=False)
+        assert sum(str(w.message) == _KERNEL_CENTERS_NOTICE for w in record) == 1
+        expected = kornia.geometry.transform.thin_plate_spline._get_tps_transform(src, dst)
+        self.assert_close(traced(src, dst)[0], expected[0])
+
+    def test_scripted_fit_stays_silent(self, device, dtype):
+        src, dst = _sample_points(1, device, dtype)
+        scripted = torch.jit.script(kornia.geometry.transform.get_tps_transform)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            scripted(src, dst)
+        assert [str(w.message) for w in record if str(w.message) == _KERNEL_CENTERS_NOTICE] == []
+
+    def test_dynamo_fit_stays_fullgraph_and_silent(self, device, dtype, torch_optimizer):
+        src, dst = _sample_points(1, device, dtype)
+        fit = kornia.geometry.transform.get_tps_transform
+        expected = kornia.geometry.transform.thin_plate_spline._get_tps_transform(src, dst)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            actual = torch_optimizer(fit, fullgraph=True)(src, dst)
+        assert [str(w.message) for w in record if str(w.message) == _KERNEL_CENTERS_NOTICE] == []
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
 
 
 class TestWarpPoints(BaseTester):

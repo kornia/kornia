@@ -38,12 +38,26 @@ Which function to use:
 
 from __future__ import annotations
 
+import warnings
+
 import torch
 
-from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast, _torch_grid_sample, _torch_solve_cast
+from kornia.core.utils import (
+    _autocast_disabled,
+    _reconcile_under_autocast,
+    _torch_grid_sample,
+    _torch_solve_cast,
+    is_compiling,
+)
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
+
+_KERNEL_CENTERS_NOTICE = (
+    "`get_tps_transform` centres its kernels on its first argument: pass that argument as `kernel_centers` to "
+    "`warp_points_tps` and `warp_image_tps`. Passing its second argument returns a wrong warp of the right shape, with "
+    "no error. This notice is removed after kornia 0.9.1 (kornia#6404)."
+)
 
 # utilities for computing thin plate spline transforms
 
@@ -121,6 +135,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
               warped = warp_image_tps(image, kernel_centers=points_dst,
                                       kernel_weights=kernel_weights, affine_weights=affine_weights)
 
+        - in kornia 0.9.1, a call outside TorchScript and ``torch.compile`` emits a ``FutureWarning`` that repeats which
+          tensor to pass as ``kernel_centers``; it reads no tensor and does not change the result
+
     Args:
         points_src: batch of source points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
         points_dst: batch of target points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
@@ -142,6 +159,16 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
 
     """
+    # Stale centres cannot be told from right ones by their values (#6404), so the notice sits on the call a caller
+    # edits. A compile skips only the warning, because `warnings.warn` breaks `fullgraph=True`. After kornia 0.9.1,
+    # remove the notice and fold `_get_tps_transform` back in.
+    if not torch.jit.is_scripting() and not is_compiling():
+        warnings.warn(_KERNEL_CENTERS_NOTICE, FutureWarning, stacklevel=2)
+    return _get_tps_transform(points_src, points_dst)
+
+
+def _get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Fit the spline of :func:`get_tps_transform` without its notice, for callers that pass the right centres."""
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
 
