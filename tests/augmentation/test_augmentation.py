@@ -2865,6 +2865,27 @@ class TestRandomSaturation(BaseTester):
 
 
 class TestRectangleRandomErasing(BaseTester):
+    @pytest.mark.parametrize("batch_size", [3, 129])
+    @pytest.mark.parametrize("params_on_device", [False, True])
+    def test_replay_individual_rectangles_with_same_on_batch(self, batch_size, params_on_device, device, dtype):
+        image = torch.ones(batch_size, 1, 12, 12, device=device, dtype=dtype)
+        sampler = RandomErasing((0.1, 0.1), (1.0, 1.0), p=1.0)
+        replay = RandomErasing((0.1, 0.1), (1.0, 1.0), same_on_batch=True, p=1.0)
+        params = sampler.forward_parameters(image.shape)
+        params["xs"] = (torch.arange(batch_size) % 3 * 4).float()
+        params["ys"] = (torch.arange(batch_size) % 3 * 4).float()
+        if params_on_device:
+            for name in ("xs", "ys", "widths", "heights"):
+                params[name] = params[name].to(device)
+        expected = sampler(image, params=params)
+        actual = replay(image, params=params)
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+        image = image.requires_grad_()
+        expected_grad = torch.autograd.grad(sampler(image, params=params).sum(), image)[0]
+        actual_grad = torch.autograd.grad(replay(image, params=params).sum(), image)[0]
+        self.assert_close(actual_grad, expected_grad, atol=0, rtol=0)
+
     @pytest.mark.parametrize("erase_scale_range", [(0.001, 0.001), (1.0, 1.0)])
     @pytest.mark.parametrize("aspect_ratio_range", [(0.1, 0.1), (10.0, 10.0)])
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
