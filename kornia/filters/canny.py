@@ -123,7 +123,10 @@ def canny(
     hysteresis: bool = True,
     eps: float = 1e-6,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Find edges of the input image and filters them using the Canny algorithm.
+    r"""Find the edges of an image with the Canny detector.
+
+    ``magnitude, edges = canny(input)`` blurs a grayscale or RGB image, thins the Sobel gradient magnitude by
+    non-maximum suppression, and thresholds it with hysteresis into an edge map.
 
     .. image:: _static/img/canny.png
 
@@ -164,23 +167,28 @@ def canny(
           is converted with the floating weights rather than rounded to an integer grey.
 
     Args:
-        input: input image torch.Tensor with shape ``(B,C,H,W)``, with :math:`C` equal to 1, or to 3 for an RGB
-            image, which is converted to grayscale.
+        input: image with shape ``(B, C, H, W)``, with ``C`` equal to 1, or to 3 for an RGB image, which is
+            converted to grayscale.
         low_threshold: lower threshold for the hysteresis procedure, in the units of the magnitude above. It must be
             positive and at most ``high_threshold``.
         high_threshold: upper threshold for the hysteresis procedure, in the same units. It has no upper bound.
-        kernel_size: the size of the kernel for the gaussian blur.
-        sigma: the standard deviation of the kernel for the gaussian blur.
-        hysteresis: if True, applies the hysteresis edge tracking.
-            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps: regularization number to avoid NaN during backprop.
+        kernel_size: Gaussian blur window ``(kH, kW)`` in pixels, or one integer for both.
+        sigma: Gaussian blur standard deviation ``(sigma_y, sigma_x)`` in pixels, as in
+            :func:`~kornia.filters.gaussian_blur2d`.
+        hysteresis: if ``True``, keep a weak edge only when it connects to a strong one. If ``False``, the edge map
+            holds 0, 0.5 for weak edges and 1 for strong edges.
+        eps: added under the square root of the magnitude so that the gradient of a flat pixel is finite.
 
     Returns:
-        - the gradient magnitude after non-maximum suppression, shape of ``(B,1,H,W)``.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of ``(B,1,H,W)``.
+        - the gradient magnitude after non-maximum suppression, with shape ``(B, 1, H, W)``.
+        - the edge map, with shape ``(B, 1, H, W)``, holding 0 and 1 with ``hysteresis=True``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/canny.html>`__.
+
+    See Also:
+        - :class:`Canny`: the module form.
+        - :func:`sobel`: the gradient magnitude alone, without blur, suppression or thresholds.
 
     Example:
         >>> input = torch.rand(5, 3, 4, 4)
@@ -321,24 +329,30 @@ def _canny_gradients(
 
 
 class Canny(nn.Module):
-    r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
+    r"""Find the edges of an image with stored Canny settings (module form).
+
+    ``detector = Canny(low_threshold, high_threshold, ...)`` stores its arguments and checks the thresholds, and
+    ``magnitude, edges = detector(input)`` is :func:`canny` on a ``(B, C, H, W)`` image.
 
     Convention:
-        See the Convention block on :func:`~kornia.filters.canny`. The thresholds are validated at construction.
+        See the Convention block on :func:`~kornia.filters.canny`.
 
     Args:
-        low_threshold: lower threshold for the hysteresis procedure, in the units of the unnormalised Sobel
-            magnitude. It must be positive and at most ``high_threshold``.
-        high_threshold: upper threshold for the hysteresis procedure, in the same units. It has no upper bound.
-        kernel_size: the size of the kernel for the gaussian blur.
-        sigma: the standard deviation of the kernel for the gaussian blur.
-        hysteresis: if True, applies the hysteresis edge tracking.
-            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps: regularization number to avoid NaN during backprop.
+        low_threshold: lower hysteresis threshold, in the units of the unnormalised Sobel magnitude. It must be
+            positive and at most ``high_threshold``.
+        high_threshold: upper hysteresis threshold, in the same units. It has no upper bound.
+        kernel_size: Gaussian blur window ``(kH, kW)`` in pixels, or one integer for both.
+        sigma: Gaussian blur standard deviation ``(sigma_y, sigma_x)`` in pixels.
+        hysteresis: whether to keep a weak edge only when it connects to a strong one, as in :func:`canny`.
+        eps: added under the square root of the magnitude, as in :func:`canny`.
 
-    Returns:
-        - the gradient magnitude after non-maximum suppression, shape of ``(B,1,H,W)``.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of ``(B,1,H,W)``.
+    Shape:
+        - Input: ``(B, C, H, W)``, with ``C`` equal to 1, or to 3 for an RGB image.
+        - Output: the magnitude and the edge map, each ``(B, 1, H, W)``.
+
+    See Also:
+        - :func:`canny`: the one-call form.
+        - :class:`Sobel`: the gradient magnitude alone.
 
     Example:
         >>> input = torch.rand(5, 3, 4, 4)
