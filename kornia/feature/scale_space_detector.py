@@ -884,8 +884,9 @@ class MultiResolutionDetector(nn.Module):
           sub-pixel step. It is reported at the centre of that level pixel,
           :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)` of the ``(H, W)`` input, in the frame of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
-          The Key.Net reference reports :math:`(u W / W_l, v H / H_l)` instead, :math:`0.5 (f - 1)` px up and to the
-          left of that centre for :math:`f = W / W_l` (likewise along y), about 1.5 px on the default coarsest level.
+          The Key.Net reference reports :math:`(u W / W_l, v H / H_l)` instead. For :math:`f = W / W_l > 1` (likewise
+          along y) that is :math:`0.5 (f - 1)` px up and to the left of the centre, about 1.5 px on the default coarsest
+          level; on the default up level, where :math:`f < 1`, it is about 0.15 px down and to the right.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 
