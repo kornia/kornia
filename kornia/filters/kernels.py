@@ -172,7 +172,7 @@ def gaussian(
 
     Args:
         window_size: number of taps.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         mean: centre in taps, a float or a ``(B, 1)`` tensor with the ``B`` of ``sigma``; ``window_size // 2`` by
             default. See the Convention block for an even ``window_size``.
         device: device of the kernel when ``sigma`` is a Python number.
@@ -184,8 +184,9 @@ def gaussian(
     .. note::
         Float16 and bfloat16 kernels are computed in float32 and rounded once at return.
 
-        A ``sigma`` too small for the window to hold a representable weight returns the unit impulse: all the
-        mass on the sample nearest the mean, split evenly between the two centre taps when ``window_size`` is even.
+        A ``sigma`` of zero, or one too small for the window to hold a representable weight, puts all the mass on
+        the sample nearest the mean: the unit impulse. With an even ``window_size`` the default ``mean`` falls between
+        two samples, so a small ``sigma`` splits the mass between them, and a ``sigma`` of zero is not defined.
 
     See Also:
         - :func:`get_gaussian_kernel1d`: the checked call.
@@ -258,7 +259,7 @@ def gaussian_discrete_erf(
 
     Args:
         window_size: number of taps, even or odd.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
 
@@ -410,7 +411,7 @@ def gaussian_discrete(
 
     Args:
         window_size: number of taps, odd.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
 
@@ -912,7 +913,8 @@ def get_gaussian_kernel1d(
           taps from its centre, integers for an odd size and half-integers for an even one, and is normalized to
           sum 1; :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
         - ``force_even=True`` also accepts an even ``kernel_size``, and in a floating ``dtype`` the kernel is then
-          symmetric about the middle of the window, ``(kernel_size - 1) / 2``.
+          symmetric about the middle of the window, ``(kernel_size - 1) / 2``. No tap sits on that middle, so a
+          ``sigma`` of zero is not defined for an even ``kernel_size``.
         - A tensor ``sigma`` of shape ``(B, 1)`` gives one kernel per row.
         - A Python integer ``sigma`` is treated as its floating-point equivalent. With ``dtype=None``, both use
           the default floating-point dtype.
@@ -921,7 +923,7 @@ def get_gaussian_kernel1d(
 
     Args:
         kernel_size: number of taps, odd and positive.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         force_even: whether to accept an even ``kernel_size``.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
@@ -945,12 +947,10 @@ def get_gaussian_kernel1d(
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
 
-        A ``sigma`` too small for the window to hold a representable weight returns the unit impulse:
+        A ``sigma`` of zero returns the unit impulse:
 
-        >>> get_gaussian_kernel1d(5, 0.01)
+        >>> get_gaussian_kernel1d(5, 0.0)
         tensor([[0., 0., 1., 0., 0.]])
-        >>> get_gaussian_kernel1d(4, 0.01, force_even=True)
-        tensor([[0.0000, 0.5000, 0.5000, 0.0000]])
 
     """
     _check_kernel_size(kernel_size, allow_even=force_even)
@@ -982,7 +982,7 @@ def get_gaussian_discrete_kernel1d(
 
     Args:
         kernel_size: number of taps, odd and positive.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         force_even: accepted for parity with the other Gaussian builders, and ignored.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
@@ -1033,7 +1033,7 @@ def get_gaussian_erf_kernel1d(
 
     Args:
         kernel_size: number of taps, odd and positive.
-        sigma: positive standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
         force_even: whether to accept an even ``kernel_size``.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
@@ -1080,7 +1080,7 @@ def get_gaussian_kernel2d(
 
     Args:
         kernel_size: size ``(k_y, k_x)``, or one integer for both; odd and positive.
-        sigma: positive standard deviations ``(sigma_y, sigma_x)``, or a ``(B, 2)`` tensor.
+        sigma: non-negative standard deviations ``(sigma_y, sigma_x)``, or a ``(B, 2)`` tensor.
         force_even: whether to accept an even size.
         device: device of the kernel when ``sigma`` is a tuple.
         dtype: dtype of the kernel when ``sigma`` is a tuple.
@@ -1148,7 +1148,7 @@ def get_gaussian_kernel3d(
 
     Args:
         kernel_size: size ``(k_z, k_y, k_x)``, or one integer for all three; odd and positive.
-        sigma: positive standard deviations ``(sigma_z, sigma_y, sigma_x)``, or a ``(B, 3)`` tensor.
+        sigma: non-negative standard deviations ``(sigma_z, sigma_y, sigma_x)``, or a ``(B, 3)`` tensor.
         force_even: whether to accept an even size.
         device: device of the kernel when ``sigma`` is a tuple.
         dtype: dtype of the kernel when ``sigma`` is a tuple.
