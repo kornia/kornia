@@ -640,7 +640,13 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
-    img_mean = rgb_to_grayscale(image).mean((-2, -1), True) if image.shape[-3] == 3 else image.mean((-3, -2, -1), True)
+    # A 2-D image is one gray plane (#6645); only three or more dimensions have a channel axis.
+    if image.ndim < 3:
+        img_mean = image.mean((-2, -1), True)
+    elif image.shape[-3] == 3:
+        img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
+    else:
+        img_mean = image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
