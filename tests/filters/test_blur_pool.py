@@ -351,16 +351,41 @@ class TestBlurPool(BaseTester):
             BlurPool2D((3, 5))(data)
         assert "Invalid kernel shape. Expect CxC_(out, None)xNxN" in str(errinfo)
 
-    @pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
-    def test_rank_check_module(self, module_cls, device, dtype):
-        # A 3D (C, H, W) input must raise instead of being misread as (B, C, H, W).
-        # With C == H it previously ran and returned a wrong-shaped result.
-        with pytest.raises(ShapeError):
-            module_cls(3)(torch.rand(8, 8, 9, device=device, dtype=dtype))
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(lambda x: BlurPool2D(3)(x), id="BlurPool2D"),
+            pytest.param(lambda x: MaxBlurPool2D(3)(x), id="MaxBlurPool2D"),
+            pytest.param(lambda x: EdgeAwareBlurPool2D(3)(x), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_accepts_unbatched_input(self, op, device, dtype):
+        # Like max_pool2d, a (C, H, W) input is accepted: the result is input[None]
+        # processed with the batch dimension removed.
+        img = torch.rand(2, 16, 16, device=device, dtype=dtype)
+        out = op(img)
+        expected = op(img[None])[0]
+        assert out.shape == expected.shape
+        self.assert_close(out, expected)
 
-    def test_rank_check_functional(self, device, dtype):
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(lambda x: BlurPool2D(3)(x), id="BlurPool2D"),
+            pytest.param(lambda x: MaxBlurPool2D(3)(x), id="MaxBlurPool2D"),
+            pytest.param(lambda x: EdgeAwareBlurPool2D(3)(x), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_rejects_other_ranks(self, op, device, dtype):
+        # Ranks other than (C, H, W) and (B, C, H, W) raise ShapeError.
         with pytest.raises(ShapeError):
-            blur_pool2d(torch.rand(8, 8, 9, device=device, dtype=dtype), 3)
+            op(torch.rand(16, 16, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):

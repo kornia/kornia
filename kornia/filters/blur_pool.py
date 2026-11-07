@@ -95,6 +95,8 @@ class BlurPool2D(nn.Module):
             the sizes given in the Shape section of the class. They depend only
             on the input size and ``self.stride``.
         """
+        if input.dim() == 3:
+            return self.forward(input[None])[0]
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         _check_floating_feature_map(input, "BlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
@@ -181,6 +183,8 @@ class MaxBlurPool2D(nn.Module):
             class. They depend only on the input size, ``self.max_pool_size``
             and ``self.stride``.
         """
+        if input.dim() == 3:
+            return self.forward(input[None])[0]
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         _check_floating_feature_map(input, "MaxBlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
@@ -292,6 +296,8 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                   [0.0000, 0.0625, 0.3125]]]])
 
     """
+    if input.dim() == 3:
+        return blur_pool2d(input[None], kernel_size, stride)[0]
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_floating_feature_map(input, "blur_pool2d")
     channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
@@ -339,6 +345,8 @@ def max_blur_pool2d(
 
     """
     _warn_ceil_mode_deprecated(ceil_mode)
+    if input.dim() == 3:
+        return max_blur_pool2d(input[None], kernel_size, stride, max_pool_size)[0]
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_floating_feature_map(input, "max_blur_pool2d")
 
@@ -471,6 +479,10 @@ def edge_aware_blur_pool2d(
         The blurred torch.Tensor of shape ``(B, C, H, W)``.
 
     """
+    if input.dim() == 3:
+        return edge_aware_blur_pool2d(
+            input[None], kernel_size, edge_threshold, edge_dilation_kernel_size, epsilon
+        )[0]
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_floating_feature_map(input, "edge_aware_blur_pool2d")
     edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
