@@ -270,18 +270,14 @@ class TestMotionBlur(BaseTester):
         self.assert_close(motion_blur(image, 5, angle, direction), image)
         self.assert_close(MotionBlur(5, angle, direction)(image), image)
 
-    # "reflect" needs each spatial axis longer than the kernel radius (``kernel_size // 2 = 2`` here), as it does for
-    # ``filter2d``, ``gaussian_blur2d`` and ``box_blur`` at their defaults; "constant" and "replicate" do not.
     @pytest.mark.parametrize("shape", [(1, 1, 2, 9), (1, 1, 9, 2), (1, 1, 1, 9)])
-    def test_default_border_raises_on_an_axis_of_at_most_the_kernel_radius(self, shape, device, dtype):
+    def test_default_border_preserves_a_constant_image_on_short_axes(self, shape, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         image = torch.ones(shape, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError, match="Padding size should be less than"):
-            motion_blur(image, 5, 0.0, 0.0)
-        with pytest.raises(RuntimeError, match="Padding size should be less than"):
-            MotionBlur(5, 0.0, 0.0)(image)
+        self.assert_close(motion_blur(image, 5, 0.0, 0.0), image)
+        self.assert_close(MotionBlur(5, 0.0, 0.0)(image), image)
         assert motion_blur(image, 5, 0.0, 0.0, border_type="constant").shape == shape
 
     # Snippet used to generate expected:
@@ -541,9 +537,7 @@ class TestMotionBlur3D(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
-    # A blur of a constant volume is that constant, thin volumes included: ``D = 1`` is why the default is
-    # "replicate" and not "reflect", which needs each axis longer than the kernel radius. "replicate" has no such
-    # limit, down to a single voxel, so unlike the 2-D default there is no size at which this one raises.
+    # The default replicate border keeps a constant volume constant, down to a single voxel.
     @pytest.mark.parametrize(
         "shape", [(1, 1, 5, 6, 7), (2, 2, 3, 4, 5), (1, 1, 1, 5, 7), (2, 3, 1, 8, 9), (1, 1, 1, 1, 1)]
     )

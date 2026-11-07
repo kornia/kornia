@@ -21,7 +21,7 @@
 blur with the 5x5 binomial kernel (the outer product of ``[1, 4, 6, 4, 1] / 16`` with itself) and resize bilinearly:
 ``pyrdown`` blurs and then resizes to ``floor(side / factor)``, and ``pyrup`` resizes to twice the size and then
 blurs. They default to ``align_corners=False`` and pad the blur by ``border_type``, ``'reflect'`` by default, under
-which the blurred image needs at least 3 pixels per side. :class:`ScalePyramid` blurs with Gaussians of its own sigmas
+which reflection extends across short axes. :class:`ScalePyramid` blurs with Gaussians of its own sigmas
 and resizes with ``align_corners=True``.
 
 Which function to use:
@@ -532,7 +532,8 @@ def pyrdown(
           note OpenCV's ``pyrDown`` rounds up instead)
         - Dynamo ONNX uses float32 reciprocal-scale arithmetic for dynamic sides, which can differ from eager by one
           pixel for some fractional factors (for example, side 33 and factor 1.1)
-        - border_type: ``'reflect'`` by default (blur before downsample), which needs ``H`` and ``W`` of at least 3
+        - border_type: ``'reflect'`` by default (blur before downsample), including short positive axes; the resized
+          output must still have at least one pixel along each axis
         - align_corners: ``False`` by default
 
     Args:
@@ -645,9 +646,10 @@ def build_pyramid(
 
     ``levels = build_pyramid(input, max_level)`` takes images ``(B, C, H, W)`` and returns a list of ``max_level``
     tensors: the input itself, then each previous level through :func:`pyrdown`, ``(B, C, H // 2, W // 2)`` and so on.
-    With ``max_level > 1`` and the default ``'reflect'`` border every level but the last needs 3 pixels per side, so
-    ``H`` and ``W`` must be at least ``3 * 2 ** (max_level - 2)``. For band-pass levels, use
-    :func:`build_laplacian_pyramid`; for octaves of several blurs each, with their sigmas, :class:`ScalePyramid`.
+    Every level must have at least one pixel per side, so ``H`` and ``W`` must be at least
+    ``2 ** (max_level - 1)``. The blur extends its reflected border across the final 2 by 2 level. For band-pass
+    levels, use :func:`build_laplacian_pyramid`; for octaves of several blurs each, with their sigmas,
+    :class:`ScalePyramid`.
 
     .. image:: _static/img/build_pyramid.png
 

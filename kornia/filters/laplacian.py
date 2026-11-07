@@ -18,14 +18,13 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .blur import _HAS_MKLDNN, _ONEDNN_LARGE_INPUT, _needs_convolution_for_extreme_cpu_values
-from .filter import _to_floating, filter2d
+from .filter import _pad, _to_floating, filter2d
 from .kernels import (
     _check_kernel_size,
     _check_laplacian_kernel_size,
@@ -140,7 +139,7 @@ def laplacian(
         # finite normalized response.
         input = input / scale
 
-    padded = F.pad(input, (kx // 2, kx // 2, ky // 2, ky // 2), mode=border_type)
+    padded = _pad(input, [kx // 2, kx // 2, ky // 2, ky // 2], border_type)
     height, width = input.shape[-2:]
 
     rows = padded[..., :height, :]
