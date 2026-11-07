@@ -369,8 +369,8 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     if polygon.shape[-2] == 1:
         polygon = torch.cat((polygon, polygon), dim=-2)
 
-    # Check if polygons are in loop closed format, if not -> make it so
-    if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
+    # Only identical endpoints close the loop; nearby points can still straddle a scanline.
+    if not torch.equal(polygon[..., -1, :], polygon[..., 0, :]):
         polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)  # (B, N+1, 2)
 
     # Partition points into edges
