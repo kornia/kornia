@@ -175,6 +175,38 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
             ada(inputs, real_acc=ada.target_real_acc + 0.1)
         self.assert_close(ada.p, ada.max_p)
 
+    def test_state_dict_keeps_adapted_state(self):
+        # Resuming GAN training from a checkpoint must keep the adapted ``p``, not restart from ``initial_p``.
+        ada = AdaptiveDiscriminatorAugmentation(initial_p=0.1, update_every=2, ema_lambda=0)
+        for _ in range(5):
+            ada.update(real_acc=ada.target_real_acc + 0.1)
+        assert ada.p != 0.1
+        resumed = AdaptiveDiscriminatorAugmentation(initial_p=0.1, update_every=2, ema_lambda=0)
+        resumed.load_state_dict(ada.state_dict())
+        assert resumed.p == ada.p
+        assert resumed.real_acc_ema == ada.real_acc_ema
+        assert resumed._num_calls == ada._num_calls
+        # the restored update counter carries on: one more call reaches ``update_every`` exactly as in ``ada``
+        ada.update(real_acc=ada.target_real_acc + 0.1)
+        resumed.update(real_acc=resumed.target_real_acc + 0.1)
+        assert resumed.p == ada.p
+
+    def test_state_dict_without_adapted_state_still_loads(self):
+        # Checkpoints written before the adapted state was saved have no ``_extra_state``: keep the initial values.
+        state_dict = AdaptiveDiscriminatorAugmentation().state_dict()
+        state_dict.pop("_extra_state", None)
+        ada = AdaptiveDiscriminatorAugmentation(initial_p=0.3)
+        ada.load_state_dict(state_dict)
+        assert ada.p == 0.3
+
+    def test_nested_state_dict_without_adapted_state_still_loads(self):
+        # The same for ADA inside a larger model: its entry is prefixed, and strict loading must still accept it.
+        state_dict = torch.nn.Sequential(AdaptiveDiscriminatorAugmentation()).state_dict()
+        assert state_dict.pop("0._extra_state", None) is not None
+        model = torch.nn.Sequential(AdaptiveDiscriminatorAugmentation(initial_p=0.3))
+        model.load_state_dict(state_dict, strict=True)
+        assert model[0].p == 0.3
+
     @pytest.mark.parametrize("route", ["call", "forward_data_keys", "init_data_keys"])
     def test_dict_input(self, device, dtype, route):
         # Every dictionary route raised: ADA always set `data_keys`, which the parent rejects with a dictionary, and
