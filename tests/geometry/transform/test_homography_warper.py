@@ -310,7 +310,11 @@ class TestHomographyWarper(BaseTester):
             # same transform precomputing the grid
             warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
-            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=1e-4, rtol=1e-4)
+            # The two float32 grids differ by rounding on CUDA, up to 3e-5 in the samples, which can round a half
+            # result to the neighbouring half value: half of eps is one step just below 1.
+            half = dtype in (torch.float16, torch.bfloat16)
+            cached_atol = torch.finfo(dtype).eps / 2 if half else 1e-4
+            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=cached_atol, rtol=1e-4)
 
             # projected should be equal as initial
             error = compute_patch_abs_error(patch_src, patch_dst_to_src, height, width)
