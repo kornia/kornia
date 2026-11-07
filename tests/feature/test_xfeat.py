@@ -733,6 +733,31 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(out["keypoints"], torch.tensor([expected], device=device), rtol=0, atol=1e-3)
         self.assert_close(out["keypoints"][0], seen[0, :2, 13, 22], rtol=0, atol=1e-3)
 
+    @pytest.mark.parametrize("weights_dtype", [torch.float16, torch.bfloat16])
+    def test_resized_coordinates_do_not_round_in_half_weights_6537(self, weights_dtype, device):
+        # Keypoints are float32 whatever the weights: bfloat16 would hold 1427.66 as 1428. Generated with plain Python:
+        # (1401.5 * 1500 / 1472 - 0.5, 901.5 * 1000 / 992 - 0.5) and, for the top-left pixel (1400, 896) of the cell,
+        # (1400.5 * 1500 / 1472 - 0.5, 896.5 * 1000 / 992 - 0.5).
+        if device.type == "mps":
+            pytest.skip("half-precision XFeat weights are not covered on MPS")
+        if not supports_bicubic_2d_grid_sample(device, torch.float32):
+            pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
+        xfeat = XFeat().to(device, weights_dtype).eval()
+        feats, logits, reliability = self._net_outputs([(1401, 901, 12.0)], 992, 1472)
+        reliability[0, 0, 112, 175] = 1.0
+        outputs = tuple(t.to(device, weights_dtype) for t in (feats, logits, reliability))
+        image = torch.zeros(1, 3, 1000, 1500, device=device, dtype=weights_dtype)
+        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: outputs)
+        try:
+            (sparse,) = xfeat.detectAndCompute(image, top_k=1)
+            dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
+        finally:
+            handle.remove()
+        expected = torch.tensor([[1427.65897, 908.27016]], device=device)
+        self.assert_close(sparse["keypoints"], expected, rtol=0, atol=1e-3)
+        expected_dense = torch.tensor([[[1426.63995, 903.22984]]], device=device)
+        self.assert_close(dense["keypoints"], expected_dense, rtol=0, atol=1e-3)
+
     def test_convention_xfeat_dense_keypoints_are_the_top_left_pixels_of_their_8_pixel_cells(self, device, dtype):
         # detectAndComputeDense keeps the cells of highest reliability and reports cell (j, i) at (8 j, 8 i) times the
         # resize ratio: the cell's top-left pixel, not its centre (8 j + 3.5, 8 i + 3.5); the formula is create_xy * 8
