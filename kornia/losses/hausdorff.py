@@ -17,9 +17,10 @@
 
 from __future__ import annotations
 
+import inspect
 import math
 import operator
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 from torch import nn
@@ -51,6 +52,12 @@ class _HausdorffERLossBase(nn.Module):
 
     conv: Callable[..., torch.Tensor]
     max_pool: Callable[..., torch.Tensor]
+    # Whether ``get_kernel`` takes ``dtype``; an override written before it did keeps eroding with its buffer.
+    _get_kernel_takes_dtype: bool = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._get_kernel_takes_dtype = "dtype" in inspect.signature(cls.get_kernel).parameters
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
@@ -80,7 +87,8 @@ class _HausdorffERLossBase(nn.Module):
 
         Args:
             dtype: dtype of the kernel; ``None`` gives the default dtype. ``forward`` calls
-                ``get_kernel(torch.float64)`` for a float64 prediction, so an override must accept ``dtype``.
+                ``get_kernel(torch.float64)`` for a float64 prediction; an override without ``dtype`` keeps
+                eroding with the ``kernel`` buffer.
         """
         raise NotImplementedError
 
@@ -89,7 +97,10 @@ class _HausdorffERLossBase(nn.Module):
 
         # The buffer holds the kernel built in the default dtype, normally float32, and ``.double()`` keeps that
         # rounding, so a float64 prediction gets a kernel built in float64 instead.
-        kernel = self.get_kernel(torch.float64) if pred.dtype == torch.float64 else self.kernel
+        if pred.dtype == torch.float64 and self._get_kernel_takes_dtype:
+            kernel = self.get_kernel(torch.float64)
+        else:
+            kernel = self.kernel
         kernel = torch.as_tensor(kernel, device=pred.device, dtype=pred.dtype)
         eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
 
@@ -243,7 +254,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
             dtype: dtype of the kernel; ``None`` gives the default dtype.
         """
         cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]], dtype=dtype)
-        kernel = cross * 0.2
+        kernel = cross * torch.tensor(0.2, dtype=dtype)
         return kernel[None]
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -330,7 +341,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
         #    which Jian suspect it is wrongly implemented.
         # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94
-        kernel = torch.stack([bound, cross, bound], 1) * (1 / 7)
+        kernel = torch.stack([bound, cross, bound], 1) * torch.tensor(1 / 7, dtype=dtype)
         return kernel[None]
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

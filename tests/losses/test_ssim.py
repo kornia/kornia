@@ -194,6 +194,18 @@ class TestMS_SSIMLoss(BaseTester):
         for criterion in (kornia.losses.MS_SSIMLoss(), kornia.losses.MS_SSIMLoss().double()):
             self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
 
+    def test_float64_images_match_the_numpy_reference(self, device):
+        # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks rounded
+        # to float32 are off by 8.0e-8. 1e-12 allows for the summation order. 0.3 and 0.7 are not float32 numbers.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img1 = ((torch.arange(64, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 8, 8).to(device)
+        img2 = ((torch.arange(64, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 8, 8).to(device)
+        expected = torch.tensor(54.83400477404822, device=device, dtype=torch.float64)
+        sigmas = (0.3, 0.7, 1.5)
+        for criterion in (kornia.losses.MS_SSIMLoss(sigmas), kornia.losses.MS_SSIMLoss(sigmas).double()):
+            self.assert_close(criterion.to(device)(img1, img2), expected, rtol=1e-12, atol=0.0)
+
     def test_float64_images_run_in_a_module_pickled_before_sigmas_were_stored(self, device):
         # A whole module pickled by an older release has no ``sigmas``; it keeps filtering float64 images with its
         # restored float32 masks, as it did then.
