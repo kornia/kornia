@@ -32,7 +32,7 @@ from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
 # Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
 # one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
@@ -2091,6 +2091,18 @@ class TestBoxes2D(BaseTester):
 
 
 class TestTransformBoxes2D(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_transform_6601(self, autocast_dtype, device):
+        # They inherit transform_points' half-precision product: up to 0.89 px off in bfloat16 at 256 px.
+        skip_unsupported_autocast(device, autocast_dtype)
+        boxes = torch.tensor([[[10.3, 20.7, 200.1, 180.9]]], device=device)
+        homography = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [1e-3, 2e-3, 1.0]]], device=device)
+        expected = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
         boxes_xyxy = torch.tensor([[139.2640, 103.0150, 398.3120, 411.5225]], device=device, dtype=dtype)

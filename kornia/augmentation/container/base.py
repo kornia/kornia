@@ -39,7 +39,7 @@ from kornia.augmentation.utils.helpers import (
     _detach_recorded_graph_tensors,
     _raise_input_rank_error,
 )
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -176,6 +176,17 @@ class BasicSequentialBase(nn.Sequential):
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
+
+
+def _chain_transform_matrices(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Return ``a @ b`` outside a caller's autocast region, which would round the chained matrix to half precision.
+
+    Up to 0.34 off in bfloat16 for two ``RandomAffine`` on float32 input, and returned in that dtype (#6601). Operands
+    of different half and float32 dtypes, which autocast would have reconciled, meet in float32.
+    """
+    a, b = _reconcile_under_autocast(a, b)
+    with _autocast_disabled(a.device.type):
+        return a @ b
 
 
 class SequentialBase(BasicSequentialBase):
@@ -559,7 +570,7 @@ class TransformMatrixMinIn:
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:
-            self._transform_matrix = transform_matrix @ self._transform_matrix
+            self._transform_matrix = _chain_transform_matrices(transform_matrix, self._transform_matrix)
 
     def _reset_transform_matrix_state(self) -> None:
         if is_exporting():

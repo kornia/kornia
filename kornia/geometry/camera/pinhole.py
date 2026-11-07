@@ -23,7 +23,7 @@ from typing import Iterable, List, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
-from kornia.core.utils import _torch_inverse_cast, is_compiling
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast, _torch_inverse_cast, is_compiling
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 
@@ -53,6 +53,8 @@ class PinholeCamera:
           transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` computes ``K (R X + t)`` of
           **world** points, and :meth:`unproject` returns **world** points. The functional API takes a ``3x3``
           ``K`` and no extrinsics, so it works in the **camera** frame.
+        - a caller's autocast region does not change :meth:`project` and :meth:`unproject`; in it, intrinsics and
+          extrinsics that mix float32 and half dtypes run in float32.
         - with ``B > 1`` cameras the points of :meth:`project`, ``(B, N, 3)`` or ``(B, H, W, 3)``, and the pixels
           of :meth:`unproject`, ``(B, N, 2)`` or ``(B, H, W, 2)``, need a leading axis of size ``B`` and at least
           three dimensions: ``(N, 3)`` and ``(1, N, 3)`` points, or ``(N, 2)`` and ``(1, N, 2)`` pixels, raise
@@ -492,11 +494,13 @@ class PinholeCamera:
         4x4 product. For a homogeneous embedding the result matches ``intrinsics @ extrinsics``
         bit for bit on CPU, and to the dtype's rounding on MPS.
         """
-        K = self._intrinsics[..., :3, :3]
-        E = self._extrinsics
+        K, E = _reconcile_under_autocast(self._intrinsics[..., :3, :3], self._extrinsics)
         P = torch.zeros(*K.shape[:-2], 4, 4, device=K.device, dtype=K.dtype)
-        P[..., :3, :3] = K @ E[..., :3, :3]
-        P[..., :3, 3:] = K @ E[..., :3, 3:]
+        # Outside a caller's autocast region, which would round these products to half precision and the pixels with
+        # them, 0.02 px in bfloat16 at 256 px on top of the product of transform_points (#6601).
+        with _autocast_disabled(K.device.type):
+            P[..., :3, :3] = K @ E[..., :3, :3]
+            P[..., :3, 3:] = K @ E[..., :3, 3:]
         P[..., 3, 3] = 1.0
         return P
 

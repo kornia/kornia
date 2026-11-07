@@ -481,6 +481,7 @@ def warp_frame_depth(
           ``padding_mode="zeros"``; the output keeps ``image_src``'s channels.
         - :class:`DepthWarper` and :func:`depth_warp` name the frames the other way round: this function's
           ``dst`` (the frame holding the depth) is their ``src``, and ``image_src`` is their ``patch_dst``.
+        - a caller's autocast region does not change the sampling grid of float32 inputs, outside TorchScript.
 
     Args:
         image_src: image tensor in the source frame with shape ``(B, D, H, W)``.
@@ -571,6 +572,8 @@ class DepthWarper(nn.Module):
           (`#6317 <https://github.com/kornia/kornia/issues/6317>`_).
         - :func:`warp_frame_depth` names the frames the other way round: its ``dst`` (the frame holding the depth)
           is this class's ``src``, and its ``image_src`` is ``patch_dst``.
+        - a caller's autocast region does not change :meth:`compute_projection_matrix` for cameras of one dtype. Cameras
+          of different dtypes raise outside a region and, inside one, stay in it and keep the caller's precision.
 
     .. warning::
         The two warps agree to rounding for float32/float64 away from ``z = 0``, and split at ``z = 0``, where
@@ -630,6 +633,21 @@ class DepthWarper(nn.Module):
 
         See the Convention block on :class:`DepthWarper`.
         """
+        # A caller's autocast region would round the products to half precision and the warp's pixels with them: 0.45
+        # off on a [0, 1] image in bfloat16 at 256 px (#6601). Autocast also reconciles cameras of different dtypes,
+        # which raise outside it, so those stay in the region and keep the caller's precision.
+        dst = self._pinhole_dst
+        if (
+            type(pinhole_src) is PinholeCamera
+            and type(dst) is PinholeCamera
+            and pinhole_src.extrinsics.dtype == dst.extrinsics.dtype == dst.camera_matrix.dtype
+        ):
+            with _autocast_disabled(pinhole_src.extrinsics.device.type):
+                return self._compose_projection_matrix(pinhole_src)
+        return self._compose_projection_matrix(pinhole_src)
+
+    def _compose_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
+        """Compose and store the projection matrix of :meth:`compute_projection_matrix`."""
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(

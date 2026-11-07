@@ -44,8 +44,12 @@ from kornia.geometry.conversions import (
     camtoworld_to_worldtocam_Rt,
     camtoworld_vision_to_graphics_4x4,
     camtoworld_vision_to_graphics_Rt,
+    denormalize_homography,
+    denormalize_homography3d,
     euler_from_quaternion,
     matrix4x4_to_Rt,
+    normalize_homography,
+    normalize_homography3d,
     quaternion_from_euler,
     worldtocam_to_camtoworld_Rt,
 )
@@ -58,6 +62,7 @@ from testing.base import (
     assert_close,
     dynamic_export_is_available,
     dynamo_is_available,
+    skip_unsupported_autocast,
 )
 
 
@@ -6591,3 +6596,61 @@ class TestRotationMatrixToAxisAngleCheckRotation:
         batch = torch.cat([good, bad, good]).reshape(3, 1, 3, 3)
         with pytest.raises(ValueError, match="reflection"):
             fn(batch, check_rotation=True)
+
+
+class TestHomographyNormalizationAutocast(BaseTester):
+    """A caller's autocast region does not reach the chained products of the (de)normalization (#6601)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _cases(device, dtype):
+        theta = torch.tensor(0.4363)
+        planar = torch.tensor([[theta.cos(), -theta.sin(), 50.0], [theta.sin(), theta.cos(), 20.0], [1e-3, 2e-3, 1.0]])
+        spatial = torch.eye(4)
+        spatial[:2, :2] = planar[:2, :2]
+        spatial[:3, 3] = torch.tensor([3.3, -2.7, 5.1])
+        planar, spatial = planar[None].to(device=device, dtype=dtype), spatial[None].to(device=device, dtype=dtype)
+        size, size3d = (256, 256), (32, 32, 32)
+        return {
+            "normalize_homography": (normalize_homography, (planar, size, size)),
+            "denormalize_homography": (denormalize_homography, (planar, size, size)),
+            "normalize_homography3d": (normalize_homography3d, (spatial, size3d, size3d)),
+            "denormalize_homography3d": (denormalize_homography3d, (spatial, size3d, size3d)),
+        }
+
+    _names = ("normalize_homography", "denormalize_homography", "normalize_homography3d", "denormalize_homography3d")
+
+    @pytest.mark.parametrize("name", _names)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_matrix_6601(self, name, autocast_dtype, device):
+        # denormalize_homography of a float32 matrix was up to 0.63 off in bfloat16, and returned bfloat16.
+        skip_unsupported_autocast(device, autocast_dtype)
+        op, args = self._cases(device, torch.float32)[name]
+        expected = op(*args)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(*args)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("name", _names)
+    def test_still_scriptable_6601(self, name, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        op, args = self._cases(device, dtype)[name]
+        self.assert_close(torch.jit.script(op)(*args), op(*args))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("name", _names)
+    def test_dynamo_in_a_region_6601(self, name, device, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("a scripted call keeps the caller's precision; test_still_scriptable_6601 covers TorchScript")
+        skip_unsupported_autocast(device, "bfloat16")
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        op, args = self._cases(device, torch.float32)[name]
+        compiled = torch_optimizer(lambda matrix: op(matrix, *args[1:]))
+        expected = op(*args)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = compiled(args[0])
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
