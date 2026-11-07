@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pickle
 import re
 
 import pytest
@@ -175,6 +176,51 @@ class TestMS_SSIMLoss(BaseTester):
             loss = criterion.double()(img1.float(), img2)
             assert loss.dtype == torch.float32
             self.assert_close(loss, criterion(img1.double(), img2.double()).float(), atol=0.0, rtol=0.0)
+
+    def test_float64_images_match_a_float64_built_loss(self, device):
+        # The Gaussian mask buffer is rounded to float32, also after ``.double()``; float64 images are filtered with
+        # masks built in float64, as in a loss constructed under a float64 default dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            reference = kornia.losses.MS_SSIMLoss().to(device)
+        finally:
+            torch.set_default_dtype(previous)
+        for criterion in (kornia.losses.MS_SSIMLoss(), kornia.losses.MS_SSIMLoss().double()):
+            self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
+
+    def test_float64_images_match_the_numpy_reference(self, device):
+        # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks built
+        # in float32 are off by 1.9e-8. 1e-12 allows for the summation order. 0.3 and 0.7 are not float32 numbers.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img1 = ((torch.arange(64, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 8, 8).to(device)
+        img2 = ((torch.arange(64, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 8, 8).to(device)
+        expected = torch.tensor(54.83400477404822, device=device, dtype=torch.float64)
+        sigmas = (0.3, 0.7, 1.5)
+        for criterion in (kornia.losses.MS_SSIMLoss(sigmas), kornia.losses.MS_SSIMLoss(sigmas).double()):
+            self.assert_close(criterion.to(device)(img1, img2), expected, rtol=1e-12, atol=0.0)
+
+    def test_float64_images_run_in_a_module_pickled_before_sigmas_were_stored(self, device):
+        # A whole module pickled by an older release has no ``sigmas``; it keeps filtering float64 images with its
+        # restored float32 masks, as it did then.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        criterion = kornia.losses.MS_SSIMLoss().to(device)
+        legacy = kornia.losses.MS_SSIMLoss().to(device)
+        del legacy.sigmas
+        restored = pickle.loads(pickle.dumps(legacy))  # noqa: S301
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        loss = restored(img1, img2)
+        assert loss.dtype == torch.float64
+        self.assert_close(loss, criterion(img1, img2), rtol=1e-6, atol=0.0)
 
     def test_autocast_keeps_msssim_convolutions_in_float32(self):
         generator = torch.Generator().manual_seed(0)
