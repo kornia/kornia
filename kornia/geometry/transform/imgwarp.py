@@ -151,14 +151,14 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
 
 
 def _pad_one_pixel_axes(src: torch.Tensor, padding_mode: str) -> torch.Tensor:
-    """Give each one-pixel spatial axis of ``src`` a second pixel, for sampling by a matrix with ``align_corners=True``.
+    """Give each one-pixel spatial axis of ``src`` a zero pixel, for sampling by a matrix with ``align_corners=True``.
 
     ``grid_sample`` reads the position ``(g + 1) / 2 * (size - 1)`` there, so every sample along a one-pixel axis lands
-    on its pixel, and no ``padding_mode`` applies (#6433). A second pixel behind it gives the axis an extent, and leaves
-    its pixel at coordinate 0, so a pixel matrix needs no shift: the only pixel is then the first of two, sampled by the
-    arithmetic of any longer axis, with the same tie for ``mode="nearest"``. The new pixel holds what is out of bounds:
-    zero under ``'zeros'`` and ``'fill'``, where :func:`_fill_and_warp` also masks it, and a copy under ``'border'`` and
-    ``'reflection'``, whose reflected one-pixel axis is that one value.
+    on its pixel, and ``'zeros'`` and ``'fill'`` never apply (#6433). A zero pixel behind it gives the axis an extent,
+    and leaves its pixel at coordinate 0, so a pixel matrix needs no shift: the only pixel is then the first of two,
+    sampled by the arithmetic of any longer axis, with the same tie for ``mode="nearest"``. :func:`_fill_and_warp` pads
+    its mask the same way. ``'border'`` and ``'reflection'`` need nothing: outside the axis they read that same pixel,
+    which is what landing on it gives, so ``src`` comes back as it is.
 
     An axis longer than one pixel is untouched, and ``src`` itself comes back when every axis is, in eager and scripted
     calls, in ``torch.compile``, which recompiles for the other side of the test, and in the export of a static shape.
@@ -168,24 +168,27 @@ def _pad_one_pixel_axes(src: torch.Tensor, padding_mode: str) -> torch.Tensor:
     exported program that rejects the other side. So do ``torch.export`` with ``strict=True``, and ``torch.compile``
     before torch 2.12, where :func:`is_exporting` also holds.
     """
-    mode = "constant" if padding_mode in ("zeros", "fill") else "replicate"
+    if padding_mode not in ("zeros", "fill"):
+        return src
     pad: list[int] = []
     if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_exporting()):
         for axis in range(src.dim() - 1, 1, -1):
-            # 1 for a size of 1 and 0 above it, without a comparison: the expression works on the traced scalar of a
-            # trace, the SymInt of a dynamic axis, and on an int, including a dynamic axis that strict=True, the default
-            # on torch 2.5.1, shows as one, where torch.sym_ite is unsupported for a static axis.
-            pad += [0, 2 // (src.shape[axis] + 1)]
+            # 1 for a size of 1 and 0 for any other, without a comparison: the expression works on the traced scalar of
+            # a trace, the SymInt of a dynamic axis, and on an int, including a dynamic axis that strict=True, the
+            # default on torch 2.5.1, shows as one, where torch.sym_ite is unsupported for a static axis. The product
+            # keeps an empty axis empty, so that grid_sample still rejects it.
+            size = src.shape[axis]
+            pad += [0, size * (2 // (size + 1))]
         # A static shape has nothing to keep, unless strict=True hides a dynamic axis in it.
         if not torch.compiler.is_dynamo_compiling() and all(type(amount) is int and amount == 0 for amount in pad):
             return src
-        return F.pad(src, pad, mode=mode)
-    # An empty source has no pixel to pad, and F.pad's replicate refuses a zero channel axis.
+        return F.pad(src, pad)
+    # An empty source stays as it is, so an error about its size names the size the caller passed.
     if 1 not in src.shape[2:] or src.numel() == 0:
         return src
     for axis in range(src.dim() - 1, 1, -1):
         pad += [0, int(src.shape[axis] == 1)]
-    return F.pad(src, pad, mode=mode)
+    return F.pad(src, pad)
 
 
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
@@ -407,8 +410,9 @@ def warp_perspective(
         - a nonzero scalar multiple of ``M`` describes the same warp; uniformly small or large
           nonzero entries are rescaled toward unit magnitude before the coordinate change and inversion
         - a one-pixel source axis is sampled like a longer one, so positions outside it get ``padding_mode``. Under
-          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, it is the first of two,
-          with the padding in the second (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
+          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, ``'zeros'`` and
+          ``'fill'`` read it as the first of two pixels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
@@ -582,8 +586,9 @@ def warp_affine(
 
         - ``M`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
         - a one-pixel source axis is sampled like a longer one, so positions outside it get ``padding_mode``. Under
-          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, it is the first of two,
-          with the padding in the second (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
+          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, ``'zeros'`` and
+          ``'fill'`` read it as the first of two pixels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
@@ -1875,7 +1880,7 @@ def warp_affine3d(
         - padding_mode: ``'zeros'`` by default
         - ``M`` has the batch of ``src``: one matrix is not shared by a larger batch
         - under ``align_corners=True``, a one-voxel source axis is sampled like a longer one, so positions outside it
-          get ``padding_mode``: it is the first of two voxels, with the padding in the second
+          get ``padding_mode``: ``'zeros'`` reads it as the first of two voxels, the second holding the padding
           (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid
           (there, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
@@ -2358,7 +2363,7 @@ def warp_perspective3d(
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
         - under ``align_corners=True``, a one-voxel source axis is sampled like a longer one, so positions outside it
-          get ``border_mode``: it is the first of two voxels, with the padding in the second
+          get ``border_mode``: ``'zeros'`` reads it as the first of two voxels, the second holding the padding
           (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
           (in the region, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)

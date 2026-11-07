@@ -1341,7 +1341,9 @@ class TestWarp3dOneVoxelSourceAxis6433(BaseTester):
         )[None]
         actual = self._warp(op_name, volume, matrix, (3, 3, 4), padding_mode, mode)
         expected = self._warp(op_name, two, matrix, (3, 3, 4), padding_mode, mode)
-        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+        # Border and reflection keep the single slice, so they agree up to the rounding of interpolating equal slices.
+        tolerance = {"atol": 0.0, "rtol": 0.0} if padding_mode == "zeros" else {}
+        self.assert_close(actual, expected, **tolerance)
 
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     def test_convention_batch_of_different_matrices(self, op_name, device, dtype):
