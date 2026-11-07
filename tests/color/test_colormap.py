@@ -99,9 +99,10 @@ class TestApplyColorMap(BaseTester):
                         [1.0000000000, 1.0000000000, 1.0000000000],
                     ],
                     [
-                        [0.0000000000, 0.0158730168, 0.0158730168],
-                        [0.0634920672, 0.1111111119, 0.1428571492],
-                        [0.5079365373, 0.6190476418, 0.7301587462],
+                        # The green of autumn is i / 63, at i = floor(v * 64 / 255) for the byte value v.
+                        [0.0 / 63, 0.0 / 63, 0.0 / 63],
+                        [3.0 / 63, 6.0 / 63, 8.0 / 63],
+                        [32.0 / 63, 39.0 / 63, 47.0 / 63],
                     ],
                     [
                         [0.0000000000, 0.0000000000, 0.0000000000],
@@ -140,6 +141,45 @@ class TestApplyColorMap(BaseTester):
         actual = apply_colormap(input_tensor, cm)
 
         self.assert_close(actual, cm.colors.reshape(1, 3, 1, 256), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "num_colors, values, expected",
+        [
+            (1, [0.0, 0.5, 1.0], [0, 0, 0]),
+            (2, [0.0, 0.01, 0.25, 0.5, 0.75, 0.99, 1.0], [0, 0, 0, 1, 1, 1, 1]),
+            (3, [0.0, 0.01, 0.25, 0.5, 0.75, 0.99, 1.0], [0, 0, 0, 1, 2, 2, 2]),
+            (4, [0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0], [0, 0, 1, 2, 3, 3, 3]),
+            (64, [0.0, 0.0078125, 0.015625, 0.5, 0.984375, 0.9921875, 1.0], [0, 0, 1, 32, 63, 63, 63]),
+        ],
+    )
+    def test_floats_select_equal_bins_6622(self, num_colors, values, expected, device, dtype):
+        # Expected is matplotlib's lookup, written out: floor(x * N), with x = 1 in the last bin. Values on a bin edge
+        # are exact in float16 and bfloat16; the others sit well inside a bin.
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=num_colors, device=device, dtype=dtype)
+        input_tensor = torch.tensor(values, device=device, dtype=dtype).reshape(1, 1, -1)
+
+        actual = apply_colormap(input_tensor, cm)
+
+        self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+
+    def test_uint8_selects_equal_bins_6622(self, device, dtype):
+        # floor(v * 16 / 255): each of the 16 colors covers 15 or 16 byte values, including the first and the last.
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=16, device=device, dtype=dtype)
+        input_tensor = torch.tensor([[[0, 15, 16, 31, 32, 127, 128, 239, 240, 255]]], device=device, dtype=torch.uint8)
+
+        actual = apply_colormap(input_tensor, cm)
+
+        expected = [0, 0, 1, 1, 2, 7, 8, 14, 15, 15]
+        self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+
+    def test_outside_the_range_selects_the_ends_6622(self, device, dtype):
+        # The rule stops at the ends, and a NaN stays on the last entry, as it did before the equal bins.
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=4, device=device, dtype=dtype)
+        input_tensor = torch.tensor([[[-0.5, 300.0, float("inf"), float("nan")]]], device=device, dtype=dtype)
+
+        actual = apply_colormap(input_tensor, cm)
+
+        self.assert_close(actual[0, 0, 0], cm.colors[0, [0, 3, 3, 3]], rtol=0.0, atol=0.0)
 
     def test_uint8_dark_values_use_byte_range(self, device, dtype):
         cm = ColorMap(base=[[i / 255.0] * 3 for i in range(256)], num_colors=256, device=device, dtype=dtype)
