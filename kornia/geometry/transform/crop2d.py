@@ -51,7 +51,7 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core._compat import _emit_deprecation_warning
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.transform._crop import _compiled_slice_resize
@@ -197,7 +197,16 @@ def _crop_scale_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tenso
     src_extent = src[:, 2] - src[:, 0]
     dst_extent = dst[:, 2] - dst[:, 0]
     both_zero = (src_extent == 0) & (dst_extent == 0)
-    scale = torch.where(both_zero, torch.ones_like(src_extent), dst_extent / src_extent)
+    is_size_one_box = (src_extent == 0).all(dim=-1, keepdim=True)
+    eps = 1e-2 if src.dtype == torch.float16 else 1e-4 if src.dtype == torch.bfloat16 else 1e-6
+    safe_src_extent = torch.where(is_size_one_box & (src_extent == 0), torch.full_like(src_extent, eps), src_extent)
+    safe_src_extent_div = torch.where(safe_src_extent == 0, torch.ones_like(safe_src_extent), safe_src_extent)
+    unsolvable = (src_extent == 0) & ~is_size_one_box
+    scale = torch.where(
+        both_zero,
+        torch.ones_like(src_extent),
+        torch.where(unsolvable, torch.full_like(src_extent, float("inf")), dst_extent / safe_src_extent_div),
+    )
     transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
     transform[:, 0, 0] = scale[:, 0]
     transform[:, 1, 1] = scale[:, 1]
@@ -437,16 +446,29 @@ def _crop_by_boxes_to_size(
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box = src_box.to(input_tensor)
     dst_box = dst_box.to(input_tensor)
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box, dst_box)
-    # A box with a size-1 axis has collinear vertices and the solve returns NaN for it (#4747). Fall back to
-    # the matrix built from the box extents there; every other box keeps the solved matrix.
-    solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
-    size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
-    fallback = (~solved & size_one)[:, None, None]
+
+    KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
+    KORNIA_CHECK_SHAPE(dst_box, ["B", "4", "2"])
+    KORNIA_CHECK(src_box.shape == dst_box.shape, "Source data shape must match Destination data shape.")
+
+    # A box with a size-1 axis has collinear vertices and get_perspective_transform returns NaN for it (#4747).
+    # Mask collinear boxes with a unit square before solving so get_perspective_transform never executes
+    # a singular solve in autograd, which would otherwise poison backward gradients with NaNs (#6642).
+    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
+    axis_collinear = (
+        (src_box[:, :, 0].max(dim=-1).values == src_box[:, :, 0].min(dim=-1).values)
+        | (src_box[:, :, 1].max(dim=-1).values == src_box[:, :, 1].min(dim=-1).values)
+        | (dst_box[:, :, 0].max(dim=-1).values == dst_box[:, :, 0].min(dim=-1).values)
+        | (dst_box[:, :, 1].max(dim=-1).values == dst_box[:, :, 1].min(dim=-1).values)
+    )
+    safe_src_box = torch.where(axis_collinear[:, None, None], unit, src_box)
+    safe_dst_box = torch.where(axis_collinear[:, None, None], unit, dst_box)
+    dst_trans_src: torch.Tensor = get_perspective_transform(safe_src_box, safe_dst_box)
+
+    fallback = axis_collinear[:, None, None]
     # ``torch.where`` also differentiates the branch it discards, so a box that keeps its solved matrix builds the
     # extent matrix from a unit source square: its own vertices 0 and 2 can share a coordinate (a square turned by
     # 45 degrees), and dividing by that zero extent would make the gradient with respect to the box NaN.
-    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
     extent_matrix = _crop_scale_translation(torch.where(fallback, src_box, unit), dst_box)
     dst_trans_src = torch.where(fallback, extent_matrix, dst_trans_src)
 

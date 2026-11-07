@@ -591,6 +591,40 @@ class TestCropByBoxes(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
 
     @pytest.mark.parametrize(
+        "coord, out_size",
+        [
+            (1.0, (2, 2)),
+            (10.0, (7, 7)),
+        ],
+    )
+    def test_size_one_box_crop_and_resize_finite_6642(self, coord, out_size, device, dtype):
+        # A size-1 bounding box (e.g. [coord, coord] to [coord, coord]) replicated across destination
+        # must remain finite in forward pass and backward pass (#6642).
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16).repeat(2, 1, 1, 1)
+        inp.requires_grad = True
+        c = float(coord)
+        src_box = torch.tensor(
+            [
+                [[c, c], [c + 1.0, c], [c + 1.0, c + 1.0], [c, c + 1.0]],
+                [[c, c], [c, c], [c, c], [c, c]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
+        assert torch.isfinite(out).all()
+        expected_pixel = inp[1, 0, int(c), int(c)]
+        atol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
+        self.assert_close(out[1], expected_pixel.expand_as(out[1]), atol=atol, rtol=1e-4)
+
+        out.sum().backward()
+        assert torch.isfinite(inp.grad).all()
+        assert torch.isfinite(src_box.grad).all()
+
+    @pytest.mark.parametrize(
         "src, size",
         [
             ([[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]], (3, 3)),  # a size-1 row resized to 3 rows
