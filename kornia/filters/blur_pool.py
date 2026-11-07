@@ -480,9 +480,7 @@ def edge_aware_blur_pool2d(
 
     """
     if input.dim() == 3:
-        return edge_aware_blur_pool2d(
-            input[None], kernel_size, edge_threshold, edge_dilation_kernel_size, epsilon
-        )[0]
+        return edge_aware_blur_pool2d(input[None], kernel_size, edge_threshold, edge_dilation_kernel_size, epsilon)[0]
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     _check_floating_feature_map(input, "edge_aware_blur_pool2d")
     edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
