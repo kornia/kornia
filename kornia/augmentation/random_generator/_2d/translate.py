@@ -20,6 +20,7 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import (
     _adapted_rsampling,
     _check_positive_int_or_traced,
@@ -64,22 +65,23 @@ class TranslateGenerator(RandomGeneratorBase):
         return f"translate_x={self.translate_x}, translate_y={self.translate_y}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        range_dtype = _range_bound_dtype(dtype)
         self.translate_x_sampler = None
         self.translate_y_sampler = None
 
         if self.translate_x is not None:
-            _translate_x = _range_bound(self.translate_x, "translate_x", bounds=(-1, 1), check="joint").to(
-                device=device, dtype=dtype
-            )
+            _translate_x = _range_bound(
+                self.translate_x, "translate_x", bounds=(-1, 1), check="joint", dtype=range_dtype
+            ).to(device=device, dtype=dtype)
 
             self.translate_x_sampler = UniformDistribution(
                 _translate_x[..., 0], _translate_x[..., 1], validate_args=False
             )
 
         if self.translate_y is not None:
-            _translate_y = _range_bound(self.translate_y, "translate_y", bounds=(-1, 1), check="joint").to(
-                device=device, dtype=dtype
-            )
+            _translate_y = _range_bound(
+                self.translate_y, "translate_y", bounds=(-1, 1), check="joint", dtype=range_dtype
+            ).to(device=device, dtype=dtype)
 
             self.translate_y_sampler = UniformDistribution(
                 _translate_y[..., 0], _translate_y[..., 1], validate_args=False

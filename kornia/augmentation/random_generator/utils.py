@@ -20,6 +20,14 @@ from typing import Any, Optional
 import torch
 
 
+def _range_bound_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Normalize bounds without rounding below the requested sampler precision.
+
+    Retain a wider ambient dtype so lower-precision samplers keep their existing rounding.
+    """
+    return torch.promote_types(torch.get_default_dtype(), dtype)
+
+
 def randperm(n: int, ensure_perm: bool = True, identity: Optional[torch.Tensor] = None, **kwargs: Any) -> torch.Tensor:
     """`randomperm` with the ability to ensure the different arrangement generated.
 
