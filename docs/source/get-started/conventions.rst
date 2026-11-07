@@ -460,6 +460,13 @@ transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output un
 :func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
 clips its final RGB output to the unit range.
 
+A result of these clips, of :func:`kornia.color.rgb_to_rgb255` and :func:`kornia.color.normals_to_rgb255`, and of the
+clamps inside :func:`kornia.color.hls_to_rgb` and :func:`kornia.color.lab_to_rgb` (of a negative ``Z``) exactly on a
+bound has no unique derivative. They use the one-sided derivative from inside the range on every torch version, as the
+intensity ops do (see :ref:`enhancement-conventions`); plain ``torch.clamp`` gives 0 there from torch 2.14. A result
+outside the range gets the bound and a zero gradient. A graph captured by ``torch.jit.trace`` or ``torch.export`` keeps
+the plain clamp.
+
 See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
 chroma subsampling, and known defects.
 

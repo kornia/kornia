@@ -532,15 +532,15 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
     return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
 
 
-def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
-    """Clamp ``input`` into ``[0, 1]`` with an identity gradient on the closed range.
+def _clamp_range(input: torch.Tensor, lower: float, upper: Optional[float] = None) -> torch.Tensor:
+    """Clamp ``input`` into ``[lower, upper]`` with an identity gradient on the closed range.
 
     A clamp has no derivative at a bound: its one-sided derivatives are 0 and 1. torch returned 1 up to 2.13 and returns
     0 from 2.14, its documented minimum-norm rule (pytorch/pytorch#191142). Kornia uses the derivative from inside the
     range on every version: at an identity factor it is the only one on the documented input domain, and it lets a pixel
-    on a bound move back. Values outside the range get the bound and a zero gradient.
+    on a bound move back. Values outside the range get the bound and a zero gradient. ``upper=None`` has no upper bound.
 
-    The values always equal ``input.clamp(0, 1)``, ``NaN`` included, so a call that records no gradient and
+    The values always equal ``input.clamp(lower, upper)``, ``NaN`` included, so a call that records no gradient and
     carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
     unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
     Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
@@ -552,12 +552,17 @@ def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
     # Selecting without a derivative costs 5 times a plain clamp or more on the CPU and about 3 to 4 times on CUDA
     # (i7-14700K, RTX 4090).
     if _is_tracing_or_exporting() or not _needs_derivatives(input):
-        return input.clamp(0.0, 1.0)
+        return input.clamp(lower, upper)
     # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
     # backward of a recorded clamp made a forward and backward pass 1.7 to 2.5 times as slow on the CPU and 1.2 to 1.7
     # times on CUDA.
-    clamped = input.detach().clamp(0.0, 1.0)
+    clamped = input.detach().clamp(lower, upper)
     return torch.where(clamped == input, input, clamped)
+
+
+def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
+    """Clamp ``input`` into ``[0, 1]`` with :func:`_clamp_range`."""
+    return _clamp_range(input, 0.0, 1.0)
 
 
 def _symmetric_eigenvector(

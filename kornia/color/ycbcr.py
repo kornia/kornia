@@ -22,6 +22,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.utils import _clamp_unit_range
+
 
 def _rgb_to_y(r: torch.Tensor, g: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     y: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
@@ -138,7 +140,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r: torch.Tensor = y + 1.4025245442 * cr_shifted
     g: torch.Tensor = y - 0.7144034731 * cr_shifted - 0.3443401356 * cb_shifted
     b: torch.Tensor = y + 1.7730496454 * cb_shifted
-    return torch.stack([r, g, b], -3).clamp(0, 1)
+    return _clamp_unit_range(torch.stack([r, g, b], -3))
 
 
 class RgbToYcbcr(nn.Module):

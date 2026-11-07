@@ -27,7 +27,7 @@ from typing import ClassVar
 import torch
 from torch import nn
 
-from kornia.core.utils import _autocast_disabled
+from kornia.core.utils import _autocast_disabled, _clamp_range, _clamp_unit_range
 
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
@@ -151,7 +151,7 @@ def _lab_to_rgb(image: torch.Tensor, clip: bool) -> torch.Tensor:
     fz = fy - (_b / 200.0)
 
     # if color data out of range: Z < 0
-    fz = fz.clamp(min=0.0)
+    fz = _clamp_range(fz, 0.0)
 
     fxyz = torch.stack([fx, fy, fz], dim=-3)
 
@@ -174,7 +174,7 @@ def _lab_to_rgb(image: torch.Tensor, clip: bool) -> torch.Tensor:
 
     # Clip to 0,1 https://www.w3.org/Graphics/Color/srgb
     if clip:
-        rgb_im = torch.clamp(rgb_im, min=0.0, max=1.0)
+        rgb_im = _clamp_unit_range(rgb_im)
 
     return rgb_im
 
