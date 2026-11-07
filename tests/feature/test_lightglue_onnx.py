@@ -26,6 +26,7 @@ import torch
 from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
 from kornia.core._compat import torch_version_le
+from kornia.core.exceptions import BaseError
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
 
@@ -206,27 +207,41 @@ class TestOnnxLightGlue:
                 created.append(providers)
 
         monkeypatch.setattr(ort, "InferenceSession", RecordingSession)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
         matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device=device)
 
         assert matcher.device == torch.device("cuda", index)
         assert created == [[("CUDAExecutionProvider", {"device_id": index}), "CPUExecutionProvider"]]
 
-    @pytest.mark.device_agnostic
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
-    def test_inputs_on_another_gpu_raise_6427(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("checks", [True, False])
+    def test_inputs_on_another_gpu_raise_6427(self, monkeypatch, tmp_path, checks):
         # Only the device type was compared, so inputs on cuda:0 passed a cuda:1 matcher and were bound to the
-        # wrong GPU. The session is replaced, so one GPU is enough.
+        # wrong GPU. The session and the GPU count are replaced, so one GPU is enough. Binding them is an illegal
+        # memory access, so the check also runs with kornia's checks disabled.
         monkeypatch.setattr(ort, "InferenceSession", lambda path, providers: None)
-        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+        monkeypatch.setattr("kornia.core.check._KORNIA_CHECKS_ENABLED", checks)
+        # Only around the constructor: torch's lazy CUDA initialization also reads the GPU count.
+        with monkeypatch.context() as gpus:
+            gpus.setattr(torch.cuda, "device_count", lambda: 2)
+            matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
         features = {
             "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]], device="cuda:0"),
             "descriptors": torch.ones(1, 2, 4, device="cuda:0"),
             "image_size": torch.tensor([[10, 10]]),
         }
-        with pytest.raises(Exception, match=r"Wrong device: the inputs are on cuda:0, the matcher on cuda:1"):
+        with pytest.raises(BaseError, match=r"Wrong device: the inputs are on cuda:0, the matcher on cuda:1"):
             matcher({"image0": features, "image1": features})
 
     @pytest.mark.device_agnostic
+    def test_unavailable_gpu_raises(self, monkeypatch, tmp_path):
+        # onnxruntime only logs an error for a GPU that does not exist and builds a CPU session, which would leave
+        # a matcher that reports that GPU but runs on the CPU.
+        monkeypatch.setattr(ort, "InferenceSession", lambda path, providers: pytest.fail("session created"))
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        with pytest.raises(ValueError, match=r"Unsupported device cuda:1: 1 CUDA device\(s\) available"):
+            OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+
     @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Test requires two CUDA GPUs")
     def test_runs_on_the_requested_gpu_6427(self, tmp_path):
         if "CUDAExecutionProvider" not in ort.get_available_providers():

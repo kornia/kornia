@@ -22,7 +22,8 @@ from typing import ClassVar, Union
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import BaseError
 from kornia.core.external import numpy as _np
 from kornia.core.external import onnxruntime as _ort
 
@@ -66,8 +67,8 @@ class OnnxLightGlue:
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
         device: ``'cpu'`` or ``'cuda'`` to run inference on, with an optional GPU index such as ``'cuda:1'``;
-          another device type raises ``ValueError``. ``None`` means ``'cpu'``, as in the other kornia feature
-          constructors, not torch's current default device.
+          another device type, or a GPU index torch does not see, raises ``ValueError``. ``None`` means ``'cpu'``,
+          as in the other kornia feature constructors, not torch's current default device.
 
     See Also:
         - :class:`LightGlue`: the PyTorch network, which also runs batches, on MPS, and in float16, bfloat16 or
@@ -101,6 +102,9 @@ class OnnxLightGlue:
         elif device.type == "cuda":
             # onnxruntime's CUDA provider and the I/O bindings both take a GPU index; without one they use GPU 0.
             device = torch.device("cuda", 0 if device.index is None else device.index)
+            # For a GPU that does not exist, onnxruntime only logs an error and builds a CPU session instead.
+            if device.index >= torch.cuda.device_count():
+                raise ValueError(f"Unsupported device {device}: {torch.cuda.device_count()} CUDA device(s) available")
             providers = [("CUDAExecutionProvider", {"device_id": device.index}), "CPUExecutionProvider"]
         else:
             raise ValueError(f"Unsupported device {device}")
@@ -172,11 +176,11 @@ class OnnxLightGlue:
         data0, data1 = data["image0"], data["image1"]
         kpts0_, kpts1_ = data0["keypoints"].contiguous(), data1["keypoints"].contiguous()
         desc0, desc1 = data0["descriptors"].contiguous(), data1["descriptors"].contiguous()
-        KORNIA_CHECK_SAME_DEVICES([kpts0_, desc0, kpts1_, desc1], "Wrong device")
-        KORNIA_CHECK(
-            kpts0_.device == self.device,
-            f"Wrong device: the inputs are on {kpts0_.device}, the matcher on {self.device}",
-        )
+        # Not a KORNIA_CHECK, so it also runs with checks disabled: the inputs are bound by pointer under the
+        # matcher's GPU index, and a tensor on another GPU makes that an illegal memory access (#6427).
+        for tensor in (kpts0_, desc0, kpts1_, desc1):
+            if tensor.device != self.device:
+                raise BaseError(f"Wrong device: the inputs are on {tensor.device}, the matcher on {self.device}")
         KORNIA_CHECK(torch.float32 == kpts0_.dtype == kpts1_.dtype == desc0.dtype == desc1.dtype, "Wrong dtype")
         KORNIA_CHECK_SHAPE(kpts0_, ["1", "M", "2"])
         KORNIA_CHECK_SHAPE(kpts1_, ["1", "N", "2"])
