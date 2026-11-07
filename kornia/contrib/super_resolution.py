@@ -190,7 +190,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         for edge_map in edge_maps:
             output.append(edge_map)
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
+        return self._tensor_to_type(output, output_type)
 
     def save(
         self,

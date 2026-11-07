@@ -26,6 +26,7 @@ from typing import Any, Generic, List, Optional, TypeVar, Union, cast
 import torch
 from torch import nn
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.core.mixin.image_module import ImageModuleMixIn, _to_uint8_image
@@ -74,14 +75,13 @@ class ModelBaseMixin:
     name: str = "model"
 
     def _tensor_to_type(
-        self, output: Union[torch.Tensor, List[torch.Tensor]], output_type: str, is_batch: bool = False
+        self, output: Union[torch.Tensor, List[torch.Tensor]], output_type: str
     ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:
         """Convert the output tensor to the desired type.
 
         Args:
             output: The output tensor or list of tensors.
             output_type: The desired output type. Accepted values are "torch" and "pil".
-            is_batch: If True, the output is expected to be a batch of tensors.
 
         Returns:
             The output unchanged for "torch". For "pil", a list of PIL images, one per ``(C, H, W)`` or
@@ -111,16 +111,29 @@ class ModelBaseMixin:
             raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
     def save(
-        self, output: Union[torch.Tensor, List[torch.Tensor], List[Image.Image]], directory: str, is_batch: bool = False
+        self,
+        output: Union[torch.Tensor, List[torch.Tensor], List[Image.Image]],
+        directory: str,
+        is_batch: Optional[bool] = None,
     ) -> None:
         """Save the output tensor to a directory.
 
         Args:
             output: The output tensor, or a list of tensors or PIL images.
             directory: The directory to save the output.
-            is_batch: If True, the output is expected to be a batch of tensors.
+            is_batch: deprecated since kornia 0.9.1 and ignored; passing ``True`` or ``False`` emits a
+              :class:`DeprecationWarning`, and the default ``None`` does not. A 4D tensor is always written as one
+              file per item, whatever its value.
 
         """
+        if is_batch is not None:
+            _emit_deprecation_warning(
+                "save(is_batch=...)",
+                None,
+                "0.9.1",
+                "The argument has no effect: the files written depend only on `output`, whatever its value; stop "
+                "passing it.",
+            )
         os.makedirs(directory, exist_ok=True)
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import pickle
 import re
+import warnings
 from unittest.mock import patch
 
 import numpy as np
@@ -189,6 +190,26 @@ class TestModelBaseMixinSave:
         with patch("kornia.models.base.write_image"):
             mixin.save(t, new_dir)
         assert os.path.exists(new_dir)
+
+    @pytest.mark.parametrize("is_batch", [True, False])
+    def test_is_batch_is_deprecated_and_ignored_6552(self, tmp_path, is_batch):
+        # `is_batch` is read nowhere: a 4D tensor is written as one file per item, whatever its value.
+        mixin = DummyMixin()
+        t = torch.rand(2, 3, 8, 8)
+        with patch("kornia.models.base.write_image") as mock_write:
+            with pytest.warns(DeprecationWarning, match="is_batch") as record:
+                mixin.save(t, str(tmp_path), is_batch=is_batch)
+            assert mock_write.call_count == 2
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "is_batch" in str(w.message)] == [__file__]
+
+    @pytest.mark.parametrize("kwargs", [{}, {"is_batch": None}], ids=["omitted", "none"])
+    def test_no_warning_without_is_batch_6552(self, tmp_path, kwargs):
+        mixin = DummyMixin()
+        with patch("kornia.models.base.write_image"), warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            mixin.save(torch.rand(3, 8, 8), str(tmp_path), **kwargs)
 
 
 class TestModelBaseMixinSaveOutputs:
