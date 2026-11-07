@@ -581,7 +581,12 @@ class DepthWarper(nn.Module):
         - :meth:`compute_subpixel_step` is half a pixel divided by how far the image centre,
           ``((W - 1) / 2, (H - 1) / 2)``, moves in the destination image per unit of inverse depth around
           inverse depth 1, the smallest over the batch. Two cameras with no baseline have no parallax, so it
-          is ``inf``. With focal length ``f`` and baseline ``b``, a rectified pair gives ``0.5 / (f * b)``.
+          is ``inf``, or a very large value when rounding leaves a residual translation; such a camera passes no
+          gradient (zero, by convention, since none exists at ``inf``), so it cannot turn the gradients of the
+          rest of the batch into NaN. With focal length ``f`` and baseline ``b``, a rectified pair gives
+          ``0.5 / (f * b)``. It measures the image centre only: exact for a rectified pair, where every pixel
+          moves the same, and not a bound for the whole image otherwise. Under forward motion the centre barely
+          moves, so the step can be far coarser than the corners need.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
@@ -708,7 +713,9 @@ class DepthWarper(nn.Module):
 
         device, dtype = self._dst_proj_src.device, self._dst_proj_src.dtype
         pixel = torch.tensor([[x], [y], [1.0], [0.0]], device=device, dtype=dtype)
-        rays = torch.matmul(self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel)
+        # Inverted in the projection's dtype, float32 for half cameras: a half inverse moves the ray by part of a pixel.
+        k_src = self._pinhole_src.camera_matrix.to(device=device, dtype=dtype)
+        rays = torch.matmul(_embed_intrinsics(_torch_inverse_cast(k_src)), pixel)
         steps = torch.tensor(invds, device=device, dtype=dtype).expand(rays.shape[0], 1, -1)
         return torch.cat([rays[:, :3].expand(-1, -1, len(invds)), steps], dim=1)
 
@@ -748,8 +755,12 @@ class DepthWarper(nn.Module):
         xys = torch.stack((xs, ys), dim=-1)  # (N, 2, 2)
         dxy = torch.norm(xys[:, 1] - xys[:, 0], p=2, dim=1) / 2.0
         dxdd = dxy / delta_d
-        # half pixel sampling, min for all cameras
-        return torch.min(0.5 / dxdd).to(self._pinhole_dst.extrinsics.dtype)
+        # half pixel sampling, min for all cameras. A camera without parallax has no finite step: dividing by a safe
+        # denominator keeps it from turning the gradients of the rest of the batch into NaN.
+        moved = dxdd > 0
+        safe = torch.where(moved, dxdd, torch.ones_like(dxdd))
+        step = torch.where(moved, 0.5 / safe, torch.full_like(dxdd, float("inf")))
+        return torch.min(step).to(self._pinhole_dst.extrinsics.dtype)
 
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
         """Compute where each source pixel samples the destination image, given the depth in the source frame.
