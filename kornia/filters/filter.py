@@ -33,6 +33,19 @@ def _pad(input: torch.Tensor, padding: list[int], border_type: str) -> torch.Ten
     """Extend reflect101 and wrap borders beyond a spatial axis, retaining native supported padding."""
     if border_type not in ("reflect", "circular"):
         return F.pad(input, padding, mode=border_type)
+    # Match the native limits so ordinary calls need no extension or extra export guards.
+    limit = 1 if border_type == "reflect" else 0
+    shape = input.shape
+    if len(padding) > 2 * len(shape):
+        return F.pad(input, padding, mode=border_type)
+    needs_extension = False
+    for i, pad in enumerate(padding):
+        if pad > shape[-(i // 2) - 1] - limit:
+            needs_extension = True
+            break
+    if not needs_extension:
+        return F.pad(input, padding, mode=border_type)
+
     dimensions = len(padding) // 2
     # Leave cropping, empty axes and unsupported ranks to the backend's existing contract.
     if (
@@ -42,10 +55,6 @@ def _pad(input: torch.Tensor, padding: list[int], border_type: str) -> torch.Ten
         or any(input.shape[-axis - 1] == 0 for axis in range(dimensions))
     ):
         return F.pad(input, padding, mode=border_type)
-    limit = 1 if border_type == "reflect" else 0
-    if all(padding[i] <= input.shape[-(i // 2) - 1] - limit for i in range(len(padding))):
-        return F.pad(input, padding, mode=border_type)
-
     for axis in range(dimensions):
         before, after = padding[2 * axis], padding[2 * axis + 1]
         if before == 0 and after == 0:
@@ -54,10 +63,9 @@ def _pad(input: torch.Tensor, padding: list[int], border_type: str) -> torch.Ten
         indices = torch.arange(-before, size + after, device=input.device)
         if border_type == "circular":
             indices = indices.remainder(size)
-        elif size == 1:
-            indices = torch.zeros_like(indices)
         else:
-            period = 2 * (size - 1)
+            # Keep the singleton period symbolic when tracing across image sizes.
+            period = 2 * size - 2 + (size == 1)
             indices = indices.remainder(period)
             indices = torch.minimum(indices, period - indices)
         input = input.index_select(-axis - 1, indices)
