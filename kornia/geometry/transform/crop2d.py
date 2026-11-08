@@ -98,7 +98,9 @@ def crop_and_resize(
           :math:`2 \times 2` pixel block), origin at top-left
         - a box axis of one pixel is cropped exactly when ``size`` is one pixel on that axis too; one pixel in the box
           but not in ``size``, or the reverse, has no invertible matrix and returns NaN (a meaningless finite value
-          with ``mode='nearest'``), and so does a box with no homography to the patch, such as a triangle
+          with ``mode='nearest'``). A point box (one pixel on both axes) is an exception: it can use a finite scale
+          and replicate the source pixel (#6642). A box with no homography to the patch, such as a triangle,
+          also returns NaN (a meaningless finite value with ``mode='nearest'``)
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
     Args:
@@ -207,6 +209,9 @@ def _crop_scale_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tenso
         torch.ones_like(src_extent),
         torch.where(unsolvable, torch.full_like(src_extent, float("inf")), dst_extent / safe_src_extent_div),
     )
+    if src.dtype == torch.float16:
+        max_scale = 32752.0 / torch.clamp(src[:, 0].abs() + 1.0, min=1.0)
+        scale = torch.where(is_size_one_box & ~both_zero, torch.clamp(scale, max=max_scale), scale)
     transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
     transform[:, 0, 0] = scale[:, 0]
     transform[:, 1, 1] = scale[:, 1]
@@ -436,9 +441,11 @@ def _crop_by_boxes_to_size(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` builds
-    # ``dst_box`` from ``size``, so it takes this path and never reads the box values back from the
-    # device -- which also keeps it capturable by ``torch.onnx.export``.
+    """Crop images by boxes with the destination size already known as Python ints.
+
+    ``crop_and_resize`` builds ``dst_box`` from ``size``, so it takes this path and never reads the box
+    values back from the device -- which also keeps it capturable by ``torch.onnx.export``.
+    """
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 

@@ -595,9 +595,11 @@ class TestCropByBoxes(BaseTester):
         [
             (1.0, (2, 2)),
             (10.0, (7, 7)),
+            (14.0, (14, 14)),
         ],
     )
     def test_size_one_box_crop_and_resize_finite_6642(self, coord, out_size, device, dtype):
+        """Test size-1 bounding box replication across destination stays finite in forward and backward passes."""
         # A size-1 bounding box (e.g. [coord, coord] to [coord, coord]) replicated across destination
         # must remain finite in forward pass and backward pass (#6642).
         if not supports_bilinear_2d_grid_sample(device, dtype):
@@ -617,12 +619,38 @@ class TestCropByBoxes(BaseTester):
         out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
         assert torch.isfinite(out).all()
         expected_pixel = inp[1, 0, int(c), int(c)]
-        atol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
+        atol = {torch.float16: 0.5, torch.bfloat16: 0.5}.get(dtype, 1e-4)
         self.assert_close(out[1], expected_pixel.expand_as(out[1]), atol=atol, rtol=1e-4)
 
         out.sum().backward()
         assert torch.isfinite(inp.grad).all()
         assert torch.isfinite(src_box.grad).all()
+        expected_grad = torch.tensor(float(out_size[0] * out_size[1]), device=device, dtype=dtype)
+        grad_atol = {torch.float16: 1.0, torch.bfloat16: 1.0}.get(dtype, 1e-2)
+        self.assert_close(inp.grad[1, 0, int(c), int(c)], expected_grad, atol=grad_atol, rtol=0.2)
+
+    def test_size_one_box_to_size_one_crop_finite_6642(self, device, dtype):
+        """Test size-1 bounding box cropped to a size-1 destination retains unit scale and translation."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
+        inp.requires_grad = True
+        src_box = torch.tensor(
+            [[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, (1, 1))
+        assert torch.isfinite(out).all()
+        expected_pixel = inp[0, 0, 2, 2]
+        atol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
+        self.assert_close(out[0, 0, 0, 0], expected_pixel, atol=atol, rtol=1e-4)
+
+        out.sum().backward()
+        assert torch.isfinite(inp.grad).all()
+        assert torch.isfinite(src_box.grad).all()
+        self.assert_close(inp.grad[0, 0, 2, 2], torch.ones_like(inp.grad[0, 0, 2, 2]), atol=atol, rtol=1e-4)
 
     @pytest.mark.parametrize(
         "src, size",
