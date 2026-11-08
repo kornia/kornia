@@ -702,6 +702,26 @@ class TestConventionsBlurPool(BaseTester):
         for kernel_size in (3, 5, 7, 9, 15):
             self.assert_close(edge_aware_blur_pool2d(ones, kernel_size), ones)
 
+    @pytest.mark.parametrize("h, w", [(1, 10), (2, 10), (10, 1), (10, 2), (1, 1), (2, 2)])
+    def test_edge_aware_blur_pool2d_small_dimensions_6643(self, h, w, device, dtype):
+        """edge_aware_blur_pool2d and _reflect_pad2d do not hang or crash when H<=2 or W<=2 (#6643)."""
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+        img = torch.rand(1, 1, h, w, device=device, dtype=dtype)
+        out = edge_aware_blur_pool2d(img, kernel_size=3)
+        assert out.shape == img.shape
+        assert torch.isfinite(out).all()
+
+    @pytest.mark.parametrize("h, w", [(1, 5), (5, 1), (1, 1)])
+    def test_reflect_pad2d_singleton_dimension_6643(self, h, w, device, dtype):
+        """_reflect_pad2d falls back to replication on singleton axes without infinite loop (#6643)."""
+        from kornia.filters.blur_pool import _reflect_pad2d
+
+        img = torch.rand(1, 1, h, w, device=device, dtype=dtype)
+        out = _reflect_pad2d(img, 2, 2)
+        assert out.shape == (1, 1, h + 4, w + 4)
+        assert torch.isfinite(out).all()
+
 
 @pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
 class TestBlurPoolScript(BaseTester):

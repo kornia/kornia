@@ -423,6 +423,12 @@ def _max_blur_pool_by_kernel2d(
 def _reflect_pad2d(input: torch.Tensor, padding_y: int, padding_x: int) -> torch.Tensor:
     """Reflect-pad by arbitrary amounts, applying chunks accepted by ``F.pad``."""
     remaining_y, remaining_x = padding_y, padding_x
+    if remaining_y > 0 and input.shape[-2] <= 1:
+        input = F.pad(input, (0, 0, remaining_y, remaining_y), mode="replicate")
+        remaining_y = 0
+    if remaining_x > 0 and input.shape[-1] <= 1:
+        input = F.pad(input, (remaining_x, remaining_x, 0, 0), mode="replicate")
+        remaining_x = 0
     while remaining_y > 0 or remaining_x > 0:
         pad_y = min(remaining_y, input.shape[-2] - 1)
         pad_x = min(remaining_x, input.shape[-1] - 1)
@@ -477,7 +483,7 @@ def edge_aware_blur_pool2d(
     # Keep the edge comparison's fixed 2-pixel halo separate from the blur halo. The
     # blur_pool2d convolution zero-pads by its kernel radius, so reflect-padding by at
     # least that radius prevents zeros from reaching the retained image boundary.
-    edge_input = F.pad(input, (2, 2, 2, 2), mode="reflect")
+    edge_input = _reflect_pad2d(input, 2, 2)
     kernel_size_y, kernel_size_x = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
     blur_pad_y, blur_pad_x = max(2, kernel_size_y // 2), max(2, kernel_size_x // 2)
     blur_input = _reflect_pad2d(input, blur_pad_y, blur_pad_x)
