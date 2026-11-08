@@ -35,7 +35,7 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester, dynamic_export_is_available, supports_reflect_padding
+from testing.base import BaseTester, dynamic_export_is_available, supports_reflect_padding, supports_replicate_padding
 
 
 class _FunctionalBlurPool(torch.nn.Module):
@@ -715,12 +715,27 @@ class TestConventionsBlurPool(BaseTester):
     @pytest.mark.parametrize("h, w", [(1, 5), (5, 1), (1, 1)])
     def test_reflect_pad2d_singleton_dimension_6643(self, h, w, device, dtype):
         """_reflect_pad2d falls back to replication on singleton axes without infinite loop (#6643)."""
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        if (h > 1 or w > 1) and not supports_reflect_padding(device, dtype):
+            pytest.skip(f"this torch build has no reflect padding kernel for {dtype} on {device.type}")
+
         from kornia.filters.blur_pool import _reflect_pad2d
 
-        img = torch.rand(1, 1, h, w, device=device, dtype=dtype)
+        img = torch.arange(1.0, float(h * w) + 1.0, device=device, dtype=dtype).view(1, 1, h, w)
         out = _reflect_pad2d(img, 2, 2)
         assert out.shape == (1, 1, h + 4, w + 4)
         assert torch.isfinite(out).all()
+
+        if h == 1 and w == 1:
+            expected = img.expand(1, 1, 5, 5)
+        elif h == 1:
+            expected_w = F.pad(img, (2, 2, 0, 0), mode="reflect")
+            expected = expected_w.repeat(1, 1, 5, 1)
+        else:  # w == 1
+            expected_h = F.pad(img, (0, 0, 2, 2), mode="reflect")
+            expected = expected_h.repeat(1, 1, 1, 5)
+        self.assert_close(out, expected)
 
 
 @pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
