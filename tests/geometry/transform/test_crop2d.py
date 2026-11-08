@@ -595,7 +595,7 @@ class TestCropByBoxes(BaseTester):
         [
             (1.0, (2, 2)),
             (10.0, (7, 7)),
-            (14.0, (14, 14)),
+            (8.0, (14, 14)),
         ],
     )
     def test_size_one_box_crop_and_resize_finite_6642(self, coord, out_size, device, dtype):
