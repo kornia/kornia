@@ -52,6 +52,45 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
     assert tensor.shape == (num_of_images, image_shape[-1], image_shape[-3], image_shape[-2])
 
 
+class TestImageListViews(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 4, 3), (1, 4, 1)])
+    @pytest.mark.parametrize("axis", [0, 1, 2, None])
+    @pytest.mark.parametrize("input_dtype", [np.uint8, np.float32, np.float64])
+    def test_flipped_numpy_images(self, shape, axis, input_dtype):
+        """Convert flipped views accurately and keep the batch independent of input storage."""
+        image = np.arange(np.prod(shape), dtype=input_dtype).reshape(shape)
+        flipped = np.flip(image, axis=axis)
+        assert any(stride < 0 for stride in flipped.strides)
+
+        actual = kornia.image.image_list_to_tensor([flipped, image])
+        expected = torch.from_numpy(np.stack([flipped, image])).permute(0, 3, 1, 2)
+        self.assert_close(actual, expected)
+        image[...] = 0
+        self.assert_close(actual, expected)
+
+    def test_flipped_numpy_view_with_tensor_keeps_tensor_gradients(self):
+        """Copy reversed NumPy views while preserving gradients for tensor entries."""
+        array = np.arange(18, dtype=np.float32).reshape(2, 3, 3)[..., ::-1]
+        tensor = torch.ones(2, 3, 3, requires_grad=True)
+
+        actual = kornia.image.image_list_to_tensor([tensor, array])
+
+        self.assert_close(actual[1], torch.from_numpy(array.copy()).permute(2, 0, 1))
+        actual.sum().backward()
+        self.assert_close(tensor.grad, torch.ones_like(tensor))
+
+    def test_other_conversion_errors_stay_value_errors(self):
+        with pytest.raises(ValueError):
+            kornia.image.image_list_to_tensor([memoryview(np.zeros((2, 4, 3), dtype=np.float32))])
+
+    def test_dynamo_fullgraph_accepts_numpy_images(self):
+        # Dynamo's NumPy wrapper cannot evaluate a check on img.strides, which would fail the graph for every array.
+        torch._dynamo.reset()
+        image = np.arange(24, dtype=np.float32).reshape(2, 4, 3)
+        compiled = torch.compile(lambda a: kornia.image.image_list_to_tensor([a, a]), fullgraph=True, backend="eager")
+        self.assert_close(compiled(image), torch.from_numpy(np.stack([image, image])).permute(0, 3, 1, 2))
+
+
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
