@@ -121,8 +121,16 @@ class TestGeometricParameterDevice(BaseTester):
             # unwritten on torch 2.14 (pytorch/pytorch#197715).
             if "scale" in params:
                 # Compare in float32, the sampler's dtype, so a draw that rounds to the bound stays inside it.
+                # Angle, scale and translations each take their own copy, so each is checked.
                 scale = params["scale"].float()
                 assert ((scale >= 0.8) & (scale <= 1.2)).all()
+                angle = params["angle"].float()
+                assert ((angle >= -30.0) & (angle <= 30.0)).all()
+                assert (angle != 0).any()
+                # translate=(0.1, 0.1) on a 9 x 8 image: up to 0.9 in x and 0.8 in y.
+                translations = params["translations"].float()
+                assert (translations.abs() <= torch.tensor([0.9, 0.8]) + 1e-6).all()
+                assert (translations != 0).any()
             else:
                 assert (params["end_points"] != params["start_points"]).any()
         finally:
