@@ -2715,6 +2715,17 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         expected = reference.forward_parameters(torch.Size((64, 3, 8, 8)))[key]
         self.assert_close(drawn, expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("source", [0.2, (-0.2, 0.2)], ids=["half-width", "pair"])
+    def test_rgb_shift_loads_a_wider_valid_range(self, source, device, dtype):
+        # A number limit used to bound the range by itself, so a valid checkpoint of a wider shift was refused.
+        target = K.RandomRGBShift(0.1, 0.1, 0.1, p=1.0).to(device=device, dtype=dtype)
+        target.load_state_dict(K.RandomRGBShift(source, 0.1, 0.1, p=1.0).state_dict())
+        torch.manual_seed(0)
+        drawn = target.forward_parameters(torch.Size((1024, 3, 8, 8)))["r_shift"]
+        assert drawn.min() >= -0.2 - 1e-3
+        assert drawn.max() <= 0.2 + 1e-3
+        assert drawn.max() - drawn.min() >= 0.4 * 0.9
+
     def test_load_inside_a_container_follows_the_prefix(self, device, dtype):
         target = K.AugmentationSequential(K.RandomRotation((80.0, 81.0), p=1.0)).to(device=device, dtype=dtype)
         source = K.AugmentationSequential(K.RandomRotation((10.0, 11.0), p=1.0))
