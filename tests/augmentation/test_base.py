@@ -2553,6 +2553,41 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         with pytest.raises(ValueError, match="quarter turns"):
             aug(image)
 
+    @pytest.mark.parametrize("copier", ["deepcopy", "pickle"])
+    @pytest.mark.parametrize("updated", [(0.25, 0.25), (1.0, 1.0), (0.5, 1.5)], ids=["fixed", "odd", "fractional"])
+    def test_rotation90_copy_of_an_in_place_update_decides_like_a_fresh_module(self, updated, copier, device, dtype):
+        # A copy of a learnable range draws from the range as it is now, so the whole-range rule and the non-square
+        # check have to come from it too. They used to be copied: a copy of [0.25, 0.25] drew 0 three times in four,
+        # and a copy of [1, 1] gave a non-square image a quarter turn that cropped it.
+        copy_of = copy.deepcopy if copier == "deepcopy" else (lambda module: pickle.loads(pickle.dumps(module)))
+        param = torch.nn.Parameter(torch.zeros(2, device=device, dtype=dtype))
+        aug = K.RandomRotation90(param, p=1.0).to(device=device, dtype=dtype)
+        with torch.no_grad():
+            param.copy_(torch.tensor(updated, device=device, dtype=dtype))
+        copied = copy_of(aug)
+        fresh = K.RandomRotation90(
+            torch.nn.Parameter(torch.tensor(updated, device=device, dtype=dtype)), p=1.0
+        ).to(device=device, dtype=dtype)
+        assert copied._param_generator._whole_range == fresh._param_generator._whole_range
+        assert copied._allows_odd_turns == fresh._allows_odd_turns
+        torch.manual_seed(0)
+        drawn = copied.forward_parameters(torch.Size((256, 1, 4, 4)))["times"]
+        torch.manual_seed(0)
+        self.assert_close(drawn, fresh.forward_parameters(torch.Size((256, 1, 4, 4)))["times"], rtol=0, atol=0)
+        if fresh._allows_odd_turns:
+            with pytest.raises(ValueError, match="quarter turns"):
+                copied(torch.rand(1, 1, 4, 8, device=device, dtype=dtype))
+
+    def test_rotation90_copy_of_a_buffer_written_in_place_draws_like_the_original(self, device, dtype):
+        # A buffer that is not learnable keeps its samplers in a copy, and with them its decisions: the copy still draws
+        # no turn, so it must still take a non-square image.
+        aug = K.RandomRotation90((0, 0), p=1.0).to(device=device, dtype=dtype)
+        aug._param_generator.times.fill_(1.0)
+        copied = copy.deepcopy(aug)
+        image = torch.rand(1, 1, 4, 8, device=device, dtype=dtype)
+        self.assert_close(copied(image), aug(image), rtol=0, atol=0)
+        assert copied._params["times"].unique().tolist() == [0.0]
+
     def test_rotation90_loads_a_range_without_float64(self, device, monkeypatch):
         # MPS has no float64: a loaded range is on the device by then, so it cannot be converted to find if it is whole.
         dtype = torch.float32

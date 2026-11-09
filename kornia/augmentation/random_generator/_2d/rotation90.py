@@ -69,6 +69,12 @@ class Rotation90Generator(PlainUniformGenerator):
         self._find_whole_range()
         super()._ranges_loaded(names)
 
+    def _rebuild_samplers(self, device: Any, dtype: torch.dtype) -> None:
+        # Only a copy of a learnable range comes here, since the forward path does not rebuild this generator. The copy
+        # holds the range as it is now, which an in-place update may have changed since the flag was found.
+        self._find_whole_range()
+        super()._rebuild_samplers(device, dtype)
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         super().make_samplers(device, dtype)
         if self._whole_range:

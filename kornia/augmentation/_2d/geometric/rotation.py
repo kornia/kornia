@@ -251,8 +251,10 @@ class RandomRotation90(GeometricAugmentationBase2D):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_allows_odd_turns" not in self.__dict__:
-            # A RandomRotation90 pickled before the non-square check existed has no cached answer.
+        if "_allows_odd_turns" not in self.__dict__ or self._param_generator.times.requires_grad:
+            # A RandomRotation90 pickled before the non-square check existed has no cached answer, and the copy of a
+            # learnable range draws from the range as it is now, which an in-place update may have changed. A buffer
+            # written in place keeps the copied samplers, and with them the copied answer.
             low, high = self._param_generator.times.tolist()
             self._allows_odd_turns = _range_allows_odd_turns(low, high)
 

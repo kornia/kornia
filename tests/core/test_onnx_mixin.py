@@ -147,7 +147,10 @@ _NOT_CALL_STATE = {
         ),
     ),
     "PlainUniformGenerator._ranges_loaded": (("samplers",), "load_state_dict, not a call"),
-    "Rotation90Generator._find_whole_range": (("_whole_range",), "the constructor and load_state_dict, not a call"),
+    "Rotation90Generator._find_whole_range": (
+        ("_whole_range",),
+        "the constructor, load_state_dict and the rebuild of a copy, not a call",
+    ),
     "RandomRotation90._load_from_state_dict": (("_allows_odd_turns",), "load_state_dict, not a call"),
     "RandomTransplantation.params_from_input": (
         ("excluded_labels",),
