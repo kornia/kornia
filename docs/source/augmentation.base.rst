@@ -252,3 +252,7 @@ parameter overrides in ``_params``; flags remain call-local and must be passed a
 Container ``extra_args`` are checked against the options supported by all descendants and forwarded only to
 children that support them. The default mask options ``resample``, ``align_corners`` and ``antialias`` are
 also accepted for pipelines without interpolation. Unknown container options emit the same warning.
+
+Validation does not expand which overrides a method consumes: matrix recomputation continues to consume
+flag overrides only, and policy image operations retain their existing override behavior. Shared options
+are filtered at each nested child boundary for forward, inverse and matrix traversal alike.

@@ -42,7 +42,7 @@ from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _validate_extra_args
+from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _filter_child_options, _validate_extra_args
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
@@ -457,22 +457,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Read invocation snapshots and parameter-aware geometric matrices from a plain image sequence."""
         for param in params:
             module = container.get_submodule(param.name)
+            child_args = _filter_child_options(module, extra_args, param)
             if type(module) is ImageSequential:
                 yield from AugmentationSequential._image_sequence_matrices(
-                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args, sequence_matrices
+                    module, InputSequentialOps.get_sequential_module_param(param), input, child_args, sequence_matrices
                 )
             elif isinstance(module, AugmentationSequential):
                 if sequence_matrices is None and type(module) is AugmentationSequential:
                     if module._transformation_matrix_arg != "skip":
                         yield from AugmentationSequential._image_sequence_matrices(
-                            module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                            module, InputSequentialOps.get_sequential_module_param(param), input, child_args
                         )
                 else:
                     matrix = module.transform_matrix if sequence_matrices is None else next(sequence_matrices)
                     if matrix is not None:
                         yield matrix
             elif isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D)):
-                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=extra_args)
+                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=child_args)
 
     def _update_image_sequence_matrix(
         self,
@@ -483,6 +484,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         image_transformed: bool = True,
     ) -> None:
         """Collect nested matrices, using invocation snapshots only after an image call."""
+        extra_args = _filter_child_options(module, extra_args, param)
         if (
             type(module) is ImageSequential
             and self._transformation_matrix_arg in ("silent", "silence")

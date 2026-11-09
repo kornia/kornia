@@ -855,6 +855,46 @@ class TestConventionAugmentationBase2D(BaseTester):
             params = aug.forward_parameters(x.shape)
             self.assert_close(aug(x, params=params), x)
 
+    @pytest.mark.parametrize("policy", [False, True])
+    def test_nested_matrix_shared_options_are_filtered(self, device, dtype, policy):
+        from kornia.augmentation.auto import AutoAugment
+        from kornia.augmentation.container.params import ParamItem
+
+        x = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        if policy:
+            aug = AutoAugment(policy=[[("rotate", 1.0, 3)], [("invert", 1.0, None)]])
+            # Include both heterogeneous sub-policies rather than drawing only one.
+            params = [ParamItem(name, child.forward_parameters(x.shape)) for name, child in aug.named_children()]
+            key = "degrees"
+        else:
+            aug = K.ImageSequential(
+                K.RandomAffine((17.0, 17.0), p=1.0), K.ImageSequential(K.RandomHorizontalFlip(p=1.0))
+            )
+            params = aug.forward_parameters(x.shape)
+            key = "angle"
+        expected = aug.get_transformation_matrix(x, params=params, recompute=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            actual = aug.get_transformation_matrix(
+                x, params=params, recompute=True, extra_args={key: torch.zeros(1, device=device, dtype=dtype)}
+            )
+        # Matrix recompute historically consumes flag overrides only; validating shared parameter names must
+        # neither change that numerical contract nor warn when the next nested child lacks that parameter.
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("policy", [False, True])
+    def test_policy_direct_transform_inputs_warns_on_unknown_option(self, device, dtype, policy):
+        from kornia.augmentation.auto import AutoAugment
+        from kornia.augmentation.auto.operations import PolicySequential, ops
+
+        aug = AutoAugment(policy=[[("invert", 1.0, None)]]) if policy else PolicySequential(ops.Invert(1.0))
+        x = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        params = aug.forward_parameters(x.shape)
+        expected = aug.transform_inputs(x, params)
+        with pytest.warns(FutureWarning, match="misspelled"):
+            actual = aug.transform_inputs(x, params, extra_args={"misspelled": True})
+        self.assert_close(actual, expected)
+
     def test_container_shared_options_and_unknown_override(self, device, dtype):
         from kornia.constants import DataKey
 
