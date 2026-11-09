@@ -295,9 +295,8 @@ class ScaleSpaceDetector(nn.Module):
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
-        - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
-          mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
-          weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
+        - Border and refined-centre mask checks run before the per-octave feature budget, so a rejected
+          candidate cannot displace a weaker valid candidate.
 
     Args:
         num_features: Number of features to detect. In order to keep everything batchable,
@@ -465,13 +464,13 @@ class ScaleSpaceDetector(nn.Module):
         octave_to_image: Tuple[float, float],
         float16_scores: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
-        """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
+        """Process one scale-space octave: response → NMS/subpix → validity → top-K → LAF.
 
         Returns the top-K responses, their LAFs, a boolean mask of the slots a detection
         actually filled, and the dtype of the response function's output. The batched top-K below
         ranks over the whole volume and returns its ``fill`` sentinel once the octave runs out of
-        candidates, and the border check rejects candidates after the ranking; the mask is what
-        tells those slots apart from a detection, since the response alone cannot. The responses
+        valid candidates; the mask tells those slots apart from a detection, since the response alone
+        cannot. The responses
         and LAFs are in at least float32; ``_detect`` casts the responses back to the returned dtype.
         """
         dev = octave.device
@@ -583,8 +582,39 @@ class ScaleSpaceDetector(nn.Module):
         resp_flat = response_max.flatten(1)  # (B, C*L*H*W)
         coord_flat = coord_max.movedim(2, -1).flatten(1, -2)  # (B, C*L*H*W, 3)
 
+        # Validate every sparse NMS candidate before budgeting: a stronger rejected frame must
+        # not hide a weaker valid one. Only candidate coordinates are materialized, not dense LAFs.
+        # CPU float32, 240x320 graf, 512 features: B=1/2 medians 25.7/45.1 ms
+        # versus 25.9/45.0 ms before validation moved here (one thread, no gradients).
+        batch_idx, candidate_idx = mask_flat.nonzero(as_tuple=True)
+        candidate_coords = coord_flat[batch_idx, candidate_idx]
+        if self.minima_are_also_good:
+            coord_min_flat = coord_min.movedim(2, -1).flatten(1, -2)
+            candidate_coords = torch.where(
+                take_min_mask.flatten(1)[batch_idx, candidate_idx, None],
+                coord_min_flat[batch_idx, candidate_idx],
+                candidate_coords,
+            )
+        candidate_scale = scale_sigmas[batch_idx, 0] * torch.pow(2.0, candidate_coords[:, 0] / float(num_levels))
+        half_s = self.mr_size * candidate_scale * 0.5
+        cx, cy = candidate_coords[:, 1], candidate_coords[:, 2]
+        # Equivalent to laf_is_inside_image(scale_laf(laf, 0.5), octave[:, 0], 5)
+        # for the isotropic frames assembled below, in octave pixel coordinates.
+        good_mask = (cx - half_s >= 5) & (cx + half_s <= W - 1 - 5)
+        good_mask = good_mask & (cy - half_s >= 5) & (cy + half_s <= H - 1 - 5)
+        if oct_keep is not None:
+            # Every pixel touched by the refined centre must be allowed, including after
+            # refinement moves a candidate away from its initially allowed integer NMS site.
+            keep_flat = oct_keep.flatten(1).expand(B, -1)
+            x0 = cx.floor().long().clamp_(0, W - 1)
+            x1 = cx.ceil().long().clamp_(0, W - 1)
+            y0 = cy.floor().long().clamp_(0, H - 1)
+            y1 = cy.ceil().long().clamp_(0, H - 1)
+            for yy in (y0, y1):
+                for xx in (x0, x1):
+                    good_mask = good_mask & keep_flat[batch_idx, yy * W + xx]
         if B == 1:
-            nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
+            nms_idx = candidate_idx[good_mask]  # (M,)
             resp_cands = resp_flat[0][nms_idx]  # (M,)
             k_eff = min(num_feats, nms_idx.shape[0])
             # Only NMS candidates are gathered here, so every returned slot is one.
@@ -601,6 +631,8 @@ class ScaleSpaceDetector(nn.Module):
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
             # response. (A finite sentinel such as `finfo.min / 2` is not below every finite
             # response, and outranked a genuine extreme maximum.)
+            mask_flat = mask_flat.clone()
+            mask_flat[batch_idx, candidate_idx] = good_mask
             resp_masked = resp_flat.masked_fill(~mask_flat, float("-inf"))
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
@@ -631,38 +663,9 @@ class ScaleSpaceDetector(nn.Module):
             3,
         )
 
-        # Inline equivalent of laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
-        # for isotropic LAFs (rotmat = eye(2)), without the torch.cat of scale_laf. The half frame
-        # half_s * I is a circle, so it spans exactly cx -+ half_s and cy -+ half_s.
-        half_s = current_lafs[:, :, 0, 0] * 0.5
-        cx = current_lafs[:, :, 0, 2]
-        cy = current_lafs[:, :, 1, 2]
-        h, w = octave.shape[3], octave.shape[4]
-        # Valid pixel coordinates run 0 .. w-1 / 0 .. h-1, so the upper bound is (size - 1) - border.
-        x_max = float(w - 1) - 5
-        y_max = float(h - 1) - 5
-        good_mask = (cx - half_s >= 5) & (cx + half_s <= x_max) & (cy - half_s >= 5) & (cy + half_s <= y_max)
-        if oct_keep is not None:
-            # The mask was checked at the integer NMS site, and the sub-pixel step has since moved
-            # the centre -- across the mask boundary, when the true peak lies just inside the zero
-            # region. Re-check the refined centre against the resampled mask, conservatively: every
-            # octave pixel the centre touches (its floor and ceil in x and y) has to be allowed, as a
-            # zero region already suppresses every candidate within one octave pixel of it.
-            keep_flat = oct_keep.flatten(1)  # (1 or B, H*W)
-            if keep_flat.shape[0] != B:
-                keep_flat = keep_flat.expand(B, -1)
-            x0 = cx.floor().long().clamp_(0, w - 1)
-            x1 = cx.ceil().long().clamp_(0, w - 1)
-            y0 = cy.floor().long().clamp_(0, h - 1)
-            y1 = cy.ceil().long().clamp_(0, h - 1)
-            for yy in (y0, y1):
-                for xx in (x0, x1):
-                    good_mask = good_mask & torch.gather(keep_flat, 1, yy * w + xx)
-        # A slot is filled by a candidate whose frame lies inside the image and the mask. Everything
-        # else -- a batched top-K sentinel, or a candidate the border or mask check rejects --
-        # carries `-inf` from here so that it loses the cross-octave ranking in `_detect` to every
-        # real detection, however negative; `_detect` zeroes its response and LAF once ranked.
-        filled = is_cand & good_mask
+        # Invalid batched top-K sentinels lose to every real detection, including negative
+        # responses, in the cross-octave ranking. `_detect` zeroes their response and LAF.
+        filled = is_cand
         resp_flat_best = resp_flat_best.masked_fill(~filled, float("-inf"))
         # Octave pixels to input pixels, per axis: x scales the first LAF row, y the second.
         current_lafs[:, :, 0, :].mul_(octave_to_image[0])

@@ -1946,16 +1946,18 @@ class TestConventionsScaleSpaceDetector(BaseTester):
             assert resps[0, 0] > 0
 
     @pytest.mark.parametrize("rejection", ["border", "mask"])
-    def test_wart_scale_space_detector_tests_border_and_mask_after_the_octave_top_k_5741(
-        self, device, dtype, rejection
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize(
+        "subpix", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d, ConvSoftArgmax3d]
+    )
+    def test_convention_scale_space_detector_validates_before_the_octave_top_k(
+        self, device, dtype, rejection, batch_size, subpix
     ):
-        # An octave hands only its `num_features` strongest candidates to the border and mask test, so a rejected
-        # candidate's slot stays empty while a weaker valid one exists (#5741). A is rejected -- its half frame of
-        # radius 10.3 overhangs the border y = 63 - 5, or its refined centre x = 40.17 touches the masked pixel
-        # (41, 50) -- and B at (30, 20) is valid: num_features=1 returns an empty slot, num_features=2 returns B.
+        # The stronger A overhangs the border or its refined centre touches a masked pixel.
+        # The weaker, negative B must fill the budget even when only one feature was requested.
         _skip_without_half_padding(device, dtype)
         sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
-        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        img = torch.zeros(batch_size, 1, 64, 96, device=device, dtype=dtype)
         mask = None
         if rejection == "border":
             response, radius = _TwoMaxima(), 10.3
@@ -1965,13 +1967,28 @@ class TestConventionsScaleSpaceDetector(BaseTester):
             mask[..., 50, 41] = False
         filled = {}
         for n in (1, 2):
-            det = ScaleSpaceDetector(n, resp_module=response, scale_space_response=True, mr_size=2 * radius / sigma)
+            det = ScaleSpaceDetector(
+                n, resp_module=response, scale_space_response=True, mr_size=2 * radius / sigma, subpix_module=subpix()
+            )
             lafs, resps = det.to(device, dtype)(img, mask)
-            filled[n] = kornia.feature.laf_is_filled(lafs)[0].tolist()
-        assert filled[1] == [False]
+            valid = kornia.feature.laf_is_filled(lafs)
+            self.assert_close(valid, valid[:1].expand_as(valid))
+            filled[n] = valid[0].tolist()
+        assert filled[1] == [True]
         assert filled[2] == [True, False]
         self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=lafs.dtype))
-        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+        assert bool((resps[:, 0] < 0).all())
+        if subpix is not ConvSoftArgmax3d:
+            self.assert_close(resps[:, 0], torch.full((batch_size,), -0.5, device=device, dtype=dtype))
+        if batch_size == 2 and mask is not None:
+            # Each batch member has its own validity; an empty image must not borrow
+            # candidates from the other image or expose a top-k sentinel.
+            mask = mask.expand(batch_size, -1, -1, -1).clone()
+            mask[1] = False
+            lafs, resps = det(img, mask)
+            assert kornia.feature.laf_is_filled(lafs).tolist() == [[True, False], [False, False]]
+            self.assert_close(lafs[1], torch.zeros_like(lafs[1]))
+            self.assert_close(resps[1], torch.zeros_like(resps[1]))
 
     @pytest.mark.parametrize(
         "sign, minima_are_also_good, centres, values",
@@ -2032,8 +2049,8 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         self.assert_close(resps[0, 0], torch.tensor(0.3, device=device, dtype=dtype))
 
     def test_convention_scale_space_detector_masks_candidates_before_the_top_k(self, device, dtype):
-        # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre
-        # comes after it (#5741). A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
+        # A mask drops a candidate at its integer site before the octave's top-k.
+        # A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
         # of num_features=1 goes to the weaker B at (30, 20); without the mask it goes to A.
         _skip_without_half_padding(device, dtype)
         img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
