@@ -260,7 +260,7 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             (1e-3, 0.04, False),
             (1e-3, 0.004, True),
             # A threshold as wide as the keypoints stops at the limit 0.1 instead of rejecting every model.
-            (1.0, 0.09, True),
+            (1.0, 0.08, True),
             (1.0, 0.11, False),
             (1.0, 1.0, False),
         ],

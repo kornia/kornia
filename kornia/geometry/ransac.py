@@ -106,9 +106,10 @@ _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
 _AFFINE_FUNDAMENTAL_MIN_SPREAD = 2.0
 
 # The models whose rank-at-most-two solvers allow the rank-one matrices that mismatches along a line fit. Such a matrix
-# counts no inliers (_fundamental_near_rank_one) while s2 / s1 in the Hartley-normalized frame is below this many inlier
-# thresholds of that frame, up to the limit. The ground truth of the 170 PhotoTourism benchmark pairs has s2 / s1 of
-# 0.27 or more there, at 21 thresholds or more; the winning models of the line scene in the tests are below 2e-3.
+# counts no inliers (_fundamental_near_rank_one) while its compared value in the Hartley-normalized frame, about s2 / s1,
+# is below this many inlier thresholds of that frame, up to the limit. On the putatives RANSAC sees, the ground truth
+# has a compared value of 0.31 or more on the 170 PhotoTourism benchmark pairs (18 thresholds or more), and of 0.17 or
+# more on all 4950 pairs of St Peters Square (RANSAC tutorial data); the line scene's winning models are below 2e-3.
 _RANK_TESTED_MODELS = ("fundamental", "fundamental_7pt", "fundamental_8pt")
 _FUNDAMENTAL_MIN_RANK_SPREAD = 5.0
 _FUNDAMENTAL_RANK_FLOOR_LIMIT = 0.1
@@ -151,14 +152,19 @@ def _fundamental_near_rank_one(models: torch.Tensor, threshold: Union[float, tor
     ``F = l m^T`` gives ``x2^T F x1 = (l^T x2) (m^T x1) = 0`` for every ``x2`` on the line ``l`` whatever ``x1`` is, and
     for every ``x1`` on ``m`` whatever ``x2`` is, so mismatches along a line in either image all fit it and can outvote
     the true geometry. With singular values ``s1 >= s2`` and ``s3 = 0``, what ties the two images together moves a
-    correspondence's distance by about ``s2 / s1`` over keypoints of about unit radius. The test compares that with
-    ``_FUNDAMENTAL_MIN_RANK_SPREAD`` inlier thresholds of the frame (``threshold`` is the squared one), or with
-    ``_FUNDAMENTAL_RANK_FLOOR_LIMIT`` if that is smaller: a threshold as wide as the keypoints fits nearly everything,
-    and without the limit it would reject every model. Pixel coordinates would not do, as the true geometry can have
-    ``s2 / s1 < 0.01`` there.
+    correspondence's distance by about ``s2 / s1`` over keypoints of about unit radius. The test compares
+    ``|cof F|_F / (|F|_F^2 - F_33^2)`` with ``_FUNDAMENTAL_MIN_RANK_SPREAD`` inlier thresholds of the frame
+    (``threshold`` is the squared one), or with ``_FUNDAMENTAL_RANK_FLOOR_LIMIT`` if that is smaller: a threshold as
+    wide as the keypoints fits nearly everything, and without the limit it would reject every model. Pixel coordinates
+    would not do, as the true geometry can have ``s2 / s1 < 0.01`` there.
 
     No SVD is needed: at rank two ``|cof F|_F = s1 s2`` and ``|F|_F^2 = s1^2 + s2^2``, whose ratio is ``r / (1 + r^2)``
-    for ``r = s2 / s1``. Both are compared squared. A NaN model compares False, and has no inliers anyway.
+    for ``r = s2 / s1``. ``F_33`` is left out of the denominator because it is the epipolar residual of the frame's two
+    origins, the keypoints' centroids, and not a sign of rank: mismatches that pull the centroids away from the true
+    matches would otherwise lower the value of the true geometry. The compared value is then at least
+    ``r / (1 + r^2)``, and a rank-one matrix still has zero cofactors. The one rank-one matrix it does not flag, with
+    only ``F_33`` non-zero, compares ``0 < 0`` but fits no point. Both sides are compared squared. A NaN model compares
+    False, and has no inliers anyway.
     """
     floor = _FUNDAMENTAL_MIN_RANK_SPREAD**2 * threshold
     limit = _FUNDAMENTAL_RANK_FLOOR_LIMIT**2
@@ -166,7 +172,8 @@ def _fundamental_near_rank_one(models: torch.Tensor, threshold: Union[float, tor
     floor = floor.clamp_max(limit) if isinstance(floor, torch.Tensor) else min(floor, limit)
     # roll would guard on the size of an unbacked batch in the compiled program.
     cofactors = torch.linalg.cross(models, torch.cat([models[:, :, 1:], models[:, :, :1]], -1), dim=-2)
-    return cofactors.square().sum((-2, -1)) < floor * models.square().sum((-2, -1)).square()
+    norm = models.square().sum((-2, -1)) - models[:, 2, 2].square()
+    return cofactors.square().sum((-2, -1)) < floor * norm.square()
 
 
 def _unnormalizer(transform: torch.Tensor) -> torch.Tensor:
