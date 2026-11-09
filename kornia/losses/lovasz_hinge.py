@@ -27,42 +27,26 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
-    r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
+    r"""Compute the binary Lovász-hinge IoU loss of ``(B, 1, H, W)`` logits against ``(B, H, W)`` labels.
 
-    According to [2], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this formula with a surrogate, which is fully differentiable.
-
-    Where:
-       - :math:`X` is the foreground predicted by the single logit channel of ``pred``.
-       - :math:`Y` is the foreground of the binary ``target``.
-
-    the Jaccard loss is
+    ``loss = lovasz_hinge_loss(pred, target)`` optimises the intersection over union (IoU) of two foregrounds: the
+    one predicted by the single logit channel of ``pred`` (:math:`X`) and the one labelled in ``target`` (:math:`Y`),
+    through the Lovász extension [1] of the Jaccard loss [2].
 
     .. math::
 
-        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
-
-    and the loss is its Lovász extension [1], evaluated at the hinge errors; see the Convention block.
+        \Delta_J = 1 - \frac{|X \cap Y|}{|X \cup Y|}
 
     Reference:
         [1] http://proceedings.mlr.press/v37/yub15.pdf
         [2] https://arxiv.org/pdf/1705.08790.pdf
 
-    .. note::
-        This loss function only supports binary labels. For multi-class labels please
-        use the Lovasz-Softmax loss.
-
     Convention:
-        - ``pred`` holds one logit channel ``(B, 1, H, W)`` and ``target`` the labels ``(B, H, W)``, 1 for the
-          foreground and 0 for the background. The batch and spatial sizes must match. The loss is computed per image
-          and averaged over the batch into a 0-d tensor; there is no ``reduction``.
-        - The loss is the Lovász extension of the Jaccard loss at the hinge errors :math:`\max(0, 1 - z (2t - 1))`
-          of logit :math:`z` and label :math:`t`, not :math:`1 - \text{IoU}`: logits of :math:`\pm 1` that are
+        - ``pred`` holds one logit channel and ``target`` labels of 1 for the foreground and 0 for the background; the
+          batch and spatial sizes must match. The loss is computed per image and averaged over the batch; there is no
+          ``reduction``.
+        - The extension is evaluated at the hinge errors :math:`\max(0, 1 - z (2t - 1))` of logit :math:`z` and label
+          :math:`t`, so the loss is not :math:`1 - \text{IoU}`: logits of :math:`\pm 1` that are
           positive on the predicted foreground give :math:`2 (1 - \text{IoU})` of that prediction, and correct
           logits of magnitude at least 1 give 0.
         - ``target`` is not validated and there is no ``ignore_index``: a label of 2 is accepted, and ``-100``, the
@@ -70,13 +54,18 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
           loss negative.
 
     Args:
-        pred: logits tensor with shape ``(N, 1, H, W)``.
-        target: labels tensor with shape ``(N, H, W)`` with binary values.
+        pred: logits ``(B, 1, H, W)``.
+        target: binary labels ``(B, H, W)``.
 
-    Return:
+    Returns:
         a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
         integer or bool ``pred``. The Jaccard weights and the sum over pixels are computed in float32 for a
         float16 or bfloat16 ``pred``.
+
+    See Also:
+        - :class:`~kornia.losses.LovaszHingeLoss`: the module form.
+        - :func:`~kornia.losses.lovasz_softmax_loss`: the multi-class loss, from ``C >= 2`` logit channels against
+          class indices.
 
     Example:
         >>> N = 1  # num_classes
@@ -125,47 +114,23 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
 
 class LovaszHingeLoss(nn.Module):
-    r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
+    r"""Compute the binary Lovász-hinge IoU loss of ``(B, 1, H, W)`` logits against ``(B, H, W)`` labels (module form).
 
-    According to [2], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this formula with a surrogate, which is fully differentiable.
-
-    Where:
-       - :math:`X` is the foreground predicted by the single logit channel of ``pred``.
-       - :math:`Y` is the foreground of the binary ``target``.
-
-    the Jaccard loss is
-
-    .. math::
-
-        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
-
-    and the loss is its Lovász extension [1], evaluated at the hinge errors.
-
-    Reference:
-        [1] http://proceedings.mlr.press/v37/yub15.pdf
-        [2] https://arxiv.org/pdf/1705.08790.pdf
-
-    .. note::
-        This loss function only supports binary labels. For multi-class labels please
-        use the Lovasz-Softmax loss.
+    ``criterion = LovaszHingeLoss()`` takes no arguments, and ``loss = criterion(pred, target)`` is
+    :func:`~kornia.losses.lovasz_hinge_loss`.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.lovasz_hinge_loss`.
 
-    Args:
-        pred: logits tensor with shape ``(N, 1, H, W)``.
-        target: labels tensor with shape ``(N, H, W)`` with binary values.
+    Shape:
+        - pred: logits ``(B, 1, H, W)``.
+        - target: binary labels ``(B, H, W)``.
+        - Output: a scalar.
 
-    Return:
-        a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
-        integer or bool ``pred``. The Jaccard weights and the sum over pixels are computed in float32 for a
-        float16 or bfloat16 ``pred``.
+    See Also:
+        - :func:`~kornia.losses.lovasz_hinge_loss`: the one-call form.
+        - :class:`~kornia.losses.LovaszSoftmaxLoss`: the multi-class loss, from ``C >= 2`` logit channels against
+          class indices.
 
     Example:
         >>> N = 1  # num_classes

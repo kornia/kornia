@@ -175,23 +175,14 @@ def dice_loss(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Sørensen-Dice Coefficient loss.
+    r"""Compute the Sørensen-Dice loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices.
 
-    According to [1], we compute the Sørensen-Dice Coefficient as follows:
-
-    .. math::
-
-        \text{Dice}(x, class) = \frac{2 |X \cap Y|}{|X| + |Y|}
-
-    Where:
-       - :math:`X` is the softmax of ``pred`` over the classes.
-       - :math:`Y` is the one-hot encoding of ``target`` by :func:`~kornia.losses.one_hot`.
-
-    the loss, is finally computed as:
+    ``loss = dice_loss(pred, target)`` is one minus the Dice overlap [1] between the softmax of ``pred`` over the
+    classes (:math:`X`) and the one-hot ``target`` (:math:`Y`), averaged over the batch.
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{Dice}(x, class)
+        \text{loss} = 1 - \frac{2 |X \cap Y|}{|X| + |Y|}
 
     Reference:
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
@@ -205,8 +196,8 @@ def dice_loss(
           terms of class ``c`` in both sums: :math:`1 - 2 \sum_c w_c |X_c \cap Y_c| / \sum_c w_c (|X_c| + |Y_c|)`.
           ``'macro'`` computes one Dice per sample and class and averages them as
           :math:`\sum_c w_c \, \text{loss}_c / \sum_c w_c` over the classes present in the sample's non-ignored
-          target: a class that is predicted but absent from the target is left out. Both then average over the batch
-          and return a 0-d tensor; there is no ``reduction``.
+          target: a class that is predicted but absent from the target is left out. Both then average over the batch;
+          there is no ``reduction``.
         - ``eps`` is added to the denominator only: :math:`1 - 2 |X \cap Y| / (|X| + |Y| + \epsilon)`.
         - Pixels labelled ``ignore_index`` (default ``-100``) leave both sums of their own sample. A sample whose
           pixels are all ignored, or whose present classes all have weight 0, enters the batch mean as loss 1 with a
@@ -223,26 +214,27 @@ def dice_loss(
           the one-hot target there, and its compiled ``one_hot`` does not check the labels.
 
     Args:
-        pred: logits torch.Tensor with shape ``(N, C, H, W)`` where C = number of classes.
-        target: labels torch.Tensor with shape ``(N, H, W)`` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        average:
-            Reduction applied in multi-class scenario:
+        pred: logits ``(B, C, H, W)``.
+        target: int64 class indices ``(B, H, W)`` in ``[0, C)``, or ``ignore_index``.
+        average: ``'micro'`` (default) or ``'macro'``.
+        eps: term added to the denominator.
+        weight: class weights ``(C,)``; ``None`` weights every class by 1.
+        ignore_index: label whose pixels are left out; ``None`` ignores no label.
 
-            - ``'micro'`` [default]: Calculate the loss across all classes.
-            - ``'macro'``: Average the class losses of each sample; see the Convention block.
-        eps: Scalar added to the denominator of the Dice ratio for numerical stability.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`; see the Convention block for how each
-          ``average`` applies them.
-        ignore_index: labels with this value are ignored in the loss computation.
-
-    Return:
-        One-element torch.Tensor of the computed loss.
+    Returns:
+        the loss, a 0-d tensor.
 
     Note:
         Spatial reductions use float32 for float16 and bfloat16 inputs to avoid
         overflow on large images. The returned loss retains the usual dtype
         promotion between the inputs and class weights.
+
+    See Also:
+        - :class:`~kornia.losses.DiceLoss`: the module form.
+        - :func:`~kornia.losses.tversky_loss`: weights false positives and false negatives separately; averages the
+          classes present in each sample, as ``'macro'`` does.
+        - :func:`~kornia.losses.lovasz_softmax_loss`: optimises the IoU instead of the Dice overlap.
+        - :func:`~kornia.losses.focal_loss`: a per-pixel cross entropy that down-weights easy pixels, not an overlap.
 
     Example:
         >>> N = 5  # num_classes
@@ -352,22 +344,39 @@ def dice_loss(
 
 
 class DiceLoss(nn.Module):
-    r"""Criterion that computes Sørensen-Dice Coefficient loss.
+    r"""Compute the Sørensen-Dice loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices (module form).
+
+    ``criterion = DiceLoss(average, eps, weight, ignore_index)`` stores its arguments, and
+    ``loss = criterion(pred, target)`` is :func:`~kornia.losses.dice_loss`. A plain tensor ``weight`` is stored as a
+    non-persistent buffer, so ``criterion.to(device)`` moves it and ``state_dict`` omits it.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.dice_loss`.
 
     Args:
-        average: Reduction strategy for multi-class computation. Use "micro" to pool the classes of each
-            sample, or "macro" to average over classes present in each sample's non-ignored target.
-        eps: Small constant added to the denominator for numerical stability.
-        weight: Optional class-weight tensor of shape ``(C,)``.
-        ignore_index: Label value to exclude from loss computation.
+        average: ``'micro'`` (default) or ``'macro'``, as in :func:`~kornia.losses.dice_loss`.
+        eps: term added to the denominator.
+        weight: class weights ``(C,)``; ``None`` weights every class by 1.
+        ignore_index: label whose pixels are left out; ``None`` ignores no label.
 
-    Shapes:
-        - pred: ``(N, C, H, W)`` where C is the number of classes.
-        - target: ``(N, H, W)`` where each value is in the range :math:`[0, C-1]`.
-        - Output: scalar.
+    Shape:
+        - pred: logits ``(B, C, H, W)``.
+        - target: int64 class indices ``(B, H, W)`` in ``[0, C)``, or ``ignore_index``.
+        - Output: a 0-d tensor.
+
+    See Also:
+        - :func:`~kornia.losses.dice_loss`: the one-call form.
+        - :class:`~kornia.losses.TverskyLoss`: weights false positives and false negatives separately.
+        - :class:`~kornia.losses.LovaszSoftmaxLoss`: optimises the IoU instead of the Dice overlap.
+        - :class:`~kornia.losses.FocalLoss`: a per-pixel cross entropy that down-weights easy pixels, not an overlap.
+
+    Example:
+        >>> criterion = DiceLoss()
+        >>> pred = torch.randn(1, 5, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(5)
+        >>> output = criterion(pred, target)
+        >>> output.backward()
+
     """
 
     def __init__(

@@ -171,26 +171,18 @@ class _HausdorffERLossBase(nn.Module):
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
-    r"""Hausdorff loss based on morphological erosion, one binary map per class channel.
+    r"""Compute the erosion-based Hausdorff loss of ``(B, C, H, W)`` probabilities against ``(B, 1, H, W)`` labels.
 
-    Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
-    the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
-    the one-sided HD from X to Y is defined as:
-
-    .. math::
-
-        hd(X,Y) = \max_{x \in X} \min_{y \in Y}||x - y||_2
-
-    Furthermore, the bidirectional HD is:
+    ``criterion = HausdorffERLoss(alpha, k, reduction)`` stores its arguments, and ``loss = criterion(pred, target)``
+    scores, for each class channel, a surrogate of the Hausdorff distance between the predicted and the labelled
+    segmentation from ``k`` erosions of their squared difference :cite:`karimi2019reducing`.
 
     .. math::
 
-        HD(X,Y) = max(hd(X, Y), hd(Y, X))
+        HD(X, Y) = \max(hd(X, Y), hd(Y, X)), \qquad hd(X, Y) = \max_{x \in X} \min_{y \in Y} \|x - y\|_2
 
-    This is an Hausdorff Distance (HD) Loss that based on morphological erosion, which provided
-    a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
-    The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-    blob/master/hausdorff_loss.py>`__.
+    Reference:
+        Based on https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
 
     Convention:
         - ``pred`` holds per-class probabilities ``(B, C, H, W)`` and nothing is applied to it, unlike the logits of
@@ -199,18 +191,26 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - The ``[0, C)`` check reads the data, so it is skipped wherever the call captures a graph
           (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
           those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
-        - ``reduction='none'`` returns ``(C, B, 1, H, W)``, class axis first; the default ``'mean'`` is the plain
-          mean of that tensor.
+        - The default ``'mean'`` is the plain mean of the ``'none'`` tensor.
+        - Each erosion keeps only the part of the neighbourhood-averaged squared error above 0.5, so a prediction that
+          is nowhere confidently wrong, such as a near-uniform softmax, scores 0 with zero gradient.
         - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
           :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
           in pixels.
 
     Args:
-        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
-        k: the number of iterations of erosion.
-        reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the mean of the output is taken,
-            'sum': the output will be summed.
+        alpha: exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
+        k: number of erosions.
+        reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``.
+
+    Shape:
+        - pred: probabilities ``(B, C, H, W)``.
+        - target: int64 class labels ``(B, 1, H, W)``.
+        - Output: a scalar for ``'mean'`` and ``'sum'``, ``(C, B, 1, H, W)`` for ``'none'``.
+
+    See Also:
+        - :class:`~kornia.losses.HausdorffERLoss3D`: the same loss for volumes.
+        - :class:`~kornia.losses.DiceLoss`: an overlap loss that takes logits, not probabilities.
 
     Examples:
         >>> hdloss = HausdorffERLoss()
@@ -257,39 +257,30 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
 
 class HausdorffERLoss3D(_HausdorffERLossBase):
-    r"""3D Hausdorff loss based on morphological erosion, one binary map per class channel.
+    r"""Compute the erosion-based Hausdorff loss of ``(B, C, D, H, W)`` probabilities against volume labels.
 
-    Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
-    the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
-    the one-sided HD from X to Y is defined as:
+    ``criterion = HausdorffERLoss3D(alpha, k, reduction)`` stores its arguments, and
+    ``loss = criterion(pred, target)`` is :class:`~kornia.losses.HausdorffERLoss` on volumes :cite:`karimi2019reducing`.
 
-    .. math::
-
-        hd(X,Y) = \max_{x \in X} \min_{y \in Y}||x - y||_2
-
-    Furthermore, the bidirectional HD is:
-
-    .. math::
-
-        HD(X,Y) = max(hd(X, Y), hd(Y, X))
-
-    This is a 3D Hausdorff Distance (HD) Loss that based on morphological erosion, which provided
-    a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
-    The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-    blob/master/hausdorff_loss.py>`__.
+    Reference:
+        Based on https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
 
     Convention:
-        - As in :class:`~kornia.losses.HausdorffERLoss` (see its Convention block), for ``pred`` of shape
-          ``(B, C, D, H, W)`` and ``target`` of shape ``(B, 1, D, H, W)``; ``reduction='none'`` returns
-          ``(C, B, 1, D, H, W)``. The erosion kernel is the voxel and its six face neighbours, so the erosion also
-          runs along ``D``.
+        - See the Convention block of :class:`~kornia.losses.HausdorffERLoss`. The erosion kernel is the voxel and its
+          six face neighbours, so the erosion also runs along ``D``.
 
     Args:
-        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
-        k: the number of iterations of erosion.
-        reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the mean of the output is taken,
-            'sum': the output will be summed.
+        alpha: exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
+        k: number of erosions.
+        reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``.
+
+    Shape:
+        - pred: probabilities ``(B, C, D, H, W)``.
+        - target: int64 class labels ``(B, 1, D, H, W)``.
+        - Output: a scalar for ``'mean'`` and ``'sum'``, ``(C, B, 1, D, H, W)`` for ``'none'``.
+
+    See Also:
+        - :class:`~kornia.losses.HausdorffERLoss`: the same loss for images.
 
     Examples:
         >>> hdloss = HausdorffERLoss3D()

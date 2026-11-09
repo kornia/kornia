@@ -3,6 +3,12 @@ Semantic segmentation
 
 .. currentmodule:: kornia.losses
 
+The multi-class losses take class logits ``(B, C, H, W)`` and a label map ``(B, H, W)``, and apply the softmax
+themselves. :func:`dice_loss` and :func:`tversky_loss` optimise the class overlap, :func:`lovasz_softmax_loss` the IoU
+of every class, and :func:`lovasz_hinge_loss` the IoU of one foreground, from one logit channel.
+:func:`focal_loss` is a cross entropy that down-weights easy pixels, and :func:`binary_focal_loss_with_logits` is the
+same for independent sigmoid outputs. :func:`one_hot` turns a label map into a one-hot tensor.
+
 Functions
 ---------
 

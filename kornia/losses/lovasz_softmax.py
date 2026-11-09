@@ -29,34 +29,18 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 
 def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] = None) -> Tensor:
-    r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
+    r"""Compute the multi-class Lovász-softmax IoU loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices.
 
-    According to [1], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this formula with a surrogate, which is fully differentiable.
-
-    Where:
-       - :math:`X` is the softmax of ``pred`` over the classes.
-       - :math:`Y` is the one-hot encoding of the integer class labels in ``target``.
-
-    the Jaccard loss of each class is
+    ``loss = lovasz_softmax_loss(pred, target)`` optimises the intersection over union (IoU) of every class: the
+    softmax of ``pred`` over the classes (:math:`X`) against the one-hot ``target`` (:math:`Y`). It averages over the
+    classes the Lovász extension of the Jaccard loss of each class [1], evaluated at the errors :math:`|X - Y|`.
 
     .. math::
 
-        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
-
-    and the loss is the mean over the classes of its Lovász extension, evaluated at the errors :math:`|X - Y|`.
+        \Delta_J = 1 - \frac{|X \cap Y|}{|X \cup Y|}
 
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
-
-    .. note::
-        This loss function only supports multi-class (C > 1) labels. For binary
-        labels please use the Lovasz-Hinge loss.
 
     Convention:
         - ``pred`` holds logits ``(B, C, H, W)`` with ``C >= 2`` and the softmax over dim 1 is taken inside;
@@ -64,22 +48,26 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
           sizes match, or ``pred`` holds one image, which is scored against every target. There is no
           ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored, and the result
           for it is undefined.
-        - Each image is scored on its own and the losses are averaged over the batch into a 0-d tensor; there is no
-          ``reduction``. An image's loss is the mean over all ``C`` classes: a class absent from the image enters it
-          with that image's largest probability for the class.
+        - Each image is scored on its own and the losses are averaged over the batch; there is no ``reduction``. An
+          image's loss is the mean over all ``C`` classes: a class absent from the image enters it with that image's
+          largest probability for the class.
         - ``weight`` multiplies the term of each class and the mean still divides by ``C``, so a uniform weight of 2
           doubles the loss, where ``dice_loss(average='macro')`` divides by the summed weights of the classes it
           averages.
 
     Args:
-        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes > 1.
-        target: labels tensor with shape ``(N, H, W)`` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        pred: logits ``(B, C, H, W)`` with ``C >= 2``.
+        target: class indices ``(B, H, W)`` in ``[0, C)``.
+        weight: class weights ``(C,)``.
 
-    Return:
+    Returns:
         a scalar with the computed loss, in the dtype of ``pred`` promoted with the dtype of ``weight``.
         The Jaccard weights and the sum over pixels are computed in float32 for a float16 or bfloat16 ``pred``.
+
+    See Also:
+        - :class:`~kornia.losses.LovaszSoftmaxLoss`: the module form.
+        - :func:`~kornia.losses.lovasz_hinge_loss`: the binary loss, from one logit channel.
+        - :func:`~kornia.losses.dice_loss`: optimises the Dice overlap and drops ignored pixels.
 
     Example:
         >>> N = 5  # num_classes
@@ -156,47 +144,27 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
 
 
 class LovaszSoftmaxLoss(nn.Module):
-    r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
+    r"""Compute the multi-class Lovász-softmax IoU loss of ``(B, C, H, W)`` logits against class indices (module form).
 
-    According to [1], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this formula with a surrogate, which is fully differentiable.
-
-    Where:
-       - :math:`X` is the softmax of ``pred`` over the classes.
-       - :math:`Y` is the one-hot encoding of the integer class labels in ``target``.
-
-    the Jaccard loss of each class is
-
-    .. math::
-
-        \Delta_J(x, class) = 1 - \text{IoU}(x, class)
-
-    and the loss is the mean over the classes of its Lovász extension, evaluated at the errors :math:`|X - Y|`.
-
-    Reference:
-        [1] https://arxiv.org/pdf/1705.08790.pdf
-
-    .. note::
-        This loss function only supports multi-class (C > 1) labels. For binary
-        labels please use the Lovasz-Hinge loss.
+    ``criterion = LovaszSoftmaxLoss(weight)`` stores ``weight``, and ``loss = criterion(pred, target)`` is
+    :func:`~kornia.losses.lovasz_softmax_loss`. A plain tensor ``weight`` is stored as a non-persistent buffer,
+    so ``criterion.to(device)`` moves it and ``state_dict`` omits it.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.lovasz_softmax_loss`.
 
     Args:
-        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes > 1.
-        target: labels tensor with shape ``(N, H, W)`` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        weight: class weights ``(C,)``; ``None`` weights every class by 1.
 
-    Return:
-        a scalar with the computed loss, in the dtype of ``pred`` promoted with the dtype of ``weight``.
-        The Jaccard weights and the sum over pixels are computed in float32 for a float16 or bfloat16 ``pred``.
+    Shape:
+        - pred: logits ``(B, C, H, W)`` with ``C >= 2``.
+        - target: class indices ``(B, H, W)`` in ``[0, C)``.
+        - Output: a scalar.
+
+    See Also:
+        - :func:`~kornia.losses.lovasz_softmax_loss`: the one-call form.
+        - :class:`~kornia.losses.LovaszHingeLoss`: the binary loss, from one logit channel.
+        - :class:`~kornia.losses.DiceLoss`: optimises the Dice overlap and drops ignored pixels.
 
     Example:
         >>> N = 5  # num_classes
