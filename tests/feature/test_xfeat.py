@@ -157,6 +157,38 @@ class TestInterpolateSparse2d(BaseTester):
 # ---------------------------------------------------------------------------
 
 
+class TestInterpolateSparse2dHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("mode, half", [("bicubic", torch.bfloat16), ("bilinear", torch.float16)])
+    def test_half_map_matches_float32_sampling_5810(self, device, mode, half):
+        # A map this large gets NaN and values up to 3e38 from torch's CPU half kernel, and a half-precision grid is
+        # off by a pixel or more on every device. The positions are rounded to half first, as the caller's would be.
+        g = torch.Generator().manual_seed(0)
+        H, W = 256, 320
+        x = torch.rand(1, 64, H, W, generator=g).to(device, half)
+        pos = (torch.rand(1, 2000, 2, generator=g) * torch.tensor([W * 8 - 1.0, H * 8 - 1.0])).to(device, half)
+        interp = InterpolateSparse2d(mode)
+        out = interp(x, pos, H * 8, W * 8)
+        assert out.dtype == half
+        self.assert_close(out, interp(x.float(), pos.float(), H * 8, W * 8).to(half))
+
+    def test_integer_positions_normalise_in_the_default_dtype(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # Only half-precision positions go through float32: integer ones divide in the default dtype, as they did.
+        g = torch.Generator().manual_seed(0)
+        x = torch.rand(1, 8, 24, 32, generator=g, dtype=torch.float64).to(device)
+        pos = (torch.rand(1, 50, 2, generator=g) * torch.tensor([255.0, 191.0])).long().to(device)
+        torch.set_default_dtype(torch.float64)
+        try:
+            out = InterpolateSparse2d("bilinear")(x, pos, 192, 256)
+        finally:
+            torch.set_default_dtype(torch.float32)
+        size = torch.tensor([255.0, 191.0], device=device, dtype=torch.float64)
+        grid = (2.0 * (pos.double() / size) - 1.0).unsqueeze(-2)
+        expected = torch.nn.functional.grid_sample(x, grid, mode="bilinear", align_corners=False)
+        assert torch.equal(out, expected.permute(0, 2, 3, 1).squeeze(-2))
+
+
 class TestXFeat(BaseTester):
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
@@ -217,14 +249,67 @@ class TestXFeat(BaseTester):
             model.detectAndCompute(torch.rand(3, 64, 64, device=device))  # missing batch dim
 
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
-    def test_wart_half_weights_raise_5957(self, half, device):
-        # Known defect #5957: _preprocess_tensor calls x.float(), so half-precision weights meet float32 input.
-        # CPU: "expected scalar type Float but found Half"; MPS and CUDA: "Input type (...) and weight type (...)".
-        model = XFeat().to(device, half).eval()
-        with pytest.raises(
-            RuntimeError, match=r"expected scalar type Float but found|Input type \(.*\) and weight type"
+    @pytest.mark.parametrize("image_dtype", [None, torch.float32])
+    def test_half_weights_5957(self, half, image_dtype, device):
+        # A half-precision model casts the resized image to its dtype, whatever the image's dtype.
+        model = XFeat(detection_threshold=0.0).to(device, half).eval()
+        g = torch.Generator().manual_seed(0)
+        images = torch.rand(2, 3, 96, 128, generator=g).to(device, image_dtype or half)
+        for out in model.detectAndCompute(images, top_k=50):
+            assert out["keypoints"].shape[0] > 0
+            assert out["keypoints"].dtype == torch.float32
+            assert out["scores"].dtype == half
+            assert out["descriptors"].dtype == half
+            assert out["descriptors"].isfinite().all()
+        dense = model.detectAndComputeDense(images, top_k=50)
+        assert dense["keypoints"].dtype == torch.float32
+        assert dense["descriptors"].dtype == half
+        for matches in (
+            model.match_xfeat(images[:1], images[1:], top_k=50),
+            model.match_xfeat_star(images[:1], images[1:], top_k=50),
         ):
-            model.detectAndCompute(torch.rand(1, 3, 96, 128, device=device, dtype=half), top_k=50)
+            assert all(points.dtype == torch.float32 and points.isfinite().all() for points in matches)
+
+    def test_float32_model_keeps_its_dtype_under_autocast(self, device):
+        # Autocast gives the sampler half-precision maps, and it returns them in that dtype; the model's outputs do not.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("bfloat16 autocast is exercised on CPU and CUDA")
+        model = XFeat(detection_threshold=0.0).to(device).eval()
+        g = torch.Generator().manual_seed(0)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["keypoints"].shape[0] > 0
+        assert out["scores"].dtype == torch.float32
+        assert out["descriptors"].dtype == torch.float32
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_model_keeps_its_dtype_under_autocast(self, device, half):
+        # On CUDA, autocast takes F.normalize's norm in float32, which promotes a bfloat16 map and descriptor.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 and bfloat16 autocast are exercised on CPU and CUDA")
+        model = XFeat(detection_threshold=0.0).to(device, half).eval()
+        sampled = []
+        model.interpolator.register_forward_pre_hook(lambda _, args: sampled.append(args[0].dtype))
+        g = torch.Generator().manual_seed(0)
+        with torch.autocast(device.type, dtype=half):
+            out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["keypoints"].shape[0] > 0
+        assert sampled == [half]
+        assert out["scores"].dtype == half
+        assert out["descriptors"].dtype == half
+
+    def test_float16_zero_descriptor_map_stays_zero(self, device):
+        # F.normalize's default eps of 1e-12 rounds to zero in float16, and 0 / 0 made a zero descriptor NaN.
+        model = XFeat(detection_threshold=0.0).eval()
+        last = model.net.block_fusion[2]
+        torch.nn.init.zeros_(last.weight)
+        torch.nn.init.zeros_(last.bias)
+        model = model.to(device, torch.float16)
+        g = torch.Generator().manual_seed(0)
+        out = model.detectAndCompute(torch.rand(1, 3, 96, 128, generator=g).to(device), top_k=50)[0]
+        assert out["descriptors"].shape[0] > 0
+        assert out["descriptors"].dtype == torch.float16
+        assert (out["descriptors"] == 0).all()
 
     def test_gradcheck(self, device):
         pass  # inference_mode on detectAndCompute; gradcheck not applicable
@@ -583,10 +668,10 @@ class TestConventionsXFeat(BaseTester):
             handle.remove()
         return out, seen[0]
 
-    def test_convention_xfeat_keypoints_are_pixels_of_the_resized_grid_times_the_resize_ratio(self, device, dtype):
+    def test_convention_xfeat_keypoints_are_the_centres_of_pixels_of_the_resized_grid(self, device, dtype):
         # detectAndCompute resizes to (max(32, 32 floor(H / 32)), max(32, 32 floor(W / 32))), takes integer heatmap
-        # pixels i there and reports i * (W / W', H / H') (the formula of verlab/accelerated_features e92685f): kornia's
-        # pixel frame when H and W are multiples of 32. The score is the keypoint heatmap value times the reliability,
+        # pixels i there and reports the centre of that pixel in the input, (i + 0.5) * (W / W', H / H') - 0.5 (#6537):
+        # exactly i when H and W are multiples of 32. The score is the keypoint heatmap value times the reliability,
         # keypoints come sorted by it, and outputs are float32 whatever the input dtype. Heatmap value of a peak with
         # logit v: exp(v) / (exp(v) + exp(10) + 63), the softmax over the 65 channels.
         peaks = [(22, 13, 11.0), (70, 41, 12.0)]  # in-cell offsets (6, 5) and (6, 1): x % 8 != y % 8
@@ -608,15 +693,70 @@ class TestConventionsXFeat(BaseTester):
         for threshold, expected in ((0.5, [[70.0, 41.0], [22.0, 13.0]]), (0.8, [[70.0, 41.0]])):
             out, _ = self._detect(image, self._net_outputs(peaks, 64, 96), detection_threshold=threshold)
             assert out["keypoints"].tolist() == expected
-        # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at (22 * 150 / 128, 13 * 100 / 96); its
-        # centre in the input's pixel frame would be (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5). A side below 32
-        # is enlarged to 32: 20 x 150 is resized to 32 x 128.
-        for h, w, h_resized in ((100, 150, 96), (20, 150, 32)):
+        # 100 x 150 is resized to 96 x 128: resized pixel (22, 13) is reported at its centre in the input's pixel frame,
+        # (22.5 * 150 / 128 - 0.5, 13.5 * 100 / 96 - 0.5). A side below 32 is enlarged to 32: 20 x 150 to 32 x 128.
+        for h, w, h_resized, expected in (
+            (100, 150, 96, [[25.8671875, 13.5625]]),
+            (20, 150, 32, [[25.8671875, 7.9375]]),
+        ):
             image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
             out, seen = self._detect(image, self._net_outputs([(22, 13, 12.0)], h_resized, 128))
             assert seen.shape == (1, 3, h_resized, 128)
-            expected = torch.tensor([[22 * w / 128, 13 * h / h_resized]], device=device)
-            self.assert_close(out["keypoints"], expected)
+            self.assert_close(out["keypoints"], torch.tensor(expected, device=device))
+
+    @staticmethod
+    def _coordinate_ramp(h, w, device):
+        # Channels (x, y, x) of each input pixel: after a bilinear resize, an interior pixel holds the input coordinates
+        # of its centre, which is the measurement of #6537 and does not depend on any formula for the resize.
+        y, x = torch.meshgrid(
+            torch.arange(h, device=device, dtype=torch.float32),
+            torch.arange(w, device=device, dtype=torch.float32),
+            indexing="ij",
+        )
+        return torch.stack([x, y, x])[None]
+
+    @pytest.mark.parametrize(
+        "h, w, h_resized, w_resized, expected",
+        [
+            # (22.5 * w / w_resized - 0.5, 13.5 * h / h_resized - 0.5): the largest offset, nearly half a pixel
+            (63, 63, 32, 32, [43.796875, 26.078125]),
+            (100, 150, 96, 128, [25.8671875, 13.5625]),
+            (20, 150, 32, 128, [25.8671875, 7.9375]),
+            (96, 128, 96, 128, [22.0, 13.0]),
+        ],
+    )
+    def test_convention_xfeat_keypoint_holds_the_input_coordinates_of_its_resized_pixel_6537(
+        self, h, w, h_resized, w_resized, expected, device
+    ):
+        ramp = self._coordinate_ramp(h, w, device)
+        out, seen = self._detect(ramp, self._net_outputs([(22, 13, 12.0)], h_resized, w_resized))
+        self.assert_close(out["keypoints"], torch.tensor([expected], device=device), rtol=0, atol=1e-3)
+        self.assert_close(out["keypoints"][0], seen[0, :2, 13, 22], rtol=0, atol=1e-3)
+
+    @pytest.mark.parametrize("weights_dtype", [torch.float16, torch.bfloat16])
+    def test_resized_coordinates_do_not_round_in_half_weights_6537(self, weights_dtype, device):
+        # Keypoints are float32 whatever the weights: bfloat16 would hold 1427.66 as 1428. Generated with plain Python:
+        # (1401.5 * 1500 / 1472 - 0.5, 901.5 * 1000 / 992 - 0.5) and, for the top-left pixel (1400, 896) of the cell,
+        # (1400.5 * 1500 / 1472 - 0.5, 896.5 * 1000 / 992 - 0.5).
+        if device.type == "mps":
+            pytest.skip("half-precision XFeat weights are not covered on MPS")
+        if not supports_bicubic_2d_grid_sample(device, torch.float32):
+            pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
+        xfeat = XFeat().to(device, weights_dtype).eval()
+        feats, logits, reliability = self._net_outputs([(1401, 901, 12.0)], 992, 1472)
+        reliability[0, 0, 112, 175] = 1.0
+        outputs = tuple(t.to(device, weights_dtype) for t in (feats, logits, reliability))
+        image = torch.zeros(1, 3, 1000, 1500, device=device, dtype=weights_dtype)
+        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: outputs)
+        try:
+            (sparse,) = xfeat.detectAndCompute(image, top_k=1)
+            dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
+        finally:
+            handle.remove()
+        expected = torch.tensor([[1427.65897, 908.27016]], device=device)
+        self.assert_close(sparse["keypoints"], expected, rtol=0, atol=1e-3)
+        expected_dense = torch.tensor([[[1426.63995, 903.22984]]], device=device)
+        self.assert_close(dense["keypoints"], expected_dense, rtol=0, atol=1e-3)
 
     def test_convention_xfeat_dense_keypoints_are_the_top_left_pixels_of_their_8_pixel_cells(self, device, dtype):
         # detectAndComputeDense keeps the cells of highest reliability and reports cell (j, i) at (8 j, 8 i) times the
@@ -640,6 +780,78 @@ class TestConventionsXFeat(BaseTester):
             assert out["descriptors"].shape == (1, 2, 64)
             # the descriptors are the dense features of those cells, (j, i, 1, 0, ...), not normalised
             assert out["descriptors"][0, :, :3].tolist() == [[float(j0), float(i0), 1.0], [float(j1), float(i1), 1.0]]
+
+    def _dense_on_ramp(self, h, w, device, cell, top_k, multiscale):
+        # detectAndComputeDense on a coordinate ramp, with one cell (j, i) of highest reliability at every scale.
+        # Returns the output and the (resized) images the network saw, in the order the scales ran.
+        xfeat = XFeat().to(device).eval()
+        seen = []
+
+        def hook(module, inputs, output):
+            image = inputs[0]
+            seen.append(image)
+            feats, logits, reliability = self._net_outputs([], image.shape[-2], image.shape[-1], reliability=0.1)
+            reliability[0, 0, cell[1], cell[0]] = 0.9
+            return tuple(t.to(device) for t in (feats, logits, reliability))
+
+        handle = xfeat.net.register_forward_hook(hook)
+        try:
+            out = xfeat.detectAndComputeDense(self._coordinate_ramp(h, w, device), top_k, multiscale)
+        finally:
+            handle.remove()
+        return out, seen
+
+    def test_convention_xfeat_dense_reports_the_centre_of_the_cell_top_left_pixel_after_the_resize_6537(self, device):
+        # multiscale=False keeps the cell's top-left pixel (8 j, 8 i) of the resized image, and reports the centre of
+        # that pixel in the input: 100 x 150 is resized to 96 x 128, and cell (2, 1) is pixel (16, 8), so
+        # (16.5 * 150 / 128 - 0.5, 8.5 * 100 / 96 - 0.5). Multiples of 32 keep exactly 8 * (j, i), as the test above
+        # pins.
+        out, seen = self._dense_on_ramp(100, 150, device, (2, 1), 1, False)
+        assert seen[0].shape[-2:] == (96, 128)
+        expected = torch.tensor([[[18.8359375, 8.3541666667]]], device=device)
+        self.assert_close(out["keypoints"], expected, rtol=0, atol=1e-3)
+        self.assert_close(out["keypoints"][0, 0], seen[0][0, :2, 8, 16], rtol=0, atol=1e-3)
+
+    def test_wart_xfeat_dense_multiscale_divides_by_the_factor_instead_of_the_pixel_centre_6537(self, device):
+        # Cell (2, 1) is pixel (16, 8) of what the network sees. For 160 x 224 the 0.6 scale gives 96 x 134, resized to
+        # 96 x 128; the 1.3 scale gives 208 x 291, resized to 192 x 288. The resize to a multiple of 32 goes through the
+        # pixel centre, p = (i + 0.5) * W / W' - 0.5, and the rescale divides by its factor, p / s:
+        # 0.6: ((16.5 * (134 / 128) - 0.5) / 0.6, (8.5 - 0.5) / 0.6);
+        # 1.3: ((16.5 * (291 / 288) - 0.5) / 1.3, (8.5 * (208 / 192) - 0.5) / 1.3).
+        # top_k=5 gives one cell to the 0.6 scale and four to the 1.3 scale, which runs first and is reported second.
+        out, seen = self._dense_on_ramp(160, 224, device, (2, 1), 5, True)
+        assert seen[0].shape[-2:] == (192, 288)
+        assert seen[1].shape[-2:] == (96, 128)
+        keypoints = out["keypoints"][0]
+        expected = torch.tensor([[27.9557291667, 13.3333333333], [12.4399038, 6.6987179]], device=device)
+        self.assert_close(keypoints[:2], expected, rtol=0, atol=1e-3)
+        # The ramp holds the pixel centre in the input: p / s is 0.5 - 0.5 / s away from it (#6537, kept on purpose).
+        wart = torch.tensor([[0.5 - 0.5 / 0.6], [0.5 - 0.5 / 1.3]], device=device)
+        self.assert_close(keypoints[0] - seen[1][0, :2, 8, 16], wart[0].expand(2), rtol=0, atol=1e-3)
+        self.assert_close(keypoints[1] - seen[0][0, :2, 8, 16], wart[1].expand(2), rtol=0, atol=1e-3)
+        # the scales stay 1 / factor: they convert a refinement offset, not a position
+        assert (out["scales"][0, 0] == 1 / 0.6).all()
+        assert (out["scales"][0, 1:] == 1 / 1.3).all()
+
+    def test_convention_xfeat_star_moves_the_reported_keypoint_by_the_offset_times_its_scale_6537(self, device):
+        # The refinement adds its offset to the reported coarse keypoint of the first image, in input pixels; the
+        # keypoint of the second image stays where it is reported. A fine matcher peaked at bin (5, 2) gives (2, -1).
+        xfeat = XFeat().to(device).eval()
+
+        class Peak(torch.nn.Module):
+            def forward(self, x):
+                out = torch.zeros(x.shape[0], 64, device=x.device, dtype=x.dtype)
+                out[:, 2 * 8 + 5] = 20.0
+                return out
+
+        xfeat.net.fine_matcher = Peak()
+        torch.manual_seed(0)
+        out = xfeat.detectAndComputeDense(torch.rand(1, 3, 160, 224, device=device), 50)
+        idx = torch.arange(50, device=device)
+        refined = xfeat._refine_matches(out, out, [(idx, idx)], 0)
+        offset = torch.tensor([[2.0, -1.0]], device=device) * out["scales"][0][:, None]
+        self.assert_close(refined[:, :2], out["keypoints"][0] + offset, rtol=0, atol=1e-3)
+        self.assert_close(refined[:, 2:], out["keypoints"][0], rtol=0, atol=0)
 
     def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_and_divides_by_the_factor(
         self, device, dtype
@@ -875,13 +1087,13 @@ class TestConventionsXFeat(BaseTester):
             out_t = interp(ramp.flip(1).transpose(-1, -2).to(device, dtype), pos.flip(-1).to(device, dtype), W, H)
             self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
 
-    @pytest.mark.parametrize("sampler", ["InterpolateSparse2d", "ALIKED", "SOLD2"])
+    @pytest.mark.parametrize("sampler", ["ALIKED", "SOLD2"])
     def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
-        # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
-        # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead, and so does
-        # ALIKED's deformable convolution without autograd (#6464).
+        # maps (#5810), and torch 2.5.1 has no such kernel. ALIKED (DKD scores and SDDH descriptors) and SOLD2.match
+        # call it with the half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use,
+        # samples CPU half in float32 instead, and so do XFeat's InterpolateSparse2d and ALIKED's deformable
+        # convolution without autograd (#6464).
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
@@ -904,11 +1116,7 @@ class TestConventionsXFeat(BaseTester):
                 return func(source.float(), grid.float(), *rest, **kwargs).to(source.dtype)
 
         with torch.no_grad(), GridSampleRecorder():
-            if sampler == "InterpolateSparse2d":
-                InterpolateSparse2d()(
-                    torch.rand(1, 8, 8, 12, dtype=dtype), torch.tensor([[[22.0, 13.0]]], dtype=dtype), 64, 96
-                )
-            elif sampler == "ALIKED":
+            if sampler == "ALIKED":
                 ALIKED(model_name="aliked-t16").to(dtype=dtype).eval()(torch.rand(1, 3, 64, 96, dtype=dtype))
             else:
                 segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]])

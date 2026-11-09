@@ -22,6 +22,7 @@ import torch
 from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
 
@@ -418,6 +419,31 @@ class TestCenterCrop(BaseTester):
 
 
 class TestCropByBoxes(BaseTester):
+    def test_crop_by_boxes_empty_batch_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype, requires_grad=True)
+
+        patches = kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes)
+
+        assert patches.shape == (0, 3, 0, 0)
+        assert patches.dtype == inp.dtype
+        assert patches.device == inp.device
+        patches.sum().backward()
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
+
+    def test_crop_by_boxes_empty_batch_keeps_checks_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype)
+        one_box = torch.zeros(1, 4, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, padding_mode="invalid")
+        with pytest.raises(BaseError, match="Source data shape"):
+            kornia.geometry.transform.crop_by_boxes(inp, one_box, boxes)
+
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.tensor(
             [[[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0], [13.0, 14.0, 15.0, 16.0]]]],
@@ -689,6 +715,41 @@ class TestCropByTransform(BaseTester):
             (inp, transform, (2, 2)),
             requires_grad=(True, False, False),
         )
+
+
+class TestCropOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_center_crop_pads_above_and_below(self, device, dtype):
+        row = self._row(device, dtype)
+        zero = torch.zeros_like(row)
+        out = kornia.geometry.transform.center_crop(row, (3, 4))
+        self.assert_close(out, torch.cat((zero, row, zero), dim=-2))
+
+    def test_convention_center_crop_keeps_the_axis_at_its_size(self, device, dtype):
+        row = self._row(device, dtype)
+        self.assert_close(kornia.geometry.transform.center_crop(row, (1, 2)), row[..., 1:3])
+
+    def test_convention_center_crop_of_a_column_pads_left_and_right(self, device, dtype):
+        column = self._row(device, dtype).transpose(-1, -2)
+        zero = torch.zeros_like(column)
+        out = kornia.geometry.transform.center_crop(column, (4, 3))
+        self.assert_close(out, torch.cat((zero, column, zero), dim=-1))
+
+    def test_convention_center_crop_resample_matches_slice(self, device, dtype):
+        # The default slicing mode of CenterCrop2D already zero-pads this input.
+        row = self._row(device, dtype)
+        resample = kornia.geometry.transform.CenterCrop2D((3, 4), cropping_mode="resample")(row)
+        self.assert_close(resample, kornia.geometry.transform.CenterCrop2D((3, 4))(row))
+
+    @pytest.mark.parametrize("matrix_rows", [2, 3])
+    def test_convention_crop_by_transform_mat(self, matrix_rows, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        matrix[0, 1, 2] = 1.0
+        out = kornia.geometry.transform.crop_by_transform_mat(row, matrix[:, :matrix_rows], (2, 4))
+        self.assert_close(out, torch.cat((torch.zeros_like(row), row), dim=-2))
 
 
 class TestCropByIndices(BaseTester):

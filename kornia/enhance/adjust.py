@@ -35,16 +35,25 @@ from kornia.core.check import (
 )
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
+from kornia.core.utils import (
+    _clamp_unit_range,
+    _is_tracing_or_exporting,
+    _needs_derivatives,
+    _normalize_to_float32_or_float64,
+    _to_device_nonblocking,
+    is_compiling,
+)
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
 def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
-    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no derivative can be asked for.
 
-    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
-    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
-    the heap on every call. Only call it on a tensor no caller can see.
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient or a forward-mode tangent the clamp reuses the
+    fresh buffer instead of allocating another image-sized one: at batch 32 that third 25 MB temporary per call made
+    glibc trim and re-fault the heap on every call. With one it is ``_clamp_unit_range``, whose derivative at a bound
+    does not depend on the torch version. A captured graph takes the same path whatever the grad mode, so that
+    ``torch.jit.trace``'s check under ``no_grad`` records the same clamp. Only call it on a tensor no caller can see.
 
     An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
     promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
@@ -54,11 +63,12 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if (
             image.is_floating_point()
-            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not _is_tracing_or_exporting()
+            and not _needs_derivatives(image)
             and not torch._C._are_functorch_transforms_active()
         ):
             return image.clamp_(min=0.0, max=1.0)
-    return image.clamp(min=0.0, max=1.0)
+    return _clamp_unit_range(image)
 
 
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
@@ -154,7 +164,9 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    s_out: torch.Tensor = torch.clamp(s * factor, min=0, max=1)
+    s_out: torch.Tensor = s * factor
+    # Integer bounds keep the dtype of an integer image, which this HSV primitive does not reject.
+    s_out = _clamp_unit_range(s_out) if s_out.is_floating_point() else s_out.clamp(min=0, max=1)
 
     # pack back back the corrected hue
     out: torch.Tensor = torch.cat([h, s_out, v], dim=-3)
@@ -217,7 +229,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     x_adjusted: torch.Tensor = (1 - factor) * x_other + factor * image
 
     # clamp the output
-    out: torch.Tensor = torch.clamp(x_adjusted, 0.0, 1.0)
+    out: torch.Tensor = _clamp_unit_range(x_adjusted)
 
     return out
 
@@ -287,7 +299,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     delta = max_rgb - min_rgb
     value_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + 1e-8)
     saturation = delta / value_divisor
-    saturation = torch.clamp(saturation * factor, min=0, max=1)
+    saturation = _clamp_unit_range(saturation * factor)
 
     adjusted_delta = max_rgb * saturation
     delta_divisor = torch.where(delta == 0, torch.ones_like(delta), delta)
@@ -454,7 +466,7 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                if 0.0 < gamma < 1.0 and _needs_derivatives(input):
                     # As in the tensor path below.
                     black = input == 0
                     power = torch.where(
@@ -462,7 +474,7 @@ def adjust_gamma(
                     )
                 else:
                     power = input.pow(gamma)
-                return (power * gain).clamp(0.0, 1.0)
+                return _clamp_unit_range(power * gain)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -486,10 +498,10 @@ def adjust_gamma(
     gain = _make_factor_broadcastable(gain, input)
 
     # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
-    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
-    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
-    # masking only runs when autograd records a gradient for the input.
-    if torch.is_grad_enabled() and input.requires_grad:
+    # below would pass on. Black pixels then take the power of a safe base, keep their value 0 ** gamma = 0 and get a
+    # zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the masking only runs when
+    # autograd can ask for a derivative through the input. The mask costs 5 times or more without a derivative.
+    if _needs_derivatives(input):
         black = (input == 0) & (gamma > 0) & (gamma < 1)
         power = torch.where(
             black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
@@ -499,7 +511,7 @@ def adjust_gamma(
     x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
-    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
+    out: torch.Tensor = _clamp_unit_range(x_adjust)
 
     return out
 
@@ -633,7 +645,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
 
-    return img_adjust.clamp(min=0.0, max=1.0)
+    return _clamp_unit_range(img_adjust)
 
 
 def adjust_brightness(
@@ -761,7 +773,7 @@ def adjust_brightness_accumulative(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clamp_unit_range(img_adjust)
 
     return img_adjust
 
@@ -849,7 +861,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clamp_unit_range(img_adjust)
 
     return img_adjust
 
@@ -984,8 +996,7 @@ def solarize(
             # tensor (`for x in additions` breaks the graph); numerically identical.
             additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
             additions = additions.view([-1] + [1] * (input.ndim - 1))
-        input = input + additions
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input + additions)
 
     return _solarize(input, thresholds)
 
@@ -1173,7 +1184,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
     degenerate = torch.nn.functional.conv2d(input, kernel, bias=None, stride=1, groups=input.size(1))
-    degenerate = torch.clamp(degenerate, 0.0, 1.0)
+    degenerate = _clamp_unit_range(degenerate)
 
     # For the borders of the resulting image, fill in the values of the original image.
     mask = torch.ones_like(degenerate)
@@ -1188,7 +1199,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # bites for extrapolation, matching the previous behavior.
     if len(factor.size()) != 0:
         factor = factor.view(-1, *([1] * (result.dim() - 1)))
-    return torch.clamp(result + (input - result) * factor, 0.0, 1.0).reshape(input_shape)
+    return _clamp_unit_range(result + (input - result) * factor).reshape(input_shape)
 
 
 def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:

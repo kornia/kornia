@@ -30,6 +30,8 @@ class AverageMeter:
         - Values are not rescaled: :func:`~kornia.metrics.accuracy` percentages average to a percentage. A tensor
           ``val`` keeps ``sum`` a tensor that holds its autograd graph; pass a detached tensor or a Python number to
           avoid keeping it.
+        - Float16 and bfloat16 values are weighted and accumulated in float32. Later updates can promote the
+          accumulator to a wider dtype; ``val`` always retains the original value and dtype.
 
     Example:
         >>> stats = AverageMeter()
@@ -64,7 +66,8 @@ class AverageMeter:
                 by the value.
         """
         self.val = val
-        self.sum += val * n
+        value = val.float() if isinstance(val, torch.Tensor) and val.dtype in (torch.float16, torch.bfloat16) else val
+        self.sum = self.sum + value * n
         self.count += n
         self._avg = self.sum / self.count
 

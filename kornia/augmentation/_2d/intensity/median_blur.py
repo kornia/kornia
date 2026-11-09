@@ -28,6 +28,9 @@ from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 class RandomMedianBlur(IntensityAugmentationBase2D):
     """Blur images with a median filter, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomMedianBlur(kernel_size, ...)(input)`` replaces pixels in selected ``(B, C, H, W)`` images by
+    local medians.
+
     .. image:: _static/img/RandomMedianBlur.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -53,6 +56,9 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
+
+    See Also:
+        - :class:`RandomGaussianBlur`: uses a weighted average rather than the median.
 
     Examples:
         >>> img = torch.ones(1, 1, 4, 4)

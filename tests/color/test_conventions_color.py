@@ -16,12 +16,14 @@
 #
 
 import math
+from unittest.mock import patch
 
 import pytest
 import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.utils import _clamp_range, _needs_derivatives
 
 from testing.base import BaseTester
 
@@ -277,3 +279,409 @@ class TestColorConventions(BaseTester):
         kornia.color.rgb_to_linear_rgb(image).sum().backward()
 
         assert torch.isfinite(image.grad).all()
+
+
+def _bound_row(
+    device: torch.device, dtype: torch.dtype, values: tuple[float, ...] = (0.0, 0.25, 0.5, 1.0)
+) -> torch.Tensor:
+    # The three channels of a (1, 3, 1, N) image hold the same row of pixels.
+    return torch.tensor(values, device=device, dtype=dtype).view(1, 1, 1, -1).expand(1, 3, 1, -1).contiguous()
+
+
+def _ycbcr_of_luma(image: torch.Tensor) -> torch.Tensor:
+    # At Cb = Cr = 0.5 all three of R, G and B equal Y, so the output sits on a bound where Y does.
+    half = torch.full_like(image[:, 0], 0.5)
+    return kornia.color.ycbcr_to_rgb(torch.stack([image[:, 0], half, half], 1))
+
+
+def _luma_on_the_bounds(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    # Y on the pixels 0, 0.25, 0.5, 1 with neutral chroma, the input of _ycbcr_of_luma.
+    image = _bound_row(device, dtype)
+    image[:, 1:] = 0.5
+    return image
+
+
+def _hue_on_a_bound(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    # H = 5 pi / 3, L = 0.25, S = 1. H * 6 / pi is exactly 10 in the four float dtypes, so min(k - 3, 9 - k) sits on the
+    # bound -1 of the clamp for red (k = 10) and blue (k = 2); green (k = 6) has 3, outside the range.
+    return torch.tensor([5.0 * math.pi / 3.0, 0.25, 1.0], device=device, dtype=dtype).view(1, 3, 1, 1)
+
+
+class TestClampGradientAtBounds(BaseTester):
+    # A result of these conversions exactly on a bound uses the one-sided derivative from inside the range on every
+    # torch version (#6600), the convention of _clamp_unit_range. torch.clamp gives 1 there up to 2.13 and 0 from 2.14,
+    # so these pins fail with a plain clamp only on a recent torch; the 2.5.1 leg shows that the two sides agree.
+    # A graph captured by torch.jit.trace or torch.export keeps the plain clamp.
+    _OPS = {
+        # Each pin is the gradient of out.sum() at the pixels 0, 0.25, 0.5, 1.
+        # Y moves R, G and B by 1 each, so the gradient is 3 at every pixel, the bounds included.
+        "ycbcr_to_rgb": (_ycbcr_of_luma, [3.0, 3.0, 3.0, 3.0]),
+        # 255 x has slope 255. Each channel is a separate input, so the sum does not add them up.
+        "rgb_to_rgb255": (kornia.color.rgb_to_rgb255, [255.0, 255.0, 255.0, 255.0]),
+        # 0.5 (x + 1) * 255 has slope 127.5, and x = 1 lands on the bound 1 before the scale.
+        "normals_to_rgb255": (kornia.color.normals_to_rgb255, [127.5, 127.5, 127.5, 127.5]),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_OPS))
+    def test_convention_result_on_a_bound_keeps_the_derivative_of_the_arithmetic(self, device, dtype, op):
+        call, expected = self._OPS[op]
+        image = _bound_row(device, dtype).requires_grad_()
+        (grad,) = torch.autograd.grad(call(image).sum(), image)
+        self.assert_close(grad[:, 0], image.new_tensor(expected).view(1, 1, 4))
+
+    def test_convention_normals_at_the_lower_bound(self, device, dtype):
+        # -1 lands on the bound 0, 1 on the bound 1; beyond them the value is the bound and the gradient is zero.
+        image = _bound_row(device, dtype, (-2.0, -1.0, 0.0, 1.0, 2.0)).requires_grad_()
+        out = kornia.color.normals_to_rgb255(image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out[:, 0], image.new_tensor([0.0, 0.0, 127.5, 255.0, 255.0]).view(1, 1, 5))
+        self.assert_close(grad[:, 0], image.new_tensor([0.0, 127.5, 127.5, 127.5, 0.0]).view(1, 1, 5))
+
+    def test_convention_rgb255_outside_the_range_gets_the_bound_and_a_zero_gradient(self, device, dtype):
+        image = _bound_row(device, dtype, (-0.5, 1.5)).requires_grad_()
+        out = kornia.color.rgb_to_rgb255(image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out[:, 0], image.new_tensor([0.0, 255.0]).view(1, 1, 2))
+        assert torch.equal(grad, torch.zeros_like(grad))
+
+    def test_convention_lab_round_trip_keeps_the_identity_gradient(self, device, dtype):
+        # The round trip is the identity on grey, so each pixel's channel keeps a gradient of 1 summed over the outputs:
+        # black lands exactly on the bound 0 (the issue's 0 on torch 2.15, 1 on 2.5.1).
+        image = _bound_row(device, dtype).requires_grad_()
+        out = kornia.color.lab_to_rgb(kornia.color.rgb_to_lab(image))
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad[:, 0, :, :3], image.new_tensor([1.0, 1.0, 1.0]).view(1, 1, 3))
+        # White is not pinned: rounding puts its red just above 1 in float64 (bound value, zero gradient, a sum of 0)
+        # and just below 1 in float32 (a sum of 1), on every torch version alike.
+        assert torch.isfinite(grad).all()
+
+    def test_convention_lab_black_keeps_the_gradient_of_the_lightness(self, device, dtype):
+        # Lab (0, 0, 0) is black, on the bound 0 of the clip. Below the threshold each of X, Y, Z is its white times
+        # (f - 4 / 29) / 7.787 with f = (L + 16) / 116, the matrix sends the D65 white to about (1, 1, 1), and
+        # sRGB = 12.92 * linear, so d sum / d L = 3.00008 * 12.92 / (116 * 7.787) = 0.0429108.
+        image = torch.zeros(1, 3, 1, 1, device=device, dtype=dtype, requires_grad=True)
+        out = kornia.color.lab_to_rgb(image)
+        assert torch.equal(out, torch.zeros_like(out))
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad[:, 0], image.new_tensor([[[0.0429108]]]), rtol=5e-3, atol=1e-6)
+
+    def test_convention_lab_fz_on_its_bound_keeps_the_gradient(self, device, dtype):
+        # L = 42, b = 100 gives fz = 58 / 116 - 100 / 200 = 0 exactly, on the bound of the clamp of a negative Z. From
+        # inside, d Z / d b = 1.08883 / 7.787 * (-1 / 200) = -6.99130e-4, and each linear channel moves by its Z row of
+        # the XYZ matrix (-0.498536, 0.0415559). Through the sRGB slope 1.055 / 2.4 * c^(1 / 2.4 - 1) at the linear
+        # values c = 0.202469 and 0.118541, the slopes are 1.116 and 1.525. The tolerance covers float16's spacing here.
+        image = torch.tensor([42.0, 0.0, 100.0], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
+        out = kornia.color.lab_to_rgb(image, clip=False)
+        (grad_r,) = torch.autograd.grad(out[:, 0].sum(), image, retain_graph=True)
+        (grad_g,) = torch.autograd.grad(out[:, 1].sum(), image)
+        self.assert_close(grad_r[:, 2], image.new_tensor([[[3.88976e-4]]]), rtol=5e-3, atol=1e-6)
+        self.assert_close(grad_g[:, 2], image.new_tensor([[[-4.43074e-5]]]), rtol=5e-3, atol=1e-6)
+
+    def test_convention_lab_fz_beyond_its_bound_gets_the_bound_and_a_zero_gradient(self, device, dtype):
+        # L = 42, b = 150 gives fz = 58 / 116 - 150 / 200 = -0.25, below the bound 0 of the same clamp: the pixel takes
+        # the result of b = 100, where fz is on the bound, and b moves nothing.
+        image = torch.tensor([42.0, 0.0, 150.0], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
+        bound = torch.tensor([42.0, 0.0, 100.0], device=device, dtype=dtype).view(1, 3, 1, 1)
+        out = kornia.color.lab_to_rgb(image, clip=False)
+        (grad,) = torch.autograd.grad(out[:, 0].sum(), image)
+        assert torch.equal(out.detach(), kornia.color.lab_to_rgb(bound, clip=False))
+        assert grad[:, 2].item() == 0.0
+
+    def test_convention_hls_hue_on_a_bound_keeps_the_derivative(self, device, dtype):
+        # Red is l - a * mink with a = s * min(l, 1 - l) = 0.25 and mink = 9 - k, so d red / d H = a * 6 / pi. Blue has
+        # mink = k - 3, so d blue / d H = -a * 6 / pi. Green is outside the range and gets none.
+        image = _hue_on_a_bound(device, dtype)
+        assert (image[:, 0] * (6 / math.pi)).item() == 10.0  # the precondition: hue exactly on the bound
+        image.requires_grad_()
+        out = kornia.color.hls_to_rgb(image)
+        slope = 0.25 * 6 / math.pi
+        for channel, expected in enumerate((slope, 0.0, -slope)):
+            (grad,) = torch.autograd.grad(out[:, channel].sum(), image, retain_graph=True)
+            self.assert_close(grad[:, 0], image.new_tensor([[[expected]]]))
+
+    @pytest.mark.parametrize("no_grad", [False, True], ids=["recorded", "no_grad"])
+    def test_hls_leaves_its_input_alone(self, device, dtype, no_grad):
+        # The clamp of hls_to_rgb is in place on a buffer of its own: the input must never see it, nor a view of it.
+        image = _hue_on_a_bound(device, dtype).expand(2, 3, 4, 5).contiguous()
+        before = image.clone()
+        with torch.set_grad_enabled(not no_grad):
+            kornia.color.hls_to_rgb(image.requires_grad_(not no_grad))
+        assert torch.equal(image, before)
+
+    def test_hls_without_a_derivative_reuses_its_buffer(self, device, dtype):
+        # One image-sized temporary fewer per call: the clamp stays in place unless a derivative can be asked for.
+        image = _hue_on_a_bound(device, dtype).expand(1, 3, 4, 5).contiguous()
+        calls = []
+        original = torch.Tensor.clamp_
+
+        def spy(self: torch.Tensor, *args: float, **kwargs: float) -> torch.Tensor:
+            calls.append(self)
+            return original(self, *args, **kwargs)
+
+        with patch.object(torch.Tensor, "clamp_", spy):
+            with torch.no_grad():
+                unrecorded = kornia.color.hls_to_rgb(image.clone().requires_grad_())
+            assert len(calls) == 1
+            plain = kornia.color.hls_to_rgb(image)
+            assert len(calls) == 2
+            recorded = kornia.color.hls_to_rgb(image.clone().requires_grad_())
+            assert len(calls) == 2
+        assert torch.equal(unrecorded, plain)
+        assert torch.equal(unrecorded, recorded.detach())
+
+    _SITES = {
+        "ycbcr_to_rgb": kornia.color.ycbcr_to_rgb,
+        "lab_to_rgb": kornia.color.lab_to_rgb,
+        "rgb_to_rgb255": kornia.color.rgb_to_rgb255,
+        "normals_to_rgb255": kornia.color.normals_to_rgb255,
+        "hls_to_rgb": kornia.color.hls_to_rgb,
+    }
+
+    @pytest.mark.parametrize("op", sorted(_SITES))
+    def test_recorded_values_match_unrecorded_ones(self, device, dtype, op):
+        # Out of range on purpose: the selection returns what the clamp returns, NaN included.
+        values = (-2.0, -1.0, -0.5, 0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 255.0, float("nan"), float("inf"), -float("inf"))
+        image = _bound_row(device, dtype, values)
+        with torch.no_grad():
+            expected = self._SITES[op](image)
+        recorded = self._SITES[op](image.clone().requires_grad_())
+        assert torch.equal(torch.isnan(recorded), torch.isnan(expected))
+        finite = ~torch.isnan(expected)
+        assert torch.equal(recorded[finite].detach(), expected[finite])
+
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("op", sorted(_OPS))
+    def test_forward_mode_keeps_the_tangent_at_the_bounds(self, device, dtype, op, forward_mode, grad_enabled):
+        call, expected = self._OPS[op]
+        image = _bound_row(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, 0] = 1.0
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                _, actual = torch.func.jvp(call, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    _, actual = torch.autograd.forward_ad.unpack_dual(call(dual))
+        self.assert_close(actual.sum(1), image.new_tensor(expected).view(1, 1, 4))
+
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    def test_forward_mode_hls_keeps_the_tangent_at_the_bounds(self, device, dtype, forward_mode, grad_enabled):
+        # The tangent of the hue gives the column of the derivative pinned above, under no_grad too.
+        image = _hue_on_a_bound(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, 0] = 1.0
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                _, actual = torch.func.jvp(kornia.color.hls_to_rgb, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    _, actual = torch.autograd.forward_ad.unpack_dual(kornia.color.hls_to_rgb(dual))
+        slope = 0.25 * 6 / math.pi
+        self.assert_close(actual.flatten(), image.new_tensor([slope, 0.0, -slope]))
+
+    # torch.vmap hands each op a tensor of shape (3, 1, N) that hides requires_grad and the tangent of what it batches.
+    # Each case is (op, input, input channel, the derivative of the first output channel by that input channel at each
+    # pixel, the tolerance); the derivations are those of the pins above.
+    _VMAP_CASES = {
+        "ycbcr_to_rgb": (kornia.color.ycbcr_to_rgb, _luma_on_the_bounds, 0, [1.0, 1.0, 1.0, 1.0], {}),
+        "rgb_to_rgb255": (kornia.color.rgb_to_rgb255, _bound_row, 0, [255.0, 255.0, 255.0, 255.0], {}),
+        "normals_to_rgb255": (kornia.color.normals_to_rgb255, _bound_row, 0, [127.5, 127.5, 127.5, 127.5], {}),
+        "lab_to_rgb": (
+            lambda image: kornia.color.lab_to_rgb(image, clip=False),
+            lambda device, dtype: torch.tensor([42.0, 0.0, 100.0], device=device, dtype=dtype).view(1, 3, 1, 1),
+            2,
+            [3.88976e-4],
+            {"rtol": 5e-3, "atol": 1e-6},
+        ),
+        "hls_to_rgb": (kornia.color.hls_to_rgb, _hue_on_a_bound, 0, [0.25 * 6 / math.pi], {}),
+    }
+
+    @pytest.mark.parametrize("transform", ["jvp", "jacfwd", "dual"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_forward_mode_over_vmap_keeps_the_tangent_at_the_bounds(self, device, dtype, op, transform):
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, channel] = 1.0
+        batched = torch.vmap(call)
+        if transform == "jvp":
+            actual = torch.func.jvp(batched, (image,), (tangent,))[1][:, 0]
+        elif transform == "jacfwd":
+            jacobian = torch.func.jacfwd(batched)(image)
+            pixels = range(image.shape[-1])
+            actual = torch.stack([jacobian[0, 0, 0, i, 0, channel, 0, i] for i in pixels]).view(1, 1, -1)
+        else:
+            with torch.autograd.forward_ad.dual_level():
+                dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                actual = torch.autograd.forward_ad.unpack_dual(batched(dual)).tangent[:, 0]
+        self.assert_close(actual, image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    @pytest.mark.parametrize("transform", ["autograd", "grad"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_reverse_mode_through_vmap_keeps_the_gradient_at_the_bounds(self, device, dtype, op, transform):
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        batched = torch.vmap(call)
+        if transform == "autograd":
+            image.requires_grad_()
+            (grad,) = torch.autograd.grad(batched(image)[:, 0].sum(), image)
+        else:
+            grad = torch.func.grad(lambda x: batched(x)[:, 0].sum())(image)
+        self.assert_close(grad[:, channel], image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    def test_derivative_query_reads_through_vmap(self, device, dtype):
+        # Nothing to differentiate under a plain vmap, nested or not, or under no_grad: the cheap path stays.
+        seen = []
+
+        def probe(x: torch.Tensor) -> torch.Tensor:
+            seen.append(_needs_derivatives(x))
+            return x * 2
+
+        image = torch.ones(2, 3, device=device, dtype=dtype)
+        leaf = image.clone().requires_grad_()
+        torch.vmap(probe)(image)
+        torch.vmap(torch.vmap(probe))(image)
+        with torch.no_grad():
+            torch.vmap(probe)(leaf)
+        torch.vmap(probe)(leaf)
+        torch.vmap(torch.vmap(probe))(leaf)
+        torch.func.jvp(torch.vmap(probe), (image,), (image,))
+        torch.func.jvp(torch.vmap(torch.vmap(probe)), (image,), (image,))
+        torch.func.grad(lambda x: torch.vmap(probe)(x).sum())(image)
+        assert seen == [False, False, False, True, True, True, True, True]
+
+    @pytest.mark.parametrize("op", ["rgb_to_rgb255", "normals_to_rgb255"])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int64])
+    def test_integer_image_keeps_its_result_dtype(self, device, op, int_dtype):
+        # The float bounds promote an integer result to the default float dtype, with or without the selection.
+        image = torch.tensor([0, 1, 2], device=device, dtype=int_dtype).view(1, 3, 1, 1)
+        out = self._SITES[op](image)
+        expected = (
+            (image * 255).clip(0.0, 255.0) if op == "rgb_to_rgb255" else (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
+        )
+        assert out.dtype == expected.dtype
+        assert torch.equal(out, expected)
+
+    @pytest.mark.parametrize("name", sorted(_SITES))
+    def test_scripted_call_keeps_the_gradient_at_the_bounds(self, device, dtype, name):
+        scripted = torch.jit.script(self._SITES[name])
+        if name == "hls_to_rgb":
+            image = _hue_on_a_bound(device, dtype).requires_grad_()
+            slope = 0.25 * 6 / math.pi
+            (grad,) = torch.autograd.grad(scripted(image)[:, 0].sum(), image)
+            self.assert_close(grad[:, 0], image.new_tensor([[[slope]]]))
+            return
+        if name == "lab_to_rgb":
+            image = torch.zeros(1, 3, 1, 1, device=device, dtype=dtype, requires_grad=True)
+            (grad,) = torch.autograd.grad(scripted(image).sum(), image)
+            self.assert_close(grad[:, 0], image.new_tensor([[[0.0429108]]]), rtol=5e-3, atol=1e-6)
+            return
+        image = _bound_row(device, dtype)
+        if name == "ycbcr_to_rgb":
+            # Y on the bounds, neutral chroma.
+            image[:, 1:] = 0.5
+            expected = image.new_tensor([3.0, 3.0, 3.0, 3.0]).view(1, 1, 4)
+        else:
+            expected = image.new_tensor([self._OPS[name][1]]).view(1, 1, 4)
+        image.requires_grad_()
+        (grad,) = torch.autograd.grad(scripted(image).sum(), image)
+        self.assert_close(grad[:, 0], expected)
+
+    @pytest.mark.parametrize("op", sorted(_SITES))
+    def test_trace_of_a_module_with_parameters_passes_its_check(self, device, dtype, op):
+        # A parameter gives the op an input that requires grad, and torch.jit.trace checks its graph again under
+        # no_grad: a clamp that followed the grad mode would record two different graphs and raise TracingCheckError.
+        call = self._SITES[op]
+
+        class ConvThenOp(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 3, 1, bias=False)
+                torch.nn.init.dirac_(self.conv.weight)
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return call(self.conv(x))
+
+        module = ConvThenOp().to(device, dtype)
+        image = _bound_row(device, dtype)
+        traced = torch.jit.trace(module, (image,))
+        self.assert_close(traced(image), module(image))
+        graph = str(traced.inlined_graph)
+        # The selection compares the clamped copy with its input; nothing else in these conversions tests for equality.
+        assert "aten::eq" not in graph
+        assert "aten::clamp" in graph
+
+    @pytest.mark.parametrize("op", sorted(_OPS))
+    def test_dynamo_gradient_at_the_bounds(self, device, dtype, op, torch_optimizer):
+        call, expected = self._OPS[op]
+        image = _bound_row(device, dtype).requires_grad_()
+        (grad,) = torch.autograd.grad(torch_optimizer(call, fullgraph=True)(image).sum(), image)
+        self.assert_close(grad[:, 0], image.new_tensor(expected).view(1, 1, 4))
+
+    def test_dynamo_gradient_of_the_hue_at_a_bound(self, device, dtype, torch_optimizer):
+        image = _hue_on_a_bound(device, dtype).requires_grad_()
+        out = torch_optimizer(kornia.color.hls_to_rgb, fullgraph=True)(image)
+        (grad,) = torch.autograd.grad(out[:, 0].sum(), image)
+        self.assert_close(grad[:, 0], image.new_tensor([[[0.25 * 6 / math.pi]]]))
+
+    @pytest.mark.parametrize("transform", ["jvp", "grad"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_dynamo_vmap_keeps_the_derivative_at_the_bounds(self, device, dtype, op, transform, torch_optimizer):
+        # Dynamo cannot unwrap a vmap level, so a compiled transform takes the derivative path without a graph break.
+        if op == "lab_to_rgb" and device.type == "cuda":
+            # Inductor on CUDA computes b / 200 by its reciprocal, so fz is about -2e-9 instead of 0 at this pixel:
+            # outside the clamp, with a zero gradient, without vmap and with a plain clamp as well.
+            pytest.skip("CUDA Inductor rounds fz of this pixel below its bound")
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, channel] = 1.0
+        batched = torch.vmap(call)
+
+        def derivative(x: torch.Tensor) -> torch.Tensor:
+            if transform == "jvp":
+                return torch.func.jvp(batched, (x,), (tangent,))[1][:, 0]
+            return torch.func.grad(lambda y: batched(y)[:, 0].sum())(x)[:, channel]
+
+        actual = torch_optimizer(derivative, fullgraph=True)(image)
+        self.assert_close(actual, image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    def test_dynamo_derivative_query(self, device, dtype, torch_optimizer):
+        # A compiled call without a transform keeps the cheap path; under one it reports a derivative.
+        def branch(x: torch.Tensor) -> torch.Tensor:
+            return x * 3 if _needs_derivatives(x) else x * 2
+
+        image = torch.ones(2, 3, device=device, dtype=dtype)
+        leaf = image.clone().requires_grad_()
+        compiled = torch_optimizer(branch, fullgraph=True)
+        assert torch.equal(compiled(image), image * 2)
+        with torch.no_grad():
+            assert torch.equal(compiled(leaf), image * 2)
+        assert torch.equal(compiled(leaf).detach(), image * 3)
+        assert torch.equal(torch_optimizer(torch.vmap(branch), fullgraph=True)(image), image * 3)
+
+    def test_helper_keeps_the_derivative_on_both_bounds(self, device, dtype):
+        image = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0], device=device, dtype=dtype, requires_grad=True)
+        out = _clamp_range(image, -1.0, 1.0)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out, image.new_tensor([-1.0, -1.0, 0.0, 1.0, 1.0]))
+        self.assert_close(grad, image.new_tensor([0.0, 1.0, 1.0, 1.0, 0.0]))
+
+    def test_helper_without_an_upper_bound(self, device, dtype):
+        image = torch.tensor([-2.0, 0.0, 3.0, float("inf")], device=device, dtype=dtype, requires_grad=True)
+        out = _clamp_range(image, 0.0)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out[:3], image.new_tensor([0.0, 0.0, 3.0]))
+        assert out[3].item() == float("inf")
+        self.assert_close(grad, image.new_tensor([0.0, 1.0, 1.0, 1.0]))
+
+    def test_helper_records_no_clamp(self, device, dtype):
+        # The selection takes the clamp only outside the range, where the gradient is zero anyway, and the backward of a
+        # recorded clamp made a forward and backward pass 1.7 to 2.5 times as slow on the CPU (#6594).
+        image = torch.tensor([-2.0, 0.0, 3.0], device=device, dtype=dtype, requires_grad=True)
+        recorded = {fn.name() for fn, _ in _clamp_range(image, 0.0, 1.0).grad_fn.next_functions if fn is not None}
+        assert not any("Clamp" in name for name in recorded)

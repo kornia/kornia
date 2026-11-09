@@ -38,7 +38,7 @@ from typing import Any, Literal, overload
 
 import torch
 
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _autocast_disabled, is_compiling
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
 
@@ -525,7 +525,8 @@ def reproject_disparity_to_3D(
         A point is valid when all four homogeneous components are finite,
         ``abs(W) > 1e-8`` in the converter's working dtype, and XYZ is finite after
         conversion to the returned disparity dtype. The matrix multiplication and
-        homogeneous conversion use Q's dtype (subject to the active autocast context).
+        homogeneous conversion use Q's dtype, which a caller's autocast region does not
+        change, outside TorchScript, where a scripted call keeps the caller's precision.
         The absolute W cutoff is the existing coordinate policy: scaling Q can change
         validity near the cutoff, while Q and -Q have the same mask.
 
@@ -573,10 +574,13 @@ def reproject_disparity_to_3D(
     # cannot distinguish a placeholder, or finite XYZ produced by infinite W.
     # This is transform_points' existing bmm/conversion/cast path, shared by both
     # return modes so requesting diagnostics cannot select different arithmetic.
-    homogeneous = torch.bmm(
-        convert_points_to_homogeneous(uvd).to(Q_matrix.dtype),
-        Q_matrix.expand(batch_size, -1, -1).transpose(-1, -2),
-    )
+    uvd_h = convert_points_to_homogeneous(uvd).to(Q_matrix.dtype)
+    Q_t = Q_matrix.expand(batch_size, -1, -1).transpose(-1, -2)
+    if torch.jit.is_scripting():
+        homogeneous = torch.bmm(uvd_h, Q_t)
+    else:
+        with _autocast_disabled(device.type):
+            homogeneous = torch.bmm(uvd_h, Q_t)
     eps = 1e-8
     points = convert_points_from_homogeneous(homogeneous, eps=eps).to(dtype).reshape(batch_size, rows, cols, 3)
 

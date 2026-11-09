@@ -114,7 +114,11 @@ def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]
 
 
 def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect") -> torch.Tensor:
-    r"""Blur an image using the median filter.
+    r"""Blur an image by replacing each pixel with the median of its ``kernel_size`` window.
+
+    ``out = median_blur(input, kernel_size)`` takes the median of each channel's window in a ``(B, C, H, W)`` image and
+    returns an image of the same shape. It removes isolated outliers, such as salt-and-pepper noise, and keeps an edge
+    sharp where :func:`box_blur` and :func:`gaussian_blur2d` spread it.
 
     .. image:: _static/img/median_blur.png
 
@@ -129,17 +133,21 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
           values, so the result equals that of ``input.float()`` exactly.
 
     Args:
-        input: the input image with shape ``(B,C,H,W)``.
-        kernel_size: the blurring kernel size. Each entry must be a positive odd integer.
-        border_type: the padding mode to be applied before filtering.
-            The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
-            Default: `'reflect'`.
+        input: image with shape ``(B, C, H, W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each a positive odd integer.
+        border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the blurred input torch.Tensor with shape ``(B,C,H,W)``.
+        the blurred image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
+
+    See Also:
+        - :class:`MedianBlur`: the module form.
+        - :func:`box_blur`: takes the mean of the window.
+        - :func:`bilateral_blur`: averages instead of selecting, with weights that keep an edge.
+        - :func:`get_binary_kernel2d`: the kernel that stacks each window for the median.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -217,23 +225,25 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
 
 
 class MedianBlur(nn.Module):
-    r"""Blur an image using the median filter.
+    r"""Blur an image with a stored ``kernel_size`` median window (module form).
+
+    ``blur = MedianBlur(kernel_size)`` stores its arguments, and ``out = blur(input)`` is :func:`median_blur` on a
+    ``(B, C, H, W)`` image.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.median_blur`.
 
     Args:
-        kernel_size: the blurring kernel size.
-        border_type: the padding mode to be applied before filtering.
-            The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
-            Default: `'reflect'`.
-
-    Returns:
-        the blurred input torch.Tensor.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        border_type: padding mode, as in :func:`median_blur`.
 
     Shape:
         - Input: ``(B, C, H, W)``
         - Output: ``(B, C, H, W)``
+
+    See Also:
+        - :func:`median_blur`: the one-call form.
+        - :class:`BoxBlur`: takes the mean of the window.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)

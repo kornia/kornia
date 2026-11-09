@@ -1,0 +1,1 @@
+`RANSAC("fundamental")`, `"fundamental_7pt"` and `"fundamental_8pt"` no longer return a matrix of nearly rank one that accepts mismatches along one image's line and drops the true matches: such a matrix now counts no inliers, measured on its singular values in the Hartley-normalized frame relative to the inlier threshold.

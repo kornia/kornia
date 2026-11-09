@@ -35,25 +35,35 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Base class for policy-based image augmentations.
+    """Build and replay image augmentation policies made of named operations.
+
+    ``output = MyPolicy(policy)(input)`` applies :class:`~kornia.augmentation.auto.PolicySequential` children to
+    floating images of shape ``(B, C, H, W)`` once a subclass implements two hooks: ``compose_subpolicy_sequential``,
+    which builds one sub-policy, and ``get_forward_sequence``, which picks the sub-policies for a call or, given
+    ``params``, returns the recorded ones. Without ``get_forward_sequence``, ``forward(input)`` raises
+    ``NotImplementedError``.
 
     Convention:
-        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
-          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
-          that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
+        - a concrete policy selects one or more :class:`~kornia.augmentation.auto.PolicySequential` children for each
+          forward call and records that selected path, including every operation parameter dictionary, in ``_params``.
+          Passing that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
           path and reproduces their output.
-        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
-          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
-          enabled, their geometric transformation matrices
-          compose in that same execution order; a nonempty policy containing only intensity
-          operations has the identity matrix. An empty selected sub-policy has no matrix.
-          ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
-          intensity operation cannot be undone.
+        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy, and
+          for :class:`~kornia.augmentation.auto.RandAugment` the order in which its sub-policies were drawn. When
+          matrix computation is enabled, their geometric transformation matrices compose in that same execution order;
+          a nonempty policy containing only intensity operations has the identity matrix. An empty selected sub-policy
+          has no matrix. ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an
+          applied intensity operation cannot be undone.
         - input normalization, random-number generation, parameter placement, replay, and serialization follow
           the canonical augmentation contract in :doc:`/get-started/conventions`. This base does not expose a
           per-instance generator.
 
     Concrete policies define how they select children and interpret policy magnitudes.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.PolicySequential`: runs the operations in one sub-policy.
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains arbitrary image transforms without a policy.
+
     """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:

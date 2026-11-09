@@ -522,11 +522,60 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 
     Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
-    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode.
+    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode. TorchScript has no forward
+    mode and cannot compile the query.
+
+    Under ``torch.vmap`` the query reads through the batching wrappers: a wrapper hides both ``requires_grad`` and the
+    tangent of the tensor it batches, and the tangent query has no batching rule. Dynamo cannot unwrap, so a compiled
+    call under any function transform reports a derivative.
     """
     if torch.is_grad_enabled() and input.requires_grad:
         return True
+    if torch.jit.is_scripting():
+        return False
+    if torch._C._are_functorch_transforms_active():
+        # Dynamo marks ``get_unwrapped`` as skipped: unwrapping would break the graph. Each caller's derivative path
+        # computes the same function as its plain path, at a higher cost; for the clamps Inductor fuses the selection.
+        if is_compiling():
+            return True
+        while torch._C._functorch.is_batchedtensor(input):
+            input = torch._C._functorch.get_unwrapped(input)
+            if torch.is_grad_enabled() and input.requires_grad:
+                return True
     return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
+
+
+def _clamp_range(input: torch.Tensor, lower: float, upper: Optional[float] = None) -> torch.Tensor:
+    """Clamp ``input`` into ``[lower, upper]`` with an identity gradient on the closed range.
+
+    A clamp has no derivative at a bound: its one-sided derivatives are 0 and 1. torch returned 1 up to 2.13 and returns
+    0 from 2.14, its documented minimum-norm rule (pytorch/pytorch#191142). Kornia uses the derivative from inside the
+    range on every version: at an identity factor it is the only one on the documented input domain, and it lets a pixel
+    on a bound move back. Values outside the range get the bound and a zero gradient. ``upper=None`` has no upper bound.
+
+    The values always equal ``input.clamp(lower, upper)``, ``NaN`` included, so a call that records no gradient and
+    carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
+    unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
+    Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
+    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS, under Inductor (CPU and CUDA) and in the
+    SIMD lanes of eager arm64 CPU, while eager x86 CPU and CUDA keep ``-0.0``.
+    """
+    # A captured graph keeps the plain clamp: ``torch.jit.trace``'s check reruns under ``no_grad``, and an inference
+    # graph has no use for the selection. The gradient through a traced module then follows ``torch.clamp``.
+    # Selecting without a derivative costs 5 times a plain clamp or more on the CPU and about 3 to 4 times on CUDA
+    # (i7-14700K, RTX 4090).
+    if _is_tracing_or_exporting() or not _needs_derivatives(input):
+        return input.clamp(lower, upper)
+    # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
+    # backward of a recorded clamp made a forward and backward pass 1.7 to 2.5 times as slow on the CPU and 1.2 to 1.7
+    # times on CUDA.
+    clamped = input.detach().clamp(lower, upper)
+    return torch.where(clamped == input, input, clamped)
+
+
+def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
+    """Clamp ``input`` into ``[0, 1]`` with :func:`_clamp_range`."""
+    return _clamp_range(input, 0.0, 1.0)
 
 
 def _symmetric_eigenvector(
@@ -818,6 +867,19 @@ def is_autocast_enabled(both: bool = True) -> bool:
     return torch.is_autocast_enabled()
 
 
+def _caller_autocast_on(device_type: str) -> bool:
+    """Return whether a caller's autocast region is on for ``device_type``; a device type without autocast has none."""
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
+    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
+    # instead of passing it to the ``except``.
+    if device_type == "meta":
+        return False
+    try:
+        return torch.is_autocast_enabled(device_type)
+    except RuntimeError:  # a device type without autocast, such as ``meta``
+        return False
+
+
 def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     """Return a context that turns off the caller's autocast region for ``device_type``, if one is on.
 
@@ -826,18 +888,57 @@ def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
     too.
     """
-    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
-    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
-    # instead of passing it to the ``except``.
-    if device_type == "meta":
-        return nullcontext()
-    try:
-        enabled = torch.is_autocast_enabled(device_type)
-    except RuntimeError:  # a device type without autocast, such as ``meta``
-        enabled = False
-    if enabled:
+    if _caller_autocast_on(device_type):
         return torch.autocast(device_type=device_type, enabled=False)
     return nullcontext()
+
+
+def _convolution_outside_autocast(device_type: str) -> AbstractContextManager[Any]:
+    """Return :func:`_autocast_disabled` for a convolution, except under ``torch.compile`` on MPS.
+
+    A deliberate, scoped exception to running compiled and eager code alike (#6601). Compiled in an MPS autocast
+    region, a convolution under a nested ``torch.autocast(enabled=False)`` raises ``expected dtype torch.float32 but
+    got torch.bfloat16`` (or ``torch.float16``) on torch 2.14, 2.15 and the 2.16.0.dev20261106 nightly, with no kornia
+    code involved: compiled code on MPS drops the nested region (pytorch/pytorch#201630), and Inductor's check of the
+    convolution's output dtype then raises. The same convolution without the nested region runs. Skipping
+    the guard there returns those compiled calls to their earlier behaviour: they run, with the convolution in the
+    autocast dtype, as before the guard. Every other device, and every eager call on MPS, keeps the guard.
+
+    Scope: only the convolutions that build sampling positions or pyramid levels, in ``elastic_transform2d`` and
+    the two ``pyrdown`` calls of ``extract_patches_from_pyramid``. Cost, measured on an M1 with torch 2.15: those
+    compiled calls stay off the eager result by what the region rounds, 0.017 (bfloat16) and 0.0018 (float16) for
+    ``elastic_transform2d`` and 0.0027 and 0.00032 for ``extract_patches_from_pyramid`` on a ``[0, 1]`` image.
+    Retire this, and use :func:`_autocast_disabled` directly, once the oldest supported torch has the fix of
+    pytorch/pytorch#201630 (pytorch/pytorch#202422, which makes compiled code honour MPS autocast regions).
+    """
+    if device_type == "mps" and is_compiling():
+        return nullcontext()
+    return _autocast_disabled(device_type)
+
+
+def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ...]:
+    """Return ``tensors`` in float32 if a caller's autocast region would have cast them to one dtype, else unchanged.
+
+    A matrix product in an autocast region casts its float16, bfloat16 and float32 operands to the autocast dtype, so a
+    half-precision matrix from a model under AMP multiplies with a float32 one there, and raises under
+    :func:`_autocast_disabled`. Call this before leaving the region: such operands then meet in float32, which also
+    keeps the arithmetic accurate. Autocast does not cast float64 or integer operands, so a mismatch with those, a
+    mismatch outside autocast, and operands of one dtype all return unchanged and behave as they did. ``None`` entries
+    pass through. TorchScript cannot compile this; a scripted call stays in the caller's region.
+    """
+    first = None
+    mismatched = False
+    for tensor in tensors:
+        if tensor is None:
+            continue
+        if tensor.dtype not in (torch.float32, torch.float16, torch.bfloat16):
+            return tensors
+        if first is None:
+            first = tensor
+        mismatched = mismatched or tensor.dtype != first.dtype
+    if first is None or not (mismatched and _caller_autocast_on(first.device.type)):
+        return tensors
+    return tuple(None if tensor is None else tensor.float() for tensor in tensors)
 
 
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.

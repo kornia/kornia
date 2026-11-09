@@ -24,6 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.subpix import (
     AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
@@ -35,7 +36,7 @@ from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
-from .responses import BlobHessian
+from .responses import BlobDoG, BlobHessian, CornerGFTT, CornerHarris
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
@@ -200,6 +201,52 @@ def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
     return is_iterative, batchable
 
 
+_FLOAT16_IN_FLOAT32_RESPONSES = (BlobHessian, BlobDoG, CornerHarris, CornerGFTT)
+
+
+def _holds_only_scalars(module: nn.Module) -> bool:
+    """Return whether every parameter and buffer of ``module`` is zero-dimensional, so none rejects an input dtype."""
+    return all(t.dim() == 0 for t in (*module.parameters(), *module.buffers()))
+
+
+def _detects_float16_in_float32(pyramid: nn.Module, response: nn.Module, subpix: nn.Module) -> bool:
+    """Return whether a float16 image can run through these modules in float32, with autocast off.
+
+    The pyramid and the response function get the image, so only their exact built-in classes qualify, read through a
+    :func:`torch.compile` wrapper. These follow their input's dtype, whatever dtype the module was converted to, so a
+    float32 input comes back as float32, which `_detect` can round to float16. A custom module or a subclass may hold
+    float16 weights that reject float32 input, or return a wider response on purpose, and from the outside neither can
+    be told from a module that follows its input, so it gets the float16 image. So does a :class:`CornerHarris` with a
+    non-scalar ``k``, which promotes a float16 response. The refiner gets the response in at least float32 on every
+    path, so its class does not matter; only autocast changes for it, and turning that off would make float16 weights
+    reject the input they now get cast for.
+
+    Measured on a float16 image, CPU and CUDA: with ``isinstance``, a subclass with a float16 weight raises and a
+    subclass returning a wider response has its float32 score of 1.0001 rounded to 1.0; the exact check costs an
+    unmodified subclass the fix (5120 of 5120 non-finite, as on main).
+    """
+    return (
+        type(getattr(pyramid, "_orig_mod", pyramid)) is ScalePyramid
+        and type(getattr(response, "_orig_mod", response)) in _FLOAT16_IN_FLOAT32_RESPONSES
+        and _holds_only_scalars(response)
+        and _holds_only_scalars(subpix)
+    )
+
+
+def _nms_candidates(response: torch.Tensor, float16_scores: bool) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the masks of the strict maxima and minima of ``response``, an octave's response in at least float32.
+
+    With ``float16_scores`` it comes from a float16 image, whose quantisation noise makes weak maxima with scores below
+    float16's resolution, so only those are dropped. Rounding the response before NMS would also merge real maxima:
+    Harris fills 252 slots against float32's 825 on HPatches, this 545.
+    """
+    max_mask, min_mask = nms3d_minmax(response)
+    if float16_scores:
+        scored = response.to(torch.float16) != 0
+        return max_mask & scored, min_mask & scored
+    return max_mask, min_mask
+
+
 class ScaleSpaceDetector(nn.Module):
     r"""Detect LAFs at the sub-pixel scale-space maxima of a pluggable response, for a batch of images.
 
@@ -238,7 +285,13 @@ class ScaleSpaceDetector(nn.Module):
           hold a zero response and a zero LAF.
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
-          at least float32.
+          at least float32. With :class:`~kornia.geometry.transform.ScalePyramid`, a :class:`BlobHessian`,
+          :class:`BlobDoG`, :class:`CornerHarris` or :class:`CornerGFTT` response, and a response and refiner holding
+          only scalar parameters and buffers, a float16 image is detected in float32 with autocast off and its scores
+          are returned in float16, because the gradient overflows float16 on the way through the scale space. A
+          candidate whose score is zero in float16 is dropped. With any other pyramid or response function, a subclass
+          or a :class:`CornerHarris` with a non-scalar ``k`` included, or a refiner with non-scalar state, the detector
+          passes the float16 image on, in the caller's autocast region.
         - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
@@ -410,6 +463,7 @@ class ScaleSpaceDetector(nn.Module):
         is_iterative_subpix: bool,
         batchable_subpix: bool,
         octave_to_image: Tuple[float, float],
+        float16_scores: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.dtype]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
 
@@ -460,8 +514,8 @@ class ScaleSpaceDetector(nn.Module):
         # The refiners write absolute pixel coordinates into a tensor of the response's dtype, and bfloat16 holds no
         # odd integer above 256 (float16: above 2048). Run NMS, refinement and top-K on the response in at least
         # float32; promoting is exact, so NMS selects the same candidates. `_detect` casts the responses back.
-        resp_dtype = oct_resp.dtype
-        oct_resp = oct_resp.to(torch.promote_types(resp_dtype, torch.float32))
+        resp_dtype = torch.float16 if float16_scores else oct_resp.dtype
+        oct_resp = oct_resp.to(torch.promote_types(oct_resp.dtype, torch.float32))
         scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]].to(oct_resp.dtype)
 
         # Always precompute NMS masks in one fused pass.
@@ -470,7 +524,7 @@ class ScaleSpaceDetector(nn.Module):
         #   and drives the sparse top-K below.
         max_nms_mask: torch.Tensor
         min_nms_mask: torch.Tensor
-        max_nms_mask, min_nms_mask = nms3d_minmax(oct_resp)
+        max_nms_mask, min_nms_mask = _nms_candidates(oct_resp, float16_scores)
 
         # The mask is applied to the candidates, not to the response the NMS reads: multiplying the
         # response first would carve a hard edge into it, and every response pixel next to a zeroed
@@ -625,6 +679,25 @@ class ScaleSpaceDetector(nn.Module):
         """
         if mask is not None:
             _check_mask(mask, img)
+        # The backward pass of a float16 scale space overflows: a response's gradient, about 4e4 even when the image's
+        # is about 10, is multiplied by sigma ** 4, and a convolution then turns that inf into NaN at every pixel. So a
+        # float16 image is detected in float32 when the modules allow it (see `_detects_float16_in_float32`), with
+        # autocast off, since its convolutions would otherwise go back to the autocast dtype. The mask weights keep
+        # their float16 values and only the scores are cast back. Every other image takes the path below untouched.
+        if img.dtype == torch.float16 and _detects_float16_in_float32(self.scale_pyr, self.resp, self.subpix):
+            if mask is not None and mask.is_floating_point():
+                mask = mask.to(torch.float16)
+            with _autocast_disabled(img.device.type):
+                return self._detect_in_image_dtype(img.float(), num_feats, mask, True)
+        return self._detect_in_image_dtype(img, num_feats, mask, False)
+
+    def _detect_in_image_dtype(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor], float16_scores: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run the scale space, the octaves and the cross-octave ranking on ``img`` in the dtype it has.
+
+        ``float16_scores`` says that ``img`` is the float32 copy of a float16 image: see :meth:`_detect`.
+        """
         dev = img.device
         dtype: torch.dtype = img.dtype
         with self._dynamo_config_patch(("scale_pyr",)):
@@ -671,6 +744,7 @@ class ScaleSpaceDetector(nn.Module):
                 is_iterative_subpix,
                 batchable_subpix,
                 octave_to_image[i],
+                float16_scores,
             )
             for i in range(n_oct)
         ]
@@ -807,13 +881,12 @@ class MultiResolutionDetector(nn.Module):
           features as well, such as a difference of Gaussians, pass its magnitude, as
           :class:`~kornia.feature.SIFTFeature` does.
         - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size ``(H_l, W_l)``, without a
-          sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the ``(H, W)`` input, in the frame
-          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
-          That is the centre of the level pixel only on a level of the input's size; otherwise that centre is at
-          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`. The Key.Net reference maps it the same way.
-          The reported point minus that centre, :math:`-0.5 (f - 1)` px along x for :math:`f = W / W_l` and likewise
-          along y, is a known defect (`#6536 <https://github.com/kornia/kornia/issues/6536>`_): about +0.15 px on the
-          default up level, and increasingly below centre at lower levels.
+          sub-pixel step. It is reported at the centre of that level pixel,
+          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)` of the ``(H, W)`` input, in the frame of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          The Key.Net reference reports :math:`(u W / W_l, v H / H_l)` instead. For :math:`f = W / W_l > 1` (likewise
+          along y) that is :math:`0.5 (f - 1)` px up and to the left of the centre, about 1.5 px on the default coarsest
+          level; on the default up level, where :math:`f < 1`, it is about 0.15 px down and to the right.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 
@@ -934,7 +1007,8 @@ class MultiResolutionDetector(nn.Module):
             level_img: Image tensor for a single pyramid level.
             num_kp: Number of keypoints requested from this pyramid level.
             factor: Per-axis factor ``(W / W_l, H / H_l)`` from the current pyramid level to the original image:
-                level pixel :math:`(u, v)` is reported at ``(u * factor[0], v * factor[1])``.
+                level pixel :math:`(u, v)` is reported at its centre,
+                ``((u + 0.5) * factor[0] - 0.5, (v + 0.5) * factor[1] - 0.5)``.
             mask: Optional mask with shape ``(1, 1, H, W)`` at the *original* image resolution, saying where a
                 detection may be. It is resampled onto this level conservatively and applied to the non-maxima
                 suppression output, so a zero region drops every maximum within one level pixel of it and a
@@ -992,13 +1066,15 @@ class MultiResolutionDetector(nn.Module):
         valid = top_scores > self.score_threshold
         top_scores = torch.where(valid, top_scores, torch.zeros_like(top_scores))
 
-        # Convert flat indices to (y, x) pixel coordinates and project them to the original
-        # resolution. The LAFs are built in at least float32: a half-precision dtype cannot hold a
-        # pixel index times a scale factor, nor an odd pixel above 256 (bfloat16) or 2048 (float16).
+        # Convert flat indices to (y, x) pixel coordinates and project the centres of those level pixels
+        # to the original resolution: every level is resampled with align_corners=False, so a level
+        # pixel's centre is (u + 0.5) * f - 0.5 in the input, and u itself when f is 1. The LAFs are built
+        # in at least float32: a half-precision dtype cannot hold a pixel index times a scale factor, nor
+        # an odd pixel above 256 (bfloat16) or 2048 (float16).
         yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
         wide = torch.promote_types(level_img.dtype, torch.float32)
         fx = torch.tensor([factor[0], factor[1]], device=level_img.device, dtype=wide)
-        xy_projected = yx.view(1, k, 2).flip(2).to(wide) * fx
+        xy_projected = (yx.view(1, k, 2).flip(2).to(wide) + 0.5) * fx - 0.5
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
         scale = torch.full((1, k, 1, 1), scale_val, device=level_img.device, dtype=wide)
         lafs = laf_from_center_scale_ori(xy_projected, scale, scale.new_zeros(1, k, 1))

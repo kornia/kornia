@@ -1453,6 +1453,91 @@ class TestAffine2d(BaseTester):
         self.assert_close(out, expected, atol=0, rtol=0)
 
 
+class TestOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_translate(self, device, dtype):
+        row = self._row(device, dtype)
+        translation = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.translate(row, translation), torch.zeros_like(row))
+        out = kornia.geometry.transform.translate(row, translation, padding_mode="border")
+        self.assert_close(out, row)
+
+    def test_convention_rotate(self, device, dtype):
+        # A quarter turn about (1.5, 0): every output pixel samples x = 1.5, at y = x - 1.5 away from the only row, so
+        # the value 2.5 there is weighed by 1 - |y|.
+        expected = torch.tensor([[[[0.0, 1.25, 1.25, 0.0]]]], device=device, dtype=dtype)
+        angle = torch.tensor([90.0], device=device, dtype=dtype)
+        out = kornia.geometry.transform.rotate(self._row(device, dtype), angle)
+        self.assert_close(out, expected, low_tolerance=True)
+
+    def test_convention_scale(self, device, dtype):
+        # Shrinking by 2 about y = 1 samples the row y = -1 for the output row.
+        row = self._row(device, dtype)
+        factor = torch.tensor([[1.0, 0.5]], device=device, dtype=dtype)
+        center = torch.tensor([[1.5, 1.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.scale(row, factor, center=center)
+        self.assert_close(out, torch.zeros_like(row))
+
+    def test_convention_shear(self, device, dtype):
+        # A vertical shear of 1 moves column x by x rows, so only the first column stays on the row.
+        row = self._row(device, dtype)
+        factors = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.shear(row, factors, align_corners=True), expected)
+        self.assert_close(kornia.geometry.transform.Shear(factors)(row), expected)
+
+    def test_convention_affine(self, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.5]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.affine(row, matrix), 0.5 * row)
+
+
+class TestWarpByBuiltMatrixAutocast(BaseTester):
+    """rotate, scale and rotate3d build their matrix and warp by it, both outside a caller's autocast region (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _call(op_name, device, dtype):
+        transform = kornia.geometry.transform
+        generator = torch.Generator().manual_seed(0)
+        if op_name == "rotate3d":
+            volume = torch.rand(1, 1, 32, 32, 32, generator=generator).to(device=device, dtype=dtype)
+            yaw, pitch, roll = (torch.tensor([value], device=device, dtype=dtype) for value in (25.0, 12.5, 8.0))
+            return transform.rotate3d(volume, yaw, pitch, roll)
+        image = torch.rand(1, 3, 256, 256, generator=generator).to(device=device, dtype=dtype)
+        if op_name == "rotate":
+            return transform.rotate(image, torch.tensor([25.0], device=device, dtype=dtype))
+        return transform.scale(image, torch.tensor([[1.13, 1.13]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("op_name", ["rotate", "scale", "rotate3d"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # In bfloat16, float32 rotate, scale and rotate3d of [0, 1] inputs were off by 0.11, 0.36 and 0.14.
+        self._skip_unsupported(device, autocast_dtype)
+        if (
+            device.type == "cpu"
+            and src_dtype in (torch.float16, torch.bfloat16)
+            and src_dtype != getattr(torch, autocast_dtype)
+        ):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack and torch.cat")
+        expected = self._call(op_name, device, src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._call(op_name, device, src_dtype)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):
         H, W = 5, 5

@@ -64,10 +64,10 @@ class TranslateGenerator(RandomGeneratorBase):
         return f"translate_x={self.translate_x}, translate_y={self.translate_y}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.translate_x_sampler = None
-        self.translate_y_sampler = None
-
-        if self.translate_x is not None:
+        # Each sampler is assigned once, without ``None`` first: a module shared by threads may draw meanwhile.
+        if self.translate_x is None:
+            self.translate_x_sampler = None
+        else:
             _translate_x = _range_bound(self.translate_x, "translate_x", bounds=(-1, 1), check="joint").to(
                 device=device, dtype=dtype
             )
@@ -76,7 +76,9 @@ class TranslateGenerator(RandomGeneratorBase):
                 _translate_x[..., 0], _translate_x[..., 1], validate_args=False
             )
 
-        if self.translate_y is not None:
+        if self.translate_y is None:
+            self.translate_y_sampler = None
+        else:
             _translate_y = _range_bound(self.translate_y, "translate_y", bounds=(-1, 1), check="joint").to(
                 device=device, dtype=dtype
             )

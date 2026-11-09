@@ -40,6 +40,7 @@ from __future__ import annotations
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
@@ -321,6 +322,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
           integer ``trans_01`` is applied in the dtype of the result. Floating points keep their dtype; the product
           is computed in the dtype of ``trans_01``, so ``float64`` points under a ``float32`` matrix are transformed
           in ``float32``.
+        - A caller's autocast region does not change the product, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     Args:
         trans_01: tensor for transformations of shape
@@ -398,8 +401,17 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
     # tensors in a different dtype than the transform matrix (e.g. fp32 bbox + fp16 image), so
     # harmonise at the bmm site and return in ``out_dtype``.
-    # transform coordinates
-    points_0_h = torch.bmm(points_1_h.to(trans_01.dtype), trans_01.permute(0, 2, 1))
+    points_1_h = points_1_h.to(trans_01.dtype)
+    trans_01 = trans_01.permute(0, 2, 1)
+    # transform coordinates, outside a caller's autocast region: it would run this product in half precision and the
+    # result would still come back in ``out_dtype``, up to 1.36 px off in bfloat16 at 256 px (#6601). The ``to`` above
+    # already gives both operands one dtype, so the guard needs no reconciliation. TorchScript has no context managers;
+    # a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        points_0_h = torch.bmm(points_1_h, trans_01)
+    else:
+        with _autocast_disabled(trans_01.device.type):
+            points_0_h = torch.bmm(points_1_h, trans_01)
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
     # reshape to the input shape

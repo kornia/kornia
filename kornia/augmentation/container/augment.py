@@ -81,7 +81,14 @@ _VOLUME_BATCH_SHAPES = "either (D, H, W) or (B, C, D, H, W)"
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
-    r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
+    r"""Augment aligned images, masks, boxes, keypoints and labels with one parameter draw.
+
+    ``augmented = AugmentationSequential(*transforms, data_keys=keys)(*inputs)`` applies each selected child to the
+    aligned positional inputs and returns them in the same order. ``data_keys`` supports images, masks, boxes,
+    keypoints and class labels; inversion only reverses supported geometric children, so it is not generally a lossless
+    round trip. It records the selected children and their sampled parameters in ``_params`` for replay; use
+    :class:`~kornia.augmentation.container.ImageSequential` for an image tensor alone, or
+    :class:`~kornia.augmentation.container.VideoSequential` for a video tensor alone.
 
     .. image:: _static/img/AugmentationSequential.png
 
@@ -97,14 +104,26 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
                  If None, it will not overwrite the function-wise settings.
 
-        random_apply: randomly select children to apply. The selected children run in random order and may repeat
-                      when the requested count exceeds the sum of the selection weights or the number of
-                      children with a nonzero weight, mix augmentations not counted.
+        random_apply: randomly select children to apply. The selected children run in random order and repeat when the
+                      requested count exceeds the number of children that can be drawn: the children with a nonzero
+                      selection weight, mix augmentations not counted, plus one place when the count and the mix
+                      augmentations together reach the number of children, since a mix augmentation is then certain to
+                      take a place. With only mix children one of them is drawn, and with all weights 0 and no mix child
+                      nothing is.
+                      An int or a range that is not fixed to the number of children also repeats when the drawn count
+                      exceeds the sum of the weights. That rule is deprecated since kornia 0.9.1, with a
+                      ``FutureWarning`` on the calls whose draw it changes, as in
+                      :class:`~kornia.augmentation.container.ImageSequential`.
                       If int, a fixed number of transformations will be selected.
                       If (a,), x number of transformations (a <= x <= len(args)) will be selected.
                       If (a, b), x number of transformations (a <= x <= b) will be selected.
-                      If True, the whole list of args will be processed as a sequence in a random order.
+                      If True, the whole list of args will be processed as a sequence in a random order, whatever the
+                      scale of the weights, and so will a count fixed to the number of children. With a non-mix child of
+                      weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some
+                      may be left out.
                       If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: selection weights for each child, as in
+                              :class:`~kornia.augmentation.container.ImageSequential`.
 
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
@@ -114,6 +133,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
+                                    In a caller's autocast region `.transform_matrix` keeps the input's dtype, and
+                                    float32 input is computed in float32.
                                     The validator also accepts `silence`, an alias that behaves
                                     like `silent`; any other value raises ``ValueError``.
 
@@ -164,7 +185,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
           in that working dtype raise ``RuntimeError`` instead of being rounded, unless checks are disabled
-          (:func:`~kornia.core.check.disable_checks`, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
+          (``kornia.core.check.disable_checks``, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
           asynchronous assertion may report by the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
@@ -172,7 +193,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           nested sequences, auto-augment policies, replay and inverse. Full-batch mask tensors must use
           separate ``mask`` data keys; a list with incompatible length or entry shape raises ``ValueError``,
           also in an inverse without an image. Video, mix and 3D children, and a geometric
-          :class:`~kornia.augmentation.PatchSequential`, do not support mask lists and raise
+          :class:`~kornia.augmentation.container.PatchSequential`, do not support mask lists and raise
           ``NotImplementedError``. Inverse warps can only approximately restore resampled pixels and
           cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
@@ -212,6 +233,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_augmentation_sequential.html>`__.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains transforms for an image tensor only.
+        - :class:`~kornia.augmentation.container.VideoSequential`: chains transforms for a video tensor only.
 
     Examples:
         >>> import kornia

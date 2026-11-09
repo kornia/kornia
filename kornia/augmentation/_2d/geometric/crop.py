@@ -31,7 +31,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
 from kornia.geometry.transform._crop import _compiled_slice_resize
-from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _crop_translation
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 def _remove_padding(
@@ -54,9 +54,10 @@ def _remove_padding(
 
 
 class RandomCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches of a torch.Tensor image on a given size.
+    r"""Crop random image patches to a requested size, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/RandomCrop.png
+    ``output = RandomCrop(size, ...)(input)`` chooses crop positions in images of shape ``(B, C, H, W)`` and returns
+    patches of ``size``. Use :class:`RandomResizedCrop` to resize the sampled patch.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -86,7 +87,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     Shape:
         - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
-        - Output: :math:`(B, C, out_h, out_w)`
+        - Output: ``(B, C, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -118,7 +119,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
         ``align_corners`` and maps constant, replicate and reflect pre-padding to zero, border and reflection
-        sampler padding. Both modes support :meth:`inverse`, for images, masks, boxes and keypoints: it warps with
+        sampler padding. Both modes support ``inverse()``, for images, masks, boxes and keypoints: it warps with
         the inverse of the mode's ``transform_matrix``, removes the pre-crop padding, and cannot restore cropped or
         interpolated content.
         For an empty batch, ``forward_input_shape`` records the original, unpadded canvas for inverse replay.
@@ -127,6 +128,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
         not bitwise. Eager execution retains native slicing and resizing for performance;
         the tensorized compiled path avoids recompilation as crop coordinates change.
+
+    .. image:: _static/img/RandomCrop.png
+
+    See Also:
+        - :class:`CenterCrop`: extracts the deterministic centered patch.
+        - :class:`RandomResizedCrop`: samples a crop and resizes it to the requested output size.
+        - :class:`RandomCrop3D`: samples a fixed-size subvolume.
 
     Examples:
         >>> import torch
@@ -395,9 +403,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_mode = "reflection"
         else:
             padding_mode = flags["padding_mode"]
-        return _crop_inverse_by_transform_mat(
+        return crop_by_transform_mat(
             input,
-            transform,
+            transform[:, :2, :],
             size,
             flags["resample"].name.lower(),
             padding_mode=padding_mode,

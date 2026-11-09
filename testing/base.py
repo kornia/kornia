@@ -72,6 +72,14 @@ def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
+def skip_unsupported_autocast(device: torch.device, autocast_dtype: str) -> None:
+    """Skip a test of a caller's autocast region on a device without one, or that cannot run ``autocast_dtype``."""
+    if device.type not in ("cpu", "cuda", "mps"):
+        pytest.skip("CPU, CUDA and MPS autocast")
+    if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+
+
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
     return not (
