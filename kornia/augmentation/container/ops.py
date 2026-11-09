@@ -40,6 +40,9 @@ SequenceDataType = Union[List[torch.Tensor], List[List[torch.Tensor]], List[Boxe
 T = TypeVar("T")
 
 
+_ALWAYS_SUPPORTED_OPTIONS = frozenset({"resample", "align_corners", "antialias"})
+
+
 def _parameter_keys(params: Optional[Union[Dict[str, Any], List[ParamItem], List[PatchParamItem]]]) -> set[str]:
     if isinstance(params, dict):
         return set(params)
@@ -66,8 +69,11 @@ def _validate_extra_args(
 ) -> Dict[str, Any]:
     if not extra_args:
         return {}
-    # Default mask interpolation options remain valid even for a pipeline consisting entirely of flips.
-    supported = _supported_options(module, params) | {"resample", "align_corners", "antialias"}
+    # Default mask interpolation options remain valid even for a pipeline consisting entirely of flips. The default
+    # mask ``extra_args`` hold only these, so skip walking the pipeline for them on every call.
+    if extra_args.keys() <= _ALWAYS_SUPPORTED_OPTIONS:
+        return dict(extra_args)
+    supported = _supported_options(module, params) | _ALWAYS_SUPPORTED_OPTIONS
     for key in extra_args:
         if key not in supported:
             warnings.warn(
@@ -282,7 +288,6 @@ class AugmentationSequentialOps:
             otherwise a list is returned.
         """
         _data_keys = self.preproc_datakeys(data_keys)
-        extra_args = {key: _filter_child_options(module, value, param) for key, value in extra_args.items()}
 
         if isinstance(module, K.RandomTransplantation):
             # This child reads the mask while drawing params, before the list-mask handler can reject it.

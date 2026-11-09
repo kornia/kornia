@@ -923,6 +923,43 @@ class TestConventionAugmentationBase2D(BaseTester):
         with pytest.warns(FutureWarning, match="typo"):
             seq(x, extra_args={"typo": 1})
 
+    def test_container_validates_only_the_options_of_present_data_keys(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(15.0, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None, "resampl": 1}},
+        )
+        # Mask options are not read by an image-only call or its inverse, so they are neither checked nor warned about.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            out = aug(x, data_keys=["input"])
+            aug.inverse(out, data_keys=["input"])
+        with pytest.warns(FutureWarning, match="resampl"):
+            aug(x, x)
+
+    def test_container_mask_only_call_keeps_input_options_for_matrices(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        extra_args = {
+            DataKey.INPUT: {"align_corners": False},
+            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None},
+        }
+        first = K.AugmentationSequential(
+            K.ImageSequential(K.Resize((4, 5))), data_keys=["input", "mask"], extra_args=extra_args
+        )
+        first(x, x)
+        # A fresh pipeline recomputes the nested matrix for a mask-only call; the INPUT flags still apply to it.
+        second = K.AugmentationSequential(
+            K.ImageSequential(K.Resize((4, 5))), data_keys=["input", "mask"], extra_args=extra_args
+        )
+        second(x, params=first._params, data_keys=["mask"])
+        # The mask-only matrix comes back in float32 whatever the dtype (also before #6659), so compare values.
+        self.assert_close(second.transform_matrix.to(dtype), first.transform_matrix)
+
     def test_container_shared_options_and_unknown_override(self, device, dtype):
         from kornia.constants import DataKey
 

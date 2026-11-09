@@ -573,7 +573,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     "or passing valid params into this function."
                 )
 
-            extra_args = {key: _validate_extra_args(self, value, params) for key, value in self.extra_args.items()}
+            present = set(self.transform_op.data_keys)
+            extra_args = {
+                key: _validate_extra_args(self, value, params)
+                for key, value in self.extra_args.items()
+                if key in present
+            }
             outputs: List[DataType] = in_args
             for param in params[::-1]:
                 module = self.get_submodule(param.name)
@@ -865,7 +870,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 else:
                     raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-            extra_args = {key: _validate_extra_args(self, value, params) for key, value in self.extra_args.items()}
+            # Validate only the options of data keys in this call; INPUT options also reach the matrix collection.
+            present = {*original_data_keys, DataKey.INPUT}
+            extra_args = {
+                key: _validate_extra_args(self, value, params)
+                for key, value in self.extra_args.items()
+                if key in present
+            }
             outputs: Union[torch.Tensor, List[DataType]] = in_args
             for param in params:
                 module = self.get_submodule(param.name)
