@@ -84,6 +84,9 @@ class CropGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([crop_size if isinstance(crop_size, torch.Tensor) else None])
+        # Checked before the empty-batch return so an empty batch rejects a negative size too.
+        if isinstance(crop_size, (tuple, list)) and any(s < 0 for s in crop_size):
+            raise ValueError(f"`size` must be non-negative. Got {crop_size!r}.")
 
         if batch_size == 0:
             return {
@@ -98,8 +101,6 @@ class CropGenerator(RandomGeneratorBase):
                 raise AssertionError(
                     f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {crop_size!r}."
                 )
-            if crop_size[0] < 0 or crop_size[1] < 0:
-                raise ValueError(f"`size` must be non-negative. Got {crop_size!r}.")
         else:
             size = crop_size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
