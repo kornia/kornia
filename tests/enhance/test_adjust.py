@@ -516,6 +516,19 @@ class TestAdjustContrast(BaseTester):
         out = kornia.enhance.adjust_contrast_with_mean_subtraction(img, 0.5)
         assert out.shape == shape
 
+    @pytest.mark.parametrize("factor", [0.5, (1,)])
+    def test_two_dimensional_image_with_mean_subtraction_6645(self, device, dtype, factor):
+        image = torch.tensor([[0.0, 1.0], [0.5, 0.5]], device=device, dtype=dtype)
+        if factor == (1,):
+            factor = torch.tensor([0.5], device=device, dtype=dtype)
+        # One gray plane with mean 0.5: image * 0.5 + 0.5 * (1 - 0.5).
+        expected = torch.tensor([[0.25, 0.75], [0.5, 0.5]], device=device, dtype=dtype)
+
+        actual = kornia.enhance.adjust_contrast_with_mean_subtraction(image, factor)
+
+        self.assert_close(actual, expected)
+        self.assert_close(actual, kornia.enhance.adjust_contrast_with_mean_subtraction(image[None], factor)[0])
+
     @pytest.mark.parametrize("shape", [(4, 2, 3), (2, 1, 2, 3), (2, 3, 4, 2, 3)])
     def test_non_rgb_mean_with_leading_dimensions(self, device, dtype, shape):
         numel = torch.Size(shape).numel()
