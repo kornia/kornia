@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
@@ -41,6 +42,20 @@ class TestWelschLoss(BaseTester):
 
         actual = kornia.losses.WelschLoss(reduction="mean")(img, img)
         assert actual.shape == ()
+
+    def test_reduction_none_matches_string_6663(self, device, dtype):
+        img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+
+        expected = kornia.losses.welsch_loss(img1, img2, "none")
+        self.assert_close(kornia.losses.welsch_loss(img1, img2, None), expected)
+        self.assert_close(kornia.losses.WelschLoss(reduction=None)(img1, img2), expected)
+
+    def test_exception_unknown_reduction(self, device, dtype):
+        img = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+
+        with pytest.raises(BaseError, match=r"reduction is not supported. Got: invalid"):
+            kornia.losses.welsch_loss(img, img, "invalid")
 
     def test_gradcheck(self, device, dtype):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)

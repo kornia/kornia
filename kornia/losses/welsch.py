@@ -73,7 +73,9 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     KORNIA_CHECK_SAME_DEVICE(img1, img2)
 
-    KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
+    KORNIA_CHECK(
+        reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
+    )
 
     # 1 - exp(-s) cancels for small s = r^2 / 2. There it equals 2 t / (1 + t) with t = tanh(s / 2), which does not
     # cancel; torch.expm1 has only the precision of exp(x) - 1 on MPS (pytorch/pytorch#198708) and in ONNX export.
@@ -89,7 +91,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         loss = loss.mean()
     elif reduction == "sum":
         loss = loss.sum()
-    elif reduction == "none":
+    elif reduction == "none" or reduction is None:
         pass
     else:
         raise NotImplementedError("Invalid reduction option.")
