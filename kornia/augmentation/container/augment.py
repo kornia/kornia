@@ -133,6 +133,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
+                                    In a caller's autocast region `.transform_matrix` keeps the input's dtype, and
+                                    float32 input is computed in float32.
                                     The validator also accepts `silence`, an alias that behaves
                                     like `silent`; any other value raises ``ValueError``.
 

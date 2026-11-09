@@ -23,7 +23,7 @@ import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
 from kornia.geometry.linalg import transform_points
 
-from testing.base import BaseTester, supports_bilinear_2d_grid_sample
+from testing.base import BaseTester, skip_unsupported_autocast, supports_bilinear_2d_grid_sample
 
 
 @pytest.mark.parametrize("container,coordinates", [(Keypoints, 2), (Keypoints3D, 3)])
@@ -816,3 +816,17 @@ class TestConventionsKeypoints(BaseTester):
         }
         with pytest.raises(NotImplementedError):
             calls[path]()
+
+
+class TestKeypointsAutocast(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_transform_6601(self, autocast_dtype, device):
+        # They inherit transform_points' half-precision product: up to 1.36 px off in bfloat16 at 256 px.
+        skip_unsupported_autocast(device, autocast_dtype)
+        points = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)).to(device) * 256
+        homography = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [1e-3, 2e-3, 1.0]]], device=device)
+        expected = Keypoints(points).transform_keypoints(homography).data
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = Keypoints(points).transform_keypoints(homography).data
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
