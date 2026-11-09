@@ -95,14 +95,20 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(hist, expected_hist)
         self.assert_close(pdf, expected_hist / expected_hist.sum())
 
-    def test_convention_image_histogram_automatic_centers_follow_bandwidth(self, device, dtype):
-        image = torch.tensor([[0.125]], device=device, dtype=dtype)
+    def test_convention_image_histogram_automatic_centers_span_range_whatever_the_bandwidth_6664(self, device, dtype):
+        # Four bins over [0, 1] have centers 0.125, 0.375, 0.625 and 0.875 whatever the bandwidth, which only sets the
+        # kernel width. All values are dyadic, so the expected counts are exact in every dtype.
+        # Triangular weights (1 - |x - c| / 0.5) for bandwidth 0.5, worked out by hand:
+        #   x = 0.125 -> |x - c| = [0, 0.25, 0.5, 0.75]  -> [1.0, 0.5, 0.0, 0.0]
+        #   x = 0.875 -> |x - c| = [0.75, 0.5, 0.25, 0]  -> [0.0, 0.0, 0.5, 1.0]
+        # Before the fix the centers were min + (i + 0.5) * bandwidth = 0.25, 0.75, 1.25, 1.75, which gave
+        # [0.75, 0.75, 0.25, 0.0] here.
+        image = torch.tensor([[0.125, 0.875]], device=device, dtype=dtype)
         hist, _ = kornia.enhance.image_histogram2d(
-            image, min=0.0, max=1.0, n_bins=2, bandwidth=0.25, kernel="triangular"
+            image, min=0.0, max=1.0, n_bins=4, bandwidth=0.5, kernel="triangular"
         )
-        # Centers are 0.125 and 0.375, generated as min + (i + 0.5) * bandwidth.
         output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=output_dtype))
+        self.assert_close(hist, torch.tensor([1.0, 0.5, 0.5, 1.0], device=device, dtype=output_dtype))
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])

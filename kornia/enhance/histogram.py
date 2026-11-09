@@ -253,8 +253,10 @@ def image_histogram2d(
     Convention:
         Spatial axes are the final two axes; input (H, W), (C, H, W), and
         (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
-        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
-        according to the selected kernel rather than being clipped into an endpoint bin. Float16 and
+        centers are the ``n_bins`` equal-width bin centers over ``[min, max]``,
+        min + (i + 0.5) * (max - min) / n_bins, whatever ``bandwidth`` is: ``bandwidth`` only sets the
+        kernel width. Values outside the supplied range contribute according to the selected kernel
+        rather than being clipped into an endpoint bin. Float16 and
         bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
         ``centers``: the bin counts of ordinary images exceed float16's range (65504) and bfloat16's precision.
 
@@ -268,8 +270,9 @@ def image_histogram2d(
           :attr:`centers` is specified.
         n_bins: The number of histogram bins. Ignored when
           :attr:`centers` is specified.
-        bandwidth: Positive finite smoothing factor. If not specified or equal to -1,
-          it is calculated as :math:`(max - min) / n_bins`.
+        bandwidth: Positive finite smoothing factor, the width of the kernel. It does not move the
+          automatic centers. If not specified or equal to -1, it is calculated as
+          :math:`(max - min) / n_bins`.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
           If not specified or empty, it is calculated as centers of equal-width bins
           over the non-empty finite [min, max] range.
@@ -322,7 +325,10 @@ def image_histogram2d(
     center_dtype = centers.dtype if centers is not None else torch.float32
     compute_dtype = torch.promote_types(torch.float32, torch.promote_types(image.dtype, center_dtype))
     if centers is None:
-        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
+        # The bandwidth only sets the kernel width, so it must not stretch the bins: the automatic centers are the
+        # n_bins equal-width bin centers over [min, max], whatever the bandwidth is.
+        bin_width = (max - min) / n_bins
+        centers = min + bin_width * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.to(compute_dtype).reshape(-1, 1, 1, 1, 1)
 
     u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers) / bandwidth
