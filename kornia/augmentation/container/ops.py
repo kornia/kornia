@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, Type, TypeVar, Union
 
@@ -29,7 +30,7 @@ from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 DataType = Union[torch.Tensor, List[torch.Tensor], Boxes, Keypoints]
 
@@ -37,6 +38,51 @@ DataType = Union[torch.Tensor, List[torch.Tensor], Boxes, Keypoints]
 SequenceDataType = Union[List[torch.Tensor], List[List[torch.Tensor]], List[Boxes], List[Keypoints]]
 
 T = TypeVar("T")
+
+
+def _parameter_keys(params: Optional[Union[Dict[str, Any], List[ParamItem], List[PatchParamItem]]]) -> set[str]:
+    if isinstance(params, dict):
+        return set(params)
+    keys: set[str] = set()
+    if params is not None:
+        for param in params:
+            keys.update(_parameter_keys(param.param.data if isinstance(param, PatchParamItem) else param.data))
+    return keys
+
+
+def _supported_options(
+    module: nn.Module, params: Optional[Union[Dict[str, Any], List[ParamItem], List[PatchParamItem]]]
+) -> set[str]:
+    keys = {"save_kwargs", "data_keys"} | _parameter_keys(params)
+    for child in module.modules():
+        keys.update(getattr(child, "flags", {}))
+    return keys
+
+
+def _validate_extra_args(
+    module: nn.Module, extra_args: Optional[Dict[str, Any]], params: Optional[List[ParamItem]]
+) -> Dict[str, Any]:
+    if not extra_args:
+        return {}
+    # Default mask interpolation options remain valid even for a pipeline consisting entirely of flips.
+    supported = _supported_options(module, params) | {"resample", "align_corners", "antialias"}
+    for key in extra_args:
+        if key not in supported:
+            warnings.warn(
+                f"{type(module).__name__} got an unknown extra_args option '{key}'; it is ignored. "
+                "Passing unknown options is deprecated and will raise TypeError in a future release.",
+                FutureWarning,
+                stacklevel=3,
+            )
+    return {key: value for key, value in extra_args.items() if key in supported}
+
+
+def _filter_shared_options(module: nn.Module, extra_args: Optional[Dict[str, Any]], param: ParamItem) -> Dict[str, Any]:
+    # A container validates against all descendants, then each child receives only options it can consume.
+    if not extra_args:
+        return {}
+    supported = _supported_options(module, param.data)
+    return {key: value for key, value in extra_args.items() if key in supported}
 
 
 class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
@@ -357,8 +403,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Raises:
             AssertionError: A non-augmentation module receives non-empty params.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
@@ -389,8 +434,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Raises:
             NotImplementedError: Inverse for 3D geometric ops is not supported.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, K.MixAugmentationBaseV2):
@@ -489,8 +533,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
             module, K.IntensityAugmentationBase2D
@@ -562,8 +605,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Returns:
             One transformed mask per sample, in the same order.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase3D):
             raise NotImplementedError("3D mask lists are not supported.")
         if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
@@ -614,8 +656,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             extra_args = cls._mask_extra_args(module, extra_args)
@@ -656,8 +697,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Returns:
             One inverse-transformed mask per sample, in the same order.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase2D):
             extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
@@ -709,8 +749,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
@@ -761,8 +800,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
@@ -807,8 +845,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
@@ -867,8 +904,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         Returns:
             Keypoints after inverse transformation.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_shared_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):

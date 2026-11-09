@@ -528,7 +528,7 @@ def override_parameters(
 ) -> Dict[str, Any]:
     """Replace selected entries of an augmentation parameter dictionary.
 
-    ``updated = override_parameters(params, params_override)`` returns a copied dictionary with every supplied key
+    ``updated = override_parameters(params, params_override)`` returns a copied dictionary with existing keys
     replaced, unless ``in_place=True``. With no override it returns ``params`` itself; use ``deepcopy_dict`` when a
     new dictionary with cloned tensor values is needed without replacement. Cloning preserves autograd history;
     non-tensor values remain shared.
@@ -536,7 +536,7 @@ def override_parameters(
     Args:
         params: source parameters.
         params_override: key-values to override the source parameters.
-        if_none_exist: currently unused; every override key is inserted, including keys absent from ``params``.
+        if_none_exist: ``"ignore"`` skips keys absent from ``params``; ``"raise"`` raises ``RuntimeError``.
         in_place: if to override in-place or not.
 
     See Also:
@@ -551,12 +551,12 @@ def override_parameters(
         return params
     out = params if in_place else deepcopy_dict(params)
     for k, v in params_override.items():
-        if k in params_override:
+        if k in params:
             out[k] = v
         elif if_none_exist == "ignore":
             pass
         elif if_none_exist == "raise":
-            raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
+            raise RuntimeError(f"Param `{k}` does not exist in the source parameters.")
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out

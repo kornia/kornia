@@ -32,6 +32,7 @@ from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
 from .base import ImageSequentialBase
+from .ops import _validate_extra_args
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
@@ -431,8 +432,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting

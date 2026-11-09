@@ -23,7 +23,7 @@ from torch import Size, nn
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
-from kornia.augmentation.container.ops import InputSequentialOps
+from kornia.augmentation.container.ops import InputSequentialOps, _validate_extra_args
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core.ops import eye_like
@@ -110,6 +110,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting

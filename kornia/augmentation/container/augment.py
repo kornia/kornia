@@ -42,7 +42,7 @@ from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType, InputSequentialOps
+from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _validate_extra_args
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
@@ -515,6 +515,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)
@@ -568,10 +569,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     "or passing valid params into this function."
                 )
 
+            extra_args = {key: _validate_extra_args(self, value, params) for key, value in self.extra_args.items()}
             outputs: List[DataType] = in_args
             for param in params[::-1]:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
+                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=extra_args)
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
@@ -859,10 +861,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 else:
                     raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
+            extra_args = {key: _validate_extra_args(self, value, params) for key, value in self.extra_args.items()}
             outputs: Union[torch.Tensor, List[DataType]] = in_args
             for param in params:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
+                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=extra_args)
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
@@ -870,7 +873,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     module,
                     param,
                     outputs[0],
-                    extra_args=self.extra_args.get(DataKey.INPUT),
+                    extra_args=extra_args.get(DataKey.INPUT),
                     image_transformed=DataKey.INPUT in original_data_keys,
                 )
 
