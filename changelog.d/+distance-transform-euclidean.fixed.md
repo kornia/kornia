@@ -1,0 +1,1 @@
+`contrib.distance_transform` and `DistanceTransform` now compute Euclidean distances for binary images and volumes, eliminating cascade diagonal errors and soft-min bias near clustered sources. Empty channels still return zeros. The tensor implementation costs O(N times the sum of spatial dimensions) and may be slower for large dense images on CPU.
