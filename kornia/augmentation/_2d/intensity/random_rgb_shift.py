@@ -24,7 +24,6 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import shift_rgb
 
-
 # A shift range has no domain: a (low, high) pair -- a tuple, a list or a 1-D tensor -- only needs to be finite and
 # ordered, and a number or 0-d tensor is a non-negative half-width, whose ``[-limit, limit]`` no bound can refuse.
 # Bounds taken from the constructor's own limit refused a checkpoint of a wider valid range at load time, and bounds
