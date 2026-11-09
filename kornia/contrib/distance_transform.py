@@ -110,7 +110,7 @@ def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
                 need_buf = b_cap * query_tile * length
                 if buf is None or buf.numel() < need_buf:
                     buf = cost.new_empty(need_buf)
-                val_discard = lines_det.new_empty((b_cap, query_tile))
+                val_discard = lines_det.new_empty(b_cap * query_tile)
                 idx_tiles = []
                 for start in range(0, length, query_tile):
                     offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
@@ -121,7 +121,11 @@ def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
                         b_len = b_end - b_start
                         cur_buf = buf[: b_len * q_len * length].view(b_len, q_len, length)
                         torch.add(lines_det[b_start:b_end].unsqueeze(-2), offsets, out=cur_buf)
-                        torch.min(cur_buf, dim=-1, out=(val_discard[:b_len, :q_len], col_idx[b_start:b_end]))
+                        # CUDA requires matching strides for min's values and indices outputs.
+                        # Pack the reused buffer to q_len even for a partial query tile; this is a view,
+                        # so scratch reuse and the full-tile allocation/compute costs stay unchanged.
+                        cur_vals = val_discard[: b_len * q_len].view(b_len, q_len)
+                        torch.min(cur_buf, dim=-1, out=(cur_vals, col_idx[b_start:b_end]))
                     idx_tiles.append(col_idx)
             else:
                 idx_tiles = []

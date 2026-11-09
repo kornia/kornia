@@ -478,6 +478,34 @@ class TestConvDistanceTransform(BaseTester):
         reference[0, 1] = reference[0, 0].flip(-1)
         self.assert_close(kornia.contrib.distance_transform(image), reference)
 
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_partial_query_and_line_tiles_preserve_gradients(self, ndim, device, dtype):
+        # Cross the 1024-query CUDA tile, including a partial line block and a partial query block.
+        # Independent corner-source references, with v=0.5 and h=0.35:
+        # d = [math.sqrt(sum((n - 1)**2 for n in shape[:-1]) + q*q - 0.35*math.log(0.5))
+        #      for q in (0, 1023, 1024, 1030)]
+        # source_grad = sum(-0.35 / (2 * 0.5 * value) for value in d)
+        if ndim == 2:
+            shape = (9, 1031)
+            distances = [8.015148252727206, 1023.0313986391195, 1024.0313679773258, 1030.0311852567927]
+            source_grad = -0.044691016989478055
+        else:
+            shape = (2, 5, 1031)
+            distances = [4.152421162791171, 1023.0084274342578, 1024.0084192044092, 1030.0083701608999]
+            source_grad = -0.08531189990185774
+        image = torch.zeros((1, 1) + shape, device=device, dtype=dtype)
+        source = (0, 0) + (0,) * ndim
+        image[source] = 0.5
+        image.requires_grad_()
+        output = kornia.contrib.distance_transform(image)
+        far = (0, 0) + tuple(n - 1 for n in shape[:-1])
+        probes = torch.stack([output[far + (q,)] for q in (0, 1023, 1024, 1030)])
+        self.assert_close(probes, torch.tensor(distances, device=device, dtype=dtype))
+        probes.sum().backward()
+        expected_grad = torch.zeros_like(image)
+        expected_grad[source] = source_grad
+        self.assert_close(image.grad, expected_grad)
+
     def test_line_tiles_preserve_batch_and_channel_layout(self, device, dtype):
         # This batched rectangular image crosses both row and query tiles on CPU and CUDA.
         # Each channel has one source, in a different corner; probe across both tile boundaries.
