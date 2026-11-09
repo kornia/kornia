@@ -758,6 +758,18 @@ def find_next_powerof_two(x: int) -> int:
     return 1 << (x - 1).bit_length()
 
 
+def _pad_end(input: torch.Tensor, pad: int, dim: int, reflect: bool) -> torch.Tensor:
+    """Append ``pad`` rows (``dim=2``) or columns (``dim=3``): reflected about the last one, or copies of it."""
+    side = input.shape[dim]
+    if reflect:
+        tail = input.narrow(dim, side - 1 - pad, pad).flip(dim)
+    else:
+        shape = list(input.shape)
+        shape[dim] = pad
+        tail = input.narrow(dim, side - 1, 1).expand(shape)
+    return torch.cat([input, tail], dim)
+
+
 def _pad_to_stride(input: torch.Tensor, max_level: int, border_type: str) -> torch.Tensor:
     """Pad the bottom and right of ``input`` to the next multiple of ``2 ** (max_level - 1)``, the rule of #6319."""
     height = input.size()[2]
@@ -773,14 +785,18 @@ def _pad_to_stride(input: torch.Tensor, max_level: int, border_type: str) -> tor
             "smaller max_level or another border_type."
         ),
     )
-    pad_height = -height % stride
-    pad_width = -width % stride
-    # `F.pad` cannot reflect a padding at least as large as the side, so such a side repeats its last row or column.
-    # The check above leaves this to the border types whose blur takes the small levels that follow from it.
+    # The sizes are symbolic under a dynamic-shape `torch.compile`, which shapes two choices here (#6319): floor
+    # division, as Inductor cannot lower the `Mod` of `-height % stride` (`python_mod`), and a padding built from a
+    # flipped slice, or copies of the last row or column, joined with `cat`, as Inductor spends minutes lowering
+    # `F.pad(..., "reflect")` of a symbolic amount followed by the blur and resampling of `pyrdown`. The values are
+    # those of `F.pad`, bitwise. A padding at least as large as the side cannot reflect and repeats the last row or
+    # column; the check above leaves that to the border types whose blur takes the small levels that follow from it.
+    pad_height = (height + stride - 1) // stride * stride - height
+    pad_width = (width + stride - 1) // stride * stride - width
     if pad_height != 0:
-        input = F.pad(input, (0, 0, 0, pad_height), "reflect" if pad_height < height else "replicate")
+        input = _pad_end(input, pad_height, 2, pad_height < height)
     if pad_width != 0:
-        input = F.pad(input, (0, pad_width, 0, 0), "reflect" if pad_width < width else "replicate")
+        input = _pad_end(input, pad_width, 3, pad_width < width)
     return input
 
 

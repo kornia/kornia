@@ -876,6 +876,25 @@ class TestBuildLaplacianPyramid(BaseTester):
         for actual_level, expected_level in zip(actual, expected, strict=True):
             self.assert_close(actual_level, expected_level)
 
+    @pytest.mark.parametrize("max_level", [2, 3])
+    def test_dynamo_minimal_padding_with_changing_sizes(
+        self, max_level, device, dtype, torch_optimizer, optimizer_backend
+    ):
+        # One compiled function over several sizes: from the second size on, Dynamo traces the sizes symbolically. Every
+        # side here is odd, so both sides pad at both levels. `-height % stride` raised `python_mod` from Inductor here,
+        # and `F.pad(..., "reflect")` of a symbolic amount kept Inductor busy for minutes (#6319).
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
+
+        def pyramid(x):
+            return kornia.geometry.transform.build_laplacian_pyramid(x, max_level, minimal_padding=True)
+
+        compiled = torch_optimizer(pyramid)
+        for height, width in ((5, 9), (7, 11), (9, 13), (11, 15)):
+            sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+            for actual_level, expected_level in zip(compiled(sample), pyramid(sample), strict=True):
+                self.assert_close(actual_level, expected_level)
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("dynamic_sizes", [False, True])
     @pytest.mark.parametrize("minimal_padding", [None, False, True])
