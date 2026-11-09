@@ -1216,7 +1216,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         torch.manual_seed(0)
         drawn = target.forward_parameters((4, 3, 6, 8))["degrees"]
         assert bool(((drawn >= 10.0) & (drawn <= 11.0)).all())
-        assert "degrees=tensor([10., 11.])" in repr(target)
+        # A range given as numbers is loaded as numbers.
+        assert "degrees=[10.0, 11.0]" in repr(target)
 
     def test_wart_sampler_precision_is_separate_from_returned_dtype_4426(self):
         # #4426: flips when the returned parameters follow the requested dtype like `batch_prob` does.
@@ -2152,6 +2153,14 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
             leaf.copy_(torch.tensor(40.0, device=device, dtype=dtype))
         aug(x).sum().backward()
         self._assert_drawn_from(aug, key, -leaf.detach(), leaf.detach())
+        if name == "RandomAffine":
+            return  # its generator keeps no range in ``state_dict``
+        # A load writes the leaf in place, and the generator keeps drawing from it with its graph.
+        leaf.grad = None
+        aug.load_state_dict({"_param_generator.degrees": torch.tensor(20.0)})
+        aug(x).sum().backward()
+        assert leaf.grad is not None
+        self._assert_drawn_from(aug, key, -leaf.detach(), leaf.detach())
 
     def test_range_outside_its_domain_keeps_training_moving_and_copying(self, device, dtype):
         # The domain is checked when the range is first built; reading a range on every forward would wait for the
@@ -2660,8 +2669,51 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         assert drawn.max() - drawn.min() >= (high - low) * 0.9
         # The generator's ``repr`` shows the range it draws from, and so does the augmentation's.
         (loaded,) = target.state_dict().values()
-        assert f"{loaded}" in repr(target._param_generator)
-        assert f"{loaded}" in repr(target)
+        (entry,) = [factor for factor, *_ in target._param_generator.samplers]
+        self.assert_close(torch.as_tensor(entry, device=loaded.device, dtype=loaded.dtype), loaded)
+        assert f"{entry}" in repr(target._param_generator)
+        assert f"{entry}" in repr(target)
+
+    # name -> (module of the given range, a narrow range, a far range exact in float32, key of the draw)
+    _MOVED_CASES = {
+        "tensors": (
+            lambda gamma: K.RandomGamma(torch.tensor(gamma), torch.tensor([0.9, 1.1]), p=1.0),
+            [0.8, 1.2],
+            [0.5, 0.625],
+            "gamma_factor",
+        ),
+        "three tensors": (
+            lambda r: K.RandomRGBShift(torch.tensor(r), torch.tensor([-0.1, 0.1]), torch.tensor([-0.1, 0.1]), p=1.0),
+            [-0.1, 0.1],
+            [-0.375, -0.25],
+            "r_shift",
+        ),
+        "numbers": (lambda degrees: K.RandomRotation(tuple(degrees), p=1.0), [-80.0, 80.0], [10.0, 11.0], "degrees"),
+    }
+
+    @pytest.mark.parametrize("order", ["move, load, move back", "load, move"])
+    @pytest.mark.parametrize("name", list(_MOVED_CASES))
+    def test_load_of_one_range_of_several_keeps_up_with_moves(self, name, order, device, dtype):
+        # The buffer of a loaded range moves with the module, while the other entries stay as they were given. Put next
+        # to them, it made every forward of a moved module refuse their mix of devices or dtypes, and it left the draws
+        # behind on a later move. A loaded module draws like one built with the loaded range and moved the same way.
+        if device.type == "cpu" and dtype == torch.float32:
+            pytest.skip("nothing moves")
+        make, narrow, far, key = self._MOVED_CASES[name]
+        target, reference, state = make(narrow), make(far), make(far).state_dict()
+        if order == "load, move":
+            target.load_state_dict(state)
+            target.to(device=device, dtype=dtype)
+            reference.to(device=device, dtype=dtype)
+        else:
+            target.to(device=device, dtype=dtype)
+            target.load_state_dict(state)
+            target.to(device="cpu", dtype=torch.float32)
+        torch.manual_seed(0)
+        drawn = target.forward_parameters(torch.Size((64, 3, 8, 8)))[key]
+        torch.manual_seed(0)
+        expected = reference.forward_parameters(torch.Size((64, 3, 8, 8)))[key]
+        self.assert_close(drawn, expected, rtol=0, atol=0)
 
     def test_load_inside_a_container_follows_the_prefix(self, device, dtype):
         target = K.AugmentationSequential(K.RandomRotation((80.0, 81.0), p=1.0)).to(device=device, dtype=dtype)

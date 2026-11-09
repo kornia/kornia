@@ -96,10 +96,24 @@ class PlainUniformGenerator(RandomGeneratorBase):
 
     def _ranges_loaded(self, names: Set[str]) -> None:
         # ``make_samplers`` reads ``self.samplers``, whose numbers it needs in ``dtype`` as they were given, not rounded
-        # to float32 in a buffer. A loaded range is what the generator holds from now on.
+        # to float32 in a buffer. A loaded range is what the generator holds from now on, in the form and placement of
+        # the entry it replaces: ``forward`` returns the draws on the device and dtype of the entries, and a buffer
+        # moved with the module would leave the other entries, and a later move, behind.
+        held = {**self._parameters, **self._buffers}
+
+        def loaded(factor: Any, name: str) -> Any:
+            if name not in names:
+                return factor
+            value = held[name]
+            if isinstance(factor, torch.nn.Parameter):
+                return value
+            if isinstance(factor, torch.Tensor):
+                # The buffer itself when the module has not moved, which keeps a plain leaf that requires grad training.
+                return value.to(device=factor.device, dtype=factor.dtype)
+            return value.tolist()
+
         self.samplers = tuple(
-            ({**self._parameters, **self._buffers}[name] if name in names else factor, name, center, bound)
-            for factor, name, center, bound in self.samplers
+            (loaded(factor, name), name, center, bound) for factor, name, center, bound in self.samplers
         )
         super()._ranges_loaded(names)
 
