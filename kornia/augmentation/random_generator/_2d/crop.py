@@ -98,6 +98,8 @@ class CropGenerator(RandomGeneratorBase):
                 raise AssertionError(
                     f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {crop_size!r}."
                 )
+            if crop_size[0] < 0 or crop_size[1] < 0:
+                raise ValueError(f"`size` must be non-negative. Got {crop_size!r}.")
         else:
             size = crop_size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
@@ -355,6 +357,8 @@ def center_crop_generator(
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
+    if size[0] < 0 or size[1] < 0:
+        raise ValueError(f"Crop size must be non-negative. Got {size}.")
     _check_positive_int_or_traced(height, "height")
     _check_positive_int_or_traced(width, "width")
     if isinstance(height, int) and isinstance(width, int) and not (height >= size[0] and width >= size[1]):

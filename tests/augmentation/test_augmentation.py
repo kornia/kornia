@@ -3385,6 +3385,14 @@ class TestCenterCrop(BaseTester):
         with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
             CenterCrop([4, 6])
 
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode returned an empty crop for a negative size, where the resample mode raised.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            CenterCrop(size, cropping_mode=cropping_mode)(inp)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
@@ -3708,6 +3716,14 @@ class TestRandomCrop(BaseTester):
         image = torch.zeros(1, 3, 2, 2)
         with pytest.raises(ValueError, match="one value per channel"):
             RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode raised an error about the input image size, where the resample mode named the crop size.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            RandomCrop(size, cropping_mode=cropping_mode, p=1.0)(inp)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         torch.manual_seed(0)
