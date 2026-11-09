@@ -44,7 +44,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _autocast_disabled, _torch_grid_sample
+from kornia.core.utils import _autocast_disabled, _samples_half_in_float32, _torch_grid_sample, _torch_inverse_cast
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -494,6 +494,10 @@ def warp_frame_depth(
     Return:
         ``image_src`` resampled onto the destination pixel grid, with shape ``(B, D, H, W)``.
 
+    A ``float16``/``bfloat16`` call with every input in that dtype, outside a caller's autocast region (#6601), runs in
+    ``float32`` on every device and returns the input dtype: half-precision pixel coordinates and a half-precision grid
+    are off by a pixel or more at 256 px.
+
     See Also:
         - :class:`DepthWarper`, :func:`depth_warp`: the same warp from two pinhole camera models.
         - :func:`depth_to_3d_v2`, :func:`~kornia.geometry.camera.perspective.project_points`: the two halves of the
@@ -521,6 +525,15 @@ def warp_frame_depth(
         output_zero = image_src.reshape(-1)[:1].sum() * 0.0
         return output_zero.reshape(1, 1, 1, 1).expand(output_shape)
 
+    # A half warp runs in float32: half-precision pixel coordinates and a half-precision sampling grid are off by a
+    # pixel or more.
+    out_dtype = image_src.dtype
+    if _samples_half_in_float32(image_src) and all(
+        t.dtype == image_src.dtype for t in (depth_dst, src_trans_dst, camera_matrix)
+    ):
+        image_src, depth_dst = image_src.float(), depth_dst.float()
+        src_trans_dst, camera_matrix = src_trans_dst.float(), camera_matrix.float()
+
     # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
     points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
 
@@ -535,7 +548,7 @@ def warp_frame_depth(
     height, width = depth_dst.shape[-2:]
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True)
+    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True).to(out_dtype)
 
 
 class DepthWarper(nn.Module):
@@ -558,6 +571,9 @@ class DepthWarper(nn.Module):
         - the depth lives in the **source** frame and the image in the **destination** frame.
         - until :meth:`compute_projection_matrix` has been called, :meth:`warp_grid` raises ``ValueError`` and
           :meth:`compute_subpixel_step` raises ``RuntimeError``.
+        - Half-precision cameras of one dtype compose in ``float32``, and a ``float16``/``bfloat16`` patch with depth of
+          its dtype builds its grid and samples in ``float32`` on every device and returns the input dtype, outside a
+          caller's autocast region (#6601). :meth:`warp_grid` casts the grid back to the depth's dtype.
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
@@ -655,18 +671,28 @@ class DepthWarper(nn.Module):
             )
         if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
+
         # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
-        batch_shape = pinhole_src.extrinsics.shape[:-2]
-        device = pinhole_src.extrinsics.device
-        dtype = pinhole_src.extrinsics.dtype
+        # Half cameras compose in float32: the product's rounding moves a warp's pixels by a large part of a pixel.
+        # Cameras of different dtypes are rejected as before.
+        src_extrinsics, dst_extrinsics = pinhole_src.extrinsics, self._pinhole_dst.extrinsics
+        dst_intrinsics = self._pinhole_dst.camera_matrix
+        if _samples_half_in_float32(src_extrinsics) and all(
+            t.dtype == src_extrinsics.dtype for t in (dst_extrinsics, dst_intrinsics)
+        ):
+            src_extrinsics, dst_extrinsics = src_extrinsics.float(), dst_extrinsics.float()
+            dst_intrinsics = dst_intrinsics.float()
+        batch_shape = src_extrinsics.shape[:-2]
+        device = src_extrinsics.device
+        dtype = src_extrinsics.dtype
 
         # Create 4x4 identity matrices efficiently
         inv_extr = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
         dst_trans_src = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
 
         # Inline inverse transformation
-        src_rmat = pinhole_src.extrinsics[..., :3, :3]
-        src_tvec = pinhole_src.extrinsics[..., :3, 3:]
+        src_rmat = src_extrinsics[..., :3, :3]
+        src_tvec = src_extrinsics[..., :3, 3:]
         inv_rmat = torch.transpose(src_rmat, -1, -2)
         inv_tvec = torch.matmul(-inv_rmat, src_tvec)
 
@@ -675,15 +701,15 @@ class DepthWarper(nn.Module):
         inv_extr[..., :3, 3:] = inv_tvec
 
         # Compose with dst extrinsics
-        dst_rmat = self._pinhole_dst.extrinsics[..., :3, :3]
-        dst_tvec = self._pinhole_dst.extrinsics[..., :3, 3:]
+        dst_rmat = dst_extrinsics[..., :3, :3]
+        dst_tvec = dst_extrinsics[..., :3, 3:]
         composed_rmat = torch.matmul(dst_rmat, inv_rmat)
         composed_tvec = torch.matmul(dst_rmat, inv_tvec) + dst_tvec
 
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
 
-        dst_proj_src = torch.matmul(_embed_intrinsics(self._pinhole_dst.camera_matrix), dst_trans_src)
+        dst_proj_src = torch.matmul(_embed_intrinsics(dst_intrinsics), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
@@ -739,7 +765,7 @@ class DepthWarper(nn.Module):
         dxy = torch.norm(xys[:, 1] - xys[:, 0], p=2, dim=1) / 2.0
         dxdd = dxy / delta_d
         # half pixel sampling, min for all cameras
-        return torch.min(0.5 / dxdd)
+        return torch.min(0.5 / dxdd).to(self._pinhole_dst.extrinsics.dtype)
 
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
         """Compute where each source pixel samples the destination image, given the depth in the source frame.
@@ -750,12 +776,18 @@ class DepthWarper(nn.Module):
         projection matrix, which moves a source-frame point into the destination camera frame and applies the
         destination intrinsics.
         """
+        return self._warp_grid(depth_src).to(depth_src.dtype)
+
+    def _warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
+        """Compute :meth:`warp_grid`, in float32 for half-precision depth, whose pixel coordinates would round."""
         # TODO: add type and value checkings
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
         if len(depth_src.shape) != 4:
             raise ValueError(f"Input depth_src has to be in the shape of Bx1xHxW. Got {depth_src.shape}")
+
+        depth_src = depth_src.to(torch.promote_types(depth_src.dtype, torch.float32))
 
         # unpack depth attributes
         batch_size, _, _, _ = depth_src.shape
@@ -766,8 +798,13 @@ class DepthWarper(nn.Module):
         pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(batch_size, -1, -1, -1)  # BxHxWx3
 
         # reproject the pixel coordinates to the camera frame
+        camera_matrix = self._pinhole_src.camera_matrix
+        if _samples_half_in_float32(camera_matrix):
+            intrinsics_inverse = _embed_intrinsics(_torch_inverse_cast(camera_matrix.float()))
+        else:
+            intrinsics_inverse = self._pinhole_src.intrinsics_inverse()
         cam_coords_src: torch.Tensor = pixel2cam(
-            depth_src, self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel_coords
+            depth_src, intrinsics_inverse.to(device=device, dtype=dtype), pixel_coords
         )  # BxHxWx3
 
         # reproject the camera coordinates to the pixel
@@ -810,13 +847,14 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
+        in_float32 = _samples_half_in_float32(patch_dst) and depth_src.dtype == patch_dst.dtype
         return _torch_grid_sample(
-            patch_dst,
-            self.warp_grid(depth_src),
+            patch_dst.float() if in_float32 else patch_dst,
+            self._warp_grid(depth_src) if in_float32 else self.warp_grid(depth_src),
             mode=self.mode,
             padding_mode=self.padding_mode,
             align_corners=self.align_corners,
-        )
+        ).to(patch_dst.dtype)
 
 
 def depth_warp(
