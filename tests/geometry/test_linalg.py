@@ -306,9 +306,11 @@ class TestTransformPointsAutocast(BaseTester):
         with torch.autocast(device.type, dtype=half):
             actual = kgl.transform_points(homography, points)
         assert actual.dtype == points.dtype
-        # CUDA and MPS autocast run the perspective divide in float32 for half operands (MPS seen in CI: 53.83 in the
-        # region, 53.75 outside it), so a half matrix differs in and out of the region there, as it did before the guard.
-        if not (device.type in ("cuda", "mps") and matrix_dtype == "half"):
+        # CUDA and MPS autocast run the perspective divide in float32 for half operands, so a half matrix differs in and
+        # out of the region there, as it did before the guard: up to 0.96 px, 5.6e-3 relative, in bfloat16 on both.
+        if device.type in ("cuda", "mps") and matrix_dtype == "half":
+            self.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
+        else:
             self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_region_does_not_change_the_gradient_6601(self, device):
