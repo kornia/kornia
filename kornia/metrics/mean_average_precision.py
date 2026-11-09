@@ -37,8 +37,8 @@ def mean_average_precision(
 
     ``mAP, ap = mean_average_precision(pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, n_classes)`` takes
     one tensor per image in each list. It returns the mean over the scored classes of their 11-point interpolated AP
-    as a 0-d tensor, and a dict of the per-class APs. Both are fractions in :math:`[0, 1]`, or ``-1.0`` where a
-    class has no objects.
+    as a 0-d tensor, and a dict of the per-class APs. Both are fractions in :math:`[0, 1]`, or ``-1.0`` where there
+    is no object to score.
 
     Convention:
         - The call raises when the five lists differ in length, when the boxes, labels and scores of an image differ

@@ -341,6 +341,7 @@ def kitti_d1_error(
 
     See Also:
         - :func:`~kornia.metrics.mean_bad_pixel_error`: the absolute criterion alone, as Middlebury reports.
+        - :func:`~kornia.metrics.mean_absolute_disparity_error`: the mean absolute error, whose rules this one shares.
 
     Examples:
         >>> input = torch.tensor([1.0, 5.0, 104.0, 20.0])

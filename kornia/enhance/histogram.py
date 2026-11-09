@@ -267,8 +267,8 @@ def image_histogram2d(
     Convention:
         - The spatial axes are the final two. An image ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)`` gives ``hist`` with
           the same leading axes followed by the bins; another rank raises.
-        - The automatic centers lie at ``min + (i + 0.5) * bandwidth``. A pixel outside the range still adds the
-          kernel's weight to the centers within reach; it is not clipped into an end bin.
+        - A pixel outside the range still adds the kernel's weight to the centers within reach; it is not clipped
+          into an end bin.
         - Float16 and bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
           ``centers``: ordinary bin counts exceed float16's range (65504) and bfloat16's precision.
 
@@ -276,12 +276,14 @@ def image_histogram2d(
         image: image with shape ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
         min: lower end of the range, a ``float``. It sets the automatic centers and bandwidth.
         max: upper end of the range, a ``float``. The default ``255.0`` puts a :math:`[0, 1]` image in two bins; pass
-            ``1.0`` for that range.
+            ``1.0`` for that range. Ignored when ``bandwidth`` is given.
         n_bins: number of automatic bins.
         bandwidth: kernel width, a positive finite ``float``. The default, also ``-1``, is ``(max - min) / n_bins``.
-        centers: bin centers with shape ``(K,)``. The default, also an empty tensor, is ``n_bins`` equal-width centers
-            over ``[min, max]``. Pass ``bandwidth`` with it: the default bandwidth still comes from ``min``, ``max`` and
-            ``n_bins`` (`#6662 <https://github.com/kornia/kornia/issues/6662>`_).
+        centers: bin centers with shape ``(K,)``. The default, also an empty tensor, is ``n_bins`` centers at
+            ``min + (i + 0.5) * bandwidth``, so an explicit ``bandwidth`` moves them off ``[min, max]``
+            (`#6664 <https://github.com/kornia/kornia/issues/6664>`_). Pass ``bandwidth`` with it: the default
+            bandwidth still comes from ``min``, ``max`` and ``n_bins``
+            (`#6662 <https://github.com/kornia/kornia/issues/6662>`_).
         return_pdf: whether to also return the normalized histogram.
         kernel: weight of a pixel at distance ``d`` from a center, with ``u = d / bandwidth``: ``'triangular'``
             (:math:`1 - u` for :math:`u \leq 1`), ``'gaussian'`` (:math:`e^{-u^2 / 2}`), ``'uniform'`` (1 for

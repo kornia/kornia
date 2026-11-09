@@ -48,6 +48,9 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
     Returns:
         the total variation with shape ``(*,)``.
 
+    .. note::
+       See a working example `here <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`__.
+
     See Also:
         - :class:`~kornia.losses.TotalVariation`: the module form, which always sums.
         - :func:`~kornia.losses.inverse_depth_smoothness_loss`: smoothness of a depth map, weighted by image edges.
@@ -57,9 +60,6 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
         tensor(0.)
         >>> total_variation(torch.ones(2, 5, 3, 4, 4)).shape
         torch.Size([2, 5, 3])
-
-    .. note::
-       See a working example `here <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`__.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation

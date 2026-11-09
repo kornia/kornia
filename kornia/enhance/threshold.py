@@ -119,7 +119,7 @@ def threshold(
 
     Raises:
         NotImplementedError: if ``THRESH_OTSU`` is passed.
-        ValueError: if ``type`` is not a supported mode.
+        BaseError: if ``type`` is not a supported mode.
 
     See Also:
         - :class:`Threshold`: the module form.

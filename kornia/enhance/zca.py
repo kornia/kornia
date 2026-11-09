@@ -57,6 +57,11 @@ class ZCAWhitening(nn.Module):
         - x: tensor ``(D_0, ..., D_dim, ..., D_N)`` whose axis ``dim`` indexes the samples.
         - x_whiten: same shape as ``x``.
 
+    .. note::
+       The fit takes an SVD of the covariance, whose backward step yields NaNs if the singular values are not unique,
+       see :func:`torch.svd`. A working example is in the `ZCA whitening tutorial
+       <https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/source/zca_whitening.ipynb>`__.
+
     See Also:
         - :func:`zca_whiten`: fits and whitens in one call.
         - :func:`zca_mean`: computes the transform and mean this module stores.
@@ -72,11 +77,6 @@ class ZCAWhitening(nn.Module):
         >>> # Enable backprop through ZCA fitting process
         >>> zca = ZCAWhitening(detach_transforms = False)
         >>> x_whiten = zca(x, include_fit = True) # Includes the fitting step
-
-    .. note::
-       The fit takes an SVD of the covariance, whose backward step yields NaNs if the singular values are not unique,
-       see :func:`torch.svd`. A working example is in the `ZCA whitening tutorial
-       <https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/source/zca_whitening.ipynb>`__.
 
     References:
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_

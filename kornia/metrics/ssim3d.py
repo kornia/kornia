@@ -73,9 +73,7 @@ def ssim3d(
         ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
-        With ``padding='same'`` every spatial size must be larger than ``window_size // 2``, because the volume is
-        reflected at its faces. The Gaussian window is built on the device of the inputs, in the dtype they are
-        filtered in.
+        The Gaussian window is built on the device of the inputs, in the dtype they are filtered in.
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.

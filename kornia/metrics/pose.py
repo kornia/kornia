@@ -140,6 +140,7 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     See Also:
         - :func:`~kornia.metrics.angle_error_mat`: the angle between two rotations.
         - :func:`~kornia.metrics.translation_ate`: the distance between two translations, which keeps the magnitude.
+        - :func:`~kornia.metrics.pose_errors`: folds this angle into ``"t_err"`` and adds the rotation error.
 
     Example:
         >>> v = torch.tensor([1.0, 0.0, 0.0])
@@ -170,9 +171,8 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
     :func:`~kornia.metrics.angle_error_vec` there.
 
     Convention:
-        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"t_err"`` compares translation
-        directions only. The result is one distance per sample, in the units of
-        the translations, with no alignment: a trajectory shifted by a constant keeps that offset at every pose.
+        The result is one distance per sample, in the units of the translations, with no alignment: a trajectory
+        shifted by a constant keeps that offset at every pose.
 
     Args:
         t: an estimated translation of shape ``(*, 3)``.

@@ -226,7 +226,7 @@ class Denormalize(nn.Module):
     checkpoints include.
 
     Convention:
-        - See the convention block of :func:`denormalize`.
+        - See the convention block of :func:`denormalize`. Unlike the function, the module also takes lists and tuples.
 
     Args:
         mean: mean of each channel, a number, a list, a tuple or a tensor.

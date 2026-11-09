@@ -261,7 +261,8 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     See Also:
-        - :func:`adjust_saturation_with_gray_subtraction`: blends toward gray instead of scaling.
+        - :func:`adjust_saturation_with_gray_subtraction`: blends with the gray image instead of scaling the HSV
+          saturation.
         - :func:`adjust_saturation_raw`: the same scaling on an HSV image.
         - :class:`AdjustSaturation`: the module form.
 
@@ -572,9 +573,9 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
        next synchronization; on CUDA that is a device-side assert.
 
     See Also:
-        - :func:`adjust_contrast_with_mean_subtraction`: pulls values toward the mean instead of scaling them.
+        - :func:`adjust_contrast_with_mean_subtraction`: blends with the mean gray level instead of scaling.
         - :func:`adjust_brightness_accumulative`: the same product, with a negative factor accepted.
-        - :func:`adjust_gamma`: a power curve that stays within :math:`[0, 1]` without clipping.
+        - :func:`adjust_gamma`: a power curve, which maps :math:`[0, 1]` onto itself at ``gain=1``.
         - :class:`AdjustContrast`: the module form.
 
     Example:
@@ -623,8 +624,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
 
     ``out = adjust_contrast_with_mean_subtraction(image, factor)`` returns ``factor * image + (1 - factor) * mean``,
     clamped to :math:`[0, 1]`, for an image in :math:`[0, 1]`. ``mean`` is the mean of the image's grayscale for 3
-    channels and of all its values otherwise; ``0`` gives a uniform image and ``1`` the input. For a plain
-    multiplication, use :func:`adjust_contrast`.
+    channels and of all its values otherwise; ``0`` gives a uniform image and ``1`` the input.
 
     Args:
         image: image with shape ``(*, C, H, W)``.
@@ -635,7 +635,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
 
     See Also:
         - :func:`adjust_contrast`: multiplies the values, so the mean moves with them.
-        - :func:`adjust_gamma`: a power curve that stays within :math:`[0, 1]` without clipping.
+        - :func:`adjust_gamma`: a power curve, which maps :math:`[0, 1]` onto itself at ``gain=1``.
         - :class:`AdjustContrastWithMeanSubtraction`: the module form.
 
     Example:
@@ -702,7 +702,7 @@ def adjust_brightness(
 
     See Also:
         - :func:`adjust_brightness_accumulative`: multiplies instead of adding.
-        - :func:`adjust_gamma`: a power curve that stays within :math:`[0, 1]` without clipping.
+        - :func:`adjust_gamma`: a power curve, which maps :math:`[0, 1]` onto itself at ``gain=1``.
         - :func:`shift_rgb`: adds a different shift to each color channel.
         - :class:`AdjustBrightness`: the module form.
 
@@ -747,8 +747,7 @@ def adjust_brightness_accumulative(
     r"""Multiply an image by a factor to brighten or darken it, as PIL's ``ImageEnhance.Brightness`` does.
 
     ``out = adjust_brightness_accumulative(image, factor)`` multiplies an image in :math:`[0, 1]` by ``factor``: ``0``
-    gives black, ``1`` leaves it unchanged and a larger factor brightens it. To add a constant instead, use
-    :func:`adjust_brightness`.
+    gives black, ``1`` leaves it unchanged and a larger factor brightens it.
 
     Args:
         image: image with shape ``(*, H, W)``.
@@ -1167,6 +1166,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         factor: blend weight of the input against the smoothed copy. A float or a 0-d tensor applies to the whole batch,
             and a tensor with shape ``(B,)`` gives one value per image, where ``B`` is the product of the leading
             dimensions of ``input``. Negative factors are accepted and extrapolate past the smoothed image.
+            A ``(1,)`` tensor raises unless ``B`` is 1 (`#6663 <https://github.com/kornia/kornia/issues/6663>`_).
 
     Returns:
         Sharpened image with the shape of ``input``.
@@ -1359,9 +1359,8 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - Each voxel is read at its 8-bit level as :func:`equalize` reads a pixel.
-        - The lookup step is an integer division by 255, so a volume with no more than 255 voxels per channel is
-          returned unchanged. Above that it is unchanged when its voxel count minus the count at the highest occupied
-          level is below 255.
+        - The lookup step and the unchanged-channel rule are those of :func:`equalize`, counted over the voxels of a
+          channel volume.
         - Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     Args:
@@ -1442,7 +1441,8 @@ class AdjustSaturation(nn.Module):
 
     See Also:
         - :func:`adjust_saturation`: the one-call form.
-        - :class:`AdjustSaturationWithGraySubtraction`: blends toward gray instead of scaling.
+        - :class:`AdjustSaturationWithGraySubtraction`: blends with the gray image instead of scaling the HSV
+          saturation.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1678,7 +1678,7 @@ class AdjustContrast(nn.Module):
 
     See Also:
         - :func:`adjust_contrast`: the one-call form, with ``clip_output``.
-        - :class:`AdjustContrastWithMeanSubtraction`: pulls values toward the mean instead of scaling them.
+        - :class:`AdjustContrastWithMeanSubtraction`: blends with the mean gray level instead of scaling.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
