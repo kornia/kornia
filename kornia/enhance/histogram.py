@@ -217,11 +217,20 @@ def _is_finite(value: float) -> bool:
 
 
 def _validate_histogram_bandwidth(
-    min: float, max: float, n_bins: int, bandwidth: Optional[float], auto_centers: bool
-) -> float:
-    """Validate the range needed for automatic values and resolve the bandwidth sentinel."""
+    min: float, max: float, n_bins: int, bandwidth: Optional[float], centers: Optional[torch.Tensor]
+) -> Tuple[float, bool]:
+    """Validate the range needed for automatic values and resolve the bandwidth sentinel.
+
+    The automatic bandwidth is the spacing of the bin centers. Automatic centers are ``(max - min) / n_bins`` apart;
+    explicit ones give their own spacing, since ``min``, ``max`` and ``n_bins`` are ignored then. That spacing is a
+    tensor, so the second value is ``True`` and :func:`_scaled_distance` computes it. A single explicit center has no
+    spacing and keeps ``(max - min) / n_bins``.
+    """
     auto_bandwidth = bandwidth is None or bandwidth == -1.0
-    if auto_centers or auto_bandwidth:
+    if auto_bandwidth and centers is not None and centers.numel() > 1:
+        return 1.0, True
+
+    if centers is None or auto_bandwidth:
         if n_bins <= 0:
             raise ValueError(f"n_bins must be greater than zero for automatically generated values. Got {n_bins}.")
         if not _is_finite(min) or not _is_finite(max) or max <= min:
@@ -234,7 +243,24 @@ def _validate_histogram_bandwidth(
 
     if not _is_finite(bandwidth) or bandwidth <= 0.0:
         raise ValueError(f"Bandwidth must be finite and greater than zero. Got {bandwidth}.")
-    return bandwidth
+    return bandwidth, False
+
+
+def _scaled_distance(x: torch.Tensor, centers: torch.Tensor, bandwidth: float, from_centers: bool) -> torch.Tensor:
+    """Distance of each value to each bin center in bandwidths, with the centers' spacing if ``from_centers``."""
+    if not from_centers:
+        return torch.abs(x - centers) / bandwidth
+    # The mean gap between neighboring centers, in any order: their spacing when they are evenly spaced. Not the
+    # smallest gap, whose gradient is undefined at the ties every evenly spaced grid has. Unevenly spaced centers,
+    # which include evenly spaced ones rounded to half precision, should pass ``bandwidth``. Checked where it lives,
+    # without a host sync.
+    spacing = (centers.max() - centers.min()) / (centers.shape[0] - 1)
+    _check_async(
+        torch.isfinite(spacing) & (spacing > 0),
+        "The bandwidth derived from the bin centers must be finite and greater than zero: pass distinct finite "
+        "centers or an explicit bandwidth.",
+    )
+    return torch.abs(x - centers) / spacing
 
 
 def image_histogram2d(
@@ -268,8 +294,11 @@ def image_histogram2d(
           :attr:`centers` is specified.
         n_bins: The number of histogram bins. Ignored when
           :attr:`centers` is specified.
-        bandwidth: Positive finite smoothing factor. If not specified or equal to -1,
-          it is calculated as :math:`(max - min) / n_bins`.
+        bandwidth: Positive finite smoothing factor. If not specified or equal to -1, it is the spacing of the
+          bin centers: :math:`(max - min) / n_bins` for automatic centers, and the mean gap
+          between neighboring explicit :attr:`centers`, ``(centers.max() - centers.min()) / (n_bins - 1)``.
+          A single explicit center has no spacing and uses :math:`(max - min) / n_bins`. Pass it for
+          unevenly spaced centers.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
           If not specified or empty, it is calculated as centers of equal-width bins
           over the non-empty finite [min, max] range.
@@ -316,7 +345,7 @@ def image_histogram2d(
     if centers is not None and centers.numel() == 0:
         centers = None
     auto_centers = centers is None
-    bandwidth = _validate_histogram_bandwidth(min, max, n_bins, bandwidth, auto_centers)
+    bandwidth, from_centers = _validate_histogram_bandwidth(min, max, n_bins, bandwidth, centers)
 
     # Preserve the supplied center precision while promoting half inputs enough to represent image-sized counts.
     center_dtype = centers.dtype if centers is not None else torch.float32
@@ -325,7 +354,7 @@ def image_histogram2d(
         centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.to(compute_dtype).reshape(-1, 1, 1, 1, 1)
 
-    u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers) / bandwidth
+    u = _scaled_distance(image.to(compute_dtype).unsqueeze(0), centers, bandwidth, from_centers)
 
     if kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u**2)

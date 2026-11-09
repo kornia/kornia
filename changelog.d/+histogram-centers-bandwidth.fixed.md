@@ -1,0 +1,1 @@
+`kornia.enhance.image_histogram2d` with explicit `centers` and no `bandwidth` now takes its default bandwidth from those centers (the mean gap between neighboring centers, their spacing when they are evenly spaced) instead of `(max - min) / n_bins`, which the docstring says is ignored when `centers` is given. A single center keeps `(max - min) / n_bins`.
