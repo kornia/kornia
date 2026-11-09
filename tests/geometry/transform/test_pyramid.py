@@ -599,6 +599,28 @@ class TestBuildLaplacianPyramid(BaseTester):
     @pytest.mark.parametrize(
         "height,width,max_level,level_sizes",
         [
+            (96, 96, 3, ((128, 128), (64, 64), (32, 32))),
+            (480, 640, 1, ((512, 1024),)),
+            (5, 8, 2, ((8, 8), (4, 4))),
+            (20, 64, 4, ((32, 64), (16, 32), (8, 16), (4, 8))),
+        ],
+    )
+    def test_explicit_false_keeps_the_power_of_two_rule_without_warning(
+        self, height, width, max_level, level_sizes, device, dtype
+    ):
+        sample = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", "`build_laplacian_pyramid`", FutureWarning)
+            pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=False)
+        with pytest.warns(FutureWarning, match="minimal_padding=False"):
+            default = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
+        assert [tuple(img.shape[-2:]) for img in pyramid] == list(level_sizes)
+        for explicit_level, default_level in zip(pyramid, default, strict=True):
+            assert torch.equal(explicit_level, default_level)
+
+    @pytest.mark.parametrize(
+        "height,width,max_level,level_sizes",
+        [
             (64, 96, 3, ((64, 96), (32, 48), (16, 24))),
             (96, 64, 3, ((96, 64), (48, 32), (24, 16))),
             (64, 100, 1, ((64, 100),)),
@@ -835,7 +857,7 @@ class TestBuildLaplacianPyramid(BaseTester):
         for levels, column in ((current, old), (minimal, new)):
             self.assert_close(levels[0][0, 0, :, 3], torch.tensor(column, device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("minimal_padding", [False, True])
+    @pytest.mark.parametrize("minimal_padding", [None, False, True])
     @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
     def test_dynamo(self, height, width, max_level, minimal_padding, device, dtype, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit":
@@ -856,7 +878,7 @@ class TestBuildLaplacianPyramid(BaseTester):
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("dynamic_sizes", [False, True])
-    @pytest.mark.parametrize("minimal_padding", [False, True])
+    @pytest.mark.parametrize("minimal_padding", [None, False, True])
     @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
     def test_export_does_not_warn(self, height, width, max_level, minimal_padding, dynamic_sizes, device, dtype):
         # torch 2.5.1 cannot capture `bool` of a symbolic size, which `is_powerof_two` takes, on the base as well.
