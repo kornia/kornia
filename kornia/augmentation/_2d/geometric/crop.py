@@ -31,7 +31,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
 from kornia.geometry.transform._crop import _compiled_slice_resize
-from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _crop_translation
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 def _remove_padding(
@@ -403,9 +403,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_mode = "reflection"
         else:
             padding_mode = flags["padding_mode"]
-        return _crop_inverse_by_transform_mat(
+        return crop_by_transform_mat(
             input,
-            transform,
+            transform[:, :2, :],
             size,
             flags["resample"].name.lower(),
             padding_mode=padding_mode,

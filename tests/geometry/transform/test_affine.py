@@ -1453,6 +1453,47 @@ class TestAffine2d(BaseTester):
         self.assert_close(out, expected, atol=0, rtol=0)
 
 
+class TestOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_translate(self, device, dtype):
+        row = self._row(device, dtype)
+        translation = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.translate(row, translation), torch.zeros_like(row))
+        out = kornia.geometry.transform.translate(row, translation, padding_mode="border")
+        self.assert_close(out, row)
+
+    def test_convention_rotate(self, device, dtype):
+        # A quarter turn about (1.5, 0): every output pixel samples x = 1.5, at y = x - 1.5 away from the only row, so
+        # the value 2.5 there is weighed by 1 - |y|.
+        expected = torch.tensor([[[[0.0, 1.25, 1.25, 0.0]]]], device=device, dtype=dtype)
+        angle = torch.tensor([90.0], device=device, dtype=dtype)
+        out = kornia.geometry.transform.rotate(self._row(device, dtype), angle)
+        self.assert_close(out, expected, low_tolerance=True)
+
+    def test_convention_scale(self, device, dtype):
+        # Shrinking by 2 about y = 1 samples the row y = -1 for the output row.
+        row = self._row(device, dtype)
+        factor = torch.tensor([[1.0, 0.5]], device=device, dtype=dtype)
+        center = torch.tensor([[1.5, 1.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.scale(row, factor, center=center)
+        self.assert_close(out, torch.zeros_like(row))
+
+    def test_convention_shear(self, device, dtype):
+        # A vertical shear of 1 moves column x by x rows, so only the first column stays on the row.
+        row = self._row(device, dtype)
+        factors = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.shear(row, factors, align_corners=True), expected)
+        self.assert_close(kornia.geometry.transform.Shear(factors)(row), expected)
+
+    def test_convention_affine(self, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.5]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.affine(row, matrix), 0.5 * row)
+
+
 class TestWarpByBuiltMatrixAutocast(BaseTester):
     """rotate, scale and rotate3d build their matrix and warp by it, both outside a caller's autocast region (#6573)."""
 
