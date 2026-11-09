@@ -106,10 +106,10 @@ _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
 _AFFINE_FUNDAMENTAL_MIN_SPREAD = 2.0
 
 # The models whose rank-at-most-two solvers allow the rank-one matrices that mismatches along a line fit. Such a matrix
-# counts no inliers (_fundamental_near_rank_one) while its compared value in the Hartley-normalized frame, about s2 / s1,
-# is below this many inlier thresholds of that frame, up to the limit. On the putatives RANSAC sees, the ground truth
-# has a compared value of 0.31 or more on the 170 PhotoTourism benchmark pairs (18 thresholds or more), and of 0.17 or
-# more on all 4950 pairs of St Peters Square (RANSAC tutorial data); the line scene's winning models are below 2e-3.
+# counts no inliers (_fundamental_near_rank_one) while its compared value, about s2 / s1 in the Hartley-normalized
+# frame, is below this many inlier thresholds of that frame, up to the limit. On the putatives RANSAC sees, the ground
+# truth has a compared value of 0.31 or more on the 170 PhotoTourism benchmark pairs (18 thresholds or more), and of
+# 0.17 or more on all 4950 St Peters Square pairs of the RANSAC tutorial data; the line scene's winners are below 2e-3.
 _RANK_TESTED_MODELS = ("fundamental", "fundamental_7pt", "fundamental_8pt")
 _FUNDAMENTAL_MIN_RANK_SPREAD = 5.0
 _FUNDAMENTAL_RANK_FLOOR_LIMIT = 0.1
@@ -360,10 +360,11 @@ class RANSAC(nn.Module):
           at ``inl_th=2``, is rejected too, and RANSAC returns zeros.
         - ``"fundamental"``, ``"fundamental_7pt"`` and ``"fundamental_8pt"`` count no inliers for a matrix of nearly
           rank one. ``F = l m^T`` is the pair of lines ``l`` and ``m``, and fits every mismatch along either of them
-          whatever its point in the other image. With both images' points Hartley-normalized at a shared scale, the
-          ratio of ``F``'s singular values must reach five inlier thresholds of that frame, at most ``0.1``. A true
-          geometry whose view scales differ by much more than ten times can fall below it, and RANSAC then keeps
-          another model.
+          whatever its point in the other image. With both images' points Hartley-normalized at a shared scale,
+          ``|cof F| / (|F|^2 - F_33^2)``, about the ratio of ``F``'s singular values, must reach five inlier
+          thresholds of that frame, at most ``0.1``; ``F_33``, the epipolar residual of the keypoint centroids, says
+          nothing about rank. A true geometry whose keypoints differ in scale between the views by five times or more
+          can fall below it, and RANSAC then keeps another model.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
