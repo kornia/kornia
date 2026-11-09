@@ -462,7 +462,11 @@ def _crop_by_boxes_to_size(
     safe_dst_box = torch.where(axis_collinear[:, None, None], unit, dst_box)
     dst_trans_src: torch.Tensor = get_perspective_transform(safe_src_box, safe_dst_box)
 
-    fallback = axis_collinear[:, None, None]
+    # A degenerate box that is not collinear, such as a triangle mapped onto a triangle of the same shape, also takes
+    # the extent matrix where its solve is not finite and its vertices 0 and 2 share a coordinate.
+    solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
+    size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
+    fallback = (axis_collinear | (~solved & size_one))[:, None, None]
     # ``torch.where`` also differentiates the branch it discards, so a box that keeps its solved matrix builds the
     # extent matrix from a unit source square: its own vertices 0 and 2 can share a coordinate (a square turned by
     # 45 degrees), and dividing by that zero extent would make the gradient with respect to the box NaN.

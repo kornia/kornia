@@ -591,28 +591,48 @@ class TestCropByBoxes(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
 
     @pytest.mark.parametrize(
-        "src_box_coords, out_size, expected_shape",
+        "src_box_coords, out_size, expected_out, expected_grad",
         [
-            ([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]], (1, 1), (1, 1, 1, 1)),
-            ([[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]], (1, 3), (1, 1, 1, 3)),
+            # inp[y, x] = x + 16 y, so the box gradient is the image slope at the sampled pixels:
+            # point: out = I(x0, y0); row: out.sum() = 3 x0 + 1.5 (x2 - x0) + 48 y0
+            (
+                [[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]],
+                (1, 1),
+                [[34.0]],
+                [[1.0, 16.0], [0, 0], [0, 0], [0, 0]],
+            ),
+            (
+                [[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]],
+                (1, 3),
+                [[17.0, 18.0, 19.0]],
+                [[1.5, 48.0], [0, 0], [1.5, 0], [0, 0]],
+            ),
         ],
     )
-    def test_supported_size_one_crop_backward_finite_6642(
-        self, src_box_coords, out_size, expected_shape, device, dtype
+    def test_supported_size_one_crop_box_gradient_6642(
+        self, src_box_coords, out_size, expected_out, expected_grad, device, dtype
     ):
-        """Test supported size-1 crops maintain exact forward output and finite backward gradients (#6642)."""
+        """Test a crop with one pixel on an axis of both the box and ``size`` has the translation gradient (#6642)."""
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
-        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
-        inp.requires_grad = True
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16).requires_grad_()
         src_box = torch.tensor(src_box_coords, device=device, dtype=dtype, requires_grad=True)
         out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
-        assert out.shape == expected_shape
-        assert torch.isfinite(out).all()
+        self.assert_close(out, torch.tensor(expected_out, device=device, dtype=dtype)[None, None])
 
         out.sum().backward()
         assert torch.isfinite(inp.grad).all()
-        assert torch.isfinite(src_box.grad).all()
+        self.assert_close(src_box.grad, torch.tensor([expected_grad], device=device, dtype=dtype))
+
+    def test_degenerate_triangle_onto_same_triangle_is_a_translation_6642(self, device, dtype):
+        """Test a triangle mapped onto a translated copy of itself keeps the translation crop (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
+        src_box = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [1.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
+        dst_box = src_box - 1
+        out = kornia.geometry.transform.crop_by_boxes(inp, src_box, dst_box)
+        self.assert_close(out, inp[..., 1:5, 1:5])
 
     def test_size_one_box_batch_does_not_corrupt_valid_box_6642(self, device, dtype):
         """Test a size-1 box in a batch does not poison gradients of valid boxes (#6642)."""
