@@ -728,7 +728,7 @@ class DepthWarper(nn.Module):
         return torch.cat([_x, _y], 1)
 
     def compute_subpixel_step(self) -> torch.Tensor:
-        """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
+        """Compute the smallest inverse depth step over the batch for sub-pixel sampling of the depth cost volume.
 
         See the Convention block on :class:`DepthWarper`.
 
