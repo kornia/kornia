@@ -27,29 +27,34 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
     # Separable min-convolution with a parabola: Felzenszwalb & Huttenlocher (2012), section 2.2.
-    # Tensor reductions avoid the data-dependent envelope stack and host synchronization of the linear-time
-    # algorithm. Work is O(numel * sum(spatial_shape)). Tile both lines and queries: a query-only tile would
-    # allocate 2 GiB for a float32 256^3 volume. Here candidates use at most 2^24 elements (64 MiB in float32),
-    # except when a single source line itself exceeds that budget.
-    # Dense 256x256 float32 inference measured ~15 ms vs ~5 ms for the cascade on an i7-14700K (4 threads),
-    # and ~2.0 ms vs ~3.3 ms on an RTX 4090: exact geometry trades CPU scaling for removal of cascade bias.
-    # min (rather than amin) saves only indices for backward, not the much larger candidate tensor.
+    # Work is O(numel * sum(spatial_shape)); tensor reductions avoid the data-dependent envelope stack.
+    # Small CPU tiles avoid costly large transient allocations. Wider CUDA queries amortize launches,
+    # with a smaller candidate block than the original 64 MiB tile to improve cache reuse on an RTX 4090.
+    # Blob-mask float32 512x512 inference measured 175 -> 76 ms on an i7-14700K (4 threads),
+    # and 2.56 -> 1.69 ms on an RTX 4090, versus the original tile schedule.
+    # Other devices retain the original budget pending measurements. These are element counts, so a
+    # float32 candidate uses at most 4 MiB on CPU, 32 MiB on CUDA, or 64 MiB elsewhere, unless one source
+    # line alone exceeds the budget. min saves only indices for backward, unlike amin's full candidates.
+    is_cuda = cost.device.type == "cuda"
+    budget = 2**20 if cost.device.type == "cpu" else (2**23 if is_cuda else 2**24)
+    max_queries = 256 if is_cuda else 32
     for axis in range(2, cost.ndim):
         # Contiguous source lines avoid strided reductions, especially on CPU.
         values = cost.movedim(axis, -1).contiguous()
         length = values.shape[-1]
         positions = torch.arange(length, device=cost.device, dtype=cost.dtype)
-        query_tile = min(32, max(1, 2**24 // length))
-        line_tile = max(1, 2**24 // (query_tile * length))
+        query_tile = min(max_queries, length, max(1, budget // length))
+        line_tile = max(1, budget // (query_tile * length))
         lines = values.reshape(-1, length)
         transformed = []
-        for block in lines.split(line_tile, dim=0):
+        for start in range(0, length, query_tile):
+            # Reuse offsets across row blocks instead of launching their calculation for every block.
+            offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
             chunks = []
-            for start in range(0, length, query_tile):
-                offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
+            for block in lines.split(line_tile, dim=0):
                 chunks.append((block.unsqueeze(-2) + offsets).min(dim=-1).values)
-            transformed.append(torch.cat(chunks, dim=-1))
-        cost = torch.cat(transformed, dim=0).reshape(values.shape).movedim(-1, axis)
+            transformed.append(torch.cat(chunks, dim=0))
+        cost = torch.cat(transformed, dim=-1).reshape(values.shape).movedim(-1, axis)
     return cost
 
 
@@ -87,18 +92,15 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           at exactly 1 passes through. There is no straight-through estimator.
         - For dense fractional masks, a pixel with ``-h * log(v) < 1`` selects itself: every
           other pixel is at least one squared pixel away. Increase ``h`` to let stronger
-          neighbours compete over longer distances; ``h`` now weights source costs rather
-          than smoothing a soft minimum.
-        - Unlike the former convolution cascade, binary distances have neither cascade-ring
-          error nor soft-min bias. Fractional-mask values and gradients therefore change.
+          neighbours compete over longer distances.
 
     Args:
         image: Floating-point image or volume of shape ``(B, C, H, W)`` or ``(B, C, D, H, W)``.
-        kernel_size: Odd integer of at least 3, retained for call compatibility. It no longer
-            changes the result: the transform considers the entire spatial domain.
+        kernel_size: Odd integer of at least 3, retained for call compatibility. It does not
+            change the result: the transform considers the entire spatial domain.
         h: Positive finite weight of the fractional-source cost in squared pixel units.
-            It does not affect binary distances. The former convolution-dependent bounds do
-            not apply. Half-precision inputs are computed in float32 and cast back.
+            It does not affect binary distances. Half-precision inputs are computed in float32
+            and cast back.
             ``h``, source costs and gradients must remain representable in the working dtype.
 
     Returns:

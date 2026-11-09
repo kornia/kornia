@@ -334,8 +334,7 @@ Distance Transform
 Binary masks produce Euclidean distances to the nearest positive pixel or voxel.
 Fractional masks remain piecewise differentiable: each positive source contributes
 ``-h * log(v)`` to the squared distance before minimization and the square root.
-This replaces the convolution cascade, so fractional outputs and gradients change.
-``kernel_size`` remains accepted for compatibility but no longer changes the result;
+``kernel_size`` is accepted for compatibility and does not affect the result;
 ``h`` controls the fractional-source cost. See the function's gradient conventions
 before using it in a loss.
 

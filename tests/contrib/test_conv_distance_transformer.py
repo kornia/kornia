@@ -479,7 +479,7 @@ class TestConvDistanceTransform(BaseTester):
         self.assert_close(kornia.contrib.distance_transform(image), reference)
 
     def test_line_tiles_preserve_batch_and_channel_layout(self, device, dtype):
-        # More than 2**24 / 32 input elements exercises the line tile as well as query tiles.
+        # This batched rectangular image crosses both row and query tiles on CPU and CUDA.
         # Each channel has one source, in a different corner; probe across both tile boundaries.
         image = torch.zeros(3, 2, 257, 353, device=device, dtype=dtype)
         image[:, 0, 0, 0] = 1
@@ -492,3 +492,33 @@ class TestConvDistanceTransform(BaseTester):
             self.assert_close(actual[batch, 1, 0, 0], expected[0])
             self.assert_close(actual[batch, 0, 200, 300], expected[1])
             self.assert_close(actual[batch, 1, 200, 300], expected[2])
+
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_tile_boundaries_preserve_source_gradients(self, ndim, device, dtype):
+        # Independent corner-source references, spanning row and query tiles in both dimensions:
+        # for v in (0.25, 0.5, 0.75, 1.0):
+        #     d = math.sqrt(sum((n - 1)**2 for n in shape) - 0.35 * math.log(v))
+        #     grad = -0.35 / (2 * v * d)
+        if ndim == 2:
+            shape = (65, 257)
+            distances = [263.8796794052668, 263.87921972279895, 263.8789508254218, 263.8787600395303]
+            gradients = [-0.0026527241566219233, -0.0013263643888581662, -0.0008842438269648231, -0.0006631833497087229]
+        else:
+            shape = (9, 17, 257)
+            distances = [256.6251842727568, 256.62471159557725, 256.62443509674864, 256.62423891752707]
+            gradients = [-0.002727713579568237, -0.0013638593018725949, -0.0009092405142377245, -0.0006819309069874761]
+        image = torch.zeros((2, 2) + shape, device=device, dtype=dtype)
+        near, far = (0,) * ndim, tuple(n - 1 for n in shape)
+        for index, strength in enumerate((0.25, 0.5, 0.75, 1.0)):
+            image[(index // 2, index % 2) + (near if index % 2 == 0 else far)] = strength
+        image.requires_grad_()
+        output = kornia.contrib.distance_transform(image)
+        probes = torch.stack(
+            [output[(index // 2, index % 2) + (far if index % 2 == 0 else near)] for index in range(4)]
+        )
+        self.assert_close(probes, torch.tensor(distances, device=device, dtype=dtype))
+        probes.sum().backward()
+        expected_grad = torch.zeros_like(image)
+        for index, gradient in enumerate(gradients):
+            expected_grad[(index // 2, index % 2) + (near if index % 2 == 0 else far)] = gradient
+        self.assert_close(image.grad, expected_grad)
