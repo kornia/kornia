@@ -211,9 +211,10 @@ class TestDepthWarper(BaseTester):
         batch = len(k_srcs)
         k_src = torch.tensor([intrinsics(*k) for k in k_srcs], device=device, dtype=src_intrinsics_dtype or dtype)
         k_dst = torch.tensor([intrinsics(610.0, 590.0, 330.0, 225.0)], device=device, dtype=dtype)
+        # Built in float64 on the CPU, which MPS lacks, then moved to the device.
         rotation = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
-            torch.tensor([[0.05, -0.08, 0.03]], device=device, dtype=torch.float64)
-        ).to(dtype)
+            torch.tensor([[0.05, -0.08, 0.03]], dtype=torch.float64)
+        ).to(device=device, dtype=dtype)
         extrinsics = torch.eye(4, device=device, dtype=dtype)[None].clone()
         extrinsics[:, :3, :3] = rotation
         extrinsics[:, :3, 3] = torch.tensor([0.2, -0.07, 0.04], device=device, dtype=dtype)
