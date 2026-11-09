@@ -26,7 +26,7 @@ from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import AsyncCheckError
+from kornia.core.exceptions import AsyncCheckError, BaseError
 from kornia.enhance.adjust import _clip_unit_fresh
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
@@ -104,6 +104,10 @@ class TestInvert(BaseTester):
         op = kornia.enhance.invert
         op_mod = kornia.enhance.Invert()
         self.assert_close(op(img), op_mod(img))
+
+    def test_exception_names_the_argument_type(self):
+        with pytest.raises(AssertionError, match="Got: <class 'list'>"):
+            kornia.enhance.invert([1])
 
 
 class TestAdjustSaturation(BaseTester):
@@ -317,6 +321,27 @@ class TestAdjustHue(BaseTester):
         factor = torch.tensor(-torch.finfo(dtype).eps / 16, device=device, dtype=dtype)
         hue = kornia.enhance.adjust_hue_raw(hsv, factor)[0, 0, 0, 0]
         assert hue.item() == 0.0
+
+    @pytest.mark.parametrize(
+        "op",
+        [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw, lambda x, f: kornia.enhance.AdjustHue(f)(x)],
+        ids=["adjust_hue", "adjust_hue_raw", "AdjustHue"],
+    )
+    @pytest.mark.parametrize("factor", [-3, 0, 1, 5])
+    def test_int_factor_matches_float_6663(self, device, dtype, op, factor):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        out = op(img, factor)
+        assert out.dtype == dtype
+        assert out.device.type == img.device.type
+        self.assert_close(out, op(img, float(factor)))
+
+    @pytest.mark.parametrize("op", [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw])
+    @pytest.mark.parametrize("factor", [True, "1"])
+    def test_exception_factor_type_6663(self, device, dtype, op, factor):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"an int, a float or a torch\.Tensor") as errinfo:
+            op(img, factor)
+        assert "PI" not in str(errinfo.value)
 
 
 class TestAdjustGamma(BaseTester):
