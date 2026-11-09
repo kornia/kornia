@@ -201,9 +201,12 @@ class TestSo2(BaseTester):
         assert not result.unexpected_keys
         self.assert_close(target["pose"].matrix(), source["pose"].matrix())
 
-        moved = So2.exp(v.cpu().float()).to(device, dtype)
+        pose = So2.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
         assert moved.matrix().dtype == dtype
         assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])

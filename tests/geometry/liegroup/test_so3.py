@@ -312,9 +312,12 @@ class TestSo3(BaseTester):
         assert not result.unexpected_keys
         self.assert_close(target["pose"].matrix(), source["pose"].matrix())
 
-        moved = So3.exp(v.cpu().float()).to(device, dtype)
+        pose = So3.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
         assert moved.matrix().dtype == dtype
         assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
