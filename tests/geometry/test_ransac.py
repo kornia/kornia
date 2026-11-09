@@ -253,9 +253,11 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     @pytest.mark.parametrize(
         "threshold, ratio, rejected",
         [
-            # Five thresholds of 0.01 are a floor of 0.05 on s2 / s1, r / (1 + r^2) being the compared value.
+            # Five thresholds of 0.01 are a floor of 0.05. These rotations have F[2, 2] = -0.384, so the compared value
+            # |cof F| / (|F|^2 - F[2, 2]^2) is r / (0.852544 + r^2): 0.0468 (4.7 thresholds) for r = 0.04, 0.0538 for
+            # r = 0.046 (5.4 thresholds), 0.0931 for r = 0.08 and 0.1272 for r = 0.11.
             (1e-2, 0.04, True),
-            (1e-2, 0.06, False),
+            (1e-2, 0.046, False),
             # A smaller threshold lowers the floor, as what a model can tell apart shrinks with it.
             (1e-3, 0.04, False),
             (1e-3, 0.004, True),
@@ -287,14 +289,16 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     def test_pixel_models_are_tested_in_the_normalized_frame(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("RANSAC scores models in at least float32")
-        # Square corners of mean radius 100 sqrt(2): Hartley's scale is 0.01, and 1 px is a threshold of 0.01, whose
-        # five thresholds are a floor of 0.05 on s2 / s1 in the frame of these two literal normalizations.
+        # Square corners of mean radius 100 sqrt(2) in image 1 and three times that in image 2: Hartley's shared scale
+        # is 0.005 (per image it would be 0.01 and 0.0033), and 1 px is a threshold of 0.005, whose five thresholds are
+        # a floor of 0.025 in the frame of these two literal normalizations. The compared values are 0.0235 and 0.0352
+        # for r = 0.02 and 0.03 (see test_closed_form_compares_the_singular_values).
         corners = [[220.0, 140.0], [420.0, 140.0], [220.0, 340.0], [420.0, 340.0]]
         kp1 = torch.tensor(corners, device=device, dtype=dtype)
-        kp2 = kp1 + torch.tensor([100.0, 50.0], device=device, dtype=dtype)
-        t1 = torch.tensor([[0.01, 0.0, -3.2], [0.0, 0.01, -2.4], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
-        t2 = torch.tensor([[0.01, 0.0, -4.2], [0.0, 0.01, -2.9], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
-        pixel = t2.T @ torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.04, 0.06)]) @ t1
+        kp2 = 3.0 * kp1 + torch.tensor([100.0, 50.0], device=device, dtype=dtype)
+        t1 = torch.tensor([[0.005, 0.0, -1.6], [0.0, 0.005, -1.2], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        t2 = torch.tensor([[0.005, 0.0, -5.3], [0.0, 0.005, -3.85], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        pixel = t2.T @ torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.02, 0.03)]) @ t1
         near = ransac_module._pixel_fundamental_near_rank_one(ransac_module._rank_test_frame(kp1, kp2), pixel, 1.0)
         assert near.tolist() == [True, False]
 
