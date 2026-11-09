@@ -593,7 +593,7 @@ def main():
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]]).repeat(2, 1, 1)  # Bx5x2
         dst = src + torch.distributions.Uniform(-0.2, 0.2).rsample((2, 5, 2))
         kernel, affine = K.geometry.transform.get_tps_transform(dst, src)
-        return src, kernel, affine
+        return dst, kernel, affine
 
     transforms: dict = {
         "warp_affine": (

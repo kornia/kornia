@@ -382,7 +382,7 @@ class TestDepthTo3d(BaseTester):
             torch.set_default_dtype(previous_dtype)
 
     def test_all_half_inputs_keep_the_half_grid_6148(self, device, dtype):
-        # An all-bfloat16 call keeps its bfloat16 grid (the wider half-precision policy belongs to #5814), so
+        # An all-bfloat16 call keeps its bfloat16 grid, whose points are this function's output, so
         # only the mixed case changes. With fx = 1 and cx = 1, column 257 unprojects to x = 256 in exact
         # arithmetic, which a bfloat16 grid stores as 255 while a float32 computation cast back gives 256:
         # the pinned literal proves the grid itself stayed bfloat16, not a float32 pipeline narrowing late.
@@ -445,7 +445,7 @@ class TestDepthTo3d(BaseTester):
     def test_float32_intrinsics_results_are_bitwise_unchanged_6148(self, depth_dtype, device, dtype):
         # Control: for every depth dtype whose old grid was already built in the dtype the promotion keeps,
         # every output bit is preserved. On the half profiles the fixture dtype matches the depth dtype, so
-        # the promoted grid dtype is the same half and the comparison covers the all-half policy of #5814.
+        # the promoted grid dtype is the same half and the comparison covers the all-half path.
         camera_matrix = _k_asymmetric(device, dtype)
         depth_values = torch.rand(1, 1, 2, 6, device=device).mul(5).add(1)
         depth = depth_values.to(depth_dtype)

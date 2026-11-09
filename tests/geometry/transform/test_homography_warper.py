@@ -310,7 +310,11 @@ class TestHomographyWarper(BaseTester):
             # same transform precomputing the grid
             warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
-            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=1e-4, rtol=1e-4)
+            # The two float32 grids differ by rounding on CUDA, up to 3e-5 in the samples, which can round a half
+            # result to the neighbouring half value: half of eps is one step just below 1.
+            half = dtype in (torch.float16, torch.bfloat16)
+            cached_atol = torch.finfo(dtype).eps / 2 if half else 1e-4
+            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=cached_atol, rtol=1e-4)
 
             # projected should be equal as initial
             error = compute_patch_abs_error(patch_src, patch_dst_to_src, height, width)
@@ -726,16 +730,17 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
         # The default normalized path is grid_sample over warp_grid of a normalized meshgrid, bit for bit; the
-        # pixel-mode normalization must not reach it (#6170).
+        # pixel-mode normalization must not reach it (#6170). A half warp does all of it in float32.
+        wide = torch.promote_types(dtype, torch.float32)
         image = (torch.arange(2 * 5 * 6, device=device, dtype=dtype).view(1, 2, 5, 6) % 7) / 7
         src_homo_dst = torch.tensor(
             [[[0.95, 0.05, 0.1], [-0.03, 1.05, -0.08], [0.02, -0.01, 1.0]]], device=device, dtype=dtype
         )
         grid = kornia.geometry.create_meshgrid(
-            4, 3, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
+            4, 3, normalized_coordinates=True, device=device, dtype=wide, align_corners=align_corners
         )
-        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst)
-        expected = _torch_grid_sample(image, warped_grid, align_corners=align_corners)
+        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst.to(wide))
+        expected = _torch_grid_sample(image.to(wide), warped_grid, align_corners=align_corners).to(dtype)
 
         actual = kornia.geometry.transform.homography_warp(image, src_homo_dst, (4, 3), align_corners=align_corners)
         warper = kornia.geometry.transform.HomographyWarper(4, 3, align_corners=align_corners)
@@ -744,8 +749,10 @@ class TestHomographyWarper(BaseTester):
         precomputed = warper(image)
         # the cached path warps the module's own base grid, built once in the default dtype
         expected_precomputed = _torch_grid_sample(
-            image, kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst), align_corners=align_corners
-        )
+            image.to(wide),
+            kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst.to(wide)),
+            align_corners=align_corners,
+        ).to(dtype)
 
         self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(direct, expected, rtol=0, atol=0)
@@ -1329,3 +1336,45 @@ class TestHomographyShapeChecks(BaseTester):
                     (2, 4, 5),
                     normalized_coordinates=normalized_coordinates,
                 )
+
+
+class TestHomographyWarpOnePixelSourceAxis6433(BaseTester):
+    """A pixel homography places a one-pixel source axis under ``align_corners=True`` too (#6433)."""
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_pixel_homography(self, padding_mode, shift, weight, device, dtype):
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        # Destination to source: a destination row samples the source row below it.
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)[None]
+        dst_homo_src[0, 1, 2] = shift
+        expected = row if padding_mode != "zeros" else weight * row
+        out = kornia.geometry.transform.homography_warp(
+            row, dst_homo_src, (1, 4), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+        warper = kornia.geometry.transform.HomographyWarper(
+            1, 4, padding_mode=padding_mode, normalized_coordinates=False, align_corners=True
+        )
+        self.assert_close(warper(row, dst_homo_src), expected)
+        warper.precompute_warp_grid(dst_homo_src)
+        self.assert_close(warper(row), expected)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_voxel_homography(self, padding_mode, shift, weight, device, dtype):
+        volume = (torch.arange(4, device=device, dtype=dtype) + 1).reshape(1, 1, 1, 2, 2)
+        src_homo_dst = torch.eye(4, device=device, dtype=dtype)[None]
+        src_homo_dst[0, 2, 3] = shift
+        expected = volume if padding_mode != "zeros" else weight * volume
+        out = kornia.geometry.transform.homography_warp3d(
+            volume, src_homo_dst, (1, 2, 2), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+
+    def test_normalized_homography_still_spans_the_axis(self, device, dtype):
+        # In normalized coordinates the whole range is the source, so the only row fills every output row.
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        out = kornia.geometry.transform.homography_warp(row, identity, (3, 4), align_corners=True)
+        self.assert_close(out, row.expand(1, 1, 3, 4))

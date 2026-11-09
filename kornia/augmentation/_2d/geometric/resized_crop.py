@@ -32,7 +32,6 @@ from kornia.geometry.transform._crop import (
     _corner_aligned_resize_transform,
     _half_pixel_resize_transform,
 )
-from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat
 
 
 def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
@@ -263,9 +262,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
-        return _crop_inverse_by_transform_mat(
+        return crop_by_transform_mat(
             input,
-            transform,
+            transform[:, :2, :],
             size,
             flags["resample"].name.lower(),
             flags["padding_mode"],

@@ -207,8 +207,10 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
         Accepts a rank-3 (C, H, W) or rank-4 (B, C, H, W) tensor and returns
         (B, 3*C, H, W), with B = 1 for rank-3 input; input channel c becomes output channels
         3c to 3c + 2. Integer inputs use [0, 255]. Floating inputs use [0, 1] or [0, 255]
-        independently for each sample and channel, based on that channel's maximum. The lowest value of the range
-        takes the first color and the highest the last; values beyond them take the end colors.
+        independently for each sample and channel, based on that channel's maximum.
+        A value x in [0, 1] selects entry floor(x * N) of the N palette colors, and x = 1 selects the last,
+        as in matplotlib, so every color covers an equal share of the range. Values below or above the range
+        select the first or the last color.
 
     Args:
         input_tensor: image with shape ``(C, H, W)`` or ``(B, C, H, W)``.
@@ -229,9 +231,9 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
                   [1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.0000, 0.0159, 0.0159],
-                  [0.0635, 0.1111, 0.1429],
-                  [0.5079, 0.6190, 0.7302]],
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0476, 0.0952, 0.1270],
+                  [0.5079, 0.6190, 0.7460]],
         <BLANKLINE>
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],
@@ -281,9 +283,10 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
 
     colors = colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
-    keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
-    indices = torch.bucketize(input_tensor, keys)
-    indices = torch.where(input_tensor == 1.0, num_colors - 1, indices)
+    # matplotlib's lookup (#6622): equal bins, floor(x * N), with x = 1 and anything above in the last bin. Bucketing
+    # on x * N instead of casting it keeps a NaN on the last entry on every device, as before.
+    keys = torch.arange(1, num_colors, device=input_tensor.device, dtype=input_tensor.dtype)
+    indices = torch.bucketize(input_tensor * num_colors, keys, right=True)
     indices = indices.unsqueeze(-1).expand(-1, -1, -1, 3)
 
     output = torch.gather(colors.expand(B, C, -1, -1), 2, indices)
@@ -322,9 +325,9 @@ class ApplyColorMap(nn.Module):
                   [1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.0000, 0.0159, 0.0159],
-                  [0.0635, 0.1111, 0.1429],
-                  [0.5079, 0.6190, 0.7302]],
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0476, 0.0952, 0.1270],
+                  [0.5079, 0.6190, 0.7460]],
         <BLANKLINE>
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],

@@ -2115,7 +2115,9 @@ def normalize_homography(
     ``(B, 3, 3)`` ``H`` and ``H_norm = normalize_homography(H, img.shape[-2:], dsize, align_corners=a)``,
     ``homography_warp(img, torch.linalg.inv(H_norm), dsize, align_corners=a)`` samples what
     ``warp_perspective(img, H, dsize, align_corners=a)`` samples, since
-    :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself. For the reverse, use
+    :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself, except along a one-pixel
+    source axis with ``a=True``: there ``grid_sample`` lands every normalized position on that pixel, and only
+    ``warp_perspective`` pads (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For the reverse, use
     :func:`denormalize_homography`; for ``(B, 4, 4)`` voxel homographies, :func:`normalize_homography3d`.
 
     Convention:
