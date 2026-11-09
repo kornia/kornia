@@ -1090,6 +1090,34 @@ class TestScaleSpaceDetector(BaseTester):
         assert kornia.feature.laf_is_filled(detect(float(mr), torch.float32)).tolist() == [[True]]
         assert kornia.feature.laf_is_filled(detect(float(mr), torch.float64)).tolist() == [[False]]
 
+    def test_border_check_preserves_a_wider_response_dtype(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 responses")
+
+        class Float64Peak(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x, dtype=torch.float64)
+                if x.shape[-1] == 96:
+                    out[:, :, 2, 32, 85] = 0.0
+                return out
+
+        image = torch.zeros(1, 1, 64, 96, device=device, dtype=torch.float32)
+        detector = ScaleSpaceDetector(
+            1,
+            resp_module=Float64Peak(),
+            scale_space_response=True,
+            mr_size=1.0,
+            subpix_module=ConvQuadInterp3d(),
+        ).to(device)
+        scale = detector(image)[0][0, 0, 0, 0].item()
+        # The final float64 frame reaches 90 + 5e-8, beyond the allowed x <= 90.
+        # Narrowing its scale to float32 rounds that extent back onto the boundary.
+        for extent, kept in ((10.0 - 1e-7, True), (10.0 + 1e-7, False)):
+            detector.mr_size = extent / scale
+            frames, _ = detector(image)
+            assert frames.dtype == torch.float64
+            assert kornia.feature.laf_is_filled(frames).tolist() == [[kept]]
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scale_space_detector_init_preserves_global_config_4095(self):
         torch._dynamo.reset()

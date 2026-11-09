@@ -596,9 +596,10 @@ class ScaleSpaceDetector(nn.Module):
                 candidate_coords,
             )
         candidate_scale = scale_sigmas[batch_idx, 0] * torch.pow(2.0, candidate_coords[:, 0] / float(num_levels))
-        # Compare in the LAFs' dtype (`rotmat`'s, from the image), which can be wider than a custom response's: the
-        # centres promote with it, as in the LAFs, so a frame a float32 ulp past the border is rejected as before.
-        half_s = (self.mr_size * candidate_scale).to(rotmat.dtype) * 0.5
+        # Match the promotion of scale * rotmat in the final LAF, including custom responses that are either
+        # narrower or wider than the image. Narrowing either operand can round an overhanging frame onto the border.
+        frame_dtype = torch.promote_types(candidate_scale.dtype, rotmat.dtype)
+        half_s = (self.mr_size * candidate_scale).to(frame_dtype) * 0.5
         cx, cy = candidate_coords[:, 1], candidate_coords[:, 2]
         # Equivalent to laf_is_inside_image(scale_laf(laf, 0.5), octave[:, 0], 5)
         # for the isotropic frames assembled below, in octave pixel coordinates.
