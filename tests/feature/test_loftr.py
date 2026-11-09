@@ -1242,7 +1242,10 @@ class TestConventionsLoFTR(BaseTester):
 
     @pytest.mark.parametrize("masked_sides", [(), (0,), (1,), (0, 1)])
     @pytest.mark.parametrize("padded", [False, True])
-    def test_convention_border_follows_each_samples_valid_region_5888(self, device, dtype, masked_sides, padded):
+    @pytest.mark.parametrize("mask_value", [1, 255])
+    def test_convention_border_follows_each_samples_valid_region_5888(
+        self, device, dtype, masked_sides, padded, mask_value
+    ):
         # The designed pairs below use real coarse/fine matching. With two cells removed at each border,
         # sample 0's (3, 7) -> (5, 3) is too close to the right/bottom padding on side 0/1 respectively;
         # sample 1's (2, 3) -> (4, 7) is too close to its bottom/right padding. Only (5, 2) -> (2, 6) remains.
@@ -1259,7 +1262,7 @@ class TestConventionsLoFTR(BaseTester):
                 else:
                     mask[0, 56:] = False  # 7 valid coarse rows
                     mask[1, :, 72:] = False  # 9 valid coarse columns
-            sample[f"mask{side}"] = mask
+            sample[f"mask{side}"] = mask if mask_value == 1 else mask.to(dtype) * mask_value
         with torch.no_grad():
             out = self._hooked_loftr(device, dtype, swap=False)(sample)
         if padded and masked_sides:
@@ -1272,6 +1275,29 @@ class TestConventionsLoFTR(BaseTester):
         self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=coord))
         self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
         assert out["batch_indexes"].tolist() == batches
+
+    @pytest.mark.parametrize("side", [0, 1])
+    def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, monkeypatch):
+        # Integer counting gives 257 columns; a bfloat16 sum rounds it to 256 and wrongly rejects column 254.
+        # Cached features avoid a wide backbone pass, but the real coarse/fine matcher still chooses the match.
+        monkeypatch.setattr(self, "_PAIRS", {0: [((3, 254), (3, 3), 16.0, (2, 2))]})
+        sample = {}
+        for current in (0, 1):
+            width = 257 if current == side else 8
+            sample[f"features{current}"] = {
+                "coarse": torch.zeros(1, 256, 8, width, device=device, dtype=dtype),
+                "fine": torch.zeros(1, 128, 32, 4 * width, device=device, dtype=dtype),
+            }
+        sample[f"mask{side}"] = torch.ones(1, 64, 2056, device=device, dtype=torch.bfloat16)
+        model = self._hooked_loftr(device, dtype, swap=bool(side))
+        with torch.no_grad():
+            actual = model(sample)
+            unmasked = model({key: value for key, value in sample.items() if not key.startswith("mask")})
+        coord_dtype = torch.promote_types(dtype, torch.float32)
+        for current, expected in ((side, [[2032.0, 24.0]]), (1 - side, [[24.0, 24.0]])):
+            self.assert_close(actual[f"keypoints{current}"], torch.tensor(expected, device=device, dtype=coord_dtype))
+            self.assert_close(actual[f"keypoints{current}"], unmasked[f"keypoints{current}"])
+        assert actual["batch_indexes"].tolist() == [0]
 
     def test_convention_loftr_keypoints_are_eight_times_the_coarse_cell_plus_the_fine_offset(self, device, dtype):
         image0 = torch.rand(2, 1, 59, 85, device=device, dtype=dtype)

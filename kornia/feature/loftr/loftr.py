@@ -286,11 +286,14 @@ class LoFTR(nn.Module):
         if mask_c0 is not None or mask_c1 is not None:
             # Border removal reads spatial masks from _data, separately from the flattened attention masks.
             # Supply both because coarse matching also uses the pair to count valid training candidates.
+            # Boolean masks count cells exactly, regardless of mask value or floating-point reduction precision.
             for side, mask, features in ((0, mask_c0, features0), (1, mask_c1, features1)):
                 coarse = features["coarse"]
                 shape = (coarse.size(0), coarse.size(2), coarse.size(3))
                 _data[f"mask{side}"] = (
-                    torch.ones(shape, device=coarse.device, dtype=torch.bool) if mask is None else mask.reshape(shape)
+                    torch.ones(shape, device=coarse.device, dtype=torch.bool)
+                    if mask is None
+                    else mask.reshape(shape).bool()
                 )
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
