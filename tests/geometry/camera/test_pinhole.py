@@ -30,7 +30,7 @@ from kornia.geometry.camera.utils import (
     create_pinhole_camera,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 
 
 class TestCameraFactories(BaseTester):
@@ -1289,6 +1289,88 @@ class TestPinholeCamera(BaseTester):
             device=device,
             dtype=dtype,
         )
+
+
+class TestPinholeCameraAutocast(BaseTester):
+    """A caller's autocast region does not reach the products of ``project`` and ``unproject`` (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _camera(device, intrinsics_dtype=torch.float32, extrinsics_dtype=torch.float32):
+        theta = torch.tensor(0.4363)
+        intrinsics = torch.eye(4)[None]
+        intrinsics[:, :3, :3] = torch.tensor([[300.0, 0.0, 128.3], [0.0, 310.0, 127.7], [0.0, 0.0, 1.0]])
+        extrinsics = torch.eye(4)[None]
+        extrinsics[:, :2, :2] = torch.tensor([[theta.cos(), -theta.sin()], [theta.sin(), theta.cos()]])
+        extrinsics[:, :3, 3] = torch.tensor([0.3, -0.2, 1.1])
+        size = torch.tensor([256.0], device=device)
+        return kornia.geometry.camera.PinholeCamera(
+            intrinsics.to(device=device, dtype=intrinsics_dtype),
+            extrinsics.to(device=device, dtype=extrinsics_dtype),
+            size,
+            size,
+        )
+
+    @staticmethod
+    def _points(device):
+        points = torch.rand(1, 50, 3, generator=torch.Generator().manual_seed(0))
+        return (points * torch.tensor([2.0, 2.0, 3.0]) + torch.tensor([-1.0, -1.0, 2.0])).to(device)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_project_6601(self, autocast_dtype, device):
+        # Up to 1.26 px off in bfloat16 at 256 px, and still float32: transform_points' product and P = K @ E.
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera, points = self._camera(device), self._points(device)
+        expected = camera.project(points)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera.project(points)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_projection_matrix_6601(self, autocast_dtype, device):
+        # The guard of transform_points alone leaves this: 0.02 px in bfloat16.
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = self._camera(device)
+        expected = camera._projection_matrix()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera._projection_matrix()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_unproject_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = self._camera(device)
+        pixels = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)).to(device) * 256
+        depth = torch.full((1, 50, 1), 2.5, device=device)
+        expected = camera.unproject(pixels, depth)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera.unproject(pixels, depth)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "intrinsics_half,extrinsics_half", [(True, False), (False, True)], ids=["half-intrinsics", "half-extrinsics"]
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6601(
+        self, intrinsics_half, extrinsics_half, autocast_dtype, device
+    ):
+        # Autocast reconciled a half matrix with a float32 one, so leaving the region must too; the mix raises outside.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        camera = self._camera(
+            device, half if intrinsics_half else torch.float32, half if extrinsics_half else torch.float32
+        )
+        size = torch.tensor([256.0], device=device)
+        reference = kornia.geometry.camera.PinholeCamera(
+            camera.intrinsics.float(), camera.extrinsics.float(), size, size
+        )
+        points = self._points(device)
+        with torch.autocast(device.type, dtype=half):
+            actual = camera.project(points)
+        self.assert_close(actual, reference.project(points), rtol=0, atol=0)
 
 
 class TestLegacyPinholeVectorApiRemoved:

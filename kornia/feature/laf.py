@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled, _convolution_outside_autocast
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
@@ -718,7 +719,8 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
         PS: patch size to be extracted.
 
     Returns:
-        grid ``(B*N, PS, PS, 2)``
+        grid ``(B*N, PS, PS, 2)``. In a caller's autocast region it keeps the LAF's dtype, and a float32 LAF is
+        computed in float32, outside TorchScript.
 
     """
     KORNIA_CHECK_LAF(LAF)
@@ -729,12 +731,25 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     # and extraction at arbitrary other
     LAF_renorm = denormalize_laf(LAF, img)
 
-    grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
+    grid = _affine_grid_outside_autocast(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS])
     # The grid is in pixels, centres at integers (the LAF frame); `grid_sample(align_corners=False)` puts pixel x at
     # (2x + 1) / W - 1. A singleton axis maps every sample to its only pixel's centre.
     grid[..., :, 0] = (2.0 * grid[..., :, 0].clone() + 1.0) / float(w) - 1.0
     grid[..., :, 1] = (2.0 * grid[..., :, 1].clone() + 1.0) / float(h) - 1.0
     return grid
+
+
+def _affine_grid_outside_autocast(theta: torch.Tensor, size: List[int]) -> torch.Tensor:
+    r"""Return ``F.affine_grid(theta, size, align_corners=False)`` outside a caller's autocast region.
+
+    Autocast would run the grid's matrix product in half precision and the patch would be sampled there, 0.54 off on a
+    ``[0, 1]`` image in bfloat16 at 256 px, and would still come back in the image dtype (#6601). TorchScript has no
+    context managers; a scripted call keeps the caller's precision.
+    """
+    if torch.jit.is_scripting():
+        return F.affine_grid(theta, size, align_corners=False)
+    with _autocast_disabled(theta.device.type):
+        return F.affine_grid(theta, size, align_corners=False)
 
 
 def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Tensor:
@@ -899,13 +914,16 @@ def _extract_patches_from_pyramid_levelwise(
     base_grid_all = torch.empty(0, dtype=grid_dtype, device=nlaf.device)
     if chunk == N:
         theta = torch.cat([laf_a, torch.zeros(B, N, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
-        base_grid_all = F.affine_grid(theta.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False).view(
+        base_grid_all = _affine_grid_outside_autocast(theta.view(B * N, 2, 3), [B * N, ch, PS, PS]).view(
             B, N, PS, PS, 2
         )
 
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
-            cur_img = pyrdown(cur_img)
+            # A caller's autocast region would run the level's Gaussian in half precision (#6601). Compiled on MPS the
+            # guard is skipped: a convolution in it raises there (see _convolution_outside_autocast).
+            with _convolution_outside_autocast(cur_img.device.type):
+                cur_img = pyrdown(cur_img)
         for st in range(0, N, chunk):
             en = min(st + chunk, N)
             nc = en - st
@@ -915,7 +933,7 @@ def _extract_patches_from_pyramid_levelwise(
                 theta = torch.cat(
                     [laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1
                 )
-                base_grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(
+                base_grid = _affine_grid_outside_autocast(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS]).view(
                     B, nc, PS, PS, 2
                 )
             translation = t[:, st:en].view(B, nc, 1, 1, 2)
@@ -1027,6 +1045,9 @@ def extract_patches_from_pyramid(
           large LAF is sampled from it. The level uses the geometric-mean scale, so a highly anisotropic LAF can
           still alias along its long axis. A level samples the same image positions as level 0, in its own pixels.
         - A cell outside the image reads the nearest border pixel of the level it samples.
+        - A caller's autocast region does not change the sampling grid or the pyramid, outside TorchScript. Under
+          ``torch.compile`` on MPS it still changes the pyramid: a convolution under the guard raises there, so
+          :func:`~kornia.geometry.transform.pyrdown` runs in the region's dtype.
         - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
           in at least ``float32``. A LAF with a non-finite entry gives a zero patch.
 
@@ -1118,7 +1139,10 @@ def extract_patches_from_pyramid(
     xoff = 0
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
-            cur_img = pyrdown(cur_img)
+            # A caller's autocast region would run the level's Gaussian in half precision (#6601). Compiled on MPS the
+            # guard is skipped: a convolution in it raises there (see _convolution_outside_autocast).
+            with _convolution_outside_autocast(cur_img.device.type):
+                cur_img = pyrdown(cur_img)
         atlas[:, :, : h_l + 2, xoff : xoff + w_l + 2] = F.pad(cur_img, (1, 1, 1, 1), mode="replicate")
         xoff += w_l + 2
 
@@ -1163,7 +1187,7 @@ def extract_patches_from_pyramid(
         en = min(st + chunk, N)
         nc = en - st
         theta = torch.cat([laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
-        grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(B, nc, PS, PS, 2)
+        grid = _affine_grid_outside_autocast(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS]).view(B, nc, PS, PS, 2)
         lo, hi, level_scale, level_offset = level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 4, 2).unbind(-2)
         grid = grid * k
         grid = grid + t[:, st:en].view(B, nc, 1, 1, 2)

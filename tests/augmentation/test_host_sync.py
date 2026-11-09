@@ -68,6 +68,22 @@ _RANGES_ON_CUDA = {
     "RandomRotation": lambda r: K.RandomRotation(r(-10.0, 10.0), p=1.0),
     "RandomGamma": lambda r: K.RandomGamma(r(0.8, 1.2), r(0.9, 1.1), p=1.0),
 }
+# Learnable ranges that move with the module, next to numbers that do not: the samplers of all of them are built again
+# before each draw.
+_LEARNABLE_FOLLOWED = {
+    "RandomBrightness-half-width": lambda r: K.RandomBrightness(r(0.2), p=1.0),
+    "RandomRGBShift-half-width": lambda r: K.RandomRGBShift(r(0.1), (-0.1, 0.1), 0.1, p=1.0),
+    "RandomRotation-half-width": lambda r: K.RandomRotation(r(10.0), p=1.0),
+    "RandomAffine-half-width": lambda r: K.RandomAffine(r(10.0), (0.1, 0.1), (0.9, 1.1), 5.0, p=1.0),
+    "ColorJitter-half-width": lambda r: K.ColorJitter(r(0.2), 0.1, (0.9, 1.1), 0.1, p=1.0),
+    "RandomPerspective": lambda r: K.RandomPerspective(r(0.3), p=1.0),
+    "RandomMixUpV2": lambda r: K.RandomMixUpV2(r(0.0, 1.0), p=1.0),
+    "RandomTranslate": lambda r: K.RandomTranslate(r(-0.1, 0.1), (-0.1, 0.1), p=1.0),
+    "RandomMotionBlur": lambda r: K.RandomMotionBlur(3, r(30.0), (-0.5, 0.5), p=1.0),
+    "RandomRotation3D": lambda r: K.RandomRotation3D(r(10.0), p=1.0),
+    "RandomAffine3D": lambda r: K.RandomAffine3D(r(10.0), (0.1, 0.1, 0.1), (0.9, 1.1), 5.0, p=1.0),
+    "RandomPerspective3D": lambda r: K.RandomPerspective3D(r(0.5), p=1.0),
+}
 # Auto operations and policies moved to CUDA as a whole (#6297). The range they read from their generator is on CUDA,
 # where reading its values on the host would wait for the GPU.
 _MOVED_AUTO = {
@@ -168,6 +184,32 @@ class TestAugmentationHostSync(BaseTester):
         assert not set(sites) - INHERENT_SITES.keys(), dict(sites)
         outputs[0].sum().backward()
         assert all(p.grad is not None for p in op.parameters())
+
+    @pytest.mark.parametrize("name", sorted(_LEARNABLE_FOLLOWED))
+    def test_learnable_range_rebuilt_before_each_draw_adds_no_sync(self, name, device, dtype) -> None:
+        # The samplers are built again before each draw (#6572); neither the range nor the numbers next to it are read.
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+
+        def learnable(*values):
+            value = values if len(values) > 1 else values[0]
+            return torch.nn.Parameter(torch.tensor(value, device=device, dtype=dtype))
+
+        op = _LEARNABLE_FOLLOWED[name](learnable).to(device=device, dtype=dtype)
+        volumetric = name.endswith("3D")
+        x = (
+            torch.rand(4, 3, 4, 16, 16, device=device, dtype=dtype)
+            if volumetric
+            else torch.rand(4, 3, 16, 16, device=device, dtype=dtype)
+        )
+        op(x)
+        torch.cuda.synchronize()
+        sites = sync_sites(lambda: op(x))
+        # Compared with the same call without the rebuild, so that no site below ``make_samplers`` can hide from this.
+        op._param_generator._forward_pre_hooks.clear()
+        torch.cuda.synchronize()
+        without = sync_sites(lambda: op(x))
+        assert not sites - without, (dict(sites), dict(without))
 
     @pytest.mark.parametrize("name", sorted(_MOVED_AUTO))
     def test_moved_auto_operation_adds_no_sync_of_its_own(self, name, device, dtype) -> None:

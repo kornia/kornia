@@ -65,8 +65,11 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.augmentation.auto.operations.ops",
     "kornia.augmentation.container.base",
     "kornia.augmentation.container.params",
+    "kornia.color",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
+    "kornia.filters",
+    "kornia.filters.blur_pool",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",
@@ -103,6 +106,7 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.augmentation",
+    "kornia.color",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
     "kornia.feature.aliked",
@@ -129,6 +133,7 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.sosnet",
     "kornia.feature.tfeat",
     "kornia.feature.xfeat",
+    "kornia.filters",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",

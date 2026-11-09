@@ -90,7 +90,7 @@ from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
 from testing.augmentation.utils import oversized_random_crop_params
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -5413,6 +5413,21 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_output_6601(self, autocast_dtype, device):
+        # 0.017 off on a [0, 1] image in bfloat16, through elastic_transform2d.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image = torch.rand(1, 1, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+
+        def run():
+            torch.manual_seed(5)
+            return RandomElasticTransform(p=1.0)(image)
+
+        expected = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = run()
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_zero_padding_with_replayed_noise(self, device, dtype):
         image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
         noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
