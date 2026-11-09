@@ -1684,6 +1684,18 @@ class TestIntensityInputClamping(BaseTester):
         (grad,) = torch.autograd.grad(out.sum(), image)
         self.assert_close(grad.sum(1), torch.full_like(grad[:, 0], 3.0))
 
+    # At (0, 0, 0.25) the hue is 4 pi / 3, so min(k - 3, 9 - k) of hls_to_rgb lands on its bound 1 for red and green. In
+    # float64, rounding leaves green on the bound and red just outside it: the gradient per input channel of a neutral
+    # RandomSnow is (1, 1, 1), the identity, on every torch version (#6600). On torch 2.15 a plain clamp gave (2, 0, 1).
+    # Other dtypes round to another side of the kink, so this is a float64 pin.
+    def test_snow_keeps_the_gradient_of_a_coloured_pixel_on_the_hls_clamp_6600(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("the hue of this pixel rounds onto another side of the kink in other dtypes")
+        image = torch.tensor([0.0, 0.0, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
+        out = K.RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(1.0, 1.0), p=1.0)(image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image), rtol=1e-6, atol=1e-6)
+
     # ColorJitter's brightness multiplies: black stays on its bound and keeps the factor, white leaves the range.
     def test_color_jitter_keeps_the_factor_at_a_black_pixel_6296(self, device, dtype):
         row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)

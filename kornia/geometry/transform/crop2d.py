@@ -24,11 +24,9 @@ coordinates, so box ``(1, 1)``..``(2, 2)`` is a 2x2 pixel block, and the corners
 ``(h, w)``. Except for the integer slicing of :func:`crop_by_indices` and of the default mode of
 :class:`CenterCrop2D`, the crops resample by a source→destination pixel matrix through
 :func:`~kornia.geometry.transform.warp_affine` or :func:`~kornia.geometry.transform.warp_perspective`, into an output
-window that starts at destination pixel ``(0, 0)``. For these the matrix is in pixels, so along a source axis longer
-than one pixel ``align_corners`` changes only how ``'reflection'`` padding mirrors (about the outer pixel centres
-with ``True``, about the outer pixel edges with ``False``) and, in ``'nearest'`` mode, which pixel a sample exactly
-halfway between two pixels takes. Along a one-pixel source axis, ``align_corners=True`` repeats that pixel where the
-window should be padded (`#6433 <https://github.com/kornia/kornia/issues/6433>`_).
+window that starts at destination pixel ``(0, 0)``. For these the matrix is in pixels, so ``align_corners`` changes
+only how ``'reflection'`` padding mirrors (about the outer pixel centres with ``True``, about the outer pixel edges
+with ``False``) and, in ``'nearest'`` mode, which pixel a sample exactly halfway between two pixels takes.
 
 Which function to use:
 
@@ -224,8 +222,7 @@ def center_crop(
     ``patches = center_crop(input_tensor, size)`` takes images ``(B, C, H, W)`` and returns their central
     ``(B, C, h, w)`` windows for ``size = (h, w)``: a sub-image of the input, with the extra pixel of an odd margin at
     the bottom/right. A ``size`` larger than the input pads by ``padding_mode`` (zeros by default), again with the extra
-    pixel at the bottom/right, except along a one-pixel input axis, which the default ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). The crop is an integer translation sampled by
+    pixel at the bottom/right. The crop is an integer translation sampled by
     :func:`~kornia.geometry.transform.warp_perspective`, so it is exact up to float rounding. For the module form, which
     slices by default, use :class:`CenterCrop2D`; for volumes, :func:`center_crop3d`.
 
@@ -556,34 +553,6 @@ def crop_by_transform_mat(
     return patches
 
 
-def _crop_inverse_by_transform_mat(
-    input_tensor: torch.Tensor,
-    transform: torch.Tensor,
-    out_size: Tuple[int, int],
-    mode: str = "bilinear",
-    padding_mode: str = "zeros",
-    align_corners: bool = True,
-) -> torch.Tensor:
-    """:func:`crop_by_transform_mat` for warping a crop back onto its canvas, also from a one-pixel axis.
-
-    ``grid_sample`` cannot place a source axis of length 1: with ``align_corners=True`` every sample lands on its
-    only pixel, so the whole canvas axis gets its value, and with ``False`` it blends it into the next pixel. One
-    pixel of padding on each side of such an axis, in the warp's own padding (a reflected one-pixel axis repeats
-    its pixel), gives the sampler a neighbour to interpolate towards, and ``transform`` is shifted to match.
-    ``transform`` is the ``(B, 3, 3)`` crop-to-canvas pixel matrix.
-    """
-    pad_h = int(input_tensor.shape[-2] == 1)
-    pad_w = int(input_tensor.shape[-1] == 1)
-    if pad_h or pad_w:
-        pad_mode = "constant" if padding_mode == "zeros" else "replicate"
-        input_tensor = F.pad(input_tensor, (pad_w, pad_w, pad_h, pad_h), mode=pad_mode)
-        shift = torch.eye(3, device=transform.device, dtype=transform.dtype)
-        shift[0, 2] = -pad_w
-        shift[1, 2] = -pad_h
-        transform = transform @ shift
-    return crop_by_transform_mat(input_tensor, transform[:, :2, :], out_size, mode, padding_mode, align_corners)
-
-
 def crop_by_indices(
     input_tensor: torch.Tensor,
     src_box: torch.Tensor,
@@ -840,9 +809,7 @@ class CenterCrop2D(nn.Module):
     the central ``(B, C, h, w)`` windows of ``(B, C, H, W)`` images, at the offsets of :func:`center_crop`. The default
     ``cropping_mode='slice'`` slices with integer indices, through :func:`crop_by_indices`, or after zero-padding when
     ``size`` exceeds the input on an axis; ``'resample'`` samples the same windows, up to float rounding, by a
-    translation through :func:`~kornia.geometry.transform.warp_affine` with the ``resample`` mode, except that with
-    ``align_corners=True`` it repeats a one-pixel input axis that ``'slice'`` zero-pads
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For one call, use
+    translation through :func:`~kornia.geometry.transform.warp_affine` with the ``resample`` mode. For one call, use
     :func:`center_crop`; in an augmentation pipeline, :class:`~kornia.augmentation.CenterCrop`.
 
     Convention:

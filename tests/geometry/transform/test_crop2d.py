@@ -766,6 +766,41 @@ class TestCropByTransform(BaseTester):
         )
 
 
+class TestCropOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_center_crop_pads_above_and_below(self, device, dtype):
+        row = self._row(device, dtype)
+        zero = torch.zeros_like(row)
+        out = kornia.geometry.transform.center_crop(row, (3, 4))
+        self.assert_close(out, torch.cat((zero, row, zero), dim=-2))
+
+    def test_convention_center_crop_keeps_the_axis_at_its_size(self, device, dtype):
+        row = self._row(device, dtype)
+        self.assert_close(kornia.geometry.transform.center_crop(row, (1, 2)), row[..., 1:3])
+
+    def test_convention_center_crop_of_a_column_pads_left_and_right(self, device, dtype):
+        column = self._row(device, dtype).transpose(-1, -2)
+        zero = torch.zeros_like(column)
+        out = kornia.geometry.transform.center_crop(column, (4, 3))
+        self.assert_close(out, torch.cat((zero, column, zero), dim=-1))
+
+    def test_convention_center_crop_resample_matches_slice(self, device, dtype):
+        # The default slicing mode of CenterCrop2D already zero-pads this input.
+        row = self._row(device, dtype)
+        resample = kornia.geometry.transform.CenterCrop2D((3, 4), cropping_mode="resample")(row)
+        self.assert_close(resample, kornia.geometry.transform.CenterCrop2D((3, 4))(row))
+
+    @pytest.mark.parametrize("matrix_rows", [2, 3])
+    def test_convention_crop_by_transform_mat(self, matrix_rows, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        matrix[0, 1, 2] = 1.0
+        out = kornia.geometry.transform.crop_by_transform_mat(row, matrix[:, :matrix_rows], (2, 4))
+        self.assert_close(out, torch.cat((torch.zeros_like(row), row), dim=-2))
+
+
 class TestCropByIndices(BaseTester):
     @pytest.mark.parametrize("batch", [1, 2, 5])
     @pytest.mark.parametrize("requires_grad", [False, True])

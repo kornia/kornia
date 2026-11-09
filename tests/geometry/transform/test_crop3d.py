@@ -829,3 +829,11 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         op = torch_optimizer(kornia.geometry.transform.center_crop3d)
 
         self.assert_close(op(volume, (1, 3, 4)), kornia.geometry.transform.center_crop3d(volume, (1, 3, 4)))
+
+
+class TestCenterCrop3DOneVoxelInputAxis6433(BaseTester):
+    def test_convention_pads_around_the_axis(self, device, dtype):
+        volume = (torch.arange(4, device=device, dtype=dtype) + 1).reshape(1, 1, 1, 2, 2)
+        zero = torch.zeros_like(volume)
+        out = kornia.geometry.transform.center_crop3d(volume, (3, 2, 2))
+        self.assert_close(out, torch.cat((zero, volume, zero), dim=-3))

@@ -21,24 +21,30 @@ from torch import nn
 
 
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Apply the sepia filter to an RGB tensor.
+    r"""Apply the sepia filter to an RGB image.
+
+    ``out = sepia(input)`` multiplies the RGB channels of a ``(*, 3, H, W)`` image by a fixed sepia matrix. By default
+    it then divides by the image's largest output value.
 
     Convention:
-        Applies the fixed sepia matrix to RGB channels at axis -3. rescale divides all output
-        channels of each image by one shared maximum over channels and pixels, preserving the tint.
-        Disable it to keep the raw matrix response.
+        - ``rescale`` uses one maximum per image, over channels and pixels, so the tint is preserved.
+        - Without ``rescale`` the output is the raw matrix response and can exceed 1.
 
     Args:
-        input: the input tensor with shape ``(*, C, H, W)``.
-        rescale: if True, divide all output channels by one maximum per image.
-        eps: small constant added to the denominator for numerical stability.
+        input: RGB image with shape ``(*, 3, H, W)``.
+        rescale: if True, divide by the maximum.
+        eps: constant added to the maximum, so a black image does not divide by zero.
 
     Returns:
-        torch.Tensor: sepia-filtered tensor with shape ``(*, C, H, W)``.
+        Sepia image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :class:`Sepia`: the module form, with ``rescale`` and ``eps`` stored.
 
     Example:
+        >>> from kornia.color import sepia
         >>> input = torch.ones(3, 1, 1)
-        >>> sepia_from_rgb(input, rescale=False)
+        >>> sepia(input, rescale=False)
         tensor([[[1.3510]],
         <BLANKLINE>
                 [[1.2030]],
@@ -66,16 +72,20 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
 
 class Sepia(nn.Module):
-    r"""Apply the sepia filter to image tensors.
+    r"""Apply the sepia filter with stored settings (module form).
 
-    See the Convention block on :func:`sepia_from_rgb`.
+    ``filt = Sepia(rescale, eps)`` stores the settings, and ``out = filt(input)`` is :func:`sepia` on a ``(*, 3, H, W)``
+    image.
+
+    Convention:
+        - See the convention block of :func:`sepia`.
 
     Args:
-        rescale: if True, divide all output channels by one maximum per image.
-        eps: small constant added to the denominator for numerical stability.
+        rescale: if True, divide by the per-image maximum.
+        eps: constant added to the maximum.
 
-    Returns:
-        torch.Tensor: sepia-filtered tensor with shape ``(*, C, H, W)``.
+    See Also:
+        - :func:`sepia`: the one-call form.
 
     Example:
         >>> input = torch.ones(3, 1, 1)
