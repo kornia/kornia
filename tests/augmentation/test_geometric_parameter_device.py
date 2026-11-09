@@ -117,6 +117,14 @@ class TestGeometricParameterDevice(BaseTester):
                 if name not in ("batch_prob", "forward_input_shape"):
                     assert value.device == torch.device("cpu"), name
                     assert value.dtype == default_dtype, name
+            # The sampled values survive the copy back to the CPU: a single MPS -> CPU float64 copy wrote zeros
+            # on torch 2.14 (pytorch/pytorch#197715).
+            if "scale" in params:
+                # Compare in float32, the sampler's dtype, so a draw that rounds to the bound stays inside it.
+                scale = params["scale"].float()
+                assert ((scale >= 0.8) & (scale <= 1.2)).all()
+            else:
+                assert (params["end_points"] != params["start_points"]).any()
         finally:
             torch.set_default_dtype(original_dtype)
 

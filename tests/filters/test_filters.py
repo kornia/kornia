@@ -1629,6 +1629,24 @@ class TestConventionsFilter2d(BaseTester):
         assert kernel.grad is not None
         assert kernel.grad.dtype == torch.float64
 
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv", "filter3d"])
+    def test_convention_filter2d_kernel_gradient_reaches_a_float64_cpu_kernel(self, name, device, dtype):
+        # A single MPS -> CPU float64 copy wrote zeros into this gradient on torch 2.14 and raised on 2.15
+        # (pytorch/pytorch#197715).
+        _fft_guard(name, device, dtype)
+        fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]
+        spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
+        image = torch.ones(1, 1, *spatial, device=device, dtype=dtype)
+        kernel = torch.full((1, *((3,) * len(spatial))), 0.5, dtype=torch.float64, requires_grad=True)
+        fn(image, kernel, "constant").float().sum().backward()
+        # Zero padding: a tap at offset o from the centre lands inside the image at n - |o| positions of an axis
+        # of length n, so its gradient is the product of those counts, e.g. 4 * 6 = 24 at a 2-D corner.
+        counts = [torch.tensor([n - 1.0, n, n - 1.0], dtype=torch.float64) for n in spatial]
+        expected = counts[0][:, None] * counts[1][None, :]
+        if name == "filter3d":
+            expected = expected[:, :, None] * counts[2][None, None, :]
+        self.assert_close(kernel.grad[0], expected)
+
     @pytest.mark.parametrize("border_type, too_narrow, wide_enough", [("reflect", 2, 3), ("circular", 1, 2)])
     def test_convention_filter2d_reflect_and_circular_need_the_axis_longer_than_the_pad(
         self, border_type, too_narrow, wide_enough, device, dtype
