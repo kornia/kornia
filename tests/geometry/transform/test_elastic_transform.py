@@ -50,16 +50,19 @@ class TestElasticTransformAutocast(BaseTester):
         image = torch.rand(1, 1, 256, 256, generator=generator).to(device)
         return image, (torch.rand(1, 2, 256, 256, generator=generator) * 2 - 1).to(device)
 
+    @pytest.mark.parametrize("input_dtype", ["float32", "half"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_region_does_not_change_the_warp_6601(self, autocast_dtype, device):
+    def test_region_does_not_change_the_warp_6601(self, input_dtype, autocast_dtype, device):
         # 0.018 off on a [0, 1] image in bfloat16, and still float32: nearly all of it from the convolutions of
-        # filter2d_separable, the rest from F.affine_grid.
+        # filter2d_separable, the rest from F.affine_grid. A half image and field of the region's dtype run in float32
+        # since #6608, in the region too.
         skip_unsupported_autocast(device, autocast_dtype)
-        image, noise = self._inputs(device)
+        half = getattr(torch, autocast_dtype)
+        image, noise = (x.to(half if input_dtype == "half" else torch.float32) for x in self._inputs(device))
         expected = elastic_transform2d(image, noise)
-        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+        with torch.autocast(device.type, dtype=half):
             actual = elastic_transform2d(image, noise)
-        assert actual.dtype == torch.float32
+        assert actual.dtype == image.dtype
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])

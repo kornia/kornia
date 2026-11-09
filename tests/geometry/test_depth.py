@@ -925,17 +925,20 @@ class TestDepthWarpAutocast(BaseTester):
         return kornia.geometry.depth.depth_warp(pinhole_dst, pinhole_src, depth, image, 256, 256)
 
     @pytest.mark.parametrize("op_name", ["warp_frame_depth", "depth_warp"])
+    @pytest.mark.parametrize("input_dtype", ["float32", "half"])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_region_does_not_change_the_warp_6601(self, op_name, autocast_dtype, device):
+    def test_region_does_not_change_the_warp_6601(self, op_name, input_dtype, autocast_dtype, device):
         # The result came back in float32, up to 0.68 (warp_frame_depth) and 0.88 (depth_warp) off in bfloat16 on a
-        # [0, 1] image: the products of transform_points and of DepthWarper.compute_projection_matrix.
+        # [0, 1] image: the products of transform_points and of DepthWarper.compute_projection_matrix. Half inputs of
+        # the region's dtype run in float32 since #6608, in the region too: 0.63 from float32 truth in it, 0.22 outside.
         skip_unsupported_autocast(device, autocast_dtype)
-        inputs = self._inputs(device)
+        half = getattr(torch, autocast_dtype)
+        inputs = self._inputs(device, half if input_dtype == "half" else torch.float32)
         op = self._depth_warp if op_name == "depth_warp" else kornia.geometry.depth.warp_frame_depth
         expected = op(*inputs)
-        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+        with torch.autocast(device.type, dtype=half):
             actual = op(*inputs)
-        assert actual.dtype == torch.float32
+        assert actual.dtype == inputs[0].dtype
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
