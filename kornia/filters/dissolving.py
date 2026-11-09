@@ -204,11 +204,12 @@ class _DissolvingWraper_HF:
 
 
 class StableDiffusionDissolving(ImageModule):
-    r"""Perform dissolving transformation using StableDiffusion models.
+    r"""Dissolve an image with one reverse-diffusion step of a Stable Diffusion model.
 
-    Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
-    reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD XL.
+    ``dissolved = StableDiffusionDissolving(version)(input, step_number)`` encodes a ``(B, 3, H, W)`` image with the
+    model's VAE, takes one reverse-diffusion step at ``step_number``, an index into the model's 1000-step schedule from
+    0 to 999, and decodes the result :cite:`shi2024dissolving`. It needs the optional ``diffusers``
+    package, and the constructor loads the checkpoint with ``from_pretrained``.
 
     .. list-table::
         :widths: 32 32 32
@@ -222,11 +223,23 @@ class StableDiffusionDissolving(ImageModule):
           - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
     Convention:
-        See the Convention block on :class:`~kornia.augmentation.RandomDissolving`.
+        - ``input`` is an image in :math:`[0, 1]`, rescaled to :math:`[-1, 1]` before encoding and not clamped; the
+          result is clamped to :math:`[0, 1]`.
+        - The model runs under ``torch.no_grad()``: the result has no gradient, and it lives on the model's device in
+          the VAE's dtype.
+        - The latent is sampled, so two calls on the same input differ.
 
     Args:
-        version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
-        **kwargs: additional arguments for `.from_pretrained`.
+        version: the version of the stable diffusion model, ``"1.4"``, ``"1.5"`` or ``"xl"``. SD 1.x removes more
+            detail than SD XL.
+        **kwargs: additional arguments for ``from_pretrained``.
+
+    Raises:
+        NotImplementedError: if ``version`` is none of the three above.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomDissolving`: clamps the input and applies it to a batch with a
+          sampled step and a probability.
 
     """
 
