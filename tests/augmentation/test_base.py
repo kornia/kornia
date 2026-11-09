@@ -2377,6 +2377,54 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
                 thread.join()
         assert not errors
 
+    @pytest.mark.parametrize(
+        "name",
+        ["RandomBrightness", "RandomTranslate", "RandomAffine3D isotropic scale", "RandomAffine3D scale per axis"],
+    )
+    def test_a_draw_during_a_rebuild_finds_every_sampler(self, name, device, dtype):
+        # One module shared by threads: a draw that runs while another thread rebuilds the samplers finds them all, old
+        # or new. The rebuild used to empty them or set them to ``None`` first, which raised a ``KeyError`` or drew
+        # zero translations and unit scales. The draw is made here from inside the rebuild, at a helper it calls.
+        from kornia.augmentation.random_generator._2d import plain_uniform, translate
+        from kornia.augmentation.random_generator._3d import affine
+
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        if name == "RandomBrightness":
+            aug = K.RandomBrightness(torch.nn.Parameter(torch.tensor(0.2, device=device, dtype=dtype)), p=1.0)
+            module, helper = plain_uniform, "_range_bound"
+        elif name == "RandomTranslate":
+            param = torch.nn.Parameter(torch.tensor([-0.2, 0.2], device=device, dtype=dtype))
+            aug = K.RandomTranslate(param, (-0.2, 0.2), p=1.0)
+            module, helper = translate, "_range_bound"
+        else:
+            scale = (0.5, 1.5) if name.endswith("isotropic scale") else ((0.5, 1.5),) * 3
+            degrees = torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype))
+            aug = K.RandomAffine3D(degrees, translate=(0.1, 0.1, 0.1), scale=scale, p=1.0)
+            module, helper = affine, "_as_range_tensor"
+            x = torch.rand(2, 3, 4, 8, 8, device=device, dtype=dtype)
+        aug = aug.to(device=device, dtype=dtype)
+        aug(x)
+        generator = aug._param_generator
+        draws = []
+
+        def drawing(*args, **kwargs):
+            draws.append(generator.forward(x.shape))
+            return original(*args, **kwargs)
+
+        original = getattr(module, helper)
+        with patch.object(module, helper, drawing):
+            aug(x)
+        assert draws
+        for drawn in draws:
+            if name == "RandomBrightness":
+                assert "brightness_factor" in drawn
+            elif name == "RandomTranslate":
+                assert torch.count_nonzero(drawn["translate_x"]) > 0
+                assert torch.count_nonzero(drawn["translate_y"]) > 0
+            else:
+                assert torch.count_nonzero(drawn["translations"]) > 0
+                assert bool((drawn["scale"] != 1).any())
+
     def test_a_nested_rebuild_restores_the_outer_one(self, device, dtype):
         outer, inner = self._out_of_domain(device, dtype), self._out_of_domain(device, dtype)
         make_samplers = K.random_generator.PlainUniformGenerator.make_samplers
@@ -2752,6 +2800,9 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         target = K.RandomRotation((-10.0, 10.0), p=1.0)
         with pytest.raises(ValueError, match="out of bounds"):
             target.load_state_dict({"_param_generator.degrees": torch.tensor([-500.0, 500.0])})
+        # The refused range never reaches the samplers, which used to be left empty.
+        drawn = target.forward_parameters(torch.Size((1024, 3, 8, 8)))["degrees"]
+        assert drawn.abs().max() <= 10.0
 
     def test_rotation90_load_updates_what_it_derives_from_the_range(self, device, dtype):
         # A whole range floors its draws and only allows odd turns on a square input when it can draw one.

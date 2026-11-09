@@ -80,7 +80,8 @@ class PlainUniformGenerator(RandomGeneratorBase):
         return ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.sampler_dict: Dict[str, Distribution] = {}
+        # Built aside and assigned once: a module shared by threads may draw while another thread rebuilds it.
+        sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             # The attribute, not the tuple: ``torch.func.functional_call`` swaps a parameter and a parametrization moves
             # it. Numbers stay in the tuple, to be read in ``dtype``.
@@ -92,7 +93,8 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
-            self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
+            sampler_dict[name] = UniformDistribution(factor[0], factor[1], validate_args=False)
+        self.sampler_dict = sampler_dict
 
     def _ranges_loaded(self, names: Set[str]) -> None:
         # ``make_samplers`` reads ``self.samplers``, whose numbers it needs in ``dtype`` as they were given, not rounded

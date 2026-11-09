@@ -137,16 +137,19 @@ class AffineGenerator3D(RandomGeneratorBase):
             self.szx_sampler = UniformDistribution(shear[4, 0], shear[4, 1], validate_args=False)
             self.szy_sampler = UniformDistribution(shear[5, 0], shear[5, 1], validate_args=False)
 
+        # A rebuild assigns each range once, without ``None`` first: a module shared by threads may draw meanwhile.
         # check translation range
-        self._translate: Optional[torch.Tensor] = None
-        if self.translate is not None:
+        if self.translate is None:
+            self._translate: Optional[torch.Tensor] = None
+        else:
             self._assign_derived_range("_translate", _as_range_tensor(self.translate, device, dtype))
             _singular_range_check(self._translate, "translate", bounds=(0, 1), mode="3d")
 
         # check scale range
-        self._scale: Optional[torch.Tensor] = None
-        self._isotropic_scale: bool = False
-        if self.scale is not None:
+        if self.scale is None:
+            self._scale: Optional[torch.Tensor] = None
+            self._isotropic_scale: bool = False
+        else:
             _scale = _as_range_tensor(self.scale, device, dtype)
             if _scale.shape == torch.Size([2]):
                 # (a, b) is isotropic: one factor per sample is drawn and used on all three axes.
@@ -158,6 +161,7 @@ class AffineGenerator3D(RandomGeneratorBase):
                 raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
             else:
                 self._assign_derived_range("_scale", _scale)
+                self._isotropic_scale = False
                 _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
                 _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
                 _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
