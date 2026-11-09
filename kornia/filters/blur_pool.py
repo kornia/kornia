@@ -344,8 +344,9 @@ def max_blur_pool2d(
         - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
           max pool runs at stride 1 without padding and ``stride`` belongs to the blur. See the Convention block on
           :func:`~kornia.filters.blur_pool2d` for the kernel, the border and integer input, which raises.
-        - Each spatial axis must contain at least ``max_pool_size`` pixels (2 by default); otherwise a
-          :class:`~kornia.core.exceptions.ShapeError` names the minimum size.
+        - With an integer ``max_pool_size``, each spatial axis must contain at least that many pixels (2 by default);
+          otherwise a :class:`~kornia.core.exceptions.ShapeError` names the minimum size. Tuple windows retain
+          PyTorch's validation.
 
     Args:
         input: feature map with shape ``(B, C, H, W)``.
