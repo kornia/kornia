@@ -15,10 +15,30 @@
 # limitations under the License.
 #
 
-"""Metrics submodule for Kornia.
+"""Score predictions against ground truth for classification, segmentation, detection, images, flow, stereo and pose.
 
-This package provides evaluation metrics for computer vision, such as accuracy, mean IoU,
-PSNR, SSIM, endpoint error, and stereo disparity error.
+A metric that compares a prediction with a target takes the prediction first. Only the flow and disparity metrics take
+a ``reduction``; the scale and the pooling of every metric are in
+:ref:`Losses and metrics <losses-metrics-conventions>` and in its own Convention block.
+
+Which function to use, with the module form after the function:
+
+- Classification: top-k accuracy in percent from class scores, :func:`accuracy`.
+- Segmentation: the counts of target against predicted labels per sample, :func:`confusion_matrix`; the IoU of every
+  class in every sample from label maps, :func:`mean_iou`.
+- Detection: the IoU of every pair of boxes from two sets, :func:`mean_iou_bbox`; the PASCAL VOC mean average
+  precision, :func:`mean_average_precision`.
+- Image quality: the PSNR of two images in dB, :func:`psnr`; the SSIM map of two images, :func:`ssim`,
+  :class:`SSIM`; of two volumes, :func:`ssim3d`, :class:`SSIM3D`.
+- Optical flow: the average endpoint error of two flows, :func:`aepe`, :class:`AEPE`; also exported as
+  :func:`average_endpoint_error`.
+- Stereo: the mean absolute error of two disparity maps, :func:`mean_absolute_disparity_error`; the root mean squared
+  error, :func:`root_mean_squared_disparity_error`; the fraction of pixels above an error threshold,
+  :func:`mean_bad_pixel_error`; the KITTI D1 outlier fraction, :func:`kitti_d1_error`.
+- Pose: the angle between two rotations, :func:`angle_error_mat`; between two vectors, :func:`angle_error_vec`; the
+  distance between two translations, :func:`translation_ate`; the rotation and translation errors of two poses,
+  :func:`pose_errors`; the area under the error curve at thresholds, :func:`auc_from_errors`.
+- Monitoring: the running average over batches, :class:`AverageMeter`.
 """
 
 from .accuracy import accuracy

@@ -103,6 +103,7 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.transform.thin_plate_spline",
     "kornia.geometry.vector",
     "kornia.losses",
+    "kornia.metrics",
 )
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
@@ -160,6 +161,7 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.transform",
     "kornia.geometry.vector",
     "kornia.losses",
+    "kornia.metrics",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 

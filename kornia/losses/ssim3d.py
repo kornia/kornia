@@ -109,6 +109,7 @@ class SSIM3DLoss(nn.Module):
 
     See Also:
         - :func:`~kornia.losses.ssim3d_loss`: the one-call form.
+        - :class:`~kornia.metrics.SSIM3D`: the SSIM map itself, not the dissimilarity.
         - :class:`~kornia.losses.SSIMLoss`: the same loss for images.
 
     Examples:

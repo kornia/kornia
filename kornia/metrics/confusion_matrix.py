@@ -44,35 +44,38 @@ def _check_label_range(name: str, labels: torch.Tensor, num_classes: int) -> Non
 def confusion_matrix(
     pred: torch.Tensor, target: torch.Tensor, num_classes: int, normalized: bool = False
 ) -> torch.Tensor:
-    r"""Compute confusion matrix to evaluate the accuracy of a classification.
+    r"""Count predicted against target class labels, one confusion matrix per sample.
+
+    ``cm = confusion_matrix(pred, target, num_classes)`` takes two integer label tensors of shape ``(B, *)`` and
+    returns float32 counts with shape ``(B, K, K)``, where ``cm[b, target, pred]`` counts the positions of sample
+    ``b`` with that target and that prediction.
 
     Convention:
-        - ``pred`` and ``target`` are class labels of the same shape, prediction first, in ``uint8`` or any signed
-          integer dtype; a bool tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does
-          a label outside :math:`[0, K)`, unless graph capture traces the range check (``torch.export``,
+        - ``pred`` and ``target`` have the same shape, with an integer dtype: ``uint8`` or any signed type; a bool
+          tensor counts as the labels 0 and 1. A floating-point label tensor raises, and so does a label outside
+          :math:`[0, K)`, unless graph capture traces the range check (``torch.export``,
           ``torch.compile(fullgraph=True)``), which skips it: an out-of-range label is then counted in another cell
           or makes the call fail.
-        - The first axis is always the batch: the result holds one ``(K, K)`` float32 count matrix per sample,
-          ``(B, K, K)``, and is never pooled over the batch, so a flat ``(N,)`` label vector gives :math:`N`
-          matrices that count one label each. Sum over the first axis for the matrix of a whole batch or dataset.
-        - Rows are the target and columns the prediction, ``cm[b, target, pred]``; swapping the two arguments
-          transposes every count matrix. :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and
-          ``normalized`` onto scikit-learn.
+        - The first axis is always the batch and the result is never pooled over it, so a flat ``(N,)`` label vector
+          gives :math:`N` matrices that count one label each. Sum over the first axis for the matrix of a whole batch
+          or dataset.
+        - Swapping the two arguments transposes every matrix.
+          :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and ``normalized`` onto
+          scikit-learn.
 
     Args:
-        pred: tensor with estimated targets returned by a
-          classifier. The shape can be ``(B, *)`` and must contain integer
-          values between 0 and K-1.
-        target: tensor with ground truth (correct) target
-          values. The shape must be that of ``pred``, and it must contain integer
-          values between 0 and K-1.
-        num_classes: total possible number of classes in target.
-        normalized: whether to normalize each target row by its sum plus ``1e-6``.
-          Non-empty rows sum approximately to one; empty rows remain zero.
+        pred: predicted class labels in :math:`[0, K)`, with shape ``(B, *)``.
+        target: ground-truth class labels in :math:`[0, K)`, with the shape of ``pred``.
+        num_classes: the number of classes :math:`K`, at least 2.
+        normalized: whether to divide each target row by its sum plus ``1e-6``. Non-empty rows then sum to
+          approximately one; empty rows stay zero.
 
     Returns:
-        a tensor containing the confusion matrix with shape
-        ``(B, K, K)`` where K is the number of classes.
+        the count matrices with shape ``(B, K, K)``.
+
+    See Also:
+        - :func:`~kornia.metrics.mean_iou`: the per-class IoU computed from this matrix.
+        - :func:`~kornia.metrics.accuracy`: top-k accuracy from class scores, not labels.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])

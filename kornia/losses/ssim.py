@@ -112,6 +112,7 @@ class SSIMLoss(nn.Module):
 
     See Also:
         - :func:`~kornia.losses.ssim_loss`: the one-call form.
+        - :class:`~kornia.metrics.SSIM`: the SSIM map itself, not the dissimilarity.
         - :class:`~kornia.losses.SSIM3DLoss`: the same loss for volumes.
         - :class:`~kornia.losses.MS_SSIMLoss`: several scales, plus an L1 term.
 

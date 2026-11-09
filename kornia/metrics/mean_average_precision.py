@@ -33,16 +33,18 @@ def mean_average_precision(
     n_classes: int,
     threshold: float = 0.5,
 ) -> Tuple[torch.Tensor, Dict[int, float]]:
-    """Calculate the Mean Average Precision (mAP) of detected objects.
+    """Compute the PASCAL VOC mean average precision (mAP) of detections over a set of images.
 
-    Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
+    ``mAP, ap = mean_average_precision(pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, n_classes)`` takes
+    one tensor per image in each list. It returns the mean over the scored classes of their 11-point interpolated AP
+    as a 0-d tensor, and a dict of the per-class APs. Both are fractions in :math:`[0, 1]`, or ``-1.0`` where a
+    class has no objects.
 
     Convention:
-        - Every argument but ``n_classes`` and ``threshold`` is a list with one tensor per image. The call raises when
-          the five lists differ in length, when the boxes, labels and scores of an image differ in their number of
-          rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a floating-point label
-          such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``, the default format of
-          :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
+        - The call raises when the five lists differ in length, when the boxes, labels and scores of an image differ
+          in their number of rows, or when a label lies outside :math:`[0, n_{classes})` or is not a whole number: a
+          floating-point label such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``,
+          the default format of :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
         - Class 0 is background: its objects and detections are never scored, and ``n_classes`` counts it, so the
           classes ``1`` to ``n_classes - 1`` are scored.
         - The detections of a class are ranked by score over all images at once, so the AP is not a mean of
@@ -54,29 +56,34 @@ def mean_average_precision(
           object the mAP is ``-1.0`` too.
         - The AP is the 11-point interpolated AP of PASCAL VOC2007: the mean, over the recall levels
           ``0, 0.1, ..., 1``, of the highest precision at a recall of at least that level.
-        - The result is a 0-d tensor and a dict of Python floats, fractions in :math:`[0, 1]` apart from that
-          ``-1.0``. The tensor takes the floating dtype of the boxes: integer boxes count as float32, and predicted
-          and ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
+        - The mAP takes the floating dtype of the boxes: integer boxes count as float32, and predicted and
+          ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
 
     Args:
-        pred_boxes: a torch.Tensor list of predicted bounding boxes.
-        pred_labels: a torch.Tensor list of predicted labels in ``[0, n_classes)``.
-        pred_scores: a torch.Tensor list of predicted labels' scores.
-        gt_boxes: a torch.Tensor list of ground truth bounding boxes.
-        gt_labels: a torch.Tensor list of ground truth labels in ``[0, n_classes)``.
+        pred_boxes: per-image predicted boxes, each with shape ``(N, 4)``.
+        pred_labels: per-image predicted class labels, each with shape ``(N,)``.
+        pred_scores: per-image confidence scores, each with shape ``(N,)``.
+        gt_boxes: per-image ground-truth boxes, each with shape ``(M, 4)``.
+        gt_labels: per-image ground-truth class labels, each with shape ``(M,)``.
         n_classes: the number of classes, background (class 0) included.
-        threshold: count as a positive if the overlap is greater than the threshold.
+        threshold: the IoU a detection must exceed to be a true positive.
 
     Returns:
-        the mAP, and a dict mapping each scored class id to its average precision.
+        the mAP and a dict mapping each scored class id, 1 to ``n_classes - 1``, to its AP.
+
+    See Also:
+        - :func:`~kornia.metrics.mean_iou_bbox`: the pairwise box IoU the matching uses, as a matrix.
 
     Examples:
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
         >>> gt_boxes, gt_labels = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1])
         >>> mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
         (tensor(1.), {1: 1.0})
+
+    Reference:
+        Adapted from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.
 
     """
     # these are all lists of tensors of the same length, i.e. number of images
