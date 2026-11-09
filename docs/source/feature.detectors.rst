@@ -53,8 +53,8 @@ Detectors
 
 :class:`ScaleSpaceDetector` applies border and refined-centre mask checks before each
 octave's feature budget. Rejected candidates do not consume slots while weaker valid
-detections remain; any slots
-left after all valid candidates are exhausted contain zero responses and zero LAFs.
+detections remain; any slots left after all valid candidates are exhausted contain zero
+responses and zero LAFs.
 
 .. autoclass:: ScaleSpaceDetector
    :members: forward, detect

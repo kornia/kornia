@@ -470,8 +470,8 @@ class ScaleSpaceDetector(nn.Module):
         actually filled, and the dtype of the response function's output. The batched top-K below
         ranks over the whole volume and returns its ``fill`` sentinel once the octave runs out of
         valid candidates; the mask tells those slots apart from a detection, since the response alone
-        cannot. The responses
-        and LAFs are in at least float32; ``_detect`` casts the responses back to the returned dtype.
+        cannot. The responses and LAFs are in at least float32; ``_detect`` casts the responses back to
+        the returned dtype.
         """
         dev = octave.device
         # An octave searches `num_levels` response levels, 1..num_levels; levels 0 and num_levels + 1 are only
@@ -596,7 +596,9 @@ class ScaleSpaceDetector(nn.Module):
                 candidate_coords,
             )
         candidate_scale = scale_sigmas[batch_idx, 0] * torch.pow(2.0, candidate_coords[:, 0] / float(num_levels))
-        half_s = self.mr_size * candidate_scale * 0.5
+        # Compare in the LAFs' dtype (`rotmat`'s, from the image), which can be wider than a custom response's: the
+        # centres promote with it, as in the LAFs, so a frame a float32 ulp past the border is rejected as before.
+        half_s = (self.mr_size * candidate_scale).to(rotmat.dtype) * 0.5
         cx, cy = candidate_coords[:, 1], candidate_coords[:, 2]
         # Equivalent to laf_is_inside_image(scale_laf(laf, 0.5), octave[:, 0], 5)
         # for the isotropic frames assembled below, in octave pixel coordinates.
@@ -755,9 +757,9 @@ class ScaleSpaceDetector(nn.Module):
         # Sort and keep best n across all octaves. Sparse per-octave top-K may yield fewer total
         # candidates than num_feats (e.g. small images with very few NMS maxima); the result is
         # padded to preserve the shape contract [B, num_feats, ...]. Every unfilled slot -- the
-        # padding, a batched top-K sentinel, a border- or mask-rejected candidate -- carries `-inf`
-        # through the ranking so that a genuine detection, however negative, still sorts ahead of
-        # it, and is zeroed only afterwards. (`_weight_scores` keeps a weighted score finite.)
+        # padding or a batched top-K sentinel -- carries `-inf` through the ranking so that a
+        # genuine detection, however negative, still sorts ahead of it, and is zeroed only
+        # afterwards. (`_weight_scores` keeps a weighted score finite.)
         responses = torch.cat([r[0] for r in results], 1)
         lafs = torch.cat([r[1] for r in results], 1)
         filled = torch.cat([r[2] for r in results], 1)
@@ -794,7 +796,7 @@ class ScaleSpaceDetector(nn.Module):
         Returns:
             Tuple containing detection scores and local affine frames, shaped ``(B, num_feats)`` and
             ``(B, num_feats, 2, 3)``, in that order, the reverse of ``forward``'s. A slot that no detection filled --
-            there were fewer candidates than requested, or the border or mask test rejected a candidate -- carries a
+            there were fewer candidates inside the border and the mask than requested -- carries a
             zero response and a zero LAF, and sorts after every real detection. The converse does not hold: a signed
             response function can peak at exactly zero, and that slot keeps its frame. A batch of zero images returns
             empty outputs of these shapes.
