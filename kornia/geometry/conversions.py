@@ -2136,7 +2136,8 @@ def normalize_homography(
           (``+0.8`` with ``align_corners=False``).
           :func:`~kornia.geometry.conversions.denormalize_homography` computes
           the reverse ``inv(N_dst) @ H @ N_src``
-        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - both ``dsize`` arguments are ``(height, width)``, while the matrix acts
           on ``(x, y, 1)`` column vectors
         - a ``(3, 3)`` or ``(B, 3, 3)`` matrix is accepted and batching is
@@ -2625,7 +2626,8 @@ def denormalize_homography(
           documented there, including its integer-input warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
           ``cusolver`` on ``cuda``), not through the ``cross``-based adjugate
-        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
@@ -2722,7 +2724,8 @@ def normalize_homography3d(
           ``(depth, height, width)`` triples
         - :func:`~kornia.geometry.conversions.denormalize_homography3d`
           computes the reverse ``inv(N_dst) @ H @ N_src``
-        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the shape guard is the 2-D function's for 4x4 matrices: ``(4, 4)``
           (returned as ``(1, 4, 4)``) or ``(B, 4, 4)``, anything else raises
           ``ValueError``
@@ -2799,7 +2802,8 @@ def denormalize_homography3d(
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``), the
           same routine :func:`~kornia.geometry.conversions.normalize_homography3d`
           uses for ``inv(N_src)``
-        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general

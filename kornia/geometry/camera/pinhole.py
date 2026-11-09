@@ -54,7 +54,8 @@ class PinholeCamera:
           **world** points, and :meth:`unproject` returns **world** points. The functional API takes a ``3x3``
           ``K`` and no extrinsics, so it works in the **camera** frame.
         - a caller's autocast region does not change :meth:`project` and :meth:`unproject`; in it, intrinsics and
-          extrinsics that mix float32 and half dtypes run in float32.
+          extrinsics that mix float32 and half dtypes run in float32. Under ``torch.compile`` on MPS it still does
+          (torch ignores the nested guard there).
         - with ``B > 1`` cameras the points of :meth:`project`, ``(B, N, 3)`` or ``(B, H, W, 3)``, and the pixels
           of :meth:`unproject`, ``(B, N, 2)`` or ``(B, H, W, 2)``, need a leading axis of size ``B`` and at least
           three dimensions: ``(N, 3)`` and ``(1, N, 3)`` points, or ``(N, 2)`` and ``(1, N, 2)`` pixels, raise

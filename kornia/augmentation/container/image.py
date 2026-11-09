@@ -428,6 +428,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
+
+        Returns:
+            the chained matrix, or ``None`` if no geometric module contributes one. In a caller's autocast region it
+            keeps the input's dtype, and float32 input is computed in float32.
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")

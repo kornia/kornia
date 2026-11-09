@@ -719,7 +719,8 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
         PS: patch size to be extracted.
 
     Returns:
-        grid ``(B*N, PS, PS, 2)``
+        grid ``(B*N, PS, PS, 2)``. In a caller's autocast region it keeps the LAF's dtype, and a float32 LAF is
+        computed in float32, outside TorchScript.
 
     """
     KORNIA_CHECK_LAF(LAF)
