@@ -69,7 +69,7 @@ def ssim3d(
         padding: ``'same'`` keeps the spatial size; ``'valid'`` keeps only the area where the window fits.
 
     Returns:
-        the SSIM map with shape ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
+        the SSIM map with shape ``(B, C, D, H, W)``, or ``(B, C, D - 2p, H - 2p, W - 2p)`` with
         ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
@@ -195,7 +195,7 @@ class SSIM3D(nn.Module):
     Shape:
         - img1: ``(B, C, D, H, W)``.
         - img2: ``(B, C, D, H, W)``.
-        - Output: ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
+        - Output: ``(B, C, D, H, W)``, or ``(B, C, D - 2p, H - 2p, W - 2p)`` with ``p = window_size // 2``
           under ``padding='valid'``.
 
     See Also:

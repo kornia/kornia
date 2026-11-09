@@ -30,7 +30,9 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
     image ``(B, 3, H, W)`` in :math:`[0, 1]` and clamps the result to :math:`[0, 1]`.
 
     Convention:
-        Another rank raises ``ShapeError`` and another channel count raises ``ImageError``.
+        Ranks below three or a channel count other than three raise ``ImageError``. Other ranks that pass the
+        color check but are not four raise ``ShapeError``. The three shifts must share the same shape: all
+        ``(B,)`` for per-image shifts or all ``(1,)`` for a shared shift.
 
     Args:
         image: RGB image with shape ``(B, 3, H, W)``.

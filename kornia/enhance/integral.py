@@ -31,7 +31,8 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
     ``input[..., :i + 1, :j + 1]``.
 
     Convention:
-        - ``dim`` is a non-empty tuple of unique axes; an ``int`` raises ``TypeError``.
+        - ``dim=None`` selects the last axis. Otherwise, ``dim`` is a non-empty tuple of unique axes;
+          an ``int`` raises ``TypeError``.
         - The output has the shape of the input, with no zero row or column in front, so
           ``cv2.integral(x)[1:, 1:]`` equals the result for the two spatial axes.
 

@@ -616,16 +616,17 @@ def jpeg_codec_differentiable(
 ) -> torch.Tensor:
     """Compress and decompress an RGB image with a differentiable JPEG model.
 
-    ``out = jpeg_codec_differentiable(input, jpeg_quality)`` returns an RGB image in :math:`[0, 1]` after a JPEG encode
+    ``out = jpeg_codec_differentiable(input, jpeg_quality)`` returns an RGB image on the unit scale after a JPEG encode
     and decode at ``jpeg_quality``, following :cite:`reich2024` and :cite:`shin2017`. Gradients reach ``input``,
     ``jpeg_quality`` and the quantization tables.
 
     .. image:: _static/img/jpeg_codec_differentiable.png
 
     Convention:
-        - Input and output pixels are in :math:`[0, 1]`: denormalize a normalized image first and normalize the output
-          again. Any ``H`` and ``W`` work: the codec pads the bottom and right to a multiple of 16 and crops back, and
-          clips the output.
+        - Input pixels are in :math:`[0, 1]`: denormalize a normalized image first and normalize the output again.
+          The decoded output uses the same scale, but the differentiable soft clipping does not guarantee values
+          within :math:`[0, 1]`. Any ``H`` and ``W`` work: the codec pads the bottom and right to a multiple of 16
+          and crops back.
         - The result approximates libjpeg and does not reproduce its output exactly.
         - float16 and bfloat16 inputs are computed in float32, quality and tables included, and the output is rounded
           once to the input dtype.

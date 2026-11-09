@@ -148,7 +148,7 @@ def ssim(
             MATLAB implementation of the SSIM paper does.
 
     Returns:
-        the SSIM map with shape ``(B, C, H, W)``, or :math:`(B, C, H - 2p, W - 2p)` with ``p = window_size // 2``
+        the SSIM map with shape ``(B, C, H, W)``, or ``(B, C, H - 2p, W - 2p)`` with ``p = window_size // 2``
         under ``padding='valid'``.
 
     Note:
@@ -288,7 +288,7 @@ class SSIM(nn.Module):
     Shape:
         - img1: ``(B, C, H, W)``.
         - img2: ``(B, C, H, W)``.
-        - Output: ``(B, C, H, W)``, or :math:`(B, C, H - 2p, W - 2p)` with ``p = window_size // 2`` under
+        - Output: ``(B, C, H, W)``, or ``(B, C, H - 2p, W - 2p)`` with ``p = window_size // 2`` under
           ``padding='valid'``.
 
     See Also:

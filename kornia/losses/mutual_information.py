@@ -1150,9 +1150,11 @@ def normalized_mutual_information_loss(
 
     Convention:
         - The loss is the negative of Studholme's normalized mutual information, which lies in :math:`[1, 2]`: the
-          loss lies in ``[-2, -1]`` and is ``-1`` when one signal is constant and the other is not; for two constant
-          signals its value is undefined. With continuous values and the default ``window_radius``, even an image
-          against itself scores above ``-2``.
+          ideal loss lies in ``[-2, -1]`` and is ``-1`` when one signal is constant and the other is not. The ideal
+          zero-entropy formula is undefined for two constant signals, but this implementation floors histogram
+          cells to a positive epsilon and returns a finite loss. Kernel smoothing and this floor also affect
+          constant-signal scores. With continuous values and the default ``window_radius``, even an image against
+          itself scores above ``-2``.
           :ref:`Registration <mutual-information-porting>` maps this normalisation onto scikit-image and
           scikit-learn.
         - Everything else is as in the Convention block of :func:`~kornia.losses.mutual_information_loss`.

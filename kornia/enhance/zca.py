@@ -34,9 +34,13 @@ class ZCAWhitening(nn.Module):
 
     Convention:
         - The mean :math:`\mathbf{\mu}` and covariance :math:`\mathbf{\Sigma}` come from the flattened data
-          :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, and the transform is :math:`\mathbf{X}_{\text{zca}} =
-          (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T`, with :math:`U` the eigenvectors and :math:`S` the eigenvalues of
-          :math:`\Sigma`.
+          :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`. With :math:`U` the eigenvectors and :math:`S` the
+          eigenvalues of :math:`\Sigma`, the transform is
+
+          .. math::
+
+              \mathbf{X}_{\text{zca}} = (\mathbf{X} - \mathbf{\mu})(U(S + \epsilon I)^{-1/2}U^T)^T
+
         - The output has the shape of the input. Call ``fit`` or pass ``include_fit=True`` before transforming.
         - Float16 and bfloat16 inputs are fitted and transformed in float32, and only the transformed output is rounded
           to the input dtype. The fitted buffers stay float32; casting the module to half precision discards that

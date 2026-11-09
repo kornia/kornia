@@ -112,7 +112,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
     """Estimate the normalized histogram of each sample row with Gaussian kernels.
 
     ``hist = histogram(x, bins, bandwidth)`` spreads every value of a row of ``x`` over the bin centers ``bins`` with a
-    Gaussian kernel and returns each row's weights normalized to sum to 1.
+    Gaussian kernel and normalizes each row by its weight sum plus ``epsilon``.
 
     Convention:
         - Rows are independent samples, and ``bins`` is the one center grid they share.
@@ -129,7 +129,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         epsilon: value added to the normalization sum.
 
     Returns:
-        Histogram with shape ``(B, N_bins)``; every row sums to 1.
+        Histogram with shape ``(B, N_bins)``. Each row sums approximately to 1 when its weight sum dominates
+        ``epsilon``; it is zero when all kernel weights underflow to zero.
 
     See Also:
         - :func:`histogram2d`: the joint histogram of two sample rows.
@@ -162,7 +163,8 @@ def histogram2d(
 
     ``hist = histogram2d(x1, x2, bins, bandwidth)`` pairs the values ``x1[b, n]`` and ``x2[b, n]`` and returns their
     joint weights over the bin centers: ``hist[b, i, j]`` is the weight of ``x1`` in bin ``i`` and ``x2`` in bin ``j``,
-    normalized to sum to 1 per batch element.
+    normalized by their sum plus ``epsilon`` per batch element. The sum approaches 1 when the joint weight sum
+    dominates ``epsilon``; all-zero kernel weights give an all-zero result.
 
     Convention:
         - ``x1`` and ``x2`` must have the same shape.
@@ -293,8 +295,9 @@ def image_histogram2d(
 
     Returns:
         Tuple ``(hist, pdf)``. ``hist`` has shape ``(K,)``, ``(C, K)`` or ``(B, C, K)``, where the bin axis ``K`` has
-        ``n_bins`` entries, or one per center. ``pdf`` has the same shape and sums to 1 over the bins; it is zeros if
-        ``return_pdf`` is ``False``.
+        ``n_bins`` entries, or one per center. ``pdf`` has the same shape and divides the histogram by its bin sum
+        plus ``eps``. Its sum approaches 1 when the bin sum dominates ``eps``; it is zeros when no pixels contribute
+        or ``return_pdf`` is ``False``.
 
     See Also:
         - :func:`histogram`: the Gaussian histogram of sample rows, normalized.
