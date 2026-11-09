@@ -25,36 +25,116 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
 
 
+def _use_eager_scratch(tensor: torch.Tensor) -> bool:
+    return (
+        type(tensor) is torch.Tensor
+        and tensor.device.type in ("cpu", "cuda", "mps")
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and not torch._C._functorch.is_functorch_wrapped_tensor(tensor)
+        and torch._C._len_torch_dispatch_stack() == 0
+    )
+
+
+def _needs_grad(tensor: torch.Tensor) -> bool:
+    return (
+        tensor.requires_grad
+        or torch.autograd.forward_ad.unpack_dual(tensor).tangent is not None
+        or torch.jit.is_tracing()
+        or torch._C._len_torch_dispatch_stack() > 0
+    )
+
+
 def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
     # Separable min-convolution with a parabola: Felzenszwalb & Huttenlocher (2012), section 2.2.
     # Work is O(numel * sum(spatial_shape)); tensor reductions avoid the data-dependent envelope stack.
-    # Small CPU tiles avoid costly large transient allocations. Wider CUDA queries amortize launches,
-    # with a smaller candidate block than the original 64 MiB tile to improve cache reuse on an RTX 4090.
-    # Blob-mask float32 512x512 inference measured 175 -> 76 ms on an i7-14700K (4 threads),
-    # and 2.56 -> 1.69 ms on an RTX 4090, versus the original tile schedule.
-    # Other devices retain the original budget pending measurements. These are element counts, so a
-    # float32 candidate uses at most 4 MiB on CPU, 32 MiB on CUDA, or 64 MiB elsewhere, unless one source
-    # line alone exceeds the budget. min saves only indices for backward, unlike amin's full candidates.
-    is_cuda = cost.device.type == "cuda"
-    budget = 2**20 if cost.device.type == "cpu" else (2**23 if is_cuda else 2**24)
-    max_queries = 256 if is_cuda else 32
+    # Eager execution reuses a single scratch buffer across tiles and axes: 2**21 elements (8 MiB in
+    # float32) on CPU with 64 queries keeps inputs in L2 and candidates in L3 below glibc's mmap threshold;
+    # CUDA uses 2**23 (32 MiB) and other backends/compilers use 2**24 (64 MiB) with up to 1024 queries.
+    # Inference uses SIMD-friendly amin without int64 index tracking; autograd detaches the tiled argmin
+    # search and attaches gradients once per axis via gather (O(N) scatter_add backward instead of O(N*L)).
+    use_scratch = _use_eager_scratch(cost)
+    need_grad = _needs_grad(cost)
+    dev_type = cost.device.type
+    if torch.compiler.is_compiling():
+        budget = 2**24
+        max_queries = 1024
+    elif dev_type == "cpu":
+        budget = 2**21
+        max_queries = 64
+    elif dev_type == "cuda":
+        budget = 2**23
+        max_queries = 1024
+    else:
+        budget = 2**24
+        max_queries = 1024
+
+    buf: torch.Tensor | None = None
     for axis in range(2, cost.ndim):
         # Contiguous source lines avoid strided reductions, especially on CPU.
         values = cost.movedim(axis, -1).contiguous()
         length = values.shape[-1]
         positions = torch.arange(length, device=cost.device, dtype=cost.dtype)
+        lines = values.reshape(-1, length)
+        num_lines = lines.shape[0]
         query_tile = min(max_queries, length, max(1, budget // length))
         line_tile = max(1, budget // (query_tile * length))
-        lines = values.reshape(-1, length)
-        transformed = []
-        for start in range(0, length, query_tile):
-            # Reuse offsets across row blocks instead of launching their calculation for every block.
-            offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
-            chunks = []
-            for block in lines.split(line_tile, dim=0):
-                chunks.append((block.unsqueeze(-2) + offsets).min(dim=-1).values)
-            transformed.append(torch.cat(chunks, dim=0))
-        cost = torch.cat(transformed, dim=-1).reshape(values.shape).movedim(-1, axis)
+        b_cap = min(num_lines, line_tile)
+        if not need_grad:
+            if use_scratch:
+                need_buf = b_cap * query_tile * length
+                if buf is None or buf.numel() < need_buf:
+                    buf = cost.new_empty(need_buf)
+                transformed = []
+                for start in range(0, length, query_tile):
+                    offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
+                    q_len = offsets.shape[0]
+                    col_out = lines.new_empty((num_lines, q_len))
+                    for b_start in range(0, num_lines, line_tile):
+                        b_end = min(b_start + line_tile, num_lines)
+                        b_len = b_end - b_start
+                        cur_buf = buf[: b_len * q_len * length].view(b_len, q_len, length)
+                        torch.add(lines[b_start:b_end].unsqueeze(-2), offsets, out=cur_buf)
+                        torch.amin(cur_buf, dim=-1, out=col_out[b_start:b_end])
+                    transformed.append(col_out)
+            else:
+                transformed = []
+                for start in range(0, length, query_tile):
+                    offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
+                    chunks = [(block.unsqueeze(-2) + offsets).amin(dim=-1) for block in lines.split(line_tile, dim=0)]
+                    transformed.append(chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0))
+            out_lines = transformed[0] if len(transformed) == 1 else torch.cat(transformed, dim=-1)
+        else:
+            lines_det = torch.autograd.forward_ad.unpack_dual(lines).primal.detach()
+            if use_scratch:
+                need_buf = b_cap * query_tile * length
+                if buf is None or buf.numel() < need_buf:
+                    buf = cost.new_empty(need_buf)
+                val_discard = lines_det.new_empty((b_cap, query_tile))
+                idx_tiles = []
+                for start in range(0, length, query_tile):
+                    offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
+                    q_len = offsets.shape[0]
+                    col_idx = torch.empty((num_lines, q_len), dtype=torch.int64, device=cost.device)
+                    for b_start in range(0, num_lines, line_tile):
+                        b_end = min(b_start + line_tile, num_lines)
+                        b_len = b_end - b_start
+                        cur_buf = buf[: b_len * q_len * length].view(b_len, q_len, length)
+                        torch.add(lines_det[b_start:b_end].unsqueeze(-2), offsets, out=cur_buf)
+                        torch.min(cur_buf, dim=-1, out=(val_discard[:b_len, :q_len], col_idx[b_start:b_end]))
+                    idx_tiles.append(col_idx)
+            else:
+                idx_tiles = []
+                for start in range(0, length, query_tile):
+                    offsets = (positions[start : start + query_tile, None] - positions[None, :]).square()
+                    chunks = [
+                        (block.unsqueeze(-2) + offsets).min(dim=-1).indices
+                        for block in lines_det.split(line_tile, dim=0)
+                    ]
+                    idx_tiles.append(chunks[0] if len(chunks) == 1 else torch.cat(chunks, dim=0))
+            idx = idx_tiles[0] if len(idx_tiles) == 1 else torch.cat(idx_tiles, dim=-1)
+            out_lines = lines.gather(-1, idx) + (positions - idx.to(cost.dtype)).square()
+        cost = out_lines.reshape(values.shape).movedim(-1, axis)
     return cost
 
 
@@ -124,18 +204,26 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     KORNIA_CHECK(kernel_size % 2 != 0 and kernel_size >= 3, "kernel_size must be an odd integer >= 3")
     KORNIA_CHECK(math.isfinite(h) and h > 0, "h must be positive and finite")
 
-    # Use where at the clipping bound: clamp's derivative at 1 differs across supported Torch versions.
     values = image.float() if image.dtype in (torch.float16, torch.bfloat16) else image
-    positive = values > 0
-    values = torch.where(values > 1, torch.ones_like(values), values)
+    if _use_eager_scratch(values) and not _needs_grad(values):
+        cost = values.clamp(0.0, 1.0).log_().mul_(-h)
+        squared = _squared_distance_transform(cost)
+        squared.masked_fill_(squared == float("inf"), 0.0).sqrt_()
+        return squared.to(image.dtype)
+
+    # Use where at the clipping bound: clamp's derivative at 1 differs across supported Torch versions.
     # Substitute before log, not after: log(0) would poison backward even in an unselected where arm.
-    safe_values = torch.where(positive, values, torch.ones_like(values))
-    cost = torch.where(positive, -h * safe_values.log(), torch.full_like(values, float("inf")))
+    one = values.new_ones(())
+    zero = values.new_zeros(())
+    inf = values.new_full((), float("inf"))
+    positive = values > 0
+    safe_values = torch.where(positive & (values <= 1), values, one)
+    cost = torch.where(positive, -h * safe_values.log(), inf)
     squared = _squared_distance_transform(cost)
     valid = torch.isfinite(squared) & (squared > 0)
     # Likewise avoid differentiating sqrt(0), including on Torch 2.5 and half-precision inputs.
-    safe_squared = torch.where(valid, squared, torch.ones_like(squared))
-    return torch.where(valid, safe_squared.sqrt(), torch.zeros_like(squared)).to(image.dtype)
+    safe_squared = torch.where(valid, squared, one)
+    return torch.where(valid, safe_squared.sqrt(), zero).to(image.dtype)
 
 
 class DistanceTransform(nn.Module):
