@@ -621,11 +621,12 @@ def test_lighterglue_reference_matches(device, data):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("data", ["xfeat_outdoor"], indirect=True)
+@torch.inference_mode()
 def test_xfeat_star_refines_an_image_matched_with_itself_in_place_6418(device, data):
     # #6418: each cell of an image matched with itself is its own coarse match, so the mean refinement offset is the
     # bias of the refinement. Measured from bin 4, as the reference does, it is about -1 px on each axis.
     xfeat = XFeat.from_pretrained().to(device)
-    out = xfeat.detectAndComputeDense(data["img1"].to(device), multiscale=False)
+    out = xfeat._detect_dense(data["img1"].to(device), top_k=None, multiscale=False)
     refined = xfeat._refine_matches(out, out, xfeat._batch_match(out["descriptors"], out["descriptors"]), 0)
     displacement = refined[:, :2] - refined[:, 2:]
     assert displacement.shape[0] > 100
