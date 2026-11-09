@@ -96,9 +96,9 @@ def match_adalam(
           as evidence; a later conflicting match cannot replace it. Equal residuals do not imply duplicate keypoints.
           The full accepted consensus is returned, including mixtures of exact and noisy matches. Confidence uses a
           conservative residual-area floor of ``2**-24`` in normalized coordinates, remaining finite for exact fits.
-        - Geometric support replaces the reference residual-binning heuristic. It preserves correct subpixel
-          correspondences but can also retain additional incorrect matches; evaluate final geometric accuracy
-          for your application (see `#5943 <https://github.com/kornia/kornia/issues/5943>`_).
+        - Unlike the reference implementation, which merges nearly equal residuals into float16 bins, the
+          consensus radius is the largest at which both the cumulative inlier density and the density over the
+          last ``min_inliers`` samples reach ``min_confidence``.
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.

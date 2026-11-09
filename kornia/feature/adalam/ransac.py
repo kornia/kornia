@@ -131,9 +131,14 @@ def _select_inliers(
     if 0 < win < sorted_res.shape[1]:
         # Require the marginal density over the last min_inliers samples to also meet
         # min_confidence once past the initial minimal support, so a dense exact core
-        # cannot subsidize a sparse outlier tail.
+        # cannot subsidize a sparse outlier tail. The window spans group boundaries in
+        # the flattened row, but never at an eligible position: in-group position k has
+        # evidence <= k - 2, so evidence >= min_inliers = win needs k >= win + 2.
         d_area = (areas[:, win:] - areas[:, :-win]).clamp_min_(2.0**-24)
-        eligible[:, win:] &= (evidence[:, win:] - evidence[:, :-win]) >= (min_denom[:, win:] * d_area)
+        # Out of place: in-place `&=` on this column slice is wrong on MPS with torch 2.5.1.
+        eligible[:, win:] = eligible[:, win:] & (
+            (evidence[:, win:] - evidence[:, :-win]) >= (min_denom[:, win:] * d_area)
+        )
     if valid_affinities is None:
         eigenvals = batch_2x2_eigenvals(affinities)
         scale_limit = config["detected_scale_rate_threshold"] ** 2
@@ -255,10 +260,6 @@ def ransac(
 
     residuals = _reprojection_residuals(affinities_fit, xsamples, ysamples, ransidx)  # (niters, numsamples)
 
-    # When refit=True, allow a minimal hypothesis with at least min_inliers total distinct
-    # correspondences (3 fitted + min_inliers - 3 independent) to propose inliers for
-    # least-squares refitting; the refitted model must still satisfy the full min_inliers.
-    proposal_config = dict(config, min_inliers=max(config["min_inliers"] - 3, 1)) if refit else config
     inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = _select_inliers(
         residuals,
         xsamples,
@@ -267,7 +268,7 @@ def ransac(
         rdims,
         idxoffsets,
         affinities_fit,
-        proposal_config,
+        config,
         valid_affinities,
         distinct,
     )

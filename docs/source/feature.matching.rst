@@ -39,11 +39,6 @@ To detect, describe and match two images in one call, use :class:`LocalFeatureMa
 runs an exported model. :class:`LoFTR` matches images directly, without a detector.
 To keep matches that agree with a geometric model, use :class:`~kornia.geometry.ransac.RANSAC`.
 
-AdaLAM estimates local affine consensus using distinct source and target locations as support.
-Equal residuals, including exact and subpixel matches, count separately when their locations differ.
-The seed and fitting pair supply no independent evidence; repeated locations cannot create support.
-Accepted neighbourhoods return the full consensus, including its exact and noisy correspondences.
-
 Descriptor matching
 -------------------
 
