@@ -297,8 +297,8 @@ def motion_blur3d(
           a float counting as 1.
         border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. The default
           ``'replicate'`` leaves a constant volume constant at any size, including ``D = 1``. ``'reflect'`` and
-          ``'circular'`` follow :func:`filter2d` along each axis. ``'constant'`` zero-pads, so voxels whose kernel reaches past a face, at most
-          ``kernel_size // 2`` from it, are pulled toward ``0``.
+          ``'circular'`` follow :func:`filter2d` along each axis. ``'constant'`` zero-pads, so voxels whose kernel
+          reaches past a face, at most ``kernel_size // 2`` from it, are pulled toward ``0``.
         mode: interpolation of the rotated kernel, ``'bilinear'`` or ``'nearest'``.
 
     Return:
