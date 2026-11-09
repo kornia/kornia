@@ -58,7 +58,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: Optional[str]
           summed. ``None`` is treated like ``'none'``.
 
     Return:
-        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` or ``None`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
