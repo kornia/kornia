@@ -30,11 +30,15 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class ColorMapType(Enum):
-    r"""An enumeration for available colormaps.
+    r"""Names of the built-in colormaps.
 
-    List of available colormaps:
+    ``ColorMapType.viridis``, or its name ``'viridis'``, selects a built-in colormap in :class:`ColorMap`.
+    :meth:`list` returns all names.
 
     .. image:: _static/img/ColorMapType.png
+
+    See Also:
+        - :class:`ColorMap`: builds the palette of a member.
     """
 
     autumn = 1
@@ -98,27 +102,28 @@ class ColorMapType(Enum):
 
 
 class ColorMap:
-    r"""Class to represent a colour map.
+    r"""Color palette for :func:`apply_colormap`.
 
-    It can be created or selected from the built-in colour map. Please refer to
-    the `ColorMapType` enum class to view all available colormaps.
+    ``cmap = ColorMap(base, num_colors)`` builds a built-in colormap, or one from your own RGB triples, with
+    ``num_colors`` entries and stores it as ``cmap.colors``.
 
     Convention:
         colors has shape (3, num_colors) in RGB channel order. Built-in names are case-insensitive;
-        a custom base is an ordered list of RGB triples and is linearly resampled to num_colors.
+        a custom base is an ordered list of RGB triples in :math:`[0, 1]` and is linearly resampled to num_colors.
         For ``num_colors > 1``, entry ``i`` sits at ``i / (num_colors - 1)`` along the base, so the first and
-        last colours of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
-        base's first colour.
+        last colors of the base are the first and last of the map. With ``num_colors == 1``, the map holds the
+        base's first color.
 
     Args:
-        base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
-            using `ColorMapType` class.
-        num_colors: Number of colors in the colormap.
-        device: The device to put the generated colormap on.
-        dtype: The data type of the generated colormap. Defaults to ``torch.get_default_dtype()``.
+        base: list of RGB triples, or a built-in colormap as a :class:`ColorMapType` or its name.
+        num_colors: number of palette entries.
+        device: device of the palette.
+        dtype: dtype of the palette. Defaults to ``torch.get_default_dtype()``.
 
-    Returns:
-        An object of the colormap with the num_colors length.
+    See Also:
+        - :class:`ColorMapType`: the built-in colormaps.
+        - :func:`apply_colormap`: colors an image with the palette.
+        - :class:`ApplyColorMap`: the module form of :func:`apply_colormap`.
 
     Examples:
         >>> ColorMap(base='viridis', num_colors=8).colors
@@ -126,7 +131,6 @@ class ColorMap:
                 [0.0049, 0.1949, 0.3597, 0.4970, 0.6332, 0.7584, 0.8546, 0.9062],
                 [0.3294, 0.4960, 0.5517, 0.5577, 0.5304, 0.4284, 0.2234, 0.1439]])
 
-    Create a color map from the first color (RGB with range[0-1]) to the last one with num_colors length.
         >>> ColorMap(base=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
         tensor([[0.0000, 0.1429, 0.2857, 0.4286, 0.5714, 0.7143, 0.8571, 1.0000],
                 [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
@@ -177,7 +181,7 @@ class ColorMap:
         """
         dtype = self._dtype if self._dtype is not None else torch.get_default_dtype()
         tensor_colors = torch.tensor(list(base_colormap), dtype=dtype, device=self._device).T
-        # align_corners=True keeps the base's end colours at the ends of the map (#6556): cell-centre sampling
+        # align_corners=True keeps the base's end colors at the ends of the map (#6556): cell-centre sampling
         # repeated them when upsampling and dropped them when downsampling.
         return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear", align_corners=True)[0, ...]
 
@@ -192,7 +196,10 @@ class ColorMap:
 
 
 def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tensor:
-    r"""Apply to a gray torch.Tensor a colormap.
+    r"""Color each channel of an image with a colormap.
+
+    ``out = apply_colormap(input_tensor, colormap)`` replaces each value of each channel with a color of
+    ``colormap``.
 
     .. image:: _static/img/apply_colormap.png
 
@@ -201,13 +208,20 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
         (B, 3*C, H, W), with B = 1 for rank-3 input; input channel c becomes output channels
         3c to 3c + 2. Integer inputs use [0, 255]. Floating inputs use [0, 1] or [0, 255]
         independently for each sample and channel, based on that channel's maximum.
+        A value x in [0, 1] selects entry floor(x * N) of the N palette colors, and x = 1 selects the last,
+        as in matplotlib, so every color covers an equal share of the range. Values below or above the range
+        select the first or the last color.
 
     Args:
-        input_tensor: the input torch.Tensor of image.
-        colormap: the colormap desired to be applied to the input torch.Tensor.
+        input_tensor: image with shape ``(C, H, W)`` or ``(B, C, H, W)``.
+        colormap: palette to apply.
 
     Returns:
-        A tensor with the applied color map.
+        Color image with shape ``(B, 3 * C, H, W)`` and the dtype of the palette.
+
+    See Also:
+        - :class:`ApplyColorMap`: the module form.
+        - :class:`ColorMap`: builds the palette.
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -217,9 +231,9 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
                   [1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.0000, 0.0159, 0.0159],
-                  [0.0635, 0.1111, 0.1429],
-                  [0.5079, 0.6190, 0.7302]],
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0476, 0.0952, 0.1270],
+                  [0.5079, 0.6190, 0.7460]],
         <BLANKLINE>
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],
@@ -269,9 +283,10 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
 
     colors = colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
-    keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
-    indices = torch.bucketize(input_tensor, keys)
-    indices = torch.where(input_tensor == 1.0, num_colors - 1, indices)
+    # matplotlib's lookup (#6622): equal bins, floor(x * N), with x = 1 and anything above in the last bin. Bucketing
+    # on x * N instead of casting it keeps a NaN on the last entry on every device, as before.
+    keys = torch.arange(1, num_colors, device=input_tensor.device, dtype=input_tensor.dtype)
+    indices = torch.bucketize(input_tensor * num_colors, keys, right=True)
     indices = indices.unsqueeze(-1).expand(-1, -1, -1, 3)
 
     output = torch.gather(colors.expand(B, C, -1, -1), 2, indices)
@@ -281,17 +296,26 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
 
 
 class ApplyColorMap(nn.Module):
-    r"""Class for applying a colormap to images.
+    r"""Color each channel of an image with a colormap (module form).
+
+    ``cmap = ApplyColorMap(colormap)`` stores the palette as the buffer ``colors``, and ``out = cmap(input_tensor)``
+    is :func:`apply_colormap` with it.
 
     .. image:: _static/img/ApplyColorMap.png
 
-    See the Convention block on :func:`apply_colormap`.
+    Convention:
+        - See the convention block of :func:`apply_colormap`.
 
     Args:
-        colormap: The ColorMap object to apply.
+        colormap: palette to apply.
 
-    Returns:
-        A tensor with the applied color map.
+    Shape:
+        - input_tensor: ``(C, H, W)`` or ``(B, C, H, W)``
+        - output: ``(B, 3 * C, H, W)``
+
+    See Also:
+        - :func:`apply_colormap`: the one-call form.
+        - :class:`ColorMap`: builds the palette.
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -301,9 +325,9 @@ class ApplyColorMap(nn.Module):
                   [1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.0000, 0.0159, 0.0159],
-                  [0.0635, 0.1111, 0.1429],
-                  [0.5079, 0.6190, 0.7302]],
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0476, 0.0952, 0.1270],
+                  [0.5079, 0.6190, 0.7460]],
         <BLANKLINE>
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],
@@ -337,16 +361,14 @@ class ApplyColorMap(nn.Module):
         )
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        r"""Apply the colormap to the input torch.Tensor.
+        r"""Color an image with the stored palette.
 
         Args:
-            input_tensor: The input torch.Tensor representing the grayscale image.
-
-        .. note::
-            The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+            input_tensor: Image with shape ``(C, H, W)`` or ``(B, C, H, W)``, in the value ranges of
+                :func:`apply_colormap`.
 
         Returns:
-            The output torch.Tensor representing the image with the applied colormap.
+            Color image with shape ``(B, 3 * C, H, W)``.
 
         """
         return _apply_colormap(input_tensor, self.colors)

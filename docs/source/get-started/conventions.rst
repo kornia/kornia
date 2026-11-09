@@ -460,6 +460,13 @@ transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output un
 :func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
 clips its final RGB output to the unit range.
 
+A result of these clips, of :func:`kornia.color.rgb_to_rgb255` and :func:`kornia.color.normals_to_rgb255`, and of the
+clamps inside :func:`kornia.color.hls_to_rgb` and :func:`kornia.color.lab_to_rgb` (of a negative ``Z``) exactly on a
+bound has no unique derivative. They use the one-sided derivative from inside the range on every torch version, as the
+intensity ops do (see :ref:`enhancement-conventions`); plain ``torch.clamp`` gives 0 there from torch 2.14. A result
+outside the range gets the bound and a zero gradient. A graph captured by ``torch.jit.trace`` or ``torch.export`` keeps
+the plain clamp.
+
 See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
 chroma subsampling, and known defects.
 
@@ -658,8 +665,38 @@ Serializing an augmentation
   3D and mix augmentations have an empty ``state_dict()``. ``nn.Parameter``
   ranges (``RandomRotation`` and ``RandomAffine`` among others) are registered
   and receive gradients. Some numeric ranges are copied into
-  ``_param_generator.*`` buffers that loading does not feed back into the
-  samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+  ``_param_generator.*`` buffers, and loading one that differs builds the
+  samplers again from the loaded range. The constructor's domain check applies
+  to it where the class passes one to its generator; a range it refuses raises
+  the constructor's ``ValueError`` and leaves the buffer and the samplers as
+  they were. A checkpoint that holds the same range changes nothing. The auto
+  policies' ``_probability`` entries are still not read back
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- A learnable range is read again before each draw, so an optimizer step, an
+  in-place update, ``load_state_dict`` and
+  ``AveragedModel.update_parameters`` all reach the next draw, for a ``(2,)``
+  range and for a 0-d half-width alike. Its value is checked when the
+  augmentation is built, and otherwise only by the classes named below: to
+  read it on every call would wait for the GPU and break a ``torch.compile``
+  graph, so a range that training takes out of its
+  domain (a negative half-width, say) is drawn from as it is. Keep it inside by
+  clamping it after the optimizer step, or with
+  ``torch.nn.utils.parametrize.register_parametrization`` on
+  ``aug._param_generator``; PyTorch then serializes that generator through
+  ``state_dict()`` only, and ``copy.deepcopy`` and ``pickle`` of it raise. There
+  are two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` decide things from the values of
+  their range when they build their samplers and pass it no gradient, so an
+  update reaches them through ``load_state_dict`` and copies only. Those
+  builds check the range, so ``RandomErasing``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` raise the constructor's
+  ``ValueError`` when a range outside their domain is loaded, or when the
+  module is moved (``.to(torch.float64)``, say) after an in-place update took
+  it out. A range on an accelerator in an augmentation left on the CPU (or the
+  reverse) is copied to
+  the generator's device only after an in-place update or a change of grad
+  mode (a forward under ``torch.no_grad()`` after a training one, or the
+  reverse), and each copy waits for the GPU once.
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. This includes the
   ``kornia.augmentation.auto`` policies: a policy pickles when every operation
@@ -669,11 +706,8 @@ Serializing an augmentation
 - A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
   augmentation or container with an ``nn.Parameter`` range owns a copy of
   that parameter, and its gradients reach that copy rather than the
-  original. It draws from the value the parameter had when it was copied: as
-  in the original, an in-place update such as an optimizer step or
-  ``AveragedModel.update_parameters`` does not reach the draws
-  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). The ``_params``
-  it inherits from the last call keep their values, detached.
+  original. It draws from the current value of its own parameter. The
+  ``_params`` it inherits from the last call keep their values, detached.
 
 Morphology
 ----------

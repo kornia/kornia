@@ -30,14 +30,17 @@ def unsharp_mask(
     sigma: tuple[float, float] | torch.Tensor,
     border_type: str = "reflect",
 ) -> torch.Tensor:
-    r"""Create an operator that sharpens a torch.Tensor by applying operation out = 2 * image - gaussian_blur2d(image).
+    r"""Sharpen an image by adding back the detail that a Gaussian blur removes.
+
+    ``out = unsharp_mask(input, kernel_size, sigma)`` returns ``2 * input - gaussian_blur2d(input, kernel_size, sigma)``
+    for a ``(B, C, H, W)`` image, an image of the same shape.
 
     .. image:: _static/img/unsharp_mask.png
 
     Convention:
-        - The blur in the formula above is :func:`~kornia.filters.gaussian_blur2d` with the same ``kernel_size``,
-          ``sigma`` and ``border_type``, and the detail it removes is added back with a fixed gain of 1. See the
-          Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
+        - The blur takes ``kernel_size``, ``sigma`` and ``border_type`` as :func:`~kornia.filters.gaussian_blur2d`
+          does, and the detail it removes is added back with a fixed gain of 1. See its Convention block for the
+          argument order.
         - The output is not clamped: next to an edge it overshoots on both sides, so a step from 0 to 1 comes back
           below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
         - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
@@ -47,17 +50,20 @@ def unsharp_mask(
           :func:`~kornia.enhance.sharpness`.
 
     Args:
-        input: the input torch.Tensor with shape ``(B,C,H,W)``.
-        kernel_size: the size of the kernel.
-        sigma: the standard deviation of the kernel.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        input: image with shape ``(B, C, H, W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each a positive odd integer.
+        sigma: standard deviation ``(sigma_y, sigma_x)`` in pixels, as a tuple or a tensor.
+        border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the sharpened torch.Tensor with shape ``(B,C,H,W)``.
+        the sharpened image with shape ``(B, C, H, W)``.
 
-    Examples:
+    See Also:
+        - :class:`UnsharpMask`: the module form.
+        - :func:`gaussian_blur2d`: the blur alone.
+        - :func:`~kornia.enhance.sharpness`: blends the image with a blurred copy by a ``factor`` you choose.
+
+    Example:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = unsharp_mask(input, (3, 3), (1.5, 1.5))
         >>> output.shape
@@ -73,20 +79,18 @@ def unsharp_mask(
 
 
 class UnsharpMask(nn.Module):
-    r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
+    r"""Sharpen an image with a stored Gaussian kernel size and ``sigma`` (module form).
+
+    ``sharpen = UnsharpMask(kernel_size, sigma)`` stores its arguments, and ``out = sharpen(input)`` is
+    :func:`unsharp_mask` on a ``(B, C, H, W)`` image.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.unsharp_mask`.
 
     Args:
-        kernel_size: the size of the kernel.
-        sigma: the standard deviation of the kernel.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-
-    Returns:
-        the sharpened torch.Tensor with shape ``(B,C,H,W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        sigma: standard deviation ``(sigma_y, sigma_x)`` in pixels, as a tuple or a tensor.
+        border_type: padding mode, as in :func:`unsharp_mask`.
 
     Shape:
         - Input: ``(B, C, H, W)``
@@ -95,7 +99,11 @@ class UnsharpMask(nn.Module):
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/unsharp_mask.html>`__.
 
-    Examples:
+    See Also:
+        - :func:`unsharp_mask`: the one-call form.
+        - :class:`GaussianBlur2d`: the blur alone.
+
+    Example:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> sharpen = UnsharpMask((3, 3), (1.5, 1.5))
         >>> output = sharpen(input)

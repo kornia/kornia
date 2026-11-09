@@ -15,6 +15,21 @@
 # limitations under the License.
 #
 
+"""Blur feature maps with a binomial kernel and downsample them, or blur them at their size around edges.
+
+Every function and module here takes a floating ``(B, C, H, W)`` feature map and raises for an integer or bool one.
+:func:`blur_pool2d` and :func:`max_blur_pool2d` blur with the normalized binomial (Pascal) kernel of
+``kornia.filters.kernels.get_pascal_kernel_2d`` over a zero border, with no ``border_type``, and keep every
+``stride``-th pixel :cite:`zhang2019shiftinvar`.
+
+Which function to use:
+
+- Blur, then keep every ``stride``-th pixel: :func:`blur_pool2d` and :class:`BlurPool2D`.
+- Take a local maximum first, then blur and downsample: :func:`max_blur_pool2d` and :class:`MaxBlurPool2D`.
+- Blur at the input size and keep the pixels on edges: :func:`edge_aware_blur_pool2d` and
+  :class:`EdgeAwareBlurPool2D`.
+"""
+
 from __future__ import annotations
 
 import operator
@@ -40,26 +55,27 @@ __all__ = [
 
 
 class BlurPool2D(nn.Module):
-    r"""Compute blur (anti-aliasing) and downsample a given feature map.
+    r"""Blur a feature map and downsample it by a stored ``stride`` (module form).
 
-    See :cite:`zhang2019shiftinvar` for more details.
+    ``pool = BlurPool2D(kernel_size, stride)`` stores ``stride`` and the normalized binomial kernel as the buffer
+    ``kernel``, which is not in the state dict. ``out = pool(input)`` is :func:`blur_pool2d` on a ``(B, C, H, W)`` map.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.blur_pool2d`.
 
     Args:
-        kernel_size: the size of the square binomial blur kernel.
-        stride: stride for pooling.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
+        stride: step between the kept pixels.
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+        - Output: ``(B, C, H_out, W_out)``, with ``H_out`` and ``W_out`` as in :func:`blur_pool2d`.
 
-          .. math::
-              H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
-              W_{out} = \left\lceil\frac{W}{\text{stride}}\right\rceil
+    See Also:
+        - :func:`blur_pool2d`: the one-call form.
+        - :class:`MaxBlurPool2D`: takes a local maximum before the blur.
 
-    Examples:
+    Example:
         >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
         >>> bp = BlurPool2D(kernel_size=3, stride=2)
@@ -103,35 +119,32 @@ class BlurPool2D(nn.Module):
 
 
 class MaxBlurPool2D(nn.Module):
-    r"""Compute pools and blurs and downsample a given feature map.
+    r"""Max-pool a feature map, then blur and downsample it (module form).
 
-    Equivalent to ``nn.Sequential(nn.MaxPool2d(max_pool_size, stride=1), BlurPool2D(kernel_size, stride))``.
-
-    See :cite:`zhang2019shiftinvar` for more details.
+    ``pool = MaxBlurPool2D(kernel_size, stride, max_pool_size)`` stores its arguments and the binomial kernel buffer
+    ``kernel`` of :class:`BlurPool2D`. ``out = pool(input)`` is :func:`max_blur_pool2d` on a ``(B, C, H, W)`` map, and
+    equals ``nn.Sequential(nn.MaxPool2d(max_pool_size, stride=1), BlurPool2D(kernel_size, stride))``.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.max_blur_pool2d`.
 
     Args:
-        kernel_size: the size of the square binomial blur kernel.
-        stride: stride of the blur step.
-        max_pool_size: the kernel size for max pooling.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
+        stride: step between the kept pixels of the blur.
+        max_pool_size: size of the max-pooling window.
         ceil_mode: deprecated, has no effect. The max pool runs at stride 1, where floor and ceil
             rounding give the same size, and the strided blur has no rounding mode. Passing it emits a
             :class:`DeprecationWarning`; it will be removed in a future release.
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+        - Output: ``(B, C, H_out, W_out)``, with ``H_out`` and ``W_out`` as in :func:`max_blur_pool2d`.
 
-          .. math::
-              H_{out} = \left\lceil\frac{H - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil, \quad
-              W_{out} = \left\lceil\frac{W - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil
+    See Also:
+        - :func:`max_blur_pool2d`: the one-call form.
+        - :class:`BlurPool2D`: blurs without the max pool.
 
-    Returns:
-        torch.Tensor: the transformed torch.tensor.
-
-    Examples:
+    Example:
         >>> import torch.nn as nn
         >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
@@ -187,20 +200,33 @@ class MaxBlurPool2D(nn.Module):
 
 
 class EdgeAwareBlurPool2D(nn.Module):
-    """Apply an edge-aware anti-aliasing blur that keeps the input size.
+    r"""Blur a feature map at its size and keep the pixels on edges (module form).
 
-    This module blurs while preserving edges by using an
-    edge-intensity threshold.
+    ``blur = EdgeAwareBlurPool2D(kernel_size)`` stores its arguments, and ``out = blur(input)`` is
+    :func:`edge_aware_blur_pool2d` on a ``(B, C, H, W)`` map.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.edge_aware_blur_pool2d`.
 
     Args:
-        kernel_size: The size of the square binomial blur kernel.
-        edge_threshold: The intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps
-            its value. It must be greater than 1. Default: 1.25.
-        edge_dilation_kernel_size: The kernel size for dilating the edge map. It must be an odd positive integer.
-            Default: 3.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
+        edge_threshold: intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps
+            its value. It must be greater than 1.
+        edge_dilation_kernel_size: kernel size for dilating the edge map. It must be an odd positive integer.
+
+    Shape:
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
+
+    See Also:
+        - :func:`edge_aware_blur_pool2d`: the one-call form.
+        - :class:`BlurPool2D`: blurs everywhere and downsamples.
+
+    Example:
+        >>> input = torch.rand(1, 2, 8, 8)
+        >>> EdgeAwareBlurPool2D(3)(input).shape
+        torch.Size([1, 2, 8, 8])
+
     """
 
     def __init__(
@@ -214,12 +240,7 @@ class EdgeAwareBlurPool2D(nn.Module):
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
     def forward(self, input: torch.Tensor, epsilon: float | None = None) -> torch.Tensor:
-        """Downsample while adapting the blur near image or feature edges.
-
-        Edge-aware blur pooling estimates where strong local changes occur and
-        uses that information to avoid over-smoothing across boundaries before
-        reducing the spatial resolution. The operation is designed for feature
-        maps where edges should remain sharp after downsampling.
+        """Blur at the input size, keeping the pixels on edges.
 
         Args:
             input: Feature map tensor with shape ``(B, C, H, W)``, where
@@ -243,13 +264,13 @@ class EdgeAwareBlurPool2D(nn.Module):
 
 
 def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> torch.Tensor:
-    r"""Compute blurs and downsample a given feature map.
+    r"""Blur a feature map with a binomial kernel and downsample it by ``stride``.
+
+    ``out = blur_pool2d(input, kernel_size)`` blurs each channel of a ``(B, C, H, W)`` map with the normalized
+    binomial kernel and keeps every ``stride``-th pixel, so that strided pooling aliases less
+    :cite:`zhang2019shiftinvar`.
 
     .. image:: _static/img/blur_pool2d.png
-
-    See :class:`~kornia.filters.BlurPool2D` for details.
-
-    See :cite:`zhang2019shiftinvar` for more details.
 
     Convention:
         - The blur is the normalised binomial (Pascal) kernel, which must be square. The blurred map is sampled
@@ -264,25 +285,31 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
           promote it. A floating input keeps its dtype.
 
     Args:
-        input: torch.Tensor to apply operation to.
-        kernel_size: the size of the square binomial blur kernel.
-        stride: stride for pooling.
+        input: feature map with shape ``(B, C, H, W)``.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
+        stride: step between the kept pixels.
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+        - Output: ``(B, C, H_out, W_out)``, where
 
           .. math::
               H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
               W_{out} = \left\lceil\frac{W}{\text{stride}}\right\rceil
 
     Returns:
-        the transformed torch.Tensor.
+        the blurred, downsampled map.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
 
-    Examples:
+    See Also:
+        - :class:`BlurPool2D`: the module form.
+        - :func:`max_blur_pool2d`: takes a local maximum before the blur.
+        - :func:`edge_aware_blur_pool2d`: blurs at the input size, keeping edges.
+        - :func:`~kornia.geometry.transform.pyrdown`: blurs with the 5x5 pyramid kernel and resizes bilinearly.
+
+    Example:
         >>> input = torch.eye(5)[None, None]
         >>> blur_pool2d(input, 3)
         tensor([[[[0.3125, 0.0625, 0.0000],
@@ -305,11 +332,12 @@ def max_blur_pool2d(
     max_pool_size: int = 2,
     ceil_mode: bool | None = None,
 ) -> torch.Tensor:
-    r"""Compute pools and blurs and downsample a given feature map.
+    r"""Max-pool a feature map, then blur it with a binomial kernel and downsample it by ``stride``.
+
+    ``out = max_blur_pool2d(input, kernel_size)`` takes the maximum over each ``max_pool_size`` window of a
+    ``(B, C, H, W)`` map, then blurs and downsamples as :func:`blur_pool2d` does :cite:`zhang2019shiftinvar`.
 
     .. image:: _static/img/max_blur_pool2d.png
-
-    See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Convention:
         - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
@@ -317,18 +345,33 @@ def max_blur_pool2d(
           :func:`~kornia.filters.blur_pool2d` for the kernel, the border and integer input, which raises.
 
     Args:
-        input: torch.Tensor to apply operation to.
-        kernel_size: the size of the square binomial blur kernel.
-        stride: stride of the blur step.
-        max_pool_size: the kernel size for max pooling.
+        input: feature map with shape ``(B, C, H, W)``.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
+        stride: step between the kept pixels of the blur.
+        max_pool_size: size of the max-pooling window.
         ceil_mode: deprecated, has no effect. The max pool runs at stride 1, where floor and ceil
             rounding give the same size, and the strided blur has no rounding mode. Passing it emits a
             :class:`DeprecationWarning`; it will be removed in a future release.
 
+    Shape:
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H_out, W_out)``, where
+
+          .. math::
+              H_{out} = \left\lceil\frac{H - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil, \quad
+              W_{out} = \left\lceil\frac{W - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil
+
+    Returns:
+        the pooled, blurred, downsampled map.
+
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
 
-    Examples:
+    See Also:
+        - :class:`MaxBlurPool2D`: the module form.
+        - :func:`blur_pool2d`: blurs without the max pool.
+
+    Example:
         >>> input = torch.eye(5)[None, None]
         >>> max_blur_pool2d(input, 3)
         tensor([[[[0.5625, 0.3125],
@@ -439,11 +482,13 @@ def edge_aware_blur_pool2d(
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,
 ) -> torch.Tensor:
-    r"""Blur the input torch.Tensor while maintaining its edges.
+    r"""Blur a feature map at its input size, keeping the pixels on edges.
+
+    ``out = edge_aware_blur_pool2d(input, kernel_size)`` blurs a ``(B, C, H, W)`` map with the binomial kernel of
+    :func:`blur_pool2d` at stride 1, except on the edges it finds, where it keeps the input pixels.
 
     Convention:
-        - Nothing is downsampled: the output has the input's shape. An integer or bool input raises, as in
-          :func:`~kornia.filters.blur_pool2d`.
+        - An integer or bool input raises, as in :func:`~kornia.filters.blur_pool2d`.
         - A pixel is on an edge when, along ``x`` or ``y``, the channel mean of ``log2(input + epsilon)`` differs
           by more than ``log2(edge_threshold)`` between the pixels two before and two after it, so scaling the image
           does not move the edges while the intensities stay well above ``epsilon``. Pixels on the edge map,
@@ -457,15 +502,20 @@ def edge_aware_blur_pool2d(
           logarithm and can form edges, and ``input = -epsilon`` gives ``-inf``, an edge against any value above it.
 
     Args:
-        input: the input image to blur with shape ``(B, C, H, W)``.
-        kernel_size: the size of the square binomial blur kernel.
+        input: feature map with shape ``(B, C, H, W)``.
+        kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
         edge_threshold: intensity ratio between pixels 4 apart above which a pixel counts as an edge and keeps its
             value. It must be greater than 1.
-        edge_dilation_kernel_size: the kernel size for dilating the edges. It must be an odd positive integer.
-        epsilon: for numerical stability.
+        edge_dilation_kernel_size: kernel size for dilating the edges. It must be an odd positive integer.
+        epsilon: value added to the input before the logarithm of the edge test.
 
     Returns:
-        The blurred torch.Tensor of shape ``(B, C, H, W)``.
+        the blurred map with shape ``(B, C, H, W)``.
+
+    See Also:
+        - :class:`EdgeAwareBlurPool2D`: the module form.
+        - :func:`blur_pool2d`: blurs everywhere and downsamples.
+        - :func:`bilateral_blur`: another blur that keeps edges, weighting each neighbour by its colour distance.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])

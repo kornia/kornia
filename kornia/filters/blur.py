@@ -109,11 +109,10 @@ def _box_blur_pool(
 def box_blur(
     input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = True
 ) -> torch.Tensor:
-    r"""Blur an image using the box filter.
+    r"""Blur an image by replacing each pixel with the mean of its ``kernel_size`` window.
 
-    .. image:: _static/img/box_blur.png
-
-    The function smooths an image using the kernel:
+    ``out = box_blur(input, kernel_size)`` averages each channel of a ``(B, C, H, W)`` image over a window and returns
+    an image of the same shape. Every pixel of the window has the same weight:
 
     .. math::
         K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
@@ -124,6 +123,8 @@ def box_blur(
             1 & 1 & 1 & \cdots & 1 & 1 \\
         \end{bmatrix}
 
+    .. image:: _static/img/box_blur.png
+
     Convention:
         - ``kernel_size`` is ``(kH, kW)``. An even extent is anchored at ``(k - 1) // 2`` and the output keeps the
           input's size; see the Convention block on :func:`~kornia.filters.filter2d` for the anchor and the border
@@ -132,20 +133,24 @@ def box_blur(
           :func:`~kornia.filters.filter2d`.
 
     Args:
-        input: the image to blur with shape ``(B,C,H,W)``.
-        kernel_size: the blurring kernel size.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
-          Default: ``'reflect'``.
-        separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
-          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
+        input: image with shape ``(B, C, H, W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each positive.
+        border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        separable: ``True`` applies two 1D passes, which saves work for large windows, ``False`` one 2D kernel. They
+          agree to floating-point roundoff while the sum of a window's absolute values stays below the dtype's largest
+          finite value; beyond it the result can be ``inf`` or NaN.
 
     Returns:
-        the blurred torch.Tensor with shape ``(B,C,H,W)``.
+        the blurred image with shape ``(B, C, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
+
+    See Also:
+        - :class:`BoxBlur`: the module form.
+        - :func:`gaussian_blur2d`: weights the window by a Gaussian instead of equally.
+        - :func:`median_blur`: takes the median of the window, which keeps edges sharper.
+        - :func:`get_box_kernel2d`: the 2D kernel this blur applies.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -177,37 +182,29 @@ def box_blur(
 
 
 class BoxBlur(nn.Module):
-    r"""Blur an image using the box filter.
+    r"""Blur an image with a stored ``kernel_size`` mean window (module form).
 
-    The function smooths an image using the kernel:
-
-    .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
+    ``blur = BoxBlur(kernel_size)`` stores its arguments, and ``out = blur(input)`` is :func:`box_blur` on a
+    ``(B, C, H, W)`` image.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.box_blur`.
 
     Args:
-        kernel_size: the blurring kernel size.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: use two one-dimensional passes (the default), reducing work
-          for larger kernels. The two implementations agree to floating-point roundoff while the sum of a window's
-          absolute values stays below the dtype's largest finite value; beyond it the result can be ``inf`` or NaN.
-
-    Returns:
-        the blurred input torch.Tensor.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        border_type: padding mode, as in :func:`box_blur`.
+        separable: ``True`` applies two 1D passes, ``False`` one 2D kernel.
 
     Shape:
         - Input: ``(B, C, H, W)``
         - Output: ``(B, C, H, W)``
+
+    Raises:
+        BaseError: if an entry of ``kernel_size`` is not positive; raised from the constructor.
+
+    See Also:
+        - :func:`box_blur`: the one-call form, with the roundoff limit of ``separable``.
+        - :class:`GaussianBlur2d`: weights the window by a Gaussian.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
