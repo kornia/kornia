@@ -71,7 +71,7 @@ _LAPLACIAN_POWER_OF_TWO_PADDING_MESSAGE = (
     "deprecated since kornia 0.9.1: a future minor release pads a side only when it does not divide by "
     "`2 ** (max_level - 1)`, to the next multiple of that, which changes the shape of every returned level for this "
     "input. `minimal_padding=True` gives that behavior now. An image rebuilt from the levels and cropped to the input "
-    "size stays the same, but the values of each level change, even after cropping (kornia#6319)."
+    "size stays the same up to float rounding, but the values of each level change, even after cropping (kornia#6319)."
 )
 
 
@@ -800,9 +800,9 @@ def build_laplacian_pyramid(
     input is first reflect-padded at the right and bottom to the next power of two per side when neither side is a
     power of two or a side does not halve evenly ``max_level - 1`` times (see Convention); every level is then shaped
     from the padded size, and the rebuilt image is the padded one. That rule is deprecated since kornia 0.9.1: an eager
-    call whose shapes it changes emits a ``FutureWarning``, and ``minimal_padding=True`` gives the rule of a future
-    minor release, which pads only to the next multiple of ``2 ** (max_level - 1)``. For the Gaussian levels
-    themselves, use :func:`build_pyramid`.
+    call that ``minimal_padding=True`` would shape differently emits a ``FutureWarning``, and ``minimal_padding=True``
+    gives the rule of a future minor release, which pads only to the next multiple of ``2 ** (max_level - 1)``. For the
+    Gaussian levels themselves, use :func:`build_pyramid`.
 
     See :cite:`burt1987laplacian` for more details.
 
