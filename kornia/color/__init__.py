@@ -59,7 +59,7 @@ Which function to use, with the module form after the function:
 - Sample an RGB image into a Bayer mosaic: :func:`rgb_to_raw`, :class:`RgbToRaw`; demosaic it: :func:`raw_to_rgb`,
   :class:`RawToRgb`; demosaic to half the size: :func:`raw_to_rgb_2x2_downscaled`, :class:`RawToRgb2x2Downscaled`.
   :class:`CFA` names the pattern of the mosaic.
-- Color a single-channel image with a colormap: :func:`apply_colormap`, :class:`ApplyColorMap`. Build the palette
+- Color each channel of an image with a colormap: :func:`apply_colormap`, :class:`ApplyColorMap`. Build the palette
   with :class:`ColorMap`, pick a built-in one from :class:`ColorMapType`, and write your own RGB triples as
   :class:`RGBColor` lists.
 """

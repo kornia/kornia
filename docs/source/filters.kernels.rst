@@ -3,9 +3,11 @@ Kernels
 
 .. currentmodule:: kornia.filters
 
-Kernel builders, to see what a filter applies or to filter with a :doc:`filters.filtering_api` function. That API takes
-a ``(1, kH, kW)`` kernel: add a leading axis to a ``(kH, kW)`` one, and pass a stacked derivative kernel such as
-:func:`get_sobel_kernel2d` one kernel at a time, since a ``(2, 3, 3)`` stack is read as one kernel per sample.
+Kernel builders, to see what a filter applies or to filter with a :doc:`filters.filtering_api` function.
+:func:`filter2d`, its 2D variants and :func:`fft_conv` take a ``(1, kH, kW)`` kernel: add a leading axis to a
+``(kH, kW)`` one, and pass a stacked derivative kernel such as :func:`get_sobel_kernel2d` one kernel at a time, since a
+``(2, 3, 3)`` stack is read as one kernel per sample. :func:`filter2d_separable` takes two ``(1, k)`` kernels and
+:func:`filter3d` a ``(1, kD, kH, kW)`` one, the shapes the 1D and 3D builders return.
 
 Which Gaussian to use:
 

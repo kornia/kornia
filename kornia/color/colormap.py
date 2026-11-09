@@ -196,7 +196,7 @@ class ColorMap:
 
 
 def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tensor:
-    r"""Color a single-channel image with a colormap.
+    r"""Color each channel of an image with a colormap.
 
     ``out = apply_colormap(input_tensor, colormap)`` replaces each value of each channel with a color of
     ``colormap``.
@@ -296,7 +296,7 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
 
 
 class ApplyColorMap(nn.Module):
-    r"""Color a single-channel image with a colormap (module form).
+    r"""Color each channel of an image with a colormap (module form).
 
     ``cmap = ApplyColorMap(colormap)`` stores the palette as the buffer ``colors``, and ``out = cmap(input_tensor)``
     is :func:`apply_colormap` with it.
