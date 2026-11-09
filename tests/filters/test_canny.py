@@ -17,6 +17,7 @@
 
 import importlib
 import io
+import math
 import warnings
 from typing import Any
 
@@ -903,6 +904,90 @@ class TestConventionsCanny(BaseTester):
             on = edges[0, 0].nonzero()
             x = 16 - on[:, 1] if mirrored else on[:, 1]
             assert set((on[:, 0] + x).tolist()) == {13, 14}
+
+    def test_convention_canny_gradient_sign_without_multiplication_underflow(self, device, dtype):
+        """Gradient signs are checked directly to avoid underflow when gx * gy underflows in float32."""
+        self._require_padding(device, dtype)
+        if device.type != "cpu" or dtype != torch.float32:
+            return
+        x = torch.rand((1, 1, 8, 8), generator=torch.Generator().manual_seed(0), device=device) * 2e-23
+        _, edges = canny(x, kernel_size=1, eps=0, low_threshold=1e-24, high_threshold=2e-24, hysteresis=False)
+        assert edges[0, 0, 5, 4].item() == 1.0
+
+    @pytest.mark.parametrize("sign_y", [1.0, -1.0])
+    @pytest.mark.parametrize(
+        "deg,expected_sector",
+        [
+            (20.0, 0),  # strictly below 22.5: horizontal (sector 0)
+            (22.5, 0),  # exact 22.5 boundary: horizontal by tie-breaking rule (sector 0)
+            (25.0, 1),  # strictly above 22.5: diagonal (sector 1 if sign_y>0, sector 3 if sign_y<0)
+            (65.0, 1),  # strictly below 67.5: diagonal (sector 1 if sign_y>0, sector 3 if sign_y<0)
+            (67.5, 2),  # exact 67.5 boundary: vertical by tie-breaking rule (sector 2)
+            (70.0, 2),  # strictly above 67.5: vertical (sector 2)
+        ],
+    )
+    def test_convention_canny_nms_sector_boundaries(self, deg, expected_sector, sign_y, device, dtype):
+        """Non-maximal suppression sectors at and around the 22.5° and 67.5° boundaries."""
+        self._require_padding(device, dtype)
+        if dtype not in (torch.float32, torch.float64):
+            return
+        t = math.tan(math.pi / 8)
+        if deg == 22.5:
+            gx = torch.tensor(1.0, dtype=dtype, device=device)
+            gy = torch.tensor(sign_y * t, dtype=dtype, device=device)
+        elif deg == 67.5:
+            gx = torch.tensor(t, dtype=dtype, device=device)
+            gy = torch.tensor(sign_y * 1.0, dtype=dtype, device=device)
+        else:
+            rad = math.radians(deg)
+            gx = torch.tensor(math.cos(rad), dtype=dtype, device=device)
+            gy = torch.tensor(sign_y * math.sin(rad), dtype=dtype, device=device)
+
+        ax, ay = gx.abs(), gy.abs()
+        is_0 = ay <= ax * t
+        is_2 = (~is_0) & (ax <= ay * t)
+        same_sign = (gx >= 0) == (gy >= 0)
+
+        expected = expected_sector if (expected_sector != 1 or same_sign.item()) else 3
+        actual = 0 if is_0.item() else (2 if is_2.item() else (1 if same_sign.item() else 3))
+        assert actual == expected
+
+    def test_convention_canny_nms_sector_boundary_adjacent_floats(self, device, dtype):
+        """Adjacent representable float values strictly bracket the 22.5° and 67.5° boundaries."""
+        self._require_padding(device, dtype)
+        if dtype not in (torch.float32, torch.float64):
+            return
+        t = torch.tensor(math.tan(math.pi / 8), dtype=dtype, device=device)
+        one = torch.tensor(1.0, dtype=dtype, device=device)
+        pos_inf = torch.tensor(float("inf"), dtype=dtype, device=device)
+        neg_inf = torch.tensor(float("-inf"), dtype=dtype, device=device)
+
+        def _classify(gx: torch.Tensor, gy: torch.Tensor) -> int:
+            ax, ay = gx.abs(), gy.abs()
+            is_0 = ay <= ax * t
+            is_2 = (~is_0) & (ax <= ay * t)
+            same_sign = (gx >= 0) == (gy >= 0)
+            return 0 if is_0.item() else (2 if is_2.item() else (1 if same_sign.item() else 3))
+
+        # 22.5° boundary: gy = gx * tan(pi/8)
+        gy_below = torch.nextafter(t, neg_inf)
+        gy_above = torch.nextafter(t, pos_inf)
+        assert _classify(one, gy_below) == 0
+        assert _classify(one, t) == 0
+        assert _classify(one, gy_above) == 1
+        assert _classify(one, -gy_below) == 0
+        assert _classify(one, -t) == 0
+        assert _classify(one, -gy_above) == 3
+
+        # 67.5° boundary: gx = gy * tan(pi/8)
+        gx_below_angle = torch.nextafter(t, pos_inf)
+        gx_above_angle = torch.nextafter(t, neg_inf)
+        assert _classify(gx_below_angle, one) == 1
+        assert _classify(t, one) == 2
+        assert _classify(gx_above_angle, one) == 2
+        assert _classify(-gx_below_angle, one) == 3
+        assert _classify(-t, one) == 2
+        assert _classify(-gx_above_angle, one) == 2
 
     def test_convention_canny_tied_step_keeps_its_left_or_upper_pixel_5170(self, device, dtype):
         """Of the two equal-magnitude pixels across a two-level step, the left (upper) one is the edge."""

@@ -223,13 +223,15 @@ def canny(
     magnitude: torch.Tensor = padded[..., 1:-1, 1:-1]
 
     # Non-maximal suppression: classify gradient direction into 45-degree sectors by comparing |gy| with
-    # |gx| * tan(pi / 8), avoiding transcendental atan2 calls and large window allocations.
+    # |gx| * tan(pi / 8), avoiding transcendental atan2 calls and large window allocations. At exact sector boundaries
+    # (22.5° and 67.5°), the comparison selects the axis-aligned sector (horizontal for 22.5°, vertical for 67.5°).
     ax = gx.abs()
     ay = gy.abs()
     is_0 = ay <= ax * _TAN_PI_8
     is_2 = (~is_0) & (ax <= ay * _TAN_PI_8)
     is_diag = ~(is_0 | is_2)
-    same_sign = (gx * gy) > 0
+    # Compare signs directly to avoid underflow when gx * gy underflows in float16/float32.
+    same_sign = (gx >= 0) == (gy >= 0)
 
     # As in OpenCV's Canny, a pixel must be strictly greater than its left (upper) neighbour but only greater than or
     # equal to its right (lower) one along a horizontal (vertical) gradient, so of two equal pixels across a step the
