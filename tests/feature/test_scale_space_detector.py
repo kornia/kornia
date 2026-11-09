@@ -2050,14 +2050,13 @@ class TestConventionsScaleSpaceDetector(BaseTester):
 
 class TestConventionsMultiResolutionDetector(BaseTester):
     @pytest.mark.parametrize("detector", ["MultiResolutionDetector", "KeyNetDetector"])
-    def test_convention_multi_resolution_detector_reports_the_level_pixel_times_the_level_factor(
-        self, device, dtype, detector
-    ):
-        # A detection is an integer level pixel (u, v), reported at (u * W / W_l, v * H / H_l) with scale
-        # s_mult * mean(W / W_l, H / H_l), s_mult = 22 by default; there is no sub-pixel step, and (u, v) is not mapped
-        # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
-        # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
-        # Each peak's lower neighbour on its +x side (+y when transposed) would pull a sub-pixel step off the pixel.
+    def test_convention_multi_resolution_detector_reports_the_level_pixel_centre(self, device, dtype, detector):
+        # A detection is an integer level pixel (u, v), reported at the centre of that pixel in the input,
+        # ((u + 0.5) * W / W_l - 0.5, (v + 0.5) * H / H_l - 0.5), with scale s_mult * mean(W / W_l, H / H_l),
+        # s_mult = 22 by default; there is no sub-pixel step. Level 1 of 69 x 128 at factor 2 is 34 x 64: pixel
+        # (20, 17) -> (20.5 * 2 - 0.5 = 40.5, 17.5 * 69 / 34 - 0.5 = 35.0147059), scale 22 * (2 + 69 / 34) / 2. The
+        # input's own level reports the pixel itself. Each peak's lower neighbour on its +x side (+y when transposed)
+        # would pull a sub-pixel step off the pixel.
         _skip_without_half_padding(device, dtype)
         cfg = get_default_detector_config()
         cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
@@ -2065,10 +2064,10 @@ class TestConventionsMultiResolutionDetector(BaseTester):
         for transposed in (False, True):
             if transposed:  # relabelling: the transposed image reports swapped coordinates
                 size, peaks = (128, 69), {(128, 69): ((31, 45), 1.0), (64, 34): ((17, 20), 0.5)}
-                centres, neighbour = [[31.0, 45.0], [34.5, 40.0]], (0, 1)
+                centres, neighbour = [[31.0, 45.0], [35.0147059, 40.5]], (0, 1)
             else:
                 size, peaks = (69, 128), {(69, 128): ((45, 31), 1.0), (34, 64): ((20, 17), 0.5)}
-                centres, neighbour = [[45.0, 31.0], [40.0, 34.5]], (1, 0)
+                centres, neighbour = [[45.0, 31.0], [40.5, 35.0147059]], (1, 0)
             response = _LevelPeaks(peaks, neighbour)
             if detector == "MultiResolutionDetector":
                 det = MultiResolutionDetector(response, num_features=4, config=cfg)
@@ -2084,3 +2083,47 @@ class TestConventionsMultiResolutionDetector(BaseTester):
             )
             self.assert_close(lafs[:, :2], expected, rtol=0.0, atol=tol)
             assert bool((lafs[0, 2:] == 0).all())
+
+    def test_convention_multi_resolution_detector_centre_is_what_the_level_pixel_sampled(self, device, dtype):
+        # No mapping is written here: the image's two channels hold its own x and y coordinates, the pyramid carries
+        # those ramps through the real `resize` and `pyrdown`, and the response reads them at its peak. Away from the
+        # padded border, what a level pixel holds is the input position it looks at, and that is what must be reported
+        # on each of the six default levels, whose W / W_l run from 0.71 to 4.03.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision ramp cannot hold a coordinate to a fraction of a pixel")
+        h, w = 240, 320
+        yy, xx = torch.meshgrid(
+            torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+        )
+        sampled = []
+
+        def response(level):
+            _, _, h_l, w_l = level.shape
+            v, u = 2 * h_l // 5, 3 * w_l // 5
+            sampled.append(level[0, :, v, u])
+            out = torch.zeros_like(level[:, :1])
+            out[0, 0, v, u] = 1.0 / len(sampled)  # the level order is the response order
+            return out
+
+        lafs, resps = MultiResolutionDetector(response, num_features=6)(torch.stack([xx, yy])[None])
+        assert len(sampled) == 6
+        assert bool((resps > 0).all())
+        self.assert_close(kornia.feature.get_laf_center(lafs)[0], torch.stack(sampled), rtol=0.0, atol=2e-3)
+
+    @pytest.mark.parametrize("backend", ["patch", "pyramid"])
+    def test_convention_sift_feature_detection_lands_on_a_blob_of_a_coarse_level(self, device, dtype, backend):
+        # A blob at (44.5, 30.5) of 64 x 96 is centred on pixel (22, 15) of the factor-2 level, and on no pixel of the
+        # input: only the pixel's centre can lie on it, and the old map u * W / W_l reports (44, 30), 0.71 px off.
+        _skip_without_half_padding(device, dtype)
+        yy, xx = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype), torch.arange(96, device=device, dtype=dtype), indexing="ij"
+        )
+        img = torch.exp(-((xx - 44.5) ** 2 + (yy - 30.5) ** 2) / (2 * 3.0**2))[None, None]
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
+        sift = kornia.feature.SIFTFeature(4, upright=True, config=cfg, descriptor_backend=backend).to(device, dtype)
+        lafs, _, _ = sift(img)
+        centres = kornia.feature.get_laf_center(lafs)[0, kornia.feature.laf_is_filled(lafs)[0]]
+        target = torch.tensor([44.5, 30.5], device=device, dtype=lafs.dtype)
+        nearest = (centres - target).norm(dim=-1).min()
+        self.assert_close(nearest, torch.zeros_like(nearest), rtol=0.0, atol=1e-4)

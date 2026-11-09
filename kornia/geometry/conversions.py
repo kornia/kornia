@@ -80,7 +80,7 @@ from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.ops import _constant_tensor
-from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
+from kornia.core.utils import _autocast_disabled, _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -2100,6 +2100,18 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
 
 
+def _chain_outside_autocast(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    """Return ``a @ (b @ c)`` outside a caller's autocast region, for the (de)normalization chains of one dtype.
+
+    Autocast would run the products in half precision and return that dtype, up to 0.63 off for a float32 homography
+    in bfloat16 (#6601). TorchScript has no context managers; a scripted call keeps the caller's precision.
+    """
+    if torch.jit.is_scripting():
+        return a @ (b @ c)
+    with _autocast_disabled(a.device.type):
+        return a @ (b @ c)
+
+
 def normalize_homography(
     dst_pix_trans_src_pix: torch.Tensor,
     dsize_src: tuple[int, int],
@@ -2115,7 +2127,9 @@ def normalize_homography(
     ``(B, 3, 3)`` ``H`` and ``H_norm = normalize_homography(H, img.shape[-2:], dsize, align_corners=a)``,
     ``homography_warp(img, torch.linalg.inv(H_norm), dsize, align_corners=a)`` samples what
     ``warp_perspective(img, H, dsize, align_corners=a)`` samples, since
-    :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself. For the reverse, use
+    :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself, except along a one-pixel
+    source axis with ``a=True``: there ``grid_sample`` lands every normalized position on that pixel, and only
+    ``warp_perspective`` pads (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For the reverse, use
     :func:`denormalize_homography`; for ``(B, 4, 4)`` voxel homographies, :func:`normalize_homography3d`.
 
     Convention:
@@ -2124,6 +2138,8 @@ def normalize_homography(
           (``+0.8`` with ``align_corners=False``).
           :func:`~kornia.geometry.conversions.denormalize_homography` computes
           the reverse ``inv(N_dst) @ H @ N_src``
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - both ``dsize`` arguments are ``(height, width)``, while the matrix acts
           on ``(x, y, 1)`` column vectors
         - a ``(3, 3)`` or ``(B, 3, 3)`` matrix is accepted and batching is
@@ -2221,8 +2237,7 @@ def normalize_homography(
     ).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
-    return dst_norm_trans_src_norm
+    return _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
 
 
 def normal_transform_pixel(
@@ -2613,6 +2628,8 @@ def denormalize_homography(
           documented there, including its integer-input warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
           ``cusolver`` on ``cuda``), not through the ``cross``-based adjugate
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
@@ -2674,8 +2691,7 @@ def denormalize_homography(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
     # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
-    return dst_norm_trans_src_norm
+    return _chain_outside_autocast(dst_denorm_trans_dst_pix, dst_pix_trans_src_pix, src_norm_trans_src_pix)
 
 
 def normalize_homography3d(
@@ -2710,6 +2726,8 @@ def normalize_homography3d(
           ``(depth, height, width)`` triples
         - :func:`~kornia.geometry.conversions.denormalize_homography3d`
           computes the reverse ``inv(N_dst) @ H @ N_src``
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the shape guard is the 2-D function's for 4x4 matrices: ``(4, 4)``
           (returned as ``(1, 4, 4)``) or ``(B, 4, 4)``, anything else raises
           ``ValueError``
@@ -2761,8 +2779,7 @@ def normalize_homography3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
     # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
-    return dst_norm_trans_src_norm
+    return _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
 
 
 def denormalize_homography3d(
@@ -2787,6 +2804,8 @@ def denormalize_homography3d(
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``), the
           same routine :func:`~kornia.geometry.conversions.normalize_homography3d`
           uses for ``inv(N_src)``
+        - a caller's autocast region does not change the product or the returned dtype, outside TorchScript. Under
+          ``torch.compile`` on MPS it still does (torch ignores the nested guard there)
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
@@ -2854,7 +2873,7 @@ def denormalize_homography3d(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
     # compute chain transformations
-    return dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
+    return _chain_outside_autocast(dst_pix_trans_dst_norm, dst_pix_trans_src_pix, src_norm_trans_src_pix)
 
 
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:

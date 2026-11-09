@@ -593,7 +593,7 @@ def main():
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]]).repeat(2, 1, 1)  # Bx5x2
         dst = src + torch.distributions.Uniform(-0.2, 0.2).rsample((2, 5, 2))
         kernel, affine = K.geometry.transform.get_tps_transform(dst, src)
-        return src, kernel, affine
+        return dst, kernel, affine
 
     transforms: dict = {
         "warp_affine": (
@@ -640,7 +640,8 @@ def main():
         args_in = (img_in, *args)
         # import function and apply
         fn = getattr(mod, fn_name)
-        out = fn(*args_in)
+        # The image is 1000x667: the default of build_laplacian_pyramid would warn (#6319) and pad it to 1024x1024.
+        out = fn(*args_in, minimal_padding=True) if fn_name == "build_laplacian_pyramid" else fn(*args_in)
         if fn_name in ("resize", "rescale", "pyrdown", "pyrup"):
             h_new, w_new = out.shape[-2:]
             out = torch.nn.functional.pad(out, (0, (w - w_new), 0, (h - h_new)))

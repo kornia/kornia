@@ -32,7 +32,7 @@ from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
 # Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
 # one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
@@ -728,6 +728,48 @@ class TestBoxes2D(BaseTester):
         for mode in ("xyxy_plus", "xywh", "vertices", "vertices_plus"):
             lengths = [len(out) for out in boxes.to_tensor(mode)]
             assert lengths == [sum(row is not None for row in sample) for sample in rows], mode
+
+    def test_unbatched_selection_draws_no_padding_rows_6602(self, device, dtype):
+        # A selection knows which of its rows are padding, so it draws what the list-built object draws: one box of
+        # _A = (1, 1, 3, 3) has area 2 x 2 = 4, and the two padding rows are empty rather than a pixel at the origin.
+        boxes = self._padding_boxes(device, dtype)
+        expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(boxes.to_mask(8, 8)[0].sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes[0].to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes[0].to_mask(8, 8), boxes.to_mask(8, 8)[0], atol=0.0, rtol=0.0)
+        # The sample without padding rows is unchanged: _B0, _B1 and _B2 all draw.
+        self.assert_close(boxes[1].to_mask(8, 8), boxes.to_mask(8, 8)[1], atol=0.0, rtol=0.0)
+        assert boxes[1].to_mask(8, 8).sum((-1, -2)).count_nonzero() == 3
+
+    def test_unbatched_selection_draws_the_row_written_over_padding_6602(self, device, dtype):
+        # Padding belongs to the row, not to its position: a real box written over a padding row draws, and a padding
+        # row written over a real box does not.
+        boxes = self._padding_boxes(device, dtype)
+        selected = boxes[0].clone()
+        selected[1] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        # _NEW = (0, 1, 2, 6) has area 2 x 5 = 10.
+        expected = torch.tensor([4.0, 10.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(selected.to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        selected[0] = boxes[0][1:2]
+        expected = torch.tensor([0.0, 10.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(selected.to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+
+    def test_unbatched_selection_ignores_moved_padding_corners_6602(self, device, dtype):
+        # The transform moves the stored corners of a padding row, which must still draw nothing.
+        boxes = self._padding_boxes(device, dtype)
+        shift = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        masks = boxes[0].transform_boxes(shift).to_mask(8, 8)
+        expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(masks.sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+
+    def test_dynamo_unbatched_selection_mask_6602(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile a Boxes method")
+        boxes = self._padding_boxes(device, dtype)
+        function = lambda selected: selected.to_mask(8, 8)  # noqa: E731
+        compiled = torch_optimizer(function, fullgraph=True)
+        for selected in (boxes[0], boxes[1]):
+            self.assert_close(compiled(selected), function(selected), atol=0.0, rtol=0.0)
 
     def test_list_padding_reported_cases_6283(self, device, dtype):
         b = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
@@ -2091,6 +2133,18 @@ class TestBoxes2D(BaseTester):
 
 
 class TestTransformBoxes2D(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_transform_6601(self, autocast_dtype, device):
+        # They inherit transform_points' half-precision product: up to 0.89 px off in bfloat16 at 256 px.
+        skip_unsupported_autocast(device, autocast_dtype)
+        boxes = torch.tensor([[[10.3, 20.7, 200.1, 180.9]]], device=device)
+        homography = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [1e-3, 2e-3, 1.0]]], device=device)
+        expected = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
         boxes_xyxy = torch.tensor([[139.2640, 103.0150, 398.3120, 411.5225]], device=device, dtype=dtype)

@@ -64,6 +64,7 @@ from kornia.core.utils import (
     _torch_grid_sample,
     _torch_inverse_cast,
     _torch_solve_cast,
+    is_exporting,
 )
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
@@ -147,6 +148,47 @@ def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
     are unaffected.
     """
     return _samples_half_in_float32(src) and other.dtype == src.dtype
+
+
+def _pad_one_pixel_axes(src: torch.Tensor, padding_mode: str) -> torch.Tensor:
+    """Give each one-pixel spatial axis of ``src`` a zero pixel, for sampling by a matrix with ``align_corners=True``.
+
+    ``grid_sample`` reads the position ``(g + 1) / 2 * (size - 1)`` there, so every sample along a one-pixel axis lands
+    on its pixel, and ``'zeros'`` and ``'fill'`` never apply (#6433). A zero pixel behind it gives the axis an extent,
+    and leaves its pixel at coordinate 0, so a pixel matrix needs no shift: the only pixel is then the first of two,
+    sampled by the arithmetic of any longer axis, with the same tie for ``mode="nearest"``. :func:`_fill_and_warp` pads
+    its mask the same way. ``'border'`` and ``'reflection'`` need nothing: outside the axis they read that same pixel,
+    which is what landing on it gives, so ``src`` comes back as it is.
+
+    An axis longer than one pixel is untouched, and ``src`` itself comes back when every axis is, in eager and scripted
+    calls, in ``torch.compile``, which recompiles for the other side of the test, and in the export of a static shape.
+    Eager, this costs about 0.5 us of a warp's 140 us or more (x86 CPU, 16 px). A trace or a program exported with
+    dynamic axes always holds the pad instead, by 0 for a longer axis, which keeps the values and adds one copy of the
+    image, because a test of a size known only at run time would freeze the side a trace saw, and be a guard of an
+    exported program that rejects the other side. So do ``torch.export`` with ``strict=True``, and ``torch.compile``
+    before torch 2.12, where :func:`is_exporting` also holds.
+    """
+    if padding_mode not in ("zeros", "fill"):
+        return src
+    pad: list[int] = []
+    if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_exporting()):
+        for axis in range(src.dim() - 1, 1, -1):
+            # 1 for a size of 1 and 0 for any other, without a comparison: the expression works on the traced scalar of
+            # a trace, the SymInt of a dynamic axis, and on an int, including a dynamic axis that strict=True, the
+            # default on torch 2.5.1, shows as one, where torch.sym_ite is unsupported for a static axis. The product
+            # keeps an empty axis empty, so that grid_sample still rejects it.
+            size = src.shape[axis]
+            pad += [0, size * (2 // (size + 1))]
+        # A static shape has nothing to keep, unless strict=True hides a dynamic axis in it.
+        if not torch.compiler.is_dynamo_compiling() and all(type(amount) is int and amount == 0 for amount in pad):
+            return src
+        return F.pad(src, pad)
+    # An empty source stays as it is, so an error about its size names the size the caller passed.
+    if 1 not in src.shape[2:] or src.numel() == 0:
+        return src
+    for axis in range(src.dim() - 1, 1, -1):
+        pad += [0, int(src.shape[axis] == 1)]
+    return F.pad(src, pad)
 
 
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
@@ -367,6 +409,10 @@ def warp_perspective(
           :func:`warp_affine`
         - a nonzero scalar multiple of ``M`` describes the same warp; uniformly small or large
           nonzero entries are rescaled toward unit magnitude before the coordinate change and inversion
+        - a one-pixel source axis is sampled like a longer one, so positions outside it get ``padding_mode``. Under
+          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, ``'zeros'`` and
+          ``'fill'`` read it as the first of two pixels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
@@ -435,16 +481,17 @@ def warp_perspective(
         src, M = src.float(), M.float()
     if not torch.jit.is_scripting():
         src, M = _reconcile_under_autocast(src, M)
+    sampled = _pad_one_pixel_axes(src, padding_mode) if align_corners else src
 
     # A caller's autocast region would run the matrix products in half precision and the grid would inherit them: a
     # float32 warp of a 256 px [0, 1] image was up to 0.5 off in bfloat16, and still returned float32. Only the grid
     # leaves the region: sampling stays in it, where autocast reconciles the dtypes of the image and the grid as
     # before. TorchScript has no context managers; a scripted call keeps the caller's precision.
     if torch.jit.is_scripting():
-        grid = _warp_perspective_grid(src, M, (h_out, w_out), align_corners)
+        grid = _warp_perspective_grid(sampled, M, (h_out, w_out), align_corners)
     else:
         with _autocast_disabled(src.device.type):
-            grid = _warp_perspective_grid(src, M, (h_out, w_out), align_corners)
+            grid = _warp_perspective_grid(sampled, M, (h_out, w_out), align_corners)
 
     if padding_mode == "fill":
         # One zero per channel, as in warp_affine. It is built here, not before the empty-destination return, whose
@@ -452,7 +499,7 @@ def warp_perspective(
         if fill_value is None:
             fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
-    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+    return _torch_grid_sample(sampled, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
         out_dtype
     )
 
@@ -538,6 +585,10 @@ def warp_affine(
         normalized coordinates and ``align_corners`` sampling rules.
 
         - ``M`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
+        - a one-pixel source axis is sampled like a longer one, so positions outside it get ``padding_mode``. Under
+          ``align_corners=True``, where ``grid_sample`` alone would land them all on that pixel, ``'zeros'`` and
+          ``'fill'`` read it as the first of two pixels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - ``src`` sets the dtype: a float32 ``M`` with a float64 ``src`` samples in float64, and a float64 ``M`` with a
           float32 ``src`` raises ``RuntimeError``
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
@@ -614,13 +665,14 @@ def warp_affine(
         src, M = src.float(), M.float()
     if not torch.jit.is_scripting():
         src, M = _reconcile_under_autocast(src, M)
+    sampled = _pad_one_pixel_axes(src, padding_mode) if align_corners else src
 
     # Outside a caller's autocast region, except the sampling; see warp_perspective.
     if torch.jit.is_scripting():
-        grid = _warp_affine_grid(src, M, dsize, align_corners)
+        grid = _warp_affine_grid(sampled, M, dsize, align_corners)
     else:
         with _autocast_disabled(src.device.type):
-            grid = _warp_affine_grid(src, M, dsize, align_corners)
+            grid = _warp_affine_grid(sampled, M, dsize, align_corners)
 
     if torch.jit.is_tracing():
         # Keep both batch sizes dynamic. Using their maximum expands a shared grid for non-empty images,
@@ -635,7 +687,7 @@ def warp_affine(
             fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
 
-    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+    return _torch_grid_sample(sampled, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
         out_dtype
     )
 
@@ -652,7 +704,8 @@ def _fill_and_warp(
 
     Args:
         src: input torch.Tensor of shape ``(B, C, H, W)``.
-        grid: grid torch.Tensor from `transform_points`.
+        grid: grid torch.Tensor from `transform_points`. With ``align_corners=True`` it addresses ``src`` as
+            :func:`_pad_one_pixel_axes` returns it, which is padded here.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         align_corners: interpolation flag.
         fill_value: torch.Tensor of shape ``(C)`` or ``(1)`` that fills the padding area, or any shape that
@@ -688,6 +741,9 @@ def _fill_and_warp(
         fill_value = fill_value.sum().reshape(1)
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)
+    if align_corners and not stand_in:
+        # The grid addresses src with its one-pixel axes padded, and the padded pixel is out of bounds for the fill too.
+        src, ones_mask = _pad_one_pixel_axes(src, "zeros"), _pad_one_pixel_axes(ones_mask, "zeros")
 
     if fill_value.ndim == 0:
         fill_value = fill_value.view(1, 1, 1, 1)
@@ -1823,6 +1879,9 @@ def warp_affine3d(
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
         - ``M`` has the batch of ``src``: one matrix is not shared by a larger batch
+        - under ``align_corners=True``, a one-voxel source axis is sampled like a longer one, so positions outside it
+          get ``padding_mode``: ``'zeros'`` reads it as the first of two voxels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid
           (there, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
         - an empty batch returns shape ``(0, C, d, h, w)`` with gradients connected to both inputs
@@ -1872,6 +1931,9 @@ def warp_affine3d(
     if _runs_in_float32(src, M):
         src, M = src.float(), M.float()
     src, M = _reconcile_under_autocast(src, M)
+    if align_corners:
+        src = _pad_one_pixel_axes(src, padding_mode)
+        D, H, W = src.shape[-3:]
 
     size_src: tuple[int, int, int] = (D, H, W)
     size_out: tuple[int, int, int] = dsize
@@ -2300,6 +2362,9 @@ def warp_perspective3d(
         - align_corners: ``False`` by default (differs from the 2D :func:`warp_perspective`,
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
+        - under ``align_corners=True``, a one-voxel source axis is sampled like a longer one, so positions outside it
+          get ``border_mode``: ``'zeros'`` reads it as the first of two voxels, the second holding the padding
+          (`#6433 <https://github.com/kornia/kornia/issues/6433>`_)
         - a caller's autocast region does not change the matrix arithmetic or the sampling grid, outside TorchScript
           (in the region, a ``src`` and ``M`` that mix float32 and half dtypes run in float32)
         - a zero output dimension returns an autograd-connected empty tensor;
@@ -2353,6 +2418,9 @@ def warp_perspective3d(
     if not torch.jit.is_scripting():
         src, M = _reconcile_under_autocast(src, M)
 
+    if align_corners:
+        src = _pad_one_pixel_axes(src, border_mode)
+
     # launches the warper
     d, h, w = src.shape[-3:]
     return _transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners).to(out_dtype)
@@ -2399,15 +2467,17 @@ def homography_warp(
           exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
         - ``src_homo_dst`` has the batch of ``patch_src``: a ``(1, 3, 3)`` homography is not shared by a larger
           batch
+        - a ``float16``/``bfloat16`` patch with a homography of its dtype builds its grid and samples in ``float32`` on
+          every device and returns the input dtype
         - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32, also
           under a half default dtype and in a caller's autocast region, and then cast to the homography's dtype
         - with ``normalized_coordinates=True`` a caller's autocast region does not change the sampling grid, outside
           TorchScript
           (in the region, a patch and homography that mix float32 and half dtypes run in float32)
-        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
-          than one pixel, a pixel homography samples the same positions under both settings, which then differ
-          only in ``padding_mode="reflection"`` and, with ``mode="nearest"``, in which pixel a sample exactly
-          halfway between two pixels takes
+        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). A pixel homography samples the
+          same positions under both settings, which then differ only in ``padding_mode="reflection"`` and, with
+          ``mode="nearest"``, in which pixel a sample exactly halfway between two pixels takes. A normalized homography
+          reads the whole :math:`[-1, 1]` range of a one-pixel source axis as that pixel under ``align_corners=True``
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -2460,6 +2530,9 @@ def homography_warp(
     if normalized_homography:
         if not torch.jit.is_scripting():
             patch_src, src_homo_dst = _reconcile_under_autocast(patch_src, src_homo_dst)
+        out_dtype = patch_src.dtype
+        if _runs_in_float32(patch_src, src_homo_dst):
+            patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
         height, width = dsize
         if normalized_coordinates:
             grid = create_meshgrid(
@@ -2474,6 +2547,8 @@ def homography_warp(
         else:
             # A pixel homography lands on source pixels, which grid_sample reads normalized. The pixel arithmetic
             # runs in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
+            if align_corners:
+                patch_src = _pad_one_pixel_axes(patch_src, padding_mode)
             warped_grid = _warp_pixel_grid(src_homo_dst, height, width)
             warped_grid = _normalize_warped_pixel_grid(
                 warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners
@@ -2481,7 +2556,7 @@ def homography_warp(
 
         return _torch_grid_sample(
             patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-        )
+        ).to(out_dtype)
     return warp_perspective(
         patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
@@ -2550,10 +2625,9 @@ def homography_warp3d(
         - with ``normalized_coordinates=True`` a caller's autocast region does not change the sampling grid, outside
           TorchScript
           (in the region, a patch and homography that mix float32 and half dtypes run in float32)
-        - align_corners: ``False`` by default. With ``normalized_coordinates=False`` and a source axis
-          longer than one voxel, a voxel homography samples the same positions under both settings,
-          which then differ only in ``padding_mode="reflection"`` and, with ``mode="nearest"``, in which voxel a
-          sample exactly halfway between two voxels takes
+        - align_corners: ``False`` by default. With ``normalized_coordinates=False``, a voxel homography samples
+          the same positions under both settings, which then differ only in ``padding_mode="reflection"`` and,
+          with ``mode="nearest"``, in which voxel a sample exactly halfway between two voxels takes
         - padding_mode: ``'zeros'`` by default
         - negative output dimensions raise ``ValueError``
 
@@ -2615,6 +2689,8 @@ def homography_warp3d(
     else:
         # A voxel homography lands on source voxels, which grid_sample reads normalized. The voxel arithmetic runs
         # in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
+        if align_corners:
+            patch_src = _pad_one_pixel_axes(patch_src, padding_mode)
         warped_grid = _warp_pixel_grid3d(src_homo_dst, depth, height, width)
         warped_grid = _normalize_warped_pixel_grid3d(
             warped_grid, patch_src.shape[-3], patch_src.shape[-2], patch_src.shape[-1], align_corners
