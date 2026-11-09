@@ -1240,6 +1240,39 @@ class TestConventionsLoFTR(BaseTester):
         model.fine_matching.register_forward_pre_hook(fine_features)
         return model
 
+    @pytest.mark.parametrize("masked_sides", [(), (0,), (1,), (0, 1)])
+    @pytest.mark.parametrize("padded", [False, True])
+    def test_convention_border_follows_each_samples_valid_region_5888(self, device, dtype, masked_sides, padded):
+        # The designed pairs below use real coarse/fine matching. With two cells removed at each border,
+        # sample 0's (3, 7) -> (5, 3) is too close to the right/bottom padding on side 0/1 respectively;
+        # sample 1's (2, 3) -> (4, 7) is too close to its bottom/right padding. Only (5, 2) -> (2, 6) remains.
+        sample = {
+            "image0": torch.zeros(2, 1, 59, 85, device=device, dtype=dtype),
+            "image1": torch.zeros(2, 1, 64, 74, device=device, dtype=dtype),
+        }
+        for side in masked_sides:
+            mask = torch.ones_like(sample[f"image{side}"][:, 0], dtype=torch.bool)
+            if padded:
+                if side == 0:
+                    mask[0, :, 72:] = False  # 9 valid coarse columns
+                    mask[1, 32:] = False  # 4 valid coarse rows
+                else:
+                    mask[0, 56:] = False  # 7 valid coarse rows
+                    mask[1, :, 72:] = False  # 9 valid coarse columns
+            sample[f"mask{side}"] = mask
+        with torch.no_grad():
+            out = self._hooked_loftr(device, dtype, swap=False)(sample)
+        if padded and masked_sides:
+            expected0, expected1, batches = [[16.0, 40.0]], [[44.0, 20.0]], [0]
+        else:
+            expected0 = [[56.0, 24.0], [16.0, 40.0], [24.0, 16.0]]
+            expected1 = [[26.0, 38.0], [44.0, 20.0], [60.0, 32.0]]
+            batches = [0, 0, 1]
+        coord = torch.promote_types(dtype, torch.float32)
+        self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=coord))
+        self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
+        assert out["batch_indexes"].tolist() == batches
+
     def test_convention_loftr_keypoints_are_eight_times_the_coarse_cell_plus_the_fine_offset(self, device, dtype):
         image0 = torch.rand(2, 1, 59, 85, device=device, dtype=dtype)
         image1 = torch.rand(2, 1, 64, 74, device=device, dtype=dtype)

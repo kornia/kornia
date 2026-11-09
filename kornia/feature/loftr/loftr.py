@@ -109,10 +109,10 @@ class LoFTR(nn.Module):
         - ``confidence`` is the coarse matching score of the match, a dual-softmax score with the default
           ``match_type``; only matches above ``max(thr, 0)`` are returned, with the ``thr`` of
           ``config["match_coarse"]``, 0.2 by default.
-        - Known defect: with ``mask0`` or ``mask1``, the border strip in which coarse matches are dropped
-          (``border_rm`` coarse cells, 16 pixels by default) is measured from the edges of the padded image, not of
-          its valid region, so matches next to the padding are kept
-          (`#5888 <https://github.com/kornia/kornia/issues/5888>`_).
+        - Coarse matches within ``border_rm`` cells of an edge are dropped (2 cells, 16 pixels by default).
+          With ``mask0`` or ``mask1``, each sample's border is measured from its valid region, assumed to be a
+          top-left-aligned rectangle with padding on the right and bottom. Either mask may be supplied alone;
+          the other image is then treated as fully valid. Masks are sampled at the coarse cell centres.
 
     Args:
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor', 'indoor_new'.
@@ -283,6 +283,15 @@ class LoFTR(nn.Module):
             mask_c0 = data["mask0"][..., ::stride_c, ::stride_c].flatten(-2)
         if "mask1" in data:
             mask_c1 = data["mask1"][..., ::stride_c, ::stride_c].flatten(-2)
+        if mask_c0 is not None or mask_c1 is not None:
+            # Border removal reads spatial masks from _data, separately from the flattened attention masks.
+            # Supply both because coarse matching also uses the pair to count valid training candidates.
+            for side, mask, features in ((0, mask_c0, features0), (1, mask_c1, features1)):
+                coarse = features["coarse"]
+                shape = (coarse.size(0), coarse.size(2), coarse.size(3))
+                _data[f"mask{side}"] = (
+                    torch.ones(shape, device=coarse.device, dtype=torch.bool) if mask is None else mask.reshape(shape)
+                )
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
         # 3. match coarse-level
