@@ -2259,16 +2259,28 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         aug(torch.rand(shape, device=device, dtype=dtype))
         assert list(aug.state_dict()) == keys
 
-    def test_draws_outside_grad_mode_do_not_stick(self, device, dtype):
+    @pytest.mark.parametrize("placement", ["same device", "module on the cpu"])
+    def test_draws_outside_grad_mode_do_not_stick(self, placement, device, dtype):
+        # With the module on the CPU, the range is copied only when something changed since the last draw. A draw under
+        # ``no_grad`` after an optimizer step built samplers without a graph, and the next training forward kept them.
+        if placement == "module on the cpu" and device.type == "cpu":
+            pytest.skip("needs a range on another device than the module")
         aug, param, _, _, _ = self._make("RandomBrightness", "half-width", device, dtype)
+        if placement == "module on the cpu":
+            aug = K.RandomBrightness(param, p=1.0)
+            assert aug._param_generator.device == torch.device("cpu")
+        opt = torch.optim.SGD([param], lr=1e-3)
         x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
-        with torch.no_grad():
-            aug(x)
-        with torch.inference_mode():
-            aug(x)
-        aug(x).sum().backward()
-        assert param.grad is not None
-        assert torch.count_nonzero(param.grad) > 0
+        for _ in range(2):
+            with torch.no_grad():
+                aug(x)
+            with torch.inference_mode():
+                aug(x)
+            aug(x).sum().backward()
+            assert param.grad is not None
+            assert torch.count_nonzero(param.grad) > 0
+            opt.step()
+            opt.zero_grad(set_to_none=True)
 
     def test_a_failed_rebuild_leaves_validation_on(self, device, dtype):
         param = torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype))

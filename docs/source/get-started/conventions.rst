@@ -680,8 +680,9 @@ Serializing an augmentation
   their range when they build their samplers and pass it no gradient, so an
   update reaches them through ``load_state_dict`` and copies only. A range on an
   accelerator in an augmentation left on the CPU (or the reverse) is copied to
-  the generator's device after an in-place update only, which waits for the GPU
-  once per update.
+  the generator's device only after an in-place update or a change of grad
+  mode (a forward under ``torch.no_grad()`` after a training one, or the
+  reverse), and each copy waits for the GPU once.
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. This includes the
   ``kornia.augmentation.auto`` policies: a policy pickles when every operation

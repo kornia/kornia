@@ -129,11 +129,13 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         # A generator left on the CPU with a range on an accelerator (or the reverse) would wait for the GPU to copy
         # that range before each draw. It keeps drawing where it is told to, and copies the range only after an in-place
         # update or a replacement of the parameter, which its identity and version counter reveal without reading it.
+        # It copies the range again when the grad mode changes, too: samplers built under ``no_grad`` carry no graph,
+        # and a training forward that kept them would leave the range without a gradient from then on.
         device_type = torch.device(self.device).type
         ranges = [value for value in self._parameters.values() if value is not None]
         if all(value.device.type == device_type for value in ranges):
             return True
-        versions = tuple((id(value), value._version) for value in ranges)
+        versions = (torch.is_grad_enabled(), tuple((id(value), value._version) for value in ranges))
         if versions == self.__dict__.get("_range_versions"):
             return False
         self._range_versions = versions
