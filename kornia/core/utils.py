@@ -875,6 +875,28 @@ def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     return nullcontext()
 
 
+def _convolution_outside_autocast(device_type: str) -> AbstractContextManager[Any]:
+    """Return :func:`_autocast_disabled` for a convolution, except under ``torch.compile`` on MPS.
+
+    A deliberate, scoped exception to running compiled and eager code alike (#6601). Compiled in an MPS autocast
+    region, a convolution under a nested ``torch.autocast(enabled=False)`` raises ``expected dtype torch.float32 but
+    got torch.bfloat16`` (or ``torch.float16``) on torch 2.14, 2.15 and the 2.16.0.dev20261106 nightly, with no kornia
+    code involved; the same convolution without the nested region runs, and so does a guarded matrix product. Skipping
+    the guard there returns those compiled calls to their earlier behaviour: they run, with the convolution in the
+    autocast dtype, as before the guard. Every other device, and every eager call on MPS, keeps the guard.
+
+    Scope: only the convolutions that build sampling positions or pyramid levels, in ``elastic_transform2d`` and
+    the two ``pyrdown`` calls of ``extract_patches_from_pyramid``. Cost, measured on an M1 with torch 2.15: those
+    compiled calls stay off the eager result by what the region rounds, 0.017 (bfloat16) and 0.0018 (float16) for
+    ``elastic_transform2d`` and 0.0027 and 0.00032 for ``extract_patches_from_pyramid`` on a ``[0, 1]`` image. The
+    upstream PyTorch report is not filed yet. Retire this, and use :func:`_autocast_disabled` directly, once the
+    oldest supported torch compiles a convolution in that nested region on MPS.
+    """
+    if device_type == "mps" and is_compiling():
+        return nullcontext()
+    return _autocast_disabled(device_type)
+
+
 def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ...]:
     """Return ``tensors`` in float32 if a caller's autocast region would have cast them to one dtype, else unchanged.
 

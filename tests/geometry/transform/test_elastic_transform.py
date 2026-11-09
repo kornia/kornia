@@ -20,7 +20,13 @@ import torch
 
 from kornia.geometry.transform import elastic_transform2d
 
-from testing.base import BaseTester, skip_unsupported_autocast, supports_2d_border_padding
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    skip_unsupported_autocast,
+    supports_2d_border_padding,
+)
 
 
 def _row_spread_std(out: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
@@ -76,6 +82,26 @@ class TestElasticTransformAutocast(BaseTester):
         with torch.autocast(device.type, dtype=torch.bfloat16):
             actual = elastic_transform2d(image, noise.to(torch.float16))
         assert actual.dtype == torch.float32
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
+        # Compiled on MPS, the field's convolution under the nested guard raised, so the guard is skipped there and the
+        # call must run (_convolution_outside_autocast).
+        if optimizer_backend == "jit":
+            pytest.skip("elastic_transform2d does not script")
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, noise = self._inputs(device)
+        op = torch_optimizer(elastic_transform2d)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, noise)
+        assert actual.dtype == torch.float32
+        if device.type == "mps":
+            return
+        # Compiled and eager differ by up to 2.4e-05 here; a region reaching the field gives 1.7e-03 or more.
+        expected = elastic_transform2d(image, noise)
+        self.assert_close(actual, expected, rtol=0, atol=1e-4)
+        self.assert_close(op(image, noise), expected, rtol=0, atol=1e-4)
 
 
 class TestElasticTransform(BaseTester):

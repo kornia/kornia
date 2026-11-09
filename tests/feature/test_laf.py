@@ -2398,3 +2398,23 @@ class TestExtractPatchesAutocast(BaseTester):
         image, laf = self._inputs(device, 20.3)
         scripted = torch.jit.script(kornia.feature.extract_patches_simple)
         self.assert_close(scripted(image, laf, 32), kornia.feature.extract_patches_simple(image, laf, 32))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
+        # 70 samples a coarser level, which pyrdown builds. Compiled on MPS, a convolution under the nested guard
+        # raised, so the guard is skipped there and the call must run (_convolution_outside_autocast).
+        if optimizer_backend == "jit":
+            pytest.skip("extract_patches_from_pyramid does not script")
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, laf = self._inputs(device, 70.3)
+        op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, laf, 32)
+        assert actual.dtype == torch.float32
+        if device.type == "mps":
+            return
+        # Compiled and eager differ by up to 3.1e-06 here; a region reaching the pyramid gives 1.9e-04 or more.
+        expected = kornia.feature.extract_patches_from_pyramid(image, laf, 32)
+        self.assert_close(actual, expected, rtol=0, atol=1e-4)
+        self.assert_close(op(image, laf, 32), expected, rtol=0, atol=1e-4)

@@ -32,7 +32,12 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _samples_half_in_float32, _torch_grid_sample
+from kornia.core.utils import (
+    _autocast_disabled,
+    _convolution_outside_autocast,
+    _samples_half_in_float32,
+    _torch_grid_sample,
+)
 from kornia.filters import filter2d_separable
 from kornia.filters.kernels import get_gaussian_kernel1d
 
@@ -77,7 +82,8 @@ def elastic_transform2d(
         - coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``:
           zeros, the edge value, or the reflected image
         - a caller's autocast region does not change the displacement field or the grid, and the result stays in the
-          dtype of ``image``
+          dtype of ``image``. Under ``torch.compile`` on MPS it still changes the field: a convolution under the guard
+          raises there, so the smoothing runs in the region's dtype
 
     Args:
         image: Input image to be transformed with shape ``(B, C, H, W)``.
@@ -168,7 +174,8 @@ def elastic_transform2d(
     # Convolve over the random displacement matrix and scale by 'alpha'.
     # The field and the identity grid below are sampling positions: a caller's autocast region would round them to half
     # precision, 0.018 off on a [0, 1] image in bfloat16, and the result would still come back in its dtype (#6601).
-    with _autocast_disabled(device.type):
+    # Compiled on MPS the guard is skipped: a convolution in it raises there (see _convolution_outside_autocast).
+    with _convolution_outside_autocast(device.type):
         disp_x = filter2d_separable(noise[:, :1], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_x
         disp_y = filter2d_separable(noise[:, 1:], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_y
 

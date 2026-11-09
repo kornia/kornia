@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _autocast_disabled
+from kornia.core.utils import _autocast_disabled, _convolution_outside_autocast
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
@@ -919,8 +919,9 @@ def _extract_patches_from_pyramid_levelwise(
 
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
-            # A caller's autocast region would run the level's Gaussian in half precision (#6601).
-            with _autocast_disabled(cur_img.device.type):
+            # A caller's autocast region would run the level's Gaussian in half precision (#6601). Compiled on MPS the
+            # guard is skipped: a convolution in it raises there (see _convolution_outside_autocast).
+            with _convolution_outside_autocast(cur_img.device.type):
                 cur_img = pyrdown(cur_img)
         for st in range(0, N, chunk):
             en = min(st + chunk, N)
@@ -1043,7 +1044,9 @@ def extract_patches_from_pyramid(
           large LAF is sampled from it. The level uses the geometric-mean scale, so a highly anisotropic LAF can
           still alias along its long axis. A level samples the same image positions as level 0, in its own pixels.
         - A cell outside the image reads the nearest border pixel of the level it samples.
-        - A caller's autocast region does not change the sampling grid or the pyramid, outside TorchScript.
+        - A caller's autocast region does not change the sampling grid or the pyramid, outside TorchScript. Under
+          ``torch.compile`` on MPS it still changes the pyramid: a convolution under the guard raises there, so
+          :func:`~kornia.geometry.transform.pyrdown` runs in the region's dtype.
         - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
           in at least ``float32``. A LAF with a non-finite entry gives a zero patch.
 
@@ -1135,8 +1138,9 @@ def extract_patches_from_pyramid(
     xoff = 0
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
-            # A caller's autocast region would run the level's Gaussian in half precision (#6601).
-            with _autocast_disabled(cur_img.device.type):
+            # A caller's autocast region would run the level's Gaussian in half precision (#6601). Compiled on MPS the
+            # guard is skipped: a convolution in it raises there (see _convolution_outside_autocast).
+            with _convolution_outside_autocast(cur_img.device.type):
                 cur_img = pyrdown(cur_img)
         atlas[:, :, : h_l + 2, xoff : xoff + w_l + 2] = F.pad(cur_img, (1, 1, 1, 1), mode="replicate")
         xoff += w_l + 2
