@@ -317,11 +317,11 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
-        isinstance(factor, (float, torch.Tensor)),
-        f"The factor should be a float number or torch.Tensor in the range between [-PI, PI]. Got {type(factor)}",
+        isinstance(factor, (int, float, torch.Tensor)) and not isinstance(factor, bool),
+        f"The factor should be an int, a float or a torch.Tensor. Got {type(factor)}",
     )
 
-    if isinstance(factor, float):
+    if isinstance(factor, (int, float)):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
     factor = _to_device_nonblocking(factor, image.device, image.dtype)
@@ -1389,7 +1389,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
     """
     if not isinstance(image, torch.Tensor):
-        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
+        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(image)}")
 
     _max_val = torch.tensor([1.0]) if max_val is None else max_val
     if not isinstance(_max_val, torch.Tensor):
