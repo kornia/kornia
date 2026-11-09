@@ -671,6 +671,27 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(d0["keypoints"], points)
         self.assert_close(d1["keypoints"], points)
 
+    def test_convention_xfeat_star_scales_the_offset_before_the_anchor_6640(self, device, dtype):
+        # Keypoints and scales are float32, as detectAndComputeDense returns them, and the fine matcher runs in the
+        # model's dtype. Adding the bin-3 anchor to a float16/bfloat16 offset before the scale promotes it rounds the
+        # anchor (bfloat16: about 0.03 px at scale 2); the reported point must equal offset * scale + 3 * scale.
+        model = XFeat().to(device, dtype).eval()
+
+        class Ramp(torch.nn.Module):
+            def forward(self, x):
+                return 0.1 * torch.arange(64, device=x.device, dtype=x.dtype).expand(x.shape[0], 64)
+
+        model.net.fine_matcher = Ramp()
+        points = torch.tensor([[[8.0, 16.0], [24.0, 32.0]]], device=device)
+        scales = torch.tensor([[2.0, 1 / 0.6]], device=device)
+        d = {"keypoints": points, "descriptors": torch.zeros(1, 2, 64, device=device, dtype=dtype), "scales": scales}
+        ids = torch.arange(2, device=device)
+        actual = model._refine_matches(d, d, [(ids, ids)], 0, fine_conf=-1)
+        offset = model._subpix_softmax2d(Ramp()(d["descriptors"][0]).view(-1, 8, 8)).double()
+        anchor = 3.0 * scales[0, :, None].double()
+        expected = torch.cat([points[0] + offset * scales[0, :, None] + anchor, points[0] + anchor], dim=-1)
+        self.assert_close(actual.double(), expected, rtol=0, atol=1e-4)
+
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):
         # What XFeatModel returns for an h x w (resized) image, replaced through a forward hook: keypoint logits with
