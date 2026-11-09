@@ -660,7 +660,9 @@ class XFeat(nn.Module):
         # Full match_xfeat_star on a 240x320 image, top_k=1024, torch 2.15,
         # i7-14700K/2 threads: 30.0 -> 30.1 ms (within spread); CUDA cost was
         # unresolved under timing noise. Oxford/IMC accuracy is recorded above.
-        mkpts_0 = mkpts_0 + (offsets + 3.0) * sc0[:, None]
+        # Scale before adding the anchor: float32 scales promote a float16/bfloat16 offset first, so the anchor is not
+        # rounded in half precision (bfloat16 put it up to 0.026 px off).
+        mkpts_0 = mkpts_0 + offsets * sc0[:, None] + 3.0 * sc0[:, None]
         mkpts_1 = mkpts_1 + 3.0 * d1["scales"][batch_idx][idx1, None]
         mask_good = conf > fine_conf
         return torch.cat([mkpts_0[mask_good], mkpts_1[mask_good]], dim=-1)

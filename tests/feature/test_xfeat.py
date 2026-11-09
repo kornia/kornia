@@ -869,8 +869,8 @@ class TestConventionsXFeat(BaseTester):
         assert (out["scales"][0, 1:] == 1 / 1.3).all()
 
     def test_convention_xfeat_star_moves_the_reported_keypoint_by_the_offset_times_its_scale_6537(self, device):
-        # The refinement adds its offset to the reported coarse keypoint of the first image, in input pixels; the
-        # keypoint of the second image stays where it is reported. A fine matcher peaked at bin (5, 2) gives (2, -1).
+        # The refinement adds its offset to the reported coarse keypoint of the first image, in input pixels, after
+        # anchoring both keypoints at bin 3 of their cells (#6640). A fine matcher peaked at bin (5, 2) gives (2, -1).
         xfeat = XFeat().to(device).eval()
 
         class Peak(torch.nn.Module):
@@ -885,8 +885,9 @@ class TestConventionsXFeat(BaseTester):
         idx = torch.arange(50, device=device)
         refined = xfeat._refine_matches(out, out, [(idx, idx)], 0)
         offset = torch.tensor([[2.0, -1.0]], device=device) * out["scales"][0][:, None]
-        self.assert_close(refined[:, :2], out["keypoints"][0] + offset, rtol=0, atol=1e-3)
-        self.assert_close(refined[:, 2:], out["keypoints"][0], rtol=0, atol=0)
+        anchor = 3.0 * out["scales"][0][:, None]
+        self.assert_close(refined[:, :2], out["keypoints"][0] + anchor + offset, rtol=0, atol=1e-3)
+        self.assert_close(refined[:, 2:], out["keypoints"][0] + anchor, rtol=0, atol=0)
 
     def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_and_divides_by_the_factor(
         self, device, dtype
