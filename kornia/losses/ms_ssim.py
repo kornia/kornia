@@ -308,7 +308,7 @@ class MS_SSIMLoss(nn.Module):
 
         # TODO: pass pointer to function e.g. to make more custom with mse, cosine, etc.
         # Compute L1 loss
-        loss_l1 = F.l1_loss(img1, img2, reduction="none")
+        loss_l1 = (img1 - img2).abs()
 
         # Average over the channels of the l1 loss filtered at the coarsest scale
         gaussian_l1 = F.conv2d(loss_l1, g_masks[S - 1 :: S], groups=CH, padding=self.pad).mean(1)

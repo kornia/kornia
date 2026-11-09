@@ -70,6 +70,9 @@ def ssim_loss(
         >>> loss = ssim_loss(input1, input2, 5)
 
     """
+    if isinstance(max_val, int):
+        max_val = float(max_val)
+
     # compute the ssim map
     ssim_map: torch.Tensor = metrics.ssim(img1, img2, window_size, max_val, eps, padding)
 
