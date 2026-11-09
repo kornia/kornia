@@ -183,6 +183,28 @@ class TestThinFilterBorders(BaseTester):
         image = torch.arange(3, device=device, dtype=dtype).reshape(1, 1, 1, 3) / 32
         self.assert_close(traced(image), filter2d(image, kernel, "reflect"))
 
+    @pytest.mark.parametrize("border_type, smallest", [("reflect", 3), ("circular", 2)])
+    def test_export_keeps_the_native_size_limits(self, device, dtype, border_type, smallest):
+        """Export down to the smallest side ``F.pad`` takes: the size check adds no guard of its own."""
+        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        kernel = torch.ones((1, 5, 5), device=device, dtype=dtype) / 25
+
+        class Filter(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.register_buffer("kernel", kernel)
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return filter2d(x, self.kernel, border_type)
+
+        height = torch.export.Dim("height", min=smallest, max=1024)
+        width = torch.export.Dim("width", min=smallest, max=1024)
+        example = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        program = torch.export.export(Filter(), (example,), dynamic_shapes={"x": {2: height, 3: width}})
+        image = torch.arange(smallest * 9, device=device, dtype=dtype).reshape(1, 1, smallest, 9) / 32
+        self.assert_close(program.module()(image), filter2d(image, kernel, border_type))
+
     @pytest.mark.parametrize(
         "image, expected",
         [
