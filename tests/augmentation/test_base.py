@@ -2831,13 +2831,21 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         assert target._param_generator.sampler_dict["degrees"] is samplers["degrees"]
         assert low == -0.1
 
-    def test_load_of_an_invalid_range_is_refused_like_the_constructor(self):
+    @pytest.mark.parametrize("assign", [False, True])
+    def test_load_of_an_invalid_range_is_refused_like_the_constructor(self, assign, device, dtype):
         target = K.RandomRotation((-10.0, 10.0), p=1.0)
         with pytest.raises(ValueError, match="out of bounds"):
-            target.load_state_dict({"_param_generator.degrees": torch.tensor([-500.0, 500.0])})
-        # The refused range never reaches the samplers, which used to be left empty.
+            target.load_state_dict({"_param_generator.degrees": torch.tensor([-500.0, 500.0])}, assign=assign)
+        # The refused range is not kept: the buffer goes back to the range it had, and the samplers, which used to be
+        # left empty, keep it. A move used to raise again from the refused value in the buffer.
+        assert target.state_dict()["_param_generator.degrees"].tolist() == [-10.0, 10.0]
         drawn = target.forward_parameters(torch.Size((1024, 3, 8, 8)))["degrees"]
         assert drawn.abs().max() <= 10.0
+        moved = torch.float16 if device.type == "mps" else (torch.float32 if dtype == torch.float64 else torch.float64)
+        target.to(device=device, dtype=moved)
+        drawn = target.forward_parameters(torch.Size((1024, 3, 8, 8)))["degrees"]
+        assert drawn.abs().max() <= 10.0
+        assert drawn.max() - drawn.min() >= 20.0 * 0.9
 
     def test_rotation90_load_updates_what_it_derives_from_the_range(self, device, dtype):
         # A whole range floors its draws and only allows odd turns on a square input when it can draw one.

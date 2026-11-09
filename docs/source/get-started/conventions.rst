@@ -660,9 +660,10 @@ Serializing an augmentation
   and receive gradients. Some numeric ranges are copied into
   ``_param_generator.*`` buffers, and loading one that differs builds the
   samplers again from the loaded range. The constructor's domain check applies
-  to it where the class passes one to its generator, and a checkpoint that
-  holds the same range changes nothing. The auto policies' ``_probability``
-  entries are still not read back
+  to it where the class passes one to its generator; a range it refuses raises
+  the constructor's ``ValueError`` and leaves the buffer and the samplers as
+  they were. A checkpoint that holds the same range changes nothing. The auto
+  policies' ``_probability`` entries are still not read back
   (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - A learnable range is read again before each draw, so an optimizer step, an
   in-place update, ``load_state_dict`` and

@@ -155,9 +155,25 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
                 and not torch.equal(saved.to(device=value.device, dtype=value.dtype), value)
             ):
                 changed.add(name)
+        # A parameter may have been loaded already by the module that shares it, so only buffers can be put back.
+        before = {name: (value, value.detach().clone()) for name, value in self._buffers.items() if name in changed}
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
-        if changed:
+        if not changed:
+            return
+        state = dict(self.__dict__)
+        try:
             self._ranges_loaded(changed)
+        except Exception:
+            # A range buffer the constructor's check refuses is not kept: the generator goes back to the ranges and
+            # samplers it had, so it keeps drawing, moving and copying as before the load.
+            for name, (value, saved) in before.items():
+                self._buffers[name] = value
+                with torch.no_grad():
+                    value.copy_(saved)
+            for name in set(self.__dict__) - set(state):
+                del self.__dict__[name]
+            self.__dict__.update(state)
+            raise
 
     def _ranges_loaded(self, names: Set[str]) -> None:
         # A checkpoint that holds the ranges this generator already has changes nothing, so it keeps drawing as it did.
