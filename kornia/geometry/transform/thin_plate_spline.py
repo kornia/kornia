@@ -228,9 +228,8 @@ def warp_points_tps(
         - points: ``(B, N, 2)`` (or ``(B, K, 2)`` for kernel centers) in ``(x, y)``
           order; no normalization is applied, and the output is in the same frame, not clamped
         - ``kernel_centers`` must be the first argument passed to :func:`get_tps_transform`
-          (see its Convention block). Nothing checks this and any other tensor of that shape gives a wrong warp of the
-          right shape, in particular the second argument, which earlier versions needed
-          (`#6404 <https://github.com/kornia/kornia/issues/6404>`_). The right centres give
+          (see its Convention block). Nothing checks this, and any other tensor of that shape, the second argument
+          included, gives a wrong warp of the right shape. The right centres give
           ``kernel_weights.mT @ kernel_centers`` of zero up to round-off. A caller can assert that to catch the second
           argument, but it does not identify the centres, as a translated set passes it too
         - for float32 points, a caller's autocast region does not change the result, outside TorchScript
@@ -322,9 +321,8 @@ def warp_image_tps(
           at 256 px
         - image: ``(B, C, H, W)``; the weights come from :func:`get_tps_transform` called
           **reversed**, ``get_tps_transform(points_dst, points_src)``, and ``kernel_centers`` is
-          ``points_dst``, the first argument of that call (see its Convention block). Earlier versions needed
-          ``points_src`` here; it now gives a wrong warp of the right shape
-          (`#6404 <https://github.com/kornia/kornia/issues/6404>`_)
+          ``points_dst``, the first argument of that call (see its Convention block); ``points_src`` gives a wrong
+          warp of the right shape
         - all control points live in the normalized ``grid_sample`` frame selected by
           ``align_corners``: the half-pixel :math:`x_{norm} = (2x+1)/W - 1` at the default
           ``False``, the corner-aligned :math:`x_{norm} = 2x/(W-1) - 1` at ``True``; values outside
@@ -332,8 +330,8 @@ def warp_image_tps(
           warp of the right shape
         - align_corners: ``False`` by default (the matrix warps default to ``True``)
         - for float32 points, a caller's autocast region does not change the sampling positions, outside TorchScript
-          (in the region, a mix of float32, float16 and bfloat16 points meets in float32, except that CPU autocast
-          raises on a half ``image`` of a dtype other than the region's)
+          (in the region, a mix of float32, float16 and bfloat16 points meets in float32, except that CPU and MPS
+          autocast raise on a half ``image`` of a dtype other than the region's)
 
     Args:
         image: input image torch.Tensor ``(B, C, H, W)``.

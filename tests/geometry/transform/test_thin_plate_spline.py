@@ -152,7 +152,7 @@ class TestBooksteinSpline(BaseTester):
         self.assert_close(affine, torch.cat([shift, linear])[None])
 
     def test_convention_constant_map(self, device, dtype):
-        # Used to be singular: with the kernels on the target points, equal targets made their columns equal.
+        # Equal targets make no equal columns, because the kernels sit on the fit points.
         src = torch.tensor([_SRC], device=device, dtype=dtype)
         value = torch.tensor([[0.25, -0.5]], device=device, dtype=dtype)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, value.expand(1, 6, 2))
@@ -192,7 +192,7 @@ class TestBooksteinSpline(BaseTester):
         self.assert_close(kornia.geometry.transform.warp_points_tps(src, src, kernel, affine), dst)
 
     def test_mismatched_dtypes_raise(self, device):
-        # The two point sets no longer meet in a matrix product, which is what used to reject this.
+        # The two point sets meet only in the right-hand side, where a mismatch would promote silently.
         src = torch.tensor([_SRC], device=device, dtype=torch.float32)
         for other in (torch.bfloat16, torch.float16):
             with pytest.raises(RuntimeError, match="must have one dtype"):
