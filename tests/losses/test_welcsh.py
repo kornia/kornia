@@ -51,6 +51,15 @@ class TestWelschLoss(BaseTester):
         self.assert_close(kornia.losses.welsch_loss(img1, img2, None), expected)
         self.assert_close(kornia.losses.WelschLoss(reduction=None)(img1, img2), expected)
 
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum", None])
+    def test_jit(self, device, dtype, reduction):
+        img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+
+        op = kornia.losses.welsch_loss
+        op_script = torch.jit.script(op)
+        self.assert_close(op_script(img1, img2, reduction), op(img1, img2, reduction))
+
     def test_exception_unknown_reduction(self, device, dtype):
         img = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
 
