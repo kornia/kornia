@@ -636,6 +636,41 @@ def test_xfeat_star_refines_an_image_matched_with_itself_in_place_6418(device, d
 
 
 class TestConventionsXFeat(BaseTester):
+    @pytest.mark.parametrize("batch_idx", [0, 1])
+    @pytest.mark.parametrize("reverse_target", [False, True])
+    def test_convention_xfeat_star_anchors_both_cells_at_bin_three_6640(self, device, dtype, batch_idx, reverse_target):
+        # Uniform fine logits have mean bin 3.5, hence displacement 0.5 from bin 3.
+        # At scales 2 and 0.5 the first point moves (3 + 0.5) * scale;
+        # the second point moves 3 * its own scale (0.5 and 2), with no refinement.
+        model = XFeat().to(device, dtype).eval()
+        with torch.no_grad():
+            for parameter in model.net.fine_matcher.parameters():
+                parameter.zero_()
+        points = torch.tensor([[[8.0, 16.0], [24.0, 32.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        points[1] += 100
+        descriptors = torch.zeros(2, 2, 64, device=device, dtype=dtype)
+        scales0 = torch.tensor([[2.0, 0.5]], device=device, dtype=dtype).repeat(2, 1)
+        scales0[1] *= 2
+        scales1 = scales0.flip(-1)
+        d0 = {"keypoints": points.clone(), "descriptors": descriptors, "scales": scales0}
+        d1 = {"keypoints": points.clone(), "descriptors": descriptors, "scales": scales1}
+        ids = torch.arange(2, device=device)
+        target_ids = ids.flip(0) if reverse_target else ids
+        matches = [(ids, target_ids), (ids, target_ids)]
+        actual = model._refine_matches(d0, d1, matches, batch_idx, fine_conf=-1)
+        expected = torch.tensor([[15.0, 23.0, 9.5, 17.5], [25.75, 33.75, 30.0, 38.0]], device=device, dtype=dtype)
+        if batch_idx == 1:
+            expected = torch.tensor(
+                [[122.0, 130.0, 111.0, 119.0], [127.5, 135.5, 136.0, 144.0]], device=device, dtype=dtype
+            )
+        if reverse_target:
+            expected[:, 2:] = expected.flip(0)[:, 2:]
+        self.assert_close(actual, expected)
+        # Uniform logits fail the default fine-confidence threshold, so anchoring cannot revive a rejected match.
+        assert model._refine_matches(d0, d1, matches, batch_idx).shape == (0, 4)
+        self.assert_close(d0["keypoints"], points)
+        self.assert_close(d1["keypoints"], points)
+
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):
         # What XFeatModel returns for an h x w (resized) image, replaced through a forward hook: keypoint logits with

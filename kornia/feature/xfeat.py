@@ -391,7 +391,17 @@ class XFeat(nn.Module):
         a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
         every candidate of the reference that kornia leaves out lies in that border strip.
 
-        XFeat* (:meth:`match_xfeat_star`) moves each matched keypoint of the first image by the soft-argmax of the
+        XFeat* (:meth:`match_xfeat_star`) anchors both matched cells at bin 3: it adds three times each keypoint's
+        extraction scale to both coordinates, then moves the first point by the fine displacement. This differs
+        from the raw top-left coordinates returned by :meth:`detectAndComputeDense` and from the reference's
+        top-left match origin. The anchor and the displacement use the same extraction scale, ``1 / 0.6`` or
+        ``1 / 1.3``; they do not include the resize-to-multiples-of-32 ratio.
+
+        On 40 Oxford affine pairs, this match origin raises homography AUC@3 from 0.365 to 0.401; on 813 IMC
+        PhotoTourism validation pairs it raises scene-mean relative-pose mAA@10 from 0.458 to 0.473 (three
+        correspondence-order seeds, float32, ``top_k=4096``, USAC_MAGSAC at 1 px and 0.5 px respectively).
+
+        The displacement of the first image is the soft-argmax of the
         fine matcher's 8 x 8 heatmap times the keypoint's scale, measured from bin 3 of each axis. This also departs
         on purpose from the reference implementation, which measures it from bin 4, the window centre: the pretrained
         fine matcher puts a zero displacement at bin 3. Matching Oxford bikes img1 with itself (pretrained weights,
@@ -623,7 +633,14 @@ class XFeat(nn.Module):
         offsets = self.net.fine_matcher(torch.cat([feats1, feats2], dim=-1))
         conf = F.softmax(offsets * 3, dim=-1).max(dim=-1)[0]
         offsets = self._subpix_softmax2d(offsets.view(-1, 8, 8))
-        mkpts_0 = mkpts_0 + offsets * sc0[:, None]
+        # #6640: the fine matcher measures displacement from bin 3, so both cells
+        # need that same anchor. Shifting only the refined side leaves a scale-dependent
+        # bias. Keep the raw dense-extraction grid unchanged; only matches move.
+        # Full match_xfeat_star on a 240x320 image, top_k=1024, torch 2.15,
+        # i7-14700K/2 threads: 30.0 -> 30.1 ms (within spread); CUDA cost was
+        # unresolved under timing noise. Oxford/IMC accuracy is recorded above.
+        mkpts_0 = mkpts_0 + (offsets + 3.0) * sc0[:, None]
+        mkpts_1 = mkpts_1 + 3.0 * d1["scales"][batch_idx][idx1, None]
         mask_good = conf > fine_conf
         return torch.cat([mkpts_0[mask_good], mkpts_1[mask_good]], dim=-1)
 
@@ -784,6 +801,10 @@ class XFeat(nn.Module):
         top_k: Optional[int] = None,
     ) -> List[torch.Tensor] | Tuple[torch.Tensor, torch.Tensor]:
         """Extract coarse features, match pairs and refine matches (XFeat*).
+
+        Both matched cells are anchored three pixels into the cell at their extraction scale. The first point
+        also receives the fine displacement measured from bin 3. Raw :meth:`detectAndComputeDense` coordinates
+        stay at the top-left cell origin; see the class note for the coordinate convention.
 
         Args:
             im_set1: batch of images ``(B, C, H, W)``.
