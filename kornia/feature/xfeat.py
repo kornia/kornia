@@ -364,11 +364,11 @@ class XFeat(nn.Module):
           that pixel's centre in the input as above: exactly ``8 * (j, i)`` when ``H`` and ``W`` are multiples of 32.
           It keeps up to ``top_k`` cells by reliability; ``top_k < 1`` keeps every cell.
           With the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
-          on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and divides each
-          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. This rescale is not mapped
-          through the pixel centre: a keypoint is 0.333 px up and to the left of its pixel at 0.6 and 0.115 px down and
-          to the right at 1.3, as in the reference; see the note and
-          `#6537 <https://github.com/kornia/kornia/issues/6537>`_. A share of 0 yields
+          on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and maps each
+          keypoint ``p`` of the image rescaled by ``s`` back through the pixel centre, ``(p + 0.5) / s - 0.5``;
+          ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. The reference divides by the factor, ``p / s``,
+          0.333 px up and to the left of the pixel at 0.6 and 0.115 px down and to the right at 1.3
+          (`#6537 <https://github.com/kornia/kornia/issues/6537>`_). A share of 0 yields
           no cell from its scale, and a scale with fewer
           cells than its share returns all of them, so there are never more than ``top_k`` keypoints, and exactly
           ``top_k`` when both scales have enough cells. A ``top_k`` below 1 keeps every cell of both scales. Its
@@ -396,15 +396,17 @@ class XFeat(nn.Module):
         a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
         every candidate of the reference that kornia leaves out lies in that border strip.
 
-        XFeat* (:meth:`match_xfeat_star`) anchors both matched cells at bin 3: it adds three times each keypoint's
-        extraction scale to both coordinates, then moves the first point by the fine displacement. This differs
-        from the raw top-left coordinates returned by :meth:`detectAndComputeDense` and from the reference's
-        top-left match origin. The anchor and the displacement use the same extraction scale, ``1 / 0.6`` or
-        ``1 / 1.3``; they do not include the resize-to-multiples-of-32 ratio.
+        XFeat* (:meth:`match_xfeat_star`) anchors both matched cells at bin 3: it moves both points three pixels
+        into their cells, then moves the first point by the fine displacement. Both are pixels of the image the network
+        saw, and one such pixel spans ``r / s`` input pixels per axis, for extraction scale ``s`` (0.6 or 1.3) and the
+        ratio ``r`` of the resize to multiples of 32. This differs from the raw top-left coordinates returned by
+        :meth:`detectAndComputeDense` and from the reference, which starts both points at the top-left pixel and
+        scales the displacement by ``1 / s``.
 
-        On 40 Oxford affine pairs, this match origin raises homography AUC@3 from 0.365 to 0.401; on 813 IMC
-        PhotoTourism validation pairs it raises scene-mean relative-pose mAA@10 from 0.458 to 0.473 (three
-        correspondence-order seeds, float32, ``top_k=4096``, USAC_MAGSAC at 1 px and 0.5 px respectively).
+        On 40 Oxford affine pairs, this match origin raises homography AUC@3 from 0.365 to 0.401 (three
+        correspondence-order seeds, float32, ``top_k=4096``, USAC_MAGSAC at 1 px), and on 813 IMC PhotoTourism
+        validation pairs scene-mean relative-pose mAA@10 from 0.458 to 0.473 (USAC_MAGSAC at 0.5 px, measured before
+        the pixel-centre mapping of the dual-scale rescale below).
 
         The displacement of the first image is the soft-argmax of the
         fine matcher's 8 x 8 heatmap times the keypoint's scale, measured from bin 3 of each axis. This also departs
@@ -424,9 +426,11 @@ class XFeat(nn.Module):
         :meth:`match_xfeat`, from 40.1 to 40.7 % for :class:`LightGlueMatcher` and from 28.7 to 29.1 % for
         :meth:`match_xfeat_star`. Homography AUC on Oxford affine and HPatches stays within the noise of the estimator
         for the first two, and on HPatches at about 320 px AUC@3 of :meth:`match_xfeat_star` gains 0.0025. The 0.6 and
-        1.3 rescale of the dual-scale extraction still divides by its factor: its pixel centre leaves AUC unchanged at
-        native sizes and costs 0.0060 at AUC@3 on HPatches at about 320 px, because it moves the same-scale matches
-        against the larger bias of the coarse origin (`#6537 <https://github.com/kornia/kornia/issues/6537>`_).
+        1.3 rescale of the dual-scale extraction goes through the pixel centre as well. With the bin-3 anchor, Oxford
+        affine AUC@3 of :meth:`match_xfeat_star` stays within seed noise (0.404 before, 0.401 after), and the share of
+        matches within 1 px of an exactly known map goes from 46.6 to 50.4 % for an image matched with its 0.7 resize,
+        and from 47.6 to 48.0 %, 35.9 to 36.9 % and 21.6 to 21.2 % for its rotations by 20 degrees, by 20 degrees at
+        scale 0.7 and by -35 degrees at scale 1.2 (`#6537 <https://github.com/kornia/kornia/issues/6537>`_).
 
     See Also:
         - :class:`XFeatModel`: the network it runs, which returns the dense maps at 1/8 resolution.
@@ -487,10 +491,26 @@ class XFeat(nn.Module):
         """
         KORNIA_CHECK(x.dim() == 4, "Input must be a 4-D tensor (B, C, H, W)")
         H, W = x.shape[-2:]
-        _H, _W = max(32, (H // 32) * 32), max(32, (W // 32) * 32)
+        _H, _W = self._resized_size(H, W)
         rh, rw = H / _H, W / _W
         x = F.interpolate(x.float(), (_H, _W), mode="bilinear", align_corners=False)
         return x.to(next(self.net.parameters()).dtype), rh, rw
+
+    @staticmethod
+    def _resized_size(h: int, w: int) -> Tuple[int, int]:
+        """Return the size :meth:`_preprocess_tensor` resizes ``(h, w)`` to: multiples of 32, at least 32."""
+        return max(32, (h // 32) * 32), max(32, (w // 32) * 32)
+
+    def _cell_scales(self, x: torch.Tensor, factor: float, mkpts: torch.Tensor) -> torch.Tensor:
+        """Return input pixels per pixel of what the network saw, ``(B, K, 2)`` in x and y, for keypoints of ``x``.
+
+        ``x`` is the input rescaled by ``factor`` (1 for the input itself); :meth:`_preprocess_tensor` then resizes it
+        by the ratio ``r`` of its side to a multiple of 32, so one pixel there spans ``r / factor`` input pixels.
+        """
+        h, w = x.shape[-2:]
+        _h, _w = self._resized_size(h, w)
+        cell = torch.tensor([w / _w / factor, h / _h / factor], device=mkpts.device)
+        return cell.expand(mkpts.shape[0], mkpts.shape[1], 2)
 
     @staticmethod
     def _get_kpts_heatmap(kpts: torch.Tensor, softmax_temp: float = 1.0) -> torch.Tensor:
@@ -608,8 +628,8 @@ class XFeat(nn.Module):
 
     def _extract_dualscale(
         self, x: torch.Tensor, top_k: Optional[int], s1: float = 0.6, s2: float = 1.3
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Extract dense features at two scales and merge.
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Extract dense features at two scales and merge; return keypoints, scales, descriptors and cell scales.
 
         ``top_k`` is split into ``int(0.2 * top_k)`` for the first scale and the rest for the second;
         ``None`` keeps every cell of both. A zero share yields no cell from its scale.
@@ -621,20 +641,24 @@ class XFeat(nn.Module):
             k2 = int(top_k) - k1
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
         mkpts_2, feats_2 = self._extract_dense(x2, k2)
+        cell_2 = self._cell_scales(x2, s2, mkpts_2)
         if k1 == 0:
             # no cell is asked of the first scale: skip its resize and backbone pass; the empty outputs take the
             # dtype and device of the computed scale, so the concatenation does not change the output dtype
             mkpts_1 = mkpts_2.new_empty((mkpts_2.shape[0], 0, 2))
             feats_1 = feats_2.new_empty((feats_2.shape[0], 0, feats_2.shape[-1]))
+            cell_1 = cell_2[:, :0]
         else:
             x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
             mkpts_1, feats_1 = self._extract_dense(x1, k1)
-        # This keeps the reference's p / s. The pixel centre, (p + 0.5) / s - 0.5, measured worse on small images; see
-        # the note of XFeat and #6537.
-        mkpts = torch.cat([mkpts_1 / s1, mkpts_2 / s2], dim=1)
+            cell_1 = self._cell_scales(x1, s1, mkpts_1)
+        # interpolate with scale_factor=s and align_corners=False samples pixel p at (p + 0.5) / s - 0.5 of the input,
+        # with s itself, not the ratio of the rounded-down sizes; the reference divides by s instead (#6537).
+        mkpts = torch.cat([(mkpts_1 + 0.5) / s1 - 0.5, (mkpts_2 + 0.5) / s2 - 0.5], dim=1)
         sc1 = torch.ones(mkpts_1.shape[:2], device=mkpts_1.device) * (1 / s1)
         sc2 = torch.ones(mkpts_2.shape[:2], device=mkpts_2.device) * (1 / s2)
-        return mkpts, torch.cat([sc1, sc2], dim=1), torch.cat([feats_1, feats_2], dim=1)
+        cell = torch.cat([cell_1, cell_2], dim=1)
+        return mkpts, torch.cat([sc1, sc2], dim=1), torch.cat([feats_1, feats_2], dim=1), cell
 
     def _refine_matches(
         self,
@@ -650,20 +674,20 @@ class XFeat(nn.Module):
         feats2 = d1["descriptors"][batch_idx][idx1]
         mkpts_0 = d0["keypoints"][batch_idx][idx0].clone()
         mkpts_1 = d1["keypoints"][batch_idx][idx1]
-        sc0 = d0["scales"][batch_idx][idx0]
+        cell0 = d0["cell_scales"][batch_idx][idx0]
+        cell1 = d1["cell_scales"][batch_idx][idx1]
         offsets = self.net.fine_matcher(torch.cat([feats1, feats2], dim=-1))
         conf = F.softmax(offsets * 3, dim=-1).max(dim=-1)[0]
         offsets = self._subpix_softmax2d(offsets.view(-1, 8, 8))
-        # #6640: the fine matcher measures displacement from bin 3, so both cells
-        # need that same anchor. Shifting only the refined side leaves a scale-dependent
-        # bias. Keep the raw dense-extraction grid unchanged; only matches move.
-        # Full match_xfeat_star on a 240x320 image, top_k=1024, torch 2.15,
-        # i7-14700K/2 threads: 30.0 -> 30.1 ms (within spread); CUDA cost was
-        # unresolved under timing noise. Oxford/IMC accuracy is recorded above.
-        # Scale before adding the anchor: float32 scales promote a float16/bfloat16 offset first, so the anchor is not
-        # rounded in half precision (bfloat16 put it up to 0.026 px off).
-        mkpts_0 = mkpts_0 + offsets * sc0[:, None] + 3.0 * sc0[:, None]
-        mkpts_1 = mkpts_1 + 3.0 * d1["scales"][batch_idx][idx1, None]
+        # #6640: the fine matcher measures displacement from bin 3, so both cells need that same anchor. Shifting only
+        # the refined side leaves a scale-dependent bias. Keep the raw dense-extraction grid unchanged; only matches
+        # move. Anchor and displacement are pixels of what the network saw, so both use the cell scales, r / s per
+        # axis. Full match_xfeat_star on a 240x320 image, top_k=1024, torch 2.15, i7-14700K/2 threads: 30.0 -> 30.1 ms
+        # (within spread); see the class note for the accuracy. Scale before adding the anchor: the float32 cell scales
+        # promote a float16/bfloat16 offset first, so the anchor is not rounded in half precision (bfloat16 put it up
+        # to 0.026 px off).
+        mkpts_0 = mkpts_0 + offsets * cell0 + 3.0 * cell0
+        mkpts_1 = mkpts_1 + 3.0 * cell1
         mask_good = conf > fine_conf
         return torch.cat([mkpts_0[mask_good], mkpts_1[mask_good]], dim=-1)
 
@@ -762,16 +786,25 @@ class XFeat(nn.Module):
             - ``'descriptors'``: ``(B, K, 64)`` coarse descriptors.
             - ``'scales'``: ``(B, K)`` extraction scale per keypoint.
         """
+        out = self._detect_dense(x, top_k, multiscale)
+        return {"keypoints": out["keypoints"], "descriptors": out["descriptors"], "scales": out["scales"]}
+
+    def _detect_dense(self, x: torch.Tensor, top_k: Optional[int], multiscale: bool) -> Dict[str, torch.Tensor]:
+        """Return :meth:`detectAndComputeDense`'s dict plus ``'cell_scales'``, which :meth:`_refine_matches` reads.
+
+        ``'cell_scales'`` is ``(B, K, 2)``: input pixels per pixel of what the network saw, in x and y.
+        """
         if top_k is None:
             top_k = self.top_k
         # a top_k below 1 means every cell; resolve it once, before the budget is split between the scales
         budget = top_k if top_k >= 1 else None
         if multiscale:
-            mkpts, sc, feats = self._extract_dualscale(x, budget)
+            mkpts, sc, feats, cell = self._extract_dualscale(x, budget)
         else:
             mkpts, feats = self._extract_dense(x, budget)
             sc = torch.ones(mkpts.shape[:2], device=mkpts.device)
-        return {"keypoints": mkpts, "descriptors": feats, "scales": sc}
+            cell = self._cell_scales(x, 1.0, mkpts)
+        return {"keypoints": mkpts, "descriptors": feats, "scales": sc, "cell_scales": cell}
 
     @torch.inference_mode()
     def match_xfeat(
@@ -826,8 +859,8 @@ class XFeat(nn.Module):
     ) -> List[torch.Tensor] | Tuple[torch.Tensor, torch.Tensor]:
         """Extract coarse features, match pairs and refine matches (XFeat*).
 
-        Both matched cells are anchored three pixels into the cell at their extraction scale. The first point
-        also receives the fine displacement measured from bin 3. Raw :meth:`detectAndComputeDense` coordinates
+        Both matched cells are anchored three pixels into the cell, in pixels of the image the network saw. The first
+        point also receives the fine displacement measured from bin 3. Raw :meth:`detectAndComputeDense` coordinates
         stay at the top-left cell origin; see the class note for the coordinate convention.
 
         Args:
@@ -842,8 +875,8 @@ class XFeat(nn.Module):
         """
         if top_k is None:
             top_k = self.top_k
-        out1 = self.detectAndComputeDense(im_set1, top_k=top_k)
-        out2 = self.detectAndComputeDense(im_set2, top_k=top_k)
+        out1 = self._detect_dense(im_set1, top_k, True)
+        out2 = self._detect_dense(im_set2, top_k, True)
         idxs_list = self._batch_match(out1["descriptors"], out2["descriptors"])
         B = im_set1.shape[0]
         matches = [self._refine_matches(out1, out2, matches=idxs_list, batch_idx=b) for b in range(B)]

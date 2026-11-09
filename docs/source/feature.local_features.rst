@@ -193,8 +193,8 @@ then pass the LAFs and descriptors to the matcher in the mode listed below.
 Subtract 0.5 from DeDoDe's keypoints first to convert its half-pixel centres to integer pixel centres.
 :meth:`ALIKED.forward_laf` can return LAFs directly.
 
-``XFeat.match_xfeat_star`` anchors both matched points at bin 3 of their coarse cells, in each point's
-extraction scale, before refining the first point. These coordinates differ from the raw top-left cell
+``XFeat.match_xfeat_star`` anchors both matched points at bin 3 of their coarse cells, in pixels of the image
+the network saw, before refining the first point. These coordinates differ from the raw top-left cell
 positions returned by ``detectAndComputeDense``; see :class:`XFeat` for the measured accuracy and convention.
 
 XFeat returns inference tensors. Match these outputs under ``torch.no_grad()`` or ``torch.inference_mode()``

@@ -351,9 +351,7 @@ class TestXFeat(BaseTester):
         model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndComputeDense(x, top_k=top_k, multiscale=False)
-        assert "keypoints" in out
-        assert "descriptors" in out
-        assert "scales" in out
+        assert set(out) == {"keypoints", "descriptors", "scales"}  # the cell scales of match_xfeat_star stay private
         assert out["keypoints"].shape[-1] == 2
         assert out["descriptors"].shape[-1] == 64
         assert out["keypoints"].shape[1] == out["descriptors"].shape[1]
@@ -652,8 +650,17 @@ class TestConventionsXFeat(BaseTester):
         scales0 = torch.tensor([[2.0, 0.5]], device=device, dtype=dtype).repeat(2, 1)
         scales0[1] *= 2
         scales1 = scales0.flip(-1)
-        d0 = {"keypoints": points.clone(), "descriptors": descriptors, "scales": scales0}
-        d1 = {"keypoints": points.clone(), "descriptors": descriptors, "scales": scales1}
+        # the cell scales of these tests are isotropic: x and y take the same scale
+        d0 = {
+            "keypoints": points.clone(),
+            "descriptors": descriptors,
+            "cell_scales": scales0[..., None].repeat(1, 1, 2),
+        }
+        d1 = {
+            "keypoints": points.clone(),
+            "descriptors": descriptors,
+            "cell_scales": scales1[..., None].repeat(1, 1, 2),
+        }
         ids = torch.arange(2, device=device)
         target_ids = ids.flip(0) if reverse_target else ids
         matches = [(ids, target_ids), (ids, target_ids)]
@@ -672,7 +679,7 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(d1["keypoints"], points)
 
     def test_convention_xfeat_star_scales_the_offset_before_the_anchor_6640(self, device, dtype):
-        # Keypoints and scales are float32, as detectAndComputeDense returns them, and the fine matcher runs in the
+        # Keypoints and cell scales are float32, as the dense extraction returns them, and the fine matcher runs in the
         # model's dtype. Adding the bin-3 anchor to a float16/bfloat16 offset before the scale promotes it rounds the
         # anchor (bfloat16: about 0.03 px at scale 2); the reported point must equal offset * scale + 3 * scale.
         model = XFeat().to(device, dtype).eval()
@@ -683,13 +690,13 @@ class TestConventionsXFeat(BaseTester):
 
         model.net.fine_matcher = Ramp()
         points = torch.tensor([[[8.0, 16.0], [24.0, 32.0]]], device=device)
-        scales = torch.tensor([[2.0, 1 / 0.6]], device=device)
-        d = {"keypoints": points, "descriptors": torch.zeros(1, 2, 64, device=device, dtype=dtype), "scales": scales}
+        cell = torch.tensor([[[2.0, 1.5], [1 / 0.6, 1 / 1.3]]], device=device)
+        d = {"keypoints": points, "descriptors": torch.zeros(1, 2, 64, device=device, dtype=dtype), "cell_scales": cell}
         ids = torch.arange(2, device=device)
         actual = model._refine_matches(d, d, [(ids, ids)], 0, fine_conf=-1)
         offset = model._subpix_softmax2d(Ramp()(d["descriptors"][0]).view(-1, 8, 8)).double()
-        anchor = 3.0 * scales[0, :, None].double()
-        expected = torch.cat([points[0] + offset * scales[0, :, None] + anchor, points[0] + anchor], dim=-1)
+        anchor = 3.0 * cell[0].double()
+        expected = torch.cat([points[0] + offset * cell[0] + anchor, points[0] + anchor], dim=-1)
         self.assert_close(actual.double(), expected, rtol=0, atol=1e-4)
 
     @staticmethod
@@ -868,26 +875,39 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(out["keypoints"], expected, rtol=0, atol=1e-3)
         self.assert_close(out["keypoints"][0, 0], seen[0][0, :2, 8, 16], rtol=0, atol=1e-3)
 
-    def test_wart_xfeat_dense_multiscale_divides_by_the_factor_instead_of_the_pixel_centre_6537(self, device):
+    def test_convention_xfeat_dense_multiscale_reports_the_pixel_centre_of_each_rescale_6537(self, device):
         # Cell (2, 1) is pixel (16, 8) of what the network sees. For 160 x 224 the 0.6 scale gives 96 x 134, resized to
-        # 96 x 128; the 1.3 scale gives 208 x 291, resized to 192 x 288. The resize to a multiple of 32 goes through the
-        # pixel centre, p = (i + 0.5) * W / W' - 0.5, and the rescale divides by its factor, p / s:
-        # 0.6: ((16.5 * (134 / 128) - 0.5) / 0.6, (8.5 - 0.5) / 0.6);
-        # 1.3: ((16.5 * (291 / 288) - 0.5) / 1.3, (8.5 * (208 / 192) - 0.5) / 1.3).
+        # 96 x 128; the 1.3 scale gives 208 x 291, resized to 192 x 288. Both resizes go through the pixel centre: the
+        # one to a multiple of 32, p = (i + 0.5) * W / W' - 0.5, and the rescale by s, (p + 0.5) / s - 0.5, so
+        # (i + 0.5) * W / W' / s - 0.5. Generated with plain Python:
+        # 0.6: (16.5 * 134 / 128 / 0.6 - 0.5, 8.5 * 96 / 96 / 0.6 - 0.5);
+        # 1.3: (16.5 * 291 / 288 / 1.3 - 0.5, 8.5 * 208 / 192 / 1.3 - 0.5).
         # top_k=5 gives one cell to the 0.6 scale and four to the 1.3 scale, which runs first and is reported second.
         out, seen = self._dense_on_ramp(160, 224, device, (2, 1), 5, True)
         assert seen[0].shape[-2:] == (192, 288)
         assert seen[1].shape[-2:] == (96, 128)
         keypoints = out["keypoints"][0]
-        expected = torch.tensor([[27.9557291667, 13.3333333333], [12.4399038, 6.6987179]], device=device)
+        expected = torch.tensor([[28.2890625, 13.6666666667], [12.3245192308, 6.5833333333]], device=device)
         self.assert_close(keypoints[:2], expected, rtol=0, atol=1e-3)
-        # The ramp holds the pixel centre in the input: p / s is 0.5 - 0.5 / s away from it (#6537, kept on purpose).
-        wart = torch.tensor([[0.5 - 0.5 / 0.6], [0.5 - 0.5 / 1.3]], device=device)
-        self.assert_close(keypoints[0] - seen[1][0, :2, 8, 16], wart[0].expand(2), rtol=0, atol=1e-3)
-        self.assert_close(keypoints[1] - seen[0][0, :2, 8, 16], wart[1].expand(2), rtol=0, atol=1e-3)
+        # The ramp holds the input coordinates of each pixel's centre, independently of any formula (#6537).
+        self.assert_close(keypoints[0], seen[1][0, :2, 8, 16], rtol=0, atol=1e-3)
+        self.assert_close(keypoints[1], seen[0][0, :2, 8, 16], rtol=0, atol=1e-3)
         # the scales stay 1 / factor: they convert a refinement offset, not a position
         assert (out["scales"][0, 0] == 1 / 0.6).all()
         assert (out["scales"][0, 1:] == 1 / 1.3).all()
+
+    def test_convention_xfeat_star_cell_scales_are_input_pixels_per_pixel_the_network_saw_6537(self, device):
+        # The fine displacement and the bin-3 anchor are pixels of what the network saw; one such pixel spans
+        # (W / W' / s, H / H' / s) input pixels. Generated with plain Python, for 160 x 224 as above:
+        # 0.6: (134 / 128 / 0.6, 96 / 96 / 0.6); 1.3: (291 / 288 / 1.3, 208 / 192 / 1.3); multiscale=False, 100 x 150
+        # resized to 96 x 128: (150 / 128, 100 / 96).
+        xfeat = XFeat().to(device).eval()
+        with torch.inference_mode():
+            out = xfeat._detect_dense(torch.rand(1, 3, 160, 224, device=device), 5, True)
+            single = xfeat._detect_dense(torch.rand(1, 3, 100, 150, device=device), 2, False)
+        expected = torch.tensor([[1.7447916667, 1.6666666667]] + [[0.7772435897, 0.8333333333]] * 4, device=device)
+        self.assert_close(out["cell_scales"][0], expected, rtol=0, atol=1e-6)
+        self.assert_close(single["cell_scales"][0], torch.tensor([[1.171875, 1.0416666667]] * 2, device=device))
 
     def test_convention_xfeat_star_moves_the_reported_keypoint_by_the_offset_times_its_scale_6537(self, device):
         # The refinement adds its offset to the reported coarse keypoint of the first image, in input pixels, after
@@ -902,19 +922,22 @@ class TestConventionsXFeat(BaseTester):
 
         xfeat.net.fine_matcher = Peak()
         torch.manual_seed(0)
-        out = xfeat.detectAndComputeDense(torch.rand(1, 3, 160, 224, device=device), 50)
+        out = xfeat._detect_dense(torch.rand(1, 3, 160, 224, device=device), 50, True)
         idx = torch.arange(50, device=device)
         refined = xfeat._refine_matches(out, out, [(idx, idx)], 0)
-        offset = torch.tensor([[2.0, -1.0]], device=device) * out["scales"][0][:, None]
-        anchor = 3.0 * out["scales"][0][:, None]
+        # in pixels of what the network saw, times the cell scales of the test above: 10 keypoints of the 0.6 scale
+        cell = torch.tensor([[1.7447916667, 1.6666666667]] * 10 + [[0.7772435897, 0.8333333333]] * 40, device=device)
+        offset = torch.tensor([[2.0, -1.0]], device=device) * cell
+        anchor = 3.0 * cell
         self.assert_close(refined[:, :2], out["keypoints"][0] + anchor + offset, rtol=0, atol=1e-3)
-        self.assert_close(refined[:, 2:], out["keypoints"][0] + anchor, rtol=0, atol=0)
+        self.assert_close(refined[:, 2:], out["keypoints"][0] + anchor, rtol=0, atol=1e-5)
 
-    def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_and_divides_by_the_factor(
+    def test_convention_xfeat_dense_multiscale_runs_the_extraction_at_0_6_and_1_3_through_the_pixel_centre(
         self, device, dtype
     ):
         # multiscale=True (the default) is the multiscale=False extraction of the image rescaled by 0.6 and by 1.3, with
-        # int(0.2 * top_k) and the remaining cells, each keypoint divided by its factor; scales is 1 / factor.
+        # int(0.2 * top_k) and the remaining cells, each keypoint mapped back through the pixel centre,
+        # (p + 0.5) / factor - 0.5; scales is 1 / factor.
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(1, 3, 160, 224, device=device, dtype=dtype)
@@ -926,7 +949,7 @@ class TestConventionsXFeat(BaseTester):
         assert out["keypoints"].shape == (1, 100, 2)
         start = 0
         for single, factor, k in parts:
-            self.assert_close(out["keypoints"][:, start : start + k], single["keypoints"] / factor)
+            self.assert_close(out["keypoints"][:, start : start + k], (single["keypoints"] + 0.5) / factor - 0.5)
             self.assert_close(out["descriptors"][:, start : start + k], single["descriptors"])
             assert (out["scales"][:, start : start + k] == 1 / factor).all()
             start += k
@@ -1000,14 +1023,32 @@ class TestConventionsXFeat(BaseTester):
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
-        out = xfeat.detectAndComputeDense(image, 4)
+        with torch.inference_mode():
+            out = xfeat._detect_dense(image, 4, True)
         assert out["keypoints"].shape == (2, 4, 2)
+        assert out["cell_scales"].shape == (2, 4, 2)
         idxs = xfeat._batch_match(out["descriptors"], out["descriptors"])
         for b in range(2):
             refined = xfeat._refine_matches(out, out, idxs, b, fine_conf=-1.0)
             assert refined.shape[0] >= 1
             assert refined.shape[1] == 4
             assert torch.isfinite(refined).all()
+
+    def test_convention_xfeat_star_matches_the_dual_scale_extraction(self, device, dtype):
+        # match_xfeat_star refines the default multiscale=True dense extraction: one backbone pass per scale and image
+        # set (0.6 and 1.3 of 64 x 96 are 38 x 57 and 83 x 124, resized to 32 x 32 and 64 x 96), four in all.
+        xfeat = XFeat().to(device).eval()
+        seen = []
+        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: seen.append(inputs[0].shape[-2:]))
+        try:
+            xfeat.match_xfeat_star(
+                torch.rand(1, 3, 64, 96, device=device, dtype=dtype),
+                torch.rand(1, 3, 64, 96, device=device, dtype=dtype),
+                top_k=10,
+            )
+        finally:
+            handle.remove()
+        assert [tuple(shape) for shape in seen] == [(64, 96), (32, 32), (64, 96), (32, 32)]
 
     def test_convention_xfeat_dense_multiscale_accepts_a_float_top_k_and_keeps_float_keypoints(self, device, dtype):
         torch.manual_seed(0)
@@ -1081,7 +1122,7 @@ class TestConventionsXFeat(BaseTester):
         out = xfeat.detectAndComputeDense(image, 3)
         scaled = torch.nn.functional.interpolate(image, scale_factor=1.3, mode="bilinear", align_corners=False)
         single = xfeat.detectAndComputeDense(scaled, 3, False)
-        self.assert_close(out["keypoints"], single["keypoints"] / 1.3)
+        self.assert_close(out["keypoints"], (single["keypoints"] + 0.5) / 1.3 - 0.5)
         self.assert_close(out["descriptors"], single["descriptors"])
 
     def test_convention_xfeat_model_reads_the_channel_mean_through_an_instance_norm(self, device, dtype):
