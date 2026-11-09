@@ -377,6 +377,16 @@ class TestClampGradientAtBounds(BaseTester):
         self.assert_close(grad_r[:, 2], image.new_tensor([[[3.88976e-4]]]), rtol=5e-3, atol=1e-6)
         self.assert_close(grad_g[:, 2], image.new_tensor([[[-4.43074e-5]]]), rtol=5e-3, atol=1e-6)
 
+    def test_convention_lab_fz_beyond_its_bound_gets_the_bound_and_a_zero_gradient(self, device, dtype):
+        # L = 42, b = 150 gives fz = 58 / 116 - 150 / 200 = -0.25, below the bound 0 of the same clamp: the pixel takes
+        # the result of b = 100, where fz is on the bound, and b moves nothing.
+        image = torch.tensor([42.0, 0.0, 150.0], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
+        bound = torch.tensor([42.0, 0.0, 100.0], device=device, dtype=dtype).view(1, 3, 1, 1)
+        out = kornia.color.lab_to_rgb(image, clip=False)
+        (grad,) = torch.autograd.grad(out[:, 0].sum(), image)
+        assert torch.equal(out.detach(), kornia.color.lab_to_rgb(bound, clip=False))
+        assert grad[:, 2].item() == 0.0
+
     def test_convention_hls_hue_on_a_bound_keeps_the_derivative(self, device, dtype):
         # Red is l - a * mink with a = s * min(l, 1 - l) = 0.25 and mink = 9 - k, so d red / d H = a * 6 / pi. Blue has
         # mink = k - 3, so d blue / d H = -a * 6 / pi. Green is outside the range and gets none.
