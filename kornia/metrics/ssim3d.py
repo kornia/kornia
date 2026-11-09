@@ -88,7 +88,7 @@ def ssim3d(
 
     Note:
         The volume is reflected at its faces for ``padding='same'``, as :func:`kornia.metrics.ssim` does for
-        images, so every spatial size must be larger than ``window_size // 2``. The Gaussian window is built in
+        images, across any positive spatial size, including ``D = 1``. The Gaussian window is built in
         the device and dtype of the inputs.
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
