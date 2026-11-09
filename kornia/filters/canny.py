@@ -50,11 +50,6 @@ def _check_thresholds(low_threshold: float, high_threshold: float) -> None:
     KORNIA_CHECK(0 < low_threshold, f"Invalid low threshold. Should be positive. Got: {low_threshold}")
 
 
-# tan(pi / 8) = sqrt(2) - 1, separating horizontal (|gy| <= |gx| * tan(pi/8)) and vertical (|gx| <= |gy| * tan(pi/8))
-# sectors from diagonal ones without transcendental atan2 evaluation.
-_TAN_PI_8 = math.tan(math.pi / 8)
-
-
 def _hysteresis_step(strong: torch.Tensor, low: torch.Tensor) -> torch.Tensor:
     # One round of edge tracking: a weak pixel (low & ~strong) with a strong (8-connected) neighbour becomes strong.
     # The 8-connected dilation is separable: a 1D horizontal pass followed by a 1D vertical pass.
@@ -222,16 +217,15 @@ def canny(
     padded: torch.Tensor = torch.sqrt(gx_padded * gx_padded + gy_padded * gy_padded + eps)
     magnitude: torch.Tensor = padded[..., 1:-1, 1:-1]
 
-    # Non-maximal suppression: classify gradient direction into 45-degree sectors by comparing |gy| with
-    # |gx| * tan(pi / 8), avoiding transcendental atan2 calls and large window allocations. At exact sector boundaries
-    # (22.5° and 67.5°), the comparison selects the axis-aligned sector (horizontal for 22.5°, vertical for 67.5°).
-    ax = gx.abs()
-    ay = gy.abs()
-    is_0 = ay <= ax * _TAN_PI_8
-    is_2 = (~is_0) & (ax <= ay * _TAN_PI_8)
+    # Preserve the legacy rounded-atan2 sectors: direct tangent comparisons differ at representable values
+    # around 22.5/67.5 degrees. Keep the sliced neighbour comparisons below to avoid the old 9-channel window.
+    # The legacy ONNX exporter produces NaN for atan2(0, 0); that flat pixel belongs to sector zero.
+    angle = torch.nan_to_num(torch.atan2(gy, gx))
+    sector = (angle * (4 / math.pi)).round().remainder(4)
+    is_0 = sector == 0
+    is_2 = sector == 2
     is_diag = ~(is_0 | is_2)
-    # Compare signs directly to avoid underflow when gx * gy underflows in float16/float32.
-    same_sign = (gx >= 0) == (gy >= 0)
+    same_sign = sector == 1
 
     # As in OpenCV's Canny, a pixel must be strictly greater than its left (upper) neighbour but only greater than or
     # equal to its right (lower) one along a horizontal (vertical) gradient, so of two equal pixels across a step the
