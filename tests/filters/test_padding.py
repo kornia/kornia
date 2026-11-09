@@ -45,7 +45,14 @@ from kornia.filters import (
 from kornia.filters.filter import _pad
 from kornia.geometry.transform import build_pyramid
 
-from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding, supports_replicate_padding_3d
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamic_export_is_available,
+    supports_reflect_padding,
+    supports_replicate_padding,
+    supports_replicate_padding_3d,
+)
 
 
 class TestSpatialPadding(BaseTester):
@@ -183,6 +190,7 @@ class TestThinFilterBorders(BaseTester):
         image = torch.arange(3, device=device, dtype=dtype).reshape(1, 1, 1, 3) / 32
         self.assert_close(traced(image), filter2d(image, kernel, "reflect"))
 
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("border_type, smallest", [("reflect", 3), ("circular", 2)])
     def test_export_keeps_the_native_size_limits(self, device, dtype, border_type, smallest):
         """Export down to the smallest side ``F.pad`` takes: the size check adds no guard of its own."""
