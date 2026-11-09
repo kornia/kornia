@@ -667,9 +667,10 @@ Serializing an augmentation
 - A learnable range is read again before each draw, so an optimizer step, an
   in-place update, ``load_state_dict`` and
   ``AveragedModel.update_parameters`` all reach the next draw, for a ``(2,)``
-  range and for a 0-d half-width alike. Its value is checked only when the
-  augmentation is built: to read it on every call would wait for the GPU and
-  break a ``torch.compile`` graph, so a range that training takes out of its
+  range and for a 0-d half-width alike. Its value is checked when the
+  augmentation is built, and otherwise only by the classes named below: to
+  read it on every call would wait for the GPU and break a ``torch.compile``
+  graph, so a range that training takes out of its
   domain (a negative half-width, say) is drawn from as it is. Keep it inside by
   clamping it after the optimizer step, or with
   ``torch.nn.utils.parametrize.register_parametrization`` on
@@ -678,8 +679,13 @@ Serializing an augmentation
   are two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize``,
   ``RandomRotation90`` and ``RandomCutMixV2`` decide things from the values of
   their range when they build their samplers and pass it no gradient, so an
-  update reaches them through ``load_state_dict`` and copies only. A range on an
-  accelerator in an augmentation left on the CPU (or the reverse) is copied to
+  update reaches them through ``load_state_dict`` and copies only. Those
+  builds check the range, so ``RandomErasing``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` raise the constructor's
+  ``ValueError`` when a range outside their domain is loaded, or when the
+  module is moved (``.to(torch.float64)``, say) after an in-place update took
+  it out. A range on an accelerator in an augmentation left on the CPU (or the
+  reverse) is copied to
   the generator's device only after an in-place update or a change of grad
   mode (a forward under ``torch.no_grad()`` after a training one, or the
   reverse), and each copy waits for the GPU once.
