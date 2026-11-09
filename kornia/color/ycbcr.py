@@ -29,19 +29,27 @@ def _rgb_to_y(r: torch.Tensor, g: torch.Tensor, b: torch.Tensor) -> torch.Tensor
 
 
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to YCbCr.
+    r"""Convert an RGB image to full-range YCbCr.
+
+    ``ycbcr = rgb_to_ycbcr(image)`` converts a ``(*, 3, H, W)`` RGB image in :math:`[0, 1]` to Y, Cb and Cr with the
+    BT.601 luma weights, all channels in :math:`[0, 1]` and Cb and Cr centred at 0.5.
 
     .. image:: _static/img/rgb_to_ycbcr.png
 
     Convention:
-        Channels are Y, Cb, Cr at axis -3. RGB inputs and all output channels use unit-range
-        full-range values.
+        Channels are Y, Cb, Cr at axis -3. The values equal OpenCV's float ``COLOR_RGB2YCrCb``, which stores Cr before
+        Cb. skimage ``rgb2ycbcr`` differs: it uses studio range, with Y in 16..235.
 
     Args:
-        image: RGB Image to be converted to YCbCr with shape ``(*, 3, H, W)``.
+        image: RGB image with shape ``(*, 3, H, W)``.
 
     Returns:
-        YCbCr version of the image with shape ``(*, 3, H, W)``.
+        YCbCr image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`ycbcr_to_rgb`: the inverse.
+        - :func:`rgb_to_y`: keeps only the Y channel.
+        - :class:`RgbToYcbcr`: the module form.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -66,17 +74,20 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 
 
 def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to Y.
+    r"""Convert an RGB image to the Y channel of YCbCr.
 
-    Convention:
-        Returns the Y channel from the unit-range full-range YCbCr convention used by
-        rgb_to_ycbcr.
+    ``y = rgb_to_y(image)`` returns the BT.601 luma, ``0.299 R + 0.587 G + 0.114 B``, of a ``(*, 3, H, W)`` RGB image
+    in :math:`[0, 1]` as one channel.
 
     Args:
-        image: RGB Image to be converted to Y with shape ``(*, 3, H, W)``.
+        image: RGB image with shape ``(*, 3, H, W)``.
 
     Returns:
-        Y version of the image with shape ``(*, 1, H, W)``.
+        Y image with shape ``(*, 1, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_ycbcr`: returns Cb and Cr as well.
+        - :func:`rgb_to_grayscale`: the same weights by default, with custom ``rgb_weights`` allowed.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -98,19 +109,23 @@ def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
 
 
 def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an YCbCr image to RGB.
+    r"""Convert a full-range YCbCr image to RGB.
 
-    The image data is assumed to be in the range of (0, 1).
+    ``rgb = ycbcr_to_rgb(image)`` converts a ``(*, 3, H, W)`` YCbCr image in :math:`[0, 1]`, with Cb and Cr centred
+    at 0.5 as :func:`rgb_to_ycbcr` returns them, to RGB.
 
     Convention:
-        Expects unit-range, full-range Y, Cb, Cr channels at axis -3 as produced by
-        rgb_to_ycbcr. The final RGB result is clamped to [0, 1].
+        Channels are Y, Cb, Cr at axis -3. The result is clamped to :math:`[0, 1]`.
 
     Args:
-        image: YCbCr Image to be converted to RGB with shape ``(*, 3, H, W)``.
+        image: YCbCr image with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape ``(*, 3, H, W)``.
+        RGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_ycbcr`: the inverse.
+        - :class:`YcbcrToRgb`: the module form.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -142,18 +157,20 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToYcbcr(nn.Module):
-    r"""Convert an image from RGB to YCbCr.
+    r"""Convert an image from RGB to YCbCr (module form).
 
-    See the Convention block on :func:`rgb_to_ycbcr`.
+    ``out = RgbToYcbcr()(image)`` is :func:`rgb_to_ycbcr`.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Returns:
-        YCbCr version of the image.
+    Convention:
+        - See the convention block of :func:`rgb_to_ycbcr`.
 
     Shape:
         - image: ``(*, 3, H, W)``
         - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`rgb_to_ycbcr`: the one-call form.
+        - :class:`YcbcrToRgb`: the inverse.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -180,18 +197,20 @@ class RgbToYcbcr(nn.Module):
 
 
 class YcbcrToRgb(nn.Module):
-    r"""Convert an image from YCbCr to Rgb.
+    r"""Convert an image from YCbCr to RGB (module form).
 
-    See the Convention block on :func:`ycbcr_to_rgb`.
+    ``out = YcbcrToRgb()(image)`` is :func:`ycbcr_to_rgb`.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Returns:
-        RGB version of the image.
+    Convention:
+        - See the convention block of :func:`ycbcr_to_rgb`.
 
     Shape:
         - image: ``(*, 3, H, W)``
         - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`ycbcr_to_rgb`: the one-call form.
+        - :class:`RgbToYcbcr`: the inverse.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)

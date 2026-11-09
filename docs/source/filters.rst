@@ -2,18 +2,19 @@ kornia.filters
 ==============
 
 .. meta::
-   :description: The Kornia filters module provides various image filtering operations such as blurring, edge detection, and noise reduction. It includes functions for bilateral, Gaussian, motion, median, and unsharp mask filtering, as well as pooling operations for blurring. These operations are designed to be differentiable and can be integrated seamlessly into deep learning pipelines.
+   :description: The Kornia filters module blurs, sharpens and thresholds images, finds edges and gradients, and filters with your own kernels. It includes box, Gaussian, median, bilateral, guided and motion blurs, unsharp masking, blur pooling, Sobel, Laplacian and Canny edges, and Otsu thresholding.
 
 .. currentmodule:: kornia.filters
 
-Differentiable image filtering on batched ``(B, C, H, W)`` tensors. Every function has an ``nn.Module``
-counterpart on the same page.
+Filters for images ``(B, C, H, W)`` and volumes ``(B, C, D, H, W)``. Each blurring, edge detection and thresholding
+function has an ``nn.Module`` form; the filtering API and the kernel functions are functions only.
 
 .. list-table::
    :widths: 30 70
 
    * - :doc:`filters.blurring`
-     - Gaussian, box, median, bilateral, guided and motion blur; blur pooling; unsharp masking.
+     - Gaussian, box, median, bilateral, guided and motion blur; blur pooling; unsharp masking; dissolving with
+       Stable Diffusion.
    * - :doc:`filters.edge_detection`
      - Sobel, Laplacian and Canny edge detectors and spatial gradients in 2D and 3D.
    * - :doc:`Thresholding <filters.segmentation>`

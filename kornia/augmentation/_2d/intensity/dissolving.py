@@ -76,6 +76,8 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     See Also:
         - :class:`RandomErasing`: removes a rectangle without a diffusion model.
+        - :class:`~kornia.filters.StableDiffusionDissolving`: the model itself, with a step you choose and an input it
+          does not clamp.
 
     """
 
