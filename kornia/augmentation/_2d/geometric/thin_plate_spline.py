@@ -23,7 +23,8 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import SamplePadding
 from kornia.core.utils import _to_device_nonblocking
-from kornia.geometry.transform import get_tps_transform, warp_image_tps
+from kornia.geometry.transform import warp_image_tps
+from kornia.geometry.transform.thin_plate_spline import _get_tps_transform
 
 
 # NOTE: This NEEDS to be updated. It is out of the random generator controller.
@@ -126,9 +127,10 @@ class RandomThinPlateSpline(AugmentationBase2D):
     ) -> torch.Tensor:
         src = _to_device_nonblocking(params["src"], input.device, input.dtype)
         dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
-        # NOTE: warp_image_tps need to use inverse parameters
-        kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
+        # NOTE: warp_image_tps need to use inverse parameters; the kernels sit on the first argument of the fit.
+        # The private fit has no notice, because a caller of this augmentation has no call to edit.
+        kernel, affine = _get_tps_transform(dst, src)
+        return warp_image_tps(input, dst, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
 
     def apply_transform_mask(
         self,
