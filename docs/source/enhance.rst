@@ -6,19 +6,19 @@ kornia.enhance
 
 .. currentmodule:: kornia.enhance
 
-Intensity transformations and normalization on batched ``(B, C, H, W)`` tensors.
+Adjust, equalize, normalize and whiten images, and simulate JPEG compression.
 
 .. list-table::
    :widths: 30 70
 
    * - :doc:`enhance.adjustment`
-     - Brightness, contrast, gamma, hue, saturation, sigmoid and log adjustments; invert, posterize, sharpen and solarize.
+     - Brightness, contrast, gamma, logarithmic, sigmoid, hue and saturation adjustments; invert, posterize, solarize, sharpen, RGB shift, weighted sum, rescale and fixed-level threshold.
    * - :doc:`enhance.equalization`
-     - Histogram equalization, CLAHE and differentiable histograms.
+     - Histogram equalization, tile-wise CLAHE and differentiable histograms.
    * - :doc:`enhance.normalization`
-     - Mean/std normalization, min-max scaling, ZCA whitening and linear transforms.
+     - Mean and standard-deviation normalization, min-max scaling, ZCA whitening and linear transforms.
    * - :doc:`enhance.codec`
-     - A differentiable JPEG encoder/decoder.
+     - A differentiable JPEG compression and decompression model.
    * - :doc:`enhance.integral`
      - Integral images and cumulative sums over chosen axes.
 

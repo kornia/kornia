@@ -614,65 +614,44 @@ def jpeg_codec_differentiable(
     quantization_table_y: torch.Tensor | None = None,
     quantization_table_c: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    r"""Differentiable JPEG encoding-decoding module.
+    """Compress and decompress an RGB image with a differentiable JPEG model.
 
-    Convention:
-        Input is RGB in [0, 1] with shape ``(*, 3, H, W)``; the leading axes flatten to N images.
-        jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
-        scalar is rejected. The codec pads on the bottom and right internally and crops back to
-        the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
-        float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
-        output is rounded once to the input dtype. The codec runs with autocast disabled, so inside a
-        ``torch.autocast`` region it gives the same output as outside it, and the same gradients when the
-        backward pass runs after the region (on CUDA, up to the run-to-run spread of its atomic accumulation
-        unless deterministic algorithms are enabled). A backward pass inside the region, which
-        ``torch.compile`` assumes by default, still computes part of the gradient in the autocast dtype.
-
-    Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
+    ``out = jpeg_codec_differentiable(input, jpeg_quality)`` returns an RGB image in :math:`[0, 1]` after a JPEG encode
+    and decode at ``jpeg_quality``, following :cite:`reich2024` and :cite:`shin2017`. Gradients reach ``input``,
+    ``jpeg_quality`` and the quantization tables.
 
     .. image:: _static/img/jpeg_codec_differentiable.png
 
-    .. math::
-
-        \text{JPEG}_{\text{diff}}(I, q, QT_{y}, QT_{c}) = \hat{I}
-
-    Where:
-       - :math:`I` is the original image to be coded.
-       - :math:`q` is the JPEG quality controlling the compression strength.
-       - :math:`QT_{y}` is the luma quantization table.
-       - :math:`QT_{c}` is the chroma quantization table.
-       - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
-
-    .. note:::
-        The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
-        required to first perform denormalization followed by normalizing the output images again.
-
-        Note, that this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        however, does not allow the excess of the JPEG-coded byte file itself.
-        For more details please refer to :cite:`reich2024`.
-
-        This implementation is not meant for data loading. For loading JPEG images please refer to `kornia.io`.
-        There we provide an optimized Rust implementation for fast JPEG loading.
+    Convention:
+        - Input and output pixels are in :math:`[0, 1]`: denormalize a normalized image first and normalize the output
+          again. Any ``H`` and ``W`` work: the codec pads the bottom and right to a multiple of 16 and crops back, and
+          clips the output.
+        - The result approximates libjpeg and does not reproduce its output exactly.
+        - float16 and bfloat16 inputs are computed in float32, quality and tables included, and the output is rounded
+          once to the input dtype.
+        - The codec runs with autocast disabled, so inside a ``torch.autocast`` region it gives the same output as
+          outside it, and the same gradients when the backward pass runs after the region (on CUDA, up to the run-to-run
+          spread of its atomic accumulation unless deterministic algorithms are enabled). A backward pass inside the
+          region, which ``torch.compile`` assumes by default, still computes part of the gradient in the autocast dtype.
 
     Args:
-        input: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
-          A quality of exactly 0 is treated as 1, matching libjpeg, which gives quality 0 the quality-1
-          table. This endpoint is not the limit of the formula as the quality approaches 0 from above:
-          a fractional quality in (0, 1) is left alone and compresses harder still.
-        quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
-          quantization table.
-        quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
-          quantization table.
+        input: RGB image with shape ``(*, 3, H, W)``.
+        jpeg_quality: JPEG quality in :math:`[0, 100]`, with shape ``(1,)`` for all images or ``(N,)`` for ``N`` the
+            number of flattened images; a 0-d tensor raises. A quality of exactly 0 is treated as 1, as in libjpeg; a
+            quality between 0 and 1 is left alone and compresses harder still.
+        quantization_table_y: luma quantization table with shape ``(8, 8)`` for all images or ``(N, 8, 8)``. The default
+            is the standard table.
+        quantization_table_c: chroma quantization table, in the same shapes. The default is the standard table.
 
-    Shape:
-        - input: ``(*, 3, H, W)``.
-        - jpeg_quality: ``(1)`` or ``(B)`` (if used batch dim. needs to match w/ input).
-        - quantization_table_y: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ input).
-        - quantization_table_c: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ input).
+    Returns:
+        JPEG-coded image with the shape of ``input``.
 
-    Return:
-        JPEG coded image of the shape ``(B, 3, H, W)``
+    See Also:
+        - :class:`JPEGCodecDifferentiable`: the module form, which keeps the tables.
+        - :class:`~kornia.augmentation.RandomJPEG`: applies JPEG compression at random quality per image.
+
+    .. note::
+       The model produces no JPEG byte file and cannot read one. To load JPEG files use ``kornia.io``.
 
     Example:
         To perform JPEG coding with the standard quantization tables just provide a JPEG quality
@@ -691,8 +670,8 @@ def jpeg_codec_differentiable(
         >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
         >>> img_jpeg.sum().backward()
 
-        In case you want to control the quantization purly base on the quantization tables use a JPEG quality of 99.5.
-        Setting the JPEG quality to 99.5 leads to a QT scaling of 1, see Eq. 2 of :cite:`reich2024` for details.
+        To control the quantization purely with the quantization tables use a JPEG quality of 99.5, which scales the
+        tables by 1 (Eq. 2 of :cite:`reich2024`).
 
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.ones(3) * 99.5
@@ -830,49 +809,29 @@ def _build_dct8_basis_scale(
 
 
 class JPEGCodecDifferentiable(nn.Module):
-    r"""Differentiable JPEG encoding-decoding module.
+    """Compress and decompress an RGB image with a differentiable JPEG model (module form).
 
-    Convention:
-        See :func:`jpeg_codec_differentiable`: its (1,) or (N,) JPEG quality policy
-        also applies to forward.
-
-    Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
-
-    .. math::
-
-        \text{JPEG}_{\text{diff}}(I, q, QT_{y}, QT_{c}) = \hat{I}
-
-    Where:
-       - :math:`I` is the original image to be coded.
-       - :math:`q` is the JPEG quality controlling the compression strength.
-       - :math:`QT_{y}` is the luma quantization table.
-       - :math:`QT_{c}` is the chroma quantization table.
-       - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
+    ``op = JPEGCodecDifferentiable(quantization_table_y, quantization_table_c)`` stores the tables, and
+    ``out = op(image_rgb, jpeg_quality)`` is :func:`jpeg_codec_differentiable` with them. A table is stored as a buffer,
+    or as a learnable parameter if it is an ``nn.Parameter``.
 
     .. image:: _static/img/jpeg_codec_differentiable.png
 
-    .. note::
-        The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
-        required to first perform denormalization followed by normalizing the output images again.
-
-        Note, that this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        however, does not allow the excess of the JPEG-coded byte file itself.
-        For more details please refer to :cite:`reich2024`.
-
-        This implementation is not meant for data loading. For loading JPEG images please refer to `kornia.io`.
-        There we provide an optimized Rust implementation for fast JPEG loading.
+    Convention:
+        - See the convention block of :func:`jpeg_codec_differentiable`.
 
     Args:
-        quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
-          quantization table.
-        quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
-          quantization table.
+        quantization_table_y: luma quantization table with shape ``(8, 8)`` for all images or ``(N, 8, 8)``. The default
+            is the standard table.
+        quantization_table_c: chroma quantization table, in the same shapes. The default is the standard table.
 
     Shape:
-        - quantization_table_y: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ image_rgb).
-        - quantization_table_c: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ image_rgb).
         - image_rgb: ``(*, 3, H, W)``.
-        - jpeg_quality: ``(1)`` or ``(B)`` (if used batch dim. needs to match w/ image_rgb).
+        - jpeg_quality: ``(1,)`` or ``(N,)`` for ``N`` the number of flattened images.
+        - Output: same shape as ``image_rgb``.
+
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the one-call form.
 
     Example:
         You can use the differentiable JPEG module with standard quantization tables by

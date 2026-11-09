@@ -24,24 +24,27 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) -> torch.Tensor:
-    """Calculate integral of the input torch.Tensor.
+    """Sum a tensor cumulatively along chosen axes.
+
+    ``out = integral_tensor(input, dim)`` takes the inclusive cumulative sum of ``input`` along each axis in ``dim``,
+    along the last axis by default. For ``dim=(-2, -1)``, ``out[..., i, j]`` is the sum of
+    ``input[..., :i + 1, :j + 1]``.
 
     Convention:
-        Applies an inclusive cumulative sum along each axis in dim; dim=None means
-        only the last axis. :func:`integral_image` fixes the axes to (-2, -1),
-        and the two module classes are wrappers for these functions.
-
-    The algorithm computes the integral image by summing over the specified dimensions.
-
-    In case dim is specified, the contained dimensions must be unique
-    and within the dimensions of the input torch.Tensor.
+        - ``dim`` is a non-empty tuple of unique axes; an ``int`` raises ``TypeError``.
+        - The output has the shape of the input, with no zero row or column in front, so
+          ``cv2.integral(x)[1:, 1:]`` equals the result for the two spatial axes.
 
     Args:
-        input: the input torch.Tensor with shape ``(*, D)``. Where D is the number of dimensions.
-        dim: the dimension to be summed.
+        input: tensor with shape ``(*, D)``, one axis or more.
+        dim: axes to sum along. The default is the last axis.
 
     Returns:
-        Integral torch.Tensor for the input torch.Tensor with shape ``(*, D)``.
+        Cumulative sums with the shape of ``input``.
+
+    See Also:
+        - :func:`integral_image`: sums the two spatial axes.
+        - :class:`IntegralTensor`: the module form.
 
     Examples:
         >>> input = torch.ones(3, 5)
@@ -77,19 +80,24 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
 
 
 def integral_image(image: torch.Tensor) -> torch.Tensor:
-    r"""Calculate integral of the input image torch.Tensor.
+    """Sum an image cumulatively along its rows and columns.
+
+    ``out = integral_image(image)`` returns the integral image of ``image`` with shape ``(*, H, W)``: ``out[..., i, j]``
+    is the sum of ``image[..., :i + 1, :j + 1]``.
 
     Convention:
-        This is :func:`integral_tensor` with axes (-2, -1); the output has the input shape,
-        without an extra zero border.
-
-    This particular version sums over the last two dimensions.
+        The output has the shape of the input, with no zero row or column in front, unlike ``cv2.integral``, whose
+        result is larger by one row and column.
 
     Args:
-        image: the input image torch.Tensor with shape ``(*, H, W)``.
+        image: image with shape ``(*, H, W)``.
 
     Returns:
-        Integral torch.Tensor for the input image torch.Tensor with shape ``(*, H, W)``.
+        Integral image with shape ``(*, H, W)``.
+
+    See Also:
+        - :func:`integral_tensor`: sums along any axes.
+        - :class:`IntegralImage`: the module form.
 
     Examples:
         >>> input = torch.ones(1, 5, 5)
@@ -108,20 +116,23 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
 
 
 class IntegralTensor(nn.Module):
-    r"""Calculates integral of the input torch.Tensor.
+    """Sum a tensor cumulatively along chosen axes (module form).
+
+    ``op = IntegralTensor(dim)`` stores ``dim`` and ``out = op(input)`` is :func:`integral_tensor` with it.
 
     Convention:
-        See :func:`integral_tensor` for axis order and validation behavior.
+        - See the convention block of :func:`integral_tensor`.
 
     Args:
-        image: the input torch.Tensor with shape ``(B,C,H,W)``.
-
-    Returns:
-        Integral torch.Tensor for the input torch.Tensor with shape ``(B,C,H,W)``.
+        dim: axes to sum along. The default is the last axis.
 
     Shape:
-        - Input: ``(B, C, H, W)``
-        - Output: ``(B, C, H, W)``
+        - Input: ``(*, D)``
+        - Output: same shape as the input.
+
+    See Also:
+        - :func:`integral_tensor`: the one-call form.
+        - :class:`IntegralImage`: sums the two spatial axes.
 
     Examples:
         >>> input = torch.ones(3, 5)
@@ -154,22 +165,20 @@ class IntegralTensor(nn.Module):
 
 
 class IntegralImage(nn.Module):
-    """Calculates integral of the input image torch.Tensor.
+    """Sum an image cumulatively along its rows and columns (module form).
+
+    ``out = IntegralImage()(image)`` is :func:`integral_image`.
 
     Convention:
-        See :func:`integral_image`; this wrapper always accumulates the final two axes.
-
-    This particular version sums over the last two dimensions.
-
-    Args:
-        image: the input image torch.Tensor with shape ``(B,C,H,W)``.
-
-    Returns:
-        Integral torch.Tensor for the input image torch.Tensor with shape ``(B,C,H,W)``.
+        - See the convention block of :func:`integral_image`.
 
     Shape:
-        - Input: ``(B, C, H, W)``
-        - Output: ``(B, C, H, W)``
+        - Input: ``(*, H, W)``
+        - Output: same shape as the input.
+
+    See Also:
+        - :func:`integral_image`: the one-call form.
+        - :class:`IntegralTensor`: sums along any axes.
 
     Examples:
         >>> input = torch.ones(1, 5, 5)

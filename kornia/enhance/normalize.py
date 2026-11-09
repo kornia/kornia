@@ -41,30 +41,27 @@ def _promote_integer_data(data: torch.Tensor) -> torch.Tensor:
 
 
 class Normalize(nn.Module):
-    r"""Normalize a torch.Tensor image with mean and standard deviation.
+    """Normalize an image with a stored per-channel mean and standard deviation (module form).
+
+    ``op = Normalize(mean, std)`` stores the statistics and ``out = op(input)`` is :func:`normalize` with them. A tensor
+    statistic is stored as a non-persistent buffer, and an ``nn.Parameter`` stays a parameter that optimizers and
+    checkpoints include.
 
     Convention:
-        The channel axis is dimension 1: inputs are ``(B, C, *)`` and one statistic
-        per channel has shape (C,) (or (B, C) for separate batch statistics).
-        See :func:`normalize` for the functional contract.
-        An ``nn.Parameter`` statistic stays a registered parameter for optimizers and checkpoints;
-        ordinary tensor statistics are non-persistent buffers.
-
-    .. math::
-        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
-
-    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
+        - See the convention block of :func:`normalize`. Unlike the function, the module also takes lists and tuples.
 
     Args:
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        mean: mean of each channel, a number, a list, a tuple or a tensor.
+        std: standard deviation of each channel, in the same forms.
 
     Shape:
-        - Input: Image torch.Tensor of size ``(B, C, *)``.
-        - Output: Normalised torch.Tensor with same size as input ``(B, C, *)``.
+        - Input: image ``(B, C, *)``.
+        - Output: same shape as the input.
 
-    Note:
-        An integer or bool input is converted to torch's default floating dtype first; see :func:`normalize`.
+    See Also:
+        - :func:`normalize`: the one-call form.
+        - :class:`Denormalize`: the inverse.
+        - :class:`~kornia.augmentation.Normalize`: the same operation inside an augmentation pipeline.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -133,30 +130,29 @@ class Normalize(nn.Module):
 
 
 def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
-    r"""Normalize an image/video torch.Tensor with mean and standard deviation.
+    """Normalize an image or video with a per-channel mean and standard deviation.
+
+    ``out = normalize(data, mean, std)`` returns ``(data - mean) / std`` for each channel of ``data`` ``(B, C, *)``,
+    with the channel on dimension 1.
 
     Convention:
-        This function treats dimension 0 as batch and dimension 1 as channel.
-        mean and std may be (C,), (1, C), or (B, C); the output has the input shape.
-
-    .. math::
-        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
-
-    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
+        - ``mean`` and ``std`` are converted to the dtype and device of ``data``; the output keeps its dtype.
+        - An integer or bool ``data`` is converted to torch's default floating dtype first, so a fractional statistic is
+          not truncated. Pixel values are not rescaled: give ``mean`` and ``std`` in the 0-255 scale for a uint8 image.
 
     Args:
-        data: Image torch.Tensor of size ``(B, C, *)``.
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        data: image or video with shape ``(B, C, *)``.
+        mean: mean of each channel: a number, a 0-d tensor, or a tensor with shape ``(C,)``, ``(1, C)`` for all samples
+            or ``(B, C)`` for one per sample. A list raises.
+        std: standard deviation of each channel, in the same forms.
 
-    Return:
-        Normalised torch.Tensor with same size as input ``(B, C, *)``.
+    Returns:
+        Normalized tensor with the shape of ``data``.
 
-    Note:
-        An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
-        ``mean`` and ``std`` are applied, so a fractional statistic is not truncated and the result is floating.
-        Floating and complex inputs keep their dtype. Pixel values are not rescaled: give ``mean`` and ``std`` in the
-        0-255 scale for a uint8 image.
+    See Also:
+        - :func:`denormalize`: the inverse.
+        - :func:`normalize_min_max`: scales each channel plane to a value range instead of using fixed statistics.
+        - :class:`Normalize`: the module form.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -223,31 +219,27 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 
 
 class Denormalize(nn.Module):
-    r"""Denormalize a torch.Tensor image with mean and standard deviation.
+    """Undo a per-channel mean and standard-deviation normalization with stored statistics (module form).
+
+    ``op = Denormalize(mean, std)`` stores the statistics and ``out = op(input)`` is :func:`denormalize` with them. A
+    tensor statistic is stored as a non-persistent buffer, and an ``nn.Parameter`` stays a parameter that optimizers and
+    checkpoints include.
 
     Convention:
-        See :func:`denormalize`; the inverse uses dimension 1 as channel on
-        ``(B, C, *)`` input, matching :class:`Normalize`.
-
-    .. math::
-        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
-
-    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
-
-    Note:
-        An ``nn.Parameter`` statistic stays a registered parameter for optimizers and checkpoints;
-        ordinary tensor statistics are non-persistent buffers.
+        - See the convention block of :func:`denormalize`.
 
     Args:
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        mean: mean of each channel, a number, a list, a tuple or a tensor.
+        std: standard deviation of each channel, in the same forms.
 
     Shape:
-        - Input: Image torch.Tensor of size ``(B, C, *)``.
-        - Output: Denormalised torch.Tensor with same size as input ``(B, C, *)``.
+        - Input: image ``(B, C, *)``.
+        - Output: same shape as the input.
 
-    Note:
-        An integer or bool input is converted to torch's default floating dtype first; see :func:`denormalize`.
+    See Also:
+        - :func:`denormalize`: the one-call form.
+        - :class:`Normalize`: the inverse.
+        - :class:`~kornia.augmentation.Denormalize`: the same operation inside an augmentation pipeline.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -312,29 +304,28 @@ class Denormalize(nn.Module):
 
 
 def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
-    r"""Denormalize an image/video torch.Tensor with mean and standard deviation.
+    """Undo a per-channel mean and standard-deviation normalization of an image or video.
+
+    ``out = denormalize(data, mean, std)`` returns ``data * std + mean`` for each channel of ``data`` ``(B, C, *)``,
+    which inverts :func:`normalize` for the same ``mean`` and ``std``.
 
     Convention:
-        This is the elementwise inverse of :func:`normalize` for matching mean and std
-        on ``(B, C, *)`` input.
-
-    .. math::
-        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
-
-    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
+        - ``mean`` and ``std`` take the forms of :func:`normalize`, are converted to the dtype and device of ``data``,
+          and the output keeps its dtype.
+        - An integer or bool ``data`` is converted to torch's default floating dtype first, so the result is floating
+          and cannot wrap.
 
     Args:
-        data: Image torch.Tensor of size ``(B, C, *)``.
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        data: image or video with shape ``(B, C, *)``.
+        mean: mean of each channel: a number, a 0-d tensor, or a tensor with shape ``(C,)``, ``(1, C)`` or ``(B, C)``.
+        std: standard deviation of each channel, in the same forms.
 
-    Return:
-        Denormalised torch.Tensor with same size as input ``(B, C, *)``.
+    Returns:
+        Denormalized tensor with the shape of ``data``.
 
-    Note:
-        An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
-        ``mean`` and ``std`` are applied, so the result is floating and cannot wrap. Floating and complex inputs keep
-        their dtype.
+    See Also:
+        - :func:`normalize`: the inverse.
+        - :class:`Denormalize`: the module form.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -404,30 +395,29 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 def normalize_min_max(
     input: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6
 ) -> torch.Tensor:
-    r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
+    """Rescale each channel plane of an image linearly to a value range.
+
+    ``out = normalize_min_max(input, min_val, max_val)`` maps the minimum of each ``H x W`` plane of ``input`` to
+    ``min_val`` and its maximum to ``max_val``, using that plane's own range:
+    ``(max_val - min_val) * (x - x.min()) / (x.max() - x.min() + eps) + min_val``. A constant plane maps to ``min_val``.
 
     Convention:
-        Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
-        leading index and channel. Constant planes map to min_val. Empty leading dimensions are
-        preserved; channel and spatial dimensions must be nonzero.
-        Integer and boolean inputs are promoted to torch's default floating dtype first, as in
-        :func:`normalize`; floating inputs keep their dtype.
-
-    The data is normalised using the following formulation:
-
-    .. math::
-        y_i = (b - a) * \frac{x_i - \text{min}(x)}{\text{max}(x) - \text{min}(x)} + a
-
-    where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
+        - Input is ``(*, C, H, W)``. Empty leading dimensions are preserved; channel and spatial dimensions must be
+          nonzero.
+        - Integer and boolean inputs are promoted to torch's default floating dtype first, as in :func:`normalize`;
+          floating inputs keep their dtype.
 
     Args:
-        input: The image torch.Tensor to be normalised with shape ``(*, C, H, W)``.
-        min_val: The minimum value for the new range.
-        max_val: The maximum value for the new range.
-        eps: Float number to avoid zero division.
+        input: image with shape ``(*, C, H, W)``.
+        min_val: value of each plane's minimum, a ``float``.
+        max_val: value of each plane's maximum, a ``float``.
+        eps: value added to each plane's range, so the maximum lands slightly below ``max_val``.
 
     Returns:
-        The normalised image torch.Tensor with same shape as input ``(*, C, H, W)``.
+        Rescaled image with the shape of ``input``.
+
+    See Also:
+        - :func:`normalize`: subtracts a given mean and divides by a given standard deviation instead.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)

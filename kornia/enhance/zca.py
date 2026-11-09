@@ -26,51 +26,41 @@ __all__ = ["ZCAWhitening", "linear_transform", "zca_mean", "zca_whiten"]
 
 
 class ZCAWhitening(nn.Module):
-    r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
+    r"""Whiten data with a ZCA transform fitted on a data set.
+
+    ``zca = ZCAWhitening(dim)`` is fitted with ``zca.fit(x)``, after which ``zca(x)`` returns ``x`` centered and
+    whitened. ``dim`` is the sample axis and all other axes are flattened into
+    one feature vector, so a ``(5, 3, 2, 2)`` tensor has :math:`N = 5` samples of :math:`D = 12` features.
 
     Convention:
-        dim is the sample axis; every other axis is flattened into the feature
-        vector. unbiased=True divides covariance by N - 1 and False by N. Call
-        fit or pass include_fit=True before transforming. :func:`zca_whiten` computes
-        the same transform per call.
-
-    The data torch.Tensor is flattened, and the mean :math:`\mathbf{\mu}`
-    and covariance matrix :math:`\mathbf{\Sigma}` are computed from
-    the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
-    :math:`N` is the sample size and :math:`D` is flattened dimensionality
-    (e.g. for a torch.Tensor with size 5x3x2x2 :math:`N = 5` and :math:`D = 12`). The ZCA whitening
-    transform is given by:
-
-    .. math::
-
-        \mathbf{X}_{\text{zca}} = (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T
-
-    where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
-    eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
-
-    Float16 and bfloat16 inputs are fitted and transformed in float32, with only the transformed output rounded
-    to the input dtype. The fitted buffers stay float32; explicitly casting the module to half precision discards
-    that accuracy.
-
-    The fitted mean and transforms are buffers: ``state_dict`` saves them, ``.to()`` moves and casts them, and
-    loading a fitted state into an unfitted module fits it. An unfitted module holds no tensors, so the loaded
-    ones keep the device and dtype they were saved with; move the module after loading. A checkpoint saved
-    before the fitted state was persisted holds none of it, and loading it keeps the current fit.
+        - The mean :math:`\mathbf{\mu}` and covariance :math:`\mathbf{\Sigma}` come from the flattened data
+          :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, and the transform is :math:`\mathbf{X}_{\text{zca}} =
+          (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T`, with :math:`U` the eigenvectors and :math:`S` the eigenvalues of
+          :math:`\Sigma`.
+        - The output has the shape of the input. Call ``fit`` or pass ``include_fit=True`` before transforming.
+        - Float16 and bfloat16 inputs are fitted and transformed in float32, and only the transformed output is rounded
+          to the input dtype. The fitted buffers stay float32; casting the module to half precision discards that
+          accuracy.
+        - The fitted ``mean_vector``, ``transform_matrix`` and ``transform_inv`` are buffers: ``state_dict`` saves them
+          and ``.to()`` moves and casts them. Loading a fitted state into an unfitted module fits it, and the loaded
+          tensors keep the device and dtype they were saved with, so move the module after loading. A checkpoint saved
+          before the fitted state was persisted holds none of it, and loading it keeps the current fit.
 
     Args:
-        dim: Determines the dimension that represents the samples axis.
-        eps: a small number used for numerical stability.
-        unbiased: Whether to divide covariance by N - 1 rather than N.
-        compute_inv: Compute the inverse transform matrix.
-        detach_transforms: Detaches gradient from the ZCA fitting.
+        dim: sample axis.
+        eps: value added to the eigenvalues before the inverse square root.
+        unbiased: divide the covariance by :math:`N - 1` if ``True``, by :math:`N` otherwise.
+        detach_transforms: detach the fitted tensors from the graph, so gradients do not flow through the fit.
+        compute_inv: also compute the inverse transform that ``inverse_transform`` needs.
 
-    shape:
-        - x: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
-        - x_whiten: :math:`(D_0,...,D_{\text{dim}},...,D_N)` same shape as input.
+    Shape:
+        - x: tensor ``(D_0, ..., D_dim, ..., D_N)`` whose axis ``dim`` indexes the samples.
+        - x_whiten: same shape as ``x``.
 
-    .. note::
-       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
-       blob/master/source/zca_whitening.ipynb>`__.
+    See Also:
+        - :func:`zca_whiten`: fits and whitens in one call.
+        - :func:`zca_mean`: computes the transform and mean this module stores.
+        - :func:`linear_transform`: applies a given transform and mean.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
@@ -83,10 +73,10 @@ class ZCAWhitening(nn.Module):
         >>> zca = ZCAWhitening(detach_transforms = False)
         >>> x_whiten = zca(x, include_fit = True) # Includes the fitting step
 
-    Note:
-        This implementation uses :py:meth:`~torch.svd` which yields NaNs in the backwards step
-        if the singular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
-        more information.
+    .. note::
+       The fit takes an SVD of the covariance, whose backward step yields NaNs if the singular values are not unique,
+       see :func:`torch.svd`. A working example is in the `ZCA whitening tutorial
+       <https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/source/zca_whitening.ipynb>`__.
 
     References:
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
@@ -237,39 +227,35 @@ class ZCAWhitening(nn.Module):
 def zca_mean(
     inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-    r"""Compute the ZCA whitening matrix and mean vector.
+    """Fit the ZCA whitening matrix and mean vector of a data set.
+
+    ``T, mean, T_inv = zca_mean(inp, dim)`` returns the ZCA matrix ``T`` with shape ``(D, D)``, the mean vector with
+    shape ``(1, D)`` and, if ``return_inverse=True``, the inverse matrix ``T_inv`` (else ``None``). ``D`` is the product
+    of the sizes of all axes except ``dim``, the sample axis. Apply the result with :func:`linear_transform`.
 
     Convention:
-        See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
-        Fitting runs with autocast disabled (not under TorchScript). Float16 and bfloat16 fitting uses float32
-        arithmetic and returns float32 mean and transforms to avoid cancellation when applying a rank-deficient fit.
-
-    The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
+        - See :class:`ZCAWhitening` for the covariance and the transform.
+        - The fit runs with autocast disabled (not under TorchScript). Float16 and bfloat16 inputs are fitted in float32
+          and return float32 tensors, to avoid cancellation when applying a rank-deficient fit.
 
     Args:
-        inp: input data torch.Tensor.
-        dim: Specifies the dimension that serves as the samples dimension.
-        unbiased: Whether to use the unbiased estimate of the covariance matrix.
-        eps: a small number used for numerical stability.
-        return_inverse: Whether to return the inverse ZCA transform.
-
-    Shapes:
-        - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
-        - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
-        - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
-        - inv_transform: same shape as the transform matrix
+        inp: data tensor with shape ``(D_0, ..., D_dim, ..., D_N)``.
+        dim: sample axis.
+        unbiased: divide the covariance by :math:`N - 1` if ``True``, by :math:`N` otherwise.
+        eps: value added to the eigenvalues before the inverse square root.
+        return_inverse: also return the inverse transform.
 
     Returns:
-        A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
-        then it returns the inverse ZCA matrix, otherwise it returns None.
+        Tuple ``(T, mean, T_inv)``.
 
     Raises:
         ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with
             ``unbiased=False``.
 
-    .. note::
-       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
-       blob/master/source/zca_whitening.ipynb>`__.
+    See Also:
+        - :class:`ZCAWhitening`: stores the fit and applies it.
+        - :func:`zca_whiten`: fits and whitens in one call.
+        - :func:`linear_transform`: applies the result.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
@@ -374,30 +360,30 @@ def _zca_mean(
 
 
 def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Apply ZCA whitening transform.
+    """Whiten data with a ZCA transform fitted on the same data.
+
+    ``out = zca_whiten(inp, dim)`` fits ZCA on ``inp`` and returns ``inp`` centered and whitened, with its shape. To
+    reuse the fit on other data, use :class:`ZCAWhitening`.
 
     Convention:
-        Fits and applies ZCA in one call; see :class:`ZCAWhitening` for sample-axis and
-        covariance-normalization conventions.
-
-    See :class:`ZCAWhitening` for details.
+        - See :class:`ZCAWhitening` for the sample axis and the covariance normalization.
 
     Args:
-        inp: input data torch.Tensor.
-        dim: Specifies the dimension that serves as the samples dimension.
-        unbiased: Whether to use the unbiased estimate of the covariance matrix.
-        eps: a small number used for numerical stability.
+        inp: data tensor with shape ``(D_0, ..., D_dim, ..., D_N)``.
+        dim: sample axis.
+        unbiased: divide the covariance by :math:`N - 1` if ``True``, by :math:`N` otherwise.
+        eps: value added to the eigenvalues before the inverse square root.
 
     Returns:
-        Whiten Input data.
+        Whitened tensor with the shape of ``inp``.
 
     Raises:
         ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with
             ``unbiased=False``.
 
-    .. note::
-       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
-       blob/master/source/zca_whitening.ipynb>`__.
+    See Also:
+        - :class:`ZCAWhitening`: fits once and whitens other data, and inverts the transform.
+        - :func:`zca_mean`: returns the transform and mean without applying them.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
@@ -427,35 +413,28 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    r"""Apply a transformation matrix after centering and flattening the input.
+    """Center data and multiply it by a transform matrix.
 
-    This function flattens the input torch.Tensor along the given dimension and subtracts
-    the mean vector. The dot product with the transformation matrix is then reshaped to the
-    original input shape.
+    ``out = linear_transform(inp, transform_matrix, mean_vector, dim)`` flattens all axes of ``inp`` except the sample
+    axis ``dim`` into one feature vector per sample, computes ``(X - mean_vector) @ transform_matrix`` and restores the
+    shape of ``inp``.
 
     Convention:
-        dim selects rows (samples); all other dimensions form a feature row.
-        The result is (X - mean) @ transform_matrix with the original layout
-        restored. Half inputs are centered and multiplied in float32 with autocast disabled (outside TorchScript),
-        then rounded to the input dtype. Keep the fitted transform and mean in float32 to preserve their accuracy.
-
-    .. math::
-
-        \mathbf{X}_{T} = (\mathbf{X - \mu})(T)
+        Half inputs are centered and multiplied in float32 with autocast disabled (outside TorchScript), then rounded to
+        the input dtype. Keep the fitted transform and mean in float32 to preserve their accuracy.
 
     Args:
-        inp: Input data :math:`X`.
-        transform_matrix: Transform matrix :math:`T`.
-        mean_vector: mean vector :math:`\mu`.
-        dim: Batch dimension.
-
-    Shapes:
-        - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
-        - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
-        - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
+        inp: data tensor with shape ``(D_0, ..., D_dim, ..., D_N)``.
+        transform_matrix: matrix with shape ``(D, D)``, ``D`` being the product of the sizes of all axes except ``dim``.
+        mean_vector: mean with shape ``(1, D)``.
+        dim: sample axis.
 
     Returns:
-        Transformed data.
+        Transformed tensor with the shape of ``inp``.
+
+    See Also:
+        - :func:`zca_mean`: computes the whitening matrix and mean to pass here.
+        - :class:`ZCAWhitening`: stores them and applies this transform.
 
     Example:
         >>> # Example where dim = 3
@@ -463,7 +442,7 @@ def linear_transform(
         >>> transform_mat = torch.ones((10*3*4,10*3*4))
         >>> mean = 2*torch.ones((1,10*3*4))
         >>> out = linear_transform(inp, transform_mat, mean, 3)
-        >>> print(out.shape, out.unique())  # Should a be (10,3,4,5) torch.tensor of -120s
+        >>> print(out.shape, out.unique())  # a (10,3,4,5) tensor of -120s
         torch.Size([10, 3, 4, 5]) tensor([-120.])
 
         >>> # Example where dim = 0
@@ -471,7 +450,7 @@ def linear_transform(
         >>> transform_mat = torch.ones((2,2))
         >>> mean = torch.zeros((1,2))
         >>> out = linear_transform(inp, transform_mat, mean)
-        >>> print(out.shape, out.unique()) # Should a be (10,2) torch.tensor of 2s
+        >>> print(out.shape, out.unique()) # a (10,2) tensor of 2s
         torch.Size([10, 2]) tensor([2.])
 
     """

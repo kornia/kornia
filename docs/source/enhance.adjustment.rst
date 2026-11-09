@@ -72,6 +72,7 @@ Modules
 .. autoclass:: AdjustSigmoid
 .. autoclass:: AdjustLog
 .. autoclass:: AddWeighted
+.. autoclass:: Rescale
 .. autoclass:: Invert
 .. autoclass:: Threshold
 .. autoclass:: ThresholdType

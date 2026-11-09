@@ -703,6 +703,7 @@ def adjust_brightness(
     See Also:
         - :func:`adjust_brightness_accumulative`: multiplies instead of adding.
         - :func:`adjust_gamma`: a power curve that stays within :math:`[0, 1]` without clipping.
+        - :func:`shift_rgb`: adds a different shift to each color channel.
         - :class:`AdjustBrightness`: the module form.
 
     Example:
