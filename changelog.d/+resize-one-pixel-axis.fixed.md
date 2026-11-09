@@ -1,0 +1,1 @@
+`Resize`, `LongestMaxSize` and `SmallestMaxSize` with the default `align_corners=True` now return a finite `transform_matrix` and `inverse` when the source or output has a one-pixel axis, instead of NaN. Along that axis the matrix is a translation onto output pixel 0, matching what `align_corners=True` resizing samples and the `RandomResizedCrop` convention.
