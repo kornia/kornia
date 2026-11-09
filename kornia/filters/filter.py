@@ -401,7 +401,7 @@ def fft_conv(
     with the kernel size, so it pays off only for large kernels.
 
     Convention:
-        - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments and a finite input
+        - See the Convention block on :func:`~kornia.filters.filter2d`: for the same arguments and a finite real input
           ``fft_conv`` returns the same result, to roundoff. A NaN or inf in a channel of the input makes that
           channel's whole output non-finite, where :func:`~kornia.filters.filter2d` keeps it to the pixels whose
           window reaches it.

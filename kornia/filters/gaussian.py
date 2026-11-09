@@ -270,7 +270,7 @@ class GaussianBlur2d(nn.Module):
         - Output: ``(B, C, H, W)``
 
     See Also:
-        - :func:`gaussian_blur2d`: the one-call form, with the ``sigma`` checks.
+        - :func:`gaussian_blur2d`: the one-call form.
         - :class:`BoxBlur`: a uniform average, with no ``sigma``.
 
     Example:

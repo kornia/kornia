@@ -291,7 +291,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+        - Output: ``(B, C, H_out, W_out)``, where
 
           .. math::
               H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
@@ -355,7 +355,7 @@ def max_blur_pool2d(
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, C, H_{out}, W_{out})`, where
+        - Output: ``(B, C, H_out, W_out)``, where
 
           .. math::
               H_{out} = \left\lceil\frac{H - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil, \quad

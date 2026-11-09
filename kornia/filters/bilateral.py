@@ -365,8 +365,7 @@ def bilateral_blur(
         input: image with shape ``(B, C, H, W)``.
         kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each a positive odd integer.
         sigma_color: standard deviation of the colour weight, positive; smaller values keep more
-          edges. A float, shared by the batch, or a tensor with shape ``(1,)``, shared by the batch,
-          or ``(B,)``, one value per sample.
+          edges. A float or a ``(1,)`` tensor, shared by the batch, or a ``(B,)`` tensor, one value per sample.
         sigma_space: standard deviation ``(sigma_y, sigma_x)`` of the spatial weight in pixels, as ``sigma`` of
           :func:`gaussian_blur2d`. A tuple of floats, or a tensor with shape ``(1, 2)``, shared by the batch, or
           ``(B, 2)``, one row per sample.
@@ -429,8 +428,7 @@ def joint_bilateral_blur(
         guidance: image that gives the colour distance, with shape ``(B, C_g, H, W)``.
         kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each a positive odd integer.
         sigma_color: standard deviation of the colour weight, positive; smaller values keep more
-          edges. A float, shared by the batch, or a tensor with shape ``(1,)``, shared by the batch,
-          or ``(B,)``, one value per sample.
+          edges. A float or a ``(1,)`` tensor, shared by the batch, or a ``(B,)`` tensor, one value per sample.
         sigma_space: standard deviation ``(sigma_y, sigma_x)`` of the spatial weight in pixels, as ``sigma`` of
           :func:`gaussian_blur2d`. A tuple of floats, or a tensor with shape ``(1, 2)``, shared by the batch, or
           ``(B, 2)``, one row per sample.

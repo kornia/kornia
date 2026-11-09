@@ -185,7 +185,7 @@ def gaussian(
         Float16 and bfloat16 kernels are computed in float32 and rounded once at return.
 
         A ``sigma`` of zero, or one too small for the window to hold a representable weight, puts all the mass on
-        the sample nearest the mean: the unit impulse. With an even ``window_size`` the default ``mean`` falls between
+        the sample nearest the mean: the unit impulse. With an even ``window_size`` the default centre falls between
         two samples, so a small ``sigma`` splits the mass between them, and a ``sigma`` of zero is not defined.
 
     See Also:
@@ -259,7 +259,8 @@ def gaussian_discrete_erf(
 
     Args:
         window_size: number of taps, even or odd.
-        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor. Zero is not defined for an
+            even ``window_size``.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.
 
@@ -550,8 +551,8 @@ def get_binary_kernel2d(
     r"""Return one-hot kernels that pick out every pixel of a window.
 
     ``kernels = get_binary_kernel2d(window_size)`` returns one kernel per position of a ``(k_y, k_x)`` window, as a
-    ``(k_y * k_x, 1, k_y, k_x)`` tensor. :func:`torch.nn.functional.conv2d` with them stacks each pixel's
-    neighbourhood along the channel axis.
+    ``(k_y * k_x, 1, k_y, k_x)`` tensor. :func:`torch.nn.functional.conv2d` with them on a one-channel image stacks
+    each pixel's neighbourhood along the channel axis.
 
     Convention:
         Channel ``i`` is one-hot at ``(i // k_x, i % k_x)``, in row-major order, the layout
@@ -1033,7 +1034,8 @@ def get_gaussian_erf_kernel1d(
 
     Args:
         kernel_size: number of taps, odd and positive.
-        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor.
+        sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor. Zero is not defined for an
+            even ``kernel_size``.
         force_even: whether to accept an even ``kernel_size``.
         device: device of the kernel when ``sigma`` is a Python number.
         dtype: dtype of the kernel when ``sigma`` is a Python number.

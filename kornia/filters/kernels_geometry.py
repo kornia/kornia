@@ -48,8 +48,8 @@ def get_motion_kernel2d(
         - ``mode`` resamples the rotated line. ``'nearest'`` copies each pixel from the nearest tap, so the number
           of taps changes with the angle (3 at 45 degrees, 7 at 25 for a size-5 line), and ``'bilinear'`` spreads the
           weight off the line.
-        - A tensor ``direction`` must match a tensor ``angle`` in length, dtype and device, and the kernel has that
-          dtype; a float ``direction`` is not broadcast, so it raises for ``B > 1``.
+        - A tensor ``direction`` must match a tensor ``angle`` in length, dtype and device, and a floating one gives
+          the kernel its dtype; a float ``direction`` is not broadcast, so it raises for ``B > 1``.
         - The ``'nearest'`` kernel is the same on every device and dtype, for every full turn added to the angle, and
           with ``torch.compile``. Where a source falls exactly between two taps, such as at 30 or 120 degrees, the tie
           goes to the even coordinate, as ``torch.nn.functional.grid_sample`` breaks it.

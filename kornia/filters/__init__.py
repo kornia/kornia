@@ -45,8 +45,8 @@ Which function to use, with the module form after the function:
 - Thin binary edge map: :func:`canny`, :class:`Canny`.
 - Keep the pixels inside a value range: :func:`in_range`, :class:`InRange`.
 - Threshold each image plane at its Otsu level: :func:`otsu_threshold`, :class:`OtsuThreshold`.
-- Filter with your own 2D kernel: :func:`filter2d`, or :func:`correlate2d` and :func:`convolve2d`, which fix the
-  direction; for two 1D kernels: :func:`filter2d_separable`; for a large kernel: :func:`fft_conv`.
+- Filter with your own 2D kernel: :func:`filter2d`, or :func:`correlate2d` and :func:`convolve2d`, which fix
+  ``behaviour``; for two 1D kernels: :func:`filter2d_separable`; for a large kernel: :func:`fft_conv`.
 - Filter a volume with your own kernel: :func:`filter3d`, or :func:`correlate3d` and :func:`convolve3d`.
 - Gaussian kernels: :func:`get_gaussian_kernel1d`, :func:`get_gaussian_kernel2d`, :func:`get_gaussian_kernel3d`; sampled
   around any mean: :func:`gaussian`; discrete, from Bessel functions: :func:`get_gaussian_discrete_kernel1d`;

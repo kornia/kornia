@@ -3,7 +3,9 @@ Kernels
 
 .. currentmodule:: kornia.filters
 
-Kernel builders. Pass a kernel to a :doc:`filters.filtering_api` function, or build one to see what a filter applies.
+Kernel builders, to see what a filter applies or to filter with a :doc:`filters.filtering_api` function. That API takes
+a ``(1, kH, kW)`` kernel: add a leading axis to a ``(kH, kW)`` one, and pass a stacked derivative kernel such as
+:func:`get_sobel_kernel2d` one kernel at a time, since a ``(2, 3, 3)`` stack is read as one kernel per sample.
 
 Which Gaussian to use:
 

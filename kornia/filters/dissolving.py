@@ -230,7 +230,8 @@ class StableDiffusionDissolving(ImageModule):
         - The latent is sampled, so two calls on the same input differ.
 
     Args:
-        version: the version of the stable diffusion model, ``"1.4"``, ``"1.5"`` or ``"xl"``.
+        version: the version of the stable diffusion model, ``"1.4"``, ``"1.5"`` or ``"xl"``. SD 1.x removes more
+            detail than SD XL.
         **kwargs: additional arguments for ``from_pretrained``.
 
     Raises:

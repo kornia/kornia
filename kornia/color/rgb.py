@@ -656,12 +656,10 @@ class BgrToRgba(nn.Module):
         """Convert a BGR tensor to RGBA with this module's alpha value.
 
         Args:
-            image: Input tensor with shape ``(*, 3, H, W)``.
-                Here, ``*`` means any number of leading dimensions (for example, batch size),
-                ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
+            image: BGR image with shape ``(*, 3, H, W)``.
 
         Returns:
-            RGBA tensor with shape ``(*, 4, H, W)``.
+            RGBA image with shape ``(*, 4, H, W)``.
         """
         return bgr_to_rgba(image, self.alpha_val)
 
