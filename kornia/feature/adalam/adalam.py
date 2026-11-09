@@ -91,14 +91,14 @@ def match_adalam(
         - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
           unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
           ``"device"``.
-        - Exact local affine correspondences are retained when enough distinct keypoints support them beyond the
-          seed and minimal fitting pair. Unlike the reference implementation, equal tiny residuals alone do not
-          imply duplicate keypoints. Their confidence uses a conservative residual-area floor of ``2**-24`` in
-          normalized coordinates, so inverse confidence stays finite even for an exact fit.
-        - Known defect: more accurate keypoints can keep fewer correct matches. On large images, keypoints with
-          sub-pixel noise lose correct matches that noisier ones keep, and a neighbourhood that mixes exact and
-          slightly noisy correct matches keeps the exact ones and few of the others
-          (`#5943 <https://github.com/kornia/kornia/issues/5943>`_).
+        - Local affine consensus counts distinct source and target locations, reserving three samples for the
+          seed and minimal fitting pair. Repeated locations use the first observation in descriptor-score order
+          as evidence; a later conflicting match cannot replace it. Equal residuals do not imply duplicate keypoints.
+          The full accepted consensus is returned, including mixtures of exact and noisy matches. Confidence uses a
+          conservative residual-area floor of ``2**-24`` in normalized coordinates, remaining finite for exact fits.
+        - Geometric support replaces the reference residual-binning heuristic. It preserves correct subpixel
+          correspondences but can also retain additional incorrect matches; evaluate final geometric accuracy
+          for your application (see `#5943 <https://github.com/kornia/kornia/issues/5943>`_).
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.

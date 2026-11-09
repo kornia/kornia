@@ -2185,11 +2185,11 @@ class TestConventionsMatching(BaseTester):
         assert len(quality400) > 350
         assert quality400.max() <= 1 / 400
         # hw1 and hw2 enter only as the image area (the seed radius): (H, W) and (W, H) agree, and sizes of 64 times
-        # the area agree with each other whatever their aspect ratio, while they change the matches
+        # the area agree with each other whatever their aspect ratio. Accurate matches survive the larger radius.
         assert torch.equal(match_adalam(d1, d2, lafs1, lafs2, hw1=(w, h), hw2=(w, h))[1], idxs)
         sizes = [(8 * h, 8 * w), (8 * w, 8 * h), (64 * h, w), (h, 64 * w)]
         larger = [match_adalam(d1, d2, lafs1, lafs2, hw1=size, hw2=size)[1] for size in sizes]
-        assert len(larger[0]) < 0.6 * len(idxs)
+        assert len(larger[0]) >= 0.95 * len(idxs)
         assert all(torch.equal(other, larger[0]) for other in larger[1:])
 
     def test_convention_local_feature_matcher_returns_laf_centres_and_one_minus_the_matcher_value(self, device, dtype):
