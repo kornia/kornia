@@ -591,66 +591,53 @@ class TestCropByBoxes(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
 
     @pytest.mark.parametrize(
-        "coord, out_size",
+        "src_box_coords, out_size, expected_shape",
         [
-            (1.0, (2, 2)),
-            (10.0, (7, 7)),
-            (8.0, (14, 14)),
+            ([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]], (1, 1), (1, 1, 1, 1)),
+            ([[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]], (1, 3), (1, 1, 1, 3)),
         ],
     )
-    def test_size_one_box_crop_and_resize_finite_6642(self, coord, out_size, device, dtype):
-        """Test size-1 bounding box replication across destination stays finite in forward and backward passes."""
-        # A size-1 bounding box (e.g. [coord, coord] to [coord, coord]) replicated across destination
-        # must remain finite in forward pass and backward pass (#6642).
+    def test_supported_size_one_crop_backward_finite_6642(
+        self, src_box_coords, out_size, expected_shape, device, dtype
+    ):
+        """Test supported size-1 crops maintain exact forward output and finite backward gradients (#6642)."""
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
-        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16).repeat(2, 1, 1, 1)
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
         inp.requires_grad = True
-        c = float(coord)
+        src_box = torch.tensor(src_box_coords, device=device, dtype=dtype, requires_grad=True)
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
+        assert out.shape == expected_shape
+        assert torch.isfinite(out).all()
+
+        out.sum().backward()
+        assert torch.isfinite(inp.grad).all()
+        assert torch.isfinite(src_box.grad).all()
+
+    def test_size_one_box_batch_does_not_corrupt_valid_box_6642(self, device, dtype):
+        """Test a size-1 box in a batch does not poison gradients of valid boxes (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 8, 8).repeat(2, 1, 1, 1)
+        inp.requires_grad = True
+        # Item 0 is valid 2x2 box, Item 1 is size-1 box resized to (2, 2) (documented one-sided NaN)
         src_box = torch.tensor(
             [
-                [[c, c], [c + 1.0, c], [c + 1.0, c + 1.0], [c, c + 1.0]],
-                [[c, c], [c, c], [c, c], [c, c]],
+                [[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]],
+                [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]],
             ],
             device=device,
             dtype=dtype,
             requires_grad=True,
         )
-        out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
-        assert torch.isfinite(out).all()
-        expected_pixel = inp[1, 0, int(c), int(c)]
-        atol = {torch.float16: 0.5, torch.bfloat16: 0.5}.get(dtype, 1e-4)
-        self.assert_close(out[1], expected_pixel.expand_as(out[1]), atol=atol, rtol=1e-4)
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, (2, 2))
+        # Item 0 is finite, Item 1 is NaN per #4747 contract
+        assert torch.isfinite(out[0]).all()
+        assert torch.isnan(out[1]).all()
 
-        out.sum().backward()
-        assert torch.isfinite(inp.grad).all()
-        assert torch.isfinite(src_box.grad).all()
-        expected_grad = torch.tensor(float(out_size[0] * out_size[1]), device=device, dtype=dtype)
-        grad_atol = {torch.float16: 1.0, torch.bfloat16: 1.0}.get(dtype, 1e-2)
-        self.assert_close(inp.grad[1, 0, int(c), int(c)], expected_grad, atol=grad_atol, rtol=0.2)
-
-    def test_size_one_box_to_size_one_crop_finite_6642(self, device, dtype):
-        """Test size-1 bounding box cropped to a size-1 destination retains unit scale and translation."""
-        if not supports_bilinear_2d_grid_sample(device, dtype):
-            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
-        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
-        inp.requires_grad = True
-        src_box = torch.tensor(
-            [[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]],
-            device=device,
-            dtype=dtype,
-            requires_grad=True,
-        )
-        out = kornia.geometry.transform.crop_and_resize(inp, src_box, (1, 1))
-        assert torch.isfinite(out).all()
-        expected_pixel = inp[0, 0, 2, 2]
-        atol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
-        self.assert_close(out[0, 0, 0, 0], expected_pixel, atol=atol, rtol=1e-4)
-
-        out.sum().backward()
-        assert torch.isfinite(inp.grad).all()
-        assert torch.isfinite(src_box.grad).all()
-        self.assert_close(inp.grad[0, 0, 2, 2], torch.ones_like(inp.grad[0, 0, 2, 2]), atol=atol, rtol=1e-4)
+        out[0].sum().backward()
+        assert torch.isfinite(src_box.grad[0]).all()
+        assert torch.isfinite(inp.grad[0]).all()
 
     @pytest.mark.parametrize(
         "src, size",

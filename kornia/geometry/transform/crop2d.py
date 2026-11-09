@@ -98,9 +98,7 @@ def crop_and_resize(
           :math:`2 \times 2` pixel block), origin at top-left
         - a box axis of one pixel is cropped exactly when ``size`` is one pixel on that axis too; one pixel in the box
           but not in ``size``, or the reverse, has no invertible matrix and returns NaN (a meaningless finite value
-          with ``mode='nearest'``). A point box (one pixel on both axes) is an exception: it can use a finite scale
-          and replicate the source pixel (#6642). A box with no homography to the patch, such as a triangle,
-          also returns NaN (a meaningless finite value with ``mode='nearest'``)
+          with ``mode='nearest'``), and so does a box with no homography to the patch, such as a triangle
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
     Args:
@@ -199,19 +197,14 @@ def _crop_scale_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tenso
     src_extent = src[:, 2] - src[:, 0]
     dst_extent = dst[:, 2] - dst[:, 0]
     both_zero = (src_extent == 0) & (dst_extent == 0)
-    is_size_one_box = (src_extent == 0).all(dim=-1, keepdim=True)
-    eps = 1e-2 if src.dtype == torch.float16 else 1e-4 if src.dtype == torch.bfloat16 else 1e-6
-    safe_src_extent = torch.where(is_size_one_box & (src_extent == 0), torch.full_like(src_extent, eps), src_extent)
-    safe_src_extent_div = torch.where(safe_src_extent == 0, torch.ones_like(safe_src_extent), safe_src_extent)
-    unsolvable = (src_extent == 0) & ~is_size_one_box
-    scale = torch.where(
-        both_zero,
-        torch.ones_like(src_extent),
-        torch.where(unsolvable, torch.full_like(src_extent, float("inf")), dst_extent / safe_src_extent_div),
-    )
-    if src.dtype == torch.float16:
-        max_scale = 32752.0 / torch.clamp(src[:, 0].abs() + 1.0, min=1.0)
-        scale = torch.where(is_size_one_box & ~both_zero, torch.clamp(scale, max=max_scale), scale)
+    # When both extents are zero (supported size-1 crop), replacing src_extent with 1.0 in the
+    # unselected branch prevents 0 / 0 = NaN in autograd backward (#6642), keeping boxes.grad
+    # finite with the gradient of translation. torch.where still selects ones_like for scale,
+    # leaving the forward exact.
+    # When only src_extent is zero, safe_src_extent stays 0.0, evaluating to inf and preserving
+    # the documented forward NaN for one-sided crops (#4747).
+    safe_src_extent = torch.where(both_zero, torch.ones_like(src_extent), src_extent)
+    scale = torch.where(both_zero, torch.ones_like(src_extent), dst_extent / safe_src_extent)
     transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
     transform[:, 0, 0] = scale[:, 0]
     transform[:, 1, 1] = scale[:, 1]
