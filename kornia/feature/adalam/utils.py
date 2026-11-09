@@ -49,9 +49,8 @@ def dist_matrix(d1: torch.Tensor, d2: torch.Tensor, is_normalized: bool = False)
 def orientation_diff(o1: torch.Tensor, o2: torch.Tensor) -> torch.Tensor:
     """Orientation difference between two tensors."""
     diff = o2 - o1
-    diff[diff < -180] += 360
-    diff[diff >= 180] -= 360
-    return diff
+    diff = torch.where(diff < -180, diff + 360, diff)
+    return torch.where(diff >= 180, diff - 360, diff)
 
 
 def piecewise_arange(piecewise_idxer: torch.Tensor) -> torch.Tensor:
@@ -60,17 +59,8 @@ def piecewise_arange(piecewise_idxer: torch.Tensor) -> torch.Tensor:
     Example:
     [0, 0, 0, 3, 3, 3, 3, 1, 1, 2] -> [0, 1, 2, 0, 1, 2, 3, 0, 1, 0]
     """
-    dv = piecewise_idxer.device
-    # print(piecewise_idxer)
-    uni: torch.Tensor
-    uni, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
-    # print(counts)
-    maxcnt = int(torch.max(counts).item())
-    numuni = uni.shape[0]
-    tmp = torch.zeros(size=(numuni, maxcnt), device=dv).bool()
-    ranges = torch.arange(maxcnt, device=dv).unsqueeze(0).expand(numuni, -1)
-    tmp[ranges < counts.unsqueeze(-1)] = True
-    return ranges[tmp]
+    _, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
+    return arange_sequence(counts)
 
 
 def batch_2x2_inv(m: torch.Tensor, check_dets: bool = False) -> torch.Tensor:
@@ -109,8 +99,8 @@ def batch_2x2_det(m: torch.Tensor) -> torch.Tensor:
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
+def batch_2x2_eigenvals(m: torch.Tensor, *, eps: float = 0.0) -> torch.Tensor:
+    """Return eigenvalues of ``m @ m.mT`` for a batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -126,15 +116,23 @@ def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tenso
     # stable hypot
     sqrtdisc = torch.hypot(diff, b)
 
-    e1 = trh + sqrtdisc
-    e2 = trh - sqrtdisc
-    if eps > 0:
-        e1 = e1.clamp(min=eps)
-        e2 = e2.clamp(min=eps)
-    else:
-        e1 = e1.clamp(min=0.0)
-        e2 = e2.clamp(min=0.0)
-    eigenvals = torch.stack([e1, e2], dim=-1)
+    min_val = eps if eps > 0 else 0.0
+    e1 = (trh + sqrtdisc).clamp(min=min_val)
+    e2 = (trh - sqrtdisc).clamp(min=min_val)
+    return torch.stack([e1, e2], dim=-1)
+
+
+def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
+    eigenvals = batch_2x2_eigenvals(m, eps=eps)
+    am = m[..., 0, 0]
+    bm = m[..., 0, 1]
+    cm = m[..., 1, 0]
+    dm = m[..., 1, 1]
+
+    a = am * am + bm * bm
+    b = am * cm + bm * dm
+    d = cm * cm + dm * dm
 
     theta = 0.5 * torch.atan2(2.0 * b, a - d)
     c = torch.cos(theta)
