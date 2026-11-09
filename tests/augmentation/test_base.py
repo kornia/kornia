@@ -827,7 +827,10 @@ class TestConventionAugmentationBase2D(BaseTester):
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         params = aug.forward_parameters(x.shape)
         angle = torch.zeros_like(params["angle"])
-        output = aug(x, params=params, angle=angle, align_corners=False, save_kwargs=True)
+        with warnings.catch_warnings():
+            # Parameter and flag overrides and the save_kwargs control are all known names.
+            warnings.simplefilter("error", FutureWarning)
+            output = aug(x, params=params, angle=angle, align_corners=False, save_kwargs=True)
         assert torch.equal(aug._params["angle"], angle)
         assert "save_kwargs" not in aug._params
         assert "align_corners" not in aug._params
@@ -903,6 +906,22 @@ class TestConventionAugmentationBase2D(BaseTester):
         with pytest.warns(FutureWarning, match="misspelled"):
             actual = aug.transform_inputs(x, params, extra_args={"misspelled": True})
         self.assert_close(actual, expected)
+
+    def test_container_options_ignore_plain_module_flags(self, device, dtype):
+        class PlainWithFlags(torch.nn.Module):
+            def __init__(self, flags):
+                super().__init__()
+                self.flags = flags
+
+            def forward(self, x):
+                return x
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), PlainWithFlags(0), data_keys=["input", "mask"])
+        aug(x, x)
+        seq = K.ImageSequential(K.RandomHorizontalFlip(p=1.0), PlainWithFlags({"typo": 1}))
+        with pytest.warns(FutureWarning, match="typo"):
+            seq(x, extra_args={"typo": 1})
 
     def test_container_shared_options_and_unknown_override(self, device, dtype):
         from kornia.constants import DataKey

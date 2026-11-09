@@ -23,7 +23,7 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
 from kornia.augmentation.utils.helpers import deepcopy_dict, override_parameters
 from kornia.constants import DataKey
 from kornia.core.utils import is_exporting
@@ -55,7 +55,9 @@ def _supported_options(
 ) -> set[str]:
     keys = {"save_kwargs", "data_keys"} | _parameter_keys(params)
     for child in module.modules():
-        keys.update(getattr(child, "flags", {}))
+        # Only augmentations consume flag overrides; a plain module's own ``flags`` attribute is unrelated.
+        if isinstance(child, _BasicAugmentationBase):
+            keys.update(child.flags)
     return keys
 
 
