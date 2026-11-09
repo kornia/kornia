@@ -1,0 +1,1 @@
+`kornia.filters.canny` runs significantly faster by replacing 8-channel float convolution with separable boolean morphological dilation during hysteresis tracking and streamlining non-maximum suppression sector comparisons.
