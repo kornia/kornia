@@ -17,7 +17,8 @@
 
 """Blur feature maps with a binomial kernel and downsample them, or blur them at their size around edges.
 
-Every function and module here takes a floating ``(B, C, H, W)`` feature map and raises for an integer or bool one.
+Every function and module here takes a floating ``(B, C, H, W)`` feature map, or a ``(C, H, W)`` one, which it
+processes as ``input[None]`` and returns without the batch dimension, and raises for an integer or bool one.
 :func:`blur_pool2d` and :func:`max_blur_pool2d` blur with the normalized binomial (Pascal) kernel of
 ``kornia.filters.kernels.get_pascal_kernel_2d`` over a zero border, with no ``border_type``, and keep every
 ``stride``-th pixel :cite:`zhang2019shiftinvar`.
@@ -69,7 +70,8 @@ class BlurPool2D(nn.Module):
 
     Shape:
         - Input: ``(B, C, H, W)`` or ``(C, H, W)``
-        - Output: ``(B, C, H_out, W_out)``, with ``H_out`` and ``W_out`` as in :func:`blur_pool2d`.
+        - Output: ``(B, C, H_out, W_out)``, or ``(C, H_out, W_out)`` for a ``(C, H, W)`` input, with ``H_out`` and
+          ``W_out`` as in :func:`blur_pool2d`.
 
     See Also:
         - :func:`blur_pool2d`: the one-call form.
@@ -101,7 +103,7 @@ class BlurPool2D(nn.Module):
         content is subsampled directly.
 
         Args:
-            input: Feature map tensor with shape ``(B, C, H, W)``, where
+            input: Feature map tensor with shape ``(B, C, H, W)`` or ``(C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the input height, and :math:`W` is the
                 input width.
@@ -143,7 +145,8 @@ class MaxBlurPool2D(nn.Module):
 
     Shape:
         - Input: ``(B, C, H, W)`` or ``(C, H, W)``
-        - Output: ``(B, C, H_out, W_out)``, with ``H_out`` and ``W_out`` as in :func:`max_blur_pool2d`.
+        - Output: ``(B, C, H_out, W_out)``, or ``(C, H_out, W_out)`` for a ``(C, H, W)`` input, with ``H_out`` and
+          ``W_out`` as in :func:`max_blur_pool2d`.
 
     See Also:
         - :func:`max_blur_pool2d`: the one-call form.
@@ -188,7 +191,7 @@ class MaxBlurPool2D(nn.Module):
         shifts while still reducing the feature resolution.
 
         Args:
-            input: Feature map tensor with shape ``(B, C, H, W)``, where
+            input: Feature map tensor with shape ``(B, C, H, W)`` or ``(C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the channel count,
                 :math:`H` is the height, and :math:`W` is the width.
 
@@ -225,8 +228,8 @@ class EdgeAwareBlurPool2D(nn.Module):
         edge_dilation_kernel_size: kernel size for dilating the edge map. It must be an odd positive integer.
 
     Shape:
-        - Input: ``(B, C, H, W)``
-        - Output: ``(B, C, H, W)``
+        - Input: ``(B, C, H, W)`` or ``(C, H, W)``
+        - Output: the shape of the input
 
     See Also:
         - :func:`edge_aware_blur_pool2d`: the one-call form.
@@ -253,7 +256,7 @@ class EdgeAwareBlurPool2D(nn.Module):
         """Blur at the input size, keeping the pixels on edges.
 
         Args:
-            input: Feature map tensor with shape ``(B, C, H, W)``, where
+            input: Feature map tensor with shape ``(B, C, H, W)`` or ``(C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the input height, and :math:`W` is the
                 input width.
@@ -262,8 +265,7 @@ class EdgeAwareBlurPool2D(nn.Module):
                 turning the default into a graph input.
 
         Returns:
-            Edge-aware blurred tensor with the shape of ``input``,
-            ``(B, C, H, W)``.
+            Edge-aware blurred tensor with the shape of ``input``.
         """
         _check_floating_feature_map(input, "EdgeAwareBlurPool2D")
         if epsilon is None:
@@ -295,13 +297,13 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
           promote it. A floating input keeps its dtype.
 
     Args:
-        input: feature map with shape ``(B, C, H, W)``.
+        input: feature map with shape ``(B, C, H, W)`` or ``(C, H, W)``.
         kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
         stride: step between the kept pixels.
 
     Shape:
         - Input: ``(B, C, H, W)`` or ``(C, H, W)``
-        - Output: ``(B, C, H_out, W_out)``, where
+        - Output: ``(B, C, H_out, W_out)``, or ``(C, H_out, W_out)`` for a ``(C, H, W)`` input, where
 
           .. math::
               H_{out} = \left\lceil\frac{H}{\text{stride}}\right\rceil, \quad
@@ -360,7 +362,7 @@ def max_blur_pool2d(
           :func:`~kornia.filters.blur_pool2d` for the kernel, the border and integer input, which raises.
 
     Args:
-        input: feature map with shape ``(B, C, H, W)``.
+        input: feature map with shape ``(B, C, H, W)`` or ``(C, H, W)``.
         kernel_size: size of the square binomial blur kernel, ``k`` or ``(k, k)``.
         stride: step between the kept pixels of the blur.
         max_pool_size: size of the max-pooling window.
@@ -369,8 +371,8 @@ def max_blur_pool2d(
             :class:`DeprecationWarning`; it will be removed in a future release.
 
     Shape:
-        - Input: ``(B, C, H, W)``
-        - Output: ``(B, C, H_out, W_out)``, where
+        - Input: ``(B, C, H, W)`` or ``(C, H, W)``
+        - Output: ``(B, C, H_out, W_out)``, or ``(C, H_out, W_out)`` for a ``(C, H, W)`` input, where
 
           .. math::
               H_{out} = \left\lceil\frac{H - \text{max\_pool\_size} + 1}{\text{stride}}\right\rceil, \quad
@@ -529,7 +531,7 @@ def edge_aware_blur_pool2d(
         epsilon: value added to the input before the logarithm of the edge test.
 
     Returns:
-        the blurred map with shape ``(B, C, H, W)``.
+        the blurred map, with the shape of ``input``.
 
     See Also:
         - :class:`EdgeAwareBlurPool2D`: the module form.
