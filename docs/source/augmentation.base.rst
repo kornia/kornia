@@ -244,12 +244,12 @@ Serialization
   :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.
 
 Keyword overrides
------------------
+^^^^^^^^^^^^^^^^^
 
 Augmentation calls and inverses accept keyword overrides for their existing sampled parameters and flags.
 Unknown names emit ``FutureWarning`` and are ignored; they will raise ``TypeError`` in a future release. ``save_kwargs=True`` records
 parameter overrides in ``_params``; flags remain call-local and must be passed again when replaying parameters.
-Container ``extra_args`` are checked against the options supported by all descendants and forwarded only to
+Container ``extra_args`` are checked against the options supported by any descendant and forwarded only to
 children that support them. The default mask options ``resample``, ``align_corners`` and ``antialias`` are
 also accepted for pipelines without interpolation. Unknown container options emit the same warning.
 :class:`~kornia.augmentation.AugmentationSequential` checks the options of a data key only in calls that pass that
