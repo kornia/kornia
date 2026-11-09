@@ -939,6 +939,15 @@ class TestConventionAugmentationBase2D(BaseTester):
             aug.inverse(out, data_keys=["input"])
         with pytest.warns(FutureWarning, match="resampl"):
             aug(x, x)
+        # The default mask options stay accepted for a pipeline whose children read none of them.
+        flips = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None, "antialias": False}},
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            flips(x, x)
 
     def test_container_mask_only_call_keeps_input_options_for_matrices(self, device, dtype):
         from kornia.constants import DataKey, Resample
