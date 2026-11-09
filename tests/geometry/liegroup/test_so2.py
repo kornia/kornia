@@ -15,10 +15,12 @@
 # limitations under the License.
 #
 
+import io
 import math
 
 import pytest
 import torch
+from torch import nn
 
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.conversions import angle_to_rotation_matrix
@@ -171,13 +173,40 @@ class TestSo2(BaseTester):
         self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
         self.gradcheck(lambda x: So2.exp(x).log(), (theta,))
 
-    # TODO: implement me
     def test_jit(self, device, dtype):
-        pass
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
+        # identity row, so a branch taken while tracing would show up as a mismatch against eager.
+        v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
+        other = v * 0.5
+        other[1] = 0.0
+        for fn in (lambda x: So2.exp(x).matrix(), lambda x: So2.exp(x).log()):
+            traced = torch.jit.trace(fn, (v,))
+            self.assert_close(traced(other), fn(other))
 
-    # TODO: implement me
     def test_module(self, device, dtype):
-        pass
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
+        source = nn.ModuleDict({"pose": So2.exp(v)})
+        target = nn.ModuleDict({"pose": So2.exp(v * 0.5)})
+        assert set(source.state_dict()) == {"pose._z"}
+
+        buffer = io.BytesIO()
+        torch.save(source.state_dict(), buffer)
+        buffer.seek(0)
+        result = target.load_state_dict(torch.load(buffer, map_location=device, weights_only=True))
+        assert not result.missing_keys
+        assert not result.unexpected_keys
+        self.assert_close(target["pose"].matrix(), source["pose"].matrix())
+
+        pose = So2.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
+        assert moved.matrix().dtype == dtype
+        assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
