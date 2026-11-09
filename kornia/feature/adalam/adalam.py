@@ -94,7 +94,8 @@ def match_adalam(
         - Local affine consensus counts distinct source and target locations, reserving three samples for the
           seed and minimal fitting pair. Repeated locations use the first observation in descriptor-score order
           as evidence; a later conflicting match cannot replace it. Equal residuals do not imply duplicate keypoints.
-          The full accepted consensus is returned, including mixtures of exact and noisy matches. Confidence uses a
+          The full accepted radius is returned, including repeated observations tied at its boundary and mixtures
+          of exact and noisy matches. Confidence uses a
           conservative residual-area floor of ``2**-24`` in normalized coordinates, remaining finite for exact fits.
         - Unlike the reference implementation, which merges nearly equal residuals into float16 bins, the
           consensus radius is the largest at which both the cumulative inlier density and the density over the

@@ -159,9 +159,15 @@ def _select_inliers(
     best_iters = torch.where(support == best_support, hypothesis_confidence, -1).max(dim=0).indices
     groups = torch.arange(len(rdims), device=dv)
     best_boundary = boundary[best_iters, groups]
-    counts = (best_boundary - idxoffsets + 1).clamp_min(0)
+    best_radius = sorted_res[best_iters, best_boundary.clamp_min(0)]
     sample_positions = torch.arange(len(ransidx), device=dv)
-    selected = sample_positions <= best_boundary[ransidx]
+    # Return the complete radius, including duplicate ties after the eligible prefix.
+    # They add no evidence: keep the density test and hypothesis confidence unchanged.
+    selected = (best_boundary[ransidx] >= 0) & (
+        sorted_res[best_iters[ransidx], sample_positions] <= best_radius[ransidx]
+    )
+    cumulative_counts = selected.cumsum(0)[ends]
+    counts = cumulative_counts - torch.cat([cumulative_counts.new_zeros(1), cumulative_counts[:-1]])
     samples = sorting_idxes[best_iters[ransidx], sample_positions][selected]
     best_confidence = hypothesis_confidence[best_iters, groups]
     best_confidence = torch.where(best_boundary >= 0, best_confidence, 0)
