@@ -1631,7 +1631,7 @@ class TestConventionsFilter2d(BaseTester):
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv", "filter3d"])
     def test_convention_filter2d_kernel_gradient_reaches_a_float64_cpu_kernel(self, name, device, dtype):
-        # A single MPS -> CPU float64 copy wrote zeros into this gradient on torch 2.14 and raised on 2.15
+        # A single MPS -> CPU float64 copy left this gradient unwritten on torch 2.14 and raised on 2.15
         # (pytorch/pytorch#197715).
         _fft_guard(name, device, dtype)
         fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]

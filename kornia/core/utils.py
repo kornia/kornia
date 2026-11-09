@@ -102,9 +102,10 @@ def _to_device_nonblocking(
       other targets keep the blocking copy, since they may read the source after the call returns.
 
     A blocking copy that changes both the device and the dtype also casts on the CPU side: a copy to the CPU moves
-    and then casts, and a copy from the CPU casts and then moves. MPS has no float64, and a single copy between MPS
-    and a float64 CPU tensor writes zeros on torch 2.14 and raises on 2.15 (pytorch/pytorch#197715), in the forward
-    copy and in its backward.
+    and then casts, and a copy from the CPU casts and then moves. MPS has no float64. On torch 2.14 a single copy
+    from MPS to a float64 CPU tensor leaves the destination unwritten (pytorch/pytorch#197715), and so does the
+    backward of a single copy from a float64 CPU tensor to MPS. On torch 2.15 both raise, as does the backward of a
+    single copy from MPS to a float64 CPU tensor.
 
     Args:
         tensor: The tensor to move.

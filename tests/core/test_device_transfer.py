@@ -72,8 +72,8 @@ class TestToDeviceNonblocking(BaseTester):
         assert _to_device_nonblocking(src, device) is src
 
     def test_float64_cast_across_mps(self, device) -> None:
-        # MPS has no float64. A single MPS <-> CPU float64 copy writes zeros on torch 2.14 and raises on 2.15
-        # (pytorch/pytorch#197715), both in the copy and in its backward.
+        # MPS has no float64. On torch 2.14 a single MPS -> CPU float64 copy, and the backward of a single
+        # CPU float64 -> MPS copy, leave the destination unwritten; on 2.15 they raise (pytorch/pytorch#197715).
         if device.type != "mps":
             pytest.skip("only MPS lacks float64")
         out = _to_device_nonblocking(torch.tensor([0.25, 0.5, 0.75], device=device), torch.device("cpu"), torch.float64)
