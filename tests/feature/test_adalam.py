@@ -22,13 +22,19 @@ import torch
 
 from kornia.feature import GeometryAwareDescriptorMatcher, laf_from_center_scale_ori, match_adalam
 from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
-from kornia.feature.adalam.core import _merge_duplicate_matches
+from kornia.feature.adalam.core import _merge_duplicate_matches, select_seeds
 from kornia.feature.adalam.ransac import (
     _select_inliers,
     ransac,
     stable_sort_residuals,
 )
-from kornia.feature.adalam.utils import draw_first_k_couples
+from kornia.feature.adalam.utils import (
+    batch_2x2_eigenvals,
+    batch_2x2_ellipse,
+    dist_matrix,
+    draw_first_k_couples,
+    piecewise_arange,
+)
 
 from testing.base import BaseTester
 
@@ -142,6 +148,32 @@ class TestAdalamExact(BaseTester):
         # The first 50 correspondences follow the specified affine; the others are displaced by 10.
         self.assert_close(indices.sort().values, torch.arange(50, device=device))
         assert counts.tolist() == [50]
+
+    def test_dense_core_does_not_subsidize_sparse_outlier_tail(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        points = torch.arange(50, device=device, dtype=dtype).unsqueeze(1).repeat(1, 2)
+        residuals = torch.cat(
+            [
+                torch.zeros(30, device=device, dtype=dtype),
+                torch.linspace(0.001, 0.005, 10, device=device, dtype=dtype),
+                torch.linspace(0.025, 0.06, 10, device=device, dtype=dtype),
+            ]
+        ).unsqueeze(0)
+        result = _select_inliers(
+            residuals,
+            points,
+            points,
+            torch.zeros(50, device=device, dtype=torch.long),
+            torch.tensor([50], device=device),
+            torch.tensor([0], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(1, 1, 2, 2),
+            get_adalam_default_config(),
+        )
+        # Cumulative confidence at r=0.06 is 47 / (50 * 0.06**2) = 261.1 >= 200, but the
+        # marginal density of the sparse outer 10 samples is below min_confidence.
+        assert result[2].tolist() == [40]
+        self.assert_close(result[1], torch.arange(40, device=device))
 
     @pytest.mark.parametrize("sigma", [0.1, 0.3, 0.5])
     def test_high_resolution_subpixel_matches(self, device, dtype, sigma):
@@ -354,3 +386,29 @@ class TestMergeDuplicateMatches(BaseTester):
             expected[(i, j)] = min(d, expected.get((i, j), d))
         assert unique.tolist() == [list(key) for key in sorted(expected)]
         self.assert_close(best, torch.tensor([expected[key] for key in sorted(expected)], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("use_mnn", [False, True])
+    def test_select_seeds_from_k1_matches_precomputed_dist_matrix(self, device, dtype, use_mnn):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("seed selection uses full-precision coordinates")
+        g = torch.Generator().manual_seed(11)
+        k1 = (torch.rand(120, 2, generator=g) * 500.0).to(device, dtype)
+        scores1 = torch.rand(120, generator=g).to(device, dtype)
+        fnn12 = torch.randint(0, 120, (120,), generator=g).to(device)
+        mnn = (torch.rand(120, generator=g) > 0.3).to(device) if use_mnn else None
+        dist1 = dist_matrix(k1, k1)
+        s1_mat, s2_mat = select_seeds(dist1, 40.0, scores1, fnn12, mnn)
+        s1_k1, s2_k1 = select_seeds(None, 40.0, scores1, fnn12, mnn, k1=k1)
+        self.assert_close(s1_k1, s1_mat)
+        self.assert_close(s2_k1, s2_mat)
+
+    def test_batch_2x2_eigenvals_and_piecewise_arange(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("2x2 eigenvalues use full-precision matrices")
+        g = torch.Generator().manual_seed(5)
+        m = torch.randn(16, 2, 2, generator=g).to(device, dtype)
+        evals_only = batch_2x2_eigenvals(m)
+        evals_full, _ = batch_2x2_ellipse(m)
+        self.assert_close(evals_only, evals_full)
+        idx = torch.tensor([0, 0, 0, 3, 3, 3, 3, 1, 1, 2], device=device)
+        self.assert_close(piecewise_arange(idx), torch.tensor([0, 1, 2, 0, 1, 2, 3, 0, 1, 0], device=device))

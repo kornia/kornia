@@ -986,12 +986,13 @@ class TestAdalamInputs(BaseTester):
 
     def test_hw_list_equals_tuple_5724(self, device):
         d1, d2, l1, l2, (H, W) = _adalam_scene(device)
-        # an image much larger than the keypoint spread changes the seed radius, so a list that is ignored differs
-        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(4 * H, 4 * W), hw2=(4 * H, 4 * W))
-        list_out = match_adalam(d1, d2, l1, l2, hw1=[4 * H, 4 * W], hw2=[4 * H, 4 * W])
+        # an image size different from the keypoint spread changes the seed radius, so a list that is ignored differs
+        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(H // 2, W // 2), hw2=(H // 2, W // 2))
+        list_out = match_adalam(d1, d2, l1, l2, hw1=[H // 2, W // 2], hw2=[H // 2, W // 2])
         none_out = match_adalam(d1, d2, l1, l2)
         assert len(tuple_out[1]) != len(none_out[1])
         assert torch.equal(tuple_out[1], list_out[1])
+        self.assert_close(tuple_out[0], list_out[0])
 
     @pytest.mark.parametrize("config", [{"ransac_iters": 128}, {}])
     def test_device_follows_input_with_config_5724(self, device, config):

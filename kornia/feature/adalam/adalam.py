@@ -360,7 +360,7 @@ class AdalamFilter:
         scores = dd12[:, 0] / dd12[:, 1].clamp_min_(1e-3)
 
         if self.config["force_seed_mnn"]:
-            _dd21, nn21 = torch.min(distmat, dim=0)  # (n2,)
+            nn21 = distmat.t().contiguous().argmin(dim=1)  # (n2,)
             mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config["device"])
         else:
             mnn = None
