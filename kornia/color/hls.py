@@ -24,6 +24,7 @@ import torch
 from torch import nn
 
 from kornia.core.ops import _device_literal
+from kornia.core.utils import _clamp_range, _is_tracing_or_exporting, _needs_derivatives
 
 
 def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -155,7 +156,14 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
-    return torch.addcmul(l_ch, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
+    # ``mink`` is a buffer of this call, so without a derivative the clamp reuses it: one image-sized temporary fewer. A
+    # captured graph keeps that plain clamp whatever the grad mode, so that the check of ``torch.jit.trace`` under
+    # ``no_grad`` records the same graph.
+    if _is_tracing_or_exporting() or not _needs_derivatives(mink):
+        mink = mink.clamp_(min=-1.0, max=1.0)
+    else:
+        mink = _clamp_range(mink, -1.0, 1.0)
+    return torch.addcmul(l_ch, a, mink, value=-1)
 
 
 class RgbToHls(nn.Module):
