@@ -152,7 +152,7 @@ class TestApplyColorMap(BaseTester):
             (64, [0.0, 0.0078125, 0.015625, 0.5, 0.984375, 0.9921875, 1.0], [0, 0, 1, 32, 63, 63, 63]),
         ],
     )
-    def test_floats_select_equal_bins_6622(self, num_colors, values, expected, device, dtype):
+    def test_convention_apply_colormap_6622_equal_bins(self, num_colors, values, expected, device, dtype):
         # Expected is matplotlib's lookup, written out: floor(x * N), with x = 1 in the last bin. Values on a bin edge
         # are exact in float16 and bfloat16; the others sit well inside a bin.
         cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=num_colors, device=device, dtype=dtype)
