@@ -24,25 +24,33 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
-    r"""Compute Total Variation according to [1].
+    r"""Compute the total variation of an image.
+
+    ``tv = total_variation(img)`` adds, for each ``(H, W)`` slice of ``img``, the absolute differences between
+    vertically and between horizontally adjacent pixels, and returns one value per leading index.
+
+    .. math::
+
+        \text{TV}(I) = \sum |\partial_y I| + \sum |\partial_x I|
 
     Convention:
-        - The anisotropic L1 variation, :math:`\sum |\partial_y I| + \sum |\partial_x I|`, over the last two axes
-          only: the output keeps every leading axis, ``(B, C)`` for an image batch, and the channels are not
-          summed.
-        - The default ``reduction='sum'`` adds the differences. ``'mean'`` averages each term over its own count,
+        - The channels are not summed: a ``(B, C, H, W)`` batch gives ``(B, C)``.
+        - ``reduction='sum'`` is not normalised by the image size. ``'mean'`` averages each term over its own count,
           :math:`(H - 1) W` vertical and :math:`H (W - 1)` horizontal differences, and adds the two means; it is not
           the sum divided by :math:`H W`. An axis with no adjacent pixels contributes zero. There is no ``'none'``.
           :ref:`Losses and metrics <losses-metrics-conventions>` compares both with torchmetrics.
+        - Narrow integer inputs are promoted before the differences, to avoid overflow.
 
     Args:
-        img: the input image with shape ``(*, H, W)``.
-        reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
-         ``'mean'``: each of the vertical and horizontal terms is averaged over its own number of differences,
-         ``'sum'``: the differences are summed.
+        img: image with shape ``(*, H, W)``.
+        reduction: ``'sum'`` (default) adds the differences, ``'mean'`` averages each term.
 
-    Return:
-         a torch.Tensor with shape ``(*,)``.
+    Returns:
+        the total variation with shape ``(*,)``.
+
+    See Also:
+        - :class:`~kornia.losses.TotalVariation`: the module form, which always sums.
+        - :func:`~kornia.losses.inverse_depth_smoothness_loss`: smoothness of a depth map, weighted by image edges.
 
     Examples:
         >>> total_variation(torch.ones(4, 4))
@@ -52,9 +60,6 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`__.
-       Total Variation is formulated with summation, however this is not resolution invariant;
-       ``reduction='mean'`` averages instead.
-       Narrow integer inputs are promoted before computing differences to avoid overflow.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
@@ -100,15 +105,20 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
 
 class TotalVariation(nn.Module):
-    r"""Compute the Total Variation according to [1].
+    r"""Compute the total variation of an image (module form).
+
+    ``tv = TotalVariation()`` takes no arguments, and ``out = tv(img)`` is :func:`~kornia.losses.total_variation`
+    with ``reduction='sum'``.
 
     Convention:
-        See the Convention block of :func:`~kornia.losses.total_variation`. The module has no ``reduction`` and
-        always sums.
+        See the Convention block of :func:`~kornia.losses.total_variation`.
 
     Shape:
         - Input: ``(*, H, W)``.
         - Output: ``(*,)``.
+
+    See Also:
+        - :func:`~kornia.losses.total_variation`: the one-call form, with ``reduction='mean'`` too.
 
     Examples:
         >>> tv = TotalVariation()
@@ -117,9 +127,6 @@ class TotalVariation(nn.Module):
         tensor([[0., 0., 0.],
                 [0., 0., 0.]])
         >>> output.sum().backward()  # grad can be implicitly created only for scalar outputs
-
-    Reference:
-        [1] https://en.wikipedia.org/wiki/Total_variation
 
     """
 

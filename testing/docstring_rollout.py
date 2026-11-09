@@ -158,6 +158,17 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.subpix",
     "kornia.geometry.transform",
     "kornia.geometry.vector",
+    "kornia.losses.cauchy",
+    "kornia.losses.charbonnier",
+    "kornia.losses.depth_smooth",
+    "kornia.losses.divergence",
+    "kornia.losses.geman_mcclure",
+    "kornia.losses.ms_ssim",
+    "kornia.losses.psnr",
+    "kornia.losses.ssim",
+    "kornia.losses.ssim3d",
+    "kornia.losses.total_variation",
+    "kornia.losses.welsch",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
