@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 
 import kornia
-from kornia.core.utils import _clamp_range
+from kornia.core.utils import _clamp_range, _needs_derivatives
 
 from testing.base import BaseTester
 
@@ -294,6 +294,13 @@ def _ycbcr_of_luma(image: torch.Tensor) -> torch.Tensor:
     return kornia.color.ycbcr_to_rgb(torch.stack([image[:, 0], half, half], 1))
 
 
+def _luma_on_the_bounds(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    # Y on the pixels 0, 0.25, 0.5, 1 with neutral chroma, the input of _ycbcr_of_luma.
+    image = _bound_row(device, dtype)
+    image[:, 1:] = 0.5
+    return image
+
+
 def _hue_on_a_bound(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     # H = 5 pi / 3, L = 0.25, S = 1. H * 6 / pi is exactly 10 in the four float dtypes, so min(k - 3, 9 - k) sits on the
     # bound -1 of the clamp for red (k = 10) and blue (k = 2); green (k = 6) has 3, outside the range.
@@ -466,6 +473,77 @@ class TestClampGradientAtBounds(BaseTester):
         slope = 0.25 * 6 / math.pi
         self.assert_close(actual.flatten(), image.new_tensor([slope, 0.0, -slope]))
 
+    # torch.vmap hands each op a tensor of shape (3, 1, N) that hides requires_grad and the tangent of what it batches.
+    # Each case is (op, input, input channel, the derivative of the first output channel by that input channel at each
+    # pixel, the tolerance); the derivations are those of the pins above.
+    _VMAP_CASES = {
+        "ycbcr_to_rgb": (kornia.color.ycbcr_to_rgb, _luma_on_the_bounds, 0, [1.0, 1.0, 1.0, 1.0], {}),
+        "rgb_to_rgb255": (kornia.color.rgb_to_rgb255, _bound_row, 0, [255.0, 255.0, 255.0, 255.0], {}),
+        "normals_to_rgb255": (kornia.color.normals_to_rgb255, _bound_row, 0, [127.5, 127.5, 127.5, 127.5], {}),
+        "lab_to_rgb": (
+            lambda image: kornia.color.lab_to_rgb(image, clip=False),
+            lambda device, dtype: torch.tensor([42.0, 0.0, 100.0], device=device, dtype=dtype).view(1, 3, 1, 1),
+            2,
+            [3.88976e-4],
+            {"rtol": 5e-3, "atol": 1e-6},
+        ),
+        "hls_to_rgb": (kornia.color.hls_to_rgb, _hue_on_a_bound, 0, [0.25 * 6 / math.pi], {}),
+    }
+
+    @pytest.mark.parametrize("transform", ["jvp", "jacfwd", "dual"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_forward_mode_over_vmap_keeps_the_tangent_at_the_bounds(self, device, dtype, op, transform):
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, channel] = 1.0
+        batched = torch.vmap(call)
+        if transform == "jvp":
+            actual = torch.func.jvp(batched, (image,), (tangent,))[1][:, 0]
+        elif transform == "jacfwd":
+            jacobian = torch.func.jacfwd(batched)(image)
+            pixels = range(image.shape[-1])
+            actual = torch.stack([jacobian[0, 0, 0, i, 0, channel, 0, i] for i in pixels]).view(1, 1, -1)
+        else:
+            with torch.autograd.forward_ad.dual_level():
+                dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                actual = torch.autograd.forward_ad.unpack_dual(batched(dual)).tangent[:, 0]
+        self.assert_close(actual, image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    @pytest.mark.parametrize("transform", ["autograd", "grad"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_reverse_mode_through_vmap_keeps_the_gradient_at_the_bounds(self, device, dtype, op, transform):
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        batched = torch.vmap(call)
+        if transform == "autograd":
+            image.requires_grad_()
+            (grad,) = torch.autograd.grad(batched(image)[:, 0].sum(), image)
+        else:
+            grad = torch.func.grad(lambda x: batched(x)[:, 0].sum())(image)
+        self.assert_close(grad[:, channel], image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    def test_derivative_query_reads_through_vmap(self, device, dtype):
+        # Nothing to differentiate under a plain vmap, nested or not, or under no_grad: the cheap path stays.
+        seen = []
+
+        def probe(x: torch.Tensor) -> torch.Tensor:
+            seen.append(_needs_derivatives(x))
+            return x * 2
+
+        image = torch.ones(2, 3, device=device, dtype=dtype)
+        leaf = image.clone().requires_grad_()
+        torch.vmap(probe)(image)
+        torch.vmap(torch.vmap(probe))(image)
+        with torch.no_grad():
+            torch.vmap(probe)(leaf)
+        torch.vmap(probe)(leaf)
+        torch.vmap(torch.vmap(probe))(leaf)
+        torch.func.jvp(torch.vmap(probe), (image,), (image,))
+        torch.func.jvp(torch.vmap(torch.vmap(probe)), (image,), (image,))
+        torch.func.grad(lambda x: torch.vmap(probe)(x).sum())(image)
+        assert seen == [False, False, False, True, True, True, True, True]
+
     @pytest.mark.parametrize("op", ["rgb_to_rgb255", "normals_to_rgb255"])
     @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int64])
     def test_integer_image_keeps_its_result_dtype(self, device, op, int_dtype):
@@ -539,6 +617,42 @@ class TestClampGradientAtBounds(BaseTester):
         out = torch_optimizer(kornia.color.hls_to_rgb, fullgraph=True)(image)
         (grad,) = torch.autograd.grad(out[:, 0].sum(), image)
         self.assert_close(grad[:, 0], image.new_tensor([[[0.25 * 6 / math.pi]]]))
+
+    @pytest.mark.parametrize("transform", ["jvp", "grad"])
+    @pytest.mark.parametrize("op", sorted(_VMAP_CASES))
+    def test_dynamo_vmap_keeps_the_derivative_at_the_bounds(self, device, dtype, op, transform, torch_optimizer):
+        # Dynamo cannot unwrap a vmap level, so a compiled transform takes the derivative path without a graph break.
+        if op == "lab_to_rgb" and device.type == "cuda":
+            # Inductor on CUDA computes b / 200 by its reciprocal, so fz is about -2e-9 instead of 0 at this pixel:
+            # outside the clamp, with a zero gradient, without vmap and with a plain clamp as well.
+            pytest.skip("CUDA Inductor rounds fz of this pixel below its bound")
+        call, make, channel, expected, tol = self._VMAP_CASES[op]
+        image = make(device, dtype)
+        tangent = torch.zeros_like(image)
+        tangent[:, channel] = 1.0
+        batched = torch.vmap(call)
+
+        def derivative(x: torch.Tensor) -> torch.Tensor:
+            if transform == "jvp":
+                return torch.func.jvp(batched, (x,), (tangent,))[1][:, 0]
+            return torch.func.grad(lambda y: batched(y)[:, 0].sum())(x)[:, channel]
+
+        actual = torch_optimizer(derivative, fullgraph=True)(image)
+        self.assert_close(actual, image.new_tensor(expected).view(1, 1, -1), **tol)
+
+    def test_dynamo_derivative_query(self, device, dtype, torch_optimizer):
+        # A compiled call without a transform keeps the cheap path; under one it reports a derivative.
+        def branch(x: torch.Tensor) -> torch.Tensor:
+            return x * 3 if _needs_derivatives(x) else x * 2
+
+        image = torch.ones(2, 3, device=device, dtype=dtype)
+        leaf = image.clone().requires_grad_()
+        compiled = torch_optimizer(branch, fullgraph=True)
+        assert torch.equal(compiled(image), image * 2)
+        with torch.no_grad():
+            assert torch.equal(compiled(leaf), image * 2)
+        assert torch.equal(compiled(leaf).detach(), image * 3)
+        assert torch.equal(torch_optimizer(torch.vmap(branch), fullgraph=True)(image), image * 3)
 
     def test_helper_keeps_the_derivative_on_both_bounds(self, device, dtype):
         image = torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0], device=device, dtype=dtype, requires_grad=True)

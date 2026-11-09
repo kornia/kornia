@@ -524,11 +524,24 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
     Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
     ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode. TorchScript has no forward
     mode and cannot compile the query.
+
+    Under ``torch.vmap`` the query reads through the batching wrappers: a wrapper hides both ``requires_grad`` and the
+    tangent of the tensor it batches, and the tangent query has no batching rule. Dynamo cannot unwrap, so a compiled
+    call under any function transform reports a derivative.
     """
     if torch.is_grad_enabled() and input.requires_grad:
         return True
     if torch.jit.is_scripting():
         return False
+    if torch._C._are_functorch_transforms_active():
+        # Dynamo marks ``get_unwrapped`` as skipped: unwrapping would break the graph. Each caller's derivative path
+        # computes the same function as its plain path, at a higher cost; for the clamps Inductor fuses the selection.
+        if is_compiling():
+            return True
+        while torch._C._functorch.is_batchedtensor(input):
+            input = torch._C._functorch.get_unwrapped(input)
+            if torch.is_grad_enabled() and input.requires_grad:
+                return True
     return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
 
 
