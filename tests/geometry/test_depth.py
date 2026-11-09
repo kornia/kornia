@@ -958,9 +958,10 @@ class TestDepthWarpAutocast(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
-    def test_cameras_of_different_dtypes_still_run_in_a_region_6601(self, autocast_dtype, device):
-        # Autocast reconciles them, and outside the region they raise. They stay in it, so a half pose from a model
-        # under AMP keeps working, with the caller's precision.
+    def test_cameras_of_different_dtypes_compose_in_float32_in_a_region_6601(self, autocast_dtype, device):
+        # Outside the region they raise. In it autocast reconciled them in the caller's precision, 0.96 off in bfloat16;
+        # they now meet in float32, so a half pose from a model under AMP keeps working. The half identity is exact, so
+        # the matrix equals the all-float32 one.
         skip_unsupported_autocast(device, autocast_dtype)
         half = getattr(torch, autocast_dtype)
         _, _, pose, camera_matrix = self._inputs(device)
@@ -968,13 +969,16 @@ class TestDepthWarpAutocast(BaseTester):
         intrinsics[:, :3, :3] = camera_matrix
         size = torch.tensor([256.0], device=device)
         pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
-        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=device, dtype=half)[None], size, size)
+        identity = torch.eye(4, device=device)[None]
         warper = kornia.geometry.depth.DepthWarper(pinhole_dst, 256, 256)
+        expected = warper.compute_projection_matrix(PinholeCamera(intrinsics, identity, size, size))._dst_proj_src
+        pinhole_src = PinholeCamera(intrinsics, identity.to(half), size, size)
         with pytest.raises(RuntimeError):
             warper.compute_projection_matrix(pinhole_src)
         with torch.autocast(device.type, dtype=half):
             warper.compute_projection_matrix(pinhole_src)
-        assert warper._dst_proj_src.dtype == half
+        assert warper._dst_proj_src.dtype == torch.float32
+        self.assert_close(warper._dst_proj_src, expected, rtol=0, atol=0)
 
     def test_a_wrong_camera_type_still_raises_type_error_6601(self, device):
         # The guard reads the cameras' dtypes, which must not come before this check's message.

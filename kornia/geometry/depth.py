@@ -44,7 +44,13 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _autocast_disabled, _samples_half_in_float32, _torch_grid_sample, _torch_inverse_cast
+from kornia.core.utils import (
+    _autocast_disabled,
+    _reconcile_under_autocast,
+    _samples_half_in_float32,
+    _torch_grid_sample,
+    _torch_inverse_cast,
+)
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -588,7 +594,7 @@ class DepthWarper(nn.Module):
         - :func:`warp_frame_depth` names the frames the other way round: its ``dst`` (the frame holding the depth)
           is this class's ``src``, and its ``image_src`` is ``patch_dst``.
         - a caller's autocast region does not change :meth:`compute_projection_matrix` for cameras of one dtype. Cameras
-          of different dtypes raise outside a region and, inside one, stay in it and keep the caller's precision.
+          that mix float32 and half dtypes raise outside a region and compose in ``float32`` inside one.
 
     .. warning::
         The two warps agree to rounding for float32/float64 away from ``z = 0``, and split at ``z = 0``, where
@@ -648,21 +654,6 @@ class DepthWarper(nn.Module):
 
         See the Convention block on :class:`DepthWarper`.
         """
-        # A caller's autocast region would round the products to half precision and the warp's pixels with them: 0.45
-        # off on a [0, 1] image in bfloat16 at 256 px (#6601). Autocast also reconciles cameras of different dtypes,
-        # which raise outside it, so those stay in the region and keep the caller's precision.
-        dst = self._pinhole_dst
-        if (
-            type(pinhole_src) is PinholeCamera
-            and type(dst) is PinholeCamera
-            and pinhole_src.extrinsics.dtype == dst.extrinsics.dtype == dst.camera_matrix.dtype
-        ):
-            with _autocast_disabled(pinhole_src.extrinsics.device.type):
-                return self._compose_projection_matrix(pinhole_src)
-        return self._compose_projection_matrix(pinhole_src)
-
-    def _compose_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        """Compose and store the projection matrix of :meth:`compute_projection_matrix`."""
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
@@ -672,10 +663,14 @@ class DepthWarper(nn.Module):
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
 
         # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
+        # A caller's autocast region would round the products to half precision and the warp's pixels with them: 0.45
+        # off on a [0, 1] image in bfloat16 at 256 px (#6601), so they run outside it. Autocast would also reconcile
+        # cameras of float32 and half dtypes, which raise outside a region: in one they compose in float32.
+        src_extrinsics, dst_extrinsics, dst_intrinsics = _reconcile_under_autocast(
+            pinhole_src.extrinsics, self._pinhole_dst.extrinsics, self._pinhole_dst.camera_matrix
+        )
         # Half cameras compose in float32: the product's rounding moves a warp's pixels by a large part of a pixel.
-        # Cameras of different dtypes are rejected as before.
-        src_extrinsics, dst_extrinsics = pinhole_src.extrinsics, self._pinhole_dst.extrinsics
-        dst_intrinsics = self._pinhole_dst.camera_matrix
+        # Cameras of different dtypes are rejected outside a region, as before.
         if _samples_half_in_float32(src_extrinsics) and all(
             t.dtype == src_extrinsics.dtype for t in (dst_extrinsics, dst_intrinsics)
         ):
@@ -685,30 +680,31 @@ class DepthWarper(nn.Module):
         device = src_extrinsics.device
         dtype = src_extrinsics.dtype
 
-        # Create 4x4 identity matrices efficiently
-        inv_extr = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
-        dst_trans_src = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
+        with _autocast_disabled(device.type):
+            # Create 4x4 identity matrices efficiently
+            inv_extr = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
+            dst_trans_src = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
 
-        # Inline inverse transformation
-        src_rmat = src_extrinsics[..., :3, :3]
-        src_tvec = src_extrinsics[..., :3, 3:]
-        inv_rmat = torch.transpose(src_rmat, -1, -2)
-        inv_tvec = torch.matmul(-inv_rmat, src_tvec)
+            # Inline inverse transformation
+            src_rmat = src_extrinsics[..., :3, :3]
+            src_tvec = src_extrinsics[..., :3, 3:]
+            inv_rmat = torch.transpose(src_rmat, -1, -2)
+            inv_tvec = torch.matmul(-inv_rmat, src_tvec)
 
-        # Set rotation and translation parts
-        inv_extr[..., :3, :3] = inv_rmat
-        inv_extr[..., :3, 3:] = inv_tvec
+            # Set rotation and translation parts
+            inv_extr[..., :3, :3] = inv_rmat
+            inv_extr[..., :3, 3:] = inv_tvec
 
-        # Compose with dst extrinsics
-        dst_rmat = dst_extrinsics[..., :3, :3]
-        dst_tvec = dst_extrinsics[..., :3, 3:]
-        composed_rmat = torch.matmul(dst_rmat, inv_rmat)
-        composed_tvec = torch.matmul(dst_rmat, inv_tvec) + dst_tvec
+            # Compose with dst extrinsics
+            dst_rmat = dst_extrinsics[..., :3, :3]
+            dst_tvec = dst_extrinsics[..., :3, 3:]
+            composed_rmat = torch.matmul(dst_rmat, inv_rmat)
+            composed_tvec = torch.matmul(dst_rmat, inv_tvec) + dst_tvec
 
-        dst_trans_src[..., :3, :3] = composed_rmat
-        dst_trans_src[..., :3, 3:] = composed_tvec
+            dst_trans_src[..., :3, :3] = composed_rmat
+            dst_trans_src[..., :3, 3:] = composed_tvec
 
-        dst_proj_src = torch.matmul(_embed_intrinsics(dst_intrinsics), dst_trans_src)
+            dst_proj_src = torch.matmul(_embed_intrinsics(dst_intrinsics), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
