@@ -24,9 +24,9 @@ from testing.base import BaseTester
 
 
 class TestVflip(BaseTester):
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = kornia.geometry.transform.Vflip()
-        repr = "Vflip()"
+        repr = "Vflip"
         assert str(f) == repr
 
     def test_vflip(self, device, dtype):
@@ -93,9 +93,9 @@ class TestVflip(BaseTester):
 
 
 class TestHflip(BaseTester):
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = kornia.geometry.transform.Hflip()
-        repr = "Hflip()"
+        repr = "Hflip"
         assert str(f) == repr
 
     def test_hflip(self, device, dtype):
@@ -164,9 +164,9 @@ class TestHflip(BaseTester):
 
 
 class TestRot180(BaseTester):
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = kornia.geometry.transform.Rot180()
-        repr = "Rot180()"
+        repr = "Rot180"
         assert str(f) == repr
 
     def test_rot180(self, device, dtype):
