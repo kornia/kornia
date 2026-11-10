@@ -131,6 +131,43 @@ CASES = [
         {"angle_factor": [-17.5, -17.5, -17.5], "direction_factor": -0.25},
         id="motion-blur3d",
     ),
+    pytest.param(
+        lambda: K.RandomMotionBlur(3, 35.0, 0.5, p=1.0),
+        (2, 3, 8, 9),
+        # Angle -35 + 0.25 * 70 degrees and direction -0.5 + 0.25 * 1.
+        {"angle_factor": -17.5, "direction_factor": -0.25},
+        id="motion-blur",
+    ),
+    pytest.param(
+        lambda: K.RandomSaltAndPepperNoise(amount=(0.01, 0.06), salt_vs_pepper=(0.4, 0.6), p=1.0),
+        (2, 3, 8, 9),
+        # Amount 0.01 + 0.25 * 0.05 and salt ratio 0.4 + 0.25 * 0.2.
+        {"amount_factor": 0.0225, "salt_and_pepper_factor": 0.45},
+        id="salt-and-pepper",
+    ),
+    pytest.param(
+        lambda: K.RandomJPEG((20.0, 80.0), p=1.0),
+        (2, 3, 8, 9),
+        # 20 + 0.25 * 60.
+        {"jpeg_quality": 35.0},
+        id="jpeg",
+    ),
+    pytest.param(
+        lambda: K.RandomRotation90((-3, 3), p=1.0),
+        (2, 3, 8, 9),
+        # The draw covers [-3, 4): floor(-3 + 0.25 * 7) = -2 quarter turns.
+        {"times": -2.0},
+        id="rotation90",
+    ),
+    pytest.param(
+        lambda: K.RandomErasing(scale=(0.02, 0.33), ratio=(0.3, 3.3), p=1.0),
+        (2, 3, 8, 9),
+        # Area (0.02 + 0.25 * 0.31) * 72 = 7.02. The index draw rounds to 0, so the ratio comes from [1, 3.3):
+        # 1 + 0.25 * 2.3 = 1.575. That gives a 2 x 3 rectangle (rounded), starting at floor(0.25 * 8) = 2 in x and
+        # floor(0.25 * 6) = 1 in y.
+        {"widths": 2.0, "heights": 3.0, "xs": 2.0, "ys": 1.0},
+        id="erasing",
+    ),
 ]
 
 
