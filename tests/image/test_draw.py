@@ -976,6 +976,25 @@ class TestFillConvexPolygon(BaseTester):
         with pytest.raises(BaseError, match="the color has 2 values and the image has 3 channels"):
             draw_convex_polygon(image, polygon, color)
 
+    def test_batched_single_value_colors_fill_every_channel(self, dtype, device):
+        """A (B, 1) colour gives each batch item its own value, written to every channel.
+
+        The value is broadcast over the channels of that item only, and the
+        pixels outside the polygon keep the image's own colour.
+        """
+        image = torch.zeros(2, 3, 5, 5, dtype=dtype, device=device)
+        polygon = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], dtype=dtype, device=device).expand(
+            2, -1, -1
+        )
+        color = torch.tensor([[0.25], [0.75]], dtype=dtype, device=device)
+
+        out = draw_convex_polygon(image, polygon, color)
+
+        self.assert_close(out[0, :, 2, 2], color[0].expand(3))
+        self.assert_close(out[1, :, 2, 2], color[1].expand(3))
+        self.assert_close(out[0, :, 0, 0], torch.zeros_like(out[0, :, 0, 0]))
+        self.assert_close(out[1, :, 0, 0], torch.zeros_like(out[1, :, 0, 0]))
+
     @pytest.mark.parametrize("as_list", [False, True])
     @pytest.mark.parametrize("reverse", [False, True])
     def test_near_coincident_endpoints_close_independently(self, device, dtype, as_list, reverse):
