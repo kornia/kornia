@@ -6,8 +6,9 @@ kornia.image
 
 .. currentmodule:: kornia.image
 
-A high-level API to describe and handle images: a typed image container, drawing primitives, conversions
-between tensors and NumPy arrays, and terminal rendering.
+Hold, draw on, convert and print images: a checked image container, drawing primitives, conversions between
+channels-first tensors and channels-last NumPy arrays, grids and terminal rendering. Image files are read and written
+by :doc:`kornia.io <io>`.
 
 .. list-table::
    :widths: 30 70
