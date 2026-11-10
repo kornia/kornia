@@ -68,6 +68,8 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         - :func:`unproject_points_z1`: the reverse, scaling a normalized point by a depth.
         - :func:`dx_project_points_z1`: the ``(..., 2, 3)`` Jacobian of this projection.
         - :func:`project_points_orthographic`: drops ``z`` instead of dividing by it.
+        - :class:`~kornia.sensors.camera.projection_model.Z1Projection`: the same projection on ``Vector3`` points,
+          as the sensors camera models use it.
         - :func:`~kornia.geometry.camera.perspective.project_points`: pixels from a ``3x3`` ``K`` in one call,
           with the divide skipped at ``abs(z) <= 1e-8``.
 
@@ -117,6 +119,7 @@ def unproject_points_z1(
     See Also:
         - :func:`project_points_z1`: the reverse, dividing by ``z``.
         - :func:`unproject_points_orthographic`: appends the depth without scaling ``x`` and ``y``.
+        - :class:`~kornia.sensors.camera.projection_model.Z1Projection`: the same unprojection on ``Vector2`` points.
         - :func:`~kornia.geometry.camera.perspective.unproject_points`: from pixels, with a ``3x3`` ``K``.
 
     Example:

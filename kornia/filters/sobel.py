@@ -237,6 +237,7 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
         - :class:`Sobel`: the module form.
         - :func:`spatial_gradient`: the signed x and y derivatives, on an added axis.
         - :func:`canny`: thins the edges by non-maximum suppression and thresholds them.
+        - :func:`~kornia.morphology.gradient`: a non-linear edge strength, the dilation minus the erosion.
 
     Example:
         >>> input = torch.rand(1, 3, 4, 4)

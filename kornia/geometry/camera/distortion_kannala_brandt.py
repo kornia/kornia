@@ -105,6 +105,8 @@ def distort_points_kannala_brandt(
         - :func:`undistort_points_kannala_brandt`: the inverse, pixels to normalized points.
         - :func:`dx_distort_points_kannala_brandt`: its ``(..., 2, 2)`` Jacobian with respect to the point.
         - :func:`distort_points_affine`: the intrinsics alone, with no distortion.
+        - :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform`: the same map on ``Vector2``
+          points.
         - :func:`~kornia.geometry.calibration.distort_points`: OpenCV's Brown-Conrady distortion with a ``3x3``
           ``K``, from pixels to pixels.
 
@@ -174,6 +176,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
         - :func:`distort_points_kannala_brandt`: the forward map, normalized points to pixels.
         - :func:`dx_distort_points_kannala_brandt`: the Jacobian of the forward map.
         - :func:`undistort_points_affine`: the closed-form inverse of the intrinsics alone.
+        - :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform`: the same inverse on
+          ``Vector2`` points.
         - :func:`~kornia.geometry.calibration.undistort_points`: removes OpenCV's Brown-Conrady distortion, from
           pixels to pixels.
 
