@@ -50,48 +50,81 @@ Validation
 
 .. currentmodule:: kornia.core.check
 
-The ``KORNIA_CHECK*`` helpers validate inputs and raise the errors below. A check on sizes compares them with
-:func:`KORNIA_CHECK_SAME_SIZE`, :func:`KORNIA_CHECK_SIZES` or :func:`KORNIA_CHECK_SHAPE`, which build their message only
-when the check fails. Any other message that formats a tensor size or an ``int`` argument is passed as a function,
-``KORNIA_CHECK(condition, lambda: f"...")``: an f-string argument is built on every call, and under a dynamic-shape
-``torch.compile`` that specializes the value, so each new value would compile a new graph.
+The ``KORNIA_CHECK*`` helpers validate inputs: each returns ``True`` when its check passes, and on failure raises one
+of the errors below or, with ``raises=False``, returns ``False``. Pass a message that formats a size as a function; see
+:func:`KORNIA_CHECK`. The shape check of local affine frames, :func:`~kornia.feature.KORNIA_CHECK_LAF`, is documented
+with the other LAF functions.
 
 .. autofunction:: KORNIA_CHECK
 
+Shapes and sizes
+^^^^^^^^^^^^^^^^
+
 .. autofunction:: KORNIA_CHECK_SHAPE
-
-.. autofunction:: KORNIA_CHECK_SAME_SHAPE
-
-.. autofunction:: KORNIA_CHECK_SAME_SIZE
 
 .. autofunction:: KORNIA_CHECK_SIZES
 
+.. autofunction:: KORNIA_CHECK_SAME_SIZE
+
+.. autofunction:: KORNIA_CHECK_SAME_SHAPE
+
+.. autofunction:: KORNIA_CHECK_DM_DESC
+
+Image layouts
+^^^^^^^^^^^^^
+
+.. autofunction:: KORNIA_CHECK_IS_COLOR
+
+.. autofunction:: KORNIA_CHECK_IS_GRAY
+
 .. autofunction:: KORNIA_CHECK_IS_COLOR_OR_GRAY
+
+.. autofunction:: KORNIA_CHECK_IS_IMAGE
+
+Types and devices
+^^^^^^^^^^^^^^^^^
+
+.. autofunction:: KORNIA_CHECK_IS_TENSOR
+
+.. autofunction:: KORNIA_CHECK_TYPE
+
+.. autofunction:: KORNIA_CHECK_IS_LIST_OF_TENSOR
+
+.. autofunction:: KORNIA_CHECK_SAME_DEVICE
+
+.. autofunction:: KORNIA_CHECK_SAME_DEVICES
+
+.. autofunction:: KORNIA_UNWRAP
+
+Turning the checks off and on
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: disable_checks
+
+.. autofunction:: enable_checks
+
+.. autofunction:: are_checks_enabled
 
 Exceptions
 ----------
 
 .. currentmodule:: kornia.core.exceptions
 
-The errors raised by kornia's ``KORNIA_CHECK*`` validation helpers in
-``kornia.core.check`` (and by a few functions directly), such as a tensor with
-the wrong shape. All of them derive from :exc:`BaseError`, so ``except BaseError``
-catches any of them. Each subclass also derives from the built-in exception that
-matches its failure: :exc:`TypeCheckError` is also a :exc:`TypeError`, and
-:exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and
-:exc:`ImageError` are each also a :exc:`ValueError`. :exc:`AsyncCheckError`,
-the host form of a check that an accelerator runs as ``torch._assert_async``, is
-a :exc:`ValueCheckError` and also a :exc:`RuntimeError`, the error torch raises
-for that check on the device. :exc:`InputRankError`, raised by the augmentations
-and their containers for an input with an unsupported number of dimensions, is a
-:exc:`ShapeError` and also a :exc:`RuntimeError` and an :exc:`AssertionError`, the
-types those entry points raised for it before. Many functions validate
-their inputs themselves and raise the built-in :exc:`ValueError` or
-:exc:`TypeError`, so ``except ValueError`` or ``except TypeError`` catches those
-and the matching kornia errors alike; ``except BaseError`` does not catch those
-built-ins. :exc:`BaseError` itself derives only from :exc:`Exception`: a failed
-``KORNIA_CHECK(condition)`` raises it, and neither of those two clauses catches
-it.
+The errors raised by the ``KORNIA_CHECK*`` helpers above and by functions that raise them directly.
+``except BaseError`` catches every one of them. Each subclass also derives from the built-in exception that matches its
+failure, so the matching ``except`` clause catches it together with the built-in errors that other functions raise:
+
+- :exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and :exc:`ImageError` are each also a
+  :exc:`ValueError`, and :exc:`TypeCheckError` is also a :exc:`TypeError`.
+- :exc:`InputRankError`, raised by the augmentations and their containers for an input with an unsupported number of
+  dimensions, is a :exc:`ShapeError` and also a :exc:`RuntimeError` and an :exc:`AssertionError`, the types those entry
+  points raised for it before.
+- :exc:`AsyncCheckError`, the host failure of a value check that an accelerator runs as ``torch._assert_async``, is a
+  :exc:`ValueCheckError` and also a :exc:`RuntimeError`, the error torch raises for that check on the device.
+
+:exc:`BaseError` itself derives only from :exc:`Exception`: a failed ``KORNIA_CHECK(condition)`` raises it, and neither
+``except ValueError`` nor ``except TypeError`` catches it. In a call compiled with ``torch.jit.script``, a failed
+check raises ``torch.jit.Error`` instead, which none of these clauses catches.
 
 .. autoexception:: BaseError
     :show-inheritance:

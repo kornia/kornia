@@ -187,6 +187,9 @@ DOCSTRING_MODULES: tuple[str, ...] = (
 
 SEE_ALSO_EXCEPTIONS: dict[str, str] = {
     "kornia.feature.defmo.DeFMO": "the only deblurring model in kornia; no other object serves a nearby task",
+    "kornia.core.exceptions.BaseError": (
+        "the base of every kornia check error; the kornia.core.exceptions catalog lists its subclasses"
+    ),
 }
 """Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
 
