@@ -203,50 +203,20 @@ class TestCornerHarris(BaseTester):
         expected = kornia.feature.harris_response(img, torch.tensor(k, device=device))
         self.assert_close(kornia.feature.CornerHarris(k).to(device)(img), expected, rtol=0.0, atol=0.0)
 
-    def test_loads_a_state_dict_that_holds_k_as_a_buffer(self, device):
-        # A number k used to be a persistent buffer built in float32, so older state dicts hold "k". That buffer, in
-        # any dtype the module was moved to, loads strictly and keeps the exact number; another value, or an integer
-        # one, replaces it, as loading it into the buffer did.
-        img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0)).to(device)
-        harris = kornia.feature.CornerHarris(0.04)
-        for saved in (torch.tensor(0.04), torch.tensor(0.04).double(), torch.tensor(0.04).half()):
-            harris.load_state_dict({"k": saved})
-            assert harris.k == 0.04
+    def test_loaded_or_assigned_k_applies_to_float64(self, device):
+        # A float64 image uses a number k exactly while the buffer holds it as built; a k loaded from a state dict or
+        # assigned after construction replaces it, as in every other dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
+        harris = kornia.feature.CornerHarris(0.04).to(device)
+        harris.load_state_dict(kornia.feature.CornerHarris(0.04).state_dict())
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0.04), rtol=0.0, atol=0.0)
         harris.load_state_dict({"k": torch.tensor(0.05)})
-        assert harris.k == float(torch.tensor(0.05))
-        expected = kornia.feature.harris_response(img, torch.tensor(0.05, device=device))
-        self.assert_close(harris.to(device)(img), expected, rtol=0.0, atol=0.0)
-        detector = kornia.feature.ScaleSpaceDetector(5, resp_module=kornia.feature.CornerHarris(0.04))
-        detector.load_state_dict({**detector.state_dict(), "resp.k": torch.tensor(0.04)})
-        assert detector.resp.k == 0.04
-        harris = kornia.feature.CornerHarris(0.04)
-        harris.load_state_dict({"k": torch.tensor(0)})
-        assert harris.k == 0.0
-
-    def test_a_tensor_k_set_after_construction_is_registered_as_before(self, device):
-        # A tensor assigned to k, or registered as k by a subclass, replaces a number k as a buffer, as every k was
-        # before, so it is saved, moved by .to() and seen by ScaleSpaceDetector's float16 routing. A parameter and
-        # a non-persistent nn.Buffer are registered as nn.Module registers them.
-        harris = kornia.feature.CornerHarris(0.04)
-        harris.k = torch.full((1, 1, 1, 1), 0.05)
-        assert list(harris.state_dict()) == ["k"]
-        assert harris.to(device).k.device.type == device.type
-
-        class Subclass(kornia.feature.CornerHarris):
-            def __init__(self) -> None:
-                super().__init__(0.04)
-                self.register_buffer("k", torch.full((1, 1, 1, 1), 0.06))
-
-        assert list(Subclass().state_dict()) == ["k"]
-        harris = kornia.feature.CornerHarris(0.04)
-        harris.k = torch.nn.Parameter(torch.tensor(0.05))
-        assert [name for name, _ in harris.named_parameters()] == ["k"]
-        with pytest.raises(TypeError):
-            harris.k = torch.tensor(0.06)
-        harris = kornia.feature.CornerHarris(0.04)
-        harris.k = torch.nn.Buffer(torch.tensor(0.05), persistent=False)
-        assert "k" in dict(harris.named_buffers())
-        assert list(harris.state_dict()) == []
+        expected = kornia.feature.harris_response(img, torch.tensor(0.05, device=device).double())
+        self.assert_close(harris(img), expected, rtol=0.0, atol=0.0)
+        harris.k = torch.tensor(0.06, dtype=torch.float64, device=device)
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0.06), rtol=0.0, atol=0.0)
 
 
 class TestCornerGFTT(BaseTester):

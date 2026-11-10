@@ -16,7 +16,7 @@
 #
 
 import numbers
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -516,8 +516,8 @@ class CornerHarris(nn.Module):
     r"""Compute the Harris corner response with a fixed k; the module form of harris_response.
 
     ``R = CornerHarris(k)(img, sigmas)`` returns ``harris_response(img, k, grads_mode, sigmas)``, the ``(B, C, H, W)``
-    Harris response of ``(B, C, H, W)`` images, positive at a corner. A tensor ``k`` is stored as a buffer, so it moves
-    with :meth:`torch.nn.Module.to`. Pass it to :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over
+    Harris response of ``(B, C, H, W)`` images, positive at a corner. ``k`` is stored as a buffer, so it moves with
+    :meth:`torch.nn.Module.to`. Pass it to :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over
     scale; for a response with no ``k`` to choose, use :class:`CornerGFTT` instead.
 
     .. image:: _static/img/harris_response.png
@@ -525,8 +525,8 @@ class CornerHarris(nn.Module):
     Convention:
         Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
         Convention block. Unlike the function's, this ``k`` has no default. A ``float``, ``int`` or NumPy scalar
-        ``k`` is kept as a Python float and built at each call in the image's dtype, float32 for a half-precision image
-        and the default dtype for an integer one, so a float64 image uses it exactly; a tensor is stored as it is.
+        ``k`` becomes a 0-dimensional float32 tensor, and a float64 image uses the number itself while the buffer
+        still holds it; a tensor is stored as it is.
 
     See Also:
         - :func:`harris_response`: the function form, with ``k`` defaulting to ``0.04``.
@@ -536,63 +536,19 @@ class CornerHarris(nn.Module):
 
     """
 
-    k: Union[float, torch.Tensor]
+    k: torch.Tensor
 
     def __init__(self, k: Union[float, torch.Tensor], grads_mode: str = "sobel") -> None:
         super().__init__()
+        # The number itself, for a float64 image: the buffer holds it rounded to float32.
+        self._k_number: Optional[float] = None
         if isinstance(k, numbers.Real) and not isinstance(k, bool):
-            # A number, including an int or a NumPy scalar, stays a Python float; forward builds it per call.
-            self.k = float(k)
+            # A float, an int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+            self._k_number = float(k)
+            self.register_buffer("k", torch.tensor(float(k)))
         else:
             self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        # A plain tensor that replaces a number ``k`` becomes a buffer, as every ``k`` was before a number became a
-        # plain float; a parameter, an ``nn.Buffer`` or any other assignment is registered as ``nn.Module`` does.
-        if (
-            name == "k"
-            and "k" in self.__dict__
-            and isinstance(value, torch.Tensor)
-            and not isinstance(value, (nn.Parameter, nn.Buffer))
-        ):
-            self.register_buffer("k", value)
-        else:
-            super().__setattr__(name, value)
-
-    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
-        """Register a buffer; one named ``k``, such as a subclass registers, replaces a number ``k``.
-
-        Args:
-            name: name of the buffer.
-            tensor: the buffer, or ``None``.
-            persistent: whether the buffer is part of the module's ``state_dict``.
-        """
-        if name == "k":
-            self.__dict__.pop("k", None)
-        super().register_buffer(name, tensor, persistent)
-
-    def _load_from_state_dict(
-        self,
-        state_dict: dict[str, torch.Tensor],
-        prefix: str,
-        local_metadata: dict[str, Any],
-        strict: bool,
-        missing_keys: list[str],
-        unexpected_keys: list[str],
-        error_msgs: list[str],
-    ) -> None:
-        # A number ``k`` used to be a persistent buffer built in the default dtype. A saved ``k`` equal to this one
-        # built that way, in whatever dtype the module was moved to, leaves the exact number; another value replaces
-        # it, as loading it into the buffer did.
-        key = prefix + "k"
-        if not isinstance(self.k, torch.Tensor) and key in state_dict and state_dict[key].dim() == 0:
-            saved = state_dict.pop(key)
-            if not saved.is_floating_point() or float(saved) != float(torch.tensor(self.k).to(saved.dtype)):
-                self.k = float(saved)
-        super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
@@ -609,11 +565,13 @@ class CornerHarris(nn.Module):
             Harris response map tensor.
         """
         k = self.k
-        if not isinstance(k, torch.Tensor):
-            # In at least float32, as the buffer it replaced, so float32 and half-precision images keep their results
-            # on every device and a float64 image uses k exactly; an integer image is scored in the default dtype.
-            dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else None
-            k = torch.as_tensor(k, device=input.device, dtype=dtype)
+        number = self.__dict__.get("_k_number")  # absent from a module pickled before it existed
+        if number is not None and input.dtype == torch.float64:
+            # While the buffer still holds the number as built (not loaded or assigned another k), apply it exactly.
+            built = torch.tensor(number).to(device=k.device, dtype=k.dtype)
+            # One-dimensional: the TorchScript ONNX exporter casts a 0-dimensional constant to the buffer's float32.
+            exact = torch.tensor([number], dtype=torch.float64, device=k.device)
+            k = torch.where(k == built, exact, k.to(torch.float64)).reshape(k.shape)
         return harris_response(input, k, self.grads_mode, sigmas)
 
 
