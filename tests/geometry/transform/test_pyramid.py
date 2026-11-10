@@ -713,8 +713,8 @@ class TestBuildLaplacianPyramid(BaseTester):
             rebuilt = kornia.geometry.transform.pyrup(rebuilt, "reflect", align_corners) + level
         self.assert_close(rebuilt, sample[:, :, rows][:, :, :, columns])
 
-    # F.pad cannot reflect a padding at least as large as the side, so such a side repeats its last row or column.
-    # With `border_type="reflect"` these sizes raise instead (see the next test): only these border types get here.
+    # F.pad cannot reflect a padding at least as large as the side, so such a side repeats its last row or column,
+    # whatever `border_type`: the blur of every level extends its border across the short sides that follow.
     @pytest.mark.parametrize(
         "height,width,max_level,rows,columns",
         [
@@ -730,7 +730,7 @@ class TestBuildLaplacianPyramid(BaseTester):
             (3, 1, 3, [0, 1, 2, 1], [0, 0, 0, 0]),
         ],
     )
-    @pytest.mark.parametrize("border_type", ["constant", "replicate", "circular"])
+    @pytest.mark.parametrize("border_type", ["reflect", "constant", "replicate", "circular"])
     def test_minimal_padding_repeats_a_side_too_small_to_reflect(
         self, height, width, max_level, rows, columns, border_type, device, dtype
     ):
@@ -743,21 +743,27 @@ class TestBuildLaplacianPyramid(BaseTester):
             rebuilt = kornia.geometry.transform.pyrup(rebuilt, border_type) + level
         self.assert_close(rebuilt, sample[:, :, rows][:, :, :, columns])
 
-    # The blur of `pyrdown` and `pyrup` reflects two pixels, so it needs at least three: `(4, 4, 3)` raises from torch
-    # by way of its side-2 level under the default rule too, and only the message is new here.
+    # These sizes raised before the blur extended reflection across short sides; each level of side 1 or 2 now blurs.
     @pytest.mark.parametrize(
-        "height,width,max_level",
-        [(1, 8, 2), (8, 1, 2), (2, 8, 2), (1, 8, 3), (4, 4, 3), (4, 16, 3), (16, 4, 3), (8, 8, 4), (1, 1, 2)],
+        "height,width,max_level,level_sizes",
+        [
+            (1, 8, 2, ((2, 8), (1, 4))),
+            (2, 8, 2, ((2, 8), (1, 4))),
+            (4, 4, 3, ((4, 4), (2, 2), (1, 1))),
+            (8, 8, 4, ((8, 8), (4, 4), (2, 2), (1, 1))),
+            (1, 1, 2, ((2, 2), (1, 1))),
+        ],
     )
-    def test_minimal_padding_reflect_border_rejects_a_side_too_small(self, height, width, max_level, device, dtype):
+    def test_minimal_padding_reflect_border_short_sides(self, height, width, max_level, level_sizes, device, dtype):
         sample = torch.rand(1, 1, height, width, device=device, dtype=dtype)
-        with pytest.raises(BaseError, match="border_type"):
-            kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level, minimal_padding=True)
+        assert [tuple(img.shape[-2:]) for img in pyramid] == list(level_sizes)
+        assert all(torch.isfinite(img).all() for img in pyramid)
 
     @pytest.mark.parametrize(
         "height,width,max_level,level_sizes",
         [
-            # The smallest sides that the blur of each level takes.
+            # Sides that need padding to a multiple of 2 ** (max_level - 1).
             (3, 3, 2, ((4, 4), (2, 2))),
             (5, 5, 3, ((8, 8), (4, 4), (2, 2))),
             (1, 5, 1, ((1, 5),)),
