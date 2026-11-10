@@ -185,7 +185,7 @@ def get_mps_device_if_available() -> torch.device:
     """Return the Apple MPS device when it is available, else the CPU.
 
     ``device = get_mps_device_if_available()`` returns ``torch.device("mps")`` when
-    ``torch.backends.mps.is_available()`` is true and ``torch.device("cpu")`` otherwise. It never returns CUDA.
+    ``torch.backends.mps.is_available()`` is true and ``torch.device("cpu")`` otherwise.
 
     Returns:
         ``mps`` or ``cpu``.
@@ -205,8 +205,7 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
     """Return the platform's accelerator, MPS on Apple silicon and CUDA elsewhere, else the CPU.
 
     ``device = get_cuda_or_mps_device_if_available()`` returns :func:`~kornia.core.utils.get_mps_device_if_available` on
-    macOS on ``arm64`` (``mps`` or ``cpu``, never CUDA) and :func:`~kornia.core.utils.get_cuda_device_if_available` with
-    index 0 on every other platform (``cuda:0`` or ``cpu``).
+    macOS on ``arm64`` and :func:`~kornia.core.utils.get_cuda_device_if_available` with index 0 on every other platform.
 
     Returns:
         ``mps``, ``cuda:0`` or ``cpu``.
@@ -1197,10 +1196,9 @@ def batched_forward(
     """Run a model in micro-batches on a chosen device and return the output on the input's device.
 
     ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
-    slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, concatenates the
-    outputs along the first dimension and returns them on ``data``'s device. Use it when ``model(data)`` does not fit
-    into device memory. ``model`` stays on ``device`` afterwards, and gradients are tracked: call it under
-    ``torch.no_grad()`` for inference.
+    slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
+    the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference.
 
     Args:
         model: a module that returns one tensor whose first dimension follows its input's.

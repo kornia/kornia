@@ -2,7 +2,7 @@ kornia.image
 ============
 
 .. meta::
-   :description: The kornia.image module offers a high-level API designed for processing images in computer vision tasks. It provides functionalities for handling image size, pixel formats, channel orders, and image layouts, streamlining the manipulation of images in deep learning workflows. With a user-friendly interface, this module simplifies image data preprocessing and handling for various computer vision and machine learning tasks.
+   :description: The kornia.image module holds, draws on, converts and prints images: a checked image container, drawing primitives, conversions between channels-first tensors and channels-last NumPy arrays, image grids and terminal rendering.
 
 .. currentmodule:: kornia.image
 

@@ -64,8 +64,7 @@ class Image:
         This API is experimental and might suffer changes in the future.
 
     Convention:
-        - A 4-D tensor raises ``ShapeError``. ``bit_depth`` must be the storage size, ``8 * data.element_size()``, and
-          the color space must fit the channel count, as :class:`ColorSpace` lists.
+        - A 4-D tensor raises ``ShapeError``.
         - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
           array or capsule of a CPU image, except that :meth:`to_numpy` copies bfloat16 data to float32 because
           NumPy has no bfloat16 dtype. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an

@@ -105,11 +105,10 @@ class OrthographicProjection:
 
     ``xy = OrthographicProjection().project(points)`` takes a :class:`~kornia.geometry.vector.Vector3` of camera-frame
     points and returns the :class:`~kornia.geometry.vector.Vector2` ``(x, y)``; ``unproject(xy, depth)`` returns
-    ``(x, y, depth)`` for a tensor ``depth``, and a python number raises ``AttributeError``. It is the projection of
-    :class:`~kornia.sensors.camera.Orthographic`.
+    ``(x, y, depth)``. It is the projection of :class:`~kornia.sensors.camera.Orthographic`.
 
     See Also:
-        - :class:`Z1Projection`: divides by ``z`` instead of dropping it, so distant points move to the centre.
+        - :class:`Z1Projection`: divides by ``z`` instead of dropping it, so distant points move to the center.
         - :func:`~kornia.geometry.camera.project_points_orthographic`: the same projection on plain tensors.
         - :func:`~kornia.geometry.camera.unproject_points_orthographic`: the same unprojection on plain tensors.
 
@@ -132,7 +131,8 @@ class OrthographicProjection:
 
         Args:
             points: ``Vector2`` of image-plane points ``(x, y)``.
-            depth: tensor of the ``z`` coordinate of each point, ``(*,)`` or ``(*, 1)``.
+            depth: tensor of the ``z`` coordinate of each point, ``(*,)`` or ``(*, 1)``; a python number raises
+                ``AttributeError``.
 
         Returns:
             ``Vector3`` with ``x`` and ``y`` copied from ``points`` and ``z`` from ``depth``.

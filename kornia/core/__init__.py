@@ -17,9 +17,9 @@
 
 """Fetch weights, subclass the image and ONNX base classes, and build small batched tensors.
 
-The download functions try a list of URLs in order and retry transient failures. The device and autocast helpers and
-:func:`~kornia.core.utils.batched_forward` are imported from ``kornia.core.utils``; the ``KORNIA_CHECK*`` input checks
-from ``kornia.core.check``, and the errors they raise from ``kornia.core.exceptions``.
+The device and autocast helpers and :func:`~kornia.core.utils.batched_forward` are imported from
+``kornia.core.utils``; the ``KORNIA_CHECK*`` input checks from ``kornia.core.check``, and the errors they raise from
+``kornia.core.exceptions``.
 
 Which function to use:
 

@@ -37,15 +37,14 @@ class HomographyTracker(nn.Module):
     of the previous homography and matched with ``fast_matcher``.
 
     Convention:
-        - ``H`` maps target pixel coordinates :math:`(x, y)` to frame pixel coordinates, the direction of
-          ``cv2.findHomography(target_points, frame_points)``.
+        - ``H`` has the direction of ``cv2.findHomography(target_points, frame_points)``.
         - Call :meth:`set_target` before the first frame; a frame without a target raises ``AttributeError``. The
           target is not a buffer, so :meth:`~torch.nn.Module.to` leaves it where it is: call :meth:`set_target` again
           after moving the tracker.
         - For a :class:`~kornia.feature.LoFTR`, a :class:`~kornia.feature.LocalFeatureMatcher` or a matcher with an
           ``extract_features`` module, :meth:`set_target` extracts the target's features once. Changes made in place to
           the target or to that matcher's weights afterwards are not noticed; call :meth:`set_target` again.
-        - A failed match returns ``(H, False)`` with ``H`` uninitialised (:meth:`no_match`).
+        - A failed match returns ``(H, False)`` with ``H`` uninitialized (:meth:`no_match`).
         - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
           float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
           the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
@@ -67,11 +66,6 @@ class HomographyTracker(nn.Module):
             Default: ``30``.
 
     See Also:
-        - :class:`~kornia.feature.LocalFeatureMatcher`: detects, describes and matches one image pair; the default
-          ``initial_matcher``.
-        - :class:`~kornia.feature.LoFTR`: matches one image pair densely, without a detector; the default
-          ``fast_matcher``.
-        - :class:`~kornia.geometry.ransac.RANSAC`: fits the homography to the matches; the default ``ransac``.
         - :class:`~kornia.contrib.ImageStitcher`: matches and warps image pairs into a panorama, with no state between
           calls.
 

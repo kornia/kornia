@@ -66,8 +66,8 @@ def hf_url(repo: str, filename: str) -> str:
 
     ``url = hf_url(repo, filename)`` returns ``https://huggingface.co/<owner>/<name>/resolve/main/<filename>`` and
     makes no request. A ``repo`` without a ``/`` names a repository of the ``kornia`` organization. Both arguments are
-    percent-encoded except for ``/``, so a ``#`` or a space stays part of the name; letters, digits, ``-``, ``_``,
-    ``.`` and ``~`` are unchanged, and an already encoded name such as ``"a%20b.pth"`` is encoded again.
+    percent-encoded except for ``/``, so a ``#`` or a space stays part of the name, and an already encoded name such as
+    ``"a%20b.pth"`` is encoded again.
 
     Args:
         repo: repository name under the ``kornia`` HF org (e.g. ``"hardnet"``),
@@ -1027,9 +1027,8 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
           source given up for the next.
         - A cached file that fails to load is moved aside, the remaining sources are fetched into the emptied path,
           and, when none of them transferred a file, the source that failed is fetched once more; if nothing loads,
-          the file is put back. A file this
-          call downloaded and could not load is deleted when another source remains, and left in place after the last
-          one. A cache path is refetched this way at most once per process.
+          the file is put back. A file this call downloaded and could not load is deleted when another source remains,
+          and left in place after the last one. A cache path is refetched this way at most once per process.
         - The ``Downloading: "<url>" to <path>`` line goes to stderr; the torch function writes it to stdout.
 
     Args:

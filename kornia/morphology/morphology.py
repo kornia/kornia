@@ -17,20 +17,9 @@
 
 """Dilate, erode, open and close images by a structuring element, and reconstruct them from a seed.
 
-Every function takes a floating-point image ``(B, C, H, W)`` and applies one 2D ``kernel`` to every channel. The
-non-zero cells of the ``(k_h, k_w)`` kernel form the neighborhood, and a ``structuring_element`` of the same shape
-makes the operation non-flat. :func:`dilation` reflects the kernel and :func:`erosion` does not, as in
-``scipy.ndimage``; the composite operations inherit both.
-
-Which function to use:
-
-- Grow bright regions, the maximum over the neighborhood: :func:`dilation`; shrink them, the minimum:
-  :func:`erosion`.
-- Remove the bright details the kernel does not fit in: :func:`opening`; fill the dark ones: :func:`closing`.
-- Those details alone: the bright ones, :func:`top_hat`; the dark ones, :func:`bottom_hat`.
-- Edge strength, the dilation minus the erosion: :func:`gradient`.
-- Grow a seed image inside a mask until it stops changing, to fill holes or keep whole shapes:
-  :func:`reconstruction`.
+The functions are :func:`dilation`, :func:`erosion`, :func:`opening`, :func:`closing`, :func:`gradient`,
+:func:`top_hat`, :func:`bottom_hat` and :func:`reconstruction`; the ``kornia.morphology`` docstring says which
+to use.
 """
 
 from typing import Final, List, Optional
@@ -698,8 +687,8 @@ def opening(
         - :func:`closing`: the dual, which fills the dark details instead.
         - :func:`top_hat`: the image minus its opening, the removed bright details alone.
         - :func:`erosion`: the first half alone, which also shrinks the shapes that are kept.
-        - :func:`reconstruction`: opening by reconstruction, ``reconstruction(erosion(x, kernel), x)``, which removes
-          the same details and keeps the whole of every shape that survives the erosion.
+        - :func:`reconstruction`: opening by reconstruction, ``reconstruction(erosion(x, kernel), x)``; thin parts of
+          a kept shape survive, unlike in opening.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -840,8 +829,9 @@ def gradient(
     """Compute the morphological gradient, the dilation minus the erosion, as an edge-strength map.
 
     ``out = gradient(tensor, kernel)`` returns ``dilation(tensor, kernel) - erosion(tensor, kernel)`` with the same
-    arguments, a ``(B, C, H, W)`` map of the value range of ``tensor`` over each neighborhood, which is large where the
-    image changes.
+    arguments, a ``(B, C, H, W)`` edge-strength map that is large where the image changes. Under a non-``geodesic``
+    border it equals ``scipy.ndimage.morphological_gradient`` with the matching mode, and for a kernel symmetric about
+    its origin it is the value range over each neighborhood.
 
     .. image:: _static/img/gradient.png
 
@@ -1085,8 +1075,9 @@ def reconstruction(
     ``(B, C, H, W)`` image grown from :math:`\min(\text{seed}, \text{mask})` by repeated geodesic dilations
     :math:`\min(\delta_B(x), \text{mask})`, until the result stops changing. ``method="erosion"`` is the dual,
     :math:`-\text{reconstruction}(-\text{seed}, -\text{mask})`, which lowers a seed toward the mask from above.
-    ``reconstruction(erosion(x, kernel), x)`` is opening by reconstruction: it removes the bright details
-    :func:`opening` removes and keeps the whole of every shape that survives the erosion.
+    ``reconstruction(erosion(x, kernel), x)`` is opening by reconstruction: it removes every shape the kernel does not
+    fit in, as :func:`opening` does, and restores the whole of each shape that survives the erosion, thin parts
+    included.
 
     Convention:
         - Matches ``skimage.morphology.reconstruction``: the default ``kernel`` is a :math:`3 \times 3` square,
@@ -1131,7 +1122,8 @@ def reconstruction(
     See Also:
         - :func:`dilation`: one step without the mask; ``reconstruction`` repeats it, clipped to ``mask``.
         - :func:`erosion`: builds the seed of opening by reconstruction.
-        - :func:`opening`: removes the same details as opening by reconstruction, but reshapes the shapes it keeps.
+        - :func:`opening`: removes the same shapes as opening by reconstruction, but also the thin parts of the
+          shapes it keeps.
 
     Example:
         >>> mask = torch.rand(1, 3, 5, 5)

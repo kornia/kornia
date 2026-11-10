@@ -366,8 +366,7 @@ class ONNXExportMixin:
 
     ``onnx_model = module.to_onnx("model.onnx")`` traces the module on a random dummy input, writes the ONNX file and
     returns the ``onnx.ModelProto``; :meth:`to_onnx` documents its arguments. By default the input is a batch of
-    3-channel images whose batch, height and width are dynamic. Exporting and running the result need the
-    ``kornia[onnx]`` extra.
+    3-channel images whose batch, height and width are dynamic.
 
     Attributes:
         ONNX_EXPORTABLE:
@@ -663,12 +662,13 @@ class ONNXRuntimeMixin:
     and :meth:`set_session` replaces, on one NumPy array or CPU tensor per session input, and returns a list of NumPy
     arrays; a tensor on another device raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
     :meth:`as_openvino` switch the execution provider; a provider the installed onnxruntime build does not offer leaves
-    the session on the CPU with an onnxruntime warning, without raising. It needs the ``kornia[onnx]`` extra.
+    the session on the CPU with an onnxruntime warning, without raising.
 
     See Also:
         - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models into one session and runs it with this
           mixin.
         - :class:`ONNXExportMixin`: exports a torch module to the ``ModelProto`` a session is built from.
+        - :class:`ONNXMixin`: loads and chains the ONNX graphs instead of running them.
 
     """
 
@@ -819,7 +819,7 @@ class ONNXMixin:
 
     It has no public methods. :class:`~kornia.onnx.module.ONNXModule` uses it to load an ``onnx.ModelProto``, a file, an
     ``hf://`` name or a URL, and :class:`~kornia.onnx.sequential.ONNXSequential` also to chain several into one graph
-    and save it. It needs the ``kornia[onnx]`` extra.
+    and save it.
 
     See Also:
         - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models with this mixin and runs them.

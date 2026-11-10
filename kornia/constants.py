@@ -30,7 +30,7 @@ Which class to use:
 - The kind of each input of an augmentation container (``data_keys``): :class:`DataKey`.
 - A tensor dtype as an integer code: :class:`DType`.
 - The ``str | int | Enum`` type of the arguments that ``get`` reads: ``TKEnum``.
-- :math:`\pi` as a 0-d CPU tensor of the default dtype at import: ``pi``.
+- :math:`\pi` as a 0-d tensor of the default dtype and device at import: ``pi``.
 """
 
 from enum import Enum, EnumMeta

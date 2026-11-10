@@ -362,11 +362,10 @@ def load_safetensors(
 ) -> dict[str, torch.Tensor]:
     """Read a ``.safetensors`` checkpoint into a state dict on a chosen device.
 
-    ``state_dict = load_safetensors(path, device="cpu")`` returns a dict from tensor name to tensor, in the order the
-    header lists them, with each tensor of its stored dtype and shape on ``device``. The ``__metadata__`` entry is
-    ignored. The file is memory-mapped rather than read whole, and every tensor is copied out of the mapping, so the
-    returned tensors own their storage, are writable, and the file is closed when the function returns. ``include``
-    selects tensors by name; the whole header is still checked, as in :func:`check_safetensors`.
+    ``state_dict = load_safetensors(path, device="cpu")`` returns a dict from tensor name to tensor, with each tensor of
+    its stored dtype and shape on ``device``. The ``__metadata__`` entry is ignored. The file is memory-mapped rather
+    than read whole, and every tensor is copied out of the mapping, so the returned tensors own their storage, are
+    writable, and the file is closed when the function returns.
 
     Args:
         path: the checkpoint to read.

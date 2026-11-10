@@ -328,7 +328,7 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     r"""Tile a batch of images into one image, row by row, with zero padding between.
 
     ``grid = make_grid(tensor, n_row)`` places the ``B`` images of a ``(B, C, H, W)`` tensor ``n_row`` per row, in batch
-    order, and returns one ``(C, H', W')`` image with ``padding`` zero pixels between neighbours and none around the
+    order, and returns one ``(C, H', W')`` image with ``padding`` zero pixels between neighbors and none around the
     border. It does not rescale or convert the images.
 
     Convention:

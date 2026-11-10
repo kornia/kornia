@@ -94,9 +94,10 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Raises:
         ValueError: if the image is not ``(C, H, W)`` or ``(H, W)``, or a point lies outside the image after rounding.
-        BaseError: if ``color`` has neither 1 nor ``C`` values for a ``(C, H, W)`` image, or ``points`` is not
-            ``(2,)`` or ``(N, 2)``.
-        RuntimeError: if a 1-D ``color`` has more than one value for an ``(H, W)`` image.
+        BaseError: if ``color`` has neither 1 nor ``C`` values for a ``(C, H, W)`` image, a ``color`` of two or more
+            dimensions for an ``(H, W)`` image has a first dimension above 1, or ``points`` is not ``(2,)`` or
+            ``(N, 2)``.
+        RuntimeError: if another ``color`` has more than one value for an ``(H, W)`` image.
 
     See Also:
         - :func:`draw_line`: draws the pixels between two points, and states the rules both functions follow.

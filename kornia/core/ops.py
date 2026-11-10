@@ -90,7 +90,7 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
 
     Args:
         n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
+            A ``float`` or a ``bool`` is rejected.
         input: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
         shared_memory: whether to return an expanded view instead of a copy per sample.
 
@@ -132,7 +132,7 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
 
     Args:
         n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
+            A ``float`` or a ``bool`` is rejected.
         tensor: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
         shared_memory: whether to return an expanded view instead of a copy per sample.
 

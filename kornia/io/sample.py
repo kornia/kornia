@@ -144,7 +144,6 @@ def get_sample_images(
           is applied after it by :func:`~kornia.geometry.transform.resize_to_be_divisible`, so the final size can
           differ from ``resize``. ``**kwargs`` reach both resizes, except ``side``, which reaches only
           :func:`~kornia.geometry.transform.resize` when ``resize`` is given.
-        - ``as_list=False`` without ``resize`` still gives a list.
 
     Args:
         paths: A list of path or URL from which to load or download images.

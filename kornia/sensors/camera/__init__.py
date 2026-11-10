@@ -18,7 +18,7 @@
 """Model cameras as a projection followed by a lens distortion, on ``Vector3`` points and flat parameter vectors.
 
 This API is experimental. Points are :class:`~kornia.geometry.vector.Vector3` in the camera frame and pixels are
-:class:`~kornia.geometry.vector.Vector2` with integer pixel centres, as on
+:class:`~kornia.geometry.vector.Vector2` with integer pixel centers, as on
 :doc:`camera and world conventions </get-started/camera-conventions>`; depth is the camera-frame ``z``. ``params`` is
 a flat ``(N,)`` or batched ``(B, N)`` vector that starts with ``[fx, fy, cx, cy]``, and its length is fixed by the
 model.

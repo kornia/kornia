@@ -2,22 +2,19 @@ kornia.core
 ===========
 
 .. meta::
-   :description: The kornia.core module provides the helpers that download and read pretrained weights, the ImageModule and ONNX base classes, TensorWrapper and small batched tensors, the device and autocast helpers, and, with them, the kornia.config settings and the kornia.constants enums.
+   :description: The kornia.core module provides the helpers that download and read pretrained weights, the ImageModule and ONNX base classes, TensorWrapper and small batched tensors, the device and autocast helpers, the KORNIA_CHECK input checks and the errors they raise, and, with them, the kornia.config settings and the kornia.constants enums.
 
 .. currentmodule:: kornia.core
 
 Building blocks shared across kornia: functions that download and read pretrained weights, base classes that give a
-module NumPy and PIL inputs and outputs or an ONNX export, small tensor helpers, and the device and autocast helpers of
-``kornia.core.utils``. The process-wide settings of ``kornia.config`` and the enums of ``kornia.constants`` that the
-augmentations take are documented here too.
+module NumPy and PIL inputs and outputs or an ONNX export, small tensor helpers, the device and autocast helpers of
+``kornia.core.utils``, and the ``KORNIA_CHECK*`` input checks with the errors they raise. The process-wide settings of
+``kornia.config`` and the enums of ``kornia.constants`` that the augmentations take are documented here too.
 
 Weights
 -------
 
-Helpers for fetching and reading pretrained weights. :func:`load_state_dict_from_url` is the one models load a
-``torch.load``-able checkpoint with; :func:`download_hf_file` (or :func:`download_file_from_url`) and
-:func:`load_safetensors` are the two halves of the same job for a ``.safetensors`` checkpoint; :func:`check_safetensors`
-is the ``validate=`` callable that lets the download half reject a truncated cache entry.
+Download and read pretrained weights; :func:`check_safetensors` is the ``validate`` of a ``.safetensors`` download.
 
 .. autofunction:: hf_url
 
@@ -36,7 +33,7 @@ Image modules
 
 Subclass :class:`ImageModule`, or chain modules in :class:`ImageSequential`, for a module whose call also takes NumPy
 arrays, PIL images and image paths and returns tensors, NumPy arrays or PIL images; :class:`ImageModuleMixIn` holds the
-conversions. For augmentation pipelines, use :class:`~kornia.augmentation.container.ImageSequential` instead.
+conversions.
 
 .. autoclass:: ImageModule
     :members:
@@ -150,21 +147,10 @@ Exceptions
 
 .. currentmodule:: kornia.core.exceptions
 
-The errors raised by the ``KORNIA_CHECK*`` helpers above and by functions that raise them directly.
-``except BaseError`` catches every one of them. Each subclass also derives from the built-in exception that matches its
-failure, so the matching ``except`` clause catches it together with the built-in errors that other functions raise:
-
-- :exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and :exc:`ImageError` are each also a
-  :exc:`ValueError`, and :exc:`TypeCheckError` is also a :exc:`TypeError`.
-- :exc:`InputRankError`, raised by the augmentations and their containers for an input with an unsupported number of
-  dimensions, is a :exc:`ShapeError` and also a :exc:`RuntimeError` and an :exc:`AssertionError`, the types those entry
-  points raised for it before.
-- :exc:`AsyncCheckError`, the host failure of a value check that an accelerator runs as ``torch._assert_async``, is a
-  :exc:`ValueCheckError` and also a :exc:`RuntimeError`, the error torch raises for that check on the device.
-
-:exc:`BaseError` itself derives only from :exc:`Exception`: a failed ``KORNIA_CHECK(condition)`` raises it, and neither
-``except ValueError`` nor ``except TypeError`` catches it. In a call compiled with ``torch.jit.script``, a failed
-check raises ``torch.jit.Error`` instead, which none of these clauses catches.
+The errors raised by the ``KORNIA_CHECK*`` helpers above and by functions that raise them directly. ``except BaseError``
+catches every one, and each subclass also derives from the built-in exception that matches its failure. In a call
+compiled with ``torch.jit.script``, a failed check raises ``torch.jit.Error`` instead, which none of these clauses
+catches.
 
 .. autoexception:: BaseError
     :show-inheritance:

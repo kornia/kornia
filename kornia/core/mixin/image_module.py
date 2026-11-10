@@ -100,14 +100,7 @@ class ImageModuleMixIn:
     :meth:`to_pil` and :meth:`show` need Pillow, the ``kornia[image]`` extra.
 
     Convention:
-        - A NumPy array of shape ``(H, W)``, ``(H, W, C)`` or ``(B, H, W, C)``, a PIL image or an image path becomes a
-          ``(C, H, W)`` or ``(B, C, H, W)`` tensor; a tensor passes through unchanged.
-        - An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image
-          keeps its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values.
-        - For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or first
-          buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to the
-          default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
-          default floating dtype.
+        - Non-tensor inputs convert as :meth:`to_tensor` describes; a tensor passes through unchanged.
         - ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
           output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
           floating image to :math:`[0, 1]` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with
