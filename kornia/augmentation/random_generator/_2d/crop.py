@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
     _truncate_to_start,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator
 
 __all__ = ["CropGenerator", "ResizedCropGenerator", "center_crop_generator"]
@@ -270,8 +270,8 @@ class ResizedCropGenerator(CropGenerator):
                 "size": torch.zeros([0, 2], device=_device, dtype=_dtype),
             }
 
-        rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        rand_tensor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch), _device, _dtype
         )
         scale_tensor = (
             self.scale.to(device=_device, dtype=_dtype)
@@ -279,8 +279,8 @@ class ResizedCropGenerator(CropGenerator):
             else _constant_tensor(self.scale, device=_device, dtype=_dtype)
         )
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
-        log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        log_ratio = _to_device_nonblocking(
+            _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch), _device, _dtype
         )
         aspect_ratio = torch.exp(log_ratio)
 

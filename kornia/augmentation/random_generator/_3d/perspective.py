@@ -25,7 +25,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.param_validation import _in_sampler_rebuild
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
 class PerspectiveGenerator3D(RandomGeneratorBase):
@@ -121,10 +121,10 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         fy = self._distortion_scale * y_extent / 2
         fz = self._distortion_scale * z_extent / 2
 
-        factor = torch.stack([fx, fy, fz], 0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
+        factor = _to_device_nonblocking(torch.stack([fx, fy, fz], 0).view(-1, 1, 3), _device, _dtype)
 
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        rand_val: torch.Tensor = _to_device_nonblocking(
+            _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch), _device, _dtype
         )
 
         pts_norm = _constant_tensor(
