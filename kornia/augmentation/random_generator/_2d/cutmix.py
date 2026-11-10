@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator
 
 __all__ = ["CutmixGenerator"]
@@ -141,11 +141,9 @@ class CutmixGenerator(RandomGeneratorBase):
             batch_probs: torch.Tensor = _adapted_sampling(
                 (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
             )
-            mix_pairs: torch.Tensor = (
-                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False)
-                .to(device=_device, dtype=_dtype)
-                .argsort(dim=1)
-            )
+            mix_pairs: torch.Tensor = _to_device_nonblocking(
+                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False), _device, _dtype
+            ).argsort(dim=1)
 
         if same_on_batch:
             cutmix_betas = _adapted_rsampling((self.num_mix,), self.beta_sampler, False).repeat_interleave(batch_size)
@@ -157,8 +155,8 @@ class CutmixGenerator(RandomGeneratorBase):
         cutmix_betas = torch.min(torch.max(cutmix_betas, self._cut_size[0]), self._cut_size[1])
         cutmix_rate = torch.sqrt(1.0 - cutmix_betas) * batch_probs
 
-        cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
-        cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
+        cut_height = _to_device_nonblocking((cutmix_rate * height).floor(), _device, _dtype)
+        cut_width = _to_device_nonblocking((cutmix_rate * width).floor(), _device, _dtype)
 
         # One size and start per row when independent; one per mix, repeated over rows when same_on_batch.
         # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
@@ -169,8 +167,8 @@ class CutmixGenerator(RandomGeneratorBase):
         else:
             x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
             y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
-        x_start = x_start.to(device=_device, dtype=_dtype) * (width - cut_width + 1)
-        y_start = y_start.to(device=_device, dtype=_dtype) * (height - cut_height + 1)
+        x_start = _to_device_nonblocking(x_start, _device, _dtype) * (width - cut_width + 1)
+        y_start = _to_device_nonblocking(y_start, _device, _dtype) * (height - cut_height + 1)
         x_start = torch.minimum(x_start.floor(), width - cut_width)
         y_start = torch.minimum(y_start.floor(), height - cut_height)
 

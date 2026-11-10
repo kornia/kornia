@@ -1,0 +1,1 @@
+On MPS with a float64 default dtype, `RandomCutMixV2`, `RandomMixUpV2` and `RandomMosaic` return their sampled parameters. Before, they raised on torch 2.15 and came out wrong on torch 2.14: empty cut boxes at the origin, a mixup weight of 0, and every mosaic crop at the top-left corner.

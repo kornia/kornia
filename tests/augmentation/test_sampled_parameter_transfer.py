@@ -168,6 +168,28 @@ CASES = [
         {"widths": 2.0, "heights": 3.0, "xs": 2.0, "ys": 1.0},
         id="erasing",
     ),
+    pytest.param(
+        lambda: K.RandomCutMixV2(cut_size=(0.5, 0.5), use_correct_lambda=True, p=1.0),
+        (2, 3, 8, 9),
+        # cut_size=(0.5, 0.5) fixes the beta draw at 0.5: a floor(0.5 ** 0.5 * (9, 8)) = 6 x 5 cut, which starts at
+        # floor(0.25 * 4) = 1 in x and in y.
+        {"crop_src": [[1.0, 1.0], [6.0, 1.0], [6.0, 5.0], [1.0, 5.0]]},
+        id="cutmix",
+    ),
+    pytest.param(
+        lambda: K.RandomMixUpV2(lambda_val=(0.2, 0.6), p=1.0),
+        (2, 3, 8, 9),
+        # 0.2 + 0.25 * 0.4.
+        {"mixup_lambdas": 0.3},
+        id="mixup",
+    ),
+    pytest.param(
+        lambda: K.RandomMosaic((8, 9), start_ratio_range=(0.3, 0.7), p=1.0),
+        (2, 3, 8, 9),
+        # The 9 x 8 crop of the 2 x 2 mosaic starts at floor((0.3 + 0.25 * 0.4) * (9, 8)) = (3, 3).
+        {"src": [[3.0, 3.0], [11.0, 3.0], [11.0, 10.0], [3.0, 10.0]]},
+        id="mosaic",
+    ),
 ]
 
 
@@ -192,3 +214,28 @@ class TestSampledParameterTransfer(BaseTester):
             assert actual.device == torch.device("cpu"), name
             assert actual.dtype == default_dtype, name
             self.assert_close(actual, torch.tensor(value, dtype=default_dtype).expand_as(actual), rtol=0, atol=1e-6)
+
+
+class TestCutMixPairTransfer(BaseTester):
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_pairs_survive_the_copy(self, device, default_dtype, monkeypatch):
+        # The pairs are the argsort of a draw, and an unwritten draw reads as zeros, which sort like the constant draw
+        # above. A descending draw sorts in reverse, so it tells the two apart.
+        aug = K.RandomCutMixV2(cut_size=(0.5, 0.5), use_correct_lambda=True, p=1.0).to(
+            device=device, dtype=torch.float32
+        )
+        real_rand = torch.rand
+
+        def descending(*args, **kwargs):
+            out = real_rand(*args, **kwargs)
+            return (1.0 - torch.arange(out.numel(), device=out.device, dtype=out.dtype) / out.numel()).view_as(out)
+
+        monkeypatch.setattr(torch, "rand", descending)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            params = aug.forward_parameters((3, 3, 8, 9))
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert params["mix_pairs"].device == torch.device("cpu")
+        self.assert_close(params["mix_pairs"], torch.tensor([[2, 1, 0]]))
