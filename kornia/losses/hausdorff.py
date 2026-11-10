@@ -17,26 +17,28 @@
 
 from __future__ import annotations
 
-import inspect
 import math
 import operator
-from typing import Any, Callable
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.ops import _is_numpy_bool
 from kornia.core.utils import is_compiling
 
+# Squared error of a probability whose 0.5 threshold gets the pixel wrong: |p - q| > 1/2.
+_MISCLASSIFIED_SQUARED_ERROR = 0.25
+
 
 class _HausdorffERLossBase(nn.Module):
     """Base class for the Hausdorff losses based on morphological erosion, one binary map per class channel.
 
-    This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
-    a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
-    The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-    blob/master/hausdorff_loss.py>`__.
+    The loss follows ``Loss_ER`` of :cite:`karimi2019reducing` (Eq. 12). The error of a pixel is its squared error
+    above the value where thresholding the probability at 0.5 starts to misclassify it, and it is weighted by
+    ``sum_i i ** alpha`` over the ``k`` successive erosions of the misclassified set that keep the pixel. The erosion
+    takes the minimum over the nonzero entries of :meth:`get_kernel`.
 
     Args:
         alpha: the exponent of the weight ``(i + 1) ** alpha`` of erosion ``i = 0, ..., k - 1``.
@@ -49,15 +51,6 @@ class _HausdorffERLossBase(nn.Module):
         Estimated Hausdorff Loss.
 
     """
-
-    conv: Callable[..., torch.Tensor]
-    max_pool: Callable[..., torch.Tensor]
-    # Whether ``get_kernel`` takes ``dtype``; an override written before it did keeps eroding with its buffer.
-    _get_kernel_takes_dtype: bool = True
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        cls._get_kernel_takes_dtype = "dtype" in inspect.signature(cls.get_kernel).parameters
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
@@ -80,59 +73,75 @@ class _HausdorffERLossBase(nn.Module):
         self.alpha = alpha
         self.k = k
         self.reduction = reduction
-        self.register_buffer("kernel", self.get_kernel())
+        kernel = self.get_kernel()
+        # Kept as a buffer so that a state_dict saved with it still loads; the erosion reads only the offsets below.
+        self.register_buffer("kernel", kernel)
+        # The structuring element as offsets from the kernel centre, read once here so that the erosion is a fixed
+        # sequence of slices: reading the buffer in ``forward`` would be a data-dependent ``nonzero``.
+        weights = kernel.reshape(kernel.shape[2:])
+        self._radius = tuple((size - 1) // 2 for size in weights.shape)
+        self._offsets = tuple(
+            tuple(int(i) - r for i, r in zip(index, self._radius)) for index in torch.nonzero(weights).tolist()
+        )
 
     def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
-        """Get kernel for image morphology convolution.
+        """Get the structuring element of the erosion as a ``(1, 1, *window)`` kernel with odd sizes.
+
+        Only the nonzero entries matter: the erosion takes the minimum over them, centred on each pixel, and ignores
+        their values. ``__init__`` calls ``get_kernel()`` once, so an override may take no arguments.
 
         Args:
-            dtype: dtype of the kernel; ``None`` gives the default dtype. ``forward`` calls
-                ``get_kernel(torch.float64)`` for a float64 prediction; an override without ``dtype`` keeps
-                eroding with the ``kernel`` buffer.
+            dtype: dtype of the kernel; ``None`` gives the default dtype.
         """
         raise NotImplementedError
 
+    def _erode(self, x: torch.Tensor) -> torch.Tensor:
+        """Erode ``x`` once: the minimum over the structuring element, centred on each pixel.
+
+        Positions outside the image count as ``+inf``, so the image border is not an edge of the eroded set.
+
+        Args:
+            x: floating-point map with a shape of ``(B, 1, H, W)`` or ``(B, 1, D, H, W)``.
+
+        Returns:
+            The eroded map, with the shape of ``x``.
+        """
+        spatial = x.shape[2:]
+        pad = [p for r in reversed(self._radius) for p in (r, r)]
+        padded = F.pad(x, pad, value=math.inf)
+        # One slice per element of the structuring element.
+        windows = [
+            padded[(..., *[slice(r + o, r + o + n) for r, o, n in zip(self._radius, offset, spatial)])]
+            for offset in self._offsets
+        ]
+        return torch.stack(windows).amin(0)
+
     def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        bound = (pred - target) ** 2
+        """Return the per-pixel loss of one class channel.
 
-        # The buffer holds the kernel built in the default dtype, normally float32, and ``.double()`` keeps that
-        # rounding, so a float64 prediction gets a kernel built in float64 instead.
-        if pred.dtype == torch.float64 and self._get_kernel_takes_dtype:
-            kernel = self.get_kernel(torch.float64)
-        else:
-            kernel = self.kernel
-        kernel = torch.as_tensor(kernel, device=pred.device, dtype=pred.dtype)
-        eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
+        Args:
+            pred: probabilities of the class with a shape of ``(B, 1, H, W)`` or ``(B, 1, D, H, W)``.
+            target: the binary map of the class, of the same shape.
 
-        # Same padding, assuming kernel is odd and square (cube) shaped.
-        padding = (kernel.size(-1) - 1) // 2
-        for k in range(self.k):
-            # compute convolution with kernel
-            dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
-            # apply soft thresholding at 0.5 and F.normalize. masked_fill zeroes the negatives without
-            # a data-dependent index_put_, and keeps its gradient of 1 at dilation == 0.5 exactly;
-            # clamp_min's derivative at the bound is 0 on torch >= 2.14 and 1 before.
-            erosion = (dilation - 0.5).masked_fill(dilation < 0.5, 0)
+        Returns:
+            ``error * sum_i (i + 1) ** alpha * erode^(i + 1)(error > 0)`` for ``i = 0, ..., k - 1``, of the shape of
+            ``pred``.
+        """
+        # The soft threshold sits where thresholding ``pred`` at 0.5 starts to get the pixel wrong, so every
+        # misclassified pixel counts and no correct one does; a fully wrong pixel gives 1.
+        error = ((pred - target) ** 2 - _MISCLASSIFIED_SQUARED_ERROR) / (1 - _MISCLASSIFIED_SQUARED_ERROR)
+        error = error.clamp_min(0)
 
-            # image-wise differences for 2D images
-            erosion_max = self.max_pool(erosion)
-            erosion_min = -self.max_pool(-erosion)
-            # No normalization needed if `max - min = 0`: those lanes keep ``erosion`` through the
-            # ``where`` below and divide by a safe 1 so they stay finite (a NaN in the unselected
-            # branch would still poison the gradient). Branch-free, so the loss also traces for export.
-            # NOTE: avoid in-place ops like below, which will not pass gradcheck:
-            #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
-            #           erosion_max[to_norm] - erosion_min[to_norm])
-            _range = erosion_max - erosion_min
-            _to_norm = _range != 0
-            _erosion_to_fill = (erosion - erosion_min) / torch.where(_to_norm, _range, 1.0)
-            erosion = torch.where(_to_norm, _erosion_to_fill, erosion)
+        # The depth weight is a constant, like the distance maps of the paper's HD-DT loss (Eq. 8): the gradient
+        # reaches each misclassified pixel through ``error``, in proportion to its depth weight. Eroding ``error``
+        # itself gives the same value on a binary prediction, but a minimum hands each window's gradient to one pixel.
+        survivors = (error > 0).to(error.dtype)
+        weight = torch.zeros_like(error)
+        for i in range(self.k):
+            survivors = self._erode(survivors)
+            weight = weight + survivors * (i + 1) ** self.alpha
 
-            # save erosion and add to loss
-            eroded = eroded + erosion * (k + 1) ** self.alpha
-            bound = erosion
-
-        return eroded
+        return error * weight
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute Hausdorff loss.
@@ -193,15 +202,14 @@ class HausdorffERLoss(_HausdorffERLossBase):
     r"""Compute the erosion-based Hausdorff loss of ``(B, C, H, W)`` probabilities against ``(B, 1, H, W)`` labels.
 
     ``criterion = HausdorffERLoss(alpha, k, reduction)`` stores its arguments, and ``loss = criterion(pred, target)``
-    scores, for each class channel, a surrogate of the Hausdorff distance between the predicted and the labelled
-    segmentation from ``k`` erosions of their squared difference :cite:`karimi2019reducing`.
+    scores, for each class channel ``c``, a surrogate of the Hausdorff distance between the predicted and the labelled
+    segmentation, after ``Loss_ER`` of :cite:`karimi2019reducing` (Eq. 12): the per-pixel error :math:`e`, weighted
+    by the ``k`` successive erosions :math:`\varepsilon` of the misclassified set that keep the pixel:
 
     .. math::
 
-        HD(X, Y) = \max(hd(X, Y), hd(Y, X)), \qquad hd(X, Y) = \max_{x \in X} \min_{y \in Y} \|x - y\|_2
-
-    Reference:
-        Based on https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
+        \mathcal{L} = e \sum_{i=1}^{k} i^\alpha \, \varepsilon^i([e > 0]), \qquad
+        e = \max\left(\frac{(p_c - [y = c])^2 - 1/4}{3/4},\ 0\right)
 
     Convention:
         - ``pred`` holds per-class probabilities ``(B, C, H, W)`` and nothing is applied to it, unlike the logits of
@@ -211,13 +219,30 @@ class HausdorffERLoss(_HausdorffERLossBase):
           (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
           those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
         - The default ``'mean'`` is the plain mean of the ``'none'`` tensor.
-        - Each erosion keeps only the part of the neighbourhood-averaged squared error above 0.5. Where every pixel's
-          true-class probability is above :math:`1 - 1/\sqrt{2} \approx 0.29`, the loss and gradient are zero: a
-          uniform softmax over two or three classes gives zero, and so does a two-class prediction that is 70 %
-          confident and wrong (`#6676 <https://github.com/kornia/kornia/issues/6676>`_).
-        - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
-          :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
-          in pixels.
+        - :math:`e` is nonzero exactly where thresholding :math:`p_c` at 0.5 gets the pixel wrong,
+          :math:`|p_c - [y = c]| > 1/2`, and is 1 for a fully wrong pixel. A correct pixel adds nothing and gets no
+          gradient, however uncertain; a probability of exactly 0.5 counts as correct. With two classes this is the
+          argmax decision. With three or more it is a one-vs-rest margin, stricter than argmax: a pixel whose true
+          class wins the argmax with :math:`p_c < 1/2` still counts in channel :math:`c`.
+        - :math:`\varepsilon` takes the minimum over the pixel and its four neighbours. Pixels outside the image count
+          as :math:`+\infty`, so the image border is not an edge of an error.
+        - The weight of a misclassified pixel is :math:`\sum_{i=1}^{\min(k, d - 1)} i^\alpha`, for its city-block
+          distance :math:`d` to the nearest correctly classified pixel. It is a constant: the gradient reaches each
+          misclassified pixel through :math:`e`, in proportion to that weight. The pixels on the edge of an error
+          (:math:`d = 1`) get none, and errors at most two pixels wide add nothing.
+        - The weight measures how thick an error is, not how far it lies from the target, so a thin or small error
+          far from the object, which can set the Hausdorff distance, adds little or nothing
+          (`#6680 <https://github.com/kornia/kornia/issues/6680>`_).
+        - Use it as an auxiliary term next to an overlap loss, never alone, as the paper does:
+          ``region_loss + lam * hausdorff_loss``, with ``lam`` set so that both terms weigh the same (the paper
+          recomputes it from their means after each epoch) or ramped up from a small value. Choose ``k`` from the
+          expected error radius in pixels: an error deeper than ``k`` gets the same weight as one ``k`` deep.
+        - The value is a unitless surrogate, at most :math:`\sum_{i=1}^{k} i^\alpha` per pixel (385 at the
+          defaults), not a distance in pixels.
+        - The paper erodes :math:`(p_c - [y = c])^2` itself, by a convolution followed by a soft threshold at 0.5,
+          which leaves nothing of a solid error after two erosions and ignores misclassified pixels whose
+          neighbourhood-averaged squared error is below 1/2. On a binary prediction this loss equals the exact
+          erosion of :math:`e` (`#6676 <https://github.com/kornia/kornia/issues/6676>`_).
 
     Args:
         alpha: exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
@@ -239,18 +264,15 @@ class HausdorffERLoss(_HausdorffERLossBase):
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
 
+        Next to :class:`~kornia.losses.DiceLoss`, which takes the logits and ``(B, H, W)`` labels:
+
+        >>> logits = torch.randn(5, 3, 20, 20)
+        >>> loss = kornia.losses.DiceLoss()(logits, target[:, 0]) + 0.1 * hdloss(logits.softmax(1), target)
+
     """
 
-    conv = torch.conv2d
-
-    @staticmethod
-    def max_pool(x: torch.Tensor) -> torch.Tensor:
-        """Take the global maximum over the spatial dimensions, keeping them with size one."""
-        # Equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
-        return x.amax(dim=(-2, -1), keepdim=True)
-
     def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
-        """Get kernel for image morphology convolution.
+        """Get the structuring element of the erosion: the pixel and its four neighbours.
 
         Args:
             dtype: dtype of the kernel; ``None`` gives the default dtype.
@@ -287,12 +309,10 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     ``criterion = HausdorffERLoss3D(alpha, k, reduction)`` stores its arguments, and
     ``loss = criterion(pred, target)`` is :class:`~kornia.losses.HausdorffERLoss` on volumes :cite:`karimi2019reducing`.
 
-    Reference:
-        Based on https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
-
     Convention:
-        - See the Convention block of :class:`~kornia.losses.HausdorffERLoss`. The erosion kernel is the voxel and its
-          six face neighbours, so the erosion also runs along ``D``.
+        - See the Convention block of :class:`~kornia.losses.HausdorffERLoss`. The erosion takes the minimum over the
+          voxel and its six face neighbours, so it also runs along ``D``, and the distance :math:`d` is the city-block
+          distance in the volume.
 
     Args:
         alpha: exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
@@ -315,25 +335,14 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
     """
 
-    conv = torch.conv3d
-
-    @staticmethod
-    def max_pool(x: torch.Tensor) -> torch.Tensor:
-        """Take the global maximum over the volume dimensions, keeping them with size one."""
-        # Equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
-        return x.amax(dim=(-3, -2, -1), keepdim=True)
-
     def get_kernel(self, dtype: torch.dtype | None = None) -> torch.Tensor:
-        """Get kernel for image morphology convolution.
+        """Get the structuring element of the erosion: the voxel and its six face neighbours.
 
         Args:
             dtype: dtype of the kernel; ``None`` gives the default dtype.
         """
         cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]], dtype=dtype)
         bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]], dtype=dtype)
-        # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
-        #    which Jian suspect it is wrongly implemented.
-        # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94
         kernel = torch.stack([bound, cross, bound], 1) * torch.tensor(1 / 7, dtype=dtype)
         return kernel[None]
 
