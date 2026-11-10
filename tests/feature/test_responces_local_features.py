@@ -223,9 +223,10 @@ class TestCornerHarris(BaseTester):
         harris.load_state_dict({"k": torch.tensor(0)})
         assert harris.k == 0.0
 
-    def test_a_tensor_k_set_after_construction_is_a_buffer(self, device):
+    def test_a_tensor_k_set_after_construction_is_registered_as_before(self, device):
         # A tensor assigned to k, or registered as k by a subclass, replaces a number k as a buffer, as every k was
-        # before, so it is saved, moved by .to() and seen by ScaleSpaceDetector's float16 routing.
+        # before, so it is saved, moved by .to() and seen by ScaleSpaceDetector's float16 routing. A parameter and
+        # a non-persistent nn.Buffer are registered as nn.Module registers them.
         harris = kornia.feature.CornerHarris(0.04)
         harris.k = torch.full((1, 1, 1, 1), 0.05)
         assert list(harris.state_dict()) == ["k"]
@@ -237,6 +238,15 @@ class TestCornerHarris(BaseTester):
                 self.register_buffer("k", torch.full((1, 1, 1, 1), 0.06))
 
         assert list(Subclass().state_dict()) == ["k"]
+        harris = kornia.feature.CornerHarris(0.04)
+        harris.k = torch.nn.Parameter(torch.tensor(0.05))
+        assert [name for name, _ in harris.named_parameters()] == ["k"]
+        with pytest.raises(TypeError):
+            harris.k = torch.tensor(0.06)
+        harris = kornia.feature.CornerHarris(0.04)
+        harris.k = torch.nn.Buffer(torch.tensor(0.05), persistent=False)
+        assert "k" in dict(harris.named_buffers())
+        assert list(harris.state_dict()) == []
 
 
 class TestCornerGFTT(BaseTester):

@@ -548,8 +548,14 @@ class CornerHarris(nn.Module):
         self.grads_mode: str = grads_mode
 
     def __setattr__(self, name: str, value: Any) -> None:
-        # A tensor assigned to ``k`` becomes a buffer, as every ``k`` was before a number became a plain float.
-        if name == "k" and isinstance(value, torch.Tensor) and "k" not in self._buffers:
+        # A plain tensor that replaces a number ``k`` becomes a buffer, as every ``k`` was before a number became a
+        # plain float; a parameter, an ``nn.Buffer`` or any other assignment is registered as ``nn.Module`` does.
+        if (
+            name == "k"
+            and "k" in self.__dict__
+            and isinstance(value, torch.Tensor)
+            and not isinstance(value, (nn.Parameter, nn.Buffer))
+        ):
             self.register_buffer("k", value)
         else:
             super().__setattr__(name, value)
