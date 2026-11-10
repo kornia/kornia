@@ -21,7 +21,7 @@ This package provides image data structures and utilities, including image layou
 and channel order definitions.
 """
 
-from .base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
+from .base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
 from .image import Image
 from .image_print import image_to_string, print_image
@@ -37,6 +37,7 @@ from .utils import (
 
 __all__ = [
     "ChannelsOrder",
+    "ColorSpace",
     "Image",
     "ImageLayout",
     "ImageSize",

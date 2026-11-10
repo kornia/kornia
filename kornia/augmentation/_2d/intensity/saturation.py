@@ -21,16 +21,21 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import _range_bound
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_saturation
 
 
 class RandomSaturation(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the saturation of a torch.Tensor image.
+    r"""Scale the HSV saturation of a three-channel image by a random factor.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    ``output = RandomSaturation(saturation)(input)`` scales only the HSV saturation of each selected image by a
+    sampled factor. Use :class:`ColorJitter` for torchvision-compatible saturation, which blends the image with its
+    grayscale, ``factor * input + (1 - factor) * gray``.
 
     .. image:: _static/img/RandomSaturation.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         p: probability of applying the transformation.
@@ -39,11 +44,25 @@ class RandomSaturation(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the input must have three channels: the scaling is defined on the HSV saturation, and any other
+          channel count raises a ``ValueError`` on the forward pass.
+        - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged, and ``1.0`` is the
+          identity, up to rounding, for a pixel in ``[0, 1]``.
+        - the HSV saturation is also clamped into ``[0, 1]`` before converting back to RGB.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
+
+    See Also:
+        - :class:`RandomHue`: rotates hue instead of scaling saturation.
+        - :class:`ColorJiggle`: combines HSV saturation scaling with Kornia color adjustments.
+        - :class:`ColorJitter`: uses torchvision-compatible grayscale-blend saturation.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -79,8 +98,10 @@ class RandomSaturation(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.saturation: torch.Tensor = _range_bound(saturation, "saturation", center=1.0)
-        self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(saturation, "saturation", center=1.0)
+        self.saturation: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", center, bounds))
+        _load_unowned_learnable_range(self, "saturation", center)
 
     def apply_transform(
         self,
@@ -89,5 +110,6 @@ class RandomSaturation(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        saturation_factor = params["saturation_factor"].to(input)
-        return adjust_saturation(input, saturation_factor)
+        input = _clamp_unit_range(input)
+        saturation_factor = _to_device_nonblocking(params["saturation_factor"], input.device, input.dtype)
+        return _clamp_unit_range(adjust_saturation(input, saturation_factor))

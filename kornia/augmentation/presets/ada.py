@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.constants import DataKey
+
 from .. import (  # noqa: TID252
     AugmentationSequential,
     ColorJitter,
@@ -31,6 +33,7 @@ from .. import (  # noqa: TID252
     RandomRotation90,
 )
 from ..base import _AugmentationBase  # noqa: TID252
+from ..container.ops import DataType  # noqa: TID252
 from ..container.params import ParamItem  # noqa: TID252
 
 _data_keys_type = List[str]
@@ -75,6 +78,14 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         **kwargs: Additional keyword arguments passed to `AugmentationSequential`
 
 
+    .. note::
+        The default augmentation stack contains ``RandomRotation90(times=(0, 3))``, which raises ``ValueError`` on a
+        non-square image, so the default needs square images. ADA checks the image against it on every call, before
+        it selects samples, so a non-square image raises on the first call. In a custom stack, a
+        :class:`~kornia.augmentation.RandomRotation90` that may turn an image by an odd number of quarter turns needs
+        the image it receives to be square, after any earlier resize, crop or patch split, and raises when ADA first
+        selects a sample.
+
     Examples:
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
         >>> original = torch.randn(2, 3, 16, 16)
@@ -86,7 +97,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         >>> import kornia.augmentation as K
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
-        >>> originals = torch.randn(2, 3, 5, 6)
+        >>> originals = torch.randn(2, 3, 6, 6)
         >>> aug_list = [
         ...     K.RandomRotation90(times=(0, 3), p=1),
         ...     K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
@@ -94,7 +105,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         ... ]
 
         >>> ada = AdaptiveDiscriminatorAugmentation(*aug_list)
-        >>> augmented = ada(original)
+        >>> augmented = ada(originals)
 
     This example demonstrates using custom augmentations with AdaptiveDiscriminatorAugmentation.
     """
@@ -115,7 +126,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         same_on_batch: Optional[bool] = False,
         **kwargs: Any,
     ) -> None:
-        if not args:
+        default_stack = not args
+        if default_stack:
             args = self.default_ada_transfroms(erasing_scale, erasing_ratio, erasing_fill_value)
 
         super().__init__(
@@ -128,6 +140,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             same_on_batch=same_on_batch,
             **kwargs,
         )
+
+        # ADA built the default stack, so it knows the stack's RandomRotation90 receives the input's (H, W).
+        self._default_stack = default_stack
 
         if adjustment_speed <= 0:
             raise ValueError(f"Invalid `adjustment_speed` ({adjustment_speed}) — must be greater than 0")
@@ -211,6 +226,53 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
+    def _preproc_dict_data(
+        self, data: Dict[str, DataType]
+    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:
+        # ``data_keys`` describe a tensor input, and ADA always sets them, so the parent's rule that a dictionary needs
+        # ``data_keys=None`` would reject every dictionary. A dictionary names its own entries instead.
+        keys = tuple(data.keys())
+        data_keys, invalid_keys = self._read_datakeys_from_dict(keys)
+        invalid_data = {k: data[k] for k in invalid_keys} if invalid_keys else None
+        keys = tuple(k for k in keys if k not in invalid_keys) if invalid_keys else keys
+        return keys, data_keys, tuple(data[k] for k in keys), invalid_data
+
+    def _dict_keys(self, inputs: Dict[str, torch.Tensor], data_keys: Optional[_data_keys_type]) -> _data_keys_type:
+        """Return the augmentable keys of a dictionary input, the image key first."""
+        keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
+        if not keys:
+            raise ValueError(f"No key of the dictionary input names a data key. Got {list(inputs)}.")
+        # The dictionary sets the order, so only the data keys themselves have to agree.
+        if data_keys is not None and sorted(DataKey.get(k).value for k in data_keys) != sorted(
+            k.value for k in dict_data_keys
+        ):
+            raise ValueError(
+                f"A dictionary input names its own data keys, so `data_keys` must match them, in any order, or be "
+                f"None. Got {data_keys} for the keys {list(keys)}."
+            )
+        order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
+        return [keys[i] for i in order]
+
+    def _validate_rotation90_inputs(self, inputs: _inputs_type, data_keys: Optional[_data_keys_type]) -> None:
+        # Only the default stack: in a custom one an earlier module can resize the image, or a container can cut it into
+        # patches or frames, so the input's (H, W) is not the one its RandomRotation90 receives. There the rotation
+        # checks the tensor it receives, when ADA first selects a sample. An ADA pickled before this check has no flag.
+        if not getattr(self, "_default_stack", False):
+            return
+        if isinstance(inputs, dict):
+            keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
+            images = [inputs[key] for key, data_key in zip(keys, dict_data_keys) if data_key == DataKey.INPUT]
+        else:
+            # A tensor is an image unless ``data_keys`` name it otherwise; a mask-only call is not checked here.
+            if data_keys is None:
+                data_keys = [k.name for k in self.data_keys] if self.data_keys is not None else ["input"]
+            images = [inputs] if DataKey.get(data_keys[0]) == DataKey.INPUT else []
+        rotations = [module for module in self.modules() if isinstance(module, RandomRotation90)]
+        for image in images:
+            if image.dim() == 4:
+                for rotation in rotations:
+                    rotation.validate_tensor(image)
+
     def _get_inputs_metadata(
         self, inputs: _inputs_type, data_keys: _data_keys_type
     ) -> Tuple[int, Optional[Union[str, torch.device]]]:
@@ -227,8 +289,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, p_tensor: torch.Tensor) -> _inputs_type:
         if isinstance(inputs, dict):
             return {key: inputs[key][p_tensor] for key in data_keys}
-        else:
-            return inputs[p_tensor]
+
+        return inputs[p_tensor]
 
     def _merge_inputs(
         self,
@@ -238,8 +300,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     ) -> _inputs_type:
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
-            merged = {}
-            for key in original.keys():
+            # Entries that name no data key were not augmented and pass through unchanged.
+            merged = dict(original)
+            for key in augmented:
                 merged_tensor = original[key].clone()
                 merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor
@@ -253,7 +316,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             )
         return merged
 
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         inputs: _inputs_type,
         params: Optional[List[ParamItem]] = None,
@@ -268,27 +331,42 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         if `real_acc` is provided, the internal probability `p` is updated via the `update` method.
         Non-augmented samples retain their original values, and the output matches the input structure.
 
+        A dictionary input names its own data keys, as with :class:`~kornia.augmentation.AugmentationSequential`,
+        whatever ``data_keys`` the preset was built with; ``data_keys`` passed here must match them, in any order, or
+        be None. The same samples are augmented in every entry, and an entry whose key names no data key is returned
+        unchanged.
+
         `real_acc` is the Discriminator's accuracy on real images; for example,
         `(real_logits > 0).float().mean().item()` if using logits andn assuming real labels are positive.
         """
         if real_acc is not None:
             self.update(real_acc)
 
+        # ADA only calls its augmentations for the samples its probability selects, which at a small `p` can be many
+        # calls in. Check the input here, on every call, so a shape the default `RandomRotation90` rejects fails on the
+        # first one.
+        self._validate_rotation90_inputs(inputs, data_keys)
+
         if self.p == 0:
             return inputs
 
-        if data_keys is None:
-            data_keys = (
-                [k.name for k in self.data_keys]
-                if self.data_keys is not None
-                else [
-                    "input",
-                ]
-            )
+        if isinstance(inputs, dict):
+            # Each entry is row-selected and merged by its own key; the parent reads the data keys from the names.
+            data_keys = self._dict_keys(inputs, data_keys)
+            forward_data_keys = None
+        else:
+            if data_keys is None:
+                data_keys = [k.name for k in self.data_keys] if self.data_keys is not None else ["input"]
+            forward_data_keys = data_keys
 
         batch_size, device = self._get_inputs_metadata(inputs, data_keys=data_keys)
 
-        p_tensor = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
+        sample_size = min(batch_size, 1) if self.same_on_batch else batch_size
+        p_tensor = (
+            torch.bernoulli(torch.full((sample_size,), self.p, dtype=torch.float32, device=device))
+            .bool()
+            .expand(batch_size)
+        )
 
         if not p_tensor.any():
             return inputs
@@ -297,9 +375,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         augmented_inputs = cast(
             _inputs_type,
             super().forward(
-                selected_inputs,  # type: ignore[arg-type]
+                selected_inputs,
                 params=params,
-                data_keys=data_keys,
+                data_keys=forward_data_keys,
             ),
         )
 

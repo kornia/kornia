@@ -21,17 +21,25 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
-    r"""Posterize given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Posterize images to a random number of bits, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPosterize(bits, ...)(input)`` reduces the retained bit depth of selected images.
 
     .. image:: _static/img/RandomPosterize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
-        p: probability of applying the transformation.
-        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+        p: probability of applying the transformation to each sample.
+        bits: number of high bits to keep, in ``[0, 8]``, in which 0 gives a black image and 8 gives the
+            original. A range of whole numbers is closed and uniform: every integer from the lower to the upper
+            bound is drawn with the same probability. A non-integral argument is accepted; the drawn factor is
+            rounded to an integer, half to even, so ``2.5`` gives ``2`` and ``3.5`` gives ``4``.
             If int x, bits will be generated from (x, 8) then convert to int.
             If tuple (x, y), bits will be generated from (x, y) then convert to int.
         same_on_batch: apply the same transformation across the batch.
@@ -39,11 +47,25 @@ class RandomPosterize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
+          image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample that
+          draws ``8`` returns the clamped input, without the round trip.
+        - the round trip is a step function: the output still has ``requires_grad=True``, but its gradient with
+          respect to the input is identically ``0`` below ``bits=8``, and follows the input clamp at ``8``.
+        - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
+          from :class:`RandomSharpness`, whose scalar argument is an upper bound.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
+
+    See Also:
+        - :class:`RandomSolarize`: thresholds values rather than reducing their bit depth.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -82,4 +104,5 @@ class RandomPosterize(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        return posterize(input, params["bits_factor"].to(input.device))
+        input = _clamp_unit_range(input)
+        return posterize(input, _to_device_nonblocking(params["bits_factor"], input.device))

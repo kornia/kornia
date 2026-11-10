@@ -25,24 +25,38 @@ from kornia.constants import DataKey
 
 
 class PatchMix(MixAugmentationBaseV2):
-    r"""PatchMix augmentation.
+    r"""Replace a square patch with that of a paired sample, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/PatchMix.png
-
-    Replaces a random patch in each image of a batch with the corresponding
-    region from a randomly chosen different image in the batch.
-
-    Implementation for `CutMix: Regularization Strategy to Train Strong
-    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
+    ``output = PatchMix(alpha, patch_size, ...)(input)`` replaces a square patch in each image with the same region
+    of a randomly paired image of the batch, which can be the image itself.
 
     Args:
         alpha: Hyperparameter for the Beta distribution used to generate the
             mixing parameter lambda.
         patch_size: The size of the square patch to mix.
-        p: Probability for applying the augmentation.
+        p: probability of applying the augmentation to the batch.
         same_on_batch: Apply the same transformation across the batch.
         keepdim: Whether to keep the output shape the same as input ``True``
             or broadcast it to the batch form ``False``.
+
+    Convention:
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``; a larger
+          value, such as the default ``16`` on a smaller image, raises ``ValueError`` when parameters are drawn,
+          whatever the gate. Each output sample copies that square from its paired input, ``_params["mix_pairs"]``,
+          at the same sampled ``(x, y)`` top-left corner, ``_params["patch_coords"]``. The sampled ``lam`` is
+          stored but blends nothing.
+        - ``p`` is a batch-wide gate. ``same_on_batch=True`` shares the patch corner, not the pairing. Only image
+          input is implemented.
+
+    .. image:: _static/img/PatchMix.png
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong
+    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
+
+    See Also:
+        - :class:`RandomCutMixV2`: CutMix with paired labels and a sampled rectangle.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)
@@ -73,13 +87,14 @@ class PatchMix(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
     ) -> torch.Tensor:
         B, _, _, _ = input.shape
-        idx = params["mix_pairs"].to(input.device)
-        patch_coords = params["patch_coords"].to(input.device)
+        # The pairs and corners index Python slices, so read them where they were drawn: on the CPU that costs no
+        # device synchronization, while reading them from the GPU would cost one per sample.
+        idx = params["mix_pairs"].tolist()
+        patch_coords = params["patch_coords"].tolist()
 
         out = input.clone()
         for i in range(B):
-            x, y = patch_coords[i]
-            x, y = int(x.item()), int(y.item())
+            x, y = int(patch_coords[i][0]), int(patch_coords[i][1])
             out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
                 idx[i], :, y : y + self.patch_size, x : x + self.patch_size
             ]

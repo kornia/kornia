@@ -23,16 +23,19 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
 class RandomAffine3D(GeometricAugmentationBase3D):
-    r"""Apply affine transformation 3D volumes (5D torch.Tensor).
+    r"""Warp volumes by a random 3D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
-    The transformation is computed so that the center is kept invariant.
+    ``output = RandomAffine3D(degrees, ...)(input)`` warps volumes of shape ``(B, C, D, H, W)`` about their center.
 
     Args:
-        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
+            are sampled independently and concatenated into one axis-angle vector, not composed
+            as per-axis Euler rotations; see :class:`RandomRotation3D` for the convention.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -55,22 +58,39 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False). Default: False.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
+        - A positive roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation
+          block is the transpose of :class:`RandomRotation3D`'s
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default is bilinear resampling with ``align_corners=False``.
+        - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
+          to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
+          ``((a, b), (c, d), (e, f))`` draws each axis independently.
+
+    See Also:
+        - :class:`RandomRotation3D`: samples a 3D rotation without translation, scale or shear.
+        - :class:`RandomAffine`: applies the corresponding transform to 2D images.
 
     Examples:
         >>> import torch
@@ -163,8 +183,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             params["syz"] * deg2rad_factor,
             params["szx"] * deg2rad_factor,
             params["szy"] * deg2rad_factor,
-        ).to(input)
-        return transform
+        )
+        # Built from the CPU parameters, then moved once without waiting for the queued kernels.
+        return _to_device_nonblocking(transform, input.device, input.dtype)
 
     def apply_transform(
         self,
@@ -174,7 +195,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return warp_affine3d(
             input,

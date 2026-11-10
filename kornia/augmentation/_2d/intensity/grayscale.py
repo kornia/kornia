@@ -23,12 +23,18 @@ from torch import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
-    r"""Apply random transformation to Grayscale according to a probability p value.
+    r"""Convert images to grayscale (channel count kept), applied per sample with probability ``p`` (default 0.1).
+
+    ``output = RandomGrayscale(...)(input)`` turns selected images ``(B, C, H, W)`` into grayscale values while
+    retaining their channel count: RGB uses luminance weights and other channel counts default to equal weights.
 
     .. image:: _static/img/RandomGrayscale.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Works for multispectral imagery too (e.g. satellite data with 4-13+ bands): for a non-RGB
     channel count the grayscale is the weighted average across *all* channels, broadcast back to
@@ -37,20 +43,33 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     Args:
         rgb_weights: Per-channel weights applied when reducing to grayscale — one weight per input
             channel (three, for the usual RGB case). If ``None``, RGB inputs use the standard
-            luminance weights and multispectral inputs weight every band equally. The weights
-            should sum to one.
-        p: probability of the image to be transformed to grayscale.
+            luminance weights and multispectral inputs weight every band equally. Weights are applied
+            as given and are not normalized, so weights that do not sum to one rescale the output.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - the channel count is preserved: the single weighted average is broadcast back over the input's
+          channels, so every output channel of a sample carries the same value.
+        - a three-channel input uses the RGB luminance weights by default; any other channel count
+          defaults to an equal weight per channel, which makes the output the plain mean over channels.
+          ``rgb_weights`` replaces those defaults.
+        - the result is not clamped; its range follows the weighted channel reduction and the supplied
+          ``rgb_weights``.
 
     .. note::
         For 3-channel RGB inputs this uses :func:`kornia.color.rgb_to_grayscale`; multispectral
         inputs use a weighted channel average.
+
+    See Also:
+        - :class:`RandomChannelDropout`: removes selected channels instead of computing grayscale.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -100,9 +119,9 @@ class RandomGrayscale(IntensityAugmentationBase2D):
             else:
                 KORNIA_CHECK(
                     weights.numel() == num_channels,
-                    f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
+                    lambda: f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
                 )
-                weights = weights.to(input)
+                weights = _to_device_nonblocking(weights, input.device, input.dtype)
             gray = (input * weights.view(*lead, num_channels, 1, 1)).sum(-3, keepdim=True)
         # Broadcast the single grayscale channel back to the input channel count (a contiguous copy).
         return gray.repeat(*lead, num_channels, 1, 1)

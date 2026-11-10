@@ -73,6 +73,32 @@ class TestAngleErrorMat(BaseTester):
         with pytest.raises(Exception):
             kornia.metrics.angle_error_mat(R1, R2)
 
+    def test_small_and_near_half_turn_angles(self, device, dtype):
+        # Built in float64 and cast, so the angle is exact up to the cast. The skew part resolves these;
+        # acos((tr - 1) / 2) returns exactly 0 and 180 for all four.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("a rotation this small rounds to the identity in half precision")
+        small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
+        atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
+        angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
+        # Unit length with all three components nonzero, so each entry of the skew part carries part of sin(theta).
+        axis = torch.tensor([[0.48, 0.6, 0.64]], dtype=torch.float64)
+        R1 = kornia.geometry.axis_angle_to_rotation_matrix(torch.tensor([[0.3, -0.5, 0.8]], dtype=torch.float64))
+        R2 = R1 @ kornia.geometry.axis_angle_to_rotation_matrix(torch.deg2rad(angles)[:, None] * axis)
+        R1 = R1.expand(2, 3, 3).to(device=device, dtype=dtype)
+        out = kornia.metrics.angle_error_mat(R1, R2.to(device=device, dtype=dtype))
+        self.assert_close(out, angles.to(device=device, dtype=dtype), rtol=0.0, atol=atol)
+
+    def test_gradient_is_zero_at_zero_and_half_turn(self, device, dtype):
+        # Both ends are kinks of the angle: norm returns the subgradient 0 at the zero skew part.
+        eye = torch.eye(3, device=device, dtype=dtype)
+        half_turn = torch.diag(torch.tensor([1.0, -1.0, -1.0], device=device, dtype=dtype))
+        R1 = torch.stack([eye, eye]).requires_grad_()
+        out = kornia.metrics.angle_error_mat(R1, torch.stack([eye, half_turn]))
+        self.assert_close(out, torch.tensor([0.0, 180.0], device=device, dtype=dtype))
+        out.sum().backward()
+        self.assert_close(R1.grad, torch.zeros_like(R1))
+
 
 class TestAngleErrorVec(BaseTester):
     def test_aligned_orthogonal_opposite(self, device, dtype):
@@ -95,6 +121,17 @@ class TestAngleErrorVec(BaseTester):
         zero = torch.zeros(3, device=device, dtype=dtype)
         unit = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         assert torch.isnan(kornia.metrics.angle_error_vec(zero, unit))
+        assert torch.isnan(kornia.metrics.angle_error_vec(unit, zero))
+
+    def test_huge_and_tiny_vectors(self, device, dtype):
+        # The squared norm of these overflows (huge) or underflows (tiny) in the dtype; the angle is still 45 degrees.
+        finfo = torch.finfo(dtype)
+        # Negative entries, so the scale has to come from the magnitude of the largest entry.
+        a = torch.tensor([-1.0, 0.0, 0.0], device=device, dtype=dtype)
+        b = torch.tensor([-1.0, -1.0, 0.0], device=device, dtype=dtype)
+        expected = torch.tensor(45.0, device=device, dtype=dtype)
+        for scale in (4.0 * finfo.max**0.5, 0.25 * finfo.tiny**0.5):
+            self.assert_close(kornia.metrics.angle_error_vec(scale * a, scale * b), expected)
 
     def test_mismatched_batch_raises(self, device, dtype):
         # A batch of 1 against a batch of 5 used to broadcast instead of raising.
@@ -107,6 +144,32 @@ class TestAngleErrorVec(BaseTester):
         v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
         v2 = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_vec, (v1, v2), requires_grad=(True, False))
+
+    def test_small_and_near_half_turn_angles(self, device, dtype):
+        # Rotating v1 about an axis orthogonal to it opens exactly that angle between the two vectors. The
+        # cross product resolves these; acos(cos) returns exactly 0 and 180 for all four.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("two directions this close round to the same direction in half precision")
+        small = {torch.float32: 0.01, torch.float64: 1e-6}[dtype]
+        atol = {torch.float32: 1e-4, torch.float64: 1e-9}[dtype]
+        angles = torch.tensor([small, 180.0 - small], dtype=torch.float64)
+        axis = torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float64)
+        v1 = torch.tensor([[0.0, 0.6, 0.8]], dtype=torch.float64)
+        R = kornia.geometry.axis_angle_to_rotation_matrix(torch.deg2rad(angles)[:, None] * axis)
+        v2 = 3.0 * (R @ v1[..., None])[..., 0]
+        out = kornia.metrics.angle_error_vec(
+            v1.expand(2, 3).to(device=device, dtype=dtype), v2.to(device=device, dtype=dtype)
+        )
+        self.assert_close(out, angles.to(device=device, dtype=dtype), rtol=0.0, atol=atol)
+
+    def test_gradient_is_zero_at_zero_and_half_turn(self, device, dtype):
+        # Both ends are kinks of the angle: norm returns the subgradient 0 at the zero cross product.
+        x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        v1 = torch.stack([x, x]).requires_grad_()
+        out = kornia.metrics.angle_error_vec(v1, torch.stack([x, -x]))
+        self.assert_close(out, torch.tensor([0.0, 180.0], device=device, dtype=dtype))
+        out.sum().backward()
+        self.assert_close(v1.grad, torch.zeros_like(v1))
 
 
 class TestTranslationAte(BaseTester):
@@ -257,3 +320,90 @@ class TestAucFromErrors(BaseTester):
         expected = kornia.metrics.auc_from_errors(flat, thresholds=5.0)[5.0]
         assert math.isclose(kornia.metrics.auc_from_errors(shuffled, thresholds=5.0)[5.0], expected, abs_tol=1e-3)
         assert math.isclose(kornia.metrics.auc_from_errors(two_d, thresholds=5.0)[5.0], expected, abs_tol=1e-3)
+
+
+def _rotation(axis, degrees):
+    """Rotation matrix about ``axis`` by ``degrees`` (Rodrigues' formula), built in float64 on the CPU."""
+    a = torch.tensor(axis, dtype=torch.float64)
+    a = a / a.norm()
+    k = torch.tensor([[0.0, -a[2], a[1]], [a[2], 0.0, -a[0]], [-a[1], a[0], 0.0]], dtype=torch.float64)
+    theta = math.radians(degrees)
+    return torch.eye(3, dtype=torch.float64) + math.sin(theta) * k + (1.0 - math.cos(theta)) * (k @ k)
+
+
+class TestConventionsPose(BaseTester):
+    def test_convention_angle_errors_are_in_degrees(self, device, dtype):
+        """angle_error_mat is the geodesic angle of R1^T R2 in degrees, symmetric; angle_error_vec is in degrees too."""
+        R1 = _rotation([0.3, -0.5, 0.8], 40.0)
+        R2 = R1 @ _rotation([1.0, 2.0, -0.5], 60.0)
+        R1, R2 = R1.to(device, dtype), R2.to(device, dtype)
+        # glue-factory 2d17e3b and SuperGlue ddcf11f angle_error_mat compute it as arccos((trace(R1^T R2) - 1) / 2)
+        expected = torch.tensor(60.0, device=device, dtype=dtype)
+        angle = kornia.metrics.angle_error_mat(R1, R2)
+        assert angle.shape == ()
+        self.assert_close(angle, expected)
+        self.assert_close(kornia.metrics.angle_error_mat(R2, R1), expected)
+        # angle_error_vec: degrees between the directions, so 3 v1 and 0.1 v2 give the angle of v1 and v2; opposite
+        # vectors read 180, not 0
+        v1 = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype)
+        v2 = torch.tensor([2.0, -1.0, 0.5], device=device, dtype=dtype)
+        # math.degrees(math.acos(1.0 / (3.0 * math.sqrt(5.25)))) = 81.63500554645903
+        expected_vec = torch.tensor(81.63500554645903, device=device, dtype=dtype)
+        self.assert_close(kornia.metrics.angle_error_vec(3.0 * v1, 0.1 * v2), expected_vec)
+        self.assert_close(kornia.metrics.angle_error_vec(v1, -v1), torch.tensor(180.0, device=device, dtype=dtype))
+
+    def test_convention_pose_errors_fold_the_translation_angle(self, device, dtype):
+        """pose_errors gives (B,) degrees; t_err is the direction angle folded into [0, 90]; max_err the larger one."""
+        R_gt = _rotation([0.3, -0.5, 0.8], 40.0)
+        # rotation errors 45 and 135 deg: only the translation angle is folded, so 135 stays 135
+        R = torch.stack([R_gt @ _rotation([1.0, 2.0, -0.5], 45.0), R_gt @ _rotation([-0.2, 0.7, 1.0], 135.0)])
+        # pose 0: translations 116.39 deg apart (cos = -4/9), folded to 63.61; pose 1: same direction, 7 times longer
+        t_gt = torch.tensor([[2.0, -1.0, 2.0], [2.0, -1.0, 2.0]], dtype=torch.float64)
+        t = torch.tensor([[-2.0, 2.0, 1.0], [14.0, -7.0, 14.0]], dtype=torch.float64)
+        P = torch.cat([R, t[..., None]], -1).to(device, dtype)
+        P_gt = torch.cat([R_gt.expand(2, 3, 3), t_gt[..., None]], -1).to(device, dtype)
+        unfolded = math.degrees(math.acos(-4.0 / 9.0))  # 116.38779996124299
+        errors = kornia.metrics.pose_errors(P, P_gt)
+        assert errors["R_err"].shape == (2,)
+        self.assert_close(errors["R_err"], torch.tensor([45.0, 135.0], device=device, dtype=dtype))
+        self.assert_close(errors["t_err"], torch.tensor([180.0 - unfolded, 0.0], device=device, dtype=dtype))
+        self.assert_close(errors["max_err"], torch.tensor([180.0 - unfolded, 135.0], device=device, dtype=dtype))
+        # fold_translation=False keeps [0, 180]
+        raw = kornia.metrics.pose_errors(P, P_gt, fold_translation=False)["t_err"]
+        self.assert_close(raw, torch.tensor([unfolded, 0.0], device=device, dtype=dtype))
+        # an unbatched (3, 4) pose gives shape (1,)
+        assert kornia.metrics.pose_errors(P[0], P_gt[0])["R_err"].shape == (1,)
+        # only the top three rows are read: (4, 4) poses with arbitrary bottom rows give the (3, 4) result
+        square = kornia.metrics.pose_errors(
+            torch.cat([P[0], P.new_tensor([[0.5, -2.0, 3.0, 4.0]])]),
+            torch.cat([P_gt[0], P.new_tensor([[7.0, 1.0, -1.0, 2.0]])]),
+        )
+        for key, value in kornia.metrics.pose_errors(P[0], P_gt[0]).items():
+            self.assert_close(square[key], value)
+
+    def test_convention_translation_ate_is_the_raw_distance_per_sample(self, device, dtype):
+        """translation_ate is the Euclidean distance of every sample in the input units, with no alignment."""
+        trajectory = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 1.0, 0.0]], device=device, dtype=dtype)
+        shifted = trajectory + torch.tensor([5.0, 0.0, 0.0], device=device, dtype=dtype)
+        # a trajectory ATE after rigid alignment (TUM) would be 0 here; kornia keeps the offset of every pose
+        self.assert_close(
+            kornia.metrics.translation_ate(shifted, trajectory),
+            torch.tensor([5.0, 5.0, 5.0], device=device, dtype=dtype),
+        )
+        # not scale-invariant: twice the translation is off by its length
+        t_gt = torch.tensor([2.0, -1.0, 2.0], device=device, dtype=dtype)
+        self.assert_close(
+            kornia.metrics.translation_ate(2.0 * t_gt, t_gt), torch.tensor([3.0], device=device, dtype=dtype)
+        )
+
+    def test_convention_auc_from_errors_is_a_percentage(self, device, dtype):
+        """auc_from_errors maps each threshold to the area under the recall curve in percent, over all errors."""
+        errors = torch.tensor([0.5, 2.0, 4.0, 7.0, 30.0, float("inf")], device=device, dtype=dtype)
+        # Snippet used to generate expected (glue-factory 2d17e3b gluefactory/utils/tools.py; SuperGlue's pose_auc gives
+        # the same): cal_error_auc(np.array([0.5, 2, 4, 7, 30, np.inf]), [1, 3, 5, 10]) -> [0.125, 0.25, 0.35, 0.5],
+        # fractions where kornia returns percent. The inf error is a failure that never enters the area.
+        aucs = kornia.metrics.auc_from_errors(errors)
+        assert list(aucs) == [1.0, 3.0, 5.0, 10.0]
+        assert all(type(k) is float for k in aucs)
+        for threshold, expected in zip(aucs, (12.5, 25.0, 35.0, 50.0)):
+            assert math.isclose(aucs[threshold], expected, abs_tol=1e-3)

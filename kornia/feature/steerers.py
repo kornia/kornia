@@ -18,8 +18,9 @@
 import math
 
 import torch
-import torch.nn.functional as F
 from torch import nn
+
+from kornia.core.utils import _l2_normalize
 
 
 class DiscreteSteerer(nn.Module):
@@ -74,7 +75,7 @@ class DiscreteSteerer(nn.Module):
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:
-            descriptions = F.normalize(descriptions, dim=-1)
+            descriptions = _l2_normalize(descriptions, dim=-1)
         return descriptions
 
     @classmethod
@@ -104,7 +105,7 @@ class DiscreteSteerer(nn.Module):
             generator = torch.block_diag(*([c4_block] * (descriptor_dim // 4)))
             return cls(generator).eval()
 
-        elif generator_type == "SO2":
+        if generator_type == "SO2":
             num_rot_blocks_per_freq = descriptor_dim // 14
             dim_rot = 12 * num_rot_blocks_per_freq
             dim_trivial = descriptor_dim - dim_rot
@@ -128,5 +129,4 @@ class DiscreteSteerer(nn.Module):
 
             generator = torch.block_diag(*blocks)
             return cls(generator).eval()
-        else:
-            raise ValueError(f"Unknown generator_type: {generator_type}")
+        raise ValueError(f"Unknown generator_type: {generator_type}")

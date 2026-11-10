@@ -20,6 +20,7 @@ from __future__ import annotations
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _range_bound
 from kornia.core.utils import _extract_device_dtype
 
@@ -57,18 +58,20 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr = f"amount={self.amount}, salt_and_pepper={self.salt_and_pepper}"
-        return repr
+        return f"amount={self.amount}, salt_and_pepper={self.salt_and_pepper}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random noise parameters."""
+        range_dtype = _range_bound_dtype(dtype)
         amount = _range_bound(
             self.amount,
             "amount",
+            dtype=range_dtype,
         ).to(device, dtype)
         salt_and_pepper = _range_bound(
             self.salt_and_pepper,
             "salt_and_pepper",
+            dtype=range_dtype,
         ).to(device, dtype)
 
         self.amount_sampler = UniformDistribution(amount[0], amount[1], validate_args=False)

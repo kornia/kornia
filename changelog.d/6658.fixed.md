@@ -1,0 +1,1 @@
+`ScaleSpaceDetector` now applies border and refined-centre mask checks before ranking candidates, filling the requested feature budget with weaker valid detections when stronger candidates are rejected.

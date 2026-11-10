@@ -25,7 +25,7 @@ import torch
 from torch import nn
 
 from .attention import SigLip2Attention
-from .config import SigLip2TextConfig
+from .config import SigLip2TextConfig, _activation
 
 __all__ = ["SigLip2TextEmbeddings", "SigLip2TextEncoder", "SigLip2TextLayer", "SigLip2TextModel"]
 
@@ -74,22 +74,23 @@ class SigLip2TextEmbeddings(nn.Module):
         position_embeddings = self.position_embedding(position_ids)
 
         # combine embeddings - [batch_size, seq_len, hidden_size]
-        embeddings = token_embeddings + position_embeddings
-
-        return embeddings
+        return token_embeddings + position_embeddings
 
 
 class SigLip2TextMLP(nn.Module):
     """MLP (feed-forward network) for text encoder.
 
     Args:
-        config: Text encoder configuration.
+        config: Text encoder configuration. Its ``hidden_act`` selects the activation.
+
+    Raises:
+        ValueError: if ``config.hidden_act`` is not ``"gelu_pytorch_tanh"``, ``"gelu_new"`` or ``"gelu"``.
     """
 
     def __init__(self, config: SigLip2TextConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.activation = nn.GELU()
+        self.activation = _activation(config.hidden_act)
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout_p)
 
@@ -100,8 +101,7 @@ class SigLip2TextMLP(nn.Module):
         hidden_states = self.activation(hidden_states)
         # linear transformation - [batch_size, seq_len, hidden_size]
         hidden_states = self.fc2(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        return hidden_states
+        return self.dropout(hidden_states)
 
 
 class SigLip2TextLayer(nn.Module):
@@ -144,10 +144,9 @@ class SigLip2TextLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
+        return residual + hidden_states
 
         # return the hidden states - [batch_size, seq_len, hidden_size]
-        return hidden_states
 
 
 class SigLip2TextEncoder(nn.Module):

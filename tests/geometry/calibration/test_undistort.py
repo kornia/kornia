@@ -18,9 +18,38 @@
 import pytest
 import torch
 
+from kornia.geometry.calibration.distort import distort_points
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
+from kornia.geometry.grid import create_meshgrid
+from kornia.geometry.transform import remap
 
 from testing.base import BaseTester
+
+
+def _k_asymmetric(device, dtype):
+    """``fx = fy = 100``, ``cx = 4``, ``cy = 3`` -- ``cx != cy`` so a transposed reading changes the literals."""
+    return torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+
+def _k_short_focal(device, dtype, fx=3.0, fy=2.0, cx=3.0, cy=2.0):
+    """A camera whose distortion actually bites on a 5 x 7 image.
+
+    Every intrinsic differs from every other, and the focal lengths are short enough that the 5 x 7 pixel grid
+    spans a normalized radius of about 1.4, so the radial polynomial displaces the map by 0.74 px instead of the
+    3.5e-04 px that ``fx = 100`` would give -- a resampling pin on that map would pass for the identity.
+    """
+    return torch.tensor([[[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+
+def _ramp_image(batch, channels, height, width, device, dtype):
+    """A deterministic, non-constant image.
+
+    ``% 17`` on a ramp of length ``B * C * H * W`` makes neighbouring pixels differ in every direction, so a
+    resampling pin cannot pass by accident on a flat image; ``H != W`` keeps a row/column swap visible.
+    """
+    numel = batch * channels * height * width
+    ramp = torch.arange(numel, device=device, dtype=torch.float32) % 17.0
+    return (ramp / 17.0).reshape(batch, channels, height, width).to(dtype)
 
 
 class TestUndistortPoints(BaseTester):
@@ -45,6 +74,69 @@ class TestUndistortPoints(BaseTester):
         new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         pointsu = undistort_points(points, K, distCoeff, new_K)
         assert points.shape == pointsu.shape
+
+    def test_tilt_multi_axis_batch(self, device, dtype):
+        num_points = 5
+        points = torch.rand(2, 3, num_points, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
+        dist = torch.zeros(2, 3, 14, device=device, dtype=dtype)
+        dist[..., 12] = 0.01
+        dist[..., 13] = -0.02
+
+        actual = undistort_points(points, K, dist)
+        expected = torch.stack(
+            [undistort_points(p, k, d) for p, k, d in zip(points.flatten(0, -3), K.flatten(0, -3), dist.flatten(0, -2))]
+        ).reshape(2, 3, num_points, 2)
+
+        assert actual.shape == points.shape
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("num_frames", [2, 3])
+    @pytest.mark.parametrize("camera_axis", [False, True])
+    def test_tilt_broadcasts_like_the_other_coefficients(self, num_frames, camera_axis, device, dtype):
+        # (T, B, N, 2) points against (B, 3, 3) cameras and (B, 14) coefficients, or their [None] forms, pair camera
+        # b with axis 1, as they do without tilt. The tilt step used to pair its transforms with axis 0 instead: a
+        # wrong result for T == B or a [None] camera axis, and a ValueError otherwise.
+        num_cams, num_points = 2, 5
+        points = torch.rand(num_frames, num_cams, num_points, 2, device=device, dtype=dtype) * 8
+        K = torch.tensor(
+            [
+                [[100.0, 0.0, 4.0], [0.0, 90.0, 3.0], [0.0, 0.0, 1.0]],
+                [[80.0, 0.0, 2.0], [0.0, 70.0, 5.0], [0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        dist = torch.zeros(num_cams, 14, device=device, dtype=dtype)
+        dist[:, 0] = torch.tensor([0.1, -0.05], device=device, dtype=dtype)
+        dist[:, 12] = torch.tensor([0.1, -0.2], device=device, dtype=dtype)
+        dist[:, 13] = torch.tensor([-0.15, 0.05], device=device, dtype=dtype)
+        dist.requires_grad_()
+
+        actual = undistort_points(points, K[None], dist[None]) if camera_axis else undistort_points(points, K, dist)
+        expected = torch.stack(
+            [
+                torch.stack([undistort_points(points[t, b], K[b], dist[b]) for b in range(num_cams)])
+                for t in range(num_frames)
+            ]
+        )
+
+        assert actual.shape == points.shape
+        # On MPS the batched half-precision call rounds differently from the per-camera calls, which moves a few
+        # values by 2-4 ulps over the iterations; a camera paired with the wrong axis moves them by pixels.
+        tol = {"rtol": 2e-2, "atol": 1e-2} if dtype in (torch.float16, torch.bfloat16) else {}
+        self.assert_close(actual, expected, **tol)
+        # Every frame shares a camera's coefficients, so their gradient sums over the frames, as the per-camera
+        # calls' gradients do. In half precision the tilt gradients of both forms are off the float64 gradient by
+        # up to its own magnitude, so only the wider dtypes can tell the two apart. In float32 the two forms differ
+        # by up to 3e-4 on gradients of magnitude ~5, measured over 150 seeds on CPU and MPS; swapping the cameras
+        # moves them by at least 0.58.
+        if dtype in (torch.float16, torch.bfloat16):
+            return
+        actual_grad = torch.autograd.grad(actual.sum(), dist)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), dist)[0]
+        grad_tol = {"rtol": 1e-3, "atol": 2e-3} if dtype == torch.float32 else {}
+        self.assert_close(actual_grad, expected_grad, **grad_tol)
 
     @pytest.mark.parametrize(
         "batch_size, num_points, num_distcoeff", [(1, 3, 4), (2, 4, 5), (3, 5, 8), (4, 6, 12), (5, 7, 14)]
@@ -143,6 +235,9 @@ class TestUndistortPoints(BaseTester):
         )
         ptsu = undistort_points(pts, K, dist)
         self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+
+        # Forward distortion of the independent OpenCV values must recover the input (#4276).
+        self.assert_close(distort_points(ptsu_expected, K, dist), pts, rtol=1e-4, atol=1e-4)
 
         new_K = K * 2
         new_K[2, 2] = 1
@@ -243,6 +338,86 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
         self.assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
 
+    def test_convention_undistort_points_inverts_distort_points(self, device, dtype):
+        # undistort_points is the iterative (5-step fixed point by default) inverse of distort_points on pixel
+        # points and a (3, 3) K; the round trip closes to the dtype tolerance with moderate coefficients. The
+        # points sit half a focal length off the principal point, so the forward map moves them (2.775 px) and an
+        # identity undistort_points would fail. Outside the valid radius the iteration cycles (#4285, below).
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        distorted = distort_points(points, K, dist)
+        assert not torch.allclose(distorted.float(), points.float())
+        self.assert_close(undistort_points(distorted, K, dist), points)
+        self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
+
+    def test_convention_distort_undistort_round_trip_with_tilt_4276(self, device, dtype):
+        # Unequal tilt angles plus non-zero radial/tangential coefficients expose #4276.
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        radial = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        zero_tilt = torch.cat([radial, torch.zeros(1, 10, device=device, dtype=dtype)], -1)
+        tilted = torch.cat([zero_tilt[:, :12], torch.tensor([[0.1, 0.2]], device=device, dtype=dtype)], -1)
+        # float16 accumulates two ulps through forward tilt and iterative inversion;
+        # increasing num_iters from 5 to 50 leaves the same 0.0625-pixel rounding floor.
+        rtol = 2 * torch.finfo(dtype).eps if dtype == torch.float16 else None
+        atol = 0.0 if dtype == torch.float16 else None
+        self.assert_close(undistort_points(distort_points(points, K, tilted), K, tilted), points, rtol=rtol, atol=atol)
+        self.assert_close(undistort_points(distort_points(points, K, zero_tilt), K, zero_tilt), points)
+
+    def test_convention_new_K_denormalizes_and_K_normalizes(self, device, dtype):
+        # The mirror image of distort_points: K maps the incoming pixel onto the normalized z = 1 plane and new_K
+        # maps it back to pixels. Every intrinsic is distinct, so a swap changes the literal: (10, 10) normalizes
+        # under K to ((10-1)/2, (10-1)/3) = (4.5, 3.0) and denormalizes under new_K to (5*4.5+2, 7*3+4).
+        K = torch.tensor([[[2.0, 0.0, 1.0], [0.0, 3.0, 1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        new_K = torch.tensor([[[5.0, 0.0, 2.0], [0.0, 7.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
+        points = torch.tensor([[[10.0, 10.0]]], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points(points, K, zero_dist, new_K),
+            torch.tensor([[[24.5, 25.0]]], device=device, dtype=dtype),
+        )
+        self.assert_close(
+            undistort_points(
+                torch.tensor([[[1.0, 2.0]]], device=device, dtype=dtype),
+                torch.eye(3, device=device, dtype=dtype)[None],
+                zero_dist,
+                torch.tensor([[[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
+            ),
+            torch.tensor([[[2.0, 4.0]]], device=device, dtype=dtype),
+        )
+
+    def test_convention_more_iterations_shrink_the_round_trip_residual(self, device, dtype):
+        # Inside the convergence region, more iterations shrink the residual. Halving fy puts the five-step
+        # answer outside assert_close's tolerance, so the decrease is not between already-converged answers.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half precision quantizes the residual, so the three step counts are indistinguishable")
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        distorted = distort_points(points, K, dist)
+        with pytest.raises(AssertionError):
+            self.assert_close(undistort_points(distorted, K, dist, num_iters=5), points)
+        residuals = [(undistort_points(distorted, K, dist, num_iters=n) - points).abs().max() for n in (5, 10, 50)]
+        assert residuals[0] > residuals[1]
+        assert residuals[1] > residuals[2]
+        self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
+
+    def test_wart_fixed_point_cycles_outside_valid_radius_4285(self, device, dtype):
+        # Wart pin for #4285: outside the valid radius the fixed-point iteration silently alternates between two
+        # inaccurate values (odd and even counts agree, even is worse) instead of converging or reporting it.
+        # Delete when #4285 is repaired.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("probe requires float32/float64 to avoid half-precision overflow")
+        points = torch.tensor([[[304.0, 3.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        dist = torch.tensor([[0.5, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        distorted = distort_points(points, K, dist)
+        residuals = [(undistort_points(distorted, K, dist, num_iters=n) - points).abs().max() for n in (5, 6, 7, 8)]
+        self.assert_close(residuals[0], residuals[2], atol=1e-3, rtol=1e-5)
+        self.assert_close(residuals[1], residuals[3], atol=1e-3, rtol=1e-5)
+        assert residuals[1] > residuals[0] > 1
+
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
@@ -289,35 +464,51 @@ class TestUndistortImage(BaseTester):
         assert imu.shape == (3, 2, 3, 5, 5)
         self.assert_close(imu[0], imu[1])
 
+    def test_tilt_multi_axis_batch(self, device, dtype):
+        image = torch.rand(2, 3, 1, 5, 6, device=device, dtype=dtype)
+        K = torch.tensor([[3.0, 0.0, 3.0], [0.0, 2.0, 2.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        K = K.expand(2, 3, 3, 3).clone()
+        dist = torch.zeros(2, 3, 14, device=device, dtype=dtype)
+        dist[..., 12] = 0.01
+        dist[..., 13] = 0.02
+
+        actual = undistort_image(image, K, dist)
+        expected = torch.stack(
+            [torch.stack([undistort_image(image[i, j], K[i, j], dist[i, j]) for j in range(3)]) for i in range(2)]
+        )
+
+        assert actual.shape == image.shape
+        self.assert_close(actual, expected)
+
     def test_exception(self, device, dtype):
+        im = torch.rand(5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(4, 4, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(4, 4, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(6, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(6, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(1, 3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
     def test_opencv(self, device, dtype):
@@ -352,6 +543,96 @@ class TestUndistortImage(BaseTester):
 
         imu = undistort_image(im / 255.0, K, dist)
         self.assert_close(imu, imu_expected / 255.0, rtol=1e-2, atol=1e-2)
+
+    def test_convention_zero_coefficients_are_a_no_op_to_tolerance(self, device, dtype):
+        # With every coefficient zero the image still goes through remap's bilinear sampler, so it comes back
+        # equal to the input within the dtype tolerance.
+        if dtype == torch.float16 and device.type == "mps":
+            pytest.skip("mps float16: the remap round trip residual exceeds the float16 atol")
+        image = _ramp_image(1, 3, 5, 7, device, dtype)
+        K = _k_short_focal(device, dtype)
+        out = undistort_image(image, K, torch.zeros(1, 4, device=device, dtype=dtype))
+        self.assert_close(out, image)
+
+    def test_convention_accepts_both_batch_conventions(self, device, dtype):
+        # Batched (B, C, H, W) + (B, 3, 3) + (B, n) and the legacy unbatched (1, C, H, W) + (3, 3) + (n,) are both
+        # accepted; the legacy form is B = 1 only (a B = 2 image with an unbatched K raises, no broadcasting).
+        # The same image with two different K and dist must give two different rows.
+        dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        K = _k_short_focal(device, dtype)
+        K_batch = torch.cat([K, _k_short_focal(device, dtype, fx=5.0, fy=4.0, cx=2.0, cy=1.0)])
+        image = _ramp_image(1, 3, 5, 7, device, dtype)
+        batched = undistort_image(torch.cat([image, image]), K_batch, torch.cat([dist, dist * 2]))
+        assert batched.shape == (2, 3, 5, 7)
+        assert not torch.allclose(batched[0].float(), batched[1].float())
+        legacy = undistort_image(image, K[0], dist[0])
+        assert legacy.shape == (1, 3, 5, 7)
+        self.assert_close(legacy, batched[:1])
+        with pytest.raises(ValueError, match="Input batch dimensions should match"):
+            undistort_image(torch.cat([image, image]), K[0], dist[0])
+
+    def test_convention_resamples_with_align_corners_true(self, device, dtype):
+        # undistort_image is remap(image, mapx, mapy, align_corners=True) over the map distort_points produces
+        # on the create_meshgrid pixel grid; align_corners is fixed and not exposed. The align_corners=False arm
+        # must differ, so the pin discriminates between the two settings. A half image builds the map and samples
+        # in float32.
+        image = _ramp_image(1, 3, 5, 7, device, dtype)
+        K = _k_short_focal(device, dtype)
+        dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        work = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        grid = create_meshgrid(5, 7, False, device, work).reshape(-1, 2)
+        distorted = distort_points(grid, K.to(work), dist.to(work))
+        assert not torch.allclose(distorted.float(), grid.float())
+        mapx = distorted[..., 0].reshape(1, 5, 7)
+        mapy = distorted[..., 1].reshape(1, 5, 7)
+        out = undistort_image(image, K, dist)
+        assert not torch.allclose(out.float(), image.float())
+        expected = remap(image.to(work), mapx, mapy, align_corners=True).to(dtype)
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        assert not torch.allclose(out.float(), remap(image.to(work), mapx, mapy, align_corners=False).float())
+
+    def test_convention_half_image_samples_at_float32_positions(self, device, dtype):
+        # In half precision the pixel coordinates of a 640 px row round to half pixels (float16) or to 4 px
+        # (bfloat16), so a map built in the image dtype sampled up to 0.79 px (float16) and 6.3 px (bfloat16) away
+        # from the float64 positions. On a horizontal ramp the intensity error times the width is that position
+        # error; what remains here is the rounding of the input and output ramps, at most half a step of the values
+        # in [0.5, 1) twice over: 0.31 px in float16 and 2.5 px in bfloat16.
+        # The float64 reference is built on CPU: MPS has no float64.
+        H, W = 480, 640
+        ramp = (torch.arange(W, dtype=torch.float64) / W).expand(1, 1, H, W)
+        K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], dtype=torch.float64)
+        dist = torch.tensor([[-0.2, 0.05, 0.001, 0.001, 0.0]], dtype=torch.float64)
+        expected = undistort_image(ramp, K, dist)
+
+        out = undistort_image(
+            ramp.to(device=device, dtype=dtype), K.to(device=device, dtype=dtype), dist.to(device=device, dtype=dtype)
+        )
+
+        assert out.dtype == dtype
+        error_px = (out.cpu().double() - expected)[..., 40:-40, 40:-40].abs().amax() * W
+        bound = {torch.float16: 0.4, torch.bfloat16: 2.5}.get(dtype, 1e-3)
+        assert error_px < bound, f"sampled {error_px:.3f} px away from the float64 positions"
+
+    def test_convention_half_image_keeps_the_precision_of_float32_calibration(self, device, dtype):
+        # A half image takes K and dist of another dtype and keeps their precision: this focal length and these
+        # coefficients do not survive a round trip through half, so the map below would change if they went through it.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only a half image builds its map in another dtype than its own")
+        image = _ramp_image(1, 3, 50, 70, device, dtype)
+        K = torch.tensor([[[60.3, 0.0, 35.1], [0.0, 60.7, 25.3], [0.0, 0.0, 1.0]]], device=device)
+        dist = torch.tensor([[-0.2013, 0.0517, 0.0011, 0.0013]], device=device)
+        grid = create_meshgrid(50, 70, False, device, torch.float32).reshape(-1, 2)
+        distorted = distort_points(grid, K, dist)
+        expected = remap(
+            image.float(),
+            distorted[..., 0].reshape(1, 50, 70),
+            distorted[..., 1].reshape(1, 50, 70),
+            align_corners=True,
+        )
+        out = undistort_image(image, K, dist)
+        assert out.dtype == dtype
+        self.assert_close(out, expected.to(dtype), atol=0.0, rtol=0.0)
+        assert not torch.equal(out, undistort_image(image, K.to(dtype), dist.to(dtype)))
 
     def test_gradcheck(self, device):
         im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)

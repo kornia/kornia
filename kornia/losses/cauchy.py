@@ -24,33 +24,35 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 
 def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
-    r"""Criterion that computes the Cauchy [2] (aka. Lorentzian) loss.
+    r"""Compute the Cauchy (Lorentzian) loss between a prediction and a target.
 
-    According to [1], we compute the Cauchy loss as follows:
+    ``loss = cauchy_loss(img1, img2)`` penalises each residual :math:`x - y` of ``img1`` (:math:`x`) and ``img2``
+    (:math:`y`) quadratically near 0 and only logarithmically beyond, without bound.
 
     .. math::
 
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
-
-    Where:
-       - :math:`x` is the prediction.
-       - :math:`y` is the target to be regressed to.
+        \text{loss}(x, y) = \log\left(\frac{1}{2} (x - y)^{2} + 1\right)
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
-        [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
+        [2] Cauchy: https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = 0`.
 
     Args:
-        img1: the predicted torch.Tensor with shape :math:`(*)`.
-        img2: the target torch.Tensor with the same shape as img1.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        img1: prediction with shape ``(*)``.
+        img2: target with the same shape as ``img1``.
+        reduction: ``'none'`` (default) keeps one loss per element, ``'mean'`` averages them, ``'sum'`` adds them.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        the loss with the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :class:`~kornia.losses.CauchyLoss`: the module form.
+        - :func:`~kornia.losses.charbonnier_loss`: grows linearly for large residuals.
+        - :func:`~kornia.losses.geman_mcclure_loss`: saturates at 2 for large residuals.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,8 +73,10 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
-    loss = torch.log1p(0.5 * torch.square(img1 - img2))
+    # Keep the square and its backward in float32 for half-precision residuals.
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
+    loss = torch.log1p(0.5 * torch.square(compute_diff))
 
     # perform reduction
     if reduction == "mean":
@@ -84,41 +88,35 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CauchyLoss(nn.Module):
-    r"""Criterion that computes the Cauchy [2] (aka. Lorentzian) loss.
+    r"""Compute the Cauchy (Lorentzian) loss between a prediction and a target (module form).
 
-    According to [1], we compute the Cauchy loss as follows:
+    ``criterion = CauchyLoss(reduction)`` stores ``reduction``, and ``loss = criterion(img1, img2)`` is
+    :func:`~kornia.losses.cauchy_loss`.
 
-    .. math::
-
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
-
-    Where:
-       - :math:`x` is the prediction.
-       - :math:`y` is the target to be regressed to.
-
-    Reference:
-        [1] https://arxiv.org/pdf/1701.03077.pdf
-        [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
+    Convention:
+        See the Convention block of :func:`~kornia.losses.cauchy_loss`.
 
     Args:
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        reduction: ``'none'`` (default), ``'mean'`` or ``'sum'``, as in :func:`~kornia.losses.cauchy_loss`.
 
     Shape:
-        - img1: the predicted torch.Tensor with shape :math:`(*)`.
-        - img2: the target torch.Tensor with the same shape as img1.
+        - img1: prediction ``(*)``.
+        - img2: target with the same shape as ``img1``.
+        - Output: the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :func:`~kornia.losses.cauchy_loss`: the one-call form.
+        - :class:`~kornia.losses.CharbonnierLoss`: grows linearly for large residuals.
+        - :class:`~kornia.losses.GemanMcclureLoss`: saturates at 2 for large residuals.
 
     Example:
         >>> criterion = CauchyLoss(reduction="mean")
-        >>> img1 = torch.randn(2, 3, 32, 2107, requires_grad=True)
-        >>> img2 = torch.randn(2, 3, 32, 2107)
+        >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
+        >>> img2 = torch.randn(2, 3, 32, 32)
         >>> output = criterion(img1, img2)
         >>> output.backward()
 

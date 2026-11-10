@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 from kornia.augmentation import CenterCrop3D
@@ -23,6 +24,10 @@ from testing.base import BaseTester
 
 
 class TestCenterCrop3D(BaseTester):
+    def test_invalid_size_type(self):
+        with pytest.raises(TypeError, match="Expected int or tuple\\[int, int, int\\]"):
+            CenterCrop3D([3, 4, 5])
+
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, 4, device=device, dtype=dtype)
         out = CenterCrop3D(2)(inp)

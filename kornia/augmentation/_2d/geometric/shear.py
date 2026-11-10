@@ -23,35 +23,50 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 
 # from kornia.geometry.conversions import deg2rad (use torch.deg2rad instead)
 from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 
 
 class RandomShear(GeometricAugmentationBase2D):
-    r"""Apply a random 2D shear transformation to a torch.Tensor image.
+    r"""Shear images by random angles in degrees, applied per sample with probability ``p`` (default 0.5).
 
-    The transformation is computed so that the image center is kept invariant.
+    ``output = RandomShear(shear, ...)(input)`` shears images of shape ``(B, C, H, W)`` about their centers by
+    sampled angles.
 
     Args:
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         padding_mode: padding mode from "torch.zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - ``shear`` supplies one or two degree ranges for the x and y shears; a scalar or pair supplies only x
+          shear. The signs are those of :class:`RandomAffine`'s ``shear``.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine(degrees=0, shear=...)``, which shears every image, this class shears each
+        sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch.
+        Pass ``p=1.0`` to shear every sample.
+
+    See Also:
+        - :class:`RandomAffine`: samples a combined affine transformation.
 
     Examples:
         >>> import torch
@@ -102,10 +117,10 @@ class RandomShear(GeometricAugmentationBase2D):
         # Inline ``deg2rad`` so the trace lowers to plain multiply (legacy ONNX has
         # no symbolic for ``aten::deg2rad`` at opset 20).
         deg2rad_factor: float = math.pi / 180.0
-        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
-        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_shear_matrix2d(
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
             shear_x,
             shear_y,
         )

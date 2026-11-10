@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import io
 import warnings
 
 import pytest
@@ -22,6 +23,7 @@ import torch
 
 import kornia
 from kornia.contrib.face_detection import FaceKeypoint
+from kornia.models.yunet import YuNet
 
 from testing.base import BaseTester
 
@@ -108,11 +110,96 @@ class TestFaceDetection(BaseTester):
             )
         assert model_path.is_file()
 
+    @pytest.mark.device_agnostic
+    def test_yunet_legacy_onnx_declares_dynamic_output_sizes(self):
+        """The TorchScript exporter declares each output's batch and anchor count dynamic, as the input sizes are."""
+        onnx = pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = YuNet("test", pretrained=False).eval()
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            model,
+            torch.rand(2, 3, 64, 64),
+            buffer,
+            input_names=["images"],
+            output_names=["loc", "conf", "iou"],
+            dynamic_axes={"images": {0: "B", 2: "H", 3: "W"}},
+            dynamo=False,
+        )
+        for output in onnx.load_from_string(buffer.getvalue()).graph.output:
+            batch, anchors, _ = output.type.tensor_type.shape.dim
+            assert batch.dim_param, output
+            assert anchors.dim_param, output
+        # The graph also runs at another batch and a non-square size, and matches eager there.
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        images = torch.rand(1, 3, 96, 80)
+        with torch.no_grad():
+            expected = model(images)
+        for name, actual in zip(["loc", "conf", "iou"], session.run(None, {"images": images.numpy()})):
+            torch.testing.assert_close(torch.from_numpy(actual), expected[name], rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    def test_yunet_mode(self, monkeypatch):
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in YuNet("test", pretrained=False).modules()} == {True}
+
+        state_dict = YuNet("test", pretrained=False).state_dict()
+        monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+        assert {m.training for m in YuNet("test", pretrained=True).modules()} == {False}
+
+    @pytest.mark.parametrize("phase", ["test", "train"])
+    def test_yunet_empty_batch_6266(self, device, dtype, phase):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = YuNet(phase, pretrained=False).to(device, dtype).eval()
+        out = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
+        assert {k: v.shape for k, v in out.items()} == {"loc": (0, 235, 14), "conf": (0, 235, 2), "iou": (0, 235, 1)}
+
+    def test_empty_batch_6266(self, device, dtype, monkeypatch):
+        """An empty batch gives one detection tensor per image: none."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        state_dict = YuNet("test", pretrained=False).state_dict()
+        monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+        face_detector = kornia.contrib.FaceDetector().to(device, dtype)
+        assert face_detector(torch.rand(0, 3, 64, 64, device=device, dtype=dtype)) == []
+
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
             face_detector(img)
+
+    def test_preprocess_checks_the_channels(self, face_detector, device, dtype):
+        # ``preprocess`` flips RGB to BGR with ``rgb_to_bgr``, which checks for ``(*, 3, H, W)``. A plain ``flip(-3)``
+        # would accept these and leave the error to YuNet, or flip the height of a channels-last image.
+        for shape in ((1, 4, 64, 96), (1, 1, 64, 96), (1, 64, 96, 3)):
+            with pytest.raises(ValueError, match=r"\(\*, 3, H, W\)"):
+                face_detector.preprocess(torch.rand(*shape, device=device, dtype=dtype) * 255)
+
+    def test_yunet_receives_bgr_0_255(self, face_detector, device, dtype):
+        # The YuNet weights were trained on BGR, float 0-255, with no mean or std: the DALI loader converts to BGR and
+        # resizes to float (ShiqiYu/libfacedetection.train@74f3aa7 src/data.py:76, 90), and evaluation reads
+        # ``cv2.imread`` images (tasks/task1/datasets.py:53, detect.py:100-106).
+        # ``FaceDetector`` takes RGB in [0, 255] and only flips the channels.
+        captured = []
+        handle = face_detector.model.register_forward_pre_hook(lambda module, args: captured.append(args[0].clone()))
+        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype) * 255
+        try:
+            face_detector(img)
+        finally:
+            handle.remove()
+
+        assert len(captured) == 1
+        assert torch.equal(captured[0], img.flip(-3))
+        assert torch.equal(face_detector.preprocess(img), img.flip(-3))
+
+    def test_result_checks_the_last_dimension(self, device, dtype):
+        # A row holds 15 values: the box (4), five (x, y) landmarks (10) and the score (1).
+        kornia.contrib.FaceDetectorResult(torch.rand(15, device=device, dtype=dtype))
+        kornia.contrib.FaceDetectorResult(torch.rand(3, 15, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="15"):
+            kornia.contrib.FaceDetectorResult(torch.rand(20, 14, device=device, dtype=dtype))
 
     @pytest.mark.slow
     def test_dynamo(self, face_detector, device, dtype, torch_optimizer):

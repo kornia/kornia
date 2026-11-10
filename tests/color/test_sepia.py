@@ -31,7 +31,11 @@ class TestSepia(BaseTester):
 
         # With rescale
         expected_tensor = torch.tensor(
-            [[[0.1269, 1.0], [0.2537, 0.5400]], [[0.1269, 1.0], [0.2537, 0.5403]], [[0.1269, 1.0], [0.2538, 0.5403]]],
+            [
+                [[0.1269, 1.0], [0.2537, 0.5400]],
+                [[0.1130, 0.8904], [0.2259, 0.4811]],
+                [[0.0880, 0.6935], [0.1760, 0.3747]],
+            ],
             device=device,
             dtype=dtype,
         )
@@ -96,3 +100,11 @@ class TestSepia(BaseTester):
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img), op_module(img))
+
+    def test_black_image_stays_black(self, device, dtype):
+        # eps keeps the shared maximum of a black image from dividing 0 by 0.
+        image = torch.zeros(2, 3, 4, 4, device=device, dtype=dtype)
+
+        actual = kornia.color.sepia(image)
+
+        self.assert_close(actual, torch.zeros_like(image), rtol=0.0, atol=0.0)

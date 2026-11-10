@@ -17,10 +17,43 @@
 
 """Kornia — Differentiable computer vision and image processing for PyTorch.
 
-This package exposes core modules (filters, geometry, etc.) and provides
-convenience imports at the top level.
+Kornia's operators work on batched ``torch.Tensor`` inputs, run on the input's device (CPU, CUDA or Apple MPS)
+without a NumPy round trip, and most are differentiable. Kornia pays off where a hand-written version gets long or
+fragile, or where the alternatives leave the GPU:
+
+- Breadth: over 1,200 public operators, most with no torchvision equivalent. Camera models and epipolar geometry
+  (``kornia.geometry``), local features and matching (``kornia.feature``), filters and edges (``kornia.filters``),
+  morphology, Lab and Bayer color, image losses and metrics.
+- Per-sample parameters in one batched call: a different blur ``sigma``, rotation angle, warp matrix or brightness
+  factor for every image. torchvision's functional ops apply one parameter per call.
+- Batched minimal solvers and robust estimation: 7- and 8-point fundamental, 5-point essential, DLT homography and
+  PnP solvers over whole batches of samples, and a ``RANSAC`` that samples and scores hypotheses on the device.
+- Differentiable geometry: depth to 3D and back, camera models with lens distortion, and Lie groups, with gradients
+  through depth, pose and camera parameters.
+- Annotated augmentation (``kornia.augmentation``): one sampled transform applied to images, masks, boxes and
+  keypoints together, and its inverse.
+- Local features: kornia's ports of ALIKED, XFeat, DISK with LightGlue, DeDoDe, LoFTR, HardNet and the other learned
+  descriptors run at their authors' speed or faster on every device measured (CUDA, x86 and Apple M1 CPUs, Apple
+  MPS), and are as accurate on the cohorts measured. The exceptions are eager ALIKED on CUDA (compile it), SIFT on a
+  CPU (OpenCV's is faster) and XFeat*, whose refinement departs from the authors' on purpose. The ``kornia.feature``
+  docstring says what to use where.
+- Compiles and exports: nearly all probed operator configurations run under ``torch.compile`` and match eager, and
+  over 1,000 export to ONNX (``kornia.onnx``).
+- Fast on batched GPU tensors: on an RTX 4090 with batches of 32, many filters, warps, matching steps and image
+  metrics run about 10x to 70x faster in eager mode than per-image OpenCV or scikit-image on the CPU. On the small
+  overlap with torchvision, eager kornia is slower on the same GPU, and OpenCV wins single-image ``uint8`` CPU work.
+
+For a single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are
+just as good.
+
+Before writing code, read the conventions page, which covers image tensors, coordinates, rotations, matrices,
+``align_corners``, boxes, color, augmentation and local features, and ends with a pitfall checklist:
+https://kornia.readthedocs.io/en/latest/get-started/conventions.html. Operator benchmarks, wins and losses, are at
+https://kornia.readthedocs.io/en/latest/get-started/performance.html, and the local-feature comparison at
+https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device.
 """
 
+from importlib import import_module as _import_module
 from typing import Any
 
 # NOTE: kornia filters and geometry must go first since are the core of the library
@@ -46,9 +79,11 @@ from . import (
     tracking,
 )
 
-
-# Multi-framework support using ivy
-from .transpiler import to_jax, to_numpy, to_tensorflow
+# The Ivy-powered multi-framework entry points were removed. The module stays bound, and `to_jax`, `to_numpy` and
+# `to_tensorflow` stay bound here and in it as functions that raise an error explaining the removal, so that
+# `kornia.to_jax()` and `from kornia import to_jax` both lead to the explanation. See `kornia/transpiler/__init__.py`.
+from . import transpiler
+from .transpiler import _removed_entry_point
 
 # NOTE: we are going to expose to top level very few things
 from kornia.constants import pi
@@ -56,193 +91,45 @@ from kornia.constants import pi
 # Deprecated top-level imports - use kornia.core.ops or kornia.core.utils instead
 from kornia.core._compat import deprecated
 
-# Import the actual functions to wrap
-from kornia.core.ops import eye_like as _eye_like, vec_like as _vec_like
-from kornia.core.utils import (
-    get_cuda_device_if_available as _get_cuda_device_if_available,
-    get_cuda_or_mps_device_if_available as _get_cuda_or_mps_device_if_available,
-    get_mps_device_if_available as _get_mps_device_if_available,
-    is_autocast_enabled as _is_autocast_enabled,
-    xla_is_available as _xla_is_available,
+# The aliases are defined in their own module, which keeps the names their annotations need off `kornia`.
+from ._deprecated_aliases import (
+    create_meshgrid,
+    create_meshgrid3d,
+    draw_convex_polygon,
+    draw_line,
+    draw_point2d,
+    draw_rectangle,
+    eye_like,
+    get_cuda_device_if_available,
+    get_cuda_or_mps_device_if_available,
+    get_mps_device_if_available,
+    image_to_string,
+    image_to_tensor,
+    is_autocast_enabled,
+    load_pointcloud_ply,
+    one_hot,
+    print_image,
+    save_pointcloud_ply,
+    tensor_to_image,
+    vec_like,
+    xla_is_available,
 )
-from kornia.geometry import (
-    create_meshgrid as _create_meshgrid,
-    create_meshgrid3d as _create_meshgrid3d,
-    load_pointcloud_ply as _load_pointcloud_ply,
-    save_pointcloud_ply as _save_pointcloud_ply,
-)
-from kornia.image import (
-    draw_convex_polygon as _draw_convex_polygon,
-    draw_line as _draw_line,
-    draw_point2d as _draw_point2d,
-    draw_rectangle as _draw_rectangle,
-    image_to_string as _image_to_string,
-    image_to_tensor as _image_to_tensor,
-    print_image as _print_image,
-    tensor_to_image as _tensor_to_image,
-)
-from kornia.losses.one_hot import one_hot as _one_hot
+
+to_jax = _removed_entry_point(__name__, "to_jax")
+to_numpy = _removed_entry_point(__name__, "to_numpy")
+to_tensorflow = _removed_entry_point(__name__, "to_tensorflow")
 
 
-@deprecated(replace_with="kornia.core.ops.eye_like", version="0.8.3")
-def eye_like(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.ops.eye_like` instead."""
-    return _eye_like(*args, **kwargs)
+def __getattr__(name: str) -> Any:
+    """Import the deprecated ``kornia.utils`` on first access.
 
-
-@deprecated(replace_with="kornia.core.ops.vec_like", version="0.8.3")
-def vec_like(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.ops.vec_like` instead."""
-    return _vec_like(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.core.utils.xla_is_available", version="0.8.3")
-def xla_is_available(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.utils.xla_is_available` instead."""
-    return _xla_is_available(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.geometry.create_meshgrid", version="0.8.3")
-def create_meshgrid(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.geometry.create_meshgrid` instead."""
-    return _create_meshgrid(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.image.image_to_tensor", version="0.8.3")
-def image_to_tensor(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.image_to_tensor` instead."""
-    return _image_to_tensor(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.image.tensor_to_image", version="0.8.3")
-def tensor_to_image(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.tensor_to_image` instead."""
-    return _tensor_to_image(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.core.utils.get_cuda_device_if_available", version="0.8.3")
-def get_cuda_device_if_available(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.utils.get_cuda_device_if_available` instead."""
-    return _get_cuda_device_if_available(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.core.utils.get_mps_device_if_available", version="0.8.3")
-def get_mps_device_if_available(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.utils.get_mps_device_if_available` instead."""
-    return _get_mps_device_if_available(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.core.utils.get_cuda_or_mps_device_if_available", version="0.8.3")
-def get_cuda_or_mps_device_if_available(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.utils.get_cuda_or_mps_device_if_available` instead."""
-    return _get_cuda_or_mps_device_if_available(*args, **kwargs)
-
-
-@deprecated(replace_with="kornia.core.utils.is_autocast_enabled", version="0.8.3")
-def is_autocast_enabled(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.core.utils.is_autocast_enabled` instead."""
-    return _is_autocast_enabled(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.geometry.create_meshgrid3d",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.create_meshgrid3d`.",
-)
-def create_meshgrid3d(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.geometry.create_meshgrid3d` instead (previously `kornia.utils.create_meshgrid3d`)."""
-    return _create_meshgrid3d(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.geometry.load_pointcloud_ply",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.load_pointcloud_ply`.",
-)
-def load_pointcloud_ply(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.geometry.load_pointcloud_ply` instead (previously `kornia.utils.load_pointcloud_ply`)."""
-    return _load_pointcloud_ply(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.geometry.save_pointcloud_ply",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.save_pointcloud_ply`.",
-)
-def save_pointcloud_ply(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.geometry.save_pointcloud_ply` instead (previously `kornia.utils.save_pointcloud_ply`)."""
-    return _save_pointcloud_ply(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.draw_line",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.draw_line`.",
-)
-def draw_line(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.draw_line` instead (previously `kornia.utils.draw_line`)."""
-    return _draw_line(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.draw_rectangle",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.draw_rectangle`.",
-)
-def draw_rectangle(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.draw_rectangle` instead (previously `kornia.utils.draw_rectangle`)."""
-    return _draw_rectangle(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.draw_point2d",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.draw_point2d`.",
-)
-def draw_point2d(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.draw_point2d` instead (previously `kornia.utils.draw_point2d`)."""
-    return _draw_point2d(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.draw_convex_polygon",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.draw_convex_polygon`.",
-)
-def draw_convex_polygon(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.draw_convex_polygon` instead (previously `kornia.utils.draw_convex_polygon`)."""
-    return _draw_convex_polygon(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.image_to_string",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.image_to_string`.",
-)
-def image_to_string(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.image_to_string` instead (previously `kornia.utils.image_to_string`)."""
-    return _image_to_string(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.image.print_image",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.print_image`.",
-)
-def print_image(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.image.print_image` instead (previously `kornia.utils.print_image`)."""
-    return _print_image(*args, **kwargs)
-
-
-@deprecated(
-    replace_with="kornia.losses.one_hot",
-    version="0.8.3",
-    extra_reason=" Previously available as `kornia.utils.one_hot`.",
-)
-def one_hot(*args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use `kornia.losses.one_hot` instead (previously `kornia.utils.one_hot`)."""
-    return _one_hot(*args, **kwargs)
+    ``import kornia`` does not import the deprecated ``kornia.utils``; ``kornia.utils.<name>``, the attribute style
+    kornia's 0.8.2 documentation used, still reaches its shims after ``import kornia`` alone.
+    """
+    if name == "utils":
+        return _import_module("kornia.utils")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Version variable
-__version__ = "0.9.0rc1"
+__version__ = "0.9.1.dev"

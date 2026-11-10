@@ -15,14 +15,45 @@
 # limitations under the License.
 #
 
+from math import exp, log, prod
+
 import pytest
 import torch
 from torch import Tensor
 
 import kornia
+from kornia import enhance
 from kornia.constants import pi
+from kornia.core._compat import torch_version_ge
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import AsyncCheckError, BaseError
+from kornia.enhance.adjust import _clip_unit_fresh
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+
+def _sync(device) -> None:
+    # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
+    # otherwise surface inside an unrelated later test.
+    if device.type == "mps":
+        torch.mps.synchronize()
+
+
+class TestFloatScalarPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "operation,kwargs",
+        [
+            (kornia.enhance.adjust_hue_raw, {"factor": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 0.1}),
+            (kornia.enhance.adjust_gamma, {"gamma": 1.0, "gain": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.1}),
+            (kornia.enhance.solarize, {"thresholds": 0.5, "additions": 0.1}),
+        ],
+    )
+    def test_float_matches_image_dtype_tensor(self, device, dtype, operation, kwargs):
+        image = torch.tensor([0.05, 0.1], device=device, dtype=dtype).repeat(1, 3, 1, 1)
+        tensors = {key: image.new_tensor(value) for key, value in kwargs.items()}
+        self.assert_close(operation(image, **kwargs), operation(image, **tensors), rtol=0, atol=0)
 
 
 class TestInvert(BaseTester):
@@ -36,6 +67,14 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(1.0))
         assert out.shape == shape
 
+    def test_default_max_val_keeps_0d_shape_6663(self, device, dtype):
+        # The default max_val used to be (1,), which turned a 0-d input into shape (1,).
+        img = torch.tensor(0.3, device=device, dtype=dtype)
+        out = kornia.enhance.invert(img)
+        assert out.shape == torch.Size([])
+        self.assert_close(out, 1.0 - img)
+        assert kornia.enhance.Invert()(img).shape == torch.Size([])
+
     def test_max_val_1(self, device, dtype):
         img = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(1.0))
@@ -46,14 +85,12 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         self.assert_close(out, torch.zeros_like(out))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.invert, (img, max_val))
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -67,6 +104,10 @@ class TestInvert(BaseTester):
         op = kornia.enhance.invert
         op_mod = kornia.enhance.Invert()
         self.assert_close(op(img), op_mod(img))
+
+    def test_exception_names_the_argument_type(self):
+        with pytest.raises(AssertionError, match="Got: <class 'list'>"):
+            kornia.enhance.invert([1])
 
 
 class TestAdjustSaturation(BaseTester):
@@ -120,6 +161,54 @@ class TestAdjustSaturation(BaseTester):
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         self.assert_close(f(data), expected)
 
+    def test_saturation_matches_hsv_reference_per_batch_factor(self, device, dtype):
+        # Keep adjust_saturation's HSV semantics while allowing its implementation to avoid
+        # materializing an HSV image. The values avoid hue-sector boundaries, where equivalent
+        # formulas can legitimately differ by a small floating-point rounding error.
+        image = torch.tensor(
+            [
+                [[[0.2, 0.4]], [[0.8, 0.7]], [[0.5, 0.1]]],
+                [[[0.9, 0.3]], [[0.2, 0.8]], [[0.6, 0.5]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        factor = torch.tensor([0.0, 1.5], device=device, dtype=dtype)
+
+        hsv = kornia.color.rgb_to_hsv(image)
+        expected_hsv = hsv.clone()
+        expected_hsv[:, 1:2] = (hsv[:, 1:2] * factor[:, None, None, None]).clamp(0, 1)
+        expected = kornia.color.hsv_to_rgb(expected_hsv)
+
+        self.assert_close(kornia.enhance.adjust_saturation(image, factor), expected, low_tolerance=True)
+
+    def test_zero_delta_gradient_is_finite(self, device, dtype):
+        image = torch.tensor([0.0, 0.5], device=device, dtype=dtype).view(2, 1, 1, 1).expand(2, 3, 2, 2).clone()
+        image.requires_grad_()
+        result = kornia.enhance.adjust_saturation(image, 1.5)
+        (gradient,) = torch.autograd.grad(result.sum(), image)
+        assert torch.isfinite(result).all()
+        assert torch.isfinite(gradient).all()
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int32])
+    def test_integer_input_matches_hsv_reference(self, dtype):
+        image = torch.tensor([1, 0, 0], dtype=dtype).view(1, 3, 1, 1)
+        expected = kornia.color.hsv_to_rgb(kornia.enhance.adjust_saturation_raw(kornia.color.rgb_to_hsv(image), 0.5))
+        self.assert_close(kornia.enhance.adjust_saturation(image, 0.5), expected)
+
+    def test_per_channel_factor_raises(self, device, dtype):
+        image = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.enhance.adjust_saturation(image, torch.ones(2, 3, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_tied_extrema_use_symmetric_subgradient(self):
+        image = torch.tensor([0.8, 0.8, 0.2], dtype=torch.float64).view(1, 3, 1, 1).requires_grad_()
+        result = kornia.enhance.adjust_saturation(image, 0.5)
+        (gradient,) = torch.autograd.grad(result.sum(), image)
+        self.assert_close(gradient.flatten(), torch.tensor([1.25, 1.25, 0.5], dtype=torch.float64))
+
     def test_saturation_with_gray_subtraction_one_batch(self, device, dtype):
         data = torch.tensor(
             [
@@ -139,6 +228,11 @@ class TestAdjustSaturation(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_saturation, (img, 2.0))
 
+    def test_gradcheck_factor(self, device):
+        img = torch.rand(2, 3, 2, 3, device=device, dtype=torch.float64)
+        factor = torch.tensor([0.8, 1.2], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.enhance.adjust_saturation, (img, factor))
+
     def test_gradcheck_with_gray_subtraction(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
@@ -146,6 +240,17 @@ class TestAdjustSaturation(BaseTester):
 
 
 class TestAdjustHue(BaseTester):
+    def test_black_pixels(self, device, dtype):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 2, 2)
+        data[..., 0, 0] = 0.0
+        data.requires_grad_()
+
+        result = kornia.enhance.adjust_hue(data, 0.1)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., 0, 0], torch.zeros_like(result[..., 0, 0]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -199,6 +304,45 @@ class TestAdjustHue(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_hue, (img, 2.0))
 
+    def test_hue_raw_wraps_negative_sum_5326(self, device, dtype):
+        data = torch.tensor([[[[1.0, 0.0]]], [[[0.0, 1.0]]], [[[0.0, 0.0]]]], device=device, dtype=dtype).view(
+            1, 3, 1, 2
+        )
+
+        hsv = kornia.color.rgb_to_hsv(data)
+        out = kornia.enhance.adjust_hue_raw(hsv, -0.5)
+
+        self.assert_close(out[:, 0], torch.remainder(hsv[:, 0] - 0.5, 2 * pi))
+        assert (out[:, 0] >= 0).all()
+
+    def test_hue_raw_wrap_never_returns_the_period_5326(self, device, dtype):
+        # 0 - eps / 16 is below 0, but 2π - eps / 16 rounds to 2π in this dtype; the wrapped hue must be 0, not 2π.
+        hsv = torch.tensor([0.0, 0.5, 0.5], device=device, dtype=dtype).view(1, 3, 1, 1)
+        factor = torch.tensor(-torch.finfo(dtype).eps / 16, device=device, dtype=dtype)
+        hue = kornia.enhance.adjust_hue_raw(hsv, factor)[0, 0, 0, 0]
+        assert hue.item() == 0.0
+
+    @pytest.mark.parametrize(
+        "op",
+        [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw, lambda x, f: kornia.enhance.AdjustHue(f)(x)],
+        ids=["adjust_hue", "adjust_hue_raw", "AdjustHue"],
+    )
+    @pytest.mark.parametrize("factor", [-3, 0, 1, 5])
+    def test_int_factor_matches_float_6663(self, device, dtype, op, factor):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        out = op(img, factor)
+        assert out.dtype == dtype
+        assert out.device.type == img.device.type
+        self.assert_close(out, op(img, float(factor)))
+
+    @pytest.mark.parametrize("op", [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw])
+    @pytest.mark.parametrize("factor", [True, "1"])
+    def test_exception_factor_type_6663(self, device, dtype, op, factor):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"an int, a float or a torch\.Tensor") as errinfo:
+            op(img, factor)
+        assert "PI" not in str(errinfo.value)
+
 
 class TestAdjustGamma(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
@@ -206,6 +350,99 @@ class TestAdjustGamma(BaseTester):
         img = torch.rand(shape, device=device, dtype=dtype)
         out = kornia.enhance.adjust_gamma(img, 1.0)
         assert out.shape == shape
+
+    @pytest.mark.parametrize("gamma,gain", [(0.1, 0.1234567), (0.5, 0.9), (2.0, 1.0), (1e-50, 1e-50)])
+    def test_scalar_and_tensor_parameters(self, device, dtype, gamma, gain):
+        image = torch.linspace(0, 1, 33, device=device, dtype=dtype).reshape(1, 3, 11)
+        expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]), image.new_tensor([gain]))
+        self.assert_close(kornia.enhance.adjust_gamma(image, gamma, gain), expected)
+
+    @pytest.mark.parametrize("parameter", ["gamma", "gain"])
+    def test_negative_scalar_rounds_to_zero(self, device, dtype, parameter):
+        if dtype == torch.float64:
+            pytest.skip("The negative value is representable in float64")
+        image = torch.full((1, 2, 2), 0.5, device=device, dtype=dtype)
+        kwargs = {"gamma": 1.0, "gain": 1.0, parameter: -1e-50}
+        expected = kornia.enhance.adjust_gamma(image, **{**kwargs, parameter: 0.0})
+        self.assert_close(kornia.enhance.adjust_gamma(image, **kwargs), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("gamma", [1e-50, 0.99999999, 1.00000001, 1.99999999])
+    def test_rounded_scalar_exponent_at_zero(self, device, gamma):
+        image = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=torch.float32, requires_grad=True)
+        expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]))
+        actual = kornia.enhance.adjust_gamma(image, gamma)
+        # MPS scalar/tensor power kernels can round nonzero pixels differently.
+        self.assert_close(actual, expected)
+        self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+        actual_grad = torch.autograd.grad(actual.sum(), image)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), image)[0]
+        self.assert_close(actual_grad, expected_grad)
+        self.assert_close(actual_grad[0], expected_grad[0], rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("value", [-0.1, float("nan")])
+    @pytest.mark.parametrize("parameter", ["gamma", "gain"])
+    def test_invalid_scalar_parameters(self, parameter, value):
+        image = torch.ones(1, 1, 2, 2)
+        with pytest.raises(RuntimeError, match="must be non-negative"):
+            kornia.enhance.adjust_gamma(image, **{"gamma": 1.0, "gain": 1.0, parameter: value})
+
+    def test_tensor_parameter_gradients(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 gradcheck")
+        image = torch.full((2, 1, 2, 2), 0.4, device=device, dtype=torch.float64, requires_grad=True)
+        gamma = torch.tensor([0.8, 1.2], device=device, dtype=torch.float64, requires_grad=True)
+        gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(kornia.enhance.adjust_gamma, (image, gamma, gain))
+
+    @pytest.mark.parametrize("gamma", [0.0, 0.25, 0.5, 0.9, 2.0])
+    @pytest.mark.parametrize("scalar", [True, False])
+    def test_black_pixel_gradient(self, device, dtype, gamma, scalar):
+        # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0; the gradient there is 0, as for the other
+        # exponents. x = 1 lands on the output clamp's bound and keeps the derivative of the power.
+        image = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).reshape(1, 1, 4).requires_grad_()
+        param = gamma if scalar else torch.tensor([gamma], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_gamma(image, param)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        # in the image dtype, as adjust_gamma rounds the exponent
+        exponent = torch.tensor(gamma, device=device, dtype=dtype)
+        expected = image.detach().pow(exponent)
+        expected_grad = exponent * image.detach().pow(exponent - 1)
+        expected_grad[..., 0] = 0.0
+        self.assert_close(out, expected)
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected_grad)
+
+    @pytest.mark.parametrize("scalar", [True, False])
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    def test_black_pixel_tangent(self, device, dtype, scalar, forward_mode, grad_enabled):
+        # Forward mode meets the same infinite derivative; the output clamp no longer hides it on any torch version.
+        image = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).reshape(1, 1, 4)
+        tangent = torch.ones_like(image)
+        param = 0.5 if scalar else torch.tensor([0.5], device=device, dtype=dtype)
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                _, actual = torch.func.jvp(lambda x: kornia.enhance.adjust_gamma(x, param), (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    actual = torch.autograd.forward_ad.unpack_dual(kornia.enhance.adjust_gamma(dual, param)).tangent
+        expected = image.new_tensor([0.0, 1.0, 0.5**0.5, 0.5]).reshape(1, 1, 4)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_scalar_export(self, device, dtype):
+        image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
+        module = kornia.enhance.AdjustGamma(0.7, 0.9)
+        exported = torch.export.export(module, (image,), strict=True).module()
+        self.assert_close(exported(image), module(image))
+
+    def test_scalar_jit(self, device, dtype):
+        image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
+        module = kornia.enhance.AdjustGamma(0.7, 0.9)
+        scripted = torch.jit.script(module)
+        self.assert_close(scripted(image), module(image))
 
     def test_gamma_zero(self, device, dtype):
         data = torch.tensor(
@@ -312,6 +549,34 @@ class TestAdjustContrast(BaseTester):
         out = kornia.enhance.adjust_contrast_with_mean_subtraction(img, 0.5)
         assert out.shape == shape
 
+    @pytest.mark.parametrize("factor", [0.5, (1,)])
+    def test_two_dimensional_image_with_mean_subtraction_6645(self, device, dtype, factor):
+        image = torch.tensor([[0.0, 1.0], [0.5, 0.5]], device=device, dtype=dtype)
+        if factor == (1,):
+            factor = torch.tensor([0.5], device=device, dtype=dtype)
+        # One gray plane with mean 0.5: image * 0.5 + 0.5 * (1 - 0.5).
+        expected = torch.tensor([[0.25, 0.75], [0.5, 0.5]], device=device, dtype=dtype)
+
+        actual = kornia.enhance.adjust_contrast_with_mean_subtraction(image, factor)
+
+        self.assert_close(actual, expected)
+        self.assert_close(actual, kornia.enhance.adjust_contrast_with_mean_subtraction(image[None], factor)[0])
+
+    @pytest.mark.parametrize("shape", [(4, 2, 3), (2, 1, 2, 3), (2, 3, 4, 2, 3)])
+    def test_non_rgb_mean_with_leading_dimensions(self, device, dtype, shape):
+        numel = torch.Size(shape).numel()
+        image = torch.arange(numel, device=device, dtype=dtype).reshape(shape) / numel
+        factor = torch.linspace(0.25, 0.75, image[..., 0, 0, 0].numel(), device=device, dtype=dtype).reshape(
+            image.shape[:-3]
+        )
+        factor_broadcast = factor.reshape(*factor.shape, 1, 1, 1)
+        expected = image * factor_broadcast + image.mean((-3, -2, -1), keepdim=True) * (1 - factor_broadcast)
+
+        actual = kornia.enhance.adjust_contrast_with_mean_subtraction(image, factor)
+
+        assert actual.shape == shape
+        self.assert_close(actual, expected)
+
     def test_factor_zero(self, device, dtype):
         # prepare input data
         data = torch.tensor(
@@ -361,25 +626,46 @@ class TestAdjustContrast(BaseTester):
 
     def test_negative_factor_errors(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+            pytest.skip("the value check raises during the call only on CPU; see test_mps_checks_the_factor")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="non-negative"):
             kornia.enhance.adjust_contrast(img, factor)
 
-    def test_mps_skips_value_check(self, device, dtype):
-        # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
-        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
-        # docstring), so even an invalid factor must go through without raising, and the output
-        # must stay on the device with the requested dtype.
+    def test_mps_checks_the_factor(self, device, dtype):
+        # The factor is checked on MPS as well: from torch 2.13 by the asynchronous assert, which raises at the next
+        # synchronization, and before, without that kernel, on the host during the call.
         if device.type != "mps":
-            pytest.skip("pins the MPS-only no-CPU-fallback behavior")
+            pytest.skip("pins the MPS behavior")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
-        out = kornia.enhance.adjust_contrast(img, factor)
-        assert out.shape == img.shape
-        assert out.device == img.device
-        assert out.dtype == img.dtype
+        if torch_version_ge(2, 13):
+            kornia.enhance.adjust_contrast(img, factor)
+            with pytest.raises(RuntimeError, match="non-negative"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="non-negative"):
+                kornia.enhance.adjust_contrast(img, factor)
+
+    def test_factor_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = kornia.enhance.adjust_contrast(img, factor, clip_output=False)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        self.assert_close(out, img * -0.5)
+
+    def test_vmap_over_the_factor(self, device, dtype):
+        # vmap has no batching rule for the value assert, which is skipped under functorch transforms.
+        img = torch.rand(3, 4, 4, device=device, dtype=dtype)
+        factors = torch.tensor([0.5, 1.0, 1.5], device=device, dtype=dtype)
+        out = torch.vmap(lambda factor: kornia.enhance.adjust_contrast(img, factor))(factors)
+        expected = torch.stack([kornia.enhance.adjust_contrast(img, factor) for factor in factors])
+        self.assert_close(out, expected)
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -602,6 +888,17 @@ class TestAdjustContrast(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0))
 
+    # Regression for #4806: every channel count must use each image's own mean.
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    def test_mean_subtraction_is_batch_independent_4806(self, device, dtype, channels):
+        bright = torch.full((1, channels, 2, 2), 0.8, device=device, dtype=dtype)
+        dark = torch.full((1, channels, 2, 2), 0.2, device=device, dtype=dtype)
+        factor = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
+        alone = kornia.enhance.adjust_contrast_with_mean_subtraction(dark, factor[:1])
+        batched = kornia.enhance.adjust_contrast_with_mean_subtraction(torch.cat([bright, dark]), factor)[1:]
+        self.assert_close(alone, dark)
+        self.assert_close(batched, alone)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -687,8 +984,183 @@ class TestAdjustBrightness(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_brightness_accumulative, (img, 2.0))
 
+    def test_accumulative_identity_factor_clamps_by_default(self, device, dtype):
+        # The multiplicative identity 1 still clamps into [0, 1] unless clip_output=False, and the module
+        # form always clamps.
+        values = torch.tensor([-0.5, 0.5, 2.0], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        expected = values.clamp(0.0, 1.0)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 1.0), expected)
+        self.assert_close(kornia.enhance.AdjustBrightnessAccumulative(1.0)(values), expected)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 1.0, clip_output=False), values)
+        self.assert_close(kornia.enhance.adjust_brightness_accumulative(values, 0.0), torch.zeros_like(values))
+
 
 class TestAdjustSigmoid(BaseTester):
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_default_mean_loss_derivatives(self, device, half_dtype, inv, scripted):
+        image = torch.zeros(1, 1, 256, 256, device=device, dtype=half_dtype, requires_grad=True)
+        op = kornia.enhance.AdjustSigmoid(gain=10.0, inv=inv)
+        if scripted:
+            op = torch.jit.script(op)
+        # The mean supplies a small backward seed: half reciprocal backward underflows even though exp(5) is finite.
+        for _ in range(2 if scripted else 1):
+            loss = op(image).float().mean()
+            (gradient,) = torch.autograd.grad(loss, image, create_graph=True)
+            (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        tail = exp(-5.0)
+        scale = (-1.0 if inv else 1.0) / image.numel()
+        expected_gradient = scale * 10.0 * tail / (1 + tail) ** 2
+        expected_second = scale * 100.0 * tail * (1 - tail) / (1 + tail) ** 3
+        self.assert_close(gradient, torch.full_like(image, expected_gradient), rtol=0, atol=0)
+        self.assert_close(second, torch.full_like(image, expected_second), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize(
+        "gain,cutoff", [(34.0, 0.5), (40.0, 0.5), (40.0, 0.3), (60.0, 0.5), (100.0, 0.5), (200.0, 0.5)]
+    )
+    @pytest.mark.parametrize("gain_sign", [1.0, -1.0])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_high_gain_grid_derivatives(self, device, half_dtype, gain, cutoff, gain_sign, inv, scripted):
+        # Use the actual half-rounded inputs in the independent Python-double reference.
+        values = torch.linspace(0, 1, 1001, dtype=half_dtype).tolist()
+        image = torch.tensor(values, device=device, dtype=half_dtype).view(1, 1, 1, -1).requires_grad_()
+        gain *= gain_sign
+        op = kornia.enhance.AdjustSigmoid(cutoff=cutoff, gain=gain, inv=inv)
+        if scripted:
+            op = torch.jit.script(op)
+        # Also exercise TorchScript's optimized backward after its profiling run.
+        for _ in range(2 if scripted else 1):
+            actual = op(image)
+            (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+            (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        logits = [gain * (x - cutoff) for x in values]
+        tails = [exp(-abs(z)) for z in logits]
+        sign = -1.0 if inv else 1.0
+        expected_gradient = image.new_tensor([sign * gain * t / (1 + t) ** 2 for t in tails]).view_as(image)
+        expected_second = image.new_tensor(
+            [sign * (-1.0 if z > 0 else 1.0) * gain**2 * t * (1 - t) / (1 + t) ** 3 for z, t in zip(logits, tails)]
+        ).view_as(image)
+        assert actual.dtype == image.dtype
+        assert actual.device == image.device
+        assert actual.shape == image.shape
+        assert torch.isfinite(actual).all()
+        # Allow half rounding, including one subnormal step, but do not lose representable derivatives.
+        for result, expected in [(gradient, expected_gradient), (second, expected_second)]:
+            assert torch.isfinite(result).all()
+            assert (result[expected != 0] != 0).all()
+            self.assert_close(result, expected, rtol=2e-3, atol=2**-24)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("gain", [200.0, -200.0])
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_half_outside_range_derivatives(self, device, half_dtype, gain, inv):
+        # These saturated pixels should have zero derivatives, not exp overflow followed by 0 * inf.
+        image = torch.tensor([-65504.0, -20.0, 21.0, 65504.0], device=device, dtype=half_dtype).requires_grad_()
+        actual = kornia.enhance.adjust_sigmoid(image, gain=gain, inv=inv)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+        assert torch.isfinite(actual).all()
+        self.assert_close(gradient, torch.zeros_like(image), rtol=0, atol=0)
+        self.assert_close(second, torch.zeros_like(image), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("gain", [23.0, -23.0, 30.0, -30.0, 32.0, -32.0])
+    def test_half_high_gain_second_derivative(self, device, half_dtype, gain, inv):
+        values = [0.0, 0.25, 0.5, 0.75, 1.0]
+        image = torch.tensor(values, device=device, dtype=half_dtype).view(1, 1, 1, 5).requires_grad_()
+        actual = kornia.enhance.AdjustSigmoid(gain=gain, inv=inv)(image)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        # Evaluate the analytic derivatives through the small tail, avoiding cancellation in 1 - sigmoid.
+        logits = [gain * (x - 0.5) for x in values]
+        tails = [exp(-abs(z)) for z in logits]
+        sign = -1.0 if inv else 1.0
+        expected_gradient = [sign * gain * t / (1 + t) ** 2 for t in tails]
+        expected_second = [
+            sign * (-1.0 if z > 0 else 1.0) * gain**2 * t * (1 - t) / (1 + t) ** 3 for z, t in zip(logits, tails)
+        ]
+        self.assert_close(gradient, image.new_tensor(expected_gradient).view_as(image), rtol=0, atol=0)
+        self.assert_close(second, image.new_tensor(expected_second).view_as(image), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.bfloat16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("value,cutoff,gain", [(-7.90625, 0.75, 10.0), (-3.53125, 0.7578125, 20.0)])
+    def test_bfloat16_outside_range_second_derivative(self, device, half_dtype, value, cutoff, gain, inv):
+        # Promoting bfloat16 here can overflow double-backward intermediates that were finite before.
+        image = torch.tensor([value], device=device, dtype=half_dtype).view(1, 1, 1, 1).requires_grad_()
+        actual = kornia.enhance.adjust_sigmoid(image, cutoff=cutoff, gain=gain, inv=inv)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+        assert torch.isfinite(actual).all()
+        assert torch.isfinite(gradient).all()
+        assert torch.isfinite(second).all()
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_broadcast_tensor_parameters_keep_gradients_and_dtype(self, device, dtype, inv):
+        image = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=dtype).view(1, 1, 1, 3).requires_grad_()
+        cutoff = torch.tensor([0.5, 0.5, 0.5], device=device, dtype=torch.float32, requires_grad=True)
+        gain = torch.tensor([30.0, -30.0, 10.0], device=device, dtype=torch.float32, requires_grad=True)
+        actual = kornia.enhance.adjust_sigmoid(image, cutoff=cutoff, gain=gain, inv=inv)
+        image_grad, cutoff_grad, gain_grad = torch.autograd.grad(actual, (image, cutoff, gain), torch.ones_like(actual))
+        assert actual.dtype == torch.promote_types(dtype, torch.float32)
+        assert actual.shape == image.shape
+        assert actual.device == image.device
+        # All values are exactly representable, so the reference does not inherit image rounding error.
+        tails = [exp(-7.5), 1.0, exp(-2.5)]
+        sign = -1.0 if inv else 1.0
+        slopes = [sign * t / (1 + t) ** 2 for t in tails]
+        expected_image = [g * s for g, s in zip([30.0, -30.0, 10.0], slopes)]
+        self.assert_close(image_grad, image.new_tensor(expected_image).view_as(image), rtol=1e-6, atol=0)
+        self.assert_close(cutoff_grad, cutoff.new_tensor([-v for v in expected_image]), rtol=1e-6, atol=0)
+        self.assert_close(
+            gain_grad, gain.new_tensor([d * s for d, s in zip([-0.25, 0.0, 0.25], slopes)]), rtol=1e-6, atol=0
+        )
+
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("gain", [0.0, 10.0, 30.0, -30.0])
+    def test_bounded_values_and_gradients(self, device, dtype, gain, inv):
+        # Dark pixels overflow exp(gain * (cutoff - x)) in float16 at gain=30, although both the
+        # sigmoid and its derivative are bounded. Check both tails and the derivative at the cutoff.
+        image = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 1, 5)
+        image.requires_grad_()
+        actual = kornia.enhance.AdjustSigmoid(gain=gain, inv=inv)(image)
+        (gradient,) = torch.autograd.grad(actual.sum(), image)
+
+        # Independent analytic reference, evaluated in Python double precision, without an optional dependency.
+        values = [1.0 / (1.0 + exp(gain * (0.5 - x))) for x in [0.0, 0.25, 0.5, 0.75, 1.0]]
+        derivatives = [gain * y * (1.0 - y) * (-1.0 if inv else 1.0) for y in values]
+        expected = image.new_tensor([1.0 - y if inv else y for y in values]).view_as(image)
+        expected_gradient = image.new_tensor(derivatives).view_as(image)
+        assert actual.dtype == image.dtype
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+        # In particular, both tiny tail derivatives must survive; replacing the expression with a
+        # low-precision sigmoid alone rounds the bright tail to 1 and gives it a zero derivative.
+        self.assert_close(gradient, expected_gradient, rtol=0.02, atol=1e-7)
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_gradcheck_high_gain(self, device, inv):
+        image = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=torch.float64).view(1, 1, 1, 3)
+        self.gradcheck(kornia.enhance.AdjustSigmoid(gain=30.0, inv=inv), (image,))
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_dynamo_high_gain_backward(self, device, dtype, inv, torch_optimizer):
+        image = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 3).requires_grad_()
+        op = kornia.enhance.AdjustSigmoid(gain=30.0, inv=inv)
+        expected = op(image)
+        expected_gradient = torch.autograd.grad(expected.sum(), image)[0]
+        actual = torch_optimizer(op, fullgraph=True)(image)
+        gradient = torch.autograd.grad(actual.sum(), image)[0]
+        self.assert_close(actual, expected)
+        self.assert_close(gradient, expected_gradient, rtol=0.02, atol=1e-7)
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)
@@ -732,7 +1204,6 @@ class TestAdjustSigmoid(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -785,7 +1256,6 @@ class TestAdjustLog(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -884,12 +1354,86 @@ class TestEqualize(BaseTester):
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
 
+    def test_counts_beyond_half_precision_range(self, device, dtype):
+        # 90000 pixels: the histogram total overflows float16 (inf above 65504) and bfloat16 rounds the counts.
+        inputs = torch.full((1, 1, 300, 300), 0.8, device=device, dtype=dtype)
+        inputs[..., :100, :] = 0.5
+        expected = torch.ones_like(inputs)
+        expected[..., :100, :] = 0.0
+        self.assert_close(kornia.enhance.equalize(inputs), expected, rtol=0.0, atol=0.0)
+
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize, (inputs,), fast_mode=False)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
+    @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
+        # "index 259 is out of bounds" from the gather. MPS range-checks it too (kornia#4600): from
+        # torch 2.13 the assert is asynchronous there, so the message arrives at the sync.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(kornia.enhance.equalize(x).device)
+
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+        # The range check keeps the lookup in bounds, so it runs with checks disabled too (``python -O``,
+        # ``KORNIA_CHECKS=0``): a compiled CPU scatter with an index out of range terminates the process.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+                _sync(kornia.enhance.equalize(x).device)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
+    def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
+        # The check covers exactly the values that crashed, so a hair above 1 keeps working.
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 1.0001
+        assert kornia.enhance.equalize(x).shape == x.shape
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The range check must not reintroduce a graph break (#3842 removed an ``.item()`` check).
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        self.assert_close(compiled(x), kornia.enhance.equalize(x))
+
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+        # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
+        # compiling if the asynchronous assert is traced, because a host read cannot be.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+        # The range check keeps the lookup in bounds, so a compiled torch.func.grad keeps it, although a compiled
+        # functorch transform skips the value checks that guard no index.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        if not torch_version_ge(2, 14):
+            pytest.skip("torch 2.9.1 and older end an error raised in a compiled torch.func.grad in an internal assert")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        gradient = torch.func.grad(lambda image: kornia.enhance.equalize(image).sum())
+        compiled = torch.compile(gradient, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
         inp = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -906,12 +1450,27 @@ class TestEqualize(BaseTester):
 
         channel = torch.stack([row] * height).to(device, dtype)
         image = torch.stack([channel] * channels).to(device, dtype)
-        batch = torch.stack([image] * batch_size).to(device, dtype)
-
-        return batch
+        return torch.stack([image] * batch_size).to(device, dtype)
 
 
 class TestEqualize3D(BaseTester):
+    @pytest.mark.parametrize("scale, shift", [(1.5, 0.0), (1.0, -0.5)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4432: the 3D path shares the lookup, so it shares the MPS fix too (kornia#4600).
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        torch.manual_seed(0)
+        x = torch.rand(1, 1, 5, 7, 9, device=device, dtype=dtype) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(kornia.enhance.equalize3d(x).device)
+
+    def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
+        # As the docstring states: the lookup step is an integer division by 255. Such a volume comes back as it is,
+        # not as (x * 255) / 255, which can be a unit in the last place off.
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 3, 5, 17, device=device, dtype=dtype) * 0.5
+        assert torch.equal(kornia.enhance.equalize3d(x), x)
+
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
         inputs3d = torch.ones(*shape, device=device, dtype=dtype)
@@ -961,12 +1520,19 @@ class TestEqualize3D(BaseTester):
 
         self.assert_close(f(inputs3d), expected, low_tolerance=True)
 
+    def test_counts_beyond_half_precision_range(self, device, dtype):
+        # 90000 voxels per channel: the histogram total overflows float16 and bfloat16 rounds the counts.
+        inputs3d = torch.full((1, 1, 4, 150, 150), 0.8, device=device, dtype=dtype)
+        inputs3d[..., :1, :, :] = 0.5
+        expected = torch.ones_like(inputs3d)
+        expected[..., :1, :, :] = 0.0
+        self.assert_close(kornia.enhance.equalize3d(inputs3d), expected, rtol=0.0, atol=0.0)
+
     def test_gradcheck(self, device):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize3d, (inputs3d,), fast_mode=False)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
         batch_size, channels, depth, height, width = 1, 2, 1, 3, 3
         inp = torch.ones(batch_size, channels, depth, height, width, device=device, dtype=dtype)
@@ -984,9 +1550,7 @@ class TestEqualize3D(BaseTester):
         channel = torch.stack([row] * height).to(device, dtype)
         image = torch.stack([channel] * channels).to(device, dtype)
         image3d = torch.stack([image] * depth).transpose(0, 1).to(device, dtype)
-        batch = torch.stack([image3d] * batch_size).to(device, dtype)
-
-        return batch
+        return torch.stack([image3d] * batch_size).to(device, dtype)
 
 
 class TestSharpness(BaseTester):
@@ -1009,8 +1573,12 @@ class TestSharpness(BaseTester):
             assert TestSharpness.f(img, [0.8, 0.9, 0.6])
         with pytest.raises(AssertionError):
             assert TestSharpness.f(img, torch.tensor([0.8, 0.9, 0.6]))
-        with pytest.raises(AssertionError):
-            assert TestSharpness.f(img, torch.tensor([0.8]))
+
+    def test_one_element_factor_broadcasts_6663(self, device, dtype):
+        # A (1,) factor on a batch of more than one image used to raise.
+        img = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        factor = torch.tensor([0.5], device=device, dtype=dtype)
+        self.assert_close(TestSharpness.f(img, factor), TestSharpness.f(img, 0.5), rtol=0, atol=0)
 
     def test_value(self, device, dtype):
         torch.manual_seed(0)
@@ -1067,14 +1635,12 @@ class TestSharpness(BaseTester):
         self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
         self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSharpness.f, (inputs, 0.8))
 
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSharpness.f
         op_script = torch.jit.script(TestSharpness.f)
@@ -1130,6 +1696,63 @@ class TestSolarize(BaseTester):
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
 
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5), (2, 2, 3, 4, 5)])
+    @pytest.mark.parametrize("element_shape", [(1,), (1, 1)])
+    @pytest.mark.parametrize("param_dtype", [None, torch.float64])
+    def test_one_element_tensor_serves_the_batch_6547(self, device, dtype, shape, element_shape, param_dtype):
+        # A one-element thresholds or additions tensor solarizes the whole batch, as a 0-d one does; it was read as
+        # per-sample and rejected unless the batch (or, unbatched, the channel count) was 1. It is cast to the image
+        # dtype first, as the per-sample path does.
+        if param_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        img = torch.rand(shape, device=device, dtype=dtype)
+        thresholds = torch.full(element_shape, 0.3, device=device, dtype=param_dtype or dtype)
+        additions = torch.full(element_shape, 0.1, device=device, dtype=param_dtype or dtype)
+        threshold = thresholds.to(dtype).reshape(())
+        expected = TestSolarize.f(img, threshold, additions.to(dtype).reshape(()))
+        self.assert_close(TestSolarize.f(img, thresholds, additions), expected, atol=0, rtol=0)
+        self.assert_close(TestSolarize.f(img, thresholds), TestSolarize.f(img, threshold), atol=0, rtol=0)
+
+    @pytest.mark.parametrize("addition", [0.5, -0.5])
+    def test_additions_closed_range_4605(self, device, dtype, addition):
+        # RandomSolarize admits the closed [-0.5, 0.5], and its sampler can draw an endpoint exactly.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        shifted = (img + addition).clamp(0.0, 1.0)
+        expected = torch.where(shifted >= 0.5, 1.0 - shifted, shifted)
+        self.assert_close(TestSolarize.f(img, 0.5, addition), expected)
+        # Both entries are asserted: checking only sample 0 leaves a 1-D `additions` broadcast from the
+        # first entry indistinguishable from a real per-sample dispatch.
+        per_sample = torch.tensor([addition, 0.0], device=device, dtype=dtype)
+        out = TestSolarize.f(img, 0.5, per_sample)
+        self.assert_close(out[0], expected[0])
+        unshifted = img[1].clamp(0.0, 1.0)
+        self.assert_close(out[1], torch.where(unshifted >= 0.5, 1.0 - unshifted, unshifted))
+
+    # `0.5 + 2 ** -24` is the next float32 above the bound, so the pin constrains it to one ulp
+    # rather than to the ~1700 an 0.5001 leaves.
+    @pytest.mark.parametrize("addition", [0.5 + 2**-24, -(0.5 + 2**-24), 0.5001, -0.5001])
+    def test_additions_outside_closed_range_raise_4605(self, device, addition):
+        if device.type != "cpu":
+            pytest.skip("CPU only: the value check is an async device assert elsewhere")
+        img = torch.rand(2, 3, 4, 5, device=device)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
+    def test_float_additions_checked_on_the_host_under_any_default_device(self, device, dtype):
+        # The float is checked on the CPU whatever the default device: under a meta default the check used to have
+        # nothing to read, so an invalid float passed, and under a CUDA default it was a device-side assert.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(AsyncCheckError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, 0.7)
+
+    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    def test_float_additions_checked_before_rounding(self, device, dtype, addition):
+        # A float is checked as given, on the host, for every device: float16/bfloat16 round 0.5001 to 0.5,
+        # and a check on an MPS tensor is skipped.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
     # TODO: add better cases
     def test_value(self, device, dtype):
         torch.manual_seed(0)
@@ -1157,7 +1780,6 @@ class TestSolarize(BaseTester):
         # TODO(jian): precision is very bad compared to PIL
         self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1165,7 +1787,6 @@ class TestSolarize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSolarize.f
         op_script = torch.jit.script(op)
@@ -1235,6 +1856,14 @@ class TestPosterize(BaseTester):
         with pytest.raises(AssertionError):
             TestPosterize.f(img, torch.tensor([1, 2, 3], device=device))
 
+    @pytest.mark.parametrize("bits", [9, -1])
+    def test_bits_outside_closed_range_raise_6663(self, device, dtype, bits):
+        # Used to return a black image. Python and CPU tensor bits are checked on the host, whatever the device.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        for value in (bits, torch.tensor(bits), torch.tensor([4, bits])):
+            with pytest.raises(AsyncCheckError, match=r"closed range \[0, 8\]"):
+                TestPosterize.f(img, value)
+
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
     def test_value(self, device, dtype):
@@ -1255,7 +1884,6 @@ class TestPosterize(BaseTester):
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
     @pytest.mark.skip(reason="IndexError: tuple index out of range")
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1263,7 +1891,6 @@ class TestPosterize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestPosterize.f
         op_script = torch.jit.script(op)
@@ -1277,3 +1904,613 @@ class TestPosterize(BaseTester):
         op = kornia.enhance.posterize
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img, 3), op_optimized(img, 3))
+
+
+_FACTOR_OPS = [
+    kornia.enhance.adjust_saturation,
+    kornia.enhance.adjust_saturation_raw,
+    kornia.enhance.adjust_saturation_with_gray_subtraction,
+    kornia.enhance.adjust_hue,
+    kornia.enhance.adjust_hue_raw,
+    kornia.enhance.adjust_contrast,
+    kornia.enhance.adjust_contrast_with_mean_subtraction,
+    kornia.enhance.adjust_brightness,
+    kornia.enhance.adjust_brightness_accumulative,
+    kornia.enhance.adjust_gamma,
+]
+
+
+class TestFactorBroadcast(BaseTester):
+    """A factor carrying more dimensions than the image must raise.
+
+    The other factor ops used to spin forever while broadcasting it; ``adjust_gamma`` returned a larger tensor.
+    """
+
+    @pytest.mark.parametrize("op", _FACTOR_OPS)
+    @pytest.mark.parametrize("img_shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_factor_with_more_dims_raises(self, device, dtype, op, img_shape):
+        img = torch.rand(img_shape, device=device, dtype=dtype)
+        factor = torch.ones(2, *([1] * len(img_shape)), device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            op(img, factor)
+
+    @pytest.mark.parametrize("op", _FACTOR_OPS)
+    def test_per_image_factor_with_equal_rank(self, device, dtype, op):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        values = [0.3, 0.7]
+        factor = torch.tensor(values, device=device, dtype=dtype).view(2, 1, 1, 1)
+        out = op(img, factor)
+        for i, v in enumerate(values):
+            self.assert_close(out[i : i + 1], op(img[i : i + 1], v))
+
+    @pytest.mark.parametrize("op", [kornia.enhance.adjust_brightness, kornia.enhance.adjust_contrast])
+    def test_per_channel_factor_with_equal_rank(self, device, dtype, op):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        values = [0.2, 0.5, 0.8]
+        factor = torch.tensor(values, device=device, dtype=dtype).view(1, 3, 1, 1)
+        out = op(img, factor)
+        for c, v in enumerate(values):
+            self.assert_close(out[:, c : c + 1], op(img[:, c : c + 1], v))
+
+    def test_factor_with_fewer_dims_still_broadcasts(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_brightness(img, factor)
+        assert out.shape == img.shape
+
+    def test_overranked_gain_raises(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        gain = torch.ones(2, 1, 1, 1, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.enhance.adjust_gamma(img, 1.0, gain)
+
+
+_FUNCTIONS = ["equalize", "equalize3d", "posterize", "sharpness"]
+
+
+def _arguments(name):
+    if name == "posterize":
+        return (4,)
+    if name == "sharpness":
+        return (0.5,)
+    return ()
+
+
+def _spatial_shape(name):
+    return (3, 5, 7) if name == "equalize3d" else (5, 7)
+
+
+def _input(shape, device, dtype):
+    return (torch.arange(prod(shape)).remainder(128).to(device=device, dtype=dtype) / 128).reshape(shape)
+
+
+def _weights(input):
+    return (torch.arange(input.numel()).remainder(17).to(input) + 1).reshape(input.shape)
+
+
+def _equalize_reference(input):
+    # Independent per-plane histogram: bincount instead of the batched scatter_add implementation, counting each
+    # pixel in the 8-bit level its lookup reads, as PIL does.
+    count_dtype = torch.float64 if input.dtype == torch.float64 else torch.float32
+    planes = input.reshape(input.shape[0] * input.shape[1], -1)
+    outputs = []
+    for plane in planes:
+        scaled = plane * 255.0
+        indices = scaled.long().clamp(0, 255)
+        hist = torch.bincount(indices, minlength=256).to(count_dtype)
+        last_count = hist[hist.nonzero()[-1, 0]]
+        step = torch.div(hist.sum() - last_count, 255, rounding_mode="trunc")
+        lut = torch.div(
+            hist.cumsum(0) + torch.div(step, 2, rounding_mode="trunc"), step.clamp(min=1), rounding_mode="trunc"
+        )
+        lut = torch.cat([torch.zeros_like(lut[:1]), lut[:-1]]).clamp(0, 255).to(input.dtype)
+        # A plane whose step is 0 comes back as it is.
+        outputs.append(torch.where(step == 0, plane, lut[scaled.long()] / 255.0))
+    return torch.stack(outputs).reshape(input.shape)
+
+
+class TestEmptyIntensity(BaseTester):
+    @pytest.mark.parametrize("name", _FUNCTIONS)
+    @pytest.mark.parametrize("leading", [(0,), (2, 0), (0, 2), (2, 1, 0)])
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_empty_shape_and_backward_4429(self, name, leading, transpose, device, dtype):
+        image = torch.empty((*leading, 3, *_spatial_shape(name)), device=device, dtype=dtype)
+        if transpose:
+            image = image.transpose(-1, -2)
+        image.requires_grad_()
+        output = getattr(enhance, name)(image, *_arguments(name))
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+        assert output.numel() == 0
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("name", _FUNCTIONS)
+    @pytest.mark.parametrize("leading", [None, (), (1,), (2,), (2, 1, 2)])
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_nonempty_rank_interpretation_4429(self, name, leading, transpose, device, dtype):
+        spatial = _spatial_shape(name)
+        shape = spatial if leading is None else (*leading, 3, *spatial)
+        image = _input(shape, device, dtype)
+        if transpose:
+            image = image.transpose(-1, -2)
+        channels = 1 if leading is None else 3
+        canonical = image.reshape(-1, channels, *image.shape[-len(spatial) :])
+        fn = getattr(enhance, name)
+        expected = fn(canonical, *_arguments(name)).reshape(image.shape)
+        output = fn(image, *_arguments(name))
+        assert output.shape == image.shape
+        self.assert_close(output, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("name", _FUNCTIONS)
+    def test_invalid_planes_4429(self, name, device, dtype):
+        shape = (0, 3, *_spatial_shape(name))
+        for axis in range(1, len(shape)):
+            invalid = list(shape)
+            invalid[axis] = 0
+            with pytest.raises(ValueError):
+                getattr(enhance, name)(torch.empty(invalid, device=device, dtype=dtype), *_arguments(name))
+        # In a minimum-rank tensor, the first dimension is spatial, not an empty batch.
+        invalid = (0, *_spatial_shape(name)[1:])
+        with pytest.raises(ValueError):
+            getattr(enhance, name)(torch.empty(invalid, device=device, dtype=dtype), *_arguments(name))
+
+    @pytest.mark.parametrize("name", _FUNCTIONS)
+    def test_invalid_rank_and_type_4429(self, name, device, dtype):
+        for shape in [(), (3,)]:
+            with pytest.raises(ValueError):
+                getattr(enhance, name)(torch.ones(shape, device=device, dtype=dtype), *_arguments(name))
+        with pytest.raises(TypeError):
+            getattr(enhance, name)([1.0], *_arguments(name))
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    @pytest.mark.parametrize("form", ["scalar", "one", "sample", "channel"])
+    def test_posterize_parameter_forms_4429(self, batch, form, device, dtype):
+        image = _input((2, batch, 3, 5, 7), device, dtype).requires_grad_()
+        count = 2 * batch
+        if form == "scalar":
+            bits = 4
+            mask = torch.zeros((count, 3, 1, 1), device=device, dtype=dtype)
+        elif form == "one":
+            bits = torch.tensor([8])
+            mask = torch.ones((count, 3, 1, 1), device=device, dtype=dtype)
+        elif form == "sample":
+            bits = torch.arange(count).remainder(3) * 4
+            mask = (bits == 8).to(image).reshape(count, 1, 1, 1).expand(count, 3, 1, 1)
+        else:
+            bits = (torch.arange(count * 3).remainder(3) * 4).reshape(count, 3)
+            mask = (bits == 8).to(image).reshape(count, 3, 1, 1)
+        output = enhance.posterize(image, bits)
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == dtype
+        weights = _weights(image)
+        (output * weights).sum().backward()
+        assert image.grad is not None
+        expected_grad = (mask.expand(count, 3, 5, 7) * weights.reshape(count, 3, 5, 7)).reshape(image.shape)
+        self.assert_close(image.grad, expected_grad, rtol=0, atol=0)
+        if batch:
+            canonical = image.detach().reshape(count, 3, 5, 7)
+            expected = []
+            for index in range(count):
+                per_image_bits = bits if form in ("scalar", "one") else bits[index : index + 1]
+                expected.append(enhance.posterize(canonical[index : index + 1], per_image_bits))
+            self.assert_close(output, torch.cat(expected).reshape(image.shape), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    @pytest.mark.parametrize("form", ["scalar", "sample"])
+    def test_sharpness_parameter_forms_4429(self, batch, form, device, dtype):
+        image = _input((2, batch, 3, 5, 7), device, dtype).requires_grad_()
+        count = 2 * batch
+        factor = 0.5 if form == "scalar" else torch.linspace(0.2, 1.5, count)
+        output = enhance.sharpness(image, factor)
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == dtype
+        (output * _weights(image)).sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+        if batch:
+            canonical = image.detach().reshape(count, 3, 5, 7)
+            expected = [
+                enhance.sharpness(canonical[index : index + 1], factor if form == "scalar" else factor[index])
+                for index in range(count)
+            ]
+            self.assert_close(output, torch.cat(expected).reshape(image.shape))
+
+    def test_empty_parameters_are_validated_4429(self, device, dtype):
+        image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype)
+        with pytest.raises(TypeError, match="bits type"):
+            enhance.posterize(image, 4.0)
+        for bits in [torch.tensor([4, 8]), torch.empty(0, 2, dtype=torch.long)]:
+            with pytest.raises(AssertionError, match="equal between bits and input"):
+                enhance.posterize(image, bits)
+        with pytest.raises(AssertionError, match="batch size shall match"):
+            enhance.sharpness(image, torch.empty(0, 1))
+        # A (1,) factor applies to every image, none here (#6663).
+        assert enhance.sharpness(image, torch.tensor([0.5])).shape == image.shape
+
+    @pytest.mark.parametrize("spatial", [(2, 8), (6, 2)])
+    def test_small_empty_sharpness_is_rejected_4429(self, spatial, device, dtype):
+        with pytest.raises(RuntimeError, match="Kernel size"):
+            enhance.sharpness(torch.empty(0, 3, *spatial, device=device, dtype=dtype), 0.5)
+
+    @pytest.mark.parametrize("volume", [False, True])
+    @pytest.mark.parametrize("plane_size", [255, 256, 429])
+    def test_equalize_independent_planes_4429(self, volume, plane_size, device, dtype):
+        spatial = {255: (3, 5, 17), 256: (2, 8, 16), 429: (3, 11, 13)}[plane_size]
+        if not volume:
+            spatial = {255: (5, 51), 256: (16, 16), 429: (13, 33)}[plane_size]
+        indices = torch.arange(plane_size)
+        levels = torch.tensor([0.0, 0.125, 0.375, 0.875])
+        channel0 = levels[indices.remainder(4)]
+        channel1 = levels[(indices * indices + 3 * indices + 1).remainder(4)]
+        image = torch.stack([channel0, channel1]).reshape(1, 2, *spatial).to(device=device, dtype=dtype)
+        image.requires_grad_()
+        reference_input = image.detach().clone().requires_grad_()
+        fn = enhance.equalize3d if volume else enhance.equalize
+        output = fn(image)
+        expected = _equalize_reference(reference_input)
+        self.assert_close(output, expected, rtol=0, atol=0)
+        weights = _weights(image)
+        (output * weights).sum().backward()
+        (expected * weights).sum().backward()
+        self.assert_close(image.grad, reference_input.grad, rtol=0, atol=0)
+        if plane_size == 429:
+            assert not torch.equal(output, image)
+            if volume:
+                per_slice = torch.stack([enhance.equalize(image[:, :, depth]) for depth in range(spatial[0])], 2)
+                assert not torch.equal(output, per_slice)
+
+    @pytest.mark.parametrize("name", _FUNCTIONS)
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_dynamo_shape_and_values_4429(self, name, batch, device, dtype, torch_optimizer):
+        image = _input((2, batch, 3, *_spatial_shape(name)), device, dtype)
+        fn = getattr(enhance, name)
+        expected = fn(image, *_arguments(name))
+        optimized = torch_optimizer(fn)
+        output = optimized(image, *_arguments(name))
+        assert output.shape == image.shape
+        assert output.device == image.device
+        assert output.dtype == dtype
+        self.assert_close(output, expected)
+
+
+class TestClipUnitFreshBuffer(BaseTester):
+    # adjust_brightness and adjust_contrast clamp their own fresh result in place when no gradient is recorded, so a
+    # batch-32 call allocates one image-sized temporary fewer. The caller's tensor is never modified, and the values
+    # equal the out-of-place clamp, as do the gradients away from a bound (TestUnitRangeClampGradient has those on it).
+    _REFERENCE = {
+        "adjust_brightness": lambda image, factor: torch.clamp(image + factor.view(-1, 1, 1, 1), 0.0, 1.0),
+        "adjust_contrast": lambda image, factor: torch.clamp(image * factor.view(-1, 1, 1, 1), 0.0, 1.0),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    def test_input_unmodified_and_values_match_with_and_without_a_gradient(self, device, dtype, op):
+        fn = getattr(enhance, op)
+        reference = self._REFERENCE[op]
+        image = torch.linspace(-0.5, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device, dtype=dtype)
+        with torch.no_grad():
+            out_no_grad = fn(image, factor)
+        out_plain = fn(image, factor)
+        leaf = image.clone().requires_grad_()
+        out_grad = fn(leaf, factor)
+        assert torch.equal(image, original)
+        assert torch.equal(out_no_grad, out_plain)
+        assert torch.equal(out_no_grad, out_grad.detach())
+        self.assert_close(out_no_grad, reference(image, factor))
+
+        ref_leaf = image.clone().requires_grad_()
+        reference(ref_leaf, factor).sum().backward()
+        out_grad.sum().backward()
+        assert leaf.grad is not None
+        self.assert_close(leaf.grad, ref_leaf.grad)
+
+    def test_reuses_the_buffer_only_when_no_derivative_can_be_asked_for(self, device, dtype):
+        fresh = torch.linspace(-0.5, 1.5, 8, device=device, dtype=dtype)
+        expected = fresh.clamp(0.0, 1.0)
+        unrecorded = fresh.clone()
+        out = _clip_unit_fresh(unrecorded)
+        assert out is unrecorded
+        assert torch.equal(out, expected)
+        recorded = fresh.clone().requires_grad_()
+        out = _clip_unit_fresh(recorded)
+        assert out is not recorded
+        assert torch.equal(out, expected)
+        with torch.no_grad():
+            detached = recorded.clone()
+            assert _clip_unit_fresh(detached) is detached
+            with torch.autograd.forward_ad.dual_level():
+                dual = torch.autograd.forward_ad.make_dual(fresh.clone(), torch.ones_like(fresh))
+                assert _clip_unit_fresh(dual) is not dual
+                assert torch.equal(dual, fresh)
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    @pytest.mark.parametrize("batch", [0, 3])
+    def test_vmap_keeps_the_batching_rule(self, device, dtype, op, batch):
+        # vmap has a batching rule for clamp but not for clamp_, whose fallback loops over the batch and rejects an
+        # empty one, so a transformed call keeps the out-of-place clamp. With the fallback disabled, reaching it raises.
+        fn = getattr(enhance, op)
+        image = torch.rand(batch, 3, 4, 4, device=device, dtype=dtype)
+        functorch = torch._C._functorch
+        fallback_enabled = functorch._is_vmap_fallback_enabled()
+        functorch._set_vmap_fallback_enabled(False)
+        try:
+            out = torch.vmap(lambda frame: fn(frame, 0.2))(image)
+        finally:
+            functorch._set_vmap_fallback_enabled(fallback_enabled)
+        self.assert_close(out, fn(image, 0.2))
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    def test_jit(self, device, dtype, op):
+        # TorchScript cannot compile the functorch query, so the scripted functions and modules skip the in-place clamp.
+        fn = getattr(enhance, op)
+        module = {"adjust_brightness": enhance.AdjustBrightness, "adjust_contrast": enhance.AdjustContrast}[op]
+        image = torch.linspace(-0.5, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device, dtype=dtype)
+        expected = self._REFERENCE[op](image, factor)
+        self.assert_close(torch.jit.script(fn)(image, factor), expected)
+        self.assert_close(torch.jit.script(module(factor))(image), expected)
+        assert torch.equal(image, original)
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    def test_integer_image_with_checks_disabled_keeps_the_promoting_clamp(self, device, op):
+        # With checks disabled an integer image reaches the clamp. Its float bounds promote the result to float32,
+        # which an in-place clamp cannot do, so that image keeps the out-of-place clamp and its float32 output.
+        fn = getattr(enhance, op)
+        image = torch.randint(0, 256, (2, 3, 4, 4), device=device, dtype=torch.uint8)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device)
+        was_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = fn(image, factor)
+        finally:
+            if was_enabled:
+                enable_checks()
+        assert torch.equal(image, original)
+        assert out.dtype == torch.float32
+        self.assert_close(out, self._REFERENCE[op](image, factor.to(torch.uint8)))
+
+
+def _black_grey_white(device, dtype) -> Tensor:
+    row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype)
+    return row.view(1, 1, 1, 4).expand(1, 3, 4, 4).contiguous()
+
+
+def _no_shift(image: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    return (image.new_zeros(image.shape[0]),) * 3
+
+
+class TestUnitRangeClampGradient(BaseTester):
+    # Valid images hold exact 0 and 1 pixels, and torch.clamp's derivative at a bound is 1 on torch 2.5.1 and 2.9.1 and
+    # 0 on 2.14 (#6296). These ops clamp with _clamp_unit_range, so a result on the closed range [0, 1] keeps the
+    # derivative of the arithmetic on every torch version, and a result outside it gets the bound and a zero gradient.
+    # These pins fail with a plain clamp only on a recent torch; the 2.5.1 leg shows that the two sides agree.
+    _AT_IDENTITY = {
+        "adjust_brightness": lambda x: enhance.adjust_brightness(x, 0.0),
+        "adjust_contrast": lambda x: enhance.adjust_contrast(x, 1.0),
+        "adjust_brightness_accumulative": lambda x: enhance.adjust_brightness_accumulative(x, 1.0),
+        "adjust_contrast_with_mean_subtraction": lambda x: enhance.adjust_contrast_with_mean_subtraction(x, 1.0),
+        "adjust_saturation_with_gray_subtraction": lambda x: enhance.adjust_saturation_with_gray_subtraction(x, 1.0),
+        "adjust_gamma_scalar": lambda x: enhance.adjust_gamma(x, 1.0),
+        "adjust_gamma_tensor": lambda x: enhance.adjust_gamma(x, x.new_tensor([1.0])),
+        "sharpness": lambda x: enhance.sharpness(x, 1.0),
+        "shift_rgb": lambda x: enhance.shift_rgb(x, *_no_shift(x)),
+        "solarize": lambda x: enhance.solarize(x, 2.0, 0.0),
+    }
+
+    # The gradient at the pixels 0, 0.25, 0.5, 1.
+    _AWAY_FROM_IDENTITY = {
+        "adjust_brightness_lands_on_1": (lambda x: enhance.adjust_brightness(x, 0.5), [1.0, 1.0, 1.0, 0.0]),
+        "adjust_brightness_lands_on_0": (lambda x: enhance.adjust_brightness(x, -0.25), [0.0, 1.0, 1.0, 1.0]),
+        "adjust_contrast": (lambda x: enhance.adjust_contrast(x, 1.5), [1.5, 1.5, 1.5, 0.0]),
+        "adjust_brightness_accumulative": (
+            lambda x: enhance.adjust_brightness_accumulative(x, 1.5),
+            [1.5, 1.5, 1.5, 0.0],
+        ),
+        "adjust_gamma_root": (lambda x: enhance.adjust_gamma(x, 0.5), [0.0, 1.0, 0.5**0.5, 0.5]),
+        "adjust_gamma_root_tensor": (lambda x: enhance.adjust_gamma(x, x.new_tensor([0.5])), [0.0, 1.0, 0.5**0.5, 0.5]),
+        "adjust_gamma_square": (lambda x: enhance.adjust_gamma(x, 2.0), [0.0, 0.5, 1.0, 2.0]),
+        "adjust_log": (enhance.adjust_log, [1 / (v * log(2.0)) for v in (1.0, 1.25, 1.5, 2.0)]),
+        "adjust_log_inv": (lambda x: enhance.adjust_log(x, inv=True), [log(2.0) * 2**v for v in (0.0, 0.25, 0.5, 1.0)]),
+        "solarize_additions_0": (lambda x: enhance.solarize(x, 0.6, 0.0), [1.0, 1.0, 1.0, -1.0]),
+        "solarize_lands_on_0": (lambda x: enhance.solarize(x, 0.6, -0.25), [0.0, 1.0, 1.0, -1.0]),
+        "shift_rgb": (lambda x: enhance.shift_rgb(x, *(s + 0.5 for s in _no_shift(x))), [1.0, 1.0, 1.0, 0.0]),
+    }
+
+    # A pixel with a zero channel has a saturation of exactly 1 in float32, and a grey or black pixel one of exactly 0.
+    # No two smallest channels tie: the half-precision path goes through HSV, where the hue of such a pixel moves the
+    # gradient between them on every torch version.
+    _COLOURED = (
+        (1.0, 0.5, 0.0),
+        (0.5, 0.25, 0.0),
+        (0.5, 0.25, 0.125),
+        (1.0, 1.0, 1.0),
+        (0.0, 0.0, 0.0),
+        (1.0, 0.5, 0.25),
+    )
+
+    @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
+    def test_convention_identity_factor_keeps_the_identity_gradient(self, device, dtype, op):
+        image = _black_grey_white(device, dtype).requires_grad_()
+        out = self._AT_IDENTITY[op](image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out, image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    @pytest.mark.parametrize("op", sorted(_AWAY_FROM_IDENTITY))
+    def test_convention_result_on_a_bound_keeps_the_derivative_of_the_arithmetic(self, device, dtype, op):
+        call, expected = self._AWAY_FROM_IDENTITY[op]
+        image = _black_grey_white(device, dtype).requires_grad_()
+        (grad,) = torch.autograd.grad(call(image).sum(), image)
+        expected = image.new_tensor(expected).view(1, 1, 1, 4).expand_as(image)
+        self.assert_close(grad, expected)
+
+    @pytest.mark.parametrize("factor", [0.0, 0.5])
+    def test_sharpness_keeps_the_smoothed_gradient_on_a_black_image(self, device, dtype, factor):
+        # Both clamps sit on their bound. The smoothed copy reads the 3 x 3 around each pixel of the inner 3 x 3 and the
+        # border keeps the input, so the expected gradient is the kernel summed over the pixels that read each position.
+        image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(enhance.sharpness(image, factor).sum(), image)
+        kernel = image.new_tensor([[1.0, 1.0, 1.0], [1.0, 5.0, 1.0], [1.0, 1.0, 1.0]]).view(1, 1, 3, 3) / 13
+        reads = torch.nn.functional.conv2d(torch.ones(1, 1, 3, 3, device=device, dtype=dtype), kernel, padding=2)
+        blended = torch.full_like(image, 1.0)
+        blended[..., 1:4, 1:4] = factor
+        self.assert_close(grad, blended + (1.0 - factor) * reads)
+
+    def test_saturation_keeps_the_identity_gradient_of_a_coloured_image(self, device, dtype):
+        image = torch.tensor(self._COLOURED, device=device, dtype=dtype).T.view(1, 3, 1, 6).requires_grad_()
+        out = enhance.adjust_saturation(image, 1.0)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out, image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    def test_saturation_raw_keeps_the_gradient_of_the_saturation_channel(self, device, dtype):
+        # Saturation 0, 0.5 and 1 at factor 1 pass through; hue and value are not clamped.
+        image = torch.tensor(
+            [[[[3.0, 3.0, 3.0]], [[0.0, 0.5, 1.0]], [[1.0, 1.0, 1.0]]]], device=device, dtype=dtype
+        ).requires_grad_()
+        (grad,) = torch.autograd.grad(enhance.adjust_saturation_raw(image, 1.0).sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    @pytest.mark.parametrize("op", ["adjust_brightness", "adjust_contrast"])
+    def test_factor_gradient_follows_the_image_gradient_at_a_bound(self, device, dtype, op):
+        # The clamp is one selection for the whole result, so a factor on a pixel that lands on a bound keeps its
+        # derivative too: 1 for the additive brightness, the pixel for the multiplicative contrast.
+        image = _black_grey_white(device, dtype)
+        neutral = 0.0 if op == "adjust_brightness" else 1.0
+        factor = torch.tensor([neutral], device=device, dtype=dtype, requires_grad=True)
+        (grad,) = torch.autograd.grad(getattr(enhance, op)(image, factor).sum(), factor)
+        expected = image.numel() if op == "adjust_brightness" else image.sum().item()
+        self.assert_close(grad, torch.tensor([expected], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("op", ["adjust_brightness", "adjust_contrast", "adjust_brightness_accumulative"])
+    def test_no_clamp_means_no_selection(self, device, dtype, op):
+        # clip_output=False has no bound, so a value outside [0, 1] keeps its gradient.
+        image = torch.tensor([-0.5, 0.0, 1.0, 1.5], device=device, dtype=dtype).view(1, 1, 1, 4).requires_grad_()
+        factor = 0.0 if op == "adjust_brightness" else 1.0
+        out = getattr(enhance, op)(image, factor, clip_output=False)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out, image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
+    def test_values_outside_the_range_get_the_bound_and_a_zero_gradient(self, device, dtype, op):
+        # The first row is on the border, which sharpness leaves to the input; only the other rows mix neighbours.
+        row = torch.tensor([-0.5, -2.0, 1.5, 3.0], device=device, dtype=dtype)
+        image = row.view(1, 1, 1, 4).expand(1, 3, 3, 4).contiguous()
+        leaf = image.clone().requires_grad_()
+        out = self._AT_IDENTITY[op](leaf)
+        with torch.no_grad():
+            no_grad = self._AT_IDENTITY[op](image)
+        assert torch.equal(out[..., 0, :], no_grad[..., 0, :])
+        assert torch.equal(out[..., 0, :], image[..., 0, :].clamp(0.0, 1.0))
+        (grad,) = torch.autograd.grad(out[..., 0, :].sum(), leaf)
+        assert torch.equal(grad[..., 0, :], torch.zeros_like(grad[..., 0, :]))
+
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
+    def test_forward_mode_keeps_the_tangent_at_the_bounds(self, device, dtype, op, forward_mode, grad_enabled):
+        image = _black_grey_white(device, dtype)
+        tangent = torch.full_like(image, 3.0)
+        call = self._AT_IDENTITY[op]
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                values, actual = torch.func.jvp(call, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    values, actual = torch.autograd.forward_ad.unpack_dual(call(dual))
+        self.assert_close(values, image)
+        self.assert_close(actual, tangent)
+
+    @pytest.mark.parametrize(
+        "name", ["adjust_brightness", "adjust_contrast", "adjust_gamma", "adjust_log", "shift_rgb"]
+    )
+    def test_scripted_call_keeps_the_gradient_at_the_bounds(self, device, dtype, name):
+        scripted = torch.jit.script(getattr(enhance, name))
+        image = _black_grey_white(device, dtype).requires_grad_()
+        if name == "shift_rgb":
+            out = scripted(image, *_no_shift(image))
+        elif name == "adjust_log":
+            out = scripted(image)
+        else:
+            out = scripted(image, 0.0 if name == "adjust_brightness" else 1.0)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        expected = 1 / ((1 + image.detach()) * log(2.0)) if name == "adjust_log" else torch.ones_like(image)
+        self.assert_close(grad, expected)
+
+    # adjust_brightness and adjust_contrast raised on the base as well: they reach _clip_unit_fresh, which took the
+    # in-place clamp only in the check under no_grad. The other nine traced on the base.
+    _CAPTURED = {
+        "adjust_brightness": lambda x: enhance.adjust_brightness(x, 0.1),
+        "adjust_contrast": lambda x: enhance.adjust_contrast(x, 1.2),
+        "adjust_brightness_accumulative": lambda x: enhance.adjust_brightness_accumulative(x, 1.2),
+        "adjust_contrast_with_mean_subtraction": lambda x: enhance.adjust_contrast_with_mean_subtraction(x, 1.2),
+        "adjust_saturation_with_gray_subtraction": lambda x: enhance.adjust_saturation_with_gray_subtraction(x, 1.2),
+        "adjust_saturation": lambda x: enhance.adjust_saturation(x, 1.2),
+        "adjust_saturation_raw": lambda x: enhance.adjust_saturation_raw(x, 1.2),
+        "adjust_log": enhance.adjust_log,
+        "sharpness": lambda x: enhance.sharpness(x, 1.0),
+        "shift_rgb": lambda x: enhance.shift_rgb(x, *_no_shift(x)),
+        "solarize": lambda x: enhance.solarize(x, 0.5, 0.1),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_CAPTURED))
+    def test_trace_of_a_module_with_parameters_passes_its_check(self, device, dtype, op):
+        # A parameter gives the op an input that requires grad, and torch.jit.trace checks its graph again under
+        # no_grad: a clamp that follows the grad mode records two different graphs, and the trace raises
+        # TracingCheckError.
+        call = self._CAPTURED[op]
+
+        class ConvThenOp(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 3, 1, bias=False)
+                torch.nn.init.dirac_(self.conv.weight)
+
+            def forward(self, x: Tensor) -> Tensor:
+                return call(self.conv(x))
+
+        module = ConvThenOp().to(device, dtype)
+        image = _black_grey_white(device, dtype)
+        traced = torch.jit.trace(module, (image,))
+        self.assert_close(traced(image), call(image))
+
+    @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
+    def test_vmap_of_grad_keeps_the_identity_gradient(self, device, dtype, op):
+        image = _black_grey_white(device, dtype)[0]
+        grads = torch.vmap(torch.func.grad(lambda x: self._AT_IDENTITY[op](x[None]).sum()))(image[None])
+        self.assert_close(grads, torch.ones_like(grads))
+
+    def test_integer_image_with_checks_disabled_keeps_the_integer_bounds(self, device):
+        # shift_rgb and adjust_saturation_raw clamp an integer result with integer bounds, which keep its dtype.
+        image = torch.randint(0, 256, (2, 3, 4, 4), device=device, dtype=torch.uint8)
+        shift = torch.ones(2, device=device)
+        was_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            shifted = enhance.shift_rgb(image, shift, shift, shift)
+        finally:
+            if was_enabled:
+                enable_checks()
+        saturated = enhance.adjust_saturation_raw(image, 2.0)
+        assert shifted.dtype == torch.uint8
+        assert torch.equal(shifted, (image + 1).clamp(0, 1))
+        assert saturated.dtype == torch.uint8
+        assert torch.equal(saturated[:, 1], (image[:, 1] * 2).clamp(0, 1))
+
+    @pytest.mark.parametrize("op", sorted(_AT_IDENTITY))
+    def test_dynamo_gradient_at_the_bounds(self, device, dtype, op, torch_optimizer):
+        image = _black_grey_white(device, dtype).requires_grad_()
+        out = torch_optimizer(self._AT_IDENTITY[op], fullgraph=True)(image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(out, image)
+        self.assert_close(grad, torch.ones_like(image))

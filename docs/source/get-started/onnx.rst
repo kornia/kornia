@@ -1,0 +1,206 @@
+ONNX support
+============
+
+.. meta::
+   :description: How to export Kornia operators and models to ONNX and chain them with ONNXSequential: installation, combining models, input/output mapping, export to a single file, and running on CUDA with ONNX Runtime execution providers.
+
+:class:`~kornia.onnx.sequential.ONNXSequential` combines several ONNX models into a single computational graph and
+runs it with ONNX Runtime. It is useful when you have pre-exported operators or models, from Kornia's
+``kornia/ONNX_models`` Hugging Face repository or your own, that should run one after another as a pipeline.
+
+- **Model chaining**: combine multiple ONNX models into one graph, with control over how the outputs of one model
+  feed the inputs of the next.
+- **Export**: save the combined model as a single ONNX file.
+- **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``, on numpy arrays or CPU torch
+  tensors of a dtype numpy has (not bfloat16 or float8). It returns numpy arrays.
+- **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
+  session options.
+
+Which operators Kornia promises to export, and how continuous integration checks it, is stated in
+:ref:`What Kornia promises <export-support-promise>`. The survey on the same page records whether each operator, model
+and augmentation exported in one dated measurement, with the cause of each failure: for anything the promise does not
+cover, export your own pipeline and compare it with eager before relying on it.
+
+Quickstart
+----------
+
+1. **Install ONNX and ONNX Runtime**
+
+   .. code-block:: bash
+
+      pip install "kornia[onnx]"
+
+2. **Port your own kornia module**
+
+   Any kornia operator or ``nn.Sequential`` of operators is a regular ``nn.Module``, so
+   ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
+   can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
+   default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
+   the exporter :ref:`Kornia's ONNX promise <export-support-promise>` covers. Passing ``dynamo=True`` explicitly
+   makes the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
+
+   .. code-block:: python
+
+      import torch
+      import kornia
+
+      batch, height, width = torch.export.Dim("B"), torch.export.Dim("H"), torch.export.Dim("W")
+      torch.onnx.export(
+          kornia.color.RgbToGrayscale(),
+          (torch.rand(2, 3, 256, 512),),
+          "gray.onnx",
+          input_names=["input"],
+          output_names=["output"],
+          dynamic_shapes=({0: batch, 2: height, 3: width},),
+          dynamo=True,
+      )
+
+   ``dynamic_shapes`` keeps the batch, height and width dynamic in the exported graph. Give the example
+   input a batch of at least 2: PyTorch 2.5 fixes a dimension of size 1 to that size.
+
+   The file plugs into a sequence like any other model. A fresh export has a newer ONNX IR version and
+   opset than the pre-exported Hub operators, so pass ``auto_ir_version_conversion=True`` to bring every
+   graph to one version before they are merged; without it, the merge fails with ``IR version mismatch``:
+
+   .. code-block:: python
+
+      from kornia.onnx import ONNXSequential
+
+      onnx_seq = ONNXSequential(
+          "gray.onnx",
+          "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+          auto_ir_version_conversion=True,
+      )
+
+3. **Combine ONNX models**
+
+   Initialize :class:`~kornia.onnx.sequential.ONNXSequential` with ONNX models or file paths. The models are chained
+   and an optimized inference session is created.
+
+   .. code-block:: python
+
+      import numpy as np
+      from kornia.onnx import ONNXSequential
+
+      # Two operators from the kornia/ONNX_models Hugging Face repo
+      onnx_seq = ONNXSequential(
+         "hf://operators/kornia.color.gray.RgbToGrayscale",
+         "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512"
+      )
+
+      input_data = np.random.randn(1, 3, 256, 512).astype(np.float32)
+      outputs = onnx_seq(input_data)
+      print(outputs)
+
+   .. note::
+      By default each ONNX model is assumed to have one input node named ``"input"`` and one output node named
+      ``"output"``. For other models, pass an ``io_maps`` argument.
+
+4. **Map inputs and outputs between models**
+
+   ``io_maps`` holds one list of ``(output, input)`` name pairs per joint between consecutive models:
+   ``io_maps[0]`` connects the first model to the second, ``io_maps[1]`` the second to the third, and so on.
+
+   .. code-block:: python
+
+      # one joint, which feeds two outputs of model1 to two inputs of model2
+      io_maps = [[("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]]
+      onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", io_maps=io_maps)
+
+   The merged graph does not check a later model's declared input types: ``ONNXSequential`` warns when the tensor
+   element types of an output and the input it feeds differ at a joint.
+
+5. **Export the combined model**
+
+   .. code-block:: python
+
+      onnx_seq.export("combined_model.onnx")
+
+6. **Pick an execution provider**
+
+   .. code-block:: python
+
+      onnx_seq = ONNXSequential(
+         "hf://operators/kornia.geometry.transform.flips.Hflip",
+         # a local model works too: "YOUR_OWN_MODEL.onnx", or a loaded onnx.ModelProto
+         "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",
+         providers=['CUDAExecutionProvider']
+      )
+      outputs = onnx_seq(input_data)
+
+Running on CUDA
+---------------
+
+CUDA execution needs ``onnxruntime-gpu``; for other CUDA versions see
+https://github.com/microsoft/onnxruntime/issues/21769#issuecomment-2295342211. For example, to install
+``onnxruntime-gpu==1.19.2`` for CUDA 11.x:
+
+.. code-block:: console
+
+   pip install onnxruntime-gpu==1.19.2 --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
+
+Then move a sequence between devices with ``as_cuda()`` / ``as_cpu()``:
+
+.. code-block:: python
+
+   import time
+
+   import kornia
+   from kornia.onnx import ONNXSequential
+
+   onnx_seq = ONNXSequential(
+      "hf://operators/kornia.geometry.transform.flips.Hflip",
+      "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",  # Or you may use "YOUR_OWN_MODEL.onnx"
+   )
+   inp = kornia.io.get_sample_images()[0].numpy()[None]
+
+   onnx_seq.as_cuda()
+   onnx_seq(inp)  # GPU warm-up
+   start_time = time.time()
+   onnx_seq(inp)
+   print("--- GPU %s seconds ---" % (time.time() - start_time))
+
+   onnx_seq.as_cpu()
+   start_time = time.time()
+   onnx_seq(inp)
+   print("--- CPU %s seconds ---" % (time.time() - start_time))
+
+On an onnxruntime build without CUDA, ``as_cuda()`` only warns and the sequence keeps running on the CPU;
+``get_session().get_providers()`` shows which provider runs.
+
+A typical result:
+
+.. code-block:: console
+
+   --- GPU 0.014804363250732422 seconds ---
+   --- CPU 0.17681646347045898 seconds ---
+
+Frequently asked questions
+--------------------------
+
+**Can I chain models from different sources?**
+Yes. Models can come from ONNX files, ``onnx.ModelProto`` objects or ``hf://`` references;
+:class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs. When their ONNX IR versions or opsets
+differ, as a fresh export and a Hub operator do, pass ``auto_ir_version_conversion=True``.
+
+**What if the input/output names of two models do not match?**
+Use the ``io_maps`` argument to say which output feeds which input: one list of ``(output, input)`` name pairs per
+joint, as in step 4.
+
+**Can I use custom ONNX Runtime session options?**
+Yes. Pass them as ``session_options=`` to the constructor of
+:class:`~kornia.onnx.sequential.ONNXSequential`, or replace the session of an existing object with
+``seq.set_session(seq.create_session(session_options=...))``. ``create_session`` alone returns a new session and leaves
+the object on the one it already has.
+
+**Which operators export?**
+The promised ones: :ref:`What Kornia promises <export-support-promise>` counts them per package, and the survey on the
+same page marks them *promised*. The survey lists every surveyed operator with its ONNX export, ``torch.export`` and
+``torch.compile`` outcome in one dated measurement, searchable by name and filterable by result; treat an entry that is
+not promised as a starting point, not a guarantee.
+
+**Where are the pre-exported Kornia operators?**
+In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with
+``"hf://operators/<name>"`` and ``"hf://models/<name>"`` or with :class:`~kornia.onnx.utils.ONNXLoader`.
+
+See the :doc:`kornia.onnx </onnx>` API reference for the full class documentation.

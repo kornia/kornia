@@ -29,16 +29,16 @@ __all__ = ["KimiVLModel", "KimiVLProjector"]
 
 
 class KimiVLProjector(nn.Module):
-    """KimiVL Projector with Pixel Unshuffle and MLP."""
+    """KimiVL projector with patch merging and MLP."""
 
     def __init__(self, config: KimiVLProjectorConfig) -> None:
         super().__init__()
         self.downsample_ratio = 2
 
-        # Pre-norm (applied before pixel unshuffle, on the vision encoder output dimension)
+        # Pre-norm (applied before patch merging, on the vision encoder output dimension)
         self.pre_norm = nn.LayerNorm(config.input_dim)
 
-        # After pixel unshuffle, the dimension becomes input_dim * (downsample_ratio ** 2)
+        # Merging each spatial group multiplies the dimension by downsample_ratio**2.
         mlp_input_dim = config.input_dim * (self.downsample_ratio**2)
 
         # MLP
@@ -61,23 +61,23 @@ class KimiVLProjector(nn.Module):
             Projected features (B, N/4, output_dim)
         """
         B, _N, D = x.shape
+        ratio = self.downsample_ratio
 
         # Apply pre-norm
         x = self.pre_norm(x)
 
-        # Reshape to spatial (B, H, W, D) -> (B, D, H, W)
-        x = x.view(B, h, w, D).permute(0, 3, 1, 2)
+        # Reshape the patch grid into spatial groups of ratio x ratio patches.
+        new_height, new_width = h // ratio, w // ratio
+        x = x.view(B, new_height, ratio, new_width, ratio, D)
 
-        # Pixel unshuffle for spatial downsampling -> (B, D*4, H/2, W/2)
-        x = torch.nn.functional.pixel_unshuffle(x, self.downsample_ratio)
+        # Place the output-grid dimensions before the offsets within each group.
+        x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
 
-        # Flatten back -> (B, D*4, N/4) -> (B, N/4, D*4)
-        x = x.flatten(2).transpose(1, 2)
+        # Flatten the output grid and concatenate each group's patch features.
+        x = x.view(B, new_height * new_width, ratio * ratio * D)
 
         # MLP
-        x = self.mlp(x)
-
-        return x
+        return self.mlp(x)
 
 
 class KimiVLModel(nn.Module):
@@ -105,8 +105,14 @@ class KimiVLModel(nn.Module):
         """Forward pass.
 
         Args:
-            images: (B, C, H, W)
-            attention_mask: (B, 1, N, N) or (B, N, N) optional mask for vision encoder.
+            images: (B, C, H, W) image normalized with mean = std = 0.5 per channel, i.e. ``2 * x - 1`` for an image
+                ``x`` in ``[0, 1]``, as the Kimi-VL checkpoint's ``preprocessor_config.json`` specifies. H and W must
+                be multiples of ``2 * patch_size`` (28 for the released checkpoint): sizes that are not multiples of
+                ``patch_size`` are cropped silently, and an odd number of patch rows or columns raises.
+            attention_mask: (B, N), (B, N, N) or (B, 1, N, N) optional boolean mask for the vision encoder over its N
+                patches, ``True`` where a patch may attend to another. A (B, N) mask marks the patches every patch may
+                attend to (padding is ``False``), and a (B, N, N) mask holds one mask per sample; both are shared by
+                the heads (see :class:`~kornia.models.kimi_vl.moonvit.MoonViTAttention`).
 
         Returns:
             Projected visual features (B, seq_len, output_dim)
@@ -118,6 +124,4 @@ class KimiVLModel(nn.Module):
         patch_size = self.patch_size
         h_patches = H // patch_size
         w_patches = W // patch_size
-        projected_features = self.projector(vision_features, h_patches, w_patches)
-
-        return projected_features
+        return self.projector(vision_features, h_patches, w_patches)

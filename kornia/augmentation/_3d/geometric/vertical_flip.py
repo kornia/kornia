@@ -21,31 +21,39 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.core.ops import _device_literal
 
 
 class RandomVerticalFlip3D(GeometricAugmentationBase3D):
-    r"""Apply random vertical flip to 3D volumes (5D tensor).
+    r"""Flip 3D volumes vertically, applied per sample with probability ``p`` (default 0.5).
 
-    Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will Vertically flip the tensors and concatenate the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+    ``output = RandomVerticalFlip3D(...)(input)`` reverses the ``H`` axis of selected volumes shaped
+    ``(B, C, D, H, W)``.
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor(:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - flips the height ``H`` axis (tensor axis ``-2``, coordinate ``y``). Its matrix maps ``y`` to
+          ``H - 1 - y`` in inclusive voxel coordinates, rounded where the dtype cannot
+          represent it (see the base).
+
+    See Also:
+        - :class:`RandomVerticalFlip`: reverses image rows in 2D.
+        - :class:`RandomHorizontalFlip3D`: reverses the width axis.
+        - :class:`RandomDepthicalFlip3D`: reverses the depth axis.
 
     Examples:
         >>> import torch
@@ -80,8 +88,16 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = input.shape[-2]
-        flip_mat: Tensor = torch.tensor(
-            [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        # Filled on the device in eager mode: a ``torch.tensor`` literal copies from the host and waits for queued
+        # kernels. ``torch.jit.trace`` can pass the size as a 0-d tensor, which keeps the literal.
+        flip_mat: Tensor = (
+            _device_literal(
+                [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
+            if isinstance(h, int)
+            else torch.tensor(
+                [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
         )
         return flip_mat.expand(input.shape[0], 4, 4)
 

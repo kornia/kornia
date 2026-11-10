@@ -27,12 +27,16 @@ from kornia.enhance import normalize
 
 
 class Normalize(IntensityAugmentationBase2D):
-    r"""Normalize tensor images with mean and standard deviation.
+    r"""Normalize image channels with supplied mean and standard deviation.
+
+    ``output = Normalize(mean, std)(input)`` returns ``(input - mean) / std``.
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
@@ -42,10 +46,26 @@ class Normalize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Return:
-        Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        Normalised tensor with same size as input ``(*, C, H, W)``.
+
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
+          tensor; a length that is neither ``1`` nor the channel count raises.
+        - ``p`` gates the whole batch rather than each sample: the constructor hard-codes ``same_on_batch=True``
+          and takes no ``same_on_batch`` argument.
+        - the statistics live in ``flags`` rather than in a buffer: ``state_dict()`` is empty and
+          ``Module.to(...)`` does not move them; they are cast to the input's device and dtype on each call.
+        - :class:`Denormalize` built with the same ``mean`` and nonzero ``std`` inverts this class, up to
+          floating-point rounding, when both transforms apply and their intermediate values remain finite.
+        - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize`.
+
+    See Also:
+        - :class:`Denormalize`: reverses this operation when both use the same statistics and apply.
+        - :class:`RandomAutoContrast`: derives a rescaling from each image rather than supplied statistics.
 
     Examples:
         >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))

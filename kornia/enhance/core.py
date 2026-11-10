@@ -23,6 +23,12 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
+def _broadcasts_to(shape: torch.Size, target: torch.Size) -> bool:
+    if len(shape) > len(target):
+        return False
+    return all(dim in (1, tdim) for dim, tdim in zip(reversed(shape), reversed(target)))
+
+
 def add_weighted(
     src1: torch.Tensor,
     alpha: Union[float, torch.Tensor],
@@ -30,24 +36,30 @@ def add_weighted(
     beta: Union[float, torch.Tensor],
     gamma: Union[float, torch.Tensor],
 ) -> torch.Tensor:
-    r"""Calculate the weighted sum of two Tensors.
+    """Blend two tensors as a weighted sum.
+
+    ``out = add_weighted(src1, alpha, src2, beta, gamma)`` returns ``src1 * alpha + src2 * beta + gamma`` for two
+    tensors of one shape, without clamping.
 
     .. image:: _static/img/add_weighted.png
 
-    The function calculates the weighted sum of two Tensors as follows:
-
-    .. math::
-        out = src1 * alpha + src2 * beta + gamma
+    Convention:
+        A tensor coefficient must broadcast to the shape of ``src1`` without enlarging it: a 0-d scalar, ``(C, 1, 1)``
+        or a per-image ``(B, 1, 1, 1)`` weight. A ``(B,)`` weight lines up with the width axis, not the batch: it raises
+        unless ``B`` equals ``W`` or 1, and then it weights columns. Use ``(B, 1, 1, 1)`` for one weight per image.
 
     Args:
-        src1: torch.Tensor with an arbitrary shape, equal to shape of src2.
-        alpha: weight of the src1 elements as Union[float, torch.Tensor].
-        src2: torch.Tensor with an arbitrary shape, equal to shape of src1.
-        beta: weight of the src2 elements as Union[float, torch.Tensor].
-        gamma: scalar added to each sum as Union[float, torch.Tensor].
+        src1: tensor of any shape.
+        alpha: weight of ``src1``, a number or a tensor.
+        src2: tensor with the shape of ``src1``.
+        beta: weight of ``src2``, a number or a tensor.
+        gamma: value added to the sum, a number or a tensor.
 
     Returns:
-        Weighted torch.Tensor with shape equal to src1 and src2 shapes.
+        Weighted sum with the shape of ``src1``.
+
+    See Also:
+        - :class:`AddWeighted`: the module form.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)
@@ -56,49 +68,43 @@ def add_weighted(
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
-
     """
     KORNIA_CHECK_IS_TENSOR(src1)
     KORNIA_CHECK_IS_TENSOR(src2)
     KORNIA_CHECK(src1.shape == src2.shape, f"src1 and src2 have different shapes. Got {src1.shape} and {src2.shape}")
 
-    if isinstance(alpha, torch.Tensor):
-        KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
-    else:
-        alpha = torch.tensor(alpha, dtype=src1.dtype, device=src1.device)
-
-    if isinstance(beta, torch.Tensor):
-        KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
-    else:
-        beta = torch.tensor(beta, dtype=src1.dtype, device=src1.device)
-
-    if isinstance(gamma, torch.Tensor):
-        KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
-    else:
-        gamma = torch.tensor(gamma, dtype=src1.dtype, device=src1.device)
+    for name, coef in (("alpha", alpha), ("beta", beta), ("gamma", gamma)):
+        if isinstance(coef, torch.Tensor):
+            KORNIA_CHECK(
+                _broadcasts_to(coef.shape, src1.shape),
+                f"{name} with shape {tuple(coef.shape)} does not broadcast to the src shape {tuple(src1.shape)}.",
+            )
 
     return src1 * alpha + src2 * beta + gamma
 
 
 class AddWeighted(nn.Module):
-    r"""Calculate the weighted sum of two Tensors.
+    """Blend two tensors as a weighted sum (module form).
 
-    The function calculates the weighted sum of two Tensors as follows:
+    ``op = AddWeighted(alpha, beta, gamma)`` stores the coefficients and ``out = op(src1, src2)`` is
+    :func:`add_weighted` with them. A tensor coefficient is stored as a non-persistent buffer, or as a parameter if it
+    is an ``nn.Parameter``.
 
-    .. math::
-        out = src1 * alpha + src2 * beta + gamma
+    Convention:
+        - See the convention block of :func:`add_weighted`.
 
     Args:
-        alpha: weight of the src1 elements as Union[float, torch.Tensor].
-        beta: weight of the src2 elements as Union[float, torch.Tensor].
-        gamma: scalar added to each sum as Union[float, torch.Tensor].
+        alpha: weight of ``src1``, a number or a tensor.
+        beta: weight of ``src2``, a number or a tensor.
+        gamma: value added to the sum, a number or a tensor.
 
     Shape:
-        - Input1: torch.Tensor with an arbitrary shape, equal to shape of Input2.
-        - Input2: torch.Tensor with an arbitrary shape, equal to shape of Input1.
-        - Output: Weighted torch.Tensor with shape equal to src1 and src2 shapes.
+        - Input1: tensor of any shape.
+        - Input2: tensor with the shape of Input1.
+        - Output: same shape as Input1.
+
+    See Also:
+        - :func:`add_weighted`: the one-call form.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)
@@ -107,18 +113,24 @@ class AddWeighted(nn.Module):
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes:
-        torch.Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
-
     """
 
     def __init__(
         self, alpha: Union[float, torch.Tensor], beta: Union[float, torch.Tensor], gamma: Union[float, torch.Tensor]
     ) -> None:
         super().__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
+        if isinstance(alpha, torch.Tensor) and not isinstance(alpha, nn.Parameter):
+            self.register_buffer("alpha", alpha, persistent=False)
+        else:
+            self.alpha = alpha
+        if isinstance(beta, torch.Tensor) and not isinstance(beta, nn.Parameter):
+            self.register_buffer("beta", beta, persistent=False)
+        else:
+            self.beta = beta
+        if isinstance(gamma, torch.Tensor) and not isinstance(gamma, nn.Parameter):
+            self.register_buffer("gamma", gamma, persistent=False)
+        else:
+            self.gamma = gamma
 
     def forward(self, src1: torch.Tensor, src2: torch.Tensor) -> torch.Tensor:
         """Compute a weighted sum of two tensors with a scalar bias term.

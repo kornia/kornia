@@ -35,7 +35,7 @@ class LayerNorm2d(nn.LayerNorm):
         """Normalize an NCHW feature map across channels.
 
         Args:
-            x: Tensor with shape :math:`(B, C, H, W)`.
+            x: Tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Tensor with the same shape as ``x`` after channel-wise layer
@@ -62,5 +62,4 @@ def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs:
         norm_cls = REGISTERED_NORM_DICT[name]
         args = build_kwargs_from_config(kwargs, norm_cls)
         return norm_cls(**args)
-    else:
-        return None
+    return None

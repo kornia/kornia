@@ -1,0 +1,1 @@
+`crop_and_resize3d` and `crop_by_boxes3d` now raise `AssertionError` for a pair of boxes that no affine map relates, such as a box that is not a parallelepiped in `crop_and_resize3d`, instead of cropping it with a mapping that misses its corners. Every pair they accept crops as before.

@@ -31,7 +31,8 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    # Bits kept, as in RandAugment and AutoAugment.
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
@@ -45,7 +46,25 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 
 
 class TrivialAugment(PolicyAugmentBase):
-    """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
+    """Sample one TrivialAugment operation for an image batch.
+
+    ``output = TrivialAugment()(input)`` selects one operation for a floating ``(B, C, H, W)`` image batch and draws
+    its magnitude per image, if it has one. The policy follows :cite:`muller2021trivialaugment`.
+
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one candidate sub-policy uniformly for each forward call. Each candidate holds one operation
+          whose probability is fixed at ``1``, so the selected operation is applied to every row and no
+          probability is sampled; a candidate's second and third entries are its magnitude range, not a
+          probability, unlike :class:`~kornia.augmentation.auto.AutoAugment`. For an operation with a magnitude, that
+          magnitude is drawn independently for every batch row.
+        - the operation wrapper's magnitude mapping applies, as under
+          :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
+          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``rad2deg(atan(0.3))``,
+          about ``16.7`` degrees.
+        - the default ``posterize`` candidate keeps ``4`` to ``8`` bits, the range of the paper's RA
+          augmentation space (Table 8) and of :class:`~kornia.augmentation.auto.RandAugment`.
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
@@ -53,12 +72,18 @@ class TrivialAugment(PolicyAugmentBase):
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
+    See Also:
+        - :class:`~kornia.augmentation.auto.RandAugment`: samples a configurable number of operations.
+        - :class:`~kornia.augmentation.auto.AutoAugment`: chooses from searched dataset policies.
+
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
+        >>> from kornia.augmentation.auto import TrivialAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(TrivialAugment())
         >>> aug(in_tensor).shape
@@ -69,10 +94,7 @@ class TrivialAugment(PolicyAugmentBase):
     def __init__(
         self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))

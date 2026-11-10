@@ -17,38 +17,61 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import ClassVar, Union
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.external import numpy as _np
+from kornia.core.external import onnxruntime as _ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
 
-try:
-    import numpy as np
-    import onnxruntime as ort
-except ImportError:
-    np = None  # type: ignore
-    ort = None
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
 
 __all__ = ["OnnxLightGlue"]
 
 
 class OnnxLightGlue:
-    r"""Wrapper for loading LightGlue-ONNX models and running inference via ONNXRuntime.
+    r"""Match the keypoints and descriptors of one image pair with an exported LightGlue ONNX model.
 
-    LightGlue :cite:`LightGlue2023` performs fast descriptor-based deep keypoint matching.
-    This module requires `onnxruntime` to be installed.
+    ``matcher = OnnxLightGlue("disk", device="cpu")`` downloads an exported LightGlue :cite:`LightGlue2023` model,
+    or loads your own ONNX file, into an onnxruntime session, and ``out = matcher(data)`` takes the dicts of
+    :class:`LightGlue` for a batch of one: float32 ``keypoints`` ``(1, M, 2)`` in pixels and ``descriptors``
+    ``(1, M, D)`` on that device, with ``image_size`` ``(1, 2)`` as ``(W, H)`` or an ``image``. It returns the
+    matched index pairs ``matches`` ``(S, 2)`` and their ``scores`` ``(S,)``. It needs ``onnxruntime`` and runs on
+    CPU or CUDA only. For batches, other devices or dtypes, scales, orientations or LAFs, or the full outputs of the
+    network, use :class:`LightGlue` instead.
 
     If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
     for how to export the model to ONNX and optimize it.
+
+    Convention:
+        - See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
+          with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
+          :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
+          or LAFs, and it runs on CPU or CUDA only.
+        - Known defect: the session and its inputs are bound to GPU 0 for every CUDA ``device``, so
+          ``device="cuda:1"`` does not run on GPU 1 (`#6427 <https://github.com/kornia/kornia/issues/6427>`_).
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Union[str, torch.device, None] to run inference on.
+        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device type raises ``ValueError``. ``None``
+          means ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
+
+    See Also:
+        - :class:`LightGlue`: the PyTorch network, which also runs batches, on MPS, and in float16, bfloat16 or
+          float64 (see its Convention block), and returns every output.
+        - :class:`LightGlueMatcher`: LightGlue on descriptors and LAFs, returning scores and index pairs like the
+          other kornia matchers.
 
     """
 
@@ -62,10 +85,13 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
-        KORNIA_CHECK(np is not None, "numpy is not installed.")
+        # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
+        # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
+        # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
+        _ = _ort.__version__
+        KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
-        device = torch.device(device)  # type: ignore
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.device = device
 
         if device.type == "cpu":
@@ -88,7 +114,7 @@ class OnnxLightGlue:
 
             weights = download_onnx_from_url(url)
 
-        self.session = ort.InferenceSession(weights, providers=providers)
+        self.session = _ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         """Run the ONNX LightGlue matcher.
@@ -116,23 +142,23 @@ class OnnxLightGlue:
 
         ``data`` (``dict``):
             ``image0`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, M, 2)`
+                ``keypoints`` (`float32`): ``(1, M, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, M, D)`
+                ``descriptors`` (`float32`): ``(1, M, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
             ``image1`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, N, 2)`
+                ``keypoints`` (`float32`): ``(1, N, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, N, D)`
+                ``descriptors`` (`float32`): ``(1, N, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
         ``output`` (``dict``):
-            ``matches`` (`int64`): :math:`(S, 2)`
+            ``matches`` (`int64`): ``(S, 2)``
 
-            ``scores`` (`float32`): :math:`(S)`
+            ``scores`` (`float32`): ``(S,)``
 
         """
         # Input validation.
@@ -154,14 +180,14 @@ class OnnxLightGlue:
 
         # Normalize keypoints.
         size0, size1 = data0.get("image_size"), data1.get("image_size")
-        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]
 
-        kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
-        kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
+        kpts0 = normalize_keypoints(kpts0_, size=size0)
+        kpts1 = normalize_keypoints(kpts1_, size=size1)
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}
@@ -173,7 +199,7 @@ class OnnxLightGlue:
                 name,
                 device_type=self.device.type,
                 device_id=0,
-                element_type=np.float32,
+                element_type=_np.float32,
                 shape=tuple(tensor.shape),
                 buffer_ptr=tensor.data_ptr(),
             )

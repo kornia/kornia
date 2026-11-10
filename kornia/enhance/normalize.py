@@ -22,26 +22,46 @@ from typing import List, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.image.utils import perform_keep_shape_image
+from kornia.core.utils import _as_tensor_nonblocking
 
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
 
+def _promote_integer_data(data: torch.Tensor) -> torch.Tensor:
+    r"""Return ``data`` in torch's default floating dtype if it is an integer or bool tensor.
+
+    :func:`normalize` and :func:`denormalize` cast ``mean`` and ``std`` to the dtype of ``data``. For an integer
+    tensor that truncates a fractional statistic to an integer (``0.5`` becomes ``0``) and runs the subtraction and
+    ``addcmul`` in the integer dtype, where the result wraps. Promoting the data first, as ``data * 0.5`` does, keeps
+    a fractional statistic and computes in floating point. Floating and complex tensors are returned untouched.
+    """
+    if data.is_floating_point() or data.is_complex():
+        return data
+    return data.to(torch.get_default_dtype())
+
+
 class Normalize(nn.Module):
-    r"""Normalize a torch.Tensor image with mean and standard deviation.
+    """Normalize an image with a stored per-channel mean and standard deviation (module form).
 
-    .. math::
-        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
+    ``op = Normalize(mean, std)`` stores the statistics and ``out = op(input)`` is :func:`normalize` with them. A tensor
+    statistic is stored as a non-persistent buffer, and an ``nn.Parameter`` stays a parameter that optimizers and
+    checkpoints include.
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Convention:
+        - See the convention block of :func:`normalize`.
 
     Args:
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        mean: mean of each channel, a number, a list, a tuple or a tensor.
+        std: standard deviation of each channel, in the same forms.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
-        - Output: Normalised torch.Tensor with same size as input :math:`(*, C, ...)`.
+        - Input: image ``(B, C, *)``.
+        - Output: same shape as the input.
+
+    See Also:
+        - :func:`normalize`: the one-call form.
+        - :class:`Denormalize`: the inverse.
+        - :class:`~kornia.augmentation.Normalize`: the same operation inside an augmentation pipeline.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -65,20 +85,15 @@ class Normalize(nn.Module):
     ) -> None:
         super().__init__()
 
-        if isinstance(mean, (int, float)):
-            mean = torch.tensor([mean])
+        if isinstance(mean, torch.Tensor) and not isinstance(mean, nn.Parameter):
+            self.register_buffer("mean", mean, persistent=False)
+        else:
+            self.mean = mean
 
-        if isinstance(std, (int, float)):
-            std = torch.tensor([std])
-
-        if isinstance(mean, (tuple, list)):
-            mean = torch.tensor(mean)[None]
-
-        if isinstance(std, (tuple, list)):
-            std = torch.tensor(std)[None]
-
-        self.mean = mean
-        self.std = std
+        if isinstance(std, torch.Tensor) and not isinstance(std, nn.Parameter):
+            self.register_buffer("std", std, persistent=False)
+        else:
+            self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Normalize an input tensor channel-wise with this module's statistics.
@@ -87,7 +102,7 @@ class Normalize(nn.Module):
         ``mean`` and ``std`` values stored in the module constructor.
 
         Args:
-            input: Tensor to normalize, typically with shape :math:`(*, C, ...)`,
+            input: Tensor to normalize, typically with shape ``(*, C, ...)``,
                 where ``*`` represents optional leading dimensions (for example
                 batch) and ``C`` is the channel dimension.
 
@@ -95,7 +110,19 @@ class Normalize(nn.Module):
             A tensor with the same shape as ``input`` whose channel values are
             normalized by ``(x - mean) / std``.
         """
-        return normalize(input, self.mean, self.std)
+        # Promote before the statistics are built in the input dtype: for an integer input a fractional Python
+        # statistic would otherwise truncate here, before `normalize` sees it.
+        input = _promote_integer_data(input)
+
+        # A Python number becomes (1,) and a sequence (1, *shape), the shapes the
+        # constructor used to store, built in the input dtype so float64 keeps its bits.
+        mean = self.mean
+        std = self.std
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.as_tensor(mean, device=input.device, dtype=input.dtype)[None]
+        if not isinstance(std, torch.Tensor):
+            std = torch.as_tensor(std, device=input.device, dtype=input.dtype)[None]
+        return normalize(input, mean, std)
 
     def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
@@ -103,26 +130,39 @@ class Normalize(nn.Module):
 
 
 def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
-    r"""Normalize an image/video torch.Tensor with mean and standard deviation.
+    """Normalize an image or video with a per-channel mean and standard deviation.
 
-    .. math::
-        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
+    ``out = normalize(data, mean, std)`` returns ``(data - mean) / std`` for each channel of ``data`` ``(B, C, *)``,
+    with the channel on dimension 1.
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Convention:
+        - ``mean`` and ``std`` are converted to the dtype and device of ``data``; a floating ``data`` keeps its dtype.
+        - An integer or bool ``data`` is converted to torch's default floating dtype first, so a fractional statistic is
+          not truncated. Pixel values are not rescaled: give ``mean`` and ``std`` in the 0-255 scale for a uint8 image.
 
     Args:
-        data: Image torch.Tensor of size :math:`(B, C, *)`.
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        data: image or video with shape ``(B, C, *)``.
+        mean: mean of each channel: a number, a 0-d tensor, or a tensor with shape ``(C,)``, ``(1, C)`` for all samples
+            or ``(B, C)`` for one per sample. A list raises.
+        std: standard deviation of each channel, in the same forms.
 
-    Return:
-        Normalised torch.Tensor with same size as input :math:`(B, C, *)`.
+    Returns:
+        Normalized tensor with the shape of ``data``.
+
+    See Also:
+        - :func:`denormalize`: the inverse.
+        - :func:`normalize_min_max`: scales each channel plane to a value range instead of using fixed statistics.
+        - :class:`Normalize`: the module form.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = normalize(x, torch.tensor([0.0]), torch.tensor([255.]))
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
+        >>> x = torch.tensor([[[[0, 255]]]], dtype=torch.uint8)
+        >>> normalize(x, 127.5, 127.5)
+        tensor([[[[-1.,  1.]]]])
 
         >>> x = torch.rand(1, 4, 3, 3)
         >>> mean = torch.zeros(4)
@@ -132,59 +172,74 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         torch.Size([1, 4, 3, 3])
 
     """
+    data = _promote_integer_data(data)
     shape = data.shape
 
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError(
                 "Batch dimension must be one for broadcasting when converting to ONNX."
                 f"Try changing mean shape and std shape from ({mean.shape}, {std.shape}) to (1, C) or (1, C, 1, 1)."
             )
     else:
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     mean = mean[..., None]
     std = std[..., None]
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
+    numel = 1
+    for dim in shape[2:]:
+        numel *= dim
 
-    return out.view(shape)
+    out: torch.Tensor = (data.reshape(shape[0], shape[1], numel) - mean) / std
+
+    return out.reshape(shape)
 
 
 class Denormalize(nn.Module):
-    r"""Denormalize a torch.Tensor image with mean and standard deviation.
+    """Undo a per-channel mean and standard-deviation normalization with stored statistics (module form).
 
-    .. math::
-        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
+    ``op = Denormalize(mean, std)`` stores the statistics and ``out = op(input)`` is :func:`denormalize` with them. A
+    tensor statistic is stored as a non-persistent buffer, and an ``nn.Parameter`` stays a parameter that optimizers and
+    checkpoints include.
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Convention:
+        - See the convention block of :func:`denormalize`.
 
     Args:
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        mean: mean of each channel, a number, a list, a tuple or a tensor.
+        std: standard deviation of each channel, in the same forms.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
-        - Output: Denormalised torch.Tensor with same size as input :math:`(*, C, ...)`.
+        - Input: image ``(B, C, *)``.
+        - Output: same shape as the input.
+
+    See Also:
+        - :func:`denormalize`: the one-call form.
+        - :class:`Normalize`: the inverse.
+        - :class:`~kornia.augmentation.Denormalize`: the same operation inside an augmentation pipeline.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -204,8 +259,15 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        self.mean = mean
-        self.std = std
+        if isinstance(mean, torch.Tensor) and not isinstance(mean, nn.Parameter):
+            self.register_buffer("mean", mean, persistent=False)
+        else:
+            self.mean = mean
+
+        if isinstance(std, torch.Tensor) and not isinstance(std, nn.Parameter):
+            self.register_buffer("std", std, persistent=False)
+        else:
+            self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Restore scale/offset from a tensor normalized by mean and std.
@@ -214,14 +276,27 @@ class Denormalize(nn.Module):
         ``mean`` and ``std`` parameters.
 
         Args:
-            input: Tensor to denormalize, commonly shaped :math:`(*, C, ...)`
+            input: Tensor to denormalize, commonly shaped ``(*, C, ...)``
                 with channel dimension ``C``.
 
         Returns:
             A tensor with the same shape as ``input`` where each channel is
             transformed by ``x * std + mean``.
         """
-        return denormalize(input, self.mean, self.std)
+        # Promote before the statistics are built in the input dtype, as in `Normalize.forward`.
+        input = _promote_integer_data(input)
+
+        # A Python number becomes (1,) and a sequence keeps its own shape, as the
+        # constructor used to store them: a (C,) list is still checked against the
+        # channel count, a (B, C) list still gives per-sample statistics, and the
+        # ONNX branch, which indexes ``mean.shape[0]``, never sees a 0-d tensor.
+        mean = self.mean
+        std = self.std
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.atleast_1d(torch.as_tensor(mean, device=input.device, dtype=input.dtype))
+        if not isinstance(std, torch.Tensor):
+            std = torch.atleast_1d(torch.as_tensor(std, device=input.device, dtype=input.dtype))
+        return denormalize(input, mean, std)
 
     def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
@@ -229,26 +304,38 @@ class Denormalize(nn.Module):
 
 
 def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
-    r"""Denormalize an image/video torch.Tensor with mean and standard deviation.
+    """Undo a per-channel mean and standard-deviation normalization of an image or video.
 
-    .. math::
-        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
+    ``out = denormalize(data, mean, std)`` returns ``data * std + mean`` for each channel of ``data`` ``(B, C, *)``,
+    which inverts :func:`normalize` for the same ``mean`` and ``std``.
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Convention:
+        - ``mean`` and ``std`` take the forms of :func:`normalize`, are converted to the dtype and device of ``data``,
+          and a floating ``data`` keeps its dtype.
+        - An integer or bool ``data`` is converted to torch's default floating dtype first, so the result is floating
+          and cannot wrap.
 
     Args:
-        data: Image torch.Tensor of size :math:`(B, C, *)`.
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
+        data: image or video with shape ``(B, C, *)``.
+        mean: mean of each channel: a number, a 0-d tensor, or a tensor with shape ``(C,)``, ``(1, C)`` or ``(B, C)``.
+        std: standard deviation of each channel, in the same forms.
 
-    Return:
-        Denormalised torch.Tensor with same size as input :math:`(B, C, *)`.
+    Returns:
+        Denormalized tensor with the shape of ``data``.
+
+    See Also:
+        - :func:`normalize`: the inverse.
+        - :class:`Denormalize`: the module form.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = denormalize(x, 0.0, 255.)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
+        >>> x = torch.tensor([[[[0, 255]]]], dtype=torch.uint8)
+        >>> denormalize(x, 10., 2.)
+        tensor([[[[ 10., 520.]]]])
 
         >>> x = torch.rand(1, 4, 3, 3, 3)
         >>> mean = torch.zeros(1, 4)
@@ -258,32 +345,36 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         torch.Size([1, 4, 3, 3, 3])
 
     """
+    data = _promote_integer_data(data)
     shape = data.shape
 
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
     else:
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
         # Allow broadcast on channel dimension
-        if mean.shape and mean.shape[0] != 1:
-            if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+        if mean.shape and mean.shape[0] != 1 and mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
         # Allow broadcast on channel dimension
-        if std.shape and std.shape[0] != 1:
-            if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     if mean.dim() == 1:
         mean = mean.view(1, -1, *([1] * (data.dim() - 2)))
@@ -301,27 +392,33 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     return torch.addcmul(mean, data, std)
 
 
-@perform_keep_shape_image
 def normalize_min_max(
     input: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6
 ) -> torch.Tensor:
-    r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
+    """Rescale each channel plane of an image linearly to a value range.
 
-    The data is normalised using the following formulation:
+    ``out = normalize_min_max(input, min_val, max_val)`` maps the minimum of each ``H x W`` plane of ``input`` to
+    ``min_val`` and its maximum to just below ``max_val``, using that plane's own range:
+    ``(max_val - min_val) * (x - x.min()) / (x.max() - x.min() + eps) + min_val``. A constant plane maps to ``min_val``.
 
-    .. math::
-        y_i = (b - a) * \frac{x_i - \text{min}(x)}{\text{max}(x) - \text{min}(x)} + a
-
-    where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
+    Convention:
+        - Input is ``(*, C, H, W)``. Empty leading dimensions are preserved; channel and spatial dimensions must be
+          nonzero.
+        - Integer and boolean inputs are promoted to torch's default floating dtype first, as in :func:`normalize`;
+          floating inputs keep their dtype.
 
     Args:
-        input: The image torch.Tensor to be normalised with shape :math:`(*, C, H, W)`.
-        min_val: The minimum value for the new range.
-        max_val: The maximum value for the new range.
-        eps: Float number to avoid zero division.
+        input: image with shape ``(*, C, H, W)``.
+        min_val: value of each plane's minimum, a ``float``.
+        max_val: target of each plane's maximum, a ``float``.
+        eps: value added to each plane's range ``r = x.max() - x.min()``, so the maximum lands at
+            ``max_val - (max_val - min_val) * eps / (r + eps)``.
 
     Returns:
-        The normalised image torch.Tensor with same shape as input :math:`(*, C, H, W)`.
+        Rescaled image with the shape of ``input``.
+
+    See Also:
+        - :func:`normalize`: subtracts a given mean and divides by a given standard deviation instead.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
@@ -335,18 +432,25 @@ def normalize_min_max(
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"data should be a torch.Tensor. Got: {type(input)}.")
 
+    if input.ndim < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.shape}")
+
+    if 0 in input.shape[-3:]:
+        raise ValueError("Invalid input tensor, channel and spatial dimensions must be nonzero.")
+
     if not isinstance(min_val, float):
         raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")
 
     if not isinstance(max_val, float):
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
+    if not input.is_floating_point() and not input.is_complex():
+        # Promote as `_promote_integer_data` does; `* 1.0` also follows the default dtype under TorchScript.
+        input = input * 1.0
     shape = input.shape
-    B, C = shape[0], shape[1]
-
-    x_reshaped = input.view(B, C, -1)
-    x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
-    x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+    x_reshaped = input.flatten(start_dim=-2)
+    x_min = x_reshaped.min(-1, keepdim=True)[0]
+    x_max = x_reshaped.max(-1, keepdim=True)[0]
 
     x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
-    return x_out.view(shape)
+    return x_out.reshape(shape)

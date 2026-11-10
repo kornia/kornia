@@ -1,0 +1,9 @@
+# Strict known-failure baseline of tests/onnx/test_conformance.py on torch 2.14.0 (CPU float32, Python 3.11, the
+# locked onnx / onnxruntime / onnxscript): promised operators that do not export with the dynamo exporter and match
+# eager, or whose legacy export succeeds with a wrong result (#5819).
+# Remove an entry when its case passes (a strict XPASS fails the run). A new failure of a promised operator is a
+# regression to fix; add it only with a comment naming its own tracking issue.
+# Entries of packages a run does not select are not checked; every node ID must name a promised case.
+# Format: <exact exception type>\t<pytest node ID>. The type names the kind of failure (testing.conformance
+# STATUS_EXCEPTIONS): AssertionError a wrong result, RuntimeError a failed export, checker or onnxruntime run,
+# ValueError a failed eager run.

@@ -47,7 +47,7 @@ class StemBlock(nn.Module):
         """Run the HGNetV2 stem and reduce the input spatial resolution.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`.
+            x: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Stem feature map after strided convolutions, pooling, concatenation,
@@ -55,8 +55,7 @@ class StemBlock(nn.Module):
         """
         x = self.stem1(x)
         x = torch.cat([self.pool(x), self.stem2b(self.stem2a(x))], 1)
-        x = self.stem4(self.stem3(x))
-        return x
+        return self.stem4(self.stem3(x))
 
 
 # Separable conv
@@ -115,7 +114,7 @@ class HGBlock(nn.Module):
         """Apply one HGNetV2 aggregation block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Aggregated feature map. If ``self.identity`` is enabled, the input
@@ -169,7 +168,7 @@ class PPHGNetV2(nn.Module):
         """Run the PPHGNetV2 backbone and return detection feature maps.
 
         Args:
-            x: Image tensor with shape :math:`(B, 3, H, W)`.
+            x: Image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             List ``[s3, s4, s5]`` containing the final three backbone stages
@@ -202,7 +201,7 @@ class PPHGNetV2(nn.Module):
                     StageConfig(1024, 384, 2048, 1, True, True, 5, 6),
                 ],
             )
-        elif variant == "X":
+        if variant == "X":
             return PPHGNetV2(
                 stem_channels=[3, 32, 64],
                 stage_configs=[
@@ -212,5 +211,4 @@ class PPHGNetV2(nn.Module):
                     StageConfig(1024, 512, 2048, 2, True, True, 5, 6),
                 ],
             )
-        else:
-            raise ValueError("Only variant L and X are supported")
+        raise ValueError("Only variant L and X are supported")

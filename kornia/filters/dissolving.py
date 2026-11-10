@@ -146,8 +146,7 @@ class _DissolvingWraper_HF:
             # user dtype (e.g. float64) must be cast to it, not only moved to the device.
             image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
-            latents = latents * 0.18215
-        return latents
+            return latents * 0.18215
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
@@ -194,39 +193,53 @@ class _DissolvingWraper_HF:
         else:
             noise_pred = self.model.unet(latent, t, cond_embeddings).sample
 
-        pred_x0 = self.predict_start_from_noise(noise_pred, t, latent)
-        return pred_x0
+        return self.predict_start_from_noise(noise_pred, t, latent)
 
     @torch.no_grad()
     def dissolve(self, image: torch.Tensor, t: int) -> torch.Tensor:
         self.init_prompt("")
         latent = self.encode_tensor_to_latent(image)
         ddim_latents = self.one_step_dissolve(latent, t)
-        dissolved = self.decode_tensor_to_latent(ddim_latents)
-        return dissolved
+        return self.decode_tensor_to_latent(ddim_latents)
 
 
 class StableDiffusionDissolving(ImageModule):
-    r"""Perform dissolving transformation using StableDiffusion models.
+    r"""Dissolve an image with one reverse-diffusion step of a Stable Diffusion model.
 
-    Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
-    reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD-XL.
+    ``dissolved = StableDiffusionDissolving(version)(input, step_number)`` encodes a ``(B, 3, H, W)`` image with the
+    model's VAE, takes one reverse-diffusion step at ``step_number``, an index into the model's 1000-step schedule from
+    0 to 999, and decodes the result :cite:`shi2024dissolving`. It needs the optional ``diffusers``
+    package, and the constructor loads the checkpoint with ``from_pretrained``.
 
-    .. list-table:: Title
+    .. list-table::
         :widths: 32 32 32
         :header-rows: 1
 
         * - SD 1.4
           - SD 1.5
           - SD XL
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
+
+    Convention:
+        - ``input`` is an image in :math:`[0, 1]`, rescaled to :math:`[-1, 1]` before encoding and not clamped; the
+          result is clamped to :math:`[0, 1]`.
+        - The model runs under ``torch.no_grad()``: the result has no gradient, and it lives on the model's device in
+          the VAE's dtype.
+        - The latent is sampled, so two calls on the same input differ.
 
     Args:
-        version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
-        **kwargs: additional arguments for `.from_pretrained`.
+        version: the version of the stable diffusion model, ``"1.4"``, ``"1.5"`` or ``"xl"``. SD 1.x removes more
+            detail than SD XL.
+        **kwargs: additional arguments for ``from_pretrained``.
+
+    Raises:
+        NotImplementedError: if ``version`` is none of the three above.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomDissolving`: clamps the input and applies it to a batch with a
+          sampled step and a probability.
 
     """
 
@@ -235,7 +248,7 @@ class StableDiffusionDissolving(ImageModule):
         DDIMScheduler = diffusers.DDIMScheduler
 
         # Load the scheduler and model pipeline from diffusers library
-        scheduler = DDIMScheduler(  # type:ignore
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -257,22 +270,24 @@ class StableDiffusionDissolving(ImageModule):
 
         if version == "1.4":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "xl":
             StableDiffusionXLPipeline = diffusers.StableDiffusionXLPipeline
-            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(
                 "stabilityai/stable-diffusion-xl-base-1.0", scheduler=scheduler, **kwargs
             )
             is_sdxl = True
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+            )
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 
@@ -287,7 +302,7 @@ class StableDiffusionDissolving(ImageModule):
         Args:
             input: Image tensor passed to the wrapped dissolving model. The
                 expected shape follows the model wrapper, typically
-                :math:`(B, C, H, W)`, where :math:`B` is the batch size,
+                ``(B, C, H, W)``, where :math:`B` is the batch size,
                 :math:`C` is the channel count, :math:`H` is the image height,
                 and :math:`W` is the image width.
             step_number: Integer diffusion timestep used by the dissolving

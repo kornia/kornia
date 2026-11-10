@@ -15,32 +15,57 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import shift_rgb
+
+# A shift range has no domain: a (low, high) pair -- a tuple, a list or a 1-D tensor -- only needs to be finite and
+# ordered, and a number or 0-d tensor is a non-negative half-width, whose ``[-limit, limit]`` no bound can refuse.
+# Bounds taken from the constructor's own limit refused a checkpoint of a wider valid range at load time, and bounds
+# computed from a learnable tensor would carry its autograd graph into the generator, where no copy can take it.
+_SHIFT_BOUNDS = (-float("inf"), float("inf"))
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
-    """Randomly shift each channel of an image.
+    """Shift each RGB channel by a random offset, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomRGBShift(r_shift_limit, g_shift_limit, b_shift_limit, ...)(input)`` offsets the channels of
+    selected RGB images ``(B, 3, H, W)`` separately and clamps their output to ``[0, 1]``. Use
+    :class:`RandomBrightness` for one shared additive offset.
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
-          recommended interval - [0, 1], should always be positive
-        g_shift_limit: maximum value up to which the shift value can be generated for green channel;
-          recommended interval - [0, 1], should always be positive
-        b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
-          recommended interval - [0, 1], should always be positive
+        r_shift_limit: shift range for the red channel. A non-negative number ``limit`` samples from
+          ``[-limit, limit]``; a ``(low, high)`` pair samples from ``[low, high]``.
+        g_shift_limit: shift range for the green channel, in the same form as ``r_shift_limit``.
+        b_shift_limit: shift range for the blue channel, in the same form as ``r_shift_limit``.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
-    Note:
-        Input torch.Tensor must be float and normalized into [0, 1].
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the input must have exactly three channels, which :func:`kornia.enhance.shift_rgb` checks; any
+          other channel count raises an ``ImageError``. The class draws three named shifts per sample --
+          ``_params["r_shift"]``, ``["g_shift"]`` and ``["b_shift"]``, each of shape ``(B,)`` -- adds each to
+          its channel, and the sum is clamped into ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
+        - a number ``*_shift_limit`` is a non-negative half-width: that channel's shift is sampled from
+          ``[-limit, limit]``, so a limit of ``0`` adds nothing to the channel, though the clamp still applies. A
+          negative limit raises a ``ValueError`` at construction.
+        - a ``(low, high)`` pair, as in ``albumentations.RGBShift``, is the sampling range itself. It must be
+          finite with ``low <= high``, otherwise it raises a ``ValueError`` at construction.
+
+    See Also:
+        - :class:`RandomBrightness`: offsets all channels equally instead of each RGB channel separately.
+        - :class:`ColorJiggle`: combines RGB color adjustments with HSV operations.
 
     Examples:
         >>> import torch
@@ -94,18 +119,18 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        r_shift_limit: float = 0.5,
-        g_shift_limit: float = 0.5,
-        b_shift_limit: float = 0.5,
+        r_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        g_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
+        b_shift_limit: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
-            (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
-            (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
-            (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)),
+            (r_shift_limit, "r_shift", 0, _SHIFT_BOUNDS),
+            (g_shift_limit, "g_shift", 0, _SHIFT_BOUNDS),
+            (b_shift_limit, "b_shift", 0, _SHIFT_BOUNDS),
         )
 
     def apply_transform(
@@ -115,4 +140,5 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        inp = _clamp_unit_range(inp)
         return shift_rgb(inp, params["r_shift"], params["g_shift"], params["b_shift"])

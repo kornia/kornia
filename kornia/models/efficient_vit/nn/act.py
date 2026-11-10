@@ -33,7 +33,7 @@ REGISTERED_ACT_DICT: dict[str, type[nn.Module]] = {
     "relu6": nn.ReLU6,
     "hswish": nn.Hardswish,
     "silu": nn.SiLU,
-    "gelu": partial(nn.GELU, approximate="tanh"),  # type: ignore
+    "gelu": partial(nn.GELU, approximate="tanh"),
 }
 
 

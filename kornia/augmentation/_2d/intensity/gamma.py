@@ -21,15 +21,21 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_gamma
 
 
 class RandomGamma(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the gamma of a torch.Tensor image.
+    r"""Apply a random gamma power law to unit-range images.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    ``output = RandomGamma(gamma, gain)(input)`` raises pixels in selected images to a sampled gamma and multiplies
+    them by sampled gain.
+
+    The formula is torchvision's ``adjust_gamma`` for a float image: ``clamp(gain * input ** gamma, 0, 1)``.
 
     .. image:: _static/img/RandomGamma.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         p: probability of applying the transformation.
@@ -39,11 +45,24 @@ class RandomGamma(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the clamp is not optional: unlike :class:`RandomBrightness` and :class:`RandomContrast` this class has
+          no ``clip_output``.
+        - ``gamma`` and ``gain`` must be non-negative. Neither is checked at construction: the check is in
+          :func:`kornia.enhance.adjust_gamma`, so a negative value raises a ``RuntimeError`` on the forward pass.
+          It is not run for an MPS image, where a negative value goes through the same formula unchecked.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`
+
+    See Also:
+        - :class:`RandomBrightness`: applies an additive linear adjustment.
+        - :class:`RandomContrast`: applies a multiplicative linear adjustment.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -70,6 +89,8 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(
         self,
         gamma: Tuple[float, float] = (1.0, 1.0),
@@ -90,6 +111,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        gamma_factor = params["gamma_factor"].to(input)
-        gain_factor = params["gain_factor"].to(input)
+        input = _clamp_unit_range(input)
+        gamma_factor = _to_device_nonblocking(params["gamma_factor"], input.device, input.dtype)
+        gain_factor = _to_device_nonblocking(params["gain_factor"], input.device, input.dtype)
         return adjust_gamma(input, gamma_factor, gain_factor)

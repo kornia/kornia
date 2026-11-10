@@ -76,7 +76,7 @@ class PositionEncodingSine(nn.Module):
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
         """
-        self.pe = self._create_position_encoding(max_shape).to(self.pe.device)
+        self.pe = self._create_position_encoding(max_shape).to(device=self.pe.device, dtype=self.pe.dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run forward.

@@ -33,7 +33,7 @@ import pytest
 import torch
 
 from kornia.geometry.subpix.nms import nms3d
-from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d
+from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d, iterative_quad_interp3d
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -106,7 +106,7 @@ class TestIterativeQuadInterp3dVsRefFormula:
         assert nms3d(resp_t, (3, 3, 3), True).sum().item() >= 1, "no NMS peak found"
 
         # Our function — one iteration keeps the initial integer position
-        coords, _ = conv_quad_interp3d(resp_t, n_iters=1, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, n_iters=1)
 
         # Reference: apply the C++ formula to the numpy arrays
         resp_np = resp_t.cpu().float().numpy()[0, 0]  # (3, H, W)
@@ -143,7 +143,7 @@ class TestIterativeQuadInterp3dAccuracy:
         nms_mask = nms3d(resp_t, (3, 3, 3), True)
         assert nms_mask.sum().item() >= 1, "no NMS peak"
 
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -165,7 +165,7 @@ class TestIterativeQuadInterp3dAccuracy:
         """Blob at an integer position — recovered coords should be very close to integer."""
         cx, cy, cs = 9.0, 9.0, 1.0
         resp_t = _make_3d_gauss_response(19, 19, cx, cy, cs)
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -186,7 +186,7 @@ class TestIterativeQuadInterp3dAccuracy:
                 resp_np[d] += np.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2 * 1.5**2) - (d - bs) ** 2 / (2 * 1.0**2))
         resp_t = torch.from_numpy(resp_np).unsqueeze(0).unsqueeze(0)
 
-        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t)
         d_peak = 1
         for bx, by, _ in blobs:
             h_int, w_int = round(by), round(bx)
@@ -194,3 +194,54 @@ class TestIterativeQuadInterp3dAccuracy:
             ours_y = coords[0, 0, 2, d_peak, h_int, w_int].item()
             assert abs(ours_x - bx) < 0.1, f"blob ({bx},{by}): x ours={ours_x:.3f}"
             assert abs(ours_y - by) < 0.1, f"blob ({bx},{by}): y ours={ours_y:.3f}"
+
+
+class TestIterativeQuadInterp3dMaxCandidates:
+    """The candidate cap is a per-image budget, not a budget over the batch."""
+
+    def test_cap_is_per_image_not_per_batch(self) -> None:
+        """One image's refinement must not depend on its batch-mates.
+
+        The cap used to rank the flattened (B*C) candidate list, so a quiet
+        image next to a high-contrast one lost its whole budget to the other
+        image and came back unrefined.
+        """
+        torch.manual_seed(0)
+        x = torch.rand(2, 1, 5, 40, 40)
+        x[1] *= 10  # every candidate here outranks every candidate in image 0
+
+        coords_batched, vals_batched = iterative_quad_interp3d(x, max_candidates=50)
+        coords_0, vals_0 = iterative_quad_interp3d(x[:1], max_candidates=50)
+        coords_1, vals_1 = iterative_quad_interp3d(x[1:], max_candidates=50)
+
+        assert torch.equal(coords_batched[:1], coords_0)
+        assert torch.equal(vals_batched[:1], vals_0)
+        assert torch.equal(coords_batched[1:], coords_1)
+        assert torch.equal(vals_batched[1:], vals_1)
+
+    def test_cap_still_bounds_the_work_per_image(self) -> None:
+        """A per-image cap must still cap: refine at most K positions per image."""
+        torch.manual_seed(0)
+        x = torch.rand(2, 1, 5, 40, 40)
+        cap = 10
+
+        coords, _ = iterative_quad_interp3d(x, max_candidates=cap)
+        unrefined, _ = iterative_quad_interp3d(x, max_candidates=0)
+        # A position is refined when its coordinates moved off the integer grid
+        # that max_candidates=0 leaves everywhere.
+        moved = (coords != unrefined).any(dim=2).flatten(1).sum(dim=1)
+        assert (moved <= cap).all(), f"refined {moved.tolist()} positions with cap {cap}"
+
+    @pytest.mark.parametrize("cap", [-1, -50])
+    def test_negative_cap_is_rejected(self, cap: int) -> None:
+        """A negative budget is an error, not a silent no-op.
+
+        Ranking per image compares a positional rank against the cap, so a
+        negative cap would select nothing and return every candidate
+        unrefined -- quietly disabling refinement. Before the per-image
+        ranking, ``torch.topk`` rejected it with a ``RuntimeError``; keep it
+        an error, with a message that names the argument.
+        """
+        x = torch.rand(1, 1, 5, 10, 10)
+        with pytest.raises(ValueError, match="max_candidates must be non-negative"):
+            iterative_quad_interp3d(x, max_candidates=cap)

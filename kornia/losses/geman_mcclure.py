@@ -24,33 +24,36 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 
 def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
-    r"""Criterion that computes the Geman-McClure loss [2].
+    r"""Compute the Geman-McClure loss between a prediction and a target.
 
-    According to [1], we compute the Geman-McClure loss as follows:
+    ``loss = geman_mcclure_loss(img1, img2)`` penalises each residual :math:`x - y` of ``img1`` (:math:`x`) and
+    ``img2`` (:math:`y`) quadratically near 0 and saturates at 2, and its gradient vanishes for large residuals.
 
     .. math::
 
-        \text{WL}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
-
-    Where:
-       - :math:`x` is the prediction.
-       - :math:`y` is the target to be regressed to.
+        \text{loss}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
-        [2] Bayesian image analysis: An application to single photon emission tomography, Geman and McClure, 1985
+        [2] Geman-McClure: Geman and McClure, 1985, Bayesian image analysis: an application to single photon
+        emission tomography.
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = -2`.
 
     Args:
-        img1: the predicted torch.Tensor with shape :math:`(*)`.
-        img2: the target torch.Tensor with the same shape as img1.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        img1: prediction with shape ``(*)``.
+        img2: target with the same shape as ``img1``.
+        reduction: ``'none'`` (default) keeps one loss per element, ``'mean'`` averages them, ``'sum'`` adds them.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        the loss with the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :class:`~kornia.losses.GemanMcclureLoss`: the module form.
+        - :func:`~kornia.losses.cauchy_loss`: grows logarithmically, without bound.
+        - :func:`~kornia.losses.welsch_loss`: saturates at 1, faster.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,9 +74,10 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
-    diff = img1 - img2
-    diff2 = torch.square(diff)
+    # Keep the square, doubled numerator and their backward in float32 for half-precision residuals.
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
+    diff2 = torch.square(compute_diff)
     loss = 2.0 * diff2 / (diff2 + 4.0)
 
     # perform reduction
@@ -86,41 +90,35 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class GemanMcclureLoss(nn.Module):
-    r"""Criterion that computes the Geman-McClure loss [2].
+    r"""Compute the Geman-McClure loss between a prediction and a target (module form).
 
-    According to [1], we compute the Geman-McClure loss as follows:
+    ``criterion = GemanMcclureLoss(reduction)`` stores ``reduction``, and ``loss = criterion(img1, img2)`` is
+    :func:`~kornia.losses.geman_mcclure_loss`.
 
-    .. math::
-
-        \text{WL}(x, y) = \frac{2 (x - y)^{2}}{(x - y)^{2} + 4}
-
-    Where:
-       - :math:`x` is the prediction.
-       - :math:`y` is the target to be regressed to.
-
-    Reference:
-        [1] https://arxiv.org/pdf/1701.03077.pdf
-        [2] Bayesian image analysis: An application to single photon emission tomography, Geman and McClure, 1985
+    Convention:
+        See the Convention block of :func:`~kornia.losses.geman_mcclure_loss`.
 
     Args:
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        reduction: ``'none'`` (default), ``'mean'`` or ``'sum'``, as in :func:`~kornia.losses.geman_mcclure_loss`.
 
     Shape:
-        - img1: the predicted torch.Tensor with shape :math:`(*)`.
-        - img2: the target torch.Tensor with the same shape as img1.
+        - img1: prediction ``(*)``.
+        - img2: target with the same shape as ``img1``.
+        - Output: the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :func:`~kornia.losses.geman_mcclure_loss`: the one-call form.
+        - :class:`~kornia.losses.CauchyLoss`: grows logarithmically, without bound.
+        - :class:`~kornia.losses.WelschLoss`: saturates at 1, faster.
 
     Example:
         >>> criterion = GemanMcclureLoss(reduction="mean")
-        >>> img1 = torch.randn(2, 3, 32, 2107, requires_grad=True)
-        >>> img2 = torch.randn(2, 3, 32, 2107)
+        >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
+        >>> img2 = torch.randn(2, 3, 32, 32)
         >>> output = criterion(img1, img2)
         >>> output.backward()
 

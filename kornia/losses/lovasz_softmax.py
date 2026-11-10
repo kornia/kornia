@@ -29,41 +29,45 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 
 def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] = None) -> Tensor:
-    r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
+    r"""Compute the multi-class Lovász-softmax IoU loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices.
 
-    According to [1], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this fomular with a surrogate, which is fully differentable.
-
-    Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the long tensor with the class labels.
-
-    the loss, is finally computed as:
+    ``loss = lovasz_softmax_loss(pred, target)`` optimises the intersection over union (IoU) of every class: the
+    softmax of ``pred`` over the classes (:math:`X`) against the one-hot ``target`` (:math:`Y`). It averages over the
+    classes the Lovász extension of the Jaccard loss of each class [1], evaluated at the errors :math:`|X - Y|`.
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J = 1 - \frac{|X \cap Y|}{|X \cup Y|}
 
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
 
-    .. note::
-        This loss function only supports multi-class (C > 1) labels. For binary
-        labels please use the Lovasz-Hinge loss.
+    Convention:
+        - ``pred`` holds logits ``(B, C, H, W)`` with ``C >= 2`` and the softmax over dim 1 is taken inside;
+          ``target`` holds class labels ``(B, H, W)`` in ``[0, C)`` with the spatial size of ``pred``. The batch
+          sizes match, or ``pred`` holds one image, which is scored against every target. There is no
+          ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored, and on the CPU in
+          eager mode it raises a ``RuntimeError`` from torch.
+        - Each image is scored on its own and the losses are averaged over the batch; there is no ``reduction``. An
+          image's loss is the mean over all ``C`` classes: a class absent from the image enters it with that image's
+          largest probability for the class.
+        - ``weight`` multiplies the term of each class and the mean still divides by ``C``, so a uniform weight of 2
+          doubles the loss, where ``dice_loss(average='macro')`` divides by the summed weights of the classes it
+          averages.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        target: labels tensor with shape :math:`(N, H, W)` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        pred: logits ``(B, C, H, W)`` with ``C >= 2``.
+        target: class indices ``(B, H, W)`` in ``[0, C)``.
+        weight: class weights ``(C,)``.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        a scalar with the computed loss, in the dtype of ``pred`` promoted with the dtype of ``weight``.
+        The Jaccard weights and the sum over pixels are computed in float32 for a float16 or bfloat16 ``pred``.
+
+    See Also:
+        - :class:`~kornia.losses.LovaszSoftmaxLoss`: the module form.
+        - :func:`~kornia.losses.lovasz_hinge_loss`: the binary loss, from one logit channel.
+        - :func:`~kornia.losses.dice_loss`: optimises the Dice overlap and drops ignored pixels.
 
     Example:
         >>> N = 5  # num_classes
@@ -80,7 +84,8 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     if not pred.shape[1] > 1:
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW, with N > 1. Got: {pred.shape}")
 
-    if not pred.shape[-2:] == target.shape[-2:]:
+    # A prediction batch of one is scored against every target, as the computation below broadcasts it.
+    if not ((pred.shape[0] == target.shape[0] or pred.shape[0] == 1) and pred.shape[-2:] == target.shape[-2:]):
         raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
     if not pred.device == target.device:
@@ -92,19 +97,21 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
+            f"{pred.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
 
-    # flatten pred [B, C, -1] and target [B, -1] and to float
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    # flatten pred to [B, C, H*W] and target to [B, H*W]; flatten keeps an empty batch, where reshape(B, -1) cannot
+    # infer the -1
+    pred_flatten: Tensor = pred.flatten(start_dim=2)
+    target_flatten: Tensor = target.flatten(start_dim=1)
 
     # get shapes
-    B, C, N = pred_flatten.shape
+    _, C, N = pred_flatten.shape
 
     # compute softmax over the classes axis
     pred_soft: Tensor = pred_flatten.softmax(1)
@@ -115,8 +122,11 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     )
     errors: Tensor = (pred_soft - foreground).abs()
     errors_sorted, permutations = torch.sort(errors, dim=2, descending=True)
-    batch_index = torch.arange(B, device=pred.device).unsqueeze(1).unsqueeze(2).expand(B, C, N)
-    target_sorted = target_flatten[batch_index, permutations]
+    # The Jaccard gradient uses the foreground indicator for each class, not the class labels.
+    # Pixel counts, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in
+    # float32 for a half-precision prediction, where counts stay exact up to 2**24 pixels.
+    accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
+    target_sorted = foreground.gather(2, permutations).to(accumulation_dtype)
     target_sorted_sum = target_sorted.sum(2, keepdim=True)
     intersection = target_sorted_sum - target_sorted.cumsum(2)
     union = target_sorted_sum + (1.0 - target_sorted).cumsum(2)
@@ -125,48 +135,36 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     weighted_errors = errors_sorted * gradient
     loss_per_class = weighted_errors.sum(2).mean(0)
+    output_dtype = pred.dtype
     if weight is not None:
-        loss_per_class *= weight
+        loss_per_class = loss_per_class * weight
+        output_dtype = torch.promote_types(output_dtype, weight.dtype)
     final_loss: Tensor = loss_per_class.mean()
-    return final_loss
+    return final_loss.to(output_dtype)
 
 
 class LovaszSoftmaxLoss(nn.Module):
-    r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
+    r"""Compute the multi-class Lovász-softmax IoU loss of ``(B, C, H, W)`` logits against class indices (module form).
 
-    According to [1], we compute the IoU as follows:
+    ``criterion = LovaszSoftmaxLoss(weight)`` stores ``weight``, and ``loss = criterion(pred, target)`` is
+    :func:`~kornia.losses.lovasz_softmax_loss`. A plain tensor ``weight`` is stored as a non-persistent buffer,
+    so ``criterion.to(device)`` moves it and ``state_dict`` omits it.
 
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this fomular with a surrogate, which is fully differentable.
-
-    Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
-
-    the loss, is finally computed as:
-
-    .. math::
-
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
-
-    Reference:
-        [1] https://arxiv.org/pdf/1705.08790.pdf
-
-    .. note::
-        This loss function only supports multi-class (C > 1) labels. For binary
-        labels please use the Lovasz-Hinge loss.
+    Convention:
+        See the Convention block of :func:`~kornia.losses.lovasz_softmax_loss`.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        weight: class weights ``(C,)``; ``None`` weights every class by 1.
 
-    Return:
-        a scalar with the computed loss.
+    Shape:
+        - pred: logits ``(B, C, H, W)`` with ``C >= 2``.
+        - target: class indices ``(B, H, W)`` in ``[0, C)``.
+        - Output: a scalar.
+
+    See Also:
+        - :func:`~kornia.losses.lovasz_softmax_loss`: the one-call form.
+        - :class:`~kornia.losses.LovaszHingeLoss`: the binary loss, from one logit channel.
+        - :class:`~kornia.losses.DiceLoss`: optimises the Dice overlap and drops ignored pixels.
 
     Example:
         >>> N = 5  # num_classes
@@ -180,15 +178,18 @@ class LovaszSoftmaxLoss(nn.Module):
 
     def __init__(self, weight: Optional[Tensor] = None) -> None:
         super().__init__()
-        self.weight = weight
+        if isinstance(weight, nn.Parameter):
+            self.weight = weight
+        else:
+            self.register_buffer("weight", weight, persistent=False)
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute multi-class Lovasz-Softmax loss.
 
         Args:
-            pred: Class logit tensor with shape :math:`(B, C, H, W)`, where
+            pred: Class logit tensor with shape ``(B, C, H, W)``, where
                 :math:`C` is the number of classes.
-            target: Integer class-label tensor with shape :math:`(B, H, W)`.
+            target: Integer class-label tensor with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing the Lovasz-Softmax surrogate for the

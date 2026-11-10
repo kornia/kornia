@@ -1,0 +1,1 @@
+`CornerHarris` accepts an `int` or NumPy scalar `k`, as `harris_response` does, instead of raising a `TypeError` from `register_buffer`: `CornerHarris(0)` now gives the same response as `CornerHarris(0.0)` and `harris_response(input, 0)`. A Python `float` or tensor `k` is stored as before.

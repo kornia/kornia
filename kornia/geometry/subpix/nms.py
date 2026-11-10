@@ -15,58 +15,162 @@
 # limitations under the License.
 #
 
+"""Strict non-maxima suppression of 2D response maps and 3D response volumes."""
+
 from __future__ import annotations
+
+from typing import Any, List, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 
-def _get_nms_kernel2d(kx: int, ky: int) -> torch.Tensor:
-    """Return neigh2channels conv kernel."""
-    numel: int = ky * kx
-    center: int = numel // 2
-    weight = torch.eye(numel)
-    weight[center, center] = 0
-    return weight.view(numel, 1, ky, kx)
+def _split_window(k: int) -> Tuple[int, int]:
+    """Return the neighbour extents of a length-``k`` window either side of its centre."""
+    before = (k - 1) // 2
+    return before, k - before - 1
 
 
-def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Return neigh2channels conv kernel."""
-    numel: int = kd * ky * kx
-    center: int = numel // 2
-    weight = torch.eye(numel)
-    weight[center, center] = 0
-    return weight.view(numel, 1, kd, ky, kx)
+def _reduce_max(parts: List[torch.Tensor]) -> torch.Tensor:
+    """Reduce the maxima from the non-empty neighbourhood regions."""
+    out = parts[0]
+    for i in range(1, len(parts)):
+        out = torch.maximum(out, parts[i])
+    return out
+
+
+def _pooled_window_is_faster(x: torch.Tensor) -> bool:
+    """Whether the ``(5, 5)`` and ``(7, 7)`` windows should take the pooled path instead of their comparison chains.
+
+    On CUDA the chains are launch-bound: 24 or 48 comparisons and their conjunction cost about 50 or 100 kernels,
+    against about 10 for :func:`_neighbourhood_max2d`, which is 2-6x faster there (RTX 4090, 480 x 640 to
+    960 x 1280 maps). On CPU the chains are 2-20x faster than the pooled path, so they stay there. MPS keeps them
+    too: before torch 2.16, its stride-1 ``max_pool2d`` drops nan and returns 0 for a window of -inf (pytorch#200910,
+    pytorch#200789), so the pooled path would change the mask there, although it is 1.4-1.9x (5 x 5) and 2.4-3.7x
+    (7 x 7) faster on an M1 with torch 2.14. Integer maps keep the chains everywhere, because CUDA ``max_pool2d`` takes
+    only floating-point input, and so do maps without channels, which ``max_pool2d`` rejects. TorchScript keeps them
+    too: the legacy ONNX exporter has no symbolic for the ``prim::is_cuda`` a scripted check would leave in the graph.
+    Both paths give the same mask.
+    """
+    if torch.jit.is_scripting():
+        return False
+    return x.is_cuda and x.is_floating_point() and x.shape[1] > 0
+
+
+def _neighbourhood_max2d(x: torch.Tensor, ky: int, kx: int) -> torch.Tensor:
+    """Max over each ``ky x kx`` window with its own centre excluded.
+
+    The window minus its centre is partitioned into four rectangles -- the rows above the centre
+    row, the rows below it, and the centre row either side of the centre -- and each is reduced with
+    ``max_pool2d``.  The two full-width slabs share a single ``(1, kx)`` column pass, so the cost is
+    ``O(ky + kx)`` taps per position rather than the ``ky * kx - 1`` a literal neighbourhood costs.
+
+    Only positions whose full window lies inside the image are computed, so the result has shape
+    ``(B, C, H - ky + 1, W - kx + 1)``; entry ``(i, j)`` belongs to the centre
+    ``x[..., i + (k_y - 1) // 2, j + (k_x - 1) // 2]``.
+    """
+    cy, by = _split_window(ky)
+    cx, bx = _split_window(kx)
+    H, W = x.shape[-2], x.shape[-1]
+    parts: List[torch.Tensor] = []
+    if cy > 0 or by > 0:
+        row_max = F.max_pool2d(x, (1, kx), stride=1)
+        if cy > 0:
+            parts.append(F.max_pool2d(row_max[..., : H - by - 1, :], (cy, 1), stride=1))
+        if by > 0:
+            parts.append(F.max_pool2d(row_max[..., cy + 1 :, :], (by, 1), stride=1))
+    centre_row = x[..., cy : H - by, :]
+    if cx > 0:
+        parts.append(F.max_pool2d(centre_row[..., : W - bx - 1], (1, cx), stride=1))
+    if bx > 0:
+        parts.append(F.max_pool2d(centre_row[..., cx + 1 :], (1, bx), stride=1))
+    return _reduce_max(parts)
+
+
+def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Tensor:
+    """Max over each ``kd x ky x kx`` window with its own centre excluded.
+
+    The 3-D analogue of :func:`_neighbourhood_max2d`: six boxes -- the depth slabs either side of
+    the centre depth, then the row slabs either side of the centre row within it, then the centre
+    row either side of the centre -- sharing the column and row passes they have in common.
+    """
+    cd, bd = _split_window(kd)
+    cy, by = _split_window(ky)
+    cx, bx = _split_window(kx)
+    D, H, W = x.shape[-3], x.shape[-2], x.shape[-1]
+    parts: List[torch.Tensor] = []
+    col_max = F.max_pool3d(x, (1, 1, kx), stride=1) if (cd > 0 or bd > 0 or cy > 0 or by > 0) else x
+    if cd > 0 or bd > 0:
+        plane_max = F.max_pool3d(col_max, (1, ky, 1), stride=1)
+        if cd > 0:
+            parts.append(F.max_pool3d(plane_max[..., : D - bd - 1, :, :], (cd, 1, 1), stride=1))
+        if bd > 0:
+            parts.append(F.max_pool3d(plane_max[..., cd + 1 :, :, :], (bd, 1, 1), stride=1))
+    centre_plane = col_max[..., cd : D - bd, :, :]
+    if cy > 0:
+        parts.append(F.max_pool3d(centre_plane[..., : H - by - 1, :], (1, cy, 1), stride=1))
+    if by > 0:
+        parts.append(F.max_pool3d(centre_plane[..., cy + 1 :, :], (1, by, 1), stride=1))
+    centre_row = x[..., cd : D - bd, cy : H - by, :]
+    if cx > 0:
+        parts.append(F.max_pool3d(centre_row[..., : W - bx - 1], (1, 1, cx), stride=1))
+    if bx > 0:
+        parts.append(F.max_pool3d(centre_row[..., cx + 1 :], (1, 1, bx), stride=1))
+    return _reduce_max(parts)
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Apply non maxima suppression to filter.
+    r"""Keep the strict local maxima of a (B, C, H, W) map; the module form of nms2d.
 
-    Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
+    ``nms = NonMaximaSuppression2d((ky, kx))`` stores the window size, and ``out = nms(response)`` returns what
+    ``nms2d(response, (ky, kx))`` returns: the ``(B, C, H, W)`` map with every position that is not a strict local
+    maximum set to ``0``, or with ``nms(response, mask_only=True)`` the boolean mask. The module holds no parameters
+    or buffers; a state dict saved by an older kornia release with a ``kernel`` buffer still loads strictly.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for some windows when the input holds nan or -inf; see the
+        warning of :func:`~kornia.geometry.subpix.nms2d`.
+
+    Args:
+        kernel_size: the window size ``(ky, kx)``, a tuple of two ints; a list or another length raises
+          ``AssertionError``.
+
+    See Also:
+        - :func:`nms2d`: the function form, with the window size passed on each call.
+        - :class:`NonMaximaSuppression3d`: the module for ``(B, C, D, H, W)`` volumes.
+        - :func:`nms3d_minmax`: strict maxima and minima of a volume in one call.
+
     """
-
-    kernel: torch.Tensor
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
         super().__init__()
-        self.kernel_size: tuple[int, int] = kernel_size
-        self.padding: tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
-        self.register_buffer("kernel", _get_nms_kernel2d(*kernel_size))
-
-    @staticmethod
-    def _compute_zero_padding2d(kernel_size: tuple[int, int]) -> tuple[int, int, int, int]:
-        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 2:
             raise AssertionError(kernel_size)
+        self.kernel_size: tuple[int, int] = kernel_size
 
-        def pad(x: int) -> int:
-            return (x - 1) // 2  # zero padding function
-
-        ky, kx = kernel_size  # we assume a cubic kernel
-        return (pad(ky), pad(kx), pad(ky), pad(kx))
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # The convolution implementation registered this derived tensor as a persistent buffer.
+        # It is unused by the pooled implementation, but accepting it preserves strict loading of
+        # checkpoints saved by older Kornia releases, including when NMS is nested in another module.
+        state_dict.pop(prefix + "kernel", None)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
         """Keep only strict local maxima in a 2D response map.
@@ -77,7 +181,7 @@ class NonMaximaSuppression2d(nn.Module):
         keypoint response maps into sparse candidate locations.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, H, W)`, where
+            x: Response tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 response channels, :math:`H` is height, and :math:`W` is width.
             mask_only: If ``True``, return the boolean maxima mask. If
@@ -85,14 +189,16 @@ class NonMaximaSuppression2d(nn.Module):
 
         Returns:
             If ``mask_only`` is ``True``, a boolean tensor with shape
-            :math:`(B, C, H, W)`. Otherwise, a tensor with the same shape and
+            ``(B, C, H, W)``. Otherwise, a tensor with the same shape and
             dtype as ``x`` where non-maxima have been set to zero.
         """
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
 
-        if self.kernel_size == (3, 3):
+        if self.kernel_size == (1, 1):
+            mask = torch.ones(B, CH, H, W, device=x.device, dtype=torch.bool)
+        elif self.kernel_size == (3, 3):
             # 8-comparison explicit path: no extra memory for conv kernel.
             left = slice(0, -2)
             center = slice(1, -1)
@@ -109,7 +215,7 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., right, center])
                 & (ct > x[..., right, right])
             )
-        elif self.kernel_size == (5, 5):
+        elif self.kernel_size == (5, 5) and not _pooled_window_is_faster(x):
             # 24-comparison explicit path for 5x5 neighbourhood.
             c2 = slice(0, -4)
             c1 = slice(1, -3)
@@ -144,7 +250,7 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., p2, p1])
                 & (ct > x[..., p2, p2])
             )
-        elif self.kernel_size == (7, 7):
+        elif self.kernel_size == (7, 7) and not _pooled_window_is_faster(x):
             # 48-comparison explicit path for 7x7 neighbourhood.
             c3 = slice(0, -6)
             c2 = slice(1, -5)
@@ -206,42 +312,56 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., p3, p3])
             )
         else:
-            # General path: conv2d maps every neighbour into its own channel.
-            x_padded = F.pad(x, list(self.padding)[::-1], mode="replicate")
-            B, CH, HP, WP = x_padded.size()
-            neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
-                B, CH, -1, H, W
-            )
-            max_non_center = neighborhood.max(dim=2)[0]
-            mask = x > max_non_center
+            # General path: the same rule as the explicit paths above, for any window size, and the (5, 5) and
+            # (7, 7) windows of floating-point CUDA maps (see `_pooled_window_is_faster`). A
+            # position whose full window does not fit inside the image is not a maximum -- it has
+            # not been compared against the neighbours that would decide it -- so the border strip
+            # stays False and only the interior is computed (#4239).
+            ky, kx = self.kernel_size
+            cy, by = _split_window(ky)
+            cx, bx = _split_window(kx)
+            mask = torch.zeros(B, CH, H, W, device=x.device, dtype=torch.bool)
+            if H >= ky and W >= kx:
+                centre = x[..., cy : H - by, cx : W - bx]
+                mask[..., cy : H - by, cx : W - bx] = centre > _neighbourhood_max2d(x, ky, kx)
 
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Apply non maxima suppression to filter."""
+    r"""Keep the strict local maxima of a (B, C, D, H, W) volume; the module form of nms3d.
+
+    ``nms = NonMaximaSuppression3d((kd, ky, kx))`` stores the window size, and ``out = nms(volume)`` returns what
+    ``nms3d(volume, (kd, ky, kx))`` returns: the ``(B, C, D, H, W)`` volume with every voxel that is not a strict
+    local maximum set to ``0``, or with ``nms(volume, mask_only=True)`` the boolean mask.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for some windows when the input holds nan; see the warning
+        of :func:`~kornia.geometry.subpix.nms3d`.
+
+    Args:
+        kernel_size: the window size ``(kd, ky, kx)``, a tuple of three ints; a list or another length raises
+          ``AssertionError``.
+
+    See Also:
+        - :func:`nms3d`: the function form, with the window size passed on each call.
+        - :class:`NonMaximaSuppression2d`: the module for ``(B, C, H, W)`` maps.
+        - :func:`nms3d_minmax`: strict maxima and minima in a ``3 x 3 x 3`` window in one call.
+
+    """
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
         super().__init__()
-        self.kernel_size: tuple[int, int, int] = kernel_size
-        self.padding: tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
-        self.kernel = _get_nms_kernel3d(*kernel_size)
-
-    @staticmethod
-    def _compute_zero_padding3d(kernel_size: tuple[int, int, int]) -> tuple[int, int, int, int, int, int]:
-        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 3:
             raise AssertionError(kernel_size)
-
-        def pad(x: int) -> int:
-            return (x - 1) // 2  # zero padding function
-
-        kd, ky, kx = kernel_size  # we assume a cubic kernel
-        return (kd, kd, ky, ky, kx, kx)
+        self.kernel_size: tuple[int, int, int] = kernel_size
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
         """Keep only strict local maxima in a 3D response volume.
@@ -251,7 +371,7 @@ class NonMaximaSuppression3d(nn.Module):
         locally maximal both in image position and in scale/depth.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth or scale level, :math:`H` is height, and
                 :math:`W` is width.
@@ -259,7 +379,7 @@ class NonMaximaSuppression3d(nn.Module):
                 return suppressed responses.
 
         Returns:
-            Boolean maxima mask with shape :math:`(B, C, D, H, W)` when
+            Boolean maxima mask with shape ``(B, C, D, H, W)`` when
             ``mask_only`` is ``True``. Otherwise, an NMS-filtered tensor with
             the same shape and dtype as ``x``.
         """
@@ -267,7 +387,9 @@ class NonMaximaSuppression3d(nn.Module):
             raise AssertionError(x.shape)
         # find local maximum values
         B, CH, D, H, W = x.size()
-        if self.kernel_size == (3, 3, 3):
+        if self.kernel_size == (1, 1, 1):
+            mask = torch.ones(B, CH, D, H, W, device=x.device, dtype=torch.bool)
+        elif self.kernel_size == (3, 3, 3):
             # 26-comparison explicit path: strict local maximum, works on CPU and CUDA.
             # Using integer slice literals (not slice objects) makes this torch.jit.script-friendly,
             # which fuses the ops and runs ~13x faster on CUDA than the eager path.
@@ -302,61 +424,144 @@ class NonMaximaSuppression3d(nn.Module):
                 & (ct > x[..., 2:, 2:, 2:])
             )
         else:
-            max_non_center = (
-                F.conv3d(
-                    F.pad(x, list(self.padding)[::-1], mode="replicate"),
-                    self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
-                    stride=1,
-                    groups=CH,
-                )
-                .view(B, CH, -1, D, H, W)
-                .max(dim=2, keepdim=False)[0]
-            )
-            mask = x > max_non_center
+            # General path: the same rule as the explicit path above, for any window size. See
+            # `NonMaximaSuppression2d.forward` for the border convention (#4239). The old path
+            # padded by the full kernel size rather than half of it and raised for every kernel
+            # other than (3, 3, 3) (#4241); nothing pads here.
+            kd, ky, kx = self.kernel_size
+            cd, bd = _split_window(kd)
+            cy, by = _split_window(ky)
+            cx, bx = _split_window(kx)
+            mask = torch.zeros(B, CH, D, H, W, device=x.device, dtype=torch.bool)
+            if D >= kd and H >= ky and W >= kx:
+                centre = x[..., cd : D - bd, cy : H - by, cx : W - bx]
+                mask[..., cd : D - bd, cy : H - by, cx : W - bx] = centre > _neighbourhood_max3d(x, kd, ky, kx)
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 # functional api
 
 
 def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep the strict local maxima of a (B, C, H, W) map in a 2D window, zeroing the rest.
 
-    See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
+    ``out = nms2d(response, (ky, kx))`` takes a ``(B, C, H, W)`` response map and returns it with every position that
+    is not a strict local maximum of its ``ky x kx`` window set to ``0``, ``(B, C, H, W)`` in the input dtype; with
+    ``mask_only=True`` it returns the boolean maxima mask instead. Each channel is suppressed on its own. For
+    ``(B, C, D, H, W)`` volumes, use :func:`nms3d`, or :func:`nms3d_minmax` for the maxima and minima together; to
+    suppress overlapping boxes by their IoU, use :func:`~kornia.geometry.bbox.nms`.
+
+    Convention:
+        - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
+          window, so with ``k >= 3`` on every axis every pixel of a plateau is suppressed, even a plateau at the top
+          of the map. :ref:`Coordinates and sizes <coordinate-conventions>` compares this with scikit-image, scipy
+          and OpenCV.
+        - The window spans ``(k - 1) // 2`` positions before the centre and ``k // 2`` after it on each axis, so an
+          even ``k`` reaches one further forward, and the first ``(k - 1) // 2`` and last ``k // 2`` positions of
+          each axis are never maxima.
+        - The default output keeps the input value at each maximum and is ``0`` elsewhere, which is larger than a
+          negative maximum, so use ``mask_only=True`` for a signed response.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for a ``kernel_size`` other than ``(1, 1)``, ``(3, 3)``,
+        ``(5, 5)`` and ``(7, 7)`` when the map holds nan or -inf: its stride-1 ``max_pool2d`` drops nan and returns
+        ``0`` for a window of -inf
+        (`pytorch/pytorch#200910 <https://github.com/pytorch/pytorch/issues/200910>`__,
+        `pytorch/pytorch#200789 <https://github.com/pytorch/pytorch/issues/200789>`__). A position next to a nan can
+        then be kept, and a negative maximum among -inf neighbours suppressed. Those four windows compare the
+        neighbours directly and are not affected, and neither are other devices or torch 2.16 or later.
+
+    Args:
+        input: response map with shape ``(B, C, H, W)``; another number of dimensions raises ``AssertionError``.
+        kernel_size: the window size ``(ky, kx)``, a tuple of two ints. ``(1, 1)`` keeps every position, and a
+          window larger than the map keeps none.
+        mask_only: return the boolean maxima mask instead of the suppressed map.
+
+    Returns:
+        the suppressed map ``(B, C, H, W)`` in the dtype of ``input``, or with ``mask_only=True`` a boolean mask of
+        the same shape.
+
+    See Also:
+        - :func:`nms3d`: the same rule over the depth, height and width of a ``(B, C, D, H, W)`` volume.
+        - :func:`nms3d_minmax`: strict maxima and minima of a volume in a fixed ``3 x 3 x 3`` window, in one call.
+        - :class:`NonMaximaSuppression2d`: the module form.
+        - :func:`~kornia.geometry.bbox.nms`: suppresses overlapping boxes by their IoU, not positions of a map.
+
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
 def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep the strict local maxima of a (B, C, D, H, W) volume in a 3D window, zeroing the rest.
 
-    See
-    :class: `~kornia.feature.NonMaximaSuppression3d` for details.
+    ``out = nms3d(volume, (kd, ky, kx))`` takes a ``(B, C, D, H, W)`` volume, such as a scale-space response with the
+    scale levels along ``D``, and returns it with every voxel that is not a strict local maximum of its
+    ``kd x ky x kx`` window set to ``0``; with ``mask_only=True`` it returns the boolean maxima mask instead. For the
+    minima as well, in a ``3 x 3 x 3`` window, use :func:`nms3d_minmax`; for a ``(B, C, H, W)`` map, :func:`nms2d`.
+
+    Convention:
+        - See the convention block of :func:`nms2d`, applied over depth, height and width.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for a ``kernel_size`` other than ``(1, 1, 1)`` and
+        ``(3, 3, 3)`` when the volume holds nan: its ``max_pool3d`` drops a nan that is not the first value of its
+        window (`pytorch/pytorch#200910 <https://github.com/pytorch/pytorch/issues/200910>`__), so a position next to
+        a nan can be kept. Those two windows compare the neighbours directly and are not affected, and neither are
+        other devices or torch 2.16 or later.
+
+    Args:
+        input: response volume with shape ``(B, C, D, H, W)``; another number of dimensions raises
+          ``AssertionError``.
+        kernel_size: the window size ``(kd, ky, kx)``, a tuple of three ints. ``(1, 1, 1)`` keeps every voxel, and a
+          window larger than the volume keeps none.
+        mask_only: return the boolean maxima mask instead of the suppressed volume.
+
+    Returns:
+        the suppressed volume ``(B, C, D, H, W)`` in the dtype of ``input``, or with ``mask_only=True`` a boolean
+        mask of the same shape.
+
+    See Also:
+        - :func:`nms2d`: the same rule over the height and width of a ``(B, C, H, W)`` map.
+        - :func:`nms3d_minmax`: the maxima and the minima in a fixed ``3 x 3 x 3`` window, in one call.
+        - :class:`NonMaximaSuppression3d`: the module form.
+        - :func:`iterative_quad_interp3d`: refines the maxima of a scale-space volume to sub-voxel positions; it
+          takes this function's mask as ``precomputed_nms_mask``.
+
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)
 
 
 def nms3d_minmax(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute both local-maxima and local-minima NMS masks for a 3-D scale-space tensor in one pass.
+    r"""Mask the strict local maxima and minima of a (B, C, D, H, W) volume in a 3x3x3 window.
 
-    Equivalent to calling ``nms3d(input, (3,3,3), mask_only=True)`` and
-    ``nms3d(-input, (3,3,3), mask_only=True)`` separately, but only traverses
-    the 26-neighbour comparisons once, halving the NMS cost.
+    ``max_mask, min_mask = nms3d_minmax(volume)`` takes a ``(B, C, D, H, W)`` volume and returns two boolean masks of
+    the same shape: the voxels strictly greater than all 26 neighbours, and those strictly smaller. For a floating
+    input they equal ``nms3d(volume, (3, 3, 3), mask_only=True)`` and
+    ``nms3d(-volume, (3, 3, 3), mask_only=True)``. :class:`~kornia.feature.ScaleSpaceDetector` uses it on every
+    octave; for another window size, call :func:`nms3d`.
 
-    Uses integer slice literals (not Python loops or slice objects) so the 52
-    comparison-and-reduction ops are visible to the compiler at trace time,
-    allowing full fusion into a minimal number of kernels.
+    Under ``torch.compile`` the comparisons can fuse; in eager mode on the CPU and MPS the call costs about as much as
+    the two :func:`nms3d` calls.
+
+    Convention:
+        - The strict and border rules of :func:`nms2d` with a :math:`3 \times 3 \times 3` window, for maxima and
+          minima alike.
 
     Args:
-        input: 5-D tensor of shape :math:`(B, C, D, H, W)`.
+        input: 5-D tensor of shape ``(B, C, D, H, W)``; another number of dimensions raises ``AssertionError``.
 
     Returns:
         A pair ``(max_mask, min_mask)`` of bool tensors with the same shape as
         *input*.  ``max_mask[..., d, h, w]`` is ``True`` when the voxel is
         strictly greater than all 26 neighbours; ``min_mask`` is the same for
         strict local minima.
+
+    See Also:
+        - :func:`nms3d`: the maxima only, in a window of any size.
+        - :func:`nms2d`: the maxima of a ``(B, C, H, W)`` map.
+        - :class:`NonMaximaSuppression3d`: the maxima only, as a module.
 
     Example:
         >>> x = torch.randn(1, 1, 5, 10, 10)

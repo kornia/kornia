@@ -38,24 +38,50 @@ from kornia.core.check import (
 )
 
 
-def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
-    r"""Geodesic angle (in degrees) between two rotation matrices.
+def _angle_deg(sin_theta: Tensor, cos_theta: Tensor) -> Tensor:
+    """Angle in degrees from a non-negative sine and a cosine, the same in eager, compiled and ONNX graphs."""
+    # -atan2(-sin, cos) is atan2(sin, cos). At sin = +0 and cos < 0 the ONNX export's atan2 returns -pi instead of
+    # pi; with -0 it returns -pi in both, which the negation turns into pi.
+    theta = torch.rad2deg(-torch.atan2(-sin_theta, cos_theta))
+    # The ONNX export's atan2 also maps NaN to 0, so a NaN input (a zero vector) would read as a perfect match.
+    nan = sin_theta + cos_theta
+    return torch.where(torch.isnan(nan), nan, theta)
 
-    The relative rotation :math:`R_1^\top R_2` has trace :math:`1 + 2\cos\theta`, so the geodesic
-    angle is :math:`\theta = \arccos\!\big((\mathrm{tr}(R_1^\top R_2) - 1) / 2\big)`.
+
+def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
+    r"""Compute the geodesic angle, in degrees, between two rotation matrices.
+
+    ``angle = angle_error_mat(R1, R2)`` takes rotations of shape ``(*, 3, 3)`` and returns the angle of the relative
+    rotation :math:`R = R_1^\top R_2`, in :math:`[0, 180]` degrees, with shape ``(*,)``.
+
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"R_err"`` this is: one angle in
+        degrees per pair, symmetric in ``R1`` and ``R2``. An unbatched pair gives a 0-d tensor. The inputs are not
+        checked to be rotations.
 
     Args:
-        R1: a rotation matrix of shape :math:`(*, 3, 3)`.
-        R2: a rotation matrix of shape :math:`(*, 3, 3)`.
+        R1: a rotation matrix of shape ``(*, 3, 3)``.
+        R2: a rotation matrix of shape ``(*, 3, 3)``.
 
-    Return:
-        the per-matrix angle in degrees, with shape :math:`(*,)`.
+    Returns:
+        the per-matrix angle in degrees, with shape ``(*,)``.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite rotations), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        The trace of :math:`R` is :math:`1 + 2\cos\theta` and its skew part is
+        :math:`(R - R^\top) / 2 = \sin\theta\,[\mathbf{n}]_\times` for the unit axis :math:`\mathbf{n}`, so
+        :math:`\theta = \operatorname{atan2}(\sin\theta, \cos\theta)`. Reading :math:`\sin\theta` from the skew
+        part keeps the digits of small angles that :math:`\arccos\!\big((\mathrm{tr}\,R - 1) / 2\big)` loses next
+        to :math:`1`: in float32 the result stays within about :math:`2 \cdot 10^{-5}` degrees of the exact angle
+        over the whole range.
+
+    .. note::
+        The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
+        rotations). The gradient there is the subgradient :math:`0` that ``norm`` returns at a zero
+        vector, so backpropagating through a perfect or exactly-opposite match stays finite.
+
+    See Also:
+        - :func:`~kornia.metrics.angle_error_vec`: the angle between two vectors.
+        - :func:`~kornia.metrics.pose_errors`: this rotation error and a translation error for whole poses.
 
     Example:
         >>> angle_error_mat(torch.eye(3), torch.eye(3))
@@ -69,31 +95,52 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
 
     relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)
-    cos_theta = ((trace - 1.0) / 2.0).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    cos_theta = (trace - 1.0) / 2.0
+    # (R - R^T) / 2 = sin(theta) [n]_x, so its three independent entries have norm sin(theta).
+    skew = relative - relative.transpose(-2, -1)
+    sin_theta = 0.5 * torch.stack((skew[..., 2, 1], skew[..., 0, 2], skew[..., 1, 0]), dim=-1).norm(dim=-1)
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
-    r"""Angle (in degrees) between two vectors.
+    r"""Compute the angle, in degrees, between two vectors.
 
-    The angle is :math:`\theta = \arccos\!\big((v_1 \cdot v_2) / (\lVert v_1 \rVert \lVert v_2 \rVert)\big)`.
+    ``angle = angle_error_vec(v1, v2)`` takes 3D vectors of shape ``(*, 3)`` and returns the angle between their
+    directions in :math:`[0, 180]` degrees, with shape ``(*,)``.
+
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"t_err"`` is this angle before
+        folding: one angle in degrees per pair, symmetric in ``v1`` and ``v2`` up to roundoff. An unbatched pair gives
+        a 0-d tensor. Only the directions are compared, so the vectors need not have unit length. The angle is not
+        folded: opposite vectors give 180.
 
     Args:
-        v1: a vector of shape :math:`(*, 3)`.
-        v2: a vector of shape :math:`(*, 3)`.
+        v1: a vector of shape ``(*, 3)``.
+        v2: a vector of shape ``(*, 3)``.
 
-    Return:
-        the per-vector angle in degrees, with shape :math:`(*,)`.
+    Returns:
+        the per-vector angle in degrees, with shape ``(*,)``.
 
     .. note::
-        The gradient is infinite/NaN exactly at :math:`0^\circ` and :math:`180^\circ` (identical or
-        opposite vectors), because :math:`\frac{d}{dx}\arccos(x) \to \infty` at :math:`x = \pm 1`.
-        This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
-        a perfect or exactly-opposite match.
+        With the unit vectors :math:`\hat v_1` and :math:`\hat v_2`, the angle is
+        :math:`\theta = \operatorname{atan2}(\lVert \hat v_1 \times \hat v_2 \rVert, \hat v_1 \cdot \hat v_2)`.
+        Reading :math:`\sin\theta` from the cross product keeps the digits of small angles that
+        :math:`\arccos(\hat v_1 \cdot \hat v_2)` loses next to :math:`1`: in float32 the result stays within
+        about :math:`2 \cdot 10^{-5}` degrees of the exact angle over the whole range.
+
+    .. note::
+        The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
+        vectors). The gradient there is the subgradient :math:`0` that ``norm`` returns at a zero
+        vector, so backpropagating through a perfect or exactly-opposite match stays finite.
 
     .. note::
         A zero-length vector gives ``NaN`` rather than raising, since the angle is undefined there.
         Mask those entries before reducing.
+
+    See Also:
+        - :func:`~kornia.metrics.angle_error_mat`: the angle between two rotations.
+        - :func:`~kornia.metrics.translation_ate`: the distance between two translations, which keeps the magnitude.
+        - :func:`~kornia.metrics.pose_errors`: folds this angle into ``"t_err"`` and adds the rotation error.
 
     Example:
         >>> v = torch.tensor([1.0, 0.0, 0.0])
@@ -106,32 +153,40 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     KORNIA_CHECK_SHAPE(v2, ["*", "3"])
     KORNIA_CHECK_SAME_SHAPE(v1, v2)
 
-    dot = (v1 * v2).sum(-1)
-    norms = v1.norm(dim=-1) * v2.norm(dim=-1)
-    cos_theta = (dot / norms).clamp(-1.0, 1.0)
-    return torch.rad2deg(cos_theta.acos())
+    # atan2 does not depend on the length of either vector, so scaling each one by its largest entry is enough.
+    # Unlike a norm, that cannot overflow or underflow, and a zero vector still gives 0 / 0 = NaN.
+    v1 = v1 / v1.abs().amax(dim=-1, keepdim=True)
+    v2 = v2 / v2.abs().amax(dim=-1, keepdim=True)
+    sin_theta = torch.linalg.cross(v1, v2, dim=-1).norm(dim=-1)
+    cos_theta = (v1 * v2).sum(-1)
+    return _angle_deg(sin_theta, cos_theta)
 
 
 def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
-    r"""Absolute translation error (ATE) between two translations.
+    r"""Compute the absolute translation error (ATE), the distance between two translations.
 
-    Computes the raw Euclidean distance :math:`\lVert t - t_{gt} \rVert_2`. Unlike
-    :func:`angle_error_vec`, this keeps the magnitude and is therefore only meaningful when both
-    translations share a common metric scale (it is **not** scale-invariant, so it is not suitable
-    for raw essential-matrix translations).
+    ``err = translation_ate(t, t_gt)`` takes translations of shape ``(*, 3)`` and returns the Euclidean distance
+    :math:`\lVert t - t_{gt} \rVert_2`. It keeps the magnitude, so it is meaningful only when both translations share
+    a metric scale and not for a translation known only up to scale, such as one from an essential matrix: use
+    :func:`~kornia.metrics.angle_error_vec` there.
+
+    Convention:
+        The result is one distance per sample, in the units of the translations, with no alignment: a trajectory
+        shifted by a constant keeps that offset at every pose.
 
     Args:
-        t: an estimated translation of shape :math:`(*, 3)`.
+        t: an estimated translation of shape ``(*, 3)``.
         t_gt: a ground-truth translation of the same shape as ``t``.
 
-    Return:
-        the per-sample translation error, with shape :math:`(*,)`. An unbatched :math:`(3,)` input is
-        treated as a single sample and returns shape :math:`(1,)`.
+    Returns:
+        the per-sample distance, with shape ``(*,)``. An unbatched ``(3,)`` input returns shape ``(1,)``.
 
     .. note::
-        Unlike the :func:`angle_error_vec` / :func:`angle_error_mat` angular metrics, this has no
-        ``arccos`` singularity: the gradient stays finite even at zero distance, where ``norm``
-        returns the subgradient ``0``.
+        The gradient stays finite even at zero distance, where ``norm`` returns the subgradient ``0``.
+
+    See Also:
+        - :func:`~kornia.metrics.angle_error_vec`: the angle between translation directions, which ignores the scale.
+        - :func:`~kornia.metrics.pose_errors`: the angular rotation and translation errors of whole poses.
 
     Example:
         >>> t = torch.tensor([0.0, 0.0, 0.0])
@@ -151,22 +206,38 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
 
 
 def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[str, Tensor]:
-    r"""Rotation and translation angular error (in degrees) between two relative poses.
+    r"""Compute the rotation and translation angular errors, in degrees, between two relative poses.
+
+    ``errs = pose_errors(P, P_gt)`` takes poses ``[R | t]`` of shape ``(B, 3, 4)`` or ``(B, 4, 4)`` and returns a
+    dict of per-pose errors, each in degrees with shape ``(B,)``.
+
+    Convention:
+        - Every error is one angle per pose, never averaged over the batch; an unbatched pose gives shape ``(1,)``,
+          where :func:`~kornia.metrics.angle_error_mat` gives a 0-d tensor.
+        - ``"R_err"`` is :func:`~kornia.metrics.angle_error_mat` of the two rotation blocks and is never folded.
+          ``"t_err"`` is :func:`~kornia.metrics.angle_error_vec` of the two translations, so it compares their
+          directions only, folded as ``fold_translation`` says. ``"max_err"`` is the larger of the two per pose.
+        - Only the top three rows are read: the bottom row of a ``(4, 4)`` pose is ignored.
 
     Args:
-        P: an estimated relative pose ``[R | t]`` of shape :math:`(3, 4)`, :math:`(4, 4)`, or batched
-            :math:`(B, 3, 4)` / :math:`(B, 4, 4)`.
+        P: an estimated relative pose ``[R | t]`` of shape ``(3, 4)``, ``(4, 4)``, or batched
+            ``(B, 3, 4)`` / ``(B, 4, 4)``.
         P_gt: a ground-truth relative pose of the same shape.
         fold_translation: if ``True`` (default), fold the translation error into :math:`[0, 90]` via
             :math:`\min(e, 180 - e)` to absorb the sign ambiguity of an essential-matrix translation.
 
-    Return:
-        a dict of per-pose errors of shape :math:`(B,)`: ``"R_err"`` (rotation), ``"t_err"``
-        (translation) and ``"max_err"`` (element-wise max of the two).
+    Returns:
+        a dict with ``"R_err"`` (rotation), ``"t_err"`` (translation) and ``"max_err"`` (their element-wise max).
 
     .. note::
         A pose with zero translation gives ``NaN`` for ``"t_err"`` and ``"max_err"``, and
-        :func:`auc_from_errors` propagates that into the AUC. Mask those entries first.
+        :func:`~kornia.metrics.auc_from_errors` propagates that into the AUC. Mask those entries first.
+
+    See Also:
+        - :func:`~kornia.metrics.angle_error_mat`: the rotation error alone, from rotation matrices.
+        - :func:`~kornia.metrics.angle_error_vec`: the translation error alone, before folding.
+        - :func:`~kornia.metrics.auc_from_errors`: summarizes ``"max_err"`` over many pairs.
+        - :func:`~kornia.metrics.translation_ate`: the translation distance, which keeps the magnitude.
 
     Example:
         >>> P = torch.eye(4)
@@ -194,25 +265,37 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
 
 
 def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3, 5, 10)) -> dict[float, float]:
-    r"""Area under the cumulative error curve at one or more thresholds.
+    r"""Compute the area under the cumulative error curve at one or more thresholds, in percent.
 
-    The metric is generic: any non-negative error array works. Pose-error metrics (e.g. the
-    ``"max_err"`` of :func:`pose_errors`) are one common source, but the thresholds simply need to be
-    in the same units as ``errors``.
+    ``auc = auc_from_errors(errors, thresholds)`` takes any non-negative errors ``(B,)``, such as the
+    ``"max_err"`` of :func:`~kornia.metrics.pose_errors`, and thresholds in their units, and returns a dict from
+    each threshold to its AUC.
+
+    Convention:
+        - All errors are pooled into one curve, whatever their shape. The recall curve rises by :math:`1/n` at each
+          of the :math:`n` sorted errors, joined to :math:`(0, 0)` and to each other by straight lines (the trapezoid
+          rule), and is held flat from the last error below the threshold out to the threshold. The AUC is its area
+          divided by the threshold, times 100: a **percentage**, keyed by the threshold as a Python float. An ``inf``
+          error never enters the area, so it counts as a failure. :ref:`Losses and metrics
+          <losses-metrics-conventions>` maps the AUC and :func:`~kornia.metrics.pose_errors` onto glue-factory and
+          SuperGlue.
 
     Args:
-        errors: per-sample error values of shape :math:`(B,)`. Must be non-negative. Integer and
+        errors: per-sample error values of shape ``(B,)``. Must be non-negative. Integer and
             half-precision inputs are promoted to the default floating dtype before accumulating.
         thresholds: a single threshold or a sequence of thresholds, in the same units as ``errors``.
             Must be strictly positive. Defaults to ``(1, 3, 5, 10)``.
 
-    Return:
+    Returns:
         a dict mapping each threshold to its AUC in :math:`[0, 100]`, or ``NaN`` at every threshold
         if any error is ``NaN``.
 
     .. note::
         An error exactly equal to a threshold contributes no area there, so errors all equal to
         ``thr`` score ``0`` at ``thr``. This follows the reference implementations.
+
+    See Also:
+        - :func:`~kornia.metrics.pose_errors`: computes the errors to summarize.
 
     Example:
         >>> auc_from_errors(torch.zeros(1), thresholds=5.0)

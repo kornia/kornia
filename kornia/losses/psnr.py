@@ -21,26 +21,30 @@ import torch
 from torch import nn
 
 from kornia import metrics
+from kornia.metrics.psnr import _PSNRMaxVal
 
 
-def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
-    r"""Compute the PSNR loss.
+def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> torch.Tensor:
+    r"""Compute the PSNR loss, the negative PSNR of two images.
 
-    The loss is computed as follows:
+    ``loss = psnr_loss(image, target, max_val)`` is ``-psnr(image, target, max_val)``, so minimising it raises
+    the PSNR.
 
-     .. math::
-
-        \text{loss} = -\text{psnr(x, y)}
-
-    See :meth:`~kornia.losses.psnr` for details abut PSNR.
+    Convention:
+        See the Convention block of :func:`~kornia.metrics.psnr`: the MSE is pooled over the batch, and identical
+        inputs give ``-inf``.
 
     Args:
-        image: the input image with shape :math:`(*)`.
-        target : the labels image with shape :math:`(*)`.
-        max_val: The maximum value in the image tensor.
+        image: image with shape ``(*)``.
+        target: target with the same shape as ``image``.
+        max_val: data range :math:`\text{MAX}_I` of the images, as a float, integer or tensor.
 
-    Return:
-        the computed loss as a scalar.
+    Returns:
+        the loss, a scalar for a scalar range or with the shape of a tensor range.
+
+    See Also:
+        - :class:`~kornia.losses.PSNRLoss`: the module form.
+        - :func:`~kornia.metrics.psnr`: the PSNR itself, with the opposite sign.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -52,23 +56,25 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
 
 
 class PSNRLoss(nn.Module):
-    r"""Create a criterion that calculates the PSNR loss.
+    r"""Compute the PSNR loss, the negative PSNR of two images (module form).
 
-    The loss is computed as follows:
+    ``criterion = PSNRLoss(max_val)`` stores ``max_val``, and ``loss = criterion(image, target)`` is
+    :func:`~kornia.losses.psnr_loss`.
 
-     .. math::
-
-        \text{loss} = -\text{psnr(x, y)}
-
-    See :meth:`~kornia.losses.psnr` for details abut PSNR.
+    Convention:
+        See the Convention block of :func:`~kornia.losses.psnr_loss`.
 
     Args:
-        max_val: The maximum value in the image tensor.
+        max_val: data range :math:`\text{MAX}_I` of the images, as a float, integer or tensor.
 
     Shape:
-        - Image: arbitrary dimensional tensor :math:`(*)`.
-        - Target: arbitrary dimensional tensor :math:`(*)` same shape as image.
-        - Output: a scalar.
+        - Image: ``(*)``.
+        - Target: ``(*)``, the shape of the image.
+        - Output: a scalar for a scalar range, or the shape of a tensor range.
+
+    See Also:
+        - :func:`~kornia.losses.psnr_loss`: the one-call form.
+        - :func:`~kornia.metrics.psnr`: the PSNR itself, with the opposite sign.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -78,9 +84,9 @@ class PSNRLoss(nn.Module):
 
     """
 
-    def __init__(self, max_val: float) -> None:
+    def __init__(self, max_val: _PSNRMaxVal) -> None:
         super().__init__()
-        self.max_val: float = max_val
+        self.max_val: _PSNRMaxVal = max_val
 
     def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute the negative PSNR loss between two tensors.
@@ -90,7 +96,7 @@ class PSNRLoss(nn.Module):
             target: Reference tensor with the same shape as ``image``.
 
         Returns:
-            Scalar tensor containing the PSNR-based loss computed with
+            Tensor containing the PSNR-based loss computed with
             ``self.max_val``. Lower values correspond to higher peak signal to
             noise ratio.
         """

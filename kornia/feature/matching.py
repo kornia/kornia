@@ -18,38 +18,183 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
-from .adalam import get_adalam_default_config, match_adalam
+from .adalam import match_adalam
+
+# ``aten::_cdist_backward`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_CDIST_BACKWARD = torch_version_ge(2, 13)
+
+
+def _torch_cdist_available(x: torch.Tensor) -> bool:
+    """Return whether ``torch.cdist`` can compute, and differentiate, the distances of descriptors like ``x``."""
+    if is_exporting():  # `torch.cdist` has no ONNX lowering
+        return False
+    # TorchScript cannot read ``_MPS_HAS_CDIST_BACKWARD``, so a scripted call keeps the fallback on MPS.
+    mps_has_backward = False
+    if not torch.jit.is_scripting():
+        mps_has_backward = _MPS_HAS_CDIST_BACKWARD
+    return mps_has_backward or not is_mps_tensor_safe(x)
 
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     r"""Compute pairwise L2 distances between rows of d1 and d2.
 
-    Uses ``torch.cdist`` for float32/float64 on non-MPS devices.  Falls back to a
-    manual expand-and-norm implementation for MPS tensors and for half-precision
-    dtypes (float16/bfloat16), since ``torch.cdist`` does not support half precision
-    on CUDA and may be unavailable for these dtypes elsewhere.
+    Uses ``torch.cdist``, except under export, where it has no ONNX lowering, and on
+    MPS before torch 2.13, where it has no backward. Both fall back to the
+    matrix-multiplication form of the squared distance. Half-precision inputs are
+    computed in float32: in half precision the squared norms round away the squared
+    distance between nearby descriptors, and ``torch.cdist`` has no float16 kernel on
+    CPU. Distances are returned in the input dtype.
     """
     half = (torch.float16, torch.bfloat16)
-    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)) and d1.dtype not in half and d2.dtype not in half:
-        return torch.cdist(d1, d2)
-    d1_sq = (d1**2).sum(dim=1, keepdim=True)
-    d2_sq = (d2**2).sum(dim=1, keepdim=True)
-    dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
-    dm = dm.clamp(min=0.0).sqrt()
-    return dm
+    output_dtype = d1.dtype
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        if d1.dtype != d2.dtype:
+            # Inside autocast, `torch.cdist` computes a mixed pair of float16, bfloat16 and float32 in float32, and
+            # so does the fallback here; autocast does not cast float64. Outside autocast, the CPU `torch.cdist`
+            # raises for a mixed pair, while on MPS it computes one of up to 25 rows in the dtype of d1.
+            castable = (torch.float16, torch.bfloat16, torch.float32)
+            if not (is_autocast_enabled() and d1.dtype in castable and d2.dtype in castable):
+                raise RuntimeError(f"The descriptors must have the same dtype, got {d1.dtype} and {d2.dtype}")
+            d1, d2 = d1.float(), d2.float()
+    if output_dtype in half:
+        d1, d2 = d1.float(), d2.float()
+    if _torch_cdist_available(d1) and _torch_cdist_available(d2):
+        distances = torch.cdist(d1, d2)
+    else:
+        # Autocast would lower the matmul precision again and cancel nearby distances.
+        with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
+            d1_sq = (d1**2).sum(dim=1, keepdim=True)
+            d2_sq = (d2**2).sum(dim=1, keepdim=True)
+            dm = d1_sq + d2_sq.t() - 2.0 * d1 @ d2.t()
+            dm = dm.clamp(min=0.0)
+            mask = dm > 0.0
+            safe_dm = torch.where(mask, dm, 1.0)
+            distances = torch.where(mask, safe_dm.sqrt(), 0.0)
+    return distances.to(output_dtype)
+
+
+# The squared path pays from these matrix sizes on. Below them, its extra operator calls cost more than the passes it
+# saves: on an RTX 4090 and an i7-14700K (torch 2.14), the CPU gains 1.02-1.10x at 256 x 256 descriptors and the
+# matchers on CUDA are 0.90-0.98x below 2048 x 2048.
+_SQUARED_MIN_NUMEL: Dict[str, int] = {"cpu": 256 * 256, "cuda": 2048 * 2048}
+
+
+def _squared_distances(
+    desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
+) -> Optional[torch.Tensor]:
+    r"""Return the squared L2 distances whose square roots ``torch.cdist`` returns, or ``None``.
+
+    For more than 25 rows on either side, ``torch.cdist`` computes the distances by matrix multiplication
+    (ATen's ``_euclidean_dist``). It appends the squared norms to the descriptors, multiplies, and then takes
+    ``clamp_min(0).sqrt()`` of the whole matrix. This function computes the same product, bit for bit, without the
+    last two passes. The matchers select on it and take the square root of the selected entries only, which returns
+    the bits ``torch.cdist`` would have returned for them. The selection is the same too, because the square root
+    keeps the order, with one difference: two distances that differ only below the precision of their square roots
+    tie in ``torch.cdist``'s matrix, and are not tied here, so a matcher returns the nearer one.
+
+    It returns ``None``, and the matchers use :func:`_get_lazy_distance_matrix`, in these cases:
+
+    - ``dm`` is given.
+    - Either descriptor set needs a gradient: the matchers' in-place selections would break autograd.
+    - The dtypes differ or are not float32 or float64.
+    - Autocast is on, where ``torch.cdist`` runs in float32 and a matrix product would not.
+    - The call is exported or traced.
+    - The device is neither the CPU nor CUDA. MPS is not measured.
+    - Neither side has more than 25 rows, the case in which ``torch.cdist`` computes the differences directly.
+    - The matrix has fewer entries than :data:`_SQUARED_MIN_NUMEL` gives for the device.
+
+    Only the matchers' non-scripted path calls it, so TorchScript never compiles it.
+    """
+    # Export first: under torch.export, the size comparisons below would become guards of the exported graph.
+    if dm is not None or is_exporting() or torch.jit.is_tracing():
+        return None
+    min_numel = _SQUARED_MIN_NUMEL.get(desc1.device.type)
+    if min_numel is None or desc1.size(0) * desc2.size(0) < min_numel:
+        return None
+    if desc1.size(0) <= 25 and desc2.size(0) <= 25:
+        return None
+    if desc1.dtype != desc2.dtype or desc1.dtype not in (torch.float32, torch.float64) or is_autocast_enabled():
+        return None
+    if torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad):
+        return None
+    norms1 = desc1.pow(2).sum(-1, keepdim=True)
+    norms2 = desc2.pow(2).sum(-1, keepdim=True)
+    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
+    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    return padded1.matmul(padded2.mT)
+
+
+def _distance_from_squared(squared: torch.Tensor) -> torch.Tensor:
+    """Return the L2 distance ``torch.cdist`` derives from a squared distance of :func:`_squared_distances`.
+
+    No gradient flows here (see :func:`_squared_distances`), so the clamp is not a gradient guard.
+    """
+    return squared.clamp_min(0).sqrt()
+
+
+def _largest_finite(dtype: torch.dtype) -> float:
+    """Return ``torch.finfo(dtype).max`` for the float32 and float64 of :func:`_squared_distances`.
+
+    TorchScript, which compiles the matchers' calls of the helpers below, has no ``torch.finfo``.
+    """
+    return 3.4028234663852886e38 if dtype == torch.float32 else 1.7976931348623157e308
+
+
+def _topk_order_key_(squared: torch.Tensor) -> torch.Tensor:
+    """Map ``squared`` in place to a key without nan, which orders as ``torch.topk`` orders it.
+
+    ``torch.topk`` orders nan after ``+inf``. ``torch.min`` returns the first nan of a row instead. The key keeps the
+    numbers and ``-inf``, and maps ``+inf`` to the largest finite value and nan to ``+inf``. :func:`_key_to_squared`
+    maps them back. Only a squared distance of exactly the largest finite value would come back as ``+inf``.
+    """
+    return squared.nan_to_num_(nan=float("inf"), posinf=_largest_finite(squared.dtype), neginf=float("-inf"))
+
+
+def _key_to_squared(key: torch.Tensor) -> torch.Tensor:
+    """Invert :func:`_topk_order_key_` for the few entries a selection took from the key."""
+    largest = _largest_finite(key.dtype)
+    return torch.where(key == float("inf"), float("nan"), torch.where(key == largest, float("inf"), key))
+
+
+def _two_smallest_(key: torch.Tensor, dim: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return the two smallest entries of ``key`` along ``dim``, and the index of the smallest.
+
+    The values are those of ``torch.topk(key, 2, dim, largest=False)``. The index is the first of tied smallest
+    entries; ``torch.topk`` orders no ties. The second entry is the minimum after the first is masked in place with
+    ``+inf``. The mask is then undone, so ``key`` keeps its values.
+
+    The ratio tests of :func:`match_snn` and :func:`match_smnn` use it on CUDA, where :func:`_squared_distances`
+    returns a matrix of at least 2,048 x 2,048 entries. There this reads the matrix twice and writes one entry per
+    row or column, while ``torch.topk`` selects by radix. With 8,192 x 8,192 float32 distances on an RTX 4090
+    (torch 2.14), it takes 0.6 ms for each direction; ``torch.topk`` takes 1.5 ms for the rows and 3.0 ms for the
+    columns. On the CPU ``torch.topk`` stays, which is faster there than reductions, see
+    :func:`_first_to_second_nearest_ratio`.
+    """
+    first, index = key.min(dim)
+    picked = index.unsqueeze(dim)
+    key.scatter_(dim, picked, float("inf"))
+    second = key.amin(dim)
+    key.scatter_(dim, picked, first.unsqueeze(dim))
+    return first, second, index
+
+
+def _ratio_from_keys(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+    """Return the distance ratio of the two smallest keys of :func:`_two_smallest_`, as ``torch.topk`` gives it."""
+    distances = _distance_from_squared(_key_to_squared(torch.stack([first, second])))
+    return distances[0] / distances[1]
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
-    config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
-    return config
+    return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
 
 def _get_lazy_distance_matrix(
@@ -58,10 +203,10 @@ def _get_lazy_distance_matrix(
     """Check validity of provided distance matrix, or calculates L2-distance matrix if dm is not provided.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm_: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     """
     if dm_ is None:
@@ -76,8 +221,8 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Descriptor distance of matching descriptors, shape of ``(0, 1)``.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(0, 2)``.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
@@ -85,30 +230,144 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return dists, idxs
 
 
+def _reduces_over_row_blocks(distance_matrix: torch.Tensor, block: int) -> bool:
+    """Return whether a reduction over the rows of ``distance_matrix`` runs on blocks of ``block`` rows.
+
+    On CPU, ``torch.min`` and ``torch.topk`` over the rows of a row-major ``(B1, B2)`` matrix walk each column with a
+    stride of ``B2`` elements, which is slow when ``B2`` is a power of two, as keypoint budgets usually are, or when
+    ``B1`` is large. On an Apple M1, the column minimum of a ``(2048, 2048)`` matrix costs 7 times its row minimum and
+    3 times the distance matrix itself. The same kernels run on blocks of ``block`` rows, then on the few results of
+    the blocks: 2.4 times faster there, 2.7 times for ``(4096, 4096)`` and 4 times for ``(8000, 8000)``. A matrix of
+    at most ``2 * block`` rows gains little and keeps one reduction. So do CUDA and MPS, which reduce columns as fast
+    as rows, and a traced or exported graph, which would record whether the last block is partial.
+    """
+    if distance_matrix.device.type != "cpu" or distance_matrix.size(0) <= 2 * block:
+        return False
+    return not (is_exporting() or torch.jit.is_tracing())
+
+
+def _min_over_rows(distance_matrix: torch.Tensor, block: int = 512) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each column's minimum and its row, bitwise as ``torch.min(distance_matrix, dim=0)``.
+
+    On CPU a matrix of more than ``2 * block`` rows is reduced in blocks of rows, see
+    :func:`_reduces_over_row_blocks`. ``torch.min`` returns the first of tied minima and the first nan of a column,
+    and the minimum over the blocks keeps the first block's, so the values, rows and gradients are those of one
+    reduction.
+    """
+    if not _reduces_over_row_blocks(distance_matrix, block):
+        return torch.min(distance_matrix, dim=0)
+    rows = distance_matrix.size(0)
+    full = rows - rows % block
+    vals, idxs = distance_matrix[:full].reshape(full // block, block, -1).min(dim=1)
+    idxs = idxs + torch.arange(0, full, block, device=distance_matrix.device)[:, None]
+    if full < rows:
+        rest_vals, rest_idxs = distance_matrix[full:].min(dim=0)
+        vals, idxs = torch.cat([vals, rest_vals[None]]), torch.cat([idxs, rest_idxs[None] + full])
+    best, first_block = vals.min(dim=0)
+    return best, idxs.gather(0, first_block[None])[0]
+
+
+def _nearest_neighbour_ratio_over_rows(
+    distance_matrix: torch.Tensor, block: int = 512, squared: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return :func:`_nearest_neighbour_ratio` of ``distance_matrix.t()``: the ratio test of each column.
+
+    With ``squared``, ``distance_matrix`` holds squared distances from :func:`_squared_distances`, and the ratio is
+    taken of the square roots of the two smallest.
+
+    On CPU a matrix of more than ``2 * block`` rows takes the two smallest distances of each block of rows with
+    ``torch.topk``, then the two smallest of those, see :func:`_reduces_over_row_blocks`. The two smallest values
+    are those of one ``torch.topk``, so the ratios are bitwise the same, apart from the sign of a nan ratio (x86
+    bfloat16 division gives ``-nan`` in its vectorised kernel and ``+nan`` in the strided one), and so is a unique
+    nearest row. Of tied nearest rows it may return another one: ``torch.topk`` orders no ties. Such a column's ratio
+    is 1 or nan, which the ratio test of :func:`match_smnn` rejects for any ``th < 1``.
+    """
+    if not _reduces_over_row_blocks(distance_matrix, block):
+        return _nearest_neighbour_ratio(distance_matrix.t(), squared)
+    rows, cols = distance_matrix.shape
+    full = rows - rows % block
+    vals, idxs = distance_matrix[:full].reshape(full // block, block, cols).topk(2, dim=1, largest=False)
+    idxs = idxs + torch.arange(0, full, block, device=distance_matrix.device)[:, None, None]
+    vals, idxs = vals.reshape(-1, cols), idxs.reshape(-1, cols)
+    if full < rows:
+        rest_vals, rest_idxs = distance_matrix[full:].topk(min(2, rows - full), dim=0, largest=False)
+        vals, idxs = torch.cat([vals, rest_vals]), torch.cat([idxs, rest_idxs + full])
+    best, pick = vals.topk(2, dim=0, largest=False)
+    if squared:
+        best = _distance_from_squared(best)
+    return best[0] / best[1], idxs.gather(0, pick[:1])[0]
+
+
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Find nearest neighbors in desc2 for each vector in desc1.
+    r"""Match each descriptor in desc1 to its nearest neighbor in desc2, with no filtering.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    ``dists, idxs = match_nn(desc1, desc2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns, for
+    every row of ``desc1`` in order, the L2 distance ``(B1, 1)`` to its nearest row of ``desc2`` and the index pair
+    ``(B1, 2)`` of the two rows; a precomputed ``dm`` ``(B1, B2)`` replaces the L2 distances. Every row is matched,
+    however ambiguous its nearest neighbour, and several rows can match the same row of ``desc2``. To keep only the
+    reliable matches, use :func:`match_mnn` (mutual nearest neighbours), :func:`match_snn` (Lowe's ratio test) or
+    :func:`match_smnn` (both) instead.
+
+    Convention:
+        - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
+          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows; :func:`match_smnn_batched` adds the batch
+          index as a first column. ``dists`` is ``(M, 1)``. Without ``dm``, it has the descriptor dtype, except that
+          :func:`match_adalam` returns float32. Lower values are better, and their meaning depends on the function:
+
+          - :func:`match_nn`, :func:`match_mnn`: the distance, the entry of ``dm`` when it is given.
+          - :func:`match_snn`: the ratio of the nearest to the second-nearest distance, not a distance.
+          - :func:`match_smnn`, :func:`match_smnn_batched`: the larger of the two ratios, desc1 to desc2 and back.
+          - :func:`match_fginn`: the ratio of the nearest distance to that of a second neighbour, taken among the 10
+            nearest, whose ``lafs2`` centre lies at least ``spatial_th`` from the nearest one's, and 0 without one;
+            see its Convention block.
+          - :func:`match_adalam`: the inverse of the local RANSAC confidence; see its Convention block.
+
+          :class:`~kornia.feature.LightGlueMatcher` returns LightGlue's matching score in the place of ``dists``,
+          which is higher for better matches, and :class:`~kornia.feature.LocalFeatureMatcher` reports
+          ``1 - dists`` as ``confidence``.
+        - The ratio tests of :func:`match_snn`, :func:`match_smnn`, :func:`match_smnn_batched` and
+          :func:`match_fginn` keep ``ratio <= th``: a ratio equal to ``th`` passes.
+        - Without ``dm``, the functions use L2 distances. A given ``dm`` replaces them: :func:`match_nn` and
+          :func:`match_mnn` require only that smaller entries are better, while ratio tests require non-negative
+          distances. Use ``th ** 2`` for squared distances.
+        - Of tied nearest neighbours, :func:`match_nn` and :func:`match_mnn` take the one with the lower index.
+        - An empty desc1 or desc2 gives a ``(0, 1)`` and a ``(0, 2)`` tensor (``(0, 3)`` for
+          :func:`match_smnn_batched`). The ratio tests need a second neighbour: :func:`match_snn` and
+          :func:`match_fginn` return no match unless desc2 has two rows, and :func:`match_smnn`,
+          :func:`match_smnn_batched` and :func:`match_adalam`, which scores its putative matches by the same ratio,
+          need two rows in both.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Returns:
-        - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
+        - Descriptor distance of matching descriptors, shape of ``(B1, 1)``, or ``(0, 1)`` when desc2 is empty.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B1, 2)``, or
+          ``(0, 2)`` when desc2 is empty.
+
+    See Also:
+        - :func:`match_mnn`: keeps only the pairs that are each other's nearest neighbours.
+        - :func:`match_snn`: keeps only the nearest neighbours that pass Lowe's ratio test.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="nn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+    if squared is not None:
+        match_dists = _distance_from_squared(match_dists)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
@@ -117,63 +376,150 @@ def match_nn(
 def match_mnn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find mutual nearest neighbors in desc2 for each vector in desc1.
+    """Match the descriptors of desc1 and desc2 that are each other's nearest neighbors.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    ``dists, idxs = match_mnn(desc1, desc2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns the
+    pairs whose two descriptors are each other's nearest neighbour, the mutual nearest neighbours: their L2
+    distances ``(B3, 1)`` and index pairs ``(B3, 2)``, with ``B3 <= min(B1, B2)``. Each row of either set is matched
+    at most once, but a distinctive descriptor and an ambiguous one are kept alike; to also require Lowe's ratio
+    test, use :func:`match_smnn` instead.
+
+    Convention:
+        See the Convention block on :func:`match_nn`. A pair is kept only when each of the two descriptors is the
+        nearest neighbour of the other. Ties go to the lower index in both directions, so of several identical
+        rows of desc2 only the first can be matched.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
+        - Descriptor distance of matching descriptors, shape of ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B3, 2)``,
           where 0 <= B3 <= min(B1, B2)
+
+    See Also:
+        - :func:`match_nn`: the nearest neighbour of every row of desc1, mutual or not.
+        - :func:`match_smnn`: mutual nearest neighbours that also pass the ratio test in both directions.
+        - :func:`match_snn`: the ratio test in one direction, without the mutual check.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="mnn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
     ms = min(distance_matrix.size(0), distance_matrix.size(1))
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-    match_dists2, idxs_in_1 = torch.min(distance_matrix, dim=0)
+    match_dists2, idxs_in_1 = _min_over_rows(distance_matrix)
     minsize_idxs = torch.arange(ms, device=distance_matrix.device)
 
+    # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
     if distance_matrix.size(0) <= distance_matrix.size(1):
-        mutual_nns = minsize_idxs == idxs_in_1[idxs_in_2][:ms]
-        matches_idxs = torch.cat([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], 1)[mutual_nns]
-        match_dists = match_dists[mutual_nns]
+        mutual = torch.nonzero(minsize_idxs == idxs_in_1[idxs_in_2][:ms])[:, 0]  # rows of desc1
+        matches_idxs = torch.stack([mutual, idxs_in_2[mutual]], 1)
+        match_dists = match_dists[mutual]
     else:
-        mutual_nns = minsize_idxs == idxs_in_2[idxs_in_1][:ms]
-        matches_idxs = torch.cat([idxs_in_1.view(-1, 1), minsize_idxs.view(-1, 1)], 1)[mutual_nns]
-        match_dists = match_dists2[mutual_nns]
-    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+        mutual = torch.nonzero(minsize_idxs == idxs_in_2[idxs_in_1][:ms])[:, 0]  # rows of desc2
+        matches_idxs = torch.stack([idxs_in_1[mutual], mutual], 1)
+        match_dists = match_dists2[mutual]
+    if squared is not None:
+        match_dists = _distance_from_squared(match_dists)
+    return match_dists.view(-1, 1), matches_idxs
+
+
+def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each row's ratio of the smallest to the second-smallest distance, and the column of the smallest.
+
+    :func:`match_snn` calls this on MPS in place of ``torch.topk(distance_matrix, 2, dim=1, largest=False)``, which
+    is two to three times slower there. Elsewhere ``torch.topk`` is at least as fast: as fast on CUDA, and two to five
+    times faster on an x86 CPU, where it reads the matrix about once and these reductions several times. The ratios
+    are those of ``torch.topk``, which orders nan after ``+inf``. Where a ratio is a number, its column is that of the
+    smallest distance, the first of tied ones. A row without a finite smallest and a finite, non-zero second-smallest
+    distance gets no gradient. A row needs at least two columns.
+    """
+    inf = float("inf")
+    # A row-major copy of the transposed matrix that match_smnn passes; the MPS timings of #6465 were taken with it.
+    dm = distance_matrix.contiguous()
+    is_nan = torch.isnan(dm)
+    remaining = torch.nan_to_num(dm, nan=inf, posinf=inf, neginf=-inf)
+    first, first_idx = remaining.min(dim=1)
+    idx = first_idx[:, None]
+    # Overwrite the smallest with another distance of its row, which keeps the minimum of the others. It is read from
+    # `dm`, not from `remaining`: autograd must not save a tensor that is then modified in place.
+    other = dm.gather(1, (idx == 0).long())
+    remaining.scatter_(1, idx, torch.nan_to_num(other, nan=inf, posinf=inf, neginf=-inf))
+    # Ordered after +inf, a nan is the second-smallest distance only when every other distance of the row is nan.
+    no_second = is_nan.scatter_(1, idx, True).all(dim=1)
+    second = torch.where(no_second, float("nan"), remaining.amin(dim=1))
+    # Without such a pair the quotient's gradient is nan or infinite, and amin's backward would spread it over every
+    # distance of the row. Those rows keep the quotient as their ratio, but detached.
+    defined = torch.isfinite(first) & torch.isfinite(second) & (second != 0)
+    ratio = torch.where(defined, first, 0) / torch.where(defined, second, 1)
+    return torch.where(defined, ratio, (first / second).detach()), first_idx
+
+
+def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each row's nearest column and its ratio of the nearest to the second-nearest distance.
+
+    The ratio test of :func:`match_snn` and :func:`match_smnn`: :func:`_first_to_second_nearest_ratio` on MPS and
+    ``torch.topk`` elsewhere. A row needs at least two columns. With ``squared``, ``distance_matrix`` holds squared
+    distances from :func:`_squared_distances`, which is never on MPS, and the ratio is taken of the square roots of
+    the two smallest.
+    """
+    if is_mps_tensor_safe(distance_matrix):
+        return _first_to_second_nearest_ratio(distance_matrix)
+    vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
+    if squared:
+        vals = _distance_from_squared(vals)
+    return vals[:, 0] / vals[:, 1], idxs[:, 0]
 
 
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find nearest neighbors in desc2 for each vector in desc1.
+    """Match each descriptor in desc1 to its nearest neighbor in desc2 if it passes Lowe's ratio test.
 
-    The method satisfies first to second nearest neighbor distance <= th.
+    ``dists, idxs = match_snn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
+    rows of ``desc1`` whose nearest neighbour in ``desc2`` is at most ``th`` times as far as the second-nearest, and
+    returns their ratios ``(B3, 1)``, not distances, and index pairs ``(B3, 2)``, with ``B3 <= B1``, in the order of
+    the rows of ``desc1``. Several rows of ``desc1`` can match the same row of ``desc2``; to keep only mutual
+    nearest neighbours that pass the test in both directions, use :func:`match_smnn` instead.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    Speed, with the same matches, on 1,024 to 8,192 RootSIFT descriptors: on an x86 CPU this is faster than faiss and
+    OpenCV's ``BFMatcher``, while faiss's exact k-nearest-neighbour search runs this ratio test up to 2.2x faster on
+    CUDA and up to 2.0x faster on an Apple M1 CPU. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+
+    Convention:
+        See the Convention block on :func:`match_nn`; ``dists`` is the ratio of the nearest to the second-nearest
+        distance.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+        - Ratio of the nearest to the second-nearest distance of each match, shape of ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_nn`: the nearest neighbour of every row of desc1, without the ratio test.
+        - :func:`match_mnn`: mutual nearest neighbours, without the ratio test.
+        - :func:`match_smnn`: the ratio test in both directions, on mutual nearest neighbours.
+        - :func:`match_fginn`: the same ratio test, with a second neighbour that lies elsewhere in the image.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="snn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -181,39 +527,66 @@ def match_snn(
 
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
-    ratio = vals[:, 0] / vals[:, 1]
-    mask = ratio <= th
-    match_dists = ratio[mask]
-    if len(match_dists) == 0:
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    if squared is not None and squared.is_cuda:
+        distance_matrix = _topk_order_key_(squared)
+        first, second, idxs_in_2 = _two_smallest_(distance_matrix, 1)
+        ratio = _ratio_from_keys(first, second)
+    else:
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        ratio, idxs_in_2 = _nearest_neighbour_ratio(distance_matrix, squared is not None)
+    # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
+    idxs_in1 = torch.nonzero(ratio <= th)[:, 0]
+    if idxs_in1.numel() == 0:
         return _no_match(distance_matrix)
-    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
-    idxs_in_2 = idxs_in_2[:, 0][mask]
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
-    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+    matches_idxs = torch.stack([idxs_in1, idxs_in_2[idxs_in1]], 1)
+    return ratio[idxs_in1].view(-1, 1), matches_idxs
 
 
 def match_smnn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find mutual nearest neighbors in desc2 for each vector in desc1.
+    """Match mutual nearest neighbors that also pass Lowe's ratio test in both directions.
 
-    the method satisfies first to second nearest neighbor distance <= th.
+    ``dists, idxs = match_smnn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
+    mutual nearest neighbours whose nearest-to-second-nearest distance ratio is at most ``th`` both from ``desc1``
+    to ``desc2`` and back, and returns the larger of their two ratios ``(B3, 1)`` and their index pairs ``(B3, 2)``,
+    with ``B3 <= min(B1, B2)``, in the order of the rows of ``desc1``. For many pairs of descriptor sets, padded to
+    common sizes, use :func:`match_smnn_batched` instead of a loop.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    Speed, with the same matches, on 1,024 to 8,192 RootSIFT descriptors: on an x86 CPU this is faster than faiss and
+    OpenCV's ``BFMatcher``, while faiss's exact k-nearest-neighbour search, run both ways, is up to 1.6x faster on
+    CUDA and up to 2.0x faster on an Apple M1 CPU. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+
+    Convention:
+        - See the Convention block on :func:`match_nn`. A pair is kept when the two descriptors are mutual nearest
+          neighbours and pass the ratio test, ``ratio <= th``, in both directions; ``dists`` is the larger of the
+          two ratios.
+        - ``th`` defaults to 0.95, where :func:`match_snn` and :func:`match_fginn` default to 0.8.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
+        - The larger of the two distance ratios of each match, shape of ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-          shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
+          shape of ``(B3, 2)`` where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_snn`: the ratio test from desc1 to desc2 only, without the mutual check.
+        - :func:`match_mnn`: mutual nearest neighbours without the ratio test.
+        - :func:`match_smnn_batched`: the same matches for a batch of padded descriptor-set pairs, in one call.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="smnn"`` and a default ``th`` of 0.8.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the next step, which keeps the matches one geometric model
+          explains.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -221,34 +594,169 @@ def match_smnn(
 
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-
-    dists1, idx1 = match_snn(desc1, desc2, th, distance_matrix)
-    dists2, idx2 = match_snn(desc2, desc1, th, distance_matrix.t())
-
-    if len(dists2) > 0 and len(dists1) > 0:
-        idx2 = idx2.flip(1)
-        if not is_mps_tensor_safe(idx1):
-            idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
-        else:
-            idxs1_rep = idx1.to(desc1).repeat_interleave(idx2.size(0), dim=0)
-            idxs_dm = (idx2.to(desc2).repeat(idx1.size(0), 1) - idxs1_rep).abs().sum(dim=1)
-            idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
-        mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
-        mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
-        good_idxs1 = idx1[mutual_idxs1.view(-1)]
-        good_idxs2 = idx2[mutual_idxs2.view(-1)]
-        dists1_good = dists1[mutual_idxs1.view(-1)]
-        dists2_good = dists2[mutual_idxs2.view(-1)]
-        _, idx_upl1 = torch.sort(good_idxs1[:, 0])
-        _, idx_upl2 = torch.sort(good_idxs2[:, 0])
-        good_idxs1 = good_idxs1[idx_upl1]
-        match_dists = torch.max(dists1_good[idx_upl1], dists2_good[idx_upl2])
-        matches_idxs = good_idxs1
-        match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    if squared is not None and squared.is_cuda:
+        distance_matrix = _topk_order_key_(squared)
+        first1, second1, nearest2 = _two_smallest_(distance_matrix, 1)
+        first2, second2, nearest1 = _two_smallest_(distance_matrix, 0)
+        ratio1, ratio2 = _ratio_from_keys(first1, second1), _ratio_from_keys(first2, second2)
     else:
-        match_dists, matches_idxs = _no_match(distance_matrix)
-    return match_dists, matches_idxs
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        ratio1, nearest2 = _nearest_neighbour_ratio(distance_matrix, squared is not None)
+        ratio2, nearest1 = _nearest_neighbour_ratio_over_rows(distance_matrix, squared=squared is not None)
+    # Join the two directions on integer indices: i and nearest2[i] are mutual when nearest1[nearest2[i]] == i. Both
+    # ratio tests and the mutual check form one mask, so one nonzero is the only wait for the device.
+    reverse_ratio = ratio2[nearest2]
+    mutual = nearest1[nearest2] == torch.arange(distance_matrix.size(0), device=distance_matrix.device)
+    idxs_in1 = torch.nonzero(mutual & (ratio1 <= th) & (reverse_ratio <= th))[:, 0]
+    if idxs_in1.numel() == 0:
+        return _no_match(distance_matrix)
+    matches_idxs = torch.stack([idxs_in1, nearest2[idxs_in1]], 1)
+    match_dists = torch.maximum(ratio1[idxs_in1], reverse_ratio[idxs_in1])
+    return match_dists.view(-1, 1), matches_idxs
+
+
+def match_smnn_batched(
+    desc1: torch.Tensor,
+    desc2: torch.Tensor,
+    th: float = 0.95,
+    dm: Optional[torch.Tensor] = None,
+    mask1: Optional[torch.Tensor] = None,
+    mask2: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Match a batch of padded descriptor-set pairs in one call, each as match_smnn matches one pair.
+
+    ``ratios, idxs = match_smnn_batched(desc1, desc2, th)`` takes ``B`` pairs of descriptor sets, ``(B, N, D)`` and
+    ``(B, M, D)``, padded to common sizes, with optional boolean masks ``mask1`` ``(B, N)`` and ``mask2`` ``(B, M)``
+    of the valid rows, and returns the matches of every pair at once, without a loop over the pairs: the larger of
+    the two ratios ``(K, 1)`` and index rows ``(K, 3)`` of ``(batch index, index in desc1, index in desc2)``, which
+    index the padded tensors and come sorted by batch index, then index in desc1. For a single pair, use
+    :func:`match_smnn`.
+
+    Convention:
+        See the Convention blocks on :func:`match_nn` and :func:`match_smnn`. For each batch item it returns the
+        pairs and ratios that :func:`match_smnn` returns for finite distances between the valid descriptors of that
+        item, with the batch index as the first column of the indices. Unlike :func:`match_smnn`, it rejects a match
+        when the nearest or second-nearest distance in either direction is non-finite. Without ``dm``, float16 and
+        bfloat16 descriptors give the results
+        of :func:`match_smnn` on float32 copies, with the ratios rounded back, and a few pairs and ratios can differ
+        slightly from those of :func:`match_smnn` on the half-precision descriptors.
+
+    Args:
+        desc1: First descriptors, shape ``(B, N, D)``.
+        desc2: Second descriptors, shape ``(B, M, D)``.
+        th: Inclusive distance-ratio threshold.
+        dm: Optional precomputed L2 distances, shape ``(B, N, M)``.
+        mask1: Optional boolean mask of valid first descriptors, shape ``(B, N)``.
+        mask2: Optional boolean mask of valid second descriptors, shape ``(B, M)``.
+            Masks allow padding variable-length pairs; padding never becomes a neighbor.
+
+    Returns:
+        - Ratios, shape ``(K, 1)``, with the input device and dtype.
+        - Long indices, shape ``(K, 3)``: ``(batch_index, index_in_desc1, index_in_desc2)``.
+          Indices refer to the original padded tensors, sorted by batch and first-descriptor index.
+          A pair with fewer than two valid descriptors on either side contributes no matches.
+
+    Note:
+        Memory for the distance matrix scales as :math:`B N M`. Bucket pairs by
+        descriptor counts and limit batch size when matching large collections.
+        Half-precision descriptors use float32 distance computation before ratios
+        are converted back to the input dtype.
+        Masked inputs compute the distances directly, without the matrix-multiplication
+        form, which avoids its cancellation but can be slower for large masked descriptor sets.
+        As in :func:`match_smnn`, a zero second-neighbor distance produces an
+        undefined ratio and that ambiguous match is rejected. Ties follow
+        :func:`torch.topk` and do not have a guaranteed cross-device ordering.
+
+    See Also:
+        - :func:`match_smnn`: the same test for one pair of descriptor sets of any sizes, with no padding.
+        - :func:`match_snn`: the ratio test in one direction for one pair, without the mutual check.
+
+    Example:
+        >>> a = torch.tensor([[[0., 0.], [1., 1.], [2., 2.]]])
+        >>> ratios, indices = match_smnn_batched(a, a.flip(1))
+        >>> indices
+        tensor([[0, 0, 2],
+                [0, 1, 1],
+                [0, 2, 0]])
+
+    """
+    KORNIA_CHECK_SHAPE(desc1, ["B", "N", "D"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "M", "D"])
+    batch, n, dim = desc1.shape
+    if desc2.shape[0] != batch or desc2.shape[2] != dim:
+        raise ValueError("Descriptor batch sizes and dimensions must match")
+    if desc1.device != desc2.device or desc1.dtype != desc2.dtype or not desc1.is_floating_point():
+        raise ValueError("Descriptors must have the same floating dtype and device")
+    m = desc2.shape[1]
+    if dm is not None and (dm.shape != (batch, n, m) or dm.device != desc1.device or dm.dtype != desc1.dtype):
+        raise ValueError("Distance matrix must have shape (B, N, M) and the descriptor dtype/device")
+    for mask, shape in ((mask1, (batch, n)), (mask2, (batch, m))):
+        if mask is not None and (mask.shape != shape or mask.dtype != torch.bool or mask.device != desc1.device):
+            raise ValueError("Validity masks must be boolean tensors with shape (B, N)/(B, M) on the input device")
+    if batch == 0 or n < 2 or m < 2:
+        return desc1.new_empty((0, 1)), torch.empty((0, 3), dtype=torch.long, device=desc1.device)
+
+    valid1 = torch.ones((batch, n), dtype=torch.bool, device=desc1.device) if mask1 is None else mask1
+    valid2 = torch.ones((batch, m), dtype=torch.bool, device=desc1.device) if mask2 is None else mask2
+    masked = mask1 is not None or mask2 is not None
+    if dm is None:
+        # Exclude padded values from the calculation itself. Masking the resulting
+        # distances is too late for NaN/Inf padding, which can poison gradients.
+        work1 = desc1.masked_fill(~valid1.unsqueeze(-1), 0.0) if mask1 is not None else desc1
+        work2 = desc2.masked_fill(~valid2.unsqueeze(-1), 0.0) if mask2 is not None else desc2
+        work1 = work1.float() if work1.dtype in (torch.float16, torch.bfloat16) else work1
+        work2 = work2.float() if work2.dtype in (torch.float16, torch.bfloat16) else work2
+        # Without the matrix-multiplication form, which it takes for unmasked pairs with more than
+        # 25 descriptors on a side, `torch.cdist` on MPS holds all (B, N, M, D) differences at once.
+        mps_direct = is_mps_tensor_safe(desc1) and (masked or max(n, m) <= 25)
+        if _torch_cdist_available(desc1) and not mps_direct:
+            distances = torch.cdist(
+                work1,
+                work2,
+                compute_mode="donot_use_mm_for_euclid_dist" if masked else "use_mm_for_euclid_dist_if_necessary",
+            )
+        else:
+            # Export, MPS before torch 2.13 and direct distances on MPS: accumulate direct differences
+            # in descriptor chunks to bound temporary memory without looping over pairs.
+            squared = work1.new_zeros((batch, n, m))
+            for start in range(0, dim, 16):
+                difference = work1[:, :, None, start : start + 16] - work2[:, None, :, start : start + 16]
+                squared = squared + (difference * difference).sum(-1)
+            positive = squared > 0
+            distances = torch.where(positive, torch.where(positive, squared, 1.0).sqrt(), 0.0)
+    else:
+        distances = dm
+    if mask1 is not None or mask2 is not None:
+        distances = distances.masked_fill(~(valid1.unsqueeze(2) & valid2.unsqueeze(1)), float("inf"))
+    values1, neighbors1 = distances.topk(2, dim=2, largest=False)
+    values2, neighbors2 = distances.transpose(1, 2).topk(2, dim=2, largest=False)
+    defined1 = torch.isfinite(values1).all(-1) & (values1[..., 1] > 0)
+    defined2 = torch.isfinite(values2).all(-1) & (values2[..., 1] > 0)
+    # Substitute finite operands before division: rejecting a 0/0 ratio only
+    # after division would still leave NaNs in the backward pass for dm.
+    ratios1 = torch.where(defined1, values1[..., 0], 0.0) / torch.where(defined1, values1[..., 1], 1.0)
+    ratios2 = torch.where(defined2, values2[..., 0], 0.0) / torch.where(defined2, values2[..., 1], 1.0)
+    nearest2 = neighbors1[..., 0]
+    reverse_ratio = ratios2.gather(1, nearest2)
+    mutual = neighbors2[..., 0].gather(1, nearest2) == torch.arange(n, device=desc1.device)
+    enough = (valid1.sum(1) >= 2) & (valid2.sum(1) >= 2)
+    keep = (
+        valid1
+        & enough.unsqueeze(1)
+        & defined1
+        & defined2.gather(1, nearest2)
+        & mutual
+        & (ratios1 <= th)
+        & (reverse_ratio <= th)
+    )
+    batch_index, index1 = keep.nonzero(as_tuple=True)
+    indices = torch.stack((batch_index, index1, nearest2[batch_index, index1]), dim=1)
+    ratios = torch.maximum(ratios1, reverse_ratio)[batch_index, index1].unsqueeze(1).to(desc1.dtype)
+    return ratios, indices
 
 
 def match_fginn(
@@ -261,37 +769,59 @@ def match_fginn(
     mutual: bool = False,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find nearest neighbors in desc2 for each vector in desc1.
+    """Match desc1 to desc2 by a ratio test against the first geometrically inconsistent neighbor (FGINN).
 
-    The method satisfies first to second nearest neighbor distance <= th,
-    and assures 2nd nearest neighbor is geometrically inconsistent with the 1st one
-    (see :cite:`MODS2015` for more details)
+    ``dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th, spatial_th)`` takes two descriptor sets ``(B1, D)``
+    and ``(B2, D)`` and the LAFs ``(1, B2, 2, 3)`` of ``desc2``, keeps the rows of ``desc1`` whose nearest neighbour
+    in ``desc2`` passes the ratio test of :func:`match_snn` against the nearest candidate whose ``lafs2`` centre
+    lies at least ``spatial_th`` from the nearest one's, and returns their ratios ``(B3, 1)`` and index pairs
+    ``(B3, 2)``, in the order of the rows of ``desc1``. Closer candidates are skipped (see :cite:`MODS2015` for more
+    details), so a near-duplicate detection of the same structure, such as another scale or orientation at one
+    place, does not reject the match as it can in :func:`match_snn`. ``lafs1`` is not read, and ``mutual=True`` adds
+    the mutual nearest-neighbour check. To test the local affine consistency of the matches in both images, use
+    :func:`match_adalam` instead.
 
-    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+    Convention:
+        - See the Convention block on :func:`match_nn`. ``dists`` is a ratio: the nearest distance over the distance
+          of the second neighbour, which is the nearest of the ``min(10, B2)`` nearest candidates, the first one
+          excluded, whose ``lafs2`` centre lies at least ``spatial_th`` from the centre of the first one. Candidates
+          closer than that count as the same structure, not as competitors, whatever their descriptor distance. When
+          all of them are -- a dense cluster of detections on one structure -- the ratio is 0 and the match is
+          **accepted**: no distinct competing structure among the candidates means the nearest neighbour is
+          unambiguous. A descriptor beyond the ``min(10, B2)`` nearest is never the second neighbour, even when every
+          candidate is excluded.
+        - Only the centres of ``lafs2`` are read, and ``spatial_th`` is in their units: pixels for LAFs in pixels.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-        lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
+        lafs1: LAFs of a shape ``(1, B1, 2, 3)``. Accepted for API symmetry with
+          :func:`~kornia.feature.match_adalam` but not read by this function -- only
+          ``lafs2`` feeds the geometric check.
+        lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
         th: distance ratio threshold.
-        spatial_th: minimal distance in pixels to 2nd nearest neighbor.
+        spatial_th: minimal distance between the ``lafs2`` centres of the 1st and the 2nd nearest neighbor, in the
+          units of those centres.
         mutual: also perform mutual nearest neighbor check.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+        - Ratio of the nearest to the second-neighbour distance of each match, see the Convention block, shape of
+          ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_snn`: the plain ratio test, whose second neighbour can lie on the same structure.
+        - :func:`match_adalam`: keeps the nearest-neighbour matches that local affine models of both images support.
+        - :class:`GeometryAwareDescriptorMatcher`: the module form, with ``match_mode="fginn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-    BIG_NUMBER = 1000000.0
 
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    dtype = distance_matrix.dtype
 
     if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(distance_matrix)
@@ -300,15 +830,15 @@ def match_fginn(
     vals_cand, idxs_in_2 = torch.topk(distance_matrix, num_candidates, dim=1, largest=False)
     vals = vals_cand[:, 0]
     xy2 = get_laf_center(lafs2).view(-1, 2)
-    candidates_xy = xy2[idxs_in_2]
-    kdist = torch.norm(candidates_xy - candidates_xy[0:1], p=2, dim=2)
-    fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
-    fginn_vals_best, _fginn_idxs_best = fginn_vals.min(dim=1)
-
-    # orig_idxs = idxs_in_2.gather(1, fginn_idxs_best.unsqueeze(1))[0]
-    # if you need to know fginn indexes - uncomment
-
-    vals_2nd = fginn_vals_best
+    candidates_xy = xy2[idxs_in_2]  # (B1, num_candidates, 2)
+    # Distance from every candidate to the 1st nearest neighbour *of the same query*.
+    # Indexing dim 0 here would take query 0's candidate list and broadcast it over all queries.
+    kdist = torch.norm(candidates_xy - candidates_xy[:, 0:1], p=2, dim=2)
+    # Candidates closer than spatial_th to the 1st nearest neighbour are masked out, whatever the scale of the
+    # distances. When none is left, the 2nd nearest neighbour distance is inf and the ratio is 0. torch.where also
+    # promotes an integer dm to the default floating dtype, which can hold inf.
+    fginn_vals = torch.where(kdist[:, 1:] < spatial_th, float("inf"), vals_cand[:, 1:])
+    vals_2nd, _ = fginn_vals.min(dim=1)
     idxs_in_2 = idxs_in_2[:, 0]
 
     ratio = vals / vals_2nd
@@ -323,23 +853,44 @@ def match_fginn(
 
     if not mutual:  # returning 1-way matches
         return match_dists, matches_idxs
-    _, idxs_in_1_mut = torch.min(distance_matrix, dim=0)
+    _, idxs_in_1_mut = _min_over_rows(distance_matrix)
     good_mask = matches_idxs[:, 0] == idxs_in_1_mut[matches_idxs[:, 1]]
     return match_dists[good_mask], matches_idxs[good_mask]
 
 
 class DescriptorMatcher(nn.Module):
-    """nn.Module version of descriptor-only matching functions.
+    """Match two descriptor sets by nearest neighbours, mutual ones or a ratio test, as a module.
 
-    This matcher only requires descriptors (no LAFs). For geometry-aware matching that uses LAFs,
-    see :class:`~kornia.feature.GeometryAwareDescriptorMatcher`.
+    ``matcher = DescriptorMatcher("snn", th=0.8)`` builds the module and ``dists, idxs = matcher(desc1, desc2)``
+    takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns what :func:`match_nn`, :func:`match_mnn`,
+    :func:`match_snn` or :func:`match_smnn` returns for them, by ``match_mode``: ``(B3, 1)`` qualities and
+    ``(B3, 2)`` index pairs. It holds no parameters and reads no LAFs, which makes it a matcher for
+    :class:`LocalFeatureMatcher`. For matchers that also read the LAFs, use :class:`GeometryAwareDescriptorMatcher`
+    instead, and for a learned one, :class:`LightGlueMatcher`.
 
-    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
-        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+    Convention:
+        See the Convention block on :func:`~kornia.feature.match_nn`. ``forward`` returns what the function of
+        ``match_mode`` (case-insensitive) returns for the two descriptor sets, with the module's ``th`` for ``snn``
+        and ``smnn``. ``th`` defaults to 0.8 for both, while :func:`~kornia.feature.match_smnn` defaults to 0.95,
+        and ``nn`` and ``mnn`` do not read it. There is no ``dm``.
 
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
-        th: threshold on distance ratio, or other quality measure.
+        th: distance ratio threshold of the `snn` and `smnn` modes.
+
+    Raises:
+        NotImplementedError: for another ``match_mode``.
+
+    See Also:
+        - :func:`match_nn`: the function of ``match_mode="nn"``, which also takes a precomputed ``dm``; so do the
+          other three.
+        - :func:`match_mnn`: the function of ``match_mode="mnn"``.
+        - :func:`match_snn`: the function of the default ``match_mode="snn"``.
+        - :func:`match_smnn`: the function of ``match_mode="smnn"``, whose own ``th`` defaults to 0.95.
+        - :class:`GeometryAwareDescriptorMatcher`: the module form of :func:`match_fginn` and :func:`match_adalam`,
+          which also take LAFs.
+        - :class:`LocalFeatureMatcher`: detects and describes the features of two images, then matches them with a
+          module like this one.
 
     """
 
@@ -356,13 +907,13 @@ class DescriptorMatcher(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
 
         Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "nn":
@@ -394,27 +945,37 @@ class DescriptorMatcherWithSteerer(nn.Module):
         th: threshold on distance ratio, or other quality measure.
 
     Example:
-        >>> import kornia as K
+        The example below is deliberately small so that it runs anywhere. A real workload uses
+        full-resolution images and many more keypoints, and is worth moving onto an accelerator --
+        uncomment the ``device`` lines to do that.
+
         >>> import kornia.feature as KF
-        >>> device = K.core.utils.get_cuda_or_mps_device_if_available()
-        >>> img1 = torch.randn([1, 3, 768, 768], device=device)
-        >>> img2 = torch.randn([1, 3, 768, 768], device=device)
-        >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2").to(device)
+        >>> # import kornia as K
+        >>> # device = K.core.utils.get_cuda_or_mps_device_if_available()
+        >>> img1 = torch.randn([1, 3, 128, 128])
+        >>> img2 = torch.randn([1, 3, 128, 128])
+        >>> # img1, img2 = img1.to(device), img2.to(device)
+        >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2")
+        >>> # dedode = dedode.to(device)
         >>> steerer_order = 8  # discretisation order of rotation angles
         >>> steerer = KF.steerers.DiscreteSteerer.create_dedode_default(
         ... generator_type="SO2", steerer_order=steerer_order
         ... )
-        >>> steerer = steerer.to(device)
+        >>> # steerer = steerer.to(device)
         >>> matcher = KF.matching.DescriptorMatcherWithSteerer(
         ... steerer=steerer, steerer_order=steerer_order, steer_mode="global", match_mode="smnn", th=0.98
         ... )
         >>> with torch.inference_mode():
-        ...     kps1, scores1, descs1 = dedode(img1, n=20_000)
-        ...     kps2, scores2, descs2 = dedode(img2, n=20_000)
+        ...     kps1, scores1, descs1 = dedode(img1, n=1_000)
+        ...     kps2, scores2, descs2 = dedode(img2, n=1_000)
         ...     kps1, kps2, descs1, descs2 = kps1[0], kps2[0], descs1[0], descs2[0]
         ...     dists, idxs, num_rot = matcher(
-        ...         descs1, descs2, normalize=True, subset_size=1000,
+        ...         descs1, descs2, normalize=True, subset_size=500,
         ...     )
+        >>> idxs.shape == (dists.shape[0], 2), 0 <= num_rot < steerer_order
+        (True, True)
+        >>> bool((idxs[:, 0] < len(kps1)).all()), bool((idxs[:, 1] < len(kps2)).all())
+        (True, True)
         >>> # print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> # print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
 
@@ -461,14 +1022,13 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
+        if self.match_mode == "mnn":
             return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
+        if self.match_mode == "snn":
             return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
+        if self.match_mode == "smnn":
             return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
+        raise NotImplementedError
 
     def forward(
         self,
@@ -480,17 +1040,17 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
             normalize: bool to decide whether to F.normalize descriptors to unit norm.
             subset_size: If set, the subset size to use for determining optimal
                 number of rotations. Smaller subset size leads to faster but less
                 accurate matching. Only used when `self.steer_mode` is `"global"`.
 
         Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Descriptor distance of matching descriptors, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
             - Number of global rotations from desc1 to desc2, in terms of `self.steerer_order`
                 (will be `None` if `self.steer_mode` is `local`).
 
@@ -498,8 +1058,8 @@ class DescriptorMatcherWithSteerer(nn.Module):
         rot1to2 = None
 
         if normalize:
-            desc1 = F.normalize(desc1, dim=-1)
-            desc2 = F.normalize(desc2, dim=-1)
+            desc1 = _l2_normalize(desc1, dim=-1)
+            desc2 = _l2_normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
             if subset_size is not None:
@@ -538,14 +1098,36 @@ class DescriptorMatcherWithSteerer(nn.Module):
 
 
 class GeometryAwareDescriptorMatcher(nn.Module):
-    """nn.Module version of geometry-aware matching functions that use LAFs (Local Affine Frames).
+    """Match two descriptor sets that come with their LAFs, by FGINN or AdaLAM, as a module.
 
-    Unlike :class:`~kornia.feature.DescriptorMatcher`, this matcher requires both descriptors and LAFs.
-    See :func:`~kornia.feature.match_fginn` or :func:`~kornia.feature.match_adalam` for more details.
+    ``matcher = GeometryAwareDescriptorMatcher("fginn", params)`` builds the module and
+    ``dists, idxs = matcher(desc1, desc2, lafs1, lafs2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and
+    their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)``, and returns what :func:`match_fginn` or :func:`match_adalam`
+    returns for them, by ``match_mode``: ``(B3, 1)`` ratios or inverse confidences and ``(B3, 2)`` index pairs. It
+    passes no ``dm``, and no image sizes to AdaLAM; to give them, call the functions directly. For descriptors
+    without LAFs, use :class:`DescriptorMatcher` instead.
+
+    Convention:
+        See the Convention block on :func:`~kornia.feature.match_nn`. ``forward`` returns what the function of
+        ``match_mode`` (case-insensitive) returns:
+
+        - ``"fginn"`` reads the keys ``th``, ``spatial_th`` and ``mutual`` of ``params`` and ignores any other key.
+          ``th`` defaults to 0.85, while :func:`~kornia.feature.match_fginn` defaults to 0.8.
+        - ``"adalam"`` passes ``params`` as the AdaLAM ``config``, and no ``hw1`` or ``hw2``, so AdaLAM takes the
+          extent of each image's keypoints as the image size.
 
     Args:
         match_mode: type of matching, can be `fginn` or `adalam`.
         params: dictionary of parameters for the matching function.
+
+    Raises:
+        NotImplementedError: for another ``match_mode``.
+
+    See Also:
+        - :func:`match_fginn`: the function of the default ``match_mode="fginn"``, whose own ``th`` defaults to 0.8.
+        - :func:`match_adalam`: the function of ``match_mode="adalam"``, which also takes the image sizes.
+        - :class:`DescriptorMatcher`: the module form of the matchers that read descriptors only.
+        - :class:`LightGlueMatcher`: a learned matcher with the same call, which also takes the image sizes.
 
     """
 
@@ -565,15 +1147,15 @@ class GeometryAwareDescriptorMatcher(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
+            lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
+            lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
 
         Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "fginn":
@@ -581,9 +1163,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
             params.update(self.params)
             out = match_fginn(desc1, desc2, lafs1, lafs2, params["th"], params["spatial_th"], params["mutual"])
         elif self.match_mode == "adalam":
-            _params = get_adalam_default_config()
-            _params.update(self.params)  # type: ignore[typeddict-item]
-            out = match_adalam(desc1, desc2, lafs1, lafs2, config=_params)
+            out = match_adalam(desc1, desc2, lafs1, lafs2, config=self.params)
         else:
             raise NotImplementedError
         return out

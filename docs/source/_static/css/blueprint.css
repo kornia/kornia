@@ -1,0 +1,285 @@
+/* Match the docs to the kornia.org homepage "Blueprint" look: Space Grotesk + JetBrains Mono,
+   an amber accent, a muted-blue primary and a navy-dark / paper-light palette, plus a faint grid
+   ground. Loaded after pydata.css so these variable values win. Colours are lifted from the
+   homepage styles.css so the two sites read as one family. */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+html,
+html[data-theme="light"] {
+    --pst-font-family-base: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --pst-font-family-heading: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --pst-font-family-monospace: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* light: paper ground, ink text, muted-blue links, amber accent */
+    --pst-color-primary: #1d4f7c;
+    --pst-color-primary-highlight: #163d61;
+    --pst-color-secondary: #163d61;
+    --pst-color-link: #1d4f7c;
+    --pst-color-link-hover: #163d61;
+    --pst-color-accent: #f5b301;
+    --pst-color-background: #eef3f8;
+    --pst-color-on-background: #ffffff;
+    --pst-color-surface: #e6edf4;
+    --pst-color-on-surface: #0b1a2b;
+    --pst-color-text-base: #0b1a2b;
+    --pst-color-text-muted: #3e546b;
+    --pst-color-border: #c3d1de;
+    --pst-color-border-muted: #d9e3ec;
+
+    --kornia-grid-line: rgba(11, 26, 43, 0.045);
+    --kornia-grid-line-2: rgba(11, 26, 43, 0.018);
+}
+
+html[data-theme="dark"] {
+    /* dark: navy ground, sky text, sky-blue links, the same amber accent */
+    --pst-color-primary: #9fd3ff;
+    --pst-color-primary-highlight: #cfe6ff;
+    --pst-color-secondary: #cfe6ff;
+    --pst-color-link: #9fd3ff;
+    --pst-color-link-hover: #cfe6ff;
+    --pst-color-accent: #f5b301;
+    --pst-color-background: #0b1a2b;
+    --pst-color-on-background: #10233a;
+    --pst-color-surface: #10233a;
+    --pst-color-on-surface: #e8f1ff;
+    --pst-color-text-base: #e8f1ff;
+    --pst-color-text-muted: #b7c9dd;
+    --pst-color-border: #244260;
+    --pst-color-border-muted: #1a3350;
+
+    --kornia-grid-line: rgba(159, 211, 255, 0.055);
+    --kornia-grid-line-2: rgba(159, 211, 255, 0.02);
+}
+
+/* the blueprint ground: a fine grid with a coarser line every fifth one, on the page background.
+   Content panels carry their own solid background, so the grid shows only in the gutters. */
+body {
+    background-color: var(--pst-color-background);
+    background-image:
+        linear-gradient(var(--kornia-grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--kornia-grid-line) 1px, transparent 1px),
+        linear-gradient(var(--kornia-grid-line-2) 1px, transparent 1px),
+        linear-gradient(90deg, var(--kornia-grid-line-2) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+    background-attachment: fixed;
+}
+
+/* sharper corners, like the homepage's 2-3px radii */
+.bd-content .sd-card,
+.bd-content div.highlight,
+.bd-content pre,
+.bd-content .admonition,
+.bd-search input,
+kbd {
+    border-radius: 3px;
+}
+
+/* buttons: match the homepage .btn-primary / .btn-secondary -- both solid, 3px, medium weight.
+   Primary is solid amber with dark ink; secondary is a solid panel with a hairline border (not an
+   outline/ghost button, which is what the theme ships). */
+.bd-content .sd-btn,
+.bd-content a.sd-btn {
+    border-radius: 3px;
+    font-weight: 500;
+    padding: 0.5rem 1.15rem;
+}
+
+.bd-content .sd-btn-primary,
+.bd-content a.sd-btn-primary,
+.bd-content .sd-btn-outline-primary,
+.bd-content a.sd-btn-outline-primary {
+    background-color: var(--pst-color-accent) !important;
+    border-color: var(--pst-color-accent) !important;
+    color: #0b1a2b !important;
+}
+
+.bd-content .sd-btn-primary:hover,
+.bd-content a.sd-btn-primary:hover,
+.bd-content .sd-btn-outline-primary:hover,
+.bd-content a.sd-btn-outline-primary:hover {
+    filter: brightness(1.06);
+    background-color: var(--pst-color-accent) !important;
+    border-color: var(--pst-color-accent) !important;
+    color: #0b1a2b !important;
+}
+
+.bd-content .sd-btn-secondary,
+.bd-content a.sd-btn-secondary,
+.bd-content .sd-btn-outline-secondary,
+.bd-content a.sd-btn-outline-secondary {
+    background-color: var(--pst-color-on-background) !important;
+    border: 1px solid var(--pst-color-border) !important;
+    color: var(--pst-color-text-muted) !important;
+}
+
+.bd-content .sd-btn-secondary:hover,
+.bd-content a.sd-btn-secondary:hover,
+.bd-content .sd-btn-outline-secondary:hover,
+.bd-content a.sd-btn-outline-secondary:hover {
+    background-color: var(--pst-color-surface) !important;
+    border-color: var(--pst-color-border) !important;
+    color: var(--pst-color-text-base) !important;
+}
+
+
+/* sponsorship band: a solid panel with the amber Open Collective button, matching the homepage's
+   intro-band (solid --card-bg surface, centred copy, primary button + a text link). */
+/* band colours, matching the homepage's card-bg / surface (alternating solid fills) */
+html,
+html[data-theme="light"] {
+    --kornia-band-a: #ffffff;
+    --kornia-band-b: #e6edf4;
+}
+html[data-theme="dark"] {
+    --kornia-band-a: #0e1f33;
+    --kornia-band-b: #10233a;
+}
+
+/* full-bleed bands: break out of the centred article column to span the viewport, then re-pad the
+   content back to a ~1200px column -- the homepage's full-width solid sections. */
+.kornia-sponsor-band,
+#features {
+    box-sizing: border-box;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-left: max(1.5rem, calc(50vw - 600px));
+    padding-right: max(1.5rem, calc(50vw - 600px));
+}
+
+.kornia-sponsor-band {
+    margin-top: 3rem;
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+    background-color: var(--kornia-band-a);
+    text-align: center;
+}
+
+/* the Features section becomes the next solid band; override the inline hairline-separator rule */
+#features {
+    margin-top: 0 !important;
+    padding-top: 3rem !important;
+    padding-bottom: 3.5rem !important;
+    background-color: var(--kornia-band-b);
+    border-top: 0 !important;
+}
+
+.kornia-sponsor-band__lead {
+    max-width: 760px;
+    margin: 0 auto 1.5rem;
+    font-size: clamp(1.1rem, 1.6vw, 1.35rem);
+    line-height: 1.5;
+    font-weight: 500;
+    color: var(--pst-color-text-base);
+}
+
+.kornia-sponsor-band__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    align-items: center;
+    justify-content: center;
+}
+
+.kornia-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.3rem;
+    border-radius: 3px;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid transparent;
+}
+
+.kornia-btn--primary {
+    background-color: var(--pst-color-accent);
+    color: #0b1a2b;
+}
+
+.kornia-btn--primary:hover {
+    filter: brightness(1.06);
+    color: #0b1a2b;
+    text-decoration: none;
+}
+
+.kornia-sponsor-band__link {
+    color: var(--pst-color-link);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.kornia-sponsor-band__link:hover {
+    text-decoration: underline;
+}
+
+
+/* navbar: use the page background like the homepage header (paper light / navy dark), not the
+   theme's raised white bar. A hairline bottom border keeps it separated from the content. */
+.bd-header,
+.bd-header.navbar {
+    background-color: var(--pst-color-background) !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid var(--pst-color-border-muted);
+}
+
+.bd-header .bd-header__inner {
+    background-color: transparent !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+}
+
+/* nav typography like the homepage: mono, uppercase (no leading numbers) */
+.bd-header .bd-navbar-elements.navbar-nav > .nav-item > a,
+.bd-header .bd-navbar-elements.navbar-nav > .nav-item > button {
+    font-family: var(--pst-font-family-monospace);
+    font-size: 0.76rem;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+/* a little breathing room between the logo and the search box */
+.bd-header .navbar-header-items__start .search-button-field {
+    margin-left: 1.25rem;
+}
+
+/* sharper corners, matching the homepage's 3px Blueprint radii (the theme over-rounds these) */
+.search-button-field,
+.search-button__default-text,
+.bd-search input,
+input.form-control,
+.form-control,
+kbd,
+.bd-content code.literal,
+.bd-content .docutils.literal,
+.sd-tab-set > label.sd-tab-label,
+.sd-tab-set > input:checked + label.sd-tab-label,
+.bd-content div.highlight,
+.bd-content pre,
+.bd-content .admonition,
+.bd-content .sd-card {
+    border-radius: 3px !important;
+}
+
+/* the landing "Why Kornia?" tabs ship as 999px pills; the homepage uses sharp ~2px, so square them */
+.bd-content .kornia-hero-demo .sd-tab-set > label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:checked + label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:focus-visible + label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:not(:checked, :focus-visible) + label:hover {
+    border-radius: 3px !important;
+}
+
+/* dropdown menus use the navbar's mono font, size and the Blueprint 3px corners */
+.kornia-navbar-dropdown__menu a,
+.kornia-navbar-dropdown__menu .nav-link,
+.kornia-navbar-dropdown__group {
+    font-family: var(--pst-font-family-monospace);
+    font-size: 0.76rem;
+    letter-spacing: 0.04em;
+}
+
+.kornia-navbar-dropdown__menu {
+    border-radius: 3px !important;
+}

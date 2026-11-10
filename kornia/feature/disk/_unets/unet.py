@@ -65,16 +65,14 @@ class Unet(nn.Module):
             self.n_params += param.numel()
 
     def forward(self, inp: torch.Tensor) -> torch.Tensor:
-        """Run this DISK component forward.
-
-        Feature maps use `(B, C, H, W)`, where `B` is batch size, `C` channels, and `H`/`W` are spatial dimensions.
+        r"""Run this DISK component forward.
 
         Args:
-            inp: Input tensor passed to the module.
+            inp: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`. ``H`` and ``W`` must both be
+                divisible by :math:`2^{\text{depth}}` where depth equals ``len(self.up)``.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Output feature map with shape :math:`(B, C_{\text{up}[-1]}, H, W)`.
         """
         if inp.size(1) != self.in_features:
             fmt = "Expected {} feature channels in input, got {}"

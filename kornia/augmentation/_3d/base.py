@@ -23,12 +23,19 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.augmentation.utils.helpers import _VOLUME_SHAPES, _raise_input_rank_error
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
+    r"""Build a custom 3D augmentation, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = MyAugmentation(...)(input)`` processes volumes of shape ``(B, C, D, H, W)`` once a subclass
+    implements ``apply_transform`` and supplies any parameter generation it needs. Use
+    :class:`GeometricAugmentationBase3D` when the operation moves coordinates, or :class:`IntensityAugmentationBase3D`
+    when it changes voxel values alone.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -37,13 +44,38 @@ class AugmentationBase3D(_AugmentationBase):
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
 
+    Convention:
+        - the working layout is ``(B, C, D, H, W)`` float. Bare 3D augmentations accept inputs of rank three
+          and four and promote them by prepending batch and, for rank three, channel dimensions; ``keepdim=True``
+          restores that original rank. Inside ``AugmentationSequential``, rank-4 input is rejected because
+          ``(C, D, H, W)`` is ambiguous with the container's ``(B, C, H, W)`` image layout. The dtype guard
+          accepts only ``float16``, ``bfloat16``, ``float32``, and ``float64``.
+          :class:`~kornia.augmentation.RandomTransplantation3D` overrides ``forward`` and takes batched inputs
+          only.
+        - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
+          values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
+          exposes ``p_batch`` in its constructor, though it can be set as an attribute on any 3D augmentation;
+          :class:`CenterCrop3D` and
+          :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
+          augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
+          :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
+        - rigid subclasses expose the last sampled ``(B, 4, 4)`` ``transform_matrix``. The 3D bases do not
+          implement ``inverse``: their subclasses have no ``inverse`` method, and a geometric 3D child makes an
+          :class:`~kornia.augmentation.container.AugmentationSequential` inverse raise.
+          :class:`~kornia.augmentation.RandomTransplantation3D` is the exception: it also derives from
+          :class:`~kornia.augmentation.MixAugmentationBaseV2` and so carries that class's ``inverse``, which
+          raises ``RuntimeError``.
+
+    See Also:
+        - :class:`GeometricAugmentationBase3D`: base class for 3D geometric transforms.
+
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.Tensor is formatted as expected."""
+        """Check that the input has a float dtype and one of the ranks ``forward`` accepts: 3, 4 or 5."""
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
-        if len(input.shape) != 5:
-            raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
+        if len(input.shape) not in (3, 4, 5):
+            _raise_input_rank_error(input.shape, _VOLUME_SHAPES)
 
     def transform_tensor(
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
@@ -52,8 +84,8 @@ class AugmentationBase3D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if shape is None:
             return _transform_input3d(input)
-        else:
-            return _transform_input3d_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input3d_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 4x4 identity matrix."""
@@ -61,10 +93,14 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+    r"""Record a matrix for a custom 3D transform, applied per sample with probability ``p`` (default 0.5).
 
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
-    for different data types like masks, boxes, and keypoints.
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 4, 4)`` matrix once a subclass implements
+    ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
+    use :class:`GeometricAugmentationBase3D` for coordinate transforms or :class:`IntensityAugmentationBase3D`
+    for value-only operations.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -74,6 +110,9 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
+    See Also:
+        - :class:`GeometricAugmentationBase3D`: applies and records 3D geometric transformations.
 
     """
 
@@ -92,8 +131,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         in_tensor = self.transform_tensor(input)
 
@@ -101,7 +139,9 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))), trans_matrix_applied.device
+            )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
             trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity

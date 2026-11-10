@@ -15,9 +15,10 @@
 # limitations under the License.
 #
 
-r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations.
+r"""Spatial softmax, the expected coordinate of a probability map, and Gaussian heatmaps (DSNT).
 
-As described in the paper "Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al.
+The "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper "Numerical Coordinate
+Regression with Convolutional Neural Networks" by Nibali et al.
 """
 
 from __future__ import annotations
@@ -27,7 +28,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, _check_async
+from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
 
@@ -36,18 +38,49 @@ def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
-def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Apply the Softmax function over features in each image channel.
+def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
+    """Raise ``ValueError`` unless ``temperature`` is positive; ``NaN`` is rejected as well.
 
-    Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
-    instead applies Softmax over features at each spatial location.
+    A tensor is read only outside graph capture: under ``torch.compile`` or export, reading its value would be a
+    data-dependent branch, so a tensor temperature is not checked there.
+    """
+    if isinstance(temperature, torch.Tensor):
+        if is_compiling() or bool((temperature > 0).all()):
+            return
+    elif temperature > 0:
+        return
+    raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+
+
+def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
+    r"""Turn each heatmap channel into a probability map by a softmax over all its pixels.
+
+    ``probs = spatial_softmax2d(heatmap, temperature)`` takes a ``(B, N, H, W)`` heatmap and returns, for each of its
+    ``B x N`` channels, the softmax of ``heatmap / temperature`` over all ``H x W`` pixels, ``(B, N, H, W)``: each map
+    sums to one. This differs from :py:class:`torch.nn.Softmax2d`, which applies the softmax across channels at each
+    pixel. An integer heatmap returns torch's default floating dtype, with a float or a tensor ``temperature``. Pass the
+    result to
+    :func:`spatial_expectation2d` for its expected ``(x, y)``, or use :func:`spatial_soft_argmax2d` for both steps in
+    one call.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
+        input: the input torch.Tensor with shape ``(B, N, H, W)``.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export; it broadcasts
+          against the flattened ``(B, N, H * W)`` logits, so a ``(1, N, 1)`` tensor sets one per channel.
 
     Returns:
-       a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
+       a 2D probability distribution per image channel with shape ``(B, N, H, W)``.
+
+    Raises:
+        ValueError: if ``temperature``, or any element of a tensor ``temperature``, is not positive (``NaN``
+          included).
+
+    See Also:
+        - :func:`spatial_expectation2d`: the expected ``(x, y)`` of the probability maps this returns.
+        - :func:`spatial_soft_argmax2d`: this softmax and the expectation in one call.
+        - :func:`conv_soft_argmax2d`: a softmax over each sliding window instead of the whole map.
+        - :func:`render_gaussian2d`: a probability map from a mean and a standard deviation instead of a heatmap.
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -64,28 +97,56 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
 
     batch_size, channels, height, width = input.shape
     if temperature is None:
-        temperature = torch.tensor(1.0)
-    temperature = temperature.to(device=input.device, dtype=input.dtype)
-    x = input.view(batch_size, channels, -1)
+        temperature = 1.0
+    _check_positive_temperature(temperature)
+    x = input.reshape(batch_size, channels, height * width)
+    # An integer map is divided in the default floating dtype, as ``x / temperature`` does; the shift below would wrap
+    # in its own dtype (``uint8``).
+    if not x.is_floating_point():
+        x = x.to(torch.get_default_dtype())
+    if isinstance(temperature, torch.Tensor):
+        # Cast the temperature to the dtype the division runs in, not to the input's: an integer input dtype would
+        # truncate a fractional temperature first (0.5 to 0, which then divides by zero, and 2.5 to 2).
+        temperature = temperature.to(device=input.device, dtype=x.dtype)
 
-    x_soft = F.softmax(x * temperature, dim=-1)
+    # Softmax is invariant to a shift by a constant per map. Subtracting the maximum leaves every logit at or below
+    # zero, so dividing by a sharp temperature cannot overflow the input dtype (``max|logit| / temperature > 65504``
+    # is reachable in float16) before softmax gets a chance to stabilize the values. The shift is a constant, so it
+    # takes no gradient; an empty map has nothing to shift and no maximum.
+    if height * width > 0:
+        x = x - x.amax(dim=-1, keepdim=True).detach()
+    x_soft = F.softmax(x / temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 
 
 def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
-    r"""Compute the expectation of coordinate values using spatial probabilities.
+    r"""Compute the expected (x, y) coordinate of each channel of a probability map.
 
-    The input heatmap is assumed to represent a valid spatial probability distribution,
-    which can be achieved using :func:`~kornia.geometry.subpixel.spatial_softmax2d`.
+    ``coords = spatial_expectation2d(probs)`` takes ``(B, N, H, W)`` maps, each summing to one, and returns the
+    probability-weighted mean position of each map, ``(B, N, 2)`` in ``(x, y)`` order: normalized to :math:`[-1, 1]`,
+    corner-aligned, by default, or in pixels with ``normalized_coordinates=False``. Make the maps from a heatmap with
+    :func:`spatial_softmax2d`, or use :func:`spatial_soft_argmax2d` for both steps in one call.
+
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. The input is used as given, not
+          renormalized, so each map should sum to one, as the output of
+          :func:`~kornia.geometry.subpix.spatial_softmax2d` does: a map summing to ``s`` scales the result by ``s``.
 
     Args:
-        input: the input torch.Tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
+        input: the input torch.Tensor representing dense spatial probabilities with shape ``(B, N, H, W)``.
         normalized_coordinates: whether to return the coordinates normalized in the range
           of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-       expected value of the 2D coordinates with shape :math:`(B, N, 2)`. Output order of the coordinates is (x, y).
+       expected value of the 2D coordinates with shape ``(B, N, 2)``. Output order of the coordinates is (x, y).
+
+    See Also:
+        - :func:`spatial_softmax2d`: makes the probability maps this function expects from a heatmap.
+        - :func:`spatial_soft_argmax2d`: the softmax and this expectation in one call.
+        - :func:`render_gaussian2d`: the other direction, a probability map around a given ``(x, y)`` mean.
+        - :func:`~kornia.geometry.grid.create_meshgrid`: the coordinate grid the expectation weighs, in the same
+          convention.
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -100,14 +161,16 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 
     batch_size, channels, height, width = input.shape
 
-    # Create coordinates grid.
-    grid = create_meshgrid(height, width, normalized_coordinates, input.device)
+    # Create coordinates grid in the input dtype, so float64 coordinates carry no float32 rounding. float16 and
+    # bfloat16 still build it in float32 and round once in the cast below, which keeps their results unchanged.
+    grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
     grid = grid.to(input.dtype)
 
     pos_x = grid[..., 0].reshape(-1)
     pos_y = grid[..., 1].reshape(-1)
 
-    input_flat = input.view(batch_size, channels, -1)
+    input_flat = input.reshape(batch_size, channels, height * width)
 
     # Compute the expectation of the coordinates.
     expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)
@@ -121,35 +184,77 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 def render_gaussian2d(
     mean: torch.Tensor, std: torch.Tensor, size: tuple[int, int], normalized_coordinates: bool = True
 ) -> torch.Tensor:
-    r"""Render the PDF of a 2D Gaussian distribution.
+    r"""Render an axis-aligned 2D Gaussian heatmap that sums to one over an (H, W) grid.
+
+    ``heatmap = render_gaussian2d(mean, std, (H, W))`` takes means ``(*, 2)`` and standard deviations ``(*, 2)``,
+    both in ``(x, y)`` order, and returns one ``(*, H, W)`` map per Gaussian: the product of a 1D Gaussian along ``x``
+    and one along ``y``, each normalised over the grid, so the map sums to one instead of holding the values of the
+    continuous density. ``mean`` and ``std`` are in normalized :math:`[-1, 1]` units by default, or in pixels with
+    ``normalized_coordinates=False``. For the other direction, the expected coordinate of a probability map, use
+    :func:`spatial_expectation2d`.
+
+    A mean outside the grid renders the part of the Gaussian that falls on the grid, rescaled to sum to one; far
+    outside, that mass sits on the nearest border.
+
+    Convention:
+        - ``mean`` and ``std`` follow :ref:`Coordinates and sizes <coordinate-conventions>`; ``size`` is
+          ``(height, width)``. The default normalized coordinates are corner-aligned.
+        - Float16 parameters are evaluated in float32; the heatmap retains the input dtype.
 
     Args:
-        mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
+        mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape :math:`(*, 2)`. Should be able to be broadcast with `mean`.
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Its sign is ignored. Every entry must be
+          nonzero: a zero raises :class:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`, during
+          the call on the CPU and on MPS before torch 2.13. On CUDA and on MPS from torch 2.13, torch raises a
+          ``RuntimeError`` of its own by the next synchronization. A compiled call raises torch's ``RuntimeError``
+          on the CPU, on CUDA and on MPS from torch 2.13, with Inductor from torch 2.9. With checks disabled
+          nothing is raised, and the heatmap of a Gaussian whose ``std`` has a zero is NaN.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
     Returns:
-        torch.Tensor including rendered points with shape :math:`(*, H, W)`.
+        torch.Tensor including rendered points with shape ``(*, H, W)``.
+
+    Raises:
+        TypeError: if ``mean`` and ``std`` differ in dtype or device.
+
+    See Also:
+        - :func:`spatial_expectation2d`: the other direction, the expected ``(x, y)`` of a probability map.
+        - :func:`spatial_softmax2d`: a probability map from a heatmap instead of a mean and a standard deviation.
+        - :func:`spatial_soft_argmax2d`: the other direction from a heatmap of logits: softmax, then expectation.
+        - :func:`~kornia.filters.get_gaussian_kernel2d`: a Gaussian filter kernel centred in its window, for
+          filtering rather than a heatmap at a given position.
 
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
 
+    # A zero std makes the inverse variance infinite, and the map comes out all NaN. The check runs where ``std``
+    # lives, so a device tensor is not read back on the host (see ``_check_async``).
+    _check_async((std != 0).all(), "std should be nonzero")
+
     height, width = size
     dtype = mean.dtype
     device = mean.device
 
-    # Create coordinates vectors.
+    # Build the coordinate vectors at float32 for half-precision inputs: float16 only represents
+    # integers exactly up to 2048 and bfloat16 up to 256, so a linspace built at `dtype` collapses
+    # distinct pixel coordinates on large grids. Other dtypes keep their own precision.
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(-1, 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=compute_dtype)
     else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=compute_dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=compute_dtype)
 
+    # Promote before squaring and reciprocating std: a narrow float16 Gaussian otherwise
+    # overflows its inverse variance (or underflows std**2) and produces NaNs at its centre.
+    if dtype == torch.float16:
+        mean = mean.to(compute_dtype)
+        std = std.to(compute_dtype)
     mu_x = mean[..., 0].unsqueeze(-1)
     mu_y = mean[..., 1].unsqueeze(-1)
     sigma_x = std[..., 0].unsqueeze(-1)
@@ -167,12 +272,11 @@ def render_gaussian2d(
     k_x = -0.5 * torch.reciprocal(sigma_x**2)
     k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
-    # Assemble the 2D Gaussian.
-    gauss_x = torch.exp(dist_x_sq * k_x)
-    gauss_y = torch.exp(dist_y_sq * k_y)
+    # Assemble each axis normalised to sum to one: softmax(dists * ks) = exp(dists * ks) / sum(exp(dists * ks)).
+    # Softmax subtracts the largest exponent first, so the normaliser is at least 1: no bias term is needed, a mean
+    # far off the grid cannot underflow the sum to 0, and the gradient stays finite at any distance.
+    gauss_x = torch.softmax(dist_x_sq * k_x, dim=-1)
+    gauss_y = torch.softmax(dist_y_sq * k_y, dim=-1)
 
-    # Rescale so that values sum to one.
-    gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
-    gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
-
-    return gauss_y.unsqueeze(-1) * gauss_x.unsqueeze(-2)
+    # Cast the 1-D vectors, not the (*, H, W) outer product, to avoid a full-size float32 intermediate.
+    return gauss_y.to(dtype).unsqueeze(-1) * gauss_x.to(dtype).unsqueeze(-2)

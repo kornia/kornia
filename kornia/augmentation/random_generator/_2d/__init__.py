@@ -40,6 +40,7 @@ from kornia.augmentation.random_generator._2d.probability import *
 from kornia.augmentation.random_generator._2d.random_rain import *
 from kornia.augmentation.random_generator._2d.rectangle_earase import *
 from kornia.augmentation.random_generator._2d.resize import *
+from kornia.augmentation.random_generator._2d.rotation90 import *
 from kornia.augmentation.random_generator._2d.salt_pepper_noise import *
 from kornia.augmentation.random_generator._2d.shear import *
 from kornia.augmentation.random_generator._2d.translate import *

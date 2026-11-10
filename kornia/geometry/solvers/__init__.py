@@ -15,11 +15,25 @@
 # limitations under the License.
 #
 
-"""Kornia Geometry Solvers — Polynomial and geometric solvers for Kornia.
+"""Solvers the geometric estimators build on: an affine fit, a null vector, polynomial roots.
 
-This subpackage provides polynomial solvers and related utilities for geometry tasks.
+The polynomial solvers take one polynomial per row, ``(B, k + 1)`` coefficients for degree ``k``, highest degree
+first, and return its ``k`` real roots ``(B, k)``, with a repeated root repeated and ``0.0`` in place of a missing
+real root; a zero leading coefficient lowers the degree. The polynomial products of Nister's five-point solver use
+the monomial orders their docstrings give. :ref:`Two-view geometry <two-view-conventions>` compares the root layout
+with ``numpy.roots``.
+
+Which function to use:
+
+- A 2D affine transformation from point correspondences, by weighted least squares: :func:`find_affine`; with
+  outliers, :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="affine"``.
+- The null vector of a rank-3 ``(*, 3, 4)`` matrix without an SVD: :func:`null_vector_3x4`.
+- The real roots of polynomials: :func:`solve_quadratic`, :func:`solve_cubic`, :func:`solve_quartic`.
+- Steps of Nister's five-point solver, which :func:`~kornia.geometry.epipolar.find_essential` runs whole:
+  :func:`multiply_deg_one_poly`, :func:`multiply_deg_two_one_poly` and :func:`determinant_to_polynomial`.
 """
 
+from .affine import find_affine
 from .homogeneous import null_vector_3x4
 from .polynomial_solver import (
     determinant_to_polynomial,
@@ -32,6 +46,7 @@ from .polynomial_solver import (
 
 __all__ = [
     "determinant_to_polynomial",
+    "find_affine",
     "multiply_deg_one_poly",
     "multiply_deg_two_one_poly",
     "null_vector_3x4",

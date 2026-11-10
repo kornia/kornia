@@ -22,13 +22,16 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
+from kornia.core.utils import _to_device_nonblocking
+from kornia.geometry.transform import crop_by_transform_mat
+from kornia.geometry.transform.crop2d import _crop_translation
 
 
 class CenterCrop(GeometricAugmentationBase2D):
-    r"""Crop a given image torch.Tensor at the center.
+    r"""Crop the centered patch of each image, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/CenterCrop.png
+    ``output = CenterCrop(size)(input)`` extracts a centered patch of size ``size`` from images of shape
+    ``(B, C, H, W)``. Use :class:`RandomCrop` to sample the crop position instead.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -45,11 +48,28 @@ class CenterCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, out_h, out_w)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, out_h, out_w)``
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        ``size`` accepts an integer for a square crop or an ``(height, width)`` tuple, unlike
+        :class:`RandomCrop` and :class:`RandomResizedCrop` (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
+
+        ``cropping_mode="slice"`` indexes the input and returns a copy, so writing to the result leaves the input
+        unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Both
+        modes support ``inverse()``, which warps the crop back onto the original canvas with the inverse of
+        ``transform_matrix`` (zero padding unless the call passes ``padding_mode``) and cannot restore discarded
+        data.
+
+    .. image:: _static/img/CenterCrop.png
+
+    See Also:
+        - :class:`RandomCrop`: samples a crop position for each selected image.
+        - :class:`CenterCrop3D`: extracts a centered subvolume.
 
     Examples:
         >>> import torch
@@ -96,7 +116,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         elif isinstance(size, int):
             self.size = (size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
+            raise TypeError(f"Invalid size type. Expected int or tuple[int, int]. Got: {type(size)}.")
 
         self.flags = {
             "resample": Resample.get(resample),
@@ -113,9 +133,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
-            transform = transform.expand(input.shape[0], -1, -1)
-            return transform
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform = _crop_translation(src, dst)
+            return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
@@ -144,11 +165,14 @@ class CenterCrop(GeometricAugmentationBase2D):
             # `int(coord_tensor[i])` indexing break torch.compile fullgraph. The offsets match
             # `center_crop_generator` (`int(dim/2 - size/2)` == `(dim - size) // 2` for size <=
             # dim, which the generator guarantees) and the slice equals the requested size, so
-            # this is byte-identical.
+            # this is byte-identical. The slice is a view of the caller's tensor, so return a copy:
+            # writing to the output must not modify the input, matching `RandomCrop`/`RandomResizedCrop`
+            # in slice mode and `resample` mode (#4413). `contiguous()` is not enough, because a
+            # full-size or rows-only crop can already be contiguous and would come back as the view.
             crop_h, crop_w = int(flags["size"][0]), int(flags["size"][1])
             top = (input.shape[-2] - crop_h) // 2
             left = (input.shape[-1] - crop_w) // 2
-            return input[..., top : top + crop_h, left : left + crop_w]
+            return input[..., top : top + crop_h, left : left + crop_w].clone()
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(
@@ -158,10 +182,6 @@ class CenterCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
         if size is None:
             size = self.size
         if not isinstance(transform, torch.Tensor):

@@ -27,40 +27,45 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
-    r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
+    r"""Compute the binary Lovász-hinge IoU loss of ``(B, 1, H, W)`` logits against ``(B, H, W)`` labels.
 
-    According to [2], we compute the IoU as follows:
-
-    .. math::
-
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
-
-    [1] approximates this fomular with a surrogate, which is fully differentable.
-
-    Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
-
-    the loss, is finally computed as:
+    ``loss = lovasz_hinge_loss(pred, target)`` optimises the intersection over union (IoU) of two foregrounds: the
+    one predicted by the single logit channel of ``pred`` (:math:`X`) and the one labelled in ``target`` (:math:`Y`).
+    It minimises the Lovász extension [1] of the Jaccard loss [2].
 
     .. math::
 
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
+        \Delta_J = 1 - \frac{|X \cap Y|}{|X \cup Y|}
 
     Reference:
         [1] http://proceedings.mlr.press/v37/yub15.pdf
         [2] https://arxiv.org/pdf/1705.08790.pdf
 
-    .. note::
-        This loss function only supports binary labels. For multi-class labels please
-        use the Lovasz-Softmax loss.
+    Convention:
+        - ``pred`` holds one logit channel and ``target`` labels of 1 for the foreground and 0 for the background; the
+          batch and spatial sizes must match. The loss is computed per image and averaged over the batch; there is no
+          ``reduction``.
+        - The extension is evaluated at the hinge errors :math:`\max(0, 1 - z (2t - 1))` of logit :math:`z` and label
+          :math:`t`, so the loss is not :math:`1 - \text{IoU}`: logits of :math:`\pm 1` that are
+          positive on the predicted foreground give :math:`2 (1 - \text{IoU})` of that prediction, and correct
+          logits of magnitude at least 1 give 0.
+        - ``target`` is not validated and there is no ``ignore_index``: a label of 2 is accepted, and ``-100``, the
+          ``ignore_index`` of :func:`~kornia.losses.focal_loss` and :func:`~kornia.losses.dice_loss`, can make the
+          loss negative.
 
     Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        target: labels tensor with shape :math:`(N, H, W)` with binary values.
+        pred: logits ``(B, 1, H, W)``.
+        target: binary labels ``(B, H, W)``.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
+        integer or bool ``pred``. The Jaccard weights and the sum over pixels are computed in float32 for a
+        float16 or bfloat16 ``pred``.
+
+    See Also:
+        - :class:`~kornia.losses.LovaszHingeLoss`: the module form.
+        - :func:`~kornia.losses.lovasz_softmax_loss`: the multi-class loss, from ``C >= 2`` logit channels against
+          class indices.
 
     Example:
         >>> N = 1  # num_classes
@@ -74,15 +79,18 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
-    if not pred.shape[-2:] == target.shape[-2:]:
+    if not (pred.shape[0] == target.shape[0] and pred.shape[-2:] == target.shape[-2:]):
         raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     # flatten pred and target [B, -1] and to float
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    # The labels, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in float32
+    # for a half-precision prediction, where pixel counts stay exact up to 2**24 pixels.
+    accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
+    pred_flatten: Tensor = pred.flatten(start_dim=1)
+    target_flatten: Tensor = target.flatten(start_dim=1).to(accumulation_dtype)
 
     # get shapes
     B, N = pred_flatten.shape
@@ -101,44 +109,28 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()
-    return loss
+    # an integer or bool pred keeps the float32 loss instead of truncating it
+    return loss.to(pred.dtype if pred.is_floating_point() else accumulation_dtype)
 
 
 class LovaszHingeLoss(nn.Module):
-    r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
+    r"""Compute the binary Lovász-hinge IoU loss of ``(B, 1, H, W)`` logits against ``(B, H, W)`` labels (module form).
 
-    According to [2], we compute the IoU as follows:
+    ``criterion = LovaszHingeLoss()`` takes no arguments, and ``loss = criterion(pred, target)`` is
+    :func:`~kornia.losses.lovasz_hinge_loss`.
 
-    .. math::
+    Convention:
+        See the Convention block of :func:`~kornia.losses.lovasz_hinge_loss`.
 
-        \text{IoU}(x, class) = \frac{|X \cap Y|}{|X \cup Y|}
+    Shape:
+        - pred: logits ``(B, 1, H, W)``.
+        - target: binary labels ``(B, H, W)``.
+        - Output: a scalar.
 
-    [1] approximates this fomular with a surrogate, which is fully differentable.
-
-    Where:
-       - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
-
-    the loss, is finally computed as:
-
-    .. math::
-
-        \text{loss}(x, class) = 1 - \text{IoU}(x, class)
-
-    Reference:
-        [1] http://proceedings.mlr.press/v37/yub15.pdf
-        [2] https://arxiv.org/pdf/1705.08790.pdf
-
-    .. note::
-        This loss function only supports binary labels. For multi-class labels please
-        use the Lovasz-Softmax loss.
-
-    Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        labels: labels tensor with shape :math:`(N, H, W)` with binary values.
-
-    Return:
-        a scalar with the computed loss.
+    See Also:
+        - :func:`~kornia.losses.lovasz_hinge_loss`: the one-call form.
+        - :class:`~kornia.losses.LovaszSoftmaxLoss`: the multi-class loss, from ``C >= 2`` logit channels against
+          class indices.
 
     Example:
         >>> N = 1  # num_classes
@@ -157,8 +149,8 @@ class LovaszHingeLoss(nn.Module):
         """Compute binary Lovasz hinge loss for segmentation logits.
 
         Args:
-            pred: Binary logit tensor with shape :math:`(B, 1, H, W)`.
-            target: Binary label tensor with shape :math:`(B, H, W)`.
+            pred: Binary logit tensor with shape ``(B, 1, H, W)``.
+            target: Binary label tensor with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing the Lovasz hinge surrogate for the

@@ -52,17 +52,13 @@ class RepVggBlock(nn.Module):
         """Apply the RepVGG block in training or fused deployment form.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after either the fused convolution or the summed
             ``3x3`` and ``1x1`` branches followed by SiLU activation.
         """
-        if self.conv is not None:
-            out = self.act(self.conv(x))
-        else:
-            out = self.act(self.conv1(x) + self.conv2(x))
-        return out
+        return self.act(self.conv(x) if self.conv is not None else self.conv1(x) + self.conv2(x))
 
     @torch.no_grad()
     def optimize_for_deployment(self) -> None:
@@ -122,7 +118,7 @@ class CSPRepLayer(nn.Module):
         """Fuse cross-stage partial RepVGG features.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after one branch passes through RepVGG bottlenecks and
@@ -161,10 +157,10 @@ class AIFI(nn.Module):
         """Apply all-scale feature interaction to one feature map.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` after positional
+            Tensor with shape ``(B, C, H, W)`` after positional
             self-attention and feed-forward refinement.
         """
         # using post-norm
@@ -179,8 +175,7 @@ class AIFI(nn.Module):
         x = self.norm1(x + self.dropout1(attn))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
 
-        x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
-        return x
+        return x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
 
     def ffn(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the feed-forward sublayer used inside AIFI.
@@ -217,7 +212,7 @@ class AIFI(nn.Module):
             dtype: data type of the positional embeddings
 
         Returns:
-            positional embeddings, shape :math:`(H * W, 1, C)`
+            positional embeddings, shape ``(H * W, 1, C)``
 
         """
         xs = torch.arange(w, device=device, dtype=dtype)
@@ -357,5 +352,4 @@ class HybridEncoder(nn.Module):
         """
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         projected_maps[-1] = self.encoder(projected_maps[-1])
-        new_fmaps = self.ccfm(projected_maps)
-        return new_fmaps
+        return self.ccfm(projected_maps)

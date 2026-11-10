@@ -17,8 +17,11 @@
 
 import pytest
 import torch
+from torch._dynamo.testing import CompileCounter
 
 from kornia.enhance.threshold import ThresholdType, threshold
+
+from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
 
 
 class TestThreshold:
@@ -75,3 +78,48 @@ class TestThreshold:
         x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         with pytest.raises(NotImplementedError):
             threshold(x, thresh=0.0, maxval=1.0, type=ThresholdType.THRESH_OTSU)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("ttype", [ThresholdType.THRESH_BINARY, ThresholdType.THRESH_TOZERO_INV])
+    def test_traces_in_one_graph_like_eager(self, ttype, device, dtype):
+        # The supported-type check must not iterate the enum class while tracing: torch 2.9's Dynamo cannot (#5819).
+        x = torch.rand(2, 3, 5, 7, device=device, dtype=dtype)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(threshold, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(x, 0.5, 1.0, ttype), threshold(x, 0.5, 1.0, ttype), rtol=0, atol=0)
+        assert counter.frame_count == 1
+
+    @pytest.mark.parametrize(
+        "image_dtype, values, thresh, ttype, expected",
+        [
+            # A threshold below the range passes every element instead of wrapping to 255 or raising.
+            (torch.uint8, [0, 100, 255], -1, ThresholdType.THRESH_BINARY, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], -0.5, ThresholdType.THRESH_BINARY, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], -1, ThresholdType.THRESH_TRUNC, [0, 0, 0]),
+            # A threshold above the range passes no element instead of raising.
+            (torch.uint8, [0, 100, 255], 300, ThresholdType.THRESH_BINARY_INV, [9, 9, 9]),
+            (torch.uint8, [0, 100, 255], 255.5, ThresholdType.THRESH_TOZERO, [0, 0, 0]),
+            # A negative fraction is rounded down, not truncated toward zero.
+            (torch.int16, [-2, -1, 0, 1], -0.5, ThresholdType.THRESH_BINARY, [0, 0, 9, 9]),
+            (torch.int16, [-2, -1, 0, 1], -1.5, ThresholdType.THRESH_TRUNC, [-2, -2, -2, -2]),
+            (torch.int16, [-2, -1, 0, 1], -1.5, ThresholdType.THRESH_TOZERO_INV, [-2, 0, 0, 0]),
+            (torch.uint8, [100, 101], 100.7, ThresholdType.THRESH_BINARY, [0, 9]),
+            (torch.int16, [-1, 0, 1], float("nan"), ThresholdType.THRESH_TOZERO, [0, 0, 0]),
+            (torch.int64, [2**60, 2**60 + 1, 2**60 + 2], 2**60 + 1, ThresholdType.THRESH_BINARY, [0, 0, 9]),
+            # A threshold at the dtype's minimum is in range: every element but the minimum passes.
+            (torch.uint8, [0, 1, 255], 0, ThresholdType.THRESH_BINARY, [0, 9, 9]),
+            # Rounded down below the range, a signed threshold truncates to the dtype's minimum, not to 0.
+            (torch.int8, [-128, 0, 127], -128.5, ThresholdType.THRESH_TRUNC, [-128, -128, -128]),
+        ],
+    )
+    @pytest.mark.parametrize("tensor_thresh", [False, True])
+    def test_integer_input_compares_against_the_threshold_as_given(
+        self, image_dtype, values, thresh, ttype, expected, tensor_thresh, device
+    ):
+        x = torch.tensor(values, device=device, dtype=image_dtype)
+        if tensor_thresh:
+            thresh = torch.tensor(thresh, device=device)
+        out = threshold(x, thresh=thresh, maxval=9, type=ttype)
+        assert out.dtype == image_dtype
+        assert out.tolist() == expected

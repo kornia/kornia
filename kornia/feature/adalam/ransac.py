@@ -19,22 +19,47 @@ from typing import Any, Dict, Tuple, Union
 
 import torch
 
-from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
+from kornia.geometry.solvers.affine import _find_affine_linear, _find_affine_linear_pair
+
+from .utils import arange_sequence, batch_2x2_eigenvals, draw_first_k_couples
 
 
 def stable_sort_residuals(residuals: torch.Tensor, ransidx: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Sort residuals."""
-    logres = torch.log(residuals + 1e-10)
-    minlogres = torch.min(logres)
-    maxlogres = torch.max(logres)
+    if residuals.dtype == torch.float32:
+        # Non-negative IEEE-754 float32 bit patterns are order-preserving; packing group IDs
+        # in the high 32 bits sorts by (group, residual) in one pass without precision loss.
+        bits = (residuals + 0.0).view(torch.int32).to(torch.int64) & 0xFFFFFFFF
+        key = (ransidx.to(torch.int64).unsqueeze(0) << 32) | bits
+        sorting_idxes = torch.argsort(key, dim=-1, stable=True)
+        return residuals.gather(1, sorting_idxes), sorting_idxes
+    # Two stable sorts preserve exact residual ordering for float64 or other dtypes.
+    sorting_idxes = torch.argsort(residuals, dim=-1, stable=True)
+    by_group = torch.argsort(ransidx[sorting_idxes], dim=-1, stable=True)
+    sorting_idxes = sorting_idxes.gather(1, by_group)
 
-    sorting_score = ransidx.unsqueeze(0).float() + 0.99 * (logres - minlogres) / (maxlogres - minlogres)
+    return residuals.gather(1, sorting_idxes), sorting_idxes
 
-    sorting_idxes = torch.argsort(sorting_score, dim=-1)  # (niters, numsamples)
 
-    iters_range = torch.arange(residuals.shape[0], device=residuals.device)
-
-    return residuals[iters_range.unsqueeze(-1), sorting_idxes], sorting_idxes
+def _distinct_samples(xsamples: torch.Tensor, ysamples: torch.Tensor, ransidx: torch.Tensor) -> torch.Tensor:
+    """Mark correspondences whose source and target locations are both first seen in their group."""
+    distinct = torch.ones_like(ransidx, dtype=torch.bool)
+    for points in (xsamples, ysamples):
+        if points.dtype == torch.float32:
+            xy = (points + 0.0).view(torch.int32).to(torch.int64) & 0xFFFFFFFF
+            key = (xy[:, 0] << 32) | xy[:, 1]
+            order = torch.argsort(key, stable=True)
+            order = order[torch.argsort(ransidx[order], stable=True)]
+            repeated = (ransidx[order[1:]] == ransidx[order[:-1]]) & (key[order[1:]] == key[order[:-1]])
+        else:
+            order = torch.argsort(points[:, 1], stable=True)
+            order = order[torch.argsort(points[order, 0], stable=True)]
+            order = order[torch.argsort(ransidx[order], stable=True)]
+            repeated = (ransidx[order[1:]] == ransidx[order[:-1]]) & (points[order[1:]] == points[order[:-1]]).all(
+                dim=-1
+            )
+        distinct[order[1:][repeated]] = False
+    return distinct
 
 
 def group_sum_and_cumsum(
@@ -58,53 +83,95 @@ def group_sum_and_cumsum(
     return grouped_sums, None
 
 
-def confidence_based_inlier_selection(
+def _select_inliers(
     residuals: torch.Tensor,
+    xsamples: torch.Tensor,
+    ysamples: torch.Tensor,
     ransidx: torch.Tensor,
     rdims: torch.Tensor,
     idxoffsets: torch.Tensor,
-    dv: torch.device,
-    min_confidence: torch.Tensor,
+    affinities: torch.Tensor,
+    config: Dict[str, Any],
+    valid_affinities: Union[torch.Tensor, None] = None,
+    distinct: Union[torch.Tensor, None] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Select inliers from confidence scores."""
-    numransacs = rdims.shape[0]
-    numiters = residuals.shape[0]
+    """Select a consensus using independent geometric support, then return its samples.
 
+    Equal residuals do not imply duplicate keypoints. Count each source and target
+    location at most once per neighbourhood, and reserve three correspondences for
+    the seed and fitting pair. Duplicate correspondences may be returned but cannot
+    manufacture evidence. Counts always describe the returned set, not its evidence.
+    """
+    dv = residuals.device
+    min_inliers, min_confidence = config["min_inliers"], config["min_confidence"]
     sorted_res, sorting_idxes = stable_sort_residuals(residuals, ransidx)
-    sorted_res_sqr = sorted_res**2
+    # Keep the first input representative (the descriptor-score preference from
+    # extract_local_patterns), as the former exact-fit recovery did. Conflicting
+    # duplicates cannot switch representatives to support each fitted hypothesis.
+    # Cost: CPU float32, 4 threads, SIFT2048 ubc/graf 1->2:
+    # public match_adalam 121/128 ms (main) -> 83/84 ms.
+    if distinct is None:
+        distinct = _distinct_samples(xsamples, ysamples, ransidx)
 
-    too_perfect_fits = sorted_res_sqr <= 1e-8
-    end_rans_indexing = torch.cumsum(rdims, dim=0) - 1
+    ends = rdims.cumsum(0) - 1
+    weights = distinct.to(residuals.dtype)
+    dist_cumsum = weights.cumsum(0)
+    end_totals = dist_cumsum[ends]
+    start_totals = torch.cat([end_totals.new_zeros(1), end_totals[:-1]])
+    group_totals = (end_totals - start_totals).clamp_min_(1)
+    min_denom = (group_totals * min_confidence)[ransidx].unsqueeze(0)
 
-    _, inv_indices, res_dup_counts = torch.unique_consecutive(
-        sorted_res_sqr.half().float(), dim=1, return_counts=True, return_inverse=True
+    evidence = weights[sorting_idxes].cumsum_(dim=1)
+    evidence.sub_(start_totals[ransidx] + 3).clamp_min_(0)
+    # A finite floor prevents exact fits receiving infinite confidence. No residual
+    # quantization: the former float16 bins merged distinct subpixel correspondences.
+    areas = sorted_res.square().clamp_min_(2.0**-24)
+    eligible = (evidence >= min_inliers) & (evidence >= min_denom * areas)
+    win = int(min_inliers)
+    if 0 < win < sorted_res.shape[1]:
+        # Require the marginal density over the last min_inliers samples to also meet
+        # min_confidence once past the initial minimal support, so a dense exact core
+        # cannot subsidize a sparse outlier tail. The window spans group boundaries in
+        # the flattened row, but never at an eligible position: in-group position k has
+        # evidence <= k - 2, so evidence >= min_inliers = win needs k >= win + 2.
+        d_area = (areas[:, win:] - areas[:, :-win]).clamp_min_(2.0**-24)
+        # Out of place: in-place `&=` on this column slice is wrong on MPS with torch 2.5.1.
+        eligible[:, win:] = eligible[:, win:] & (
+            (evidence[:, win:] - evidence[:, :-win]) >= (min_denom[:, win:] * d_area)
+        )
+    if valid_affinities is None:
+        eigenvals = batch_2x2_eigenvals(affinities)
+        scale_limit = config["detected_scale_rate_threshold"] ** 2
+        valid_affinities = (eigenvals[..., 1] >= 1 / scale_limit) & (eigenvals[..., 0] <= scale_limit)
+
+    # The largest qualifying radius defines one coherent consensus per hypothesis.
+    # Earlier samples belong to it even when their own prefixes had too little evidence.
+    positions = torch.arange(len(ransidx), device=dv, dtype=torch.int32).expand_as(sorted_res)
+    boundary = torch.cummax(torch.where(eligible, positions, -1), dim=1).values[:, ends].to(torch.long)
+    boundary = torch.where(valid_affinities & (boundary >= idxoffsets), boundary, -1)
+    safe_boundary = boundary.clamp_min(0)
+    support = evidence.gather(1, safe_boundary)
+    support = torch.where(boundary >= 0, support, 0)
+    best_support = support.max(dim=0).values
+    hypothesis_confidence = support / (group_totals.unsqueeze(0) * areas.gather(1, safe_boundary))
+    # Equal-size consensuses prefer the tighter fit, rather than whichever pair
+    # happened to be sampled first.
+    best_iters = torch.where(support == best_support, hypothesis_confidence, -1).max(dim=0).indices
+    groups = torch.arange(len(rdims), device=dv)
+    best_boundary = boundary[best_iters, groups]
+    best_radius = sorted_res[best_iters, best_boundary.clamp_min(0)]
+    sample_positions = torch.arange(len(ransidx), device=dv)
+    # Return the complete radius, including duplicate ties after the eligible prefix.
+    # They add no evidence: keep the density test and hypothesis confidence unchanged.
+    selected = (best_boundary[ransidx] >= 0) & (
+        sorted_res[best_iters[ransidx], sample_positions] <= best_radius[ransidx]
     )
-
-    duplicates_per_sample = res_dup_counts[inv_indices]
-    inlier_weights = (1.0 / duplicates_per_sample).repeat(numiters, 1)
-    inlier_weights[too_perfect_fits] = 0.0
-
-    balanced_rdims, weights_cumsums = group_sum_and_cumsum(inlier_weights, end_rans_indexing, ransidx)
-    if not isinstance(weights_cumsums, torch.Tensor):
-        raise TypeError("Expected the `weights_cumsums` to be a torch.Tensor!")
-
-    progressive_inl_rates = weights_cumsums.float() / (balanced_rdims.repeat_interleave(rdims, dim=1)).float()
-
-    good_inl_mask = (sorted_res_sqr * min_confidence <= progressive_inl_rates) | too_perfect_fits
-
-    inlier_weights[~good_inl_mask] = 0.0
-    inlier_counts_matrix, _ = group_sum_and_cumsum(inlier_weights, end_rans_indexing)
-
-    inl_counts, inl_iters = torch.max(inlier_counts_matrix.long(), dim=0)
-
-    relative_inl_idxes = arange_sequence(inl_counts)
-    inl_ransidx = torch.arange(numransacs, device=dv).repeat_interleave(inl_counts)
-    inl_sampleidx = sorting_idxes[inl_iters.repeat_interleave(inl_counts), idxoffsets[inl_ransidx] + relative_inl_idxes]
-    highest_accepted_sqr_residuals = sorted_res_sqr[inl_iters, idxoffsets + inl_counts - 1]
-    expected_extra_inl = (
-        balanced_rdims[inl_iters, torch.arange(numransacs, device=dv)].float() * highest_accepted_sqr_residuals
-    )
-    return inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_counts.float() / expected_extra_inl
+    cumulative_counts = selected.cumsum(0)[ends]
+    counts = cumulative_counts - torch.cat([cumulative_counts.new_zeros(1), cumulative_counts[:-1]])
+    samples = sorting_idxes[best_iters[ransidx], sample_positions][selected]
+    best_confidence = hypothesis_confidence[best_iters, groups]
+    best_confidence = torch.where(best_boundary >= 0, best_confidence, 0)
+    return ransidx[selected], samples, counts, best_iters, best_confidence
 
 
 def sample_padded_inliers(
@@ -122,10 +189,49 @@ def sample_padded_inliers(
     padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
     padded_inlier_y = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
 
-    padded_inlier_x[inl_ransidx, piecewise_arange(inl_ransidx)] = xsamples[inl_sampleidx]
-    padded_inlier_y[inl_ransidx, piecewise_arange(inl_ransidx)] = ysamples[inl_sampleidx]
+    col_idx = arange_sequence(inlier_counts)
+    padded_inlier_x[inl_ransidx, col_idx] = xsamples[inl_sampleidx]
+    padded_inlier_y[inl_ransidx, col_idx] = ysamples[inl_sampleidx]
 
     return padded_inlier_x, padded_inlier_y
+
+
+def _reset_large_scale_changes(
+    affinities: torch.Tensor, scale_rate_threshold: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Replace affinities whose scale change exceeds the threshold by the identity, as AdaLAM does.
+
+    Returns the affinities and the mask of those that pass. Rank-deficient (NaN) affinities fail the test but stay
+    NaN, so that :func:`_finite_residuals` gives them no support instead of the identity's.
+    """
+    eigenvals = batch_2x2_eigenvals(affinities)
+    valid = (eigenvals[..., 1] >= 1 / scale_rate_threshold**2) & (eigenvals[..., 0] <= scale_rate_threshold**2)
+    reset = ~valid & ~eigenvals[..., 0].isnan()
+    identity = torch.eye(2, device=affinities.device, dtype=affinities.dtype)
+    return torch.where(reset[..., None, None], identity, affinities), valid
+
+
+def _finite_residuals(y_pred: torch.Tensor, ysamples: torch.Tensor) -> torch.Tensor:
+    """Residuals for the confidence sorter, which needs finite values.
+
+    A rank-deficient (NaN) fit gets residual 2: outside both normalized unit neighborhoods, it cannot provide
+    support at min_confidence > 1.
+    """
+    return torch.norm(y_pred - ysamples, dim=-1).nan_to_num(nan=2.0)
+
+
+def _reprojection_residuals(
+    affinities: torch.Tensor, xsamples: torch.Tensor, ysamples: torch.Tensor, ransidx: torch.Tensor
+) -> torch.Tensor:
+    """Compute finite reprojection residuals without materializing a ``(..., N, 2, 2)`` matrix tensor."""
+    x0, x1 = xsamples[:, 0], xsamples[:, 1]
+    dx = torch.addcmul(affinities[..., 0, 0][..., ransidx] * x0, affinities[..., 0, 1][..., ransidx], x1).sub_(
+        ysamples[:, 0]
+    )
+    dy = torch.addcmul(affinities[..., 1, 0][..., ransidx] * x0, affinities[..., 1, 1][..., ransidx], x1).sub_(
+        ysamples[:, 1]
+    )
+    return dx.square_().addcmul_(dy, dy).sqrt_().nan_to_num_(nan=2.0)
 
 
 def ransac(
@@ -138,12 +244,12 @@ def ransac(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run ransac."""
     DET_THR = config["detected_scale_rate_threshold"]
-    MIN_CONFIDENCE = config["min_confidence"]
     dv: torch.device = config["device"]
 
     numransacs = rdims.shape[0]
-    ransidx = torch.arange(numransacs, device=dv).repeat_interleave(rdims)
+    ransidx = torch.arange(numransacs, device=dv).repeat_interleave(rdims, output_size=xsamples.shape[0])
     idxoffsets = torch.cat([torch.tensor([0], device=dv), torch.cumsum(rdims[:-1], dim=0)], dim=0)
+    distinct = _distinct_samples(xsamples, ysamples, ransidx)
 
     rand_samples_rel = draw_first_k_couples(iters, rdims, dv)
     rand_samples_abs = rand_samples_rel + idxoffsets
@@ -152,18 +258,25 @@ def ransac(
     )  # (niters, 2, numransacs, 2) -> (niters, numransacs, 2, 2)
     sampled_y = torch.transpose(ysamples[rand_samples_abs], dim0=1, dim1=2)
 
-    # minimal fit for sampled_x @ A^T = sampled_y
-    affinities_fit = torch.transpose(batch_2x2_inv(sampled_x, check_dets=True) @ sampled_y, -1, -2)
+    # minimal fit for sampled_x @ A^T = sampled_y; rank-deficient pairs are NaN
+    affinities_fit = _find_affine_linear_pair(sampled_x, sampled_y)
+    valid_affinities = None
     if not refit:
-        eigenvals, _eigenvecs = batch_2x2_ellipse(affinities_fit)
-        bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
-        affinities_fit[bad_ones] = torch.eye(2, device=dv)
-    y_pred = (affinities_fit[:, ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
+        affinities_fit, valid_affinities = _reset_large_scale_changes(affinities_fit, DET_THR)
 
-    residuals = torch.norm(y_pred - ysamples, dim=-1)  # (niters, numsamples)
+    residuals = _reprojection_residuals(affinities_fit, xsamples, ysamples, ransidx)  # (niters, numsamples)
 
-    inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = confidence_based_inlier_selection(
-        residuals, ransidx, rdims, idxoffsets, dv=dv, min_confidence=MIN_CONFIDENCE
+    inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = _select_inliers(
+        residuals,
+        xsamples,
+        ysamples,
+        ransidx,
+        rdims,
+        idxoffsets,
+        affinities_fit,
+        config,
+        valid_affinities,
+        distinct,
     )
 
     if len(inl_sampleidx) == 0:
@@ -184,23 +297,21 @@ def ransac(
         xsamples, ysamples, inl_counts, inl_ransidx, inl_sampleidx, numransacs, dv
     )
 
-    # A @ pad_x.T = pad_y.T
-    # A = pad_y.T @ pad_x @ (pad_x.T @ pad_x)^-1
-    refit_affinity = (
-        padded_inlier_y.transpose(-2, -1)
-        @ padded_inlier_x
-        @ batch_2x2_inv(padded_inlier_x.transpose(-2, -1) @ padded_inlier_x, check_dets=True)
-    )
+    # Keep translation anchored at the seed; zero padding contributes no evidence.
+    refit_affinity = _find_affine_linear(padded_inlier_x, padded_inlier_y)
+    refit_affinity, valid_refits = _reset_large_scale_changes(refit_affinity, DET_THR)
+    residuals = _reprojection_residuals(refit_affinity, xsamples, ysamples, ransidx)
 
-    # Filter out degenerate affinities with large scale changes
-    eigenvals, _eigenvecs = batch_2x2_ellipse(refit_affinity)
-    bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
-    refit_affinity[bad_ones] = torch.eye(2, device=dv, dtype=refit_affinity.dtype)
-    y_pred = (refit_affinity[ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
-
-    residuals = torch.norm(y_pred - ysamples, dim=-1)
-
-    inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = confidence_based_inlier_selection(
-        residuals.unsqueeze(0), ransidx, rdims, idxoffsets, dv=dv, min_confidence=MIN_CONFIDENCE
+    inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_confidence = _select_inliers(
+        residuals.unsqueeze(0),
+        xsamples,
+        ysamples,
+        ransidx,
+        rdims,
+        idxoffsets,
+        refit_affinity.unsqueeze(0),
+        config,
+        valid_refits.unsqueeze(0),
+        distinct,
     )
     return inl_sampleidx, refit_affinity, inl_confidence, inl_counts

@@ -15,42 +15,61 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple, cast
+import copy
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
-from kornia.geometry.conversions import normalize_pixel_coordinates
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
-
-urls: Dict[str, str | list[str]] = {}
-urls["wireframe"] = [
-    hf_url("sold2", "sold2_wireframe.pth"),
-    "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
-]
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions, urls
 
 
 class SOLD2(nn.Module):
-    r"""nn.Module, which detects and describe line segments in an image.
+    r"""Detect, describe and match line segments in grayscale images with SOLD2.
 
-    This is based on the original code from the paper "SOLD²: Self-supervised
-    Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
+    ``sold2 = SOLD2()`` builds the network with its pretrained weights, in eval mode, and ``outputs = sold2(images)``
+    takes grayscale images ``(B, 1, H, W)`` in :math:`[0, 1]`, with ``H`` and ``W`` multiples of 8, and returns a dict:
+    ``"line_segments"``, one ``(N, 2, 2)`` tensor of ``(row, col)`` endpoints in pixels per image, the
+    ``"junction_heatmap"`` and ``"line_heatmap"``, ``(B, H, W)`` each, and the ``"dense_desc"`` map
+    ``(B, 128, H / 4, W / 4)``. ``matches = sold2.match(line_seg1, line_seg2, desc1, desc2)`` then matches the
+    segments of two images by their descriptors sampled along each segment, with ``desc1`` and ``desc2`` the
+    ``(1, 128, H / 4, W / 4)`` maps of one image each, and returns for each segment of ``line_seg1`` the index of its
+    match in ``line_seg2``, or ``-1``. To detect segments only, use :class:`SOLD2_detector` instead, which builds no
+    descriptor head. This is based on the original code from the paper "SOLD²: Self-supervised Occlusion-aware Line
+    Detector and Descriptor". See :cite:`SOLD22021` for more details.
+
+    Convention:
+        - :meth:`forward` takes the input and returns the heatmaps and the ``(row, col)`` line segments of
+          :class:`~kornia.feature.SOLD2_detector`, whose Convention block gives their frame and order, and also
+          ``dense_desc``, ``(B, 128, H / 4, W / 4)``, which is not normalized.
+        - ``match`` takes segments as :meth:`forward` returns them and the descriptor map of one image each. It
+          returns an int64 tensor ``(N_1,)``: for each segment of ``line_seg1``, the index of its match in
+          ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
+          ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
+        - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
+          without an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has
+          none the call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
 
     Args:
-        config: Dict specifying parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
-        pretrained: If True, download and set pretrained weights to the model.
+        pretrained: If True, download and set pretrained weights to the model, and return it in eval mode; otherwise
+            the weights are random and the model is in training mode.
+        config: a ``kornia.feature.sold2.structures.DetectorCfg``, or a dict of its fields, specifying parameters.
+            None will load the default parameters, which are tuned for images in the range 400~800 px.
+            The model works on a copy with ``use_descriptor`` set to True; the object passed in is not modified.
 
     Returns:
         The raw junction and line heatmaps, the semi-dense descriptor map,
         as well as the list of detected line segments (ij coordinates convention).
+
+    See Also:
+        - :class:`SOLD2_detector`: the same line detection, without the descriptor map or matching.
 
     Example:
         >>> images = torch.rand(2, 1, 64, 64)
@@ -64,12 +83,13 @@ class SOLD2(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[Union[DetectorCfg, Dict[str, Any]]] = None) -> None:
         if isinstance(config, dict):
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
-        self.config = config if config is not None else DetectorCfg()
+        # Copy so the descriptor head flag never leaks into the caller's object.
+        self.config = copy.deepcopy(config) if config is not None else DetectorCfg()
         self.config.use_descriptor = True  # Only difference to SOLD2_detector DetectorCfg
         self.grid_size = self.config.grid_size
         self.junc_detect_thresh = self.config.detection_thresh
@@ -81,25 +101,26 @@ class SOLD2(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
+        if pretrained:
+            self.eval()
 
     def forward(self, img: torch.Tensor) -> Dict[str, Any]:
         """Run forward.
 
         Args:
-            img: batched images with shape :math:`(B, 1, H, W)`.
+            img: batched images with shape ``(B, 1, H, W)``.
 
         Returns:
-            line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
-            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
-            dense_desc: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
+            line_segments: a list of ``B`` tensors ``(N, 2, 2)``, the N line segments of each image.
+            junction_heatmap: raw junction heatmap of shape ``(B, H, W)``.
+            line_heatmap: raw line heatmap of shape ``(B, H, W)``.
+            dense_desc: the semi-dense descriptor map of shape ``(B, 128, H/4, W/4)``.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -129,6 +150,8 @@ class SOLD2(nn.Module):
     ) -> torch.Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
+        Each descriptor map is sampled in its own dtype, so the segments may be in another floating-point dtype.
+
         Args:
             line_seg1: list of line segments in image 1, with shape [num_lines, 2, 2].
             line_seg2: list of line segments in image 2, with shape [num_lines, 2, 2].
@@ -136,7 +159,7 @@ class SOLD2(nn.Module):
             desc2: semi-dense descriptor map of image 2, with shape [1, 128, H/4, W/4].
 
         Returns:
-            A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
+            An integer tensor of size [num_lines1] indicating the index in line_seg2 of the matched line,
             for each line in line_seg1. -1 means that the line is not matched.
 
         """
@@ -194,9 +217,9 @@ class WunschLineMatcher(nn.Module):
 
         # Default case when an image has no lines
         if len(line_seg1) == 0:
-            return torch.empty(0, dtype=torch.int, device=device)
+            return torch.empty(0, dtype=torch.long, device=device)
         if len(line_seg2) == 0:
-            return -torch.ones(len(line_seg1), dtype=torch.int, device=device)
+            return -torch.ones(len(line_seg1), dtype=torch.long, device=device)
 
         # Sample points regularly along each line
         line_points1, valid_points1 = self.sample_line_points(line_seg1)
@@ -204,9 +227,10 @@ class WunschLineMatcher(nn.Module):
         line_points1 = line_points1.reshape(-1, 2)
         line_points2 = line_points2.reshape(-1, 2)
 
-        # Extract the descriptors for each point
-        grid1 = keypoints_to_grid(line_points1, img_size1)
-        grid2 = keypoints_to_grid(line_points2, img_size2)
+        # Extract the descriptors for each point. F.grid_sample needs the grid in the dtype of the map it samples,
+        # and the segments need not share it (SOLD2.forward returns float32 segments whatever the model dtype).
+        grid1 = keypoints_to_grid(line_points1, img_size1).to(desc1.dtype)
+        grid2 = keypoints_to_grid(line_points2, img_size2).to(desc2.dtype)
         desc1 = F.normalize(F.grid_sample(desc1, grid1, align_corners=False)[0, :, :, 0], dim=0)
         desc2 = F.normalize(F.grid_sample(desc2, grid2, align_corners=False)[0, :, :, 0], dim=0)
 
@@ -297,8 +321,7 @@ class WunschLineMatcher(nn.Module):
         nw_scores = self.needleman_wunsch(top_scores)
         nw_scores = nw_scores.reshape(n_lines1, top2k)
         matches = torch.remainder(torch.argmax(nw_scores, dim=1), top2k // 2)
-        matches = topk_lines[torch.arange(n_lines1), matches]
-        return matches
+        return topk_lines[torch.arange(n_lines1), matches]
 
     def needleman_wunsch(self, scores: torch.Tensor) -> torch.Tensor:
         """Batched implementation of the Needleman-Wunsch algorithm.
@@ -314,7 +337,7 @@ class WunschLineMatcher(nn.Module):
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
         B, N, M = scores.shape
-        dp = torch.zeros(B, N + 1, M + 1, device=scores.device)
+        dp = torch.zeros(B, N + 1, M + 1, device=scores.device, dtype=scores.dtype)
         S = scores - gap
         for k in range(2, N + M + 1):
             i_min = max(1, k - M)
@@ -323,13 +346,26 @@ class WunschLineMatcher(nn.Module):
             j = k - i
             up = dp[:, i - 1, j]
             left = dp[:, i, j - 1]
-            torch.diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
-            dp[:, i, j] = torch.max(torch.max(up, left), torch.diag)
+            diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
+            dp[:, i, j] = torch.max(torch.max(up, left), diag)
         return dp[:, -1, -1]
 
 
 def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> torch.Tensor:
-    """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
+    """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.grid_sample.
+
+    The normalization is the reference implementation's ``keypoints * 2 / img_size - 1``
+    (cvg/SOLD2, ``sold2/misc/geometry_utils.py``), the convention the pretrained weights were trained
+    with. It pairs with the ``align_corners=False`` sampling in :class:`WunschLineMatcher`: image pixel
+    ``p`` on an axis of size ``S`` lands on descriptor-map coordinate ``p * S_desc / S - 0.5``, which is
+    ``p / grid_size - 0.5`` whatever ``img_size`` is, so ``p = grid_size * (i + 0.5)`` reads descriptor
+    ``i`` exactly. It is deliberately not
+    :func:`kornia.geometry.conversions.normalize_pixel_coordinates`, whose corner-aligned mapping
+    ``2p / (S - 1) - 1`` drifts by ``p / (S - 1)`` image pixels toward the far edge under this sampler.
+    It is also not the half-pixel mapping ``(2p + 1) / S - 1``, from which it differs by a constant
+    half image pixel at every ``p``. Changing either the formula or the ``align_corners`` of the
+    sampler would break compatibility with the pretrained weights (compare
+    :class:`~kornia.feature.XFeat` and its ``normgrid``, which keep their own trained pairing).
 
     Args:
         keypoints: a torch.Tensor [N, 2] of N keypoints (ij coordinates convention).
@@ -338,16 +374,13 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
-    grid_points = normalize_pixel_coordinates(keypoints[:, [1, 0]], img_size[0], img_size[1])
-    grid_points = grid_points.view(-1, n_points, 1, 2)
-    return grid_points
+    return (keypoints * 2.0 / torch.tensor(img_size, device=keypoints.device) - 1.0)[:, [1, 0]].view(-1, n_points, 1, 2)
 
 
 def batched_linspace(start: torch.Tensor, end: torch.Tensor, step: int, dim: int) -> torch.Tensor:
-    """Batch version of torch.F.normalize (similar to the numpy one)."""
+    """Batch version of torch.linspace (similar to the numpy one)."""
     intervals = ((end - start) / (step - 1)).unsqueeze(dim)
     broadcast_size = [1] * len(intervals.shape)
     broadcast_size[dim] = step
     samples = torch.arange(step, dtype=torch.float, device=start.device).reshape(broadcast_size)
-    samples = start.unsqueeze(dim) + samples * intervals
-    return samples
+    return start.unsqueeze(dim) + samples * intervals

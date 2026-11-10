@@ -22,9 +22,27 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version, torch_version_lt
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 
-from testing.base import BaseTester
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamic_export_is_available,
+    dynamo_is_available,
+)
+
+
+def _skip_if_mps_lacks_grid_sample_backward(device):
+    """Skip a warp gradient check that MPS cannot run before torch 2.14.
+
+    ``aten::grid_sampler_2d_backward`` is unimplemented on MPS until torch 2.14, so no warp can run
+    its backward pass there, empty destination or not. The forward half of the empty-warp contract
+    runs on every backend in ``test_empty_destination_forward_runs_on_every_backend``.
+    """
+    if device.type == "mps" and torch_version_lt(2, 14, 0):
+        pytest.skip("MPS lacks aten::grid_sampler_2d_backward before torch 2.14")
 
 
 class DummyNNModule(torch.nn.Module):
@@ -35,6 +53,255 @@ class DummyNNModule(torch.nn.Module):
 
     def forward(self, x, y):
         return kornia.geometry.transform.warp_affine(x, y, dsize=(self.h, self.w), align_corners=False)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("dsize", [(0, 4), (3, 0), (0, 0)])
+@pytest.mark.parametrize("batch", [0, 1, 2])
+def test_empty_destination_forward_runs_on_every_backend(op_name, dsize, batch, device, dtype):
+    """An empty destination must not hand ``grid_sample`` a zero-element operand.
+
+    MPS asserts internally (``[srcBuf length] > 0 ... Placeholder tensor is empty!``) on any
+    zero-element ``grid_sample`` argument before torch 2.14, so the empty destination is built from
+    1x1 stand-ins instead. Forward-only, so it also covers MPS on older torch, where the backward
+    kernel is missing for unrelated reasons.
+    """
+    src = torch.rand(batch, 3, 3, 4, device=device, dtype=dtype)
+    rows = 2 if op_name == "warp_affine" else 3
+    transform = torch.eye(3, device=device, dtype=dtype)[:rows].expand(batch, rows, 3)
+
+    out = getattr(kornia.geometry.transform, op_name)(src, transform, dsize)
+
+    assert out.shape == (batch, 3, *dsize)
+    assert out.numel() == 0
+    assert out.device.type == device.type
+    assert out.dtype == dtype
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective", "remap"])
+@pytest.mark.parametrize(("src_batch", "transform_batch"), [(0, 1), (1, 0), (0, 0), (2, 1), (1, 2), (2, 2)])
+def test_empty_destination_matches_nonempty_batch_semantics(op_name, src_batch, transform_batch, device, dtype):
+    """An empty destination broadcasts and rejects batch pairings exactly as the non-empty path.
+
+    The three operations disagree on purpose -- ``warp_perspective`` requires equal batches,
+    ``warp_affine`` expands a singleton matrix only to a non-empty source batch, and ``remap``
+    expands a singleton map batch to the image batch unconditionally -- so the empty path is
+    pinned against whatever the non-empty call does rather than against a hardcoded expectation.
+    """
+    if device.type == "mps" and 0 in (src_batch, transform_batch) and torch_version_lt(2, 14, 0):
+        pytest.skip("MPS grid_sample asserts on a zero-element batch before torch 2.14")
+
+    def run(empty: bool) -> torch.Tensor:
+        src = torch.rand(src_batch, 2, 3, 4, device=device, dtype=dtype)
+        if op_name == "remap":
+            maps = torch.zeros(transform_batch, 0 if empty else 3, 4, device=device, dtype=dtype)
+            return kornia.geometry.remap(src, maps, maps)
+        rows = 2 if op_name == "warp_affine" else 3
+        transform = torch.eye(3, device=device, dtype=dtype)[:rows].expand(transform_batch, rows, 3)
+        return getattr(kornia.geometry.transform, op_name)(src, transform, (0, 4) if empty else (3, 4))
+
+    try:
+        expected_batch = run(empty=False).shape[0]
+    except RuntimeError:
+        with pytest.raises(RuntimeError):
+            run(empty=True)
+        return
+
+    assert run(empty=True).shape[0] == expected_batch
+
+
+def test_empty_destination_samples_a_constant_1x1_stand_in(device, dtype, monkeypatch):
+    """The sampled stand-in stays 1x1 however large the non-zero side of the destination is.
+
+    The empty result discards whatever was sampled, so materializing ``dsize``-many samples would
+    make an empty warp cost more than a real one -- unbounded, for a result with no elements.
+    """
+    sampled_grids = []
+    real_grid_sample = torch.nn.functional.grid_sample
+
+    def spy(input, grid, **kwargs):
+        sampled_grids.append(tuple(grid.shape))
+        return real_grid_sample(input, grid, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "grid_sample", spy)
+    src = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+    transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+
+    out = kornia.geometry.transform.warp_affine(src, transform, (0, 2_000_000))
+
+    assert out.shape == (1, 3, 0, 2_000_000)
+    assert sampled_grids
+    assert all(shape == (1, 1, 1, 2) for shape in sampled_grids)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("dsize", [(0, 4), (3, 0)])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
+def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, padding_mode, device, dtype):
+    _skip_if_mps_lacks_grid_sample_backward(device)
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    out = op(
+        src,
+        transform,
+        dsize,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+        fill_value=torch.tensor([0.1, 0.2, 0.3], device=device, dtype=dtype),
+    )
+
+    assert out.shape == (1, 3, *dsize)
+    assert out.numel() == 0
+    out.sum().backward()
+    assert src.grad is not None
+    assert torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None
+    assert torch.count_nonzero(transform.grad) == 0
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_source_policy(op_name, device, dtype):
+    _skip_if_mps_lacks_grid_sample_backward(device)
+    src = torch.empty(1, 3, 0, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    empty = op(src, transform, (0, 4))
+    assert empty.shape == (1, 3, 0, 4)
+    empty.sum().backward()
+    assert src.grad is not None
+    assert transform.grad is not None
+
+    with pytest.raises(ValueError, match="must be positive"):
+        op(src, transform, (3, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_zero_channel_default_fill(op_name, device, dtype):
+    # An empty destination samples a one-channel stand-in, so the default fill must be built for the stand-in,
+    # not as one zero per source channel (#6021).
+    src = torch.rand(2, 0, 3, 4, device=device, dtype=dtype)
+    rows = 2 if op_name == "warp_affine" else 3
+    transform = torch.eye(rows, 3, device=device, dtype=dtype).expand(2, -1, -1)
+
+    out = getattr(kornia.geometry.transform, op_name)(src, transform, (0, 4), padding_mode="fill")
+
+    assert out.shape == (2, 0, 0, 4)
+
+
+def _output_dtype_or_none(call):
+    """Return the output dtype of ``call``, or ``None`` when it rejects its inputs."""
+    try:
+        return call().dtype
+    except Exception:
+        return None
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("matrix_dtype", [torch.float32, torch.float64, torch.int64])
+def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, matrix_dtype, device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=src_dtype)
+    matrix = torch.eye(3, device=device)[:rows].to(matrix_dtype).unsqueeze(0)
+
+    # An empty ``dsize`` must accept exactly the matrix dtypes the non-empty pipeline accepts:
+    # a matrix that promotes into ``src.dtype`` samples fine, one that narrows it or is integral
+    # (``normalize_homography`` scales it by floating factors) fails on both paths.
+    empty_dtype = _output_dtype_or_none(lambda: op(src, matrix, (0, 4)))
+    assert empty_dtype == _output_dtype_or_none(lambda: op(src, matrix, (1, 4)))
+    if src_dtype == matrix_dtype:
+        # Guards the paired assertion above against passing vacuously on two failures.
+        assert empty_dtype == src_dtype
+        assert op(src, matrix, (0, 4)).shape == (1, 3, 0, 4)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
+    """``grid_sample`` rejects an integral image on both paths; the message must name ``src``.
+
+    Scoped away from MPS, whose ``grid_sample`` accepts an integral image and samples it back into
+    ``int64`` instead of rejecting it, so the non-empty half of the pairing does not hold there.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample accepts an integral image instead of rejecting it")
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
+    matrix = torch.eye(3, device=device)[:rows].unsqueeze(0)
+
+    # Both paths must reject it with the same exception type. ``grid_sample`` raises
+    # ``NotImplementedError`` on newer torch and ``RuntimeError`` on older ones, so pin the
+    # parity rather than a fixed class: catch whatever the full path raises, then require the
+    # empty path to raise something the same ``except`` clause would catch.
+    with pytest.raises(RuntimeError) as full:
+        op(src, matrix, (1, 4))
+    with pytest.raises(type(full.value), match="floating point src"):
+        op(src, matrix, (0, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_negative_destination_raises(op_name, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = (
+        torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        if op_name == "warp_affine"
+        else torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    )
+    with pytest.raises(ValueError, match="must be non-negative"):
+        getattr(kornia.geometry.transform, op_name)(src, transform, (-1, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
+    src = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
+    matrix_size = (2, 3) if op_name == "warp_affine" else (3, 3)
+    transform = torch.eye(*matrix_size, device=device, dtype=dtype).repeat(3, 1, 1)
+    op = getattr(kornia.geometry.transform, op_name)
+
+    with pytest.raises(RuntimeError, match="same batch size"):
+        op(src, transform, (0, 4))
+    with pytest.raises(ValueError, match="expected mode"):
+        op(src[:1], transform[:1], (0, 4), mode="invalid")
+    with pytest.raises(ValueError, match="expected padding_mode"):
+        op(src[:1], transform[:1], (0, 4), padding_mode="invalid")
+    if device.type == "cpu":
+        # The dtype policy mirrors the non-empty path: a transform that promotes into
+        # ``src.dtype`` is accepted, one that would narrow it is not.
+        narrow_src, wide_transform = src[:1].to(torch.float32), transform[:1].to(torch.float64)
+        with pytest.raises(RuntimeError):
+            op(narrow_src, wide_transform, (0, 4))
+        with pytest.raises(RuntimeError):
+            op(narrow_src, wide_transform, (1, 4))
+
+        wide_src, narrow_transform = src[:1].to(torch.float64), transform[:1].to(torch.float32)
+        empty_out = op(wide_src, narrow_transform, (0, 4))
+        assert empty_out.shape == (1, 3, 0, 4)
+        assert empty_out.dtype == op(wide_src, narrow_transform, (1, 4)).dtype == torch.float64
+
+    if op_name == "warp_affine":
+        with pytest.raises(ValueError, match="Bx2x3"):
+            op(src[:1], torch.eye(4, device=device, dtype=dtype).unsqueeze(0), (0, 4))
+
+
+@pytest.mark.parametrize("normalized_homography", [True, False])
+def test_homography_warp_negative_destination_raises(normalized_homography, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    with pytest.raises(ValueError, match="must be non-negative"):
+        kornia.geometry.transform.homography_warp(src, transform, (-1, 4), normalized_homography=normalized_homography)
 
 
 class TestGetPerspectiveTransform(BaseTester):
@@ -66,7 +333,7 @@ class TestGetPerspectiveTransform(BaseTester):
         )
 
         # compute transformation between points
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             _ = kornia.geometry.get_perspective_transform(points_src, points_dst)
 
     def test_back_and_forth(self, device, dtype):
@@ -100,6 +367,16 @@ class TestGetPerspectiveTransform(BaseTester):
 
         self.assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
 
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor([[[0, 0], [10, 0], [10, 10], [0, 10]]], device=device)
+        points_dst = torch.tensor([[[1, 2], [12, 1], [11, 13], [0, 9]]], device=device)
+
+        out = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        expected = kornia.geometry.get_perspective_transform(points_src.to(out.dtype), points_dst.to(out.dtype))
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -116,8 +393,140 @@ class TestGetPerspectiveTransform(BaseTester):
         points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst))
 
+    # The first pair's homography is [[0, 0, 3], [0, 3, 0], [3, 0, 0]] / 8: it sends the source origin to infinity, so
+    # its bottom-right entry is zero. The second pair is an ordinary homography, scaled to M[2, 2] = 1 as before.
+    _zero_h22_src = [[[1.0, 0.0], [2.0, 0.0], [2.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+    _zero_h22_dst = [[[1.0, 0.0], [0.5, 0.0], [0.5, 1.0], [1.0, 2.0]], [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 2.0]]]
+
+    def test_zero_bottom_right_entry_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        expected = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(dst_trans_src[0], expected)
+        self.assert_close(dst_trans_src[1, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+        self.assert_close(kornia.geometry.transform_points(dst_trans_src, points_src), points_dst)
+
+    @pytest.mark.parametrize("shift", [2**-16, 2**-20])
+    def test_near_zero_bottom_right_entry_fits_the_dtype_6435(self, device, dtype, shift):
+        # Moving one destination point of the zero-entry pair by `shift` makes M[2, 2] tiny but not zero. Its
+        # M[2, 2] = 1 form has entries of about 1 / shift, beyond float16's 65504, so float16 falls back to the
+        # geometric-mean scale; every dtype returns a finite matrix that maps the points.
+        points_src = torch.tensor(self._zero_h22_src[:1], device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst[:1], device=device, dtype=dtype)
+        points_dst[0, 0, 1] = shift
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    def test_zero_bottom_right_entry_rounding_residue_6435(self, device, dtype):
+        # The same homography as the first zero-entry pair, from another source quadrilateral: rounding leaves a small
+        # residue in the computed M[2, 2] instead of an exact zero. The M[2, 2] = 1 form of that residue is finite, so
+        # it is kept, with large entries, and it still maps the points.
+        points_src = torch.tensor([[[1.0, 0.5], [2.0, 0.25], [2.5, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        points_dst = torch.tensor([[[1.0, 0.5], [0.5, 0.125], [0.4, 0.8], [1.0, 2.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        self.assert_close(dst_trans_src[0, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    @pytest.mark.parametrize("ratio", [1e5, 1e8, 1e9])
+    def test_overflowing_form_keeps_small_coefficients_6435(self, device, dtype, ratio):
+        # A rectangle stretched along x by `ratio` has M = diag(ratio, 1, 1). In float16 that M[2, 2] = 1 form
+        # overflows, and scaling its largest entry to 1 would flush the 1s to zero, leaving a matrix that maps nothing.
+        width = ratio**0.5
+        points_src = torch.tensor(
+            [[[0.0, 0.0], [1 / width, 0.0], [1 / width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype
+        )
+        points_dst = torch.tensor([[[0.0, 0.0], [width, 0.0], [width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    def test_zero_bottom_right_entry_grad_6435(self, device, dtype):
+        # Scaling jumps from the geometric mean to M[2, 2] as soon as M[2, 2] leaves zero, so the gradient is one-sided
+        # and gradcheck does not apply here; it must be finite, where dividing by zero made it NaN.
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype, requires_grad=True)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.geometry.get_perspective_transform(points_src, points_dst).sum().backward()
+
+        assert points_src.grad.isfinite().all()
+        assert points_dst.grad.isfinite().all()
+
+    @pytest.mark.parametrize("shift", [0.0, 2**-16])
+    def test_zero_bottom_right_entry_dynamo_6435(self, device, dtype, torch_optimizer, shift):
+        # A compiled call must take the same fallback as eager; inductor keeps a fused cast to float16 in float32, so a
+        # finiteness test that casts the M[2, 2] = 1 form to the output dtype would not see its overflow there.
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+        points_dst[0, 0, 1] = shift
+
+        op = kornia.geometry.get_perspective_transform
+        op_optimized = torch_optimizer(op)
+
+        expected = op(points_src, points_dst)
+        assert expected.isfinite().all()
+        self.assert_close(op_optimized(points_src, points_dst), expected)
+
+    def test_zero_bottom_right_entry_jit_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        op = kornia.geometry.get_perspective_transform
+        op_script = torch.jit.script(op)
+
+        self.assert_close(op_script(points_src, points_dst), op(points_src, points_dst))
+
 
 class TestRotationMatrix2d(BaseTester):
+    @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
+    def test_dtype_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        inputs = {
+            "center": torch.zeros(1, 2, device=device, dtype=dtype),
+            "angle": torch.zeros(1, device=device, dtype=dtype),
+            "scale": torch.ones(1, 2, device=device, dtype=dtype),
+        }
+        other_dtype = torch.float32 if dtype != torch.float32 else torch.float16
+        inputs[argument] = inputs[argument].to(dtype=other_dtype)
+
+        with pytest.raises(ValueError, match="Inputs must have same dtype") as exc:
+            kornia.geometry.get_rotation_matrix2d(**inputs)
+        for name, value in inputs.items():
+            assert f"{name} {value.dtype}" in str(exc.value)
+
+    @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
+    def test_device_mismatch_message_5662(self, argument, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        inputs = {
+            "center": torch.zeros(1, 2, device=device, dtype=dtype),
+            "angle": torch.zeros(1, device=device, dtype=dtype),
+            "scale": torch.ones(1, 2, device=device, dtype=dtype),
+        }
+        # Meta tensors exercise the CPU device guard without requiring an accelerator.
+        other_device = torch.device("meta") if device.type == "cpu" else torch.device("cpu")
+        inputs[argument] = inputs[argument].to(device=other_device)
+
+        with pytest.raises(ValueError, match="Inputs must have same device") as exc:
+            kornia.geometry.get_rotation_matrix2d(**inputs)
+        for name, value in inputs.items():
+            assert f"{name} {value.device}" in str(exc.value)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_90deg_rotation(self, batch_size, device, dtype):
         # generate input data
@@ -212,6 +621,57 @@ class TestRotationMatrix2d(BaseTester):
 
 
 class TestWarpAffine(BaseTester):
+    def test_onnx_dynamic_batches(self, tmp_path):
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, image, matrix):
+                return kornia.geometry.warp_affine(image, matrix, (5, 7))
+
+        model = Wrapper().eval()
+        image = torch.rand(1, 2, 5, 7)
+        matrix = torch.eye(2, 3)[None]
+        path = tmp_path / "warp_affine.onnx"
+        torch.onnx.export(
+            model,
+            (image, matrix),
+            path,
+            input_names=["image", "matrix"],
+            output_names=["warped"],
+            dynamic_axes={"image": {0: "batch"}, "matrix": {0: "transforms"}, "warped": {0: "batch"}},
+            opset_version=20,
+            dynamo=False,
+        )
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        for src_batch, transform_batch in [(1, 1), (4, 1), (4, 4)]:
+            batch_image = image.expand(src_batch, -1, -1, -1)
+            batch_matrix = matrix.expand(transform_batch, -1, -1)
+            actual = session.run(None, {"image": batch_image.numpy(), "matrix": batch_matrix.numpy()})[0]
+            self.assert_close(torch.from_numpy(actual), model(batch_image, batch_matrix))
+
+    @pytest.mark.parametrize("src_batch,transform_batch", [(0, 1), (1, 0), (0, 0), (1, 1), (4, 1), (4, 4), (1, 4)])
+    def test_trace_preserves_batch_semantics(self, src_batch, transform_batch, device, dtype):
+        if device.type == "mps" and 0 in (src_batch, transform_batch) and torch_version_lt(2, 14, 0):
+            pytest.skip("MPS grid_sample asserts on a zero-element batch before torch 2.14")
+
+        def warp(image, matrix):
+            return kornia.geometry.warp_affine(image, matrix, (5, 7))
+
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        matrix = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        traced = torch.jit.trace(warp, (image, matrix), check_trace=False)
+        image = image.expand(src_batch, -1, -1, -1)
+        matrix = matrix.expand(transform_batch, -1, -1)
+        if src_batch == transform_batch or (src_batch > 0 and transform_batch == 1):
+            expected = warp(image, matrix)
+            self.assert_close(traced(image, matrix), expected)
+        else:
+            with pytest.raises(RuntimeError):
+                warp(image, matrix)
+            with pytest.raises(RuntimeError):
+                traced(image, matrix)
+
     def test_smoke(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
         aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]  # 1x2x3
@@ -219,8 +679,45 @@ class TestWarpAffine(BaseTester):
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (height, width))
         self.assert_close(img_b, img_a)
 
-    @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
-    @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_agrees_with_perspective(self, dsize, device, dtype):
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        perspective = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+
+        actual = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+        expected = kornia.geometry.warp_perspective(src, perspective, dsize, align_corners=True)
+        literal = (
+            torch.tensor([[[[0.0, 1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
+            if dsize[0] == 1
+            else torch.tensor([[[[0.0], [4.0], [8.0]]]], device=device, dtype=dtype)
+        )
+
+        self.assert_close(actual, expected)
+        self.assert_close(actual, literal)
+
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_survives_tracing(self, dsize, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # ``torch.jit.trace`` hands ``F.affine_grid`` tensor sizes, and ``affine_grid_generator``
+            # has no cpu Half/BFloat16 kernel, so tracing a singleton warp raises
+            # ``NotImplementedError: "tensor_cpu" not implemented for 'Half'`` before reaching any
+            # kornia code. A non-singleton ``dsize`` traces fine at the same dtype.
+            pytest.skip("traced affine_grid has no cpu half-precision kernel")
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        expected = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+
+        class SingletonWarp(torch.nn.Module):
+            def forward(self, image, transform):
+                return kornia.geometry.warp_affine(image, transform, dsize, align_corners=True)
+
+        with pytest.warns(UserWarning, match="unit-size grids"):
+            traced = torch.jit.trace(SingletonWarp(), (src, affine), check_trace=False)
+        self.assert_close(traced(src, affine), expected)
+
+    @pytest.mark.parametrize("batch_shape", [[1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]])
+    @pytest.mark.parametrize("out_shape", [[2, 5], [3, 4], [6, 2]])
     def test_cardinality(self, device, dtype, batch_shape, out_shape):
         batch_size, channels, height, width = batch_shape
         h_out, w_out = out_shape
@@ -240,12 +737,14 @@ class TestWarpAffine(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.warp_affine(img, 0.0, size)
 
+        img = torch.rand(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.rand(2, 3, 4, device=device, dtype=dtype)
             assert kornia.geometry.warp_affine(img, aff, size)
 
-        with pytest.raises(ValueError):
-            aff = torch.eye(2, 2, device=device, dtype=dtype)[None]
+        # Keep the image valid so this case reaches the matrix-shape guard.
+        img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        aff = torch.eye(2, 2, device=device, dtype=dtype)[None]
+        with pytest.raises(ValueError, match="Input M"):
             assert kornia.geometry.warp_affine(img, aff, size)
 
     def test_translation(self, device, dtype):
@@ -261,6 +760,29 @@ class TestWarpAffine(BaseTester):
 
         # Same as opencv: cv2.warpAffine(kornia.tensor_to_image(img_b), aff_ab[0].numpy(), (w, h))
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w))
+        self.assert_close(img_a, expected)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_translation_align_corners(self, align_corners, device, dtype):
+        # A whole-pixel translation must shift by exactly that many pixels under either
+        # align_corners convention: M is a pixel-space transform, so align_corners selects only
+        # how the sampling grid is normalized for grid_sample, never the geometry (#3904).
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), align_corners=align_corners)
+        # No explicit tolerance: BaseTester's dtype-aware defaults are what makes this run at
+        # float16/bfloat16. Normalizing pixel coordinates into [-1, 1] only lands on pixel centres
+        # exactly when the scale is a power of two, so at half precision one convention or the other
+        # drifts depending on the size, and the sibling True-only pins are already half-precision
+        # manifest entries for that reason.
         self.assert_close(img_a, expected)
 
     def test_rotation_inverse(self, device, dtype):
@@ -330,8 +852,8 @@ class TestWarpAffine(BaseTester):
 
         self.assert_close(img_a[:, :, :1, :1].squeeze(), fill_value.squeeze())
 
-    @pytest.mark.parametrize("align_corners", (True, False))
-    @pytest.mark.parametrize("padding_mode", ("zeros", "fill"))
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
     def test_jit_script(self, device, dtype, align_corners, padding_mode):
         offset = 1.0
         h, w = 3, 4
@@ -347,6 +869,70 @@ class TestWarpAffine(BaseTester):
 
 
 class TestWarpPerspective(BaseTester):
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("scale", [1e-15, -1e-15, 1e15, -1e15])
+    def test_projective_scale_invariance(self, device, dtype, align_corners, scale):
+        _skip_if_mps_lacks_grid_sample_backward(device)
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        if dtype == torch.float64:
+            scale = (1e-110 if abs(scale) < 1 else 1e110) * (1 if scale > 0 else -1)
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6) / 36
+        matrix = torch.tensor([[[1.0, 0.1, 0.3], [0.05, 1.0, 0.2], [0.01, 0.02, 1.0]]], device=device, dtype=dtype)
+        reference_matrix = matrix.clone().requires_grad_()
+        scaled_matrix = (matrix * scale).requires_grad_()
+
+        reference = kornia.geometry.warp_perspective(image, reference_matrix, (5, 7), align_corners=align_corners)
+        actual = kornia.geometry.warp_perspective(image, scaled_matrix, (5, 7), align_corners=align_corners)
+        reference_grad = torch.autograd.grad(reference.square().sum(), reference_matrix)[0]
+        actual_grad = torch.autograd.grad(actual.square().sum(), scaled_matrix)[0]
+
+        assert torch.isfinite(actual).all()
+        assert torch.isfinite(actual_grad).all()
+        self.assert_close(actual, reference)
+        # H and s*H describe the same projective map: dL/d(s*H) = (dL/dH)/s.
+        self.assert_close(actual_grad * scale, reference_grad)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_projective_scale_invariance_under_trace(self, device, dtype, align_corners):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6) / 36
+        # A zero bottom-right entry is valid: scale normalization must use the whole matrix.
+        matrix = torch.tensor([[[1.0, 0.1, 0.3], [0.05, 1.0, 0.2], [0.3, 0.2, 0.0]]], device=device, dtype=dtype)
+
+        def warp(image, matrix):
+            return kornia.geometry.warp_perspective(image, matrix, (5, 7), align_corners=align_corners)
+
+        traced = torch.jit.trace(warp, (image, matrix))
+        expected = warp(image, matrix)
+        assert expected.count_nonzero() > 0  # samples inside the image, not only padding
+        # 1e8 overflows nothing: the traced grid goes through transform_points, which leaves |w| <= 1e-8 undivided.
+        scales = [1.0, 1e8, 1e-15, -1e15] if dtype == torch.float32 else [1.0, 1e8, 1e-110, -1e110]
+        batched_matrix = matrix * torch.tensor(scales, device=device, dtype=dtype).reshape(-1, 1, 1)
+        actual = traced(image.expand(len(scales), -1, -1, -1), batched_matrix)
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected.expand_as(actual))
+
+    def test_homography_gradcheck(self, device):
+        _skip_if_mps_lacks_grid_sample_backward(device)
+        image = torch.arange(36, device=device, dtype=torch.float64).reshape(1, 1, 6, 6) / 36
+        matrix = torch.tensor(
+            [[[1.0, 0.1, 0.37], [0.05, 1.0, 0.23], [0.01, 0.02, 1.0]]], device=device, dtype=torch.float64
+        )
+        self.gradcheck(kornia.geometry.warp_perspective, (image, matrix, (5, 7)), requires_grad=(False, True, False))
+
+    def test_large_translation_preserves_unit_diagonal(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("this translation tests the float32/float64 arithmetic range")
+        image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        matrix[..., 0, 2] = 1e20
+        # Dividing by the maximum entry makes the determinant underflow in float32.
+        # These output pixels all sample outside the image and should contain zero padding.
+        actual = kornia.geometry.warp_perspective(image, matrix, (3, 3))
+        self.assert_close(actual, torch.zeros_like(image), atol=0.0, rtol=0.0)
+
     def test_smoke(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -354,8 +940,8 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (height, width))
         self.assert_close(img_b, img_a)
 
-    @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
-    @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
+    @pytest.mark.parametrize("batch_shape", [[1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]])
+    @pytest.mark.parametrize("out_shape", [[2, 5], [3, 4], [6, 2]])
     def test_cardinality(self, device, dtype, batch_shape, out_shape):
         batch_size, channels, height, width = batch_shape
         h_out, w_out = out_shape
@@ -363,6 +949,18 @@ class TestWarpPerspective(BaseTester):
         H_ab = kornia.core.ops.eye_like(3, img_b)
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
+
+    @pytest.mark.parametrize("size", [8, 64])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine, not to float32 grid precision
+        img = torch.rand(1, 1, size, size, device=device, dtype=torch.float64)
+        homo = torch.eye(3, device=device, dtype=torch.float64)[None]
+        out = kornia.geometry.warp_perspective(img, homo, (size, size), align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, img, rtol=0.0, atol=1e-12)
 
     def test_exception(self, device, dtype):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -375,12 +973,14 @@ class TestWarpPerspective(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.warp_perspective(img, 0.0, size)
 
+        img = torch.rand(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.rand(2, 3, 4, device=device, dtype=dtype)
             assert kornia.geometry.warp_perspective(img, homo, size)
 
-        with pytest.raises(ValueError):
-            homo = torch.eye(2, 2, device=device, dtype=dtype)[None]
+        # Keep the image valid so this case reaches the matrix-shape guard.
+        img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        homo = torch.eye(2, 2, device=device, dtype=dtype)[None]
+        with pytest.raises(ValueError, match="Input M"):
             assert kornia.geometry.warp_perspective(img, homo, size)
 
     def test_translation(self, device, dtype):
@@ -437,7 +1037,71 @@ class TestWarpPerspective(BaseTester):
 
         Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
-        self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
+        # A half warp samples in float32 on the normalized inverse the caller rounded, so it inherits that rounding:
+        # a float64 warp of the same rounded inverse is off from these literals by 0.0029 in float16, 0.053 in bfloat16.
+        atol = {torch.float16: 4e-3, torch.bfloat16: 7e-2}.get(dtype, 1e-4)
+        self.assert_close(hw, expected, atol=atol, rtol=1e-4)
+
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_homography_warp_pixel_path_respects_mode_and_align_corners_4772(self, device, dtype, mode, align_corners):
+        # Reflection padding exposes align_corners; a 1.5-pixel shift distinguishes nearest from bilinear.
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        H = torch.tensor([[[1.0, 0.0, 1.5], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        actual = kornia.geometry.transform.homography_warp(
+            img,
+            H,
+            (4, 4),
+            mode=mode,
+            padding_mode="reflection",
+            align_corners=align_corners,
+            normalized_homography=False,
+        )
+        expected = kornia.geometry.transform.warp_perspective(
+            img, H, (4, 4), mode=mode, padding_mode="reflection", align_corners=align_corners
+        )
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_convention_identity_agrees_with_warp_affine(self, align_corners, device, dtype):
+        # An identity homography reproduces the input under either align_corners convention, and
+        # agrees with warp_affine fed the same identity. warp_perspective used to normalize with
+        # the align_corners=True mapping unconditionally while calling grid_sample with the
+        # requested flag, so at align_corners=False this drifted by half a pixel (#3904).
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        pts = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]], device=device, dtype=dtype)
+        H = kornia.geometry.transform.get_perspective_transform(pts, pts)
+
+        out_perspective = kornia.geometry.transform.warp_perspective(img, H, (4, 4), align_corners=align_corners)
+        out_affine = kornia.geometry.transform.warp_affine(img, H[:, :2, :], (4, 4), align_corners=align_corners)
+
+        # the two warps must agree exactly; the identity-reproduces-input half needs the dtype-aware
+        # default, since align_corners=True normalizes by 2 / (size - 1), which no half dtype can hold
+        # exactly for size 4
+        self.assert_close(out_perspective, out_affine, atol=1e-4, rtol=1e-4)
+        self.assert_close(out_perspective, img)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_translation_align_corners(self, align_corners, device, dtype):
+        # Companion to TestWarpAffine::test_translation_align_corners: a whole-pixel translation
+        # must shift by exactly that many pixels under either convention.
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+        homo_ab = kornia.core.ops.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), align_corners=align_corners)
+        # No explicit tolerance: BaseTester's dtype-aware defaults are what makes this run at
+        # float16/bfloat16. Normalizing pixel coordinates into [-1, 1] only lands on pixel centres
+        # exactly when the scale is a power of two, so at half precision one convention or the other
+        # drifts depending on the size, and the sibling True-only pins are already half-precision
+        # manifest entries for that reason.
+        self.assert_close(img_a, expected)
 
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
@@ -571,6 +1235,120 @@ class TestWarpPerspective(BaseTester):
         self.assert_close(top_row_mean, fill_value)
         self.assert_close(first_col_mean, fill_value)
 
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    @pytest.mark.parametrize("fill_shape", ["default", "scalar", "one", "per_channel"])
+    def test_fill_keeps_channel_count_6021(self, channels, fill_shape, device, dtype):
+        # The default fill used to be zeros(3), which turned a one-channel image into three channels and failed
+        # on four; (C) and (1) fills are now accepted, as in warp_affine.
+        image = torch.rand(2, channels, 4, 5, device=device, dtype=dtype)
+        homography = kornia.core.ops.eye_like(3, image)
+        homography[..., 0, -1] += 2.0
+        fills = {
+            "default": None,
+            "scalar": torch.tensor(0.25, device=device, dtype=dtype),
+            "one": torch.tensor([0.25], device=device, dtype=dtype),
+            "per_channel": torch.linspace(0.1, 0.9, channels, device=device, dtype=dtype),
+        }
+        fill = fills[fill_shape]
+
+        out = kornia.geometry.warp_perspective(image, homography, (4, 5), padding_mode="fill", fill_value=fill)
+
+        assert out.shape == image.shape
+        expected = (
+            torch.zeros(channels, device=device, dtype=dtype) if fill is None else fill.reshape(-1).expand(channels)
+        )
+        self.assert_close(out[..., :2].mean(dim=(0, 2, 3)), expected)
+
+
+class TestFillValueChannels6021(BaseTester):
+    # A fill_value that does not broadcast to the warped image unchanged used to change it: a one-channel image came
+    # back with three channels, and other mismatches raised a raw broadcasting error.
+    @pytest.mark.parametrize(("channels", "fill_len"), [(1, 3), (4, 3), (3, 2)])
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_mismatched_fill_raises(self, channels, fill_len, op, device, dtype):
+        image = torch.rand(2, channels, 4, 5, device=device, dtype=dtype)
+        affine = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        fill = torch.full((fill_len,), 0.5, device=device, dtype=dtype)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        with pytest.raises(
+            ValueError, match=rf"shape \[{fill_len}\] does not broadcast .* one per channel \({channels}\)"
+        ):
+            warp(image, transform, (4, 5), padding_mode="fill", fill_value=fill)
+
+    @pytest.mark.parametrize("shape", [(2, 3, 1, 1), (2, 1, 1, 1), (2, 3, 4, 3), (1, 1, 4, 3), (3, 1, 1), (1, 3, 1, 1)])
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_broadcastable_fill(self, shape, op, device, dtype):
+        # Per-sample and per-pixel fills broadcast to the output without changing it, so they fill as given.
+        image = torch.rand(2, 3, 4, 3, device=device, dtype=dtype)
+        fill = torch.rand(shape, device=device, dtype=dtype)
+        affine = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        out = warp(image, transform, (4, 3), padding_mode="fill", fill_value=fill)
+
+        assert out.shape == image.shape
+        self.assert_close(out[..., :2], fill.expand(2, 3, 4, 3)[..., :2])
+
+    @pytest.mark.parametrize("shape", [(3, 1), (1, 2), (3, 3, 1, 1), (1, 1, 2, 2), (1, 2, 3, 1, 1)])
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_unbroadcastable_fill_raises(self, shape, op, device, dtype):
+        # (3, 1) and (1, 2) meet the spatial axes of a (4, 3) output; the others mismatch batch, size or rank.
+        image = torch.rand(2, 3, 4, 3, device=device, dtype=dtype)
+        affine = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        with pytest.raises(ValueError, match="does not broadcast to the warped image"):
+            warp(
+                image, transform, (4, 3), padding_mode="fill", fill_value=torch.rand(shape, device=device, dtype=dtype)
+            )
+
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_per_pixel_fill_with_empty_destination(self, op, device, dtype):
+        # The empty-destination path samples 1x1 stand-ins, so it checks the fill against the real output shape.
+        image = torch.rand(2, 3, 4, 3, device=device, dtype=dtype)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).repeat(2, 1, 1)
+        last_row = torch.tensor([[[0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        warp, transform = (
+            (kornia.geometry.warp_affine, affine)
+            if op == "warp_affine"
+            else (kornia.geometry.warp_perspective, torch.cat([affine, last_row], 1))
+        )
+
+        fill = torch.rand(2, 3, 0, 5, device=device, dtype=dtype)
+        assert warp(image, transform, (0, 5), padding_mode="fill", fill_value=fill).shape == (2, 3, 0, 5)
+        # A per-column fill must not broadcast the 1x1 stand-ins up to (B, C, 1, W); the gradient still reaches it.
+        fill = torch.rand(1, 1, 1, 5, device=device, dtype=dtype, requires_grad=True)
+        out = warp(image, transform, (0, 5), padding_mode="fill", fill_value=fill)
+        assert out.shape == (2, 3, 0, 5)
+        out.sum().backward()
+        assert fill.grad is not None
+        assert fill.grad.shape == fill.shape
+        with pytest.raises(ValueError, match="does not broadcast to the warped image"):
+            warp(image, transform, (0, 5), padding_mode="fill", fill_value=torch.rand(2, 3, 1, 4, device=device))
+
+    def test_random_affine_mismatched_fill_raises(self, device, dtype):
+        aug = kornia.augmentation.RandomAffine(
+            30.0, padding_mode="fill", fill_value=torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype), p=1.0
+        )
+        with pytest.raises(ValueError, match=r"shape \[3\] does not broadcast .* one per channel \(1\)"):
+            aug(torch.rand(2, 1, 8, 10, device=device, dtype=dtype))
+
 
 class TestRemap(BaseTester):
     def test_smoke(self, device, dtype):
@@ -581,6 +1359,94 @@ class TestRemap(BaseTester):
             input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
         self.assert_close(input_org, input_warped, rtol=1e-4, atol=1e-4)
+
+    def test_singleton_identity_with_default_align_corners(self, device, dtype):
+        image = torch.tensor([[[[4.0]]]], device=device, dtype=dtype)
+        pixel_grid = kornia.geometry.create_meshgrid(1, 1, normalized_coordinates=False, device=device, dtype=dtype)
+
+        actual = kornia.geometry.remap(image, pixel_grid[..., 0], pixel_grid[..., 1])
+
+        self.assert_close(actual, image, atol=0.0, rtol=0.0)
+
+    def test_wart_remap_identity_pixel_map_resamples_at_default_4504(self, device, dtype):
+        # remap normalizes pixel maps with the align_corners=True mapping whatever flag it passes to
+        # grid_sample, so at the default (None, i.e. False) an identity map does not reproduce the
+        # input (#4504). Flips once the normalization follows align_corners.
+        image = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        grid = kornia.geometry.create_meshgrid(4, 4, normalized_coordinates=False, device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.remap(image, grid[..., 0], grid[..., 1], align_corners=True), image)
+        assert not torch.allclose(kornia.geometry.remap(image, grid[..., 0], grid[..., 1]), image, atol=1.0)
+
+    @pytest.mark.parametrize("source_empty", [False, True])
+    def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):
+        _skip_if_mps_lacks_grid_sample_backward(device)
+        source_height = 0 if source_empty else 3
+        image = torch.empty(1, 2, source_height, 5, device=device, dtype=dtype, requires_grad=True)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+
+        output = kornia.geometry.remap(image, map_x, map_y)
+
+        assert output.shape == (1, 2, 0, 5)
+        output.sum().backward()
+        assert image.grad is not None
+        assert map_x.grad is not None
+        assert map_y.grad is not None
+
+    @pytest.mark.parametrize("map_shape", [(1, 0, 5), (1, 3, 0)])
+    def test_empty_maps_forward_runs_on_every_backend(self, map_shape, device, dtype):
+        """Empty maps must not hand ``grid_sample`` a zero-element grid."""
+        image = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
+        map_x = torch.zeros(*map_shape, device=device, dtype=dtype)
+        map_y = torch.zeros(*map_shape, device=device, dtype=dtype)
+
+        output = kornia.geometry.remap(image, map_x, map_y)
+
+        assert output.shape == (1, 2, map_shape[-2], map_shape[-1])
+        assert output.numel() == 0
+
+    def test_empty_maps_keep_grid_sample_validation(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.remap(image, map_x, map_y, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
+
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("map_dtype", [torch.float32, torch.float64, torch.int64])
+    @pytest.mark.parametrize("normalized_coordinates", [False, True])
+    def test_empty_maps_follow_nonempty_dtype_policy(self, image_dtype, map_dtype, normalized_coordinates, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        image = torch.zeros(1, 2, 4, 5, device=device, dtype=image_dtype)
+
+        def call(map_):
+            return kornia.geometry.remap(image, map_, map_, normalized_coordinates=normalized_coordinates)
+
+        empty_map = torch.zeros(1, 0, 5, device=device, dtype=map_dtype)
+        nonempty_map = torch.zeros(1, 1, 5, device=device, dtype=map_dtype)
+
+        # Empty maps must accept exactly what the non-empty pipeline accepts. Pixel maps are
+        # normalized first, so an integer map lifts into the default floating dtype (matching a
+        # float32 image, not a float64 one); already-normalized maps reach ``grid_sample``
+        # unchanged and must match the image dtype exactly.
+        empty_dtype = _output_dtype_or_none(lambda: call(empty_map))
+        assert empty_dtype == _output_dtype_or_none(lambda: call(nonempty_map))
+        if image_dtype == map_dtype:
+            # Guards the paired assertion above against passing vacuously on two failures.
+            assert empty_dtype == image_dtype
+            assert call(empty_map).shape == (1, 2, 0, 5)
+
+    def test_empty_source_with_nonempty_maps_raises(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 2, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 2, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="must be positive"):
+            kornia.geometry.remap(image, map_x, map_y)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4
@@ -732,3 +1598,725 @@ class TestInvertAffineTransform(BaseTester):
         actual = op_script(matrix)
         expected = op(matrix)
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+
+class TestGetPerspectiveTransformAutocast(BaseTester):
+    """A caller's autocast region does not reach get_perspective_transform (#6168)."""
+
+    def test_autocast_does_not_change_the_result_6168(self, device):
+        # Under bfloat16 autocast the closed form ran its products in bfloat16: the homography between the corners of
+        # a 640 x 480 image and four targets mapped those corners about 1.4 px off.
+        if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        src = torch.tensor([[[0.0, 0.0], [639.0, 0.0], [639.0, 479.0], [0.0, 479.0]]], device=device)
+        dst = torch.tensor([[[12.0, 7.0], [630.0, 15.0], [610.0, 470.0], [-5.0, 460.0]]], device=device)
+        expected = kornia.geometry.transform.get_perspective_transform(src, dst)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = kornia.geometry.transform.get_perspective_transform(src, dst)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        mapped = kornia.geometry.linalg.transform_points(actual, src)
+        self.assert_close(mapped, dst, atol=1e-3, rtol=0)
+
+    def test_still_scriptable_6168(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        src = torch.tensor([[[0.0, 0.0], [10.0, 0.0], [10.0, 8.0], [0.0, 8.0]]], device=device, dtype=dtype)
+        dst = torch.tensor([[[1.0, 0.5], [11.0, 1.0], [9.5, 8.5], [-0.5, 7.5]]], device=device, dtype=dtype)
+        scripted = torch.jit.script(kornia.geometry.transform.get_perspective_transform)
+        self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
+
+
+class TestWarpAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of warp_affine and warp_perspective (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _warp_inputs(op_name, device, dtype):
+        # A 25-degree rotation of a 256 px image: the normalized matrix needs more digits than half precision keeps.
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0))
+        center, angle, scale = torch.tensor([[127.5, 127.5]]), torch.tensor([25.0]), torch.ones(1, 2)
+        matrix = kornia.geometry.transform.get_rotation_matrix2d(center, angle, scale)
+        if op_name == "warp_perspective":
+            matrix = torch.cat([matrix, torch.tensor([[[1e-4, 0.0, 1.0]]])], dim=1)
+        return image.to(device=device, dtype=dtype), matrix.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _warp(op_name, image, matrix):
+        return getattr(kornia.geometry.transform, op_name)(image, matrix, (256, 256), align_corners=False)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # normalize_homography's matrix products ran in the autocast dtype: 0.55 off in bfloat16 for a float32 image of
+        # [0, 1] values, without a sign of it, as the output is still float32. A half image runs in float32 and got the
+        # same matrix. Autocast does not cast a float64 one, so its result never changed.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        image, matrix = self._warp_inputs(op_name, device, src_dtype)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # A half matrix from a model under AMP with a float32 image is a normal training setup. It ran its products in
+        # the autocast dtype, 0.38 off in bfloat16; autocast reconciled the operands, so leaving the region must too.
+        self._skip_unsupported(device, autocast_dtype)
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        image, matrix = image.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, image.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, image, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        matrix.requires_grad_()
+        expected = torch.autograd.grad(self._warp(op_name, image, matrix).sum(), matrix)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = self._warp(op_name, image, matrix)
+        actual = torch.autograd.grad(out.sum(), matrix)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_trace_in_a_region_6573(self, op_name, device):
+        # Tracing takes the other grid path, F.affine_grid or transform_points, both matrix products. A trace taken in
+        # the region recorded their half-precision casts, which stayed in the graph after the region.
+        self._skip_unsupported(device, "bfloat16")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=torch.bfloat16, cache_enabled=False):
+            traced = torch.jit.trace(lambda x, m: self._warp(op_name, x, m), (image, matrix), check_trace=False)
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(traced(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_still_scriptable_6573(self, op_name, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image = torch.rand(1, 2, 5, 6, device=device, dtype=dtype)
+        rows = 2 if op_name == "warp_affine" else 3
+        matrix = torch.eye(3, device=device, dtype=dtype)[None, :rows]
+        op = getattr(kornia.geometry.transform, op_name)
+        scripted = torch.jit.script(op)
+        self.assert_close(scripted(image, matrix, (4, 3)), op(image, matrix, (4, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_mixed_dtypes_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        half_matrix = matrix.to(getattr(torch, autocast_dtype))
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, half_matrix.float())
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, half_matrix)
+        assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        image, matrix = self._warp_inputs(op_name, device, torch.float32)
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, image, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, matrix)
+        assert actual.dtype == torch.float32
+        # A compiled or traced graph differs from eager by up to 4.1e-05, over the float32 default.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(image, matrix), expected, rtol=1e-3, atol=1e-3)
+
+
+class TestMatrixBuildersAutocast(BaseTester):
+    """A caller's autocast region does not reach the products of the affine matrix builders (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _builder(op_name, device, dtype):
+        # A centre far from the origin gives translation entries that need more digits than half precision keeps.
+        def tensor(*values):
+            return torch.tensor(values, device=device, dtype=dtype)
+
+        shear_a, shear_b = tensor(0.13), tensor(0.07)
+        center2, center3 = tensor([319.5, 239.5]), tensor([319.5, 239.5, 15.5])
+        angle2, angle3 = tensor(25.0), tensor([10.0, 20.0, 25.0])
+        scale2, scale3 = tensor([1.13, 0.87]), tensor([1.13, 0.87, 1.05])
+        move2, move3 = tensor([3.3, 1.7]), tensor([3.3, 1.7, 0.9])
+        transform = kornia.geometry.transform
+        builders = {
+            "get_rotation_matrix2d": lambda: transform.get_rotation_matrix2d(center2, angle2, scale2),
+            "get_affine_matrix2d": lambda: transform.get_affine_matrix2d(move2, center2, scale2, angle2),
+            "get_affine_matrix2d_shear": lambda: transform.get_affine_matrix2d(
+                move2, center2, scale2, angle2, shear_a, shear_b
+            ),
+            "get_projective_transform": lambda: transform.get_projective_transform(center3, angle3, scale3),
+            "get_affine_matrix3d": lambda: transform.get_affine_matrix3d(move3, center3, scale3, angle3),
+            "get_affine_matrix3d_shear": lambda: transform.get_affine_matrix3d(
+                move3, center3, scale3, angle3, shear_a, shear_b, shear_a, shear_b, shear_a, shear_b
+            ),
+        }
+        return builders[op_name], angle2 if "2d" in op_name else angle3
+
+    @staticmethod
+    def _shear_builder(op_name, device):
+        def build(dtype, shear_dtype, promote=False):
+            def tensor(values, value_dtype=dtype):
+                return torch.tensor([values], device=device, dtype=torch.float32).to(value_dtype)
+
+            first, second = tensor(0.13, shear_dtype), tensor(0.07, shear_dtype)
+            if promote:
+                first, second = first.float(), second.float()
+            transform = kornia.geometry.transform
+            if op_name == "get_affine_matrix2d":
+                center, scale, angle = tensor([319.5, 239.5]), tensor([1.13, 0.87]), tensor(25.0)
+                return transform.get_affine_matrix2d(tensor([3.3, 1.7]), center, scale, angle, first, second)
+            center, scale, angle = tensor([319.5, 239.5, 15.5]), tensor([1.13, 0.87, 1.05]), tensor([10.0, 20.0, 25.0])
+            shears = (first, second, first, second, first, second)
+            return transform.get_affine_matrix3d(tensor([3.3, 1.7, 0.9]), center, scale, angle, *shears)
+
+        return build
+
+    _builders = (
+        "get_rotation_matrix2d",
+        "get_affine_matrix2d",
+        "get_affine_matrix2d_shear",
+        "get_projective_transform",
+        "get_affine_matrix3d",
+        "get_affine_matrix3d_shear",
+    )
+
+    @pytest.mark.parametrize("op_name", _builders)
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_matrix_6573(self, op_name, src_dtype, autocast_dtype, device):
+        # The matrix products ran in the autocast dtype and the matrix came back in it: in bfloat16, a rotation about
+        # the center of a 640 x 480 image moved its corner by about 1 px, and rotate, scale and the affine
+        # augmentations warped by that matrix.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        if (
+            device.type == "cpu"
+            and src_dtype in (torch.float16, torch.bfloat16)
+            and src_dtype != getattr(torch, autocast_dtype)
+        ):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build, _ = self._builder(op_name, device, src_dtype)
+        expected = build()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build()
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("shear_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_half_shear_with_float32_center_in_a_region_6573(self, op_name, shear_dtype, autocast_dtype, device):
+        # Autocast cast both sides of the shear product, so half shears with a float32 center ran; they meet in float32.
+        self._skip_unsupported(device, autocast_dtype)
+        shear_dtype = getattr(torch, shear_dtype)
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float32, shear_dtype, promote=True)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(torch.float32, shear_dtype)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
+    @pytest.mark.parametrize("center_dtype", [torch.bfloat16, torch.float16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_float32_shear_with_half_center_in_a_region_6573(self, op_name, center_dtype, autocast_dtype, device):
+        # The reverse mismatch raised under the guard, while the base ran it in the autocast dtype.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("the reference is in float64, which MPS does not support")
+        if device.type == "cpu" and center_dtype != getattr(torch, autocast_dtype):
+            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
+        build = self._shear_builder(op_name, device)
+        expected = build(torch.float64, torch.float64)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = build(center_dtype, torch.float32)
+        assert actual.dtype == torch.float32
+        # The rotation part is still built in the half dtype of its inputs, as outside autocast.
+        self.assert_close(actual.double(), expected, rtol=0, atol=2.0)
+
+    @pytest.mark.parametrize("op_name", _builders)
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        build, angle = self._builder(op_name, device, torch.float32)
+        angle.requires_grad_()
+        expected = torch.autograd.grad(build().sum(), angle)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = build()
+        actual = torch.autograd.grad(out.sum(), angle)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    @pytest.mark.parametrize("op_name", ["get_rotation_matrix2d", "get_affine_matrix2d_shear"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        build, _ = self._builder(op_name, device, torch.float32)
+        expected = build()
+        op = torch_optimizer(build)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op()
+        assert actual.dtype == torch.float32
+        # A compiled graph differs from eager by up to 6.1e-05 on entries near 200, inside the float32 default's
+        # relative tolerance; this keeps the tolerance of the 2D warps, which need it.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+
+
+class TestGetTranslationMatrix2d(BaseTester):
+    @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
+    def test_rejects_unsupported_shape(self, shape, device, dtype):
+        # (2,) used to give two matrices, one per component, and (1,) one matrix with dx = dy.
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.get_translation_matrix2d(torch.ones(shape, device=device, dtype=dtype))
+
+    def test_unbatched_translation_is_not_read_as_two_matrices(self, device, dtype):
+        with pytest.raises(ShapeError, match="batch dimension"):
+            kornia.geometry.transform.get_translation_matrix2d(torch.tensor([1.0, 2.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_batch(self, batch, device, dtype):
+        translations = torch.stack(
+            (
+                torch.arange(batch, device=device, dtype=dtype) + 1.0,
+                -2.0 * torch.arange(batch, device=device, dtype=dtype),
+            ),
+            dim=-1,
+        )  # (B, 2)
+        matrix = kornia.geometry.transform.get_translation_matrix2d(translations)
+        assert matrix.shape == (batch, 3, 3)
+
+        expected = torch.eye(3, device=device, dtype=dtype).repeat(batch, 1, 1)
+        expected[:, :2, 2] = translations
+        self.assert_close(matrix, expected)
+
+
+class TestWarpOnePixelSourceAxis6433(BaseTester):
+    """A one-pixel source axis is sampled like a longer one, under ``align_corners=True`` too (#6433)."""
+
+    ROW = (1.0, 2.0, 3.0, 4.0)
+
+    @staticmethod
+    def _matrix(op_name, shift_x, shift_y, device, dtype):
+        matrix = torch.eye(3, device=device, dtype=dtype)[None].repeat(len(shift_y), 1, 1)
+        matrix[:, 0, 2] = torch.tensor(shift_x, device=device, dtype=dtype)
+        matrix[:, 1, 2] = torch.tensor(shift_y, device=device, dtype=dtype)
+        return matrix[:, :2] if op_name == "warp_affine" else matrix
+
+    def _row(self, device, dtype):
+        return torch.tensor(self.ROW, device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    # Expected rows by hand. A shift of s samples the source at y = -s: bilinear weighs the only row by 1 - |s| and the
+    # padding by |s|, zeros and fill add that padding, border and reflection read the only row again.
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize(
+        ("padding_mode", "shift", "expected"),
+        [
+            ("zeros", 0.0, [1.0, 2.0, 3.0, 4.0]),
+            ("zeros", 1.0, [0.0, 0.0, 0.0, 0.0]),
+            ("zeros", -1.0, [0.0, 0.0, 0.0, 0.0]),
+            ("zeros", 0.5, [0.5, 1.0, 1.5, 2.0]),
+            ("zeros", -0.5, [0.5, 1.0, 1.5, 2.0]),
+            ("fill", 1.0, [9.0, 9.0, 9.0, 9.0]),
+            ("fill", -1.0, [9.0, 9.0, 9.0, 9.0]),
+            ("fill", 0.5, [5.0, 5.5, 6.0, 6.5]),
+            ("border", 1.0, [1.0, 2.0, 3.0, 4.0]),
+            ("border", -0.5, [1.0, 2.0, 3.0, 4.0]),
+            ("reflection", 1.0, [1.0, 2.0, 3.0, 4.0]),
+            ("reflection", -0.5, [1.0, 2.0, 3.0, 4.0]),
+        ],
+    )
+    def test_convention_padding_along_the_axis(self, op_name, padding_mode, shift, expected, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        fill = torch.tensor([9.0], device=device, dtype=dtype) if padding_mode == "fill" else None
+        matrix = self._matrix(op_name, [0.0], [shift], device, dtype)
+        out = warp(self._row(device, dtype), matrix, (1, 4), padding_mode=padding_mode, fill_value=fill)
+        self.assert_close(out, torch.tensor(expected, device=device, dtype=dtype).reshape(1, 1, 1, 4))
+        assert out.dtype == dtype
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize(("shift", "expected"), [(0.25, 1.0), (-0.25, 1.0), (0.75, 0.0), (-0.75, 0.0), (1.0, 0.0)])
+    def test_convention_nearest_along_the_axis(self, op_name, shift, expected, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.0], [shift], device, dtype)
+        out = warp(self._row(device, dtype), matrix, (1, 4), mode="nearest")
+        self.assert_close(out, expected * self._row(device, dtype))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_convention_one_pixel_column(self, op_name, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        column = self._row(device, dtype).transpose(-1, -2)
+        shifted = warp(column, self._matrix(op_name, [1.0], [0.0], device, dtype), (4, 1))
+        self.assert_close(shifted, torch.zeros_like(column))
+        half = warp(column, self._matrix(op_name, [0.5], [0.0], device, dtype), (4, 1))
+        self.assert_close(half, 0.5 * column)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_convention_output_larger_than_the_axis(self, op_name, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, dtype)
+        zero = torch.zeros_like(row)
+        out = warp(row, self._matrix(op_name, [0.0], [1.0], device, dtype), (3, 4))
+        self.assert_close(out, torch.cat((zero, row, zero), dim=-2))
+        border = warp(row, self._matrix(op_name, [0.0], [1.0], device, dtype), (3, 4), padding_mode="border")
+        self.assert_close(border, torch.cat((row, row, row), dim=-2))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize(
+        ("shift", "expected"), [((0.0, 0.0), 5.0), ((1.0, 0.0), 0.0), ((0.0, 1.0), 0.0), ((0.5, 0.5), 1.25)]
+    )
+    def test_convention_one_pixel_in_both_axes(self, op_name, shift, expected, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        pixel = torch.full((1, 1, 1, 1), 5.0, device=device, dtype=dtype)
+        out = warp(pixel, self._matrix(op_name, [shift[0]], [shift[1]], device, dtype), (1, 1))
+        self.assert_close(out, torch.full_like(pixel, expected))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    def test_convention_batch_of_different_matrices(self, op_name, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, dtype)
+        matrix = self._matrix(op_name, [0.0, 0.0, 0.0], [0.0, 1.0, 0.5], device, dtype)
+        out = warp(row.repeat(3, 1, 1, 1), matrix, (1, 4))
+        self.assert_close(out, torch.cat((row, 0 * row, 0.5 * row)))
+
+    def test_convention_shared_affine_serves_the_batch(self, device, dtype):
+        rows = torch.cat((self._row(device, dtype), 2 * self._row(device, dtype)))
+        matrix = self._matrix("warp_affine", [0.0], [0.5], device, dtype)
+        out = kornia.geometry.transform.warp_affine(rows, matrix, (1, 4))
+        self.assert_close(out, 0.5 * rows)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize(
+        ("padding_mode", "second_row"), [("zeros", "zeros"), ("border", "same"), ("reflection", "same")]
+    )
+    def test_matches_a_two_row_image(self, op_name, mode, padding_mode, second_row, device, dtype):
+        # The only row is the first of two: one whose second row holds the padding of the axis. It samples at the same
+        # pixel positions, including those above the first row, so it is the same warp, not one that merely looks close.
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, dtype)
+        two_rows = torch.cat((row, torch.zeros_like(row) if second_row == "zeros" else row), dim=-2)
+        matrix = torch.tensor(
+            [
+                [[0.9, 0.2, 0.3], [0.1, 1.1, 0.4], [0.0, 0.0, 1.0]],
+                [[1.0, 0.0, -0.3], [-0.2, 0.8, -0.6], [0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        matrix = matrix[:, :2] if op_name == "warp_affine" else matrix
+        kwargs = {"mode": mode, "padding_mode": padding_mode}
+        actual = warp(row.repeat(2, 1, 1, 1), matrix, (3, 5), **kwargs)
+        expected = warp(two_rows.repeat(2, 1, 1, 1), matrix, (3, 5), **kwargs)
+        # Border and reflection keep the single row, so they agree up to the rounding of interpolating two equal rows.
+        tolerance = {"atol": 0.0, "rtol": 0.0} if padding_mode == "zeros" else {}
+        self.assert_close(actual, expected, **tolerance)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "fill"])
+    def test_matches_align_corners_false(self, op_name, padding_mode, device, dtype):
+        # The setting the issue names as the expected result. Reflection along the longer axis mirrors differently by
+        # design, and only a tie differs in nearest mode, so this compares bilinear under the other modes.
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, dtype)
+        matrix = self._matrix(op_name, [0.3], [0.4], device, dtype)
+        fill = torch.tensor([9.0], device=device, dtype=dtype) if padding_mode == "fill" else None
+        kwargs = {"padding_mode": padding_mode, "fill_value": fill}
+        actual = warp(row, matrix, (3, 5), align_corners=True, **kwargs)
+        self.assert_close(actual, warp(row, matrix, (3, 5), align_corners=False, **kwargs), low_tolerance=True)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize(
+        ("padding_mode", "shift", "expected"),
+        [("zeros", 1.0, 0.0), ("zeros", 0.5, 0.5), ("border", 1.0, 1.0), ("fill", 1.0, 0.0)],
+    )
+    def test_align_corners_false_is_unchanged(self, op_name, padding_mode, shift, expected, device, dtype):
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, dtype)
+        matrix = self._matrix(op_name, [0.0], [shift], device, dtype)
+        out = warp(row, matrix, (1, 4), padding_mode=padding_mode, align_corners=False)
+        self.assert_close(out, expected * row)
+
+    @pytest.mark.parametrize("padding_mode", ["border", "reflection"])
+    def test_border_and_reflection_leave_the_source_alone(self, padding_mode, device, dtype):
+        # Outside the axis they read the pixel every sample lands on, so they need no pad, nor its kernels.
+        row = self._row(device, dtype)
+        assert kornia.geometry.transform.imgwarp._pad_one_pixel_axes(row, padding_mode) is row
+
+    @pytest.mark.parametrize("padding_mode", ["border", "reflection"])
+    @pytest.mark.parametrize("cached", [False, True])
+    def test_cpu_float16_pixel_homography(self, padding_mode, cached, device):
+        # torch 2.5.1 has no float16 CPU replication_pad2d, and the half image reaches the padding here: a hardcoded
+        # float16, because no CI job runs that torch at that dtype.
+        if device.type != "cpu":
+            pytest.skip("the missing kernel is on the CPU")
+        row = self._row(device, torch.float16)
+        homography = torch.eye(3, device=device, dtype=torch.float16)[None]
+        homography[0, 1, 2] = 0.5
+        warper = kornia.geometry.transform.HomographyWarper(
+            1, 4, padding_mode=padding_mode, normalized_coordinates=False, align_corners=True
+        )
+        if cached:
+            warper.precompute_warp_grid(homography)
+        self.assert_close(warper(row) if cached else warper(row, homography), row)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    @pytest.mark.parametrize("shape", [(1, 2, 0, 4), (1, 2, 4, 0), (1, 2, 0, 0), (1, 2, 0, 1), (1, 2, 1, 0)])
+    def test_trace_of_an_ordinary_image_rejects_an_empty_axis(self, op_name, padding_mode, shape, device):
+        # The pad must keep the axis empty: a pad of 2 there made a nonempty source and returned the padding.
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2], [0.6], device, torch.float32)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (3, 4), padding_mode=padding_mode)
+
+        traced = torch.jit.trace(Warp(), (torch.rand(1, 2, 5, 6, device=device), matrix), check_trace=False)
+        with pytest.raises(RuntimeError):
+            traced(torch.zeros(shape, device=device), matrix)
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
+    @pytest.mark.parametrize("strict", [False, True])
+    def test_dynamic_export_rejects_an_empty_axis(self, op_name, padding_mode, strict, device):
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2], [0.6], device, torch.float32)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (3, 4), padding_mode=padding_mode)
+
+        dims = {2: torch.export.Dim("H", min=0, max=64), 3: torch.export.Dim("W", min=0, max=64)}
+        program = torch.export.export(
+            Warp(),
+            (torch.rand(1, 2, 5, 6, device=device), matrix),
+            dynamic_shapes={"image": dims, "transform": {}},
+            strict=strict,
+        ).module()
+        with pytest.raises(RuntimeError):
+            program(torch.zeros(1, 2, 0, 4, device=device), matrix)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    def test_capture_keeps_a_zero_channel_source(self, op_name, padding_mode, device):
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2, 0.2], [0.6, 0.6], device, torch.float32)
+        source = torch.zeros(2, 0, 1, 4, device=device)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (3, 4), padding_mode=padding_mode)
+
+        traced = torch.jit.trace(Warp(), (torch.rand(2, 2, 5, 6, device=device), matrix), check_trace=False)
+        assert traced(source, matrix).shape == (2, 0, 3, 4)
+        if dynamic_export_is_available():
+            dim = torch.export.Dim
+            dims = {1: dim("C", min=0, max=8), 2: dim("H", min=1, max=64), 3: dim("W", min=1, max=64)}
+            program = torch.export.export(
+                Warp(), (torch.rand(2, 2, 5, 6, device=device), matrix), dynamic_shapes={"image": dims, "transform": {}}
+            ).module()
+            assert program(source, matrix).shape == (2, 0, 3, 4)
+
+    def test_error_about_an_empty_source_names_its_size(self, device, dtype):
+        matrix = self._matrix("warp_perspective", [0.0], [0.0], device, dtype)
+        source = torch.zeros(1, 2, 0, 1, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="height=0, width=1"):
+            kornia.geometry.transform.warp_perspective(source, matrix, (3, 4))
+
+    @pytest.mark.parametrize("shape", [(0, 1, 1, 4), (2, 0, 1, 4)])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    def test_empty_source_keeps_its_shape(self, shape, padding_mode, device, dtype):
+        # grid_sample accepts an empty batch and a zero channel axis, so the warp does too.
+        src = torch.zeros(shape, device=device, dtype=dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None].repeat(shape[0], 1, 1)
+        fill = torch.zeros(shape[1], device=device, dtype=dtype) if padding_mode == "fill" else None
+        out = kornia.geometry.transform.warp_perspective(
+            src, matrix, (3, 4), padding_mode=padding_mode, fill_value=fill
+        )
+        assert out.shape == (shape[0], shape[1], 3, 4)
+
+    @pytest.mark.parametrize("wrt", ["src", "matrix"])
+    def test_gradcheck(self, wrt, device):
+        row = self._row(device, torch.float64)
+        matrix = self._matrix("warp_affine", [0.1], [0.3], device, torch.float64)
+        row.requires_grad_(wrt == "src")
+        matrix.requires_grad_(wrt == "matrix")
+        self.gradcheck(kornia.geometry.transform.warp_affine, (row, matrix, (2, 3)))
+
+    def test_gradient_reaches_the_matrix_along_the_axis(self, device, dtype):
+        # The old repetition left the shift along the axis without any gradient.
+        row = self._row(device, dtype)
+        matrix = self._matrix("warp_affine", [0.0], [0.3], device, dtype).requires_grad_()
+        kornia.geometry.transform.warp_affine(row, matrix, (1, 4)).sum().backward()
+        assert matrix.grad[0, 1, 2].abs() > 0
+
+    def test_longer_axes_are_not_copied(self, device, dtype):
+        # The hot path: no pad, not even an empty one, which would copy the image.
+        src = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
+        assert kornia.geometry.transform.imgwarp._pad_one_pixel_axes(src, "zeros") is src
+        volume = torch.zeros(1, 1, 2, 3, 2, device=device, dtype=dtype)
+        assert kornia.geometry.transform.imgwarp._pad_one_pixel_axes(volume, "border") is volume
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective", "warp_affine3d", "warp_perspective3d"])
+    def test_align_corners_false_leaves_the_source_alone(self, op_name, monkeypatch, device, dtype):
+        def unexpected(*_):
+            raise AssertionError("align_corners=False must not pad")
+
+        monkeypatch.setattr("kornia.geometry.transform.imgwarp._pad_one_pixel_axes", unexpected)
+        warp = getattr(kornia.geometry.transform, op_name)
+        volume = op_name.endswith("3d")
+        src = torch.ones(1, 1, 1, 1, 1, device=device, dtype=dtype) if volume else self._row(device, dtype)
+        rows = 3 if op_name == "warp_affine3d" else 4 if volume else 2 if op_name == "warp_affine" else 3
+        matrix = torch.eye(4 if volume else 3, device=device, dtype=dtype)[None][:, :rows]
+        warp(src, matrix, (1, 1, 1) if volume else (1, 4), align_corners=False)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    def test_script(self, op_name, padding_mode, device):
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, torch.float32)
+        matrix = self._matrix(op_name, [0.0], [0.5], device, torch.float32)
+        scripted = torch.jit.script(warp)
+        out = scripted(row, matrix, (1, 4), padding_mode=padding_mode)
+        self.assert_close(out, warp(row, matrix, (1, 4), padding_mode=padding_mode), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    @pytest.mark.parametrize(
+        ("trace_shape", "runtime_shape"), [((5, 6), (1, 6)), ((1, 6), (5, 6)), ((5, 1), (5, 6)), ((5, 6), (1, 1))]
+    )
+    def test_trace_keeps_the_decision(self, op_name, padding_mode, trace_shape, runtime_shape, device):
+        # A traced graph holds the size test, so it warps a size the trace did not see as eager does.
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2], [0.6], device, torch.float32)
+        example = torch.rand(1, 2, *trace_shape, device=device)
+        runtime = torch.rand(1, 2, *runtime_shape, device=device)
+        kwargs = {"padding_mode": padding_mode}
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (3, 4), **kwargs)
+
+        traced = torch.jit.trace(Warp(), (example, matrix), check_trace=False)
+        self.assert_close(traced(runtime, matrix), warp(runtime, matrix, (3, 4), **kwargs), low_tolerance=True)
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    @pytest.mark.parametrize("strict", [False, True])
+    def test_dynamic_export_has_no_guard_on_the_size(self, op_name, padding_mode, strict, device):
+        # A Python test of the size would be a guard of the exported program, which would reject the other side of it.
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2], [0.6], device, torch.float32)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (3, 4), padding_mode=padding_mode)
+
+        dims = {2: torch.export.Dim("H", min=1, max=64), 3: torch.export.Dim("W", min=1, max=64)}
+        program = torch.export.export(
+            Warp(),
+            (torch.rand(1, 2, 5, 6, device=device), matrix),
+            dynamic_shapes={"image": dims, "transform": {}},
+            strict=strict,
+        ).module()
+        for shape in [(1, 6), (5, 1), (1, 1), (5, 6), (7, 9)]:
+            runtime = torch.rand(1, 2, *shape, device=device)
+            expected = warp(runtime, matrix, (3, 4), padding_mode=padding_mode)
+            self.assert_close(program(runtime, matrix), expected, low_tolerance=True)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("strict", [False, True])
+    def test_static_export_of_a_one_pixel_source(self, op_name, strict, device):
+        warp = getattr(kornia.geometry.transform, op_name)
+        row = self._row(device, torch.float32)
+        matrix = self._matrix(op_name, [0.0], [1.0], device, torch.float32)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return warp(image, transform, (1, 4))
+
+        program = torch.export.export(Warp(), (row, matrix), strict=strict).module()
+        self.assert_close(program(row, matrix), torch.zeros_like(row))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_static_export_of_longer_axes_holds_no_pad_of_the_image(self, device):
+        image = torch.rand(1, 2, 3, 4, device=device)
+        matrix = self._matrix("warp_affine", [0.0], [1.0], device, torch.float32)
+
+        class Warp(torch.nn.Module):
+            def forward(self, image, transform):
+                return kornia.geometry.transform.warp_affine(image, transform, (3, 4))
+
+        program = torch.export.export(Warp(), (image, matrix), strict=False)
+        image_node = program.graph_signature.input_specs[0].arg.name
+        pads = [node for node in program.graph.nodes if "pad" in node.name and node.args[0].name == image_node]
+        assert not pads
+
+    @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
+    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
+        warp = getattr(kornia.geometry.transform, op_name)
+        matrix = self._matrix(op_name, [0.2], [0.6], device, dtype)
+
+        def op(image, transform):
+            return warp(image, transform, (3, 4), padding_mode=padding_mode)
+
+        compiled = torch_optimizer(op)
+        for shape in [(1, 4), (4, 1), (1, 1), (5, 6)]:
+            image = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+            self.assert_close(compiled(image, matrix), op(image, matrix))

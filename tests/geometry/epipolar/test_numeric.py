@@ -20,8 +20,10 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
+from testing.two_view import two_view_scene
 
 
 class TestSkewSymmetric(BaseTester):
@@ -72,6 +74,12 @@ class TestSkewSymmetric(BaseTester):
         vec = torch.ones(2, 3, device=device, requires_grad=True, dtype=torch.float64)
         assert self.gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.parametrize("shape", [(1, 4), ()])
+    def test_wrong_last_dim_raises_6454(self, shape, device, dtype):
+        # A last dimension other than 3 raised a bare AssertionError, and a 0-d tensor an IndexError.
+        with pytest.raises(ShapeError, match=r"x must have shape \(\*, 3\), got \["):
+            epi.cross_product_matrix(torch.rand(shape, device=device, dtype=dtype))
+
 
 class TestEyeLike:
     def test_smoke(self, device, dtype):
@@ -107,3 +115,18 @@ class TestVecLike:
         assert vec.shape == (B, N, 1)
         assert vec.device == image.device
         assert vec.dtype == image.dtype
+
+
+class TestConventionCrossProductMatrix(BaseTester):
+    def test_convention_cross_product_matrix_equals_vector_to_skew_symmetric_matrix(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        v = two_view["X"][0]  # (12, 3), no two entries equal
+        M = epi.cross_product_matrix(v)
+        # The same matrix as kornia.geometry.conversions.vector_to_skew_symmetric_matrix, to the bit.
+        assert torch.equal(M, kornia.geometry.conversions.vector_to_skew_symmetric_matrix(v))
+        # Skew-symmetric, with [v]x w = v x w (the transposed matrix would give w x v).
+        assert torch.equal(M.transpose(-2, -1), -M)
+        w = two_view["t"][0, :, 0].expand_as(v)
+        self.assert_close((M @ w[..., None])[..., 0], torch.linalg.cross(v, w, dim=-1), low_tolerance=True)
+        # Any number of leading dims.
+        assert epi.cross_product_matrix(two_view["X"].reshape(2, 2, 3, 3)).shape == (2, 2, 3, 3, 3)

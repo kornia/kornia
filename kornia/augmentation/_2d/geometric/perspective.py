@@ -22,20 +22,22 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 
 
 class RandomPerspective(GeometricAugmentationBase2D):
-    r"""Apply a random perspective transformation to an image torch.Tensor with a given probability.
+    r"""Warp images with a random perspective transformation, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomPerspective.png
+    ``output = RandomPerspective(distortion_scale, ...)(input)`` applies a projective warp to selected images of
+    shape ``(B, C, H, W)``.
 
     Args:
         distortion_scale: the degree of distortion, ranged from 0 to 1.
         resample: the interpolation method to use.
         same_on_batch: apply the same transformation across the batch. Default: False.
         align_corners: interpolation flag.
-        p: probability of the image being perspectively transformed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
         sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``
@@ -44,11 +46,29 @@ class RandomPerspective(GeometricAugmentationBase2D):
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+          The source corners are ``(0, 0)``, ``(W - 1, 0)``, ``(W - 1, H - 1)`` and ``(0, H - 1)``;
+          ``transform_matrix`` maps them to the sampled destination corners.
+        - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
+          samples each coordinate in both directions over the same extent.
+        - with ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the warp is an identity up to numerical precision
+          for either ``align_corners``.
+        - a spatial dimension of 1 is not distorted: its source corners span a unit extent instead of ``0`` and
+          its offsets are zero, so the single row or column maps onto itself and only the other axis is warped.
+          At ``distortion_scale=0`` this is the identity.
 
     .. note::
-        This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
+        This function internally uses :func:`kornia.geometry.transform.warp_perspective`.
+
+    .. image:: _static/img/RandomPerspective.png
+
+    See Also:
+        - :class:`RandomAffine`: samples an affine rather than projective transform.
+        - :class:`RandomPerspective3D`: applies a projective warp to volumes.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -58,13 +78,13 @@ class RandomPerspective(GeometricAugmentationBase2D):
         >>> aug = RandomPerspective(0.5, p=0.5)
         >>> out = aug(inputs)
         >>> out
-        tensor([[[[0.0000, 0.2289, 0.0000],
-                  [0.0000, 0.4800, 0.0000],
+        tensor([[[[0.2795, 0.3852, 0.0000],
+                  [0.0000, 0.6243, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
         >>> aug.inverse(out)
-        tensor([[[[0.0500, 0.0961, 0.0000],
-                  [0.2011, 0.3144, 0.0000],
-                  [0.0031, 0.0130, 0.0053]]]])
+        tensor([[[[0.3417, 0.3022, 0.0436],
+                  [0.3767, 0.4769, 0.1879],
+                  [0.1434, 0.1958, 0.1091]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
@@ -92,7 +112,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
+        start_points = _to_device_nonblocking(params["start_points"], input.device, input.dtype)
+        end_points = _to_device_nonblocking(params["end_points"], input.device, input.dtype)
+        return get_perspective_transform(start_points, end_points)
 
     def apply_transform(
         self,

@@ -27,6 +27,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SAME_SIZE
+
 from .config import SigLip2Config
 from .text_encoder import SigLip2TextModel
 from .vision_encoder import SigLip2VisionModel
@@ -136,7 +138,9 @@ class SigLip2Model(nn.Module):
 
         Args:
             pixel_values: Input images of shape (batch_size, num_channels, height, width).
-            attention_mask: Optional attention mask for vision encoder of shape (batch_size, seq_len).
+            attention_mask: Optional mask of the patches for the vision encoder and its pooling head, ``1``/``True``
+                for a patch to keep: (batch_size, num_patches), or the 3-D and 4-D forms ``SigLip2VisionModel``
+                accepts.
             normalize: Whether to normalize the output features.
 
         Returns:
@@ -193,6 +197,7 @@ class SigLip2Model(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         return_loss: bool = False,
+        pixel_attention_mask: Optional[torch.Tensor] = None,
     ) -> SigLip2Result:
         """Forward pass.
 
@@ -201,7 +206,11 @@ class SigLip2Model(nn.Module):
             input_ids: Token IDs of shape (batch_size, seq_len).
             attention_mask: Optional attention mask for text encoder of shape (batch_size, seq_len).
             position_ids: Optional position IDs for text encoder.
-            return_loss: Whether to compute and return contrastive loss.
+            return_loss: Whether to compute and return the pairwise sigmoid loss. It pairs the ``i``-th image with the
+                ``i``-th text, so it needs as many images as texts.
+            pixel_attention_mask: Optional mask of the image patches for the vision encoder and its pooling head,
+                ``1``/``True`` for a patch to keep, in any form ``SigLip2VisionModel`` accepts (see
+                :meth:`get_image_features`), as transformers' ``Siglip2Model.forward`` takes it.
 
         Returns:
             SigLip2Result containing:
@@ -210,10 +219,20 @@ class SigLip2Model(nn.Module):
             - logit_scale: Logit scale parameter
             - logits_per_image: Logits for image-to-text matching (if both provided)
             - logits_per_text: Logits for text-to-image matching (if both provided)
-            - loss: Contrastive loss (if return_loss=True and both provided)
+            - loss: The SigLIP pairwise sigmoid loss over all ``B x B`` pairs, with the ``i``-th image and the ``i``-th
+              text as the only matching pairs, ``-logsigmoid((2 I - 1) * logits_per_text).sum(-1).mean()`` (if
+              return_loss=True and both provided)
+
+        Raises:
+            BaseError: if ``return_loss`` is True and the numbers of images and texts differ. Without the loss,
+                unequal batches are fine: ``logits_per_image`` is then ``(num_images, num_texts)``.
         """
         # get embeddings
-        image_embeds = self.get_image_features(pixel_values, normalize=True) if pixel_values is not None else None
+        image_embeds = (
+            self.get_image_features(pixel_values, attention_mask=pixel_attention_mask, normalize=True)
+            if pixel_values is not None
+            else None
+        )
         text_embeds = (
             self.get_text_features(input_ids, attention_mask=attention_mask, position_ids=position_ids, normalize=True)
             if input_ids is not None
@@ -230,13 +249,16 @@ class SigLip2Model(nn.Module):
             logits_per_text = torch.matmul(text_embeds, image_embeds.t()) * logit_scale + self.logit_bias
             logits_per_image = logits_per_text.t()
 
-            # compute loss if requested for training or evaluation
+            # pairwise sigmoid loss (SigLIP paper, eq. 1; transformers' SiglipModel): every image-text pair enters,
+            # the matching pairs on the diagonal labelled +1 and every other pair -1
             if return_loss:
-                batch_size = image_embeds.shape[0]
-                labels = torch.arange(batch_size, device=image_embeds.device)
-                loss_img = -F.logsigmoid(logits_per_image[labels, labels]).mean()
-                loss_txt = -F.logsigmoid(logits_per_text[labels, labels]).mean()
-                loss = (loss_img + loss_txt) / 2.0
+                KORNIA_CHECK_SAME_SIZE(
+                    image_embeds,
+                    text_embeds,
+                    msg="return_loss pairs the i-th image with the i-th text, so it needs as many images as texts.",
+                )
+                eye = torch.eye(logits_per_text.shape[0], device=logits_per_text.device, dtype=logits_per_text.dtype)
+                loss = -F.logsigmoid((2 * eye - 1) * logits_per_text).sum(-1).mean()
 
         return SigLip2Result(
             image_embeds=image_embeds,

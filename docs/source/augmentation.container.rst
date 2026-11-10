@@ -2,21 +2,26 @@ Augmentation Containers
 =======================
 
 .. meta::
-   :name: description
-   :content: "The Augmentation Containers module in Kornia provides advanced frameworks for building augmentation pipelines. It includes classes like AugmentationSequential, ManyToManyAugmentationDispatcher, and VideoSequential for managing data formats such as images, videos, and temporal data. It also supports processing masks, bounding boxes, and keypoints in augmentation workflows."
+   :description: The Augmentation Containers module in Kornia provides advanced frameworks for building augmentation pipelines. It includes classes like AugmentationSequential, ManyToManyAugmentationDispather, and VideoSequential for managing data formats such as images, videos, and temporal data. It also supports processing masks, bounding boxes, and keypoints in augmentation workflows.
 
 .. currentmodule:: kornia.augmentation.container
 
-The classes in this section are containers for augmenting different data formats (e.g. images, videos).
+Containers chain augmentations into one pipeline. Use :class:`AugmentationSequential` when masks, boxes or keypoints
+must follow the image, and :class:`ImageSequential` for images alone. :class:`VideoSequential` applies image
+transforms to every frame of a video, and :class:`PatchSequential` to every patch of an image grid. The dispatchers
+run several pipelines, either all on one input or each on its own input.
 
 
 Augmentation Sequential
 -----------------------
 
-Kornia augmentations provides simple on-device augmentation framework with the support of various syntax sugars
-(e.g. return transformation matrix, inverse geometric transform). Therefore, we provide advanced augmentation
-container to ease the pain of building augmenation pipelines. This API would also provide predefined routines
-for automating the processing of masks, bounding boxes, and keypoints.
+``AugmentationSequential`` samples its parameters once per call and applies them to every input named in
+``data_keys``: images, masks, boxes and keypoints. It records the draw for replay, composes the matrices of its
+geometric steps, and undoes the 2D matrix-based ones with ``inverse()``. Keypoints and
+:class:`~kornia.geometry.boxes.Boxes` come back to their input coordinates. Tensor boxes are refit to axis-aligned
+boxes, so a rotation can enlarge them: a 12 × 8 box rotated by 45° comes back 20 × 20. A 3D geometric child raises
+``NotImplementedError``, and a mix child raises ``RuntimeError``. Inversion does not restore the pixels lost to
+cropping or resampling, and it leaves color changes and non-rigid warps in place.
 
 .. autoclass:: AugmentationSequential
 
@@ -28,9 +33,15 @@ for automating the processing of masks, bounding boxes, and keypoints.
 Augmentation Dispatchers
 ------------------------
 Kornia supports two types of augmentation dispatching, namely many-to-many and many-to-one. The former wraps
-different augmentations into one group and allows user to input multiple inputs in align with the number of
-augmentations. The latter aims at performing different augmentations for one input that to obtain a list of
-various transformed data.
+different augmentations into one group and lets the user pass as many inputs as there are augmentations, applying
+each augmentation to the corresponding input; a call with a different number of input bundles than
+augmentations raises ``ValueError`` before any augmentation runs. The latter applies different augmentations to a
+single input in order to obtain a list of differently transformed outputs. Its members must be
+``AugmentationSequential`` instances. With the default ``strict=True``, their ``data_keys`` must match;
+``strict=False`` disables that construction check.
+
+.. note::
+   The class names below keep their historical spelling (``Dispather``) for backward compatibility.
 
 .. autoclass:: ManyToManyAugmentationDispather
 
@@ -46,9 +57,9 @@ various transformed data.
 ImageSequential
 ---------------
 
-Kornia augmentations provides simple on-device augmentation framework with the support of various syntax sugars
-(e.g. return transformation matrix, inverse geometric transform). Additionally, ImageSequential supports the
-mix usage of both image processing and augmentation modules.
+``ImageSequential`` is a lightweight container that, in addition to augmentation modules, accepts arbitrary
+image processing ``nn.Module`` instances (e.g. the modules in :mod:`kornia.filters`, :mod:`kornia.color` or
+:mod:`kornia.enhance`), so both kinds of operations can be mixed in a single pipeline.
 
 .. autoclass:: ImageSequential
 
@@ -75,7 +86,7 @@ pipelines.
 
 - The pipeline only processes image tensors without auxiliary spatial targets.
 - The workflow combines augmentation modules with general image processing
-  operations (gaussian blur, edge detection, color transforms).
+  modules (Gaussian blur, edge detection, color transforms).
 - A lightweight container is preferred without the overhead of multi-target
   synchronization logic.
 
@@ -84,13 +95,13 @@ Example using ``ImageSequential``::
     import torch
     import kornia.augmentation as K
     from kornia.augmentation.container import ImageSequential
-    from kornia.filters import gaussian_blur2d
+    from kornia.filters import GaussianBlur2d
 
     img = torch.rand(1, 3, 256, 256)
 
     seq = ImageSequential(
         K.RandomHorizontalFlip(p=1.0),
-        gaussian_blur2d,  # arbitrary differentiable ops can be inserted
+        GaussianBlur2d((3, 3), (1.5, 1.5)),  # any differentiable nn.Module can be inserted
     )
 
     out = seq(img)
@@ -111,10 +122,10 @@ Example using ``AugmentationSequential`` with synchronized transforms::
     img_out, mask_out = aug(img, mask)
     # identical random parameters applied to both tensors
 
-The core distinction: ``AugmentationSequential`` guarantees that random
-augmentation parameters are shared across all specified data keys, maintaining
-geometric consistency. ``ImageSequential`` applies operations independently to
-single image tensors without multi-target awareness.
+``AugmentationSequential`` coordinates supported data-key handlers from one set
+of recorded parameters. Its non-rigid, mask-list and dtype limitations still
+apply; see the class's Convention block. ``ImageSequential`` processes image
+tensors without dispatching auxiliary annotations.
 
 
 PatchSequential
@@ -128,22 +139,51 @@ PatchSequential
 Video Data Augmentation
 -----------------------
 
-Video data is a special case of 3D volumetric data that contains both spatial and temporal information, which can be referred as 2.5D than 3D.
-In most applications, augmenting video data requires a static temporal dimension to have the same augmentations are performed for each frame.
-Thus, `VideoSequential` can be used to do such trick as same as `nn.Sequential`.
-Currently, `VideoSequential` supports data format like :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)`.
+Video data is a special case of 3D volumetric data that contains both spatial and temporal information, which is
+sometimes referred to as 2.5D rather than 3D. In most applications, augmenting video data requires the same
+augmentation, with the same parameters, to be applied to every frame of a clip. `VideoSequential` does exactly that,
+with the same interface as `nn.Sequential`. It supports the ``(B, C, T, H, W)`` and ``(B, T, C, H, W)``
+data formats.
 
 .. code-block:: python
 
+   import torch
    import kornia.augmentation as K
 
    transform = K.VideoSequential(
       K.RandomAffine(360),
       K.ColorJiggle(0.2, 0.3, 0.2, 0.3),
       data_format="BCTHW",
-      same_on_frame=True
+      same_on_frame=True,
    )
+   clip = torch.rand(2, 3, 8, 64, 64)  # 2 clips of 8 RGB frames
+   out = transform(clip)
 
 .. autoclass:: VideoSequential
 
    .. automethod:: forward
+
+
+Container building blocks
+-------------------------
+
+Base classes and parameter records for writing a custom container. To build a pipeline, use the containers above.
+
+.. autoclass:: kornia.augmentation.container.base.BasicSequentialBase
+.. autoclass:: kornia.augmentation.container.base.SequentialBase
+.. autoclass:: kornia.augmentation.container.base.ImageSequentialBase
+.. autoclass:: kornia.augmentation.container.params.ParamItem
+.. autoclass:: kornia.augmentation.container.params.PatchParamItem
+
+
+Data keys
+---------
+
+.. currentmodule:: kornia.constants
+
+``data_keys`` of :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`DataKey` member or
+its name, for example ``DataKey.INPUT`` or ``"input"``.
+
+.. autoclass:: DataKey
+   :members:
+   :undoc-members:

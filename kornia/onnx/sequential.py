@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional, Union
 
 from kornia.core.external import onnx
@@ -29,56 +30,90 @@ __all__ = ["ONNXSequential"]
 class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     """ONNXSequential to chain multiple ONNX operators together.
 
+    Calling the object runs the combined graph on numpy arrays or CPU torch tensors of a dtype numpy has (not
+    bfloat16) and returns a list of numpy arrays; see ``ONNXRuntimeMixin.__call__``. The metadata of the models are
+    merged into the combined model with one entry per key: each key keeps its first position and takes the value of
+    the last model that sets it. The models passed in are not modified.
+
     Args:
-        *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
-            For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
-            https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+        *args: A variable number of ONNX models (ONNX ModelProto objects, or file paths as ``str`` or
+            :class:`os.PathLike`; a path object always names a local file). For Hugging Face-hosted models, use the
+            format 'hf://model_name'. Valid `model_name` can be found on https://huggingface.co/kornia/ONNX_models.
+            Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
-            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
+            build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
+            is left. If None, the CPU.
         session_options: Optional ONNXRuntime session options for optimizing the session.
-        io_maps: An optional list of list of tuples specifying input-output mappings for combining models.
+        io_maps: An optional list with one list of ``(output, input)`` name pairs per joint between consecutive
+            models: ``io_maps[0]`` connects outputs of the first model to inputs of the second, ``io_maps[1]`` the
+            second to the third, and so on, as in ``[[("out_a", "in_b")], [("out_b", "in_c")]]`` for three models.
+            Each entry may be any iterable of pairs (a ``zip``, ``dict.items()``, ...), and ``io_maps`` anything
+            indexed by the joint; entries past the last joint are not read.
             If None, we assume the default input name and output name are "input" and "output" accordingly, and
             only one input and output node for each graph.
-            If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
-        cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+            The merged graph does not check a later model's declared input types: a ``UserWarning`` says so when the
+            tensor element types of an output and the input it feeds differ. Declared dimensions are not compared.
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
-        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9, and OPSET version to 17.
-            Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
-        target_ir_version: The target IR version to convert to.
-        target_opset_version: The target OPSET version to convert to.
+        auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
+            combining them: IR version 9, and the highest OPSET version among the models, to which the others are
+            converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+        target_ir_version: The IR version to convert every model to before combining them, whether or not
+            `auto_ir_version_conversion` is set. If None, the models keep their IR versions, unless
+            `auto_ir_version_conversion` converts them to 9.
+        target_opset_version: The OPSET version to convert every model to before combining them, whether or not
+            `auto_ir_version_conversion` is set. If None, the models keep their OPSET versions, unless
+            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises its
+            error: the ONNX version converter's where it has no adapter for an operator (for example ``Resize`` or
+            ``Pad`` from opset 18 to 17), ``onnx.checker``'s where the converted graph is invalid (for example a
+            ``ReduceMean`` from opset 18 to 17), or ONNX Runtime's where it does not support the target IR version.
+        force_download: If True, every ``hf://`` name and URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     """
 
     def __init__(
         self,
-        *args: Union[onnx.ModelProto, str],  # type:ignore
+        *args: Union[onnx.ModelProto, str, os.PathLike],
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        session_options: Optional[ort.SessionOptions] = None,
+        io_maps: Optional[list[list[tuple[str, str]]]] = None,
         cache_dir: Optional[str] = None,
         auto_ir_version_conversion: bool = False,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        force_download: bool = False,
     ) -> None:
-        self.operators = self._load_ops(*args, cache_dir=cache_dir)
+        self.operators = self._load_ops(*args, cache_dir=cache_dir, force_download=force_download)
         if auto_ir_version_conversion:
             self.operators = self._auto_version_conversion(
                 *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version
             )
+        elif target_ir_version is not None or target_opset_version is not None:
+            # as ONNXModule does: only the versions given are changed
+            self.operators = [
+                self._onnx_version_conversion(
+                    op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
+                )
+                for op in self.operators
+            ]
         self._combined_op = self.combine(io_maps=io_maps)
         session = self.create_session(providers=providers, session_options=session_options)
         self.set_session(session=session)
 
     def _auto_version_conversion(
         self,
-        *args: onnx.ModelProto,  # type:ignore
+        *args: onnx.ModelProto,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
-    ) -> list[onnx.ModelProto]:  # type:ignore
+    ) -> list[onnx.ModelProto]:
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         If `target_ir_version` is not provided, the model is converted to 9 by default.
-        If `target_opset_version` is not provided, the model is converted to 17 by default.
+        If `target_opset_version` is not provided, the models are converted to the highest OPSET version among
+        them.
 
         Args:
             args: List of operations to convert.
@@ -86,11 +121,11 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             target_opset_version: The target OPSET version to convert to.
 
         """
-        # TODO: maybe another logic for versioning.
         if target_ir_version is None:
             target_ir_version = 9
         if target_opset_version is None:
-            target_opset_version = 17
+            versions = [version for version in map(self._opset_version, args) if version is not None]
+            target_opset_version = max(versions) if versions else None
 
         op_list = []
         for op in args:
@@ -100,24 +135,33 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore
+    def combine(self, io_maps: Optional[list[list[tuple[str, str]]]] = None) -> onnx.ModelProto:
         """Combine the stored ONNX operators into one executable graph.
 
         Args:
-            io_maps: Optional list of ``(source_output, target_input)`` name
-                pairs describing how adjacent graphs should be connected. When
-                omitted, the helper assumes the default single input/output
-                names used by the ONNX composition utility.
+            io_maps: Optional list with one list of ``(output, input)`` name pairs per joint between consecutive
+                operators: ``io_maps[i]`` connects outputs of ``self.operators[i]`` to inputs of
+                ``self.operators[i + 1]``, as in ``[[("out_a", "in_b")], [("out_b", "in_c")]]`` for three
+                operators. Each entry may be any iterable of pairs; entries past the last joint are not read. When
+                omitted, each joint connects the default ``"output"`` to ``"input"``.
 
         Returns:
             Combined ONNX model graph containing all operators in
-            ``self.operators`` connected in sequence.
+            ``self.operators`` connected in sequence, with their metadata merged (the last value of each key).
+
+        Raises:
+            ValueCheckError: If ``io_maps`` has no entry for a joint, or an entry is not an iterable of name pairs.
+                It is a :exc:`ValueError` too.
+
+        Warns:
+            UserWarning: If an output and the input it feeds have different tensor element types: the merged graph
+                does not check a later model's declared input types.
         """
         return super()._combine(*self.operators, io_maps=io_maps)
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> ort.InferenceSession:  # type: ignore
+    ) -> ort.InferenceSession:
         """Create an ONNX Runtime session for the combined graph.
 
         Args:
@@ -140,7 +184,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         """
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the combined ONNX graph.
 
         Args:
