@@ -80,8 +80,8 @@ CASE_TEST_CHECKS = {
 # Where CI checks the promises: the onnx-conformance and compile-conformance jobs of scheduled_test_cpu.yml (on main,
 # CI_RUNS_PER_DAY times a day) and of pr_test_cpu.yml (pull requests). tests/test_generate_export_support.py checks
 # these against the workflows, and the support statement renders them.
-CI_TORCH_SCHEDULED = ("2.9.1", "2.14.0")
-CI_TORCH_PULL_REQUEST = ("2.14.0",)
+CI_TORCH_SCHEDULED = ("2.9.1", "2.15.0")
+CI_TORCH_PULL_REQUEST = ("2.15.0",)
 CI_RUNS_PER_DAY = 2
 CI_PYTHON = "3.11"
 CI_OS = "ubuntu-latest"

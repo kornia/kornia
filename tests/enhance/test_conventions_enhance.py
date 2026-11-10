@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -93,14 +95,20 @@ class TestEnhanceConventions(BaseTester):
         self.assert_close(hist, expected_hist)
         self.assert_close(pdf, expected_hist / expected_hist.sum())
 
-    def test_convention_image_histogram_automatic_centers_follow_bandwidth(self, device, dtype):
-        image = torch.tensor([[0.125]], device=device, dtype=dtype)
+    def test_convention_image_histogram_automatic_centers_span_range_whatever_the_bandwidth_6664(self, device, dtype):
+        # Four bins over [0, 1] have centers 0.125, 0.375, 0.625 and 0.875 whatever the bandwidth, which only sets the
+        # kernel width. All values are dyadic, so the expected counts are exact in every dtype.
+        # Triangular weights (1 - |x - c| / 0.5) for bandwidth 0.5, worked out by hand:
+        #   x = 0.125 -> |x - c| = [0, 0.25, 0.5, 0.75]  -> [1.0, 0.5, 0.0, 0.0]
+        #   x = 0.875 -> |x - c| = [0.75, 0.5, 0.25, 0]  -> [0.0, 0.0, 0.5, 1.0]
+        # Before the fix the centers were min + (i + 0.5) * bandwidth = 0.25, 0.75, 1.25, 1.75, which gave
+        # [0.75, 0.75, 0.25, 0.0] here.
+        image = torch.tensor([[0.125, 0.875]], device=device, dtype=dtype)
         hist, _ = kornia.enhance.image_histogram2d(
-            image, min=0.0, max=1.0, n_bins=2, bandwidth=0.25, kernel="triangular"
+            image, min=0.0, max=1.0, n_bins=4, bandwidth=0.5, kernel="triangular"
         )
-        # Centers are 0.125 and 0.375, generated as min + (i + 0.5) * bandwidth.
         output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=output_dtype))
+        self.assert_close(hist, torch.tensor([1.0, 0.5, 0.5, 1.0], device=device, dtype=output_dtype))
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])
@@ -221,7 +229,7 @@ class TestEnhanceConventions(BaseTester):
 
     def test_convention_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
         if device.type != "cpu":
-            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
             pytest.skip("bandwidth check raises synchronously only on CPU")
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
@@ -283,7 +291,8 @@ class TestEnhanceConventions(BaseTester):
 
     # equalize, equalize3d and equalize_clahe count every pixel in the lookup-table entry it reads, its 8-bit level
     # (x * 255).long() in the input dtype, so a continuous image gives exactly what its 8-bit levels give. They used to
-    # count it in floor(256 x), one bin above the entry it reads for every value in [k/256, k/255) (#6181).
+    # count it in floor(256 x), one bin above the entry it reads for every value in [k/256, k/255) (#6181). In float32
+    # and float64 the 255 is raised by four float32 epsilons, relative, so k / 255 rounded a unit low still reads k.
     @pytest.mark.parametrize(
         ("op", "shape"),
         [
@@ -296,7 +305,8 @@ class TestEnhanceConventions(BaseTester):
     )
     def test_convention_equalize_counts_the_8bit_level_it_reads_6181(self, device, dtype, op, shape):
         image = torch.rand(shape, generator=torch.Generator().manual_seed(6181)).to(device, dtype)
-        levels = (image * 255).long().to(dtype) / 255
+        scale = 255 * (1 + 2**-21) if dtype in (torch.float32, torch.float64) else 255
+        levels = (image * scale).long().to(dtype) / 255
         assert torch.equal(op(image), op(levels))
 
     # equalize is PIL's Equalize of the 8-bit levels its lookup reads, for continuous input as well. 13 of these 32
@@ -321,6 +331,42 @@ class TestEnhanceConventions(BaseTester):
         image = torch.tensor(self._PIL_VALUES, device=device, dtype=dtype).repeat(33, 1)[None, None]
         expected = torch.tensor(self._PIL_EXPECTED, device=device, dtype=dtype).div(255).expand(33, 32)
         assert torch.equal(kornia.enhance.equalize(image)[0, 0], expected)
+
+    # An 8-bit image normalized as levels / 255 reads each pixel at its level k, however the division was rounded.
+    # CUDA divides by a Python number by multiplying with its rounded reciprocal, which leaves 24 of the 256 float64
+    # levels one unit in the last place below k / 255, and so does x * (1 / 255) on any device; (x * 255).long() read
+    # them as k - 1, so equalize of a random 8-bit image on CUDA differed from the CPU by up to 2 levels on 8% of the
+    # pixels, CLAHE by up to 16, and posterize(x, 7) by 2. In half precision a unit below k / 255 is up to an eighth of
+    # a level (float16) or a whole level (bfloat16), another value, so only float32 and float64 also try that one.
+    _LEVEL_READERS = {
+        "equalize": (kornia.enhance.equalize, (1, 1, 32, 32)),
+        "equalize3d": (kornia.enhance.equalize3d, (1, 1, 4, 16, 16)),
+        "clahe_even_tiles": (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 1, 32, 32)),
+        "clahe_odd_tiles": (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 1, 30, 30)),
+        "posterize_7": (lambda x: kornia.enhance.posterize(x, 7), (1, 1, 32, 32)),
+        "posterize_4": (lambda x: kornia.enhance.posterize(x, 4), (1, 1, 32, 32)),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_LEVEL_READERS))
+    def test_convention_8bit_level_reads_k_however_k_over_255_was_rounded(self, op, device, dtype):
+        fn, shape = self._LEVEL_READERS[op]
+        levels = torch.arange(math.prod(shape), device=device).remainder(256).reshape(shape)
+        reference = (levels.cpu().double() / 255).to(dtype)  # k / 255 rounded once to the dtype, on the CPU
+        variants = {
+            "divided on the device": levels.to(dtype) / 255,
+            "multiplied by 1 / 255": levels.to(dtype) * (1 / 255),
+        }
+        if dtype in (torch.float32, torch.float64):
+            variants["one unit below"] = torch.nextafter(reference, torch.zeros_like(reference)).to(device)
+        expected = fn(reference.to(device))
+        for name, image in variants.items():
+            assert torch.equal(fn(image), expected), name
+
+    def test_convention_equalize_of_every_8bit_level_once_is_the_identity(self, device, dtype):
+        # Every level occurring equally often gives the identity table, so the output names the level each pixel read.
+        levels = torch.arange(1024, device=device).remainder(256).reshape(1, 1, 32, 32)
+        out = kornia.enhance.equalize(levels.to(dtype) / 255)
+        assert torch.equal((out.cpu().double() * 255).round(), levels.cpu().double())
 
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).

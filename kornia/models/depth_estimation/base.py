@@ -44,12 +44,12 @@ class DepthEstimation(HFONNXComunnityModel):
         cast to the dtype of the image and moved to its device.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`. Any floating dtype.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``. Any floating dtype.
 
         Returns:
-            The depth maps at the size of the images: a tensor of shape :math:`(B, 1, H, W)` for a tensor, and a
-            list of tensors of shape :math:`(1, H, W)` for a list.
+            The depth maps at the size of the images: a tensor of shape ``(B, 1, H, W)`` for a tensor, and a
+            list of tensors of shape ``(1, H, W)`` for a list.
 
         Raises:
             BaseError: If an image is not of a floating dtype.
@@ -60,7 +60,7 @@ class DepthEstimation(HFONNXComunnityModel):
         return self._estimate(images)
 
     def _estimate(self, images: torch.Tensor) -> torch.Tensor:
-        """Return the depth maps :math:`(B, 1, H, W)` of a batch of images :math:`(B, 3, H, W)`."""
+        """Return the depth maps ``(B, 1, H, W)`` of a batch of images ``(B, 3, H, W)``."""
         KORNIA_CHECK(images.is_floating_point(), f"images must be of a floating dtype, got {images.dtype}")
         # float32 is the dtype the graph takes, and the resizes run in it as well, so that the depth does not depend on
         # the input dtype. They run on the CPU, where ONNX Runtime reads its input: torch 2.5.1 has no bicubic kernel
@@ -87,15 +87,15 @@ class DepthEstimation(HFONNXComunnityModel):
         """Draw the depth maps.
 
         Args:
-            images: a tensor of shape :math:`(B, 3, H, W)` or a list of tensors of shape :math:`(3, H, W)`.
-            depth_maps: estimated depths, as the model returns them: :math:`(B, 1, H, W)` or a list of
-                :math:`(1, H, W)`. Estimated from ``images`` if not given.
+            images: a tensor of shape ``(B, 3, H, W)`` or a list of tensors of shape ``(3, H, W)``.
+            depth_maps: estimated depths, as the model returns them: ``(B, 1, H, W)`` or a list of
+                ``(1, H, W)``. Estimated from ``images`` if not given.
             output_type: type of the output.
             depth_type: 'metric' or 'relative' depth.
             max_depth: maximum depth value. Only valid for metric depth.
 
         Returns:
-            A list with one RGB image of shape :math:`(3, H, W)` per depth map, the depth divided by its maximum
+            A list with one RGB image of shape ``(3, H, W)`` per depth map, the depth divided by its maximum
             (``"relative"``) or by ``max_depth`` (``"metric"``), converted according to ``output_type``.
 
         """
@@ -125,9 +125,9 @@ class DepthEstimation(HFONNXComunnityModel):
         """Save the images and their depth maps.
 
         Args:
-            images: a tensor of shape :math:`(B, 3, H, W)` or a list of tensors of shape :math:`(3, H, W)`.
-            depth_maps: estimated depths, as the model returns them: :math:`(B, 1, H, W)` or a list of
-                :math:`(1, H, W)`. Estimated from ``images`` if not given.
+            images: a tensor of shape ``(B, 3, H, W)`` or a list of tensors of shape ``(3, H, W)``.
+            depth_maps: estimated depths, as the model returns them: ``(B, 1, H, W)`` or a list of
+                ``(1, H, W)``. Estimated from ``images`` if not given.
             output_type: type of the output.
             depth_type: 'metric' or 'relative' depth.
             max_depth: maximum depth value. Only valid for metric depth.

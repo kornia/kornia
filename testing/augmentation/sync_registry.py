@@ -98,6 +98,12 @@ def _setup_jpeg(x: torch.Tensor) -> Callable[[], Any]:
     return lambda: kornia.enhance.jpeg_codec_differentiable(x, quality)
 
 
+def _setup_gaussian_blur_sigma(x: torch.Tensor) -> Callable[[], Any]:
+    # One sigma per sample on the device: its positivity check must not read it back on the host (#6335).
+    sigma = torch.linspace(1.0, 2.0, 2 * x.shape[0], device=x.device, dtype=x.dtype).view(-1, 2)
+    return lambda: kornia.filters.gaussian_blur2d(x, (5, 5), sigma)
+
+
 def _setup_crop_by_indices(x: torch.Tensor) -> Callable[[], Any]:
     # Augmentations pass boxes sampled on the CPU, so the functional entry does too.
     boxes = torch.tensor([[[2, 3], [17, 3], [17, 18], [2, 18]]], dtype=torch.long).repeat(x.shape[0], 1, 1)
@@ -135,6 +141,7 @@ FUNCTIONAL_CASES = [
     _functional("sharpness", lambda x: functools.partial(kornia.enhance.sharpness, x, 0.5)),
     _functional("jpeg_codec_differentiable", _setup_jpeg),
     _functional("gaussian_blur2d", lambda x: functools.partial(kornia.filters.gaussian_blur2d, x, (5, 5), (1.5, 1.5))),
+    _functional("gaussian_blur2d[sigma]", _setup_gaussian_blur_sigma),
     _functional("crop_by_indices", _setup_crop_by_indices),
 ]
 
@@ -212,7 +219,9 @@ def _geometric_cases() -> list[AugCase]:
         _aug(K.PadTo, (40, 40), cases=("forward", "inverse", "seq_annotations", "seq_inverse")),
         _aug(K.RandomAffine, 15.0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10.0, p=1.0, cases=GEOMETRIC_2D),
         _aug(K.RandomCrop, (16, 16), p=1.0, cases=GEOMETRIC_2D),
-        _aug(K.RandomElasticTransform, p=1.0),
+        # A sequential call passes keypoints and boxes, which the non-rigid warps refuse (#4420), so they run
+        # the forward cases only.
+        _aug(K.RandomElasticTransform, p=1.0, cases=FORWARD_P),
         _aug(K.RandomFisheye, **fisheye, p=1.0, cases=FORWARD_P),
         _aug(K.RandomHorizontalFlip, p=1.0, cases=GEOMETRIC_2D),
         _aug(K.RandomPerspective, 0.5, p=1.0, cases=GEOMETRIC_2D),
@@ -411,7 +420,9 @@ INHERENT_SITES: dict[str, str] = {
 
 # Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of
 # them, so that INHERENT_SITES names the caller, which is what decides whether the synchronization is inherent.
-PASS_THROUGH: frozenset[str] = frozenset({"core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"})
+PASS_THROUGH: frozenset[str] = frozenset(
+    {"core/utils.py:_to_device_nonblocking", "core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"}
+)
 
 
 def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
@@ -522,7 +533,11 @@ def sync_sites(fn: Callable[[], Any]) -> collections.Counter[str]:
     def hook(message: Any, category: Any, filename: str, lineno: int, file: Any = None, line: Any = None) -> None:
         if _SYNC_MESSAGE not in str(message):
             return
-        keys = [f"{f.filename[len(root) :]}:{f.name}" for f in traceback.extract_stack() if f.filename.startswith(root)]
+        keys = [
+            f"{f.filename[len(root) :].replace(os.sep, '/')}:{f.name}"
+            for f in traceback.extract_stack()
+            if f.filename.startswith(root)
+        ]
         callers = [k for k in keys if k not in PASS_THROUGH]
         sites[callers[-1] if callers else keys[-1] if keys else "<outside kornia>"] += 1
 

@@ -16,6 +16,7 @@
 #
 
 import importlib
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +34,43 @@ one_hot_module = importlib.import_module("kornia.losses.one_hot")
 
 
 class TestBinaryFocalLossWithLogits(BaseTester):
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_ignored_non_finite_logits(self, device, dtype, value, reduction, gamma, ignore_index):
+        """Ignored non-finite logits contribute neither loss nor logit gradients."""
+        # Include both a partly ignored sample and an entirely ignored sample.
+        logits = torch.tensor(
+            [[[0.0, value], [0.0, value]], [[value, value], [value, value]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        labels = torch.full_like(logits, ignore_index)
+        labels[0, 0, 0], labels[0, 1, 0] = 1.0, 0.0
+        weight = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        pos_weight = torch.tensor([5.0, 7.0], device=device, dtype=dtype)
+        loss = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, 0.25, gamma, reduction, pos_weight, weight, ignore_index
+        )
+
+        # At logit 0, p = 1/2: FL = alpha_t * 2**(-gamma) * log(2), and
+        # dFL/dz = (1 - 2*t) * alpha_t * 2**(-gamma-1) * (1 + gamma*log(2)).
+        factors = torch.tensor([[[2.5, 0.0], [2.25, 0.0]], [[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        expected = factors * (0.5**gamma * math.log(2.0))
+        expected_grad = factors * (0.5 ** (gamma + 1) * (1 + gamma * math.log(2.0)))
+        expected_grad[0, 0, 0] *= -1
+        if reduction == "mean":
+            expected = expected.mean()
+            expected_grad = expected_grad / logits.numel()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        self.assert_close(loss, expected)
+        loss.sum().backward()
+        self.assert_close(logits.grad, expected_grad)
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_value_same_as_torch_bce_loss(self, device, dtype, reduction, ignore_index):
@@ -115,6 +153,21 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    def test_dynamo_ignored_non_finite_logits(self, device, dtype, torch_optimizer, gamma):
+        """Compiled forward and backward passes exclude ignored non-finite logits."""
+        logits = torch.tensor(
+            [[0.0, float("nan"), float("inf"), -float("inf")]], device=device, dtype=dtype, requires_grad=True
+        )
+        labels = torch.tensor([[1.0, -100.0, -100.0, -100.0]], device=device, dtype=dtype)
+        op = torch_optimizer(kornia.losses.binary_focal_loss_with_logits)
+        loss = op(logits, labels, 0.25, gamma, "sum")
+        self.assert_close(loss, logits.new_tensor(0.25 * 0.5**gamma * math.log(2.0)))
+        loss.backward()
+        expected_grad = torch.zeros_like(logits)
+        expected_grad[0, 0] = -0.25 * 0.5 ** (gamma + 1) * (1 + gamma * math.log(2.0))
+        self.assert_close(logits.grad, expected_grad)
 
     def test_jit_script(self, device, dtype):
         # TorchScript compiles the loss with its weight checks, whose messages format shapes rather than a lambda

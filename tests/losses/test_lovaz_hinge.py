@@ -61,6 +61,19 @@ class TestLovaszHingeLoss(BaseTester):
         with pytest.raises(ValueError, match="pred and target shapes must be the same"):
             criterion(logits, labels)
 
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_empty_batch_6266(self, as_module, device, dtype):
+        """An empty batch flattens without a -1 to infer; the mean over no pixels is nan, as torch's mean is."""
+        logits = torch.rand(0, 1, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        labels = torch.randint(0, 2, (0, 4, 5), device=device)
+        loss_fn = kornia.losses.LovaszHingeLoss() if as_module else kornia.losses.lovasz_hinge_loss
+        loss = loss_fn(logits, labels)
+        assert loss.shape == ()
+        assert loss.dtype == dtype
+        assert torch.isnan(loss)
+        loss.backward()
+        assert logits.grad.shape == logits.shape
+
     def test_smoke(self, device, dtype):
         num_classes = 1
         logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)

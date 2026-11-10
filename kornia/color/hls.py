@@ -24,29 +24,32 @@ import torch
 from torch import nn
 
 from kornia.core.ops import _device_literal
+from kornia.core.utils import _clamp_range, _is_tracing_or_exporting, _needs_derivatives
 
 
 def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert an RGB image to HLS.
 
+    ``hls = rgb_to_hls(image)`` converts a ``(*, 3, H, W)`` RGB image in :math:`[0, 1]` to hue, lightness and
+    saturation.
+
     .. image:: _static/img/rgb_to_hls.png
 
-    The image data is assumed to be in the range of (0, 1).
-
     Convention:
-        Channels are H, L, S at axis -3. Hue is measured in radians in [0, 2π), unlike
+        Channels are H, L, S at axis -3. Hue is measured in radians in :math:`[0, 2\pi)`, unlike
         OpenCV, which uses degrees (halved for 8-bit images).
 
-    NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
-
     Args:
-        image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
-        eps: bias added to the chroma and lightness denominators before dividing. The zero
-            denominators themselves are handled by a safe-substitution guard, so ``eps`` is not
-            what keeps the result finite and ``eps=0`` is well defined.
+        image: RGB image with shape ``(*, 3, H, W)``.
+        eps: added to the chroma and saturation denominators where they are non-zero. Zero denominators are guarded, so
+            ``eps=0`` is valid.
 
     Returns:
-        HLS version of the image with shape :math:`(*, 3, H, W)`.
+        HLS image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`hls_to_rgb`: the inverse.
+        - :class:`RgbToHls`: the module form, which has no ``eps`` and uses the default.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -103,18 +106,24 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
 
 def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert a HLS image to RGB.
+    r"""Convert an HLS image to RGB.
 
-    The image data is assumed to be in the range of (0, 1).
+    ``rgb = hls_to_rgb(image)`` converts a ``(*, 3, H, W)`` image of hue in radians, lightness in :math:`[0, 1]` and
+    saturation in :math:`[0, 1]` to RGB.
 
     Convention:
-        Expects H, L, S channels at axis -3 with hue in radians.
+        Channels are H, L, S at axis -3. Hue wraps modulo 2π. The result is not clipped, so lightness or saturation
+        outside :math:`[0, 1]` can give RGB values outside it.
 
     Args:
-        image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: HLS image with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_hls`: the inverse.
+        - :class:`HlsToRgb`: the module form.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -147,22 +156,31 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
-    return torch.addcmul(l_ch, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
+    # ``mink`` is a buffer of this call, so without a derivative the clamp reuses it: one image-sized temporary fewer. A
+    # captured graph keeps that plain clamp whatever the grad mode, so that the check of ``torch.jit.trace`` under
+    # ``no_grad`` records the same graph.
+    if _is_tracing_or_exporting() or not _needs_derivatives(mink):
+        mink = mink.clamp_(min=-1.0, max=1.0)
+    else:
+        mink = _clamp_range(mink, -1.0, 1.0)
+    return torch.addcmul(l_ch, a, mink, value=-1)
 
 
 class RgbToHls(nn.Module):
-    r"""Convert an image from RGB to HLS.
+    r"""Convert an image from RGB to HLS (module form).
 
-    See the Convention block on :func:`rgb_to_hls`.
+    ``out = RgbToHls()(image)`` is :func:`rgb_to_hls` with its default ``eps``.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Returns:
-        HLS version of the image.
+    Convention:
+        - See the convention block of :func:`rgb_to_hls`.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`rgb_to_hls`: the one-call form, with an ``eps`` argument.
+        - :class:`HlsToRgb`: the inverse.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -178,31 +196,33 @@ class RgbToHls(nn.Module):
         """Convert an RGB tensor to HLS.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            HLS tensor with shape :math:`(*, 3, H, W)`.
+            HLS tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_hls(image)
 
 
 class HlsToRgb(nn.Module):
-    r"""Convert an image from HLS to RGB.
+    r"""Convert an image from HLS to RGB (module form).
 
-    See the Convention block on :func:`hls_to_rgb`.
+    ``out = HlsToRgb()(image)`` is :func:`hls_to_rgb`.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Returns:
-        RGB version of the image.
+    Convention:
+        - See the convention block of :func:`hls_to_rgb`.
 
     Shape:
-        - input: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
-    Reference:
+    See Also:
+        - :func:`hls_to_rgb`: the one-call form.
+        - :class:`RgbToHls`: the inverse.
+
+    References:
         https://en.wikipedia.org/wiki/HSL_and_HSV
 
     Examples:
@@ -219,11 +239,11 @@ class HlsToRgb(nn.Module):
         """Convert an HLS tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to HLS channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return hls_to_rgb(image)

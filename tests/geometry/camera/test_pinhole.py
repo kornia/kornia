@@ -16,14 +16,88 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
 
 import kornia
 from kornia.geometry.camera.pinhole import PinholeCamerasList
+from kornia.geometry.camera.utils import (
+    create_extrinsics_with_rotation,
+    create_four_cameras,
+    create_intrinsics,
+    create_pinhole_camera,
+)
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
+
+
+class TestCameraFactories(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_intrinsics_principal_point_gradients(self, batch_size, device, dtype):
+        cx = torch.full((batch_size,), 319.5, device=device, dtype=dtype, requires_grad=True)
+        cy = torch.full((batch_size,), 239.5, device=device, dtype=dtype, requires_grad=True)
+        intrinsics = create_intrinsics([500.0] * batch_size, [600.0] * batch_size, cx, cy, device, dtype)
+        assert intrinsics.requires_grad
+        self.assert_close(intrinsics[:, 0, 2], cx)
+        self.assert_close(intrinsics[:, 1, 2], cy)
+        camera = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            torch.eye(4, device=device, dtype=dtype).expand(batch_size, -1, -1),
+            torch.full((batch_size,), 480.0, device=device, dtype=dtype),
+            torch.full((batch_size,), 640.0, device=device, dtype=dtype),
+        )
+        points = torch.tensor([[[1.0, 2.0, 4.0], [2.0, 1.0, 2.0]]], device=device, dtype=dtype)
+        gradients = torch.autograd.grad(camera.project(points.expand(batch_size, -1, -1)).sum(), (cx, cy))
+        for gradient in gradients:
+            self.assert_close(gradient, torch.full_like(cx, 2.0))
+
+    def test_intrinsics_gradcheck(self, device):
+        cx = torch.tensor([319.5, 315.25], device=device, dtype=torch.float64, requires_grad=True)
+        cy = torch.tensor([239.5, 241.5], device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(
+            lambda cx, cy: create_intrinsics([500.0, 600.0], [550.0, 650.0], cx, cy, device, cx.dtype), (cx, cy)
+        )
+
+    def test_float_angles(self, device: torch.device, dtype: torch.dtype) -> None:
+        actual = create_extrinsics_with_rotation(
+            [0.0, math.pi / 2], [0.0, 0.0], [0.0, 0.0], [1.0, 2.0], [3.0, 4.0], [5.0, 6.0], device, dtype
+        )
+        expected = torch.tensor(
+            [
+                [[1, 0, 0, 1], [0, 1, 0, 3], [0, 0, 1, 5], [0, 0, 0, 1]],
+                [[1, 0, 0, 2], [0, 0, 1, 4], [0, -1, 0, 6], [0, 0, 0, 1]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(actual, expected)
+        assert actual.device == device
+        assert actual.dtype == dtype
+
+    @pytest.mark.parametrize("batch_size", [1, 4])
+    def test_factory(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> None:
+        camera = (
+            create_pinhole_camera(480, 640, device, dtype) if batch_size == 1 else create_four_cameras(device, dtype)
+        )
+        assert camera.batch_size == batch_size
+        assert camera.intrinsics.device == device
+        assert camera.intrinsics.dtype == dtype
+        self.assert_close(
+            camera.rotation_matrix @ camera.rotation_matrix.transpose(-1, -2),
+            torch.eye(3, device=device, dtype=dtype).expand(batch_size, -1, -1),
+        )
+
+    def test_gradcheck(self, device: torch.device) -> None:
+        angles = torch.tensor([0.2, -0.3, 0.4], device=device, dtype=torch.float64, requires_grad=True)
+
+        def extrinsics(angles: torch.Tensor) -> torch.Tensor:
+            return create_extrinsics_with_rotation(
+                [angles[0]], [angles[1]], [angles[2]], [1.0], [2.0], [3.0], device, angles.dtype
+            )
+
+        self.gradcheck(extrinsics, (angles,))
 
 
 def _k44(device, dtype, fx=100.0, fy=100.0, cx=4.0, cy=3.0):
@@ -876,9 +950,10 @@ class TestPinholeCamera(BaseTester):
     def test_pinhole_camera_preserves_rank_four_constructor_support(self, device, dtype):
         intrinsics = _k44(device, dtype).unsqueeze(1).expand(1, 2, 4, 4).clone()
         extrinsics = _e44(device, dtype, tx=1.0).unsqueeze(1).expand(1, 2, 4, 4).clone()
-        camera = kornia.geometry.camera.PinholeCamera(
-            intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
-        )
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            camera = kornia.geometry.camera.PinholeCamera(
+                intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
+            )
 
         assert camera.intrinsics.shape == (1, 2, 4, 4)
         assert camera.extrinsics.shape == (1, 2, 4, 4)
@@ -893,8 +968,10 @@ class TestPinholeCamera(BaseTester):
         assert camera.rotation_matrix.shape == (1, 2, 3, 3)
         assert camera.translation_vector.shape == (1, 2, 3, 1)
         assert camera.intrinsics_inverse().shape == (1, 2, 4, 4)
-        self.assert_close(camera.clone().intrinsics, intrinsics)
-        self.assert_close(camera.clone().extrinsics, extrinsics)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            cloned = camera.clone()
+        self.assert_close(cloned.intrinsics, intrinsics)
+        self.assert_close(cloned.extrinsics, extrinsics)
 
     def test_camera_list_preserves_rank_four_parameters(self, device, dtype):
         first = kornia.geometry.camera.PinholeCamera(
@@ -996,6 +1073,64 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(inplace.height, expected_heights)
         self.assert_close(inplace.width, expected_widths)
         self.assert_close(inplace.extrinsics, cameras.extrinsics)
+
+    @staticmethod
+    def _rank4_cameras(device, dtype, intrinsics_rank=4, extrinsics_rank=4):
+        k = _k44(device, dtype)
+        e = _e44(device, dtype)
+        k = k[:, None].expand(1, 2, 4, 4) if intrinsics_rank == 4 else k
+        e = e[:, None].expand(1, 2, 4, 4) if extrinsics_rank == 4 else e
+        return k, e, torch.tensor([6], device=device), torch.tensor([8], device=device)
+
+    @pytest.mark.parametrize("intrinsics_rank,extrinsics_rank", [(4, 3), (3, 4), (4, 4)])
+    def test_rank4_parameters_are_deprecated_4266(self, intrinsics_rank, extrinsics_rank, device, dtype):
+        args = self._rank4_cameras(device, dtype, intrinsics_rank, extrinsics_rank)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1") as record:
+            kornia.geometry.camera.PinholeCamera(*args)
+        assert len(record) == 1
+        assert record[0].filename == __file__
+
+    def test_rank3_parameters_do_not_warn_4266(self, device, dtype):
+        cam_args = (
+            _k44(device, dtype),
+            _e44(device, dtype),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cam = kornia.geometry.camera.PinholeCamera(*cam_args)
+            cam.clone()
+            cam.scale(0.5)
+
+    def test_cameras_list_does_not_warn_4266(self, device, dtype):
+        cam = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype), _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            PinholeCamerasList([cam, cam])
+
+    def test_rank4_values_are_unchanged_4266(self, device, dtype):
+        k, e, h, w = self._rank4_cameras(device, dtype)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            cam = kornia.geometry.camera.PinholeCamera(k, e, h, w)
+        assert cam.fx.shape == (1, 2)
+        self.assert_close(cam.fx, torch.full((1, 2), 100.0, device=device, dtype=dtype))
+        # A (1, 2) camera batch does not line up with a (1, 5, 3) point set (#6473).
+        with pytest.raises(ValueError, match="leading batch axes of the points"):
+            cam.project(torch.ones(1, 5, 3, device=device, dtype=dtype))
+
+    def test_rank4_construction_does_not_warn_under_trace_4266(self, device, dtype):
+        k, e, h, w = self._rank4_cameras(device, dtype)
+
+        def build(k, e):
+            return kornia.geometry.camera.PinholeCamera(k, e, h, w).intrinsics
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            torch.jit.trace(build, (k, e), check_trace=False)
+        assert not [w for w in record if "deprecated since kornia" in str(w.message)]
 
     def test_project_and_unproject_reject_rank_one_points_4266(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
@@ -1154,6 +1289,88 @@ class TestPinholeCamera(BaseTester):
             device=device,
             dtype=dtype,
         )
+
+
+class TestPinholeCameraAutocast(BaseTester):
+    """A caller's autocast region does not reach the products of ``project`` and ``unproject`` (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _camera(device, intrinsics_dtype=torch.float32, extrinsics_dtype=torch.float32):
+        theta = torch.tensor(0.4363)
+        intrinsics = torch.eye(4)[None]
+        intrinsics[:, :3, :3] = torch.tensor([[300.0, 0.0, 128.3], [0.0, 310.0, 127.7], [0.0, 0.0, 1.0]])
+        extrinsics = torch.eye(4)[None]
+        extrinsics[:, :2, :2] = torch.tensor([[theta.cos(), -theta.sin()], [theta.sin(), theta.cos()]])
+        extrinsics[:, :3, 3] = torch.tensor([0.3, -0.2, 1.1])
+        size = torch.tensor([256.0], device=device)
+        return kornia.geometry.camera.PinholeCamera(
+            intrinsics.to(device=device, dtype=intrinsics_dtype),
+            extrinsics.to(device=device, dtype=extrinsics_dtype),
+            size,
+            size,
+        )
+
+    @staticmethod
+    def _points(device):
+        points = torch.rand(1, 50, 3, generator=torch.Generator().manual_seed(0))
+        return (points * torch.tensor([2.0, 2.0, 3.0]) + torch.tensor([-1.0, -1.0, 2.0])).to(device)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_project_6601(self, autocast_dtype, device):
+        # Up to 1.26 px off in bfloat16 at 256 px, and still float32: transform_points' product and P = K @ E.
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera, points = self._camera(device), self._points(device)
+        expected = camera.project(points)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera.project(points)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_projection_matrix_6601(self, autocast_dtype, device):
+        # The guard of transform_points alone leaves this: 0.02 px in bfloat16.
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = self._camera(device)
+        expected = camera._projection_matrix()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera._projection_matrix()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_unproject_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = self._camera(device)
+        pixels = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)).to(device) * 256
+        depth = torch.full((1, 50, 1), 2.5, device=device)
+        expected = camera.unproject(pixels, depth)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = camera.unproject(pixels, depth)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "intrinsics_half,extrinsics_half", [(True, False), (False, True)], ids=["half-intrinsics", "half-extrinsics"]
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6601(
+        self, intrinsics_half, extrinsics_half, autocast_dtype, device
+    ):
+        # Autocast reconciled a half matrix with a float32 one, so leaving the region must too; the mix raises outside.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        camera = self._camera(
+            device, half if intrinsics_half else torch.float32, half if extrinsics_half else torch.float32
+        )
+        size = torch.tensor([256.0], device=device)
+        reference = kornia.geometry.camera.PinholeCamera(
+            camera.intrinsics.float(), camera.extrinsics.float(), size, size
+        )
+        points = self._points(device)
+        with torch.autocast(device.type, dtype=half):
+            actual = camera.project(points)
+        self.assert_close(actual, reference.project(points), rtol=0, atol=0)
 
 
 class TestLegacyPinholeVectorApiRemoved:

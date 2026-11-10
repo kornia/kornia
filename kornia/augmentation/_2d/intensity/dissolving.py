@@ -20,12 +20,16 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.filters import StableDiffusionDissolving
 
 
 class RandomDissolving(IntensityAugmentationBase2D):
-    r"""Perform dissolving transformation using StableDiffusion models.
+    r"""Dissolve images with a Stable Diffusion model, applied to the whole batch with probability ``p`` (default 0.5).
+
+    ``output = RandomDissolving(step_range, version, ...)(input)`` applies one sampled reverse-diffusion step to the
+    selected batch of images. It needs the optional ``diffusers`` dependency and a compatible Stable Diffusion model.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -47,7 +51,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
           - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation, drawn once for the whole batch.
         version: the version of the stable diffusion model. Options: ``"1.4"``, ``"1.5"``, ``"xl"``.
         step_range: the step range of the diffusion model steps. Higher the step, stronger
                     the dissolving effects.
@@ -56,8 +60,8 @@ class RandomDissolving(IntensityAugmentationBase2D):
         **kwargs: additional arguments for `.from_pretrained` for HF StableDiffusionPipeline.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`.
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``.
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -69,6 +73,11 @@ class RandomDissolving(IntensityAugmentationBase2D):
         builds: instantiating this class needs the optional ``diffusers`` package and, on a cold cache,
         downloads a Stable Diffusion checkpoint at that point -- the ``from_pretrained`` call is in that
         class's own constructor, not on the first forward.
+
+    See Also:
+        - :class:`RandomErasing`: removes a rectangle without a diffusion model.
+        - :class:`~kornia.filters.StableDiffusionDissolving`: the model itself, with a step you choose and an input it
+          does not clamp.
 
     """
 

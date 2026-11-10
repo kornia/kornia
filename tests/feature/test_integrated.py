@@ -460,23 +460,14 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         else:
             module = torch.jit.trace(SIFTDescriptor(32).to(device), patch)
         before = self._state(module)
-        if kind == "trace_sift" and image_dtype == torch.float64:
-            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did; the
-            # CPU and CUDA convolutions word the dtype mismatch differently
-            with pytest.raises(
-                RuntimeError,
-                match=r"Double but found Float|Input type \(\S*DoubleTensor\) and weight type \(\S*FloatTensor\)",
-            ):
-                get_laf_descriptors(img, lafs, module, 32)
-            self._assert_state_equal(before, self._state(module))
-            return
         out = get_laf_descriptors(img, lafs, module, 32)
         self._assert_state_equal(before, self._state(module))
         reference = copy.deepcopy(module).to(img).eval()
         patches = extract_patches_from_pyramid(img, lafs, 32)
         B, N, C, H, W = patches.shape
         self.assert_close(out, reference(patches.view(B * N, C, H, W)).view(B, N, -1))
-        assert out.dtype == image_dtype
+        # the trace holds its float32 casts, so a float64 image gets a float32 descriptor
+        assert out.dtype == (torch.float32 if kind == "trace_sift" else image_dtype)
 
     def test_empty_lafs_leave_the_module_alone_5724(self, device):
         if torch.device(device).type == "mps":
@@ -894,6 +885,39 @@ class TestDoGHardNet(BaseTester):
         # ``KeyPoint.size`` the weights were trained with: 2 sigma, a third of the 6-sigma DoG frame.
         expected = get_laf_scale(dog_lafs).reshape(1, -1) / 3.0
         self.assert_close(seen["image0"]["scales"] * scale_coef, expected, low_tolerance=preset == "DoGAffNetHardNet")
+
+
+class TestLightGlueMatcherBatch(BaseTester):
+    def test_batch_of_one_descriptors_match_like_unbatched(self, device, dtype, monkeypatch):
+        from kornia.feature import LightGlueMatcher
+
+        class _RecordingLightGlue(nn.Module):
+            # Stands in for the network, whose construction downloads weights. It pairs descriptors row by row, so
+            # both layouts return the same matches if they reach it.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                desc0 = data["image0"]["descriptors"]
+                desc1 = data["image1"]["descriptors"]
+                count = min(desc0.shape[1], desc1.shape[1])
+                matches0 = torch.full((desc0.shape[0], desc0.shape[1]), -1, device=desc0.device)
+                matches0[:, :count] = torch.arange(count, device=desc0.device)
+                return {"matches0": matches0, "matching_scores0": torch.ones_like(matches0, dtype=torch.float32)}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
+        matcher = LightGlueMatcher("disk")
+        centers = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        lafs = kornia.feature.laf_from_center_scale_ori(centers)
+        descriptors = torch.rand(5, 8, device=device, dtype=dtype)
+        unbatched_scores, unbatched_matches = matcher(descriptors, descriptors, lafs, lafs, (10, 20), (10, 20))
+        batched_scores, batched_matches = matcher(descriptors[None], descriptors[None], lafs, lafs, (10, 20), (10, 20))
+        # (1, N, D) used to take the fewer-than-two-descriptors early exit, which read the batch size (1) as the
+        # descriptor count and silently returned no matches.
+        assert unbatched_matches.shape == (5, 2)
+        assert batched_matches.shape == unbatched_matches.shape
+        self.assert_close(batched_scores, unbatched_scores)
+        assert torch.equal(batched_matches, unbatched_matches)
 
 
 class TestLocalFeatureMatcher(BaseTester):

@@ -490,6 +490,19 @@ class TestInRange(BaseTester):
         op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
 
+    def test_empty_batch(self, device, dtype):
+        # An empty batch reaches the function and comes back empty (#6266).
+        x = torch.rand(0, 3, 16, 24, device=device, dtype=dtype)
+        out = in_range(x, (0.2, 0.2, 0.2), (0.6, 0.6, 0.6), return_mask=True)
+        assert out.shape == (0, 1, 16, 24)
+        assert out.dtype == dtype
+        out = in_range(x, (0.2, 0.2, 0.2), (0.6, 0.6, 0.6), return_mask=False)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        op = InRange((0.2, 0.2, 0.2), (0.6, 0.6, 0.6), return_mask=True)
+        assert op(x).shape == (0, 1, 16, 24)
+        assert op(x).dtype == dtype
+
 
 class TestConventionsInRange(BaseTester):
     def test_convention_in_range_bounds_inclusive_and_all_channels_must_pass(self, device, dtype):

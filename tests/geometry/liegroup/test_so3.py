@@ -15,12 +15,14 @@
 # limitations under the License.
 #
 
+import io
 import math
 
 import pytest
 import torch
 from torch import nn
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
@@ -42,13 +44,29 @@ class TestSo3(BaseTester):
         assert isinstance(s, So3)
         self.assert_close(s.q.data, q.data)
 
-    # TODO: implement me
-    def test_cardinality(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_cardinality(self, device, dtype, batch_size):
+        so: So3 = So3.random(batch_size, device, dtype)
+        assert so.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(ValueError, match=r"Quaternion input must have last dimension == 4"):
+            So3(Quaternion(torch.zeros(1, 3, device=device, dtype=dtype)))
+
+        with pytest.raises(TypeCheckError, match=r"Type mismatch: expected Quaternion"):
+            So3(torch.zeros(1, 4, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 3, got 2"):
+            So3.exp(torch.zeros(1, 2, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 4, got 3"):
+            So3.from_wxyz(torch.zeros(1, 3, device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"Input size must be a \(\*, 3, 3\) tensor"):
+            So3.from_matrix(torch.zeros(3, device=device, dtype=dtype))
+
+        with pytest.raises(TypeError, match=r"Not So3 or torch.Tensor type"):
+            So3.identity(1, device, dtype) * [1.0, 2.0, 3.0]
 
     def test_gradcheck(self, device):
         v = torch.tensor([[0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
@@ -270,13 +288,36 @@ class TestSo3(BaseTester):
             v = (theta * axis).requires_grad_(True)
             assert torch.autograd.gradgradcheck(lambda x: So3.exp(x).q.data, (v,))
 
-    # TODO: implement me
     def test_jit(self, device, dtype):
-        pass
+        # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
+        # identity row, so a branch taken while tracing would show up as a mismatch against eager.
+        v = torch.tensor([[0.3, -0.4, 0.5], [0.1, 0.2, -0.3]], device=device, dtype=dtype)
+        other = v * 0.5
+        other[1] = 0.0
+        for fn in (lambda x: So3.exp(x).matrix(), lambda x: So3.exp(x).log()):
+            traced = torch.jit.trace(fn, (v,))
+            self.assert_close(traced(other), fn(other))
 
-    # TODO: implement me
     def test_module(self, device, dtype):
-        pass
+        v = torch.tensor([[0.3, -0.4, 0.5], [0.1, 0.2, -0.3]], device=device, dtype=dtype)
+        source = nn.ModuleDict({"pose": So3.exp(v)})
+        target = nn.ModuleDict({"pose": So3.exp(v * 0.5)})
+        assert set(source.state_dict()) == {"pose._q._data"}
+
+        buffer = io.BytesIO()
+        torch.save(source.state_dict(), buffer)
+        buffer.seek(0)
+        result = target.load_state_dict(torch.load(buffer, map_location=device, weights_only=True))
+        assert not result.missing_keys
+        assert not result.unexpected_keys
+        self.assert_close(target["pose"].matrix(), source["pose"].matrix())
+
+        pose = So3.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
+        assert moved.matrix().dtype == dtype
+        assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
@@ -316,6 +357,19 @@ class TestSo3(BaseTester):
         self.assert_close((s1 * s2).q.data, s2.q.data)
         self.assert_close((s2 * s2.inverse()).q.data, s1.q.data)
         self.assert_close((s1 * t), t)
+
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None)])
+    def test_mul_unbatched_with_batched(self, device, dtype, left_batch, right_batch):
+        # #6481: composing an unbatched So3 with a batch used to raise in torch.linalg.cross
+        s1 = So3(Quaternion.random(left_batch, device, dtype))
+        s2 = So3(Quaternion.random(right_batch, device, dtype))
+        out = s1 * s2
+        assert out.q.shape == (3, 4)
+        self.assert_close(out.matrix(), s1.matrix() @ s2.matrix())
+
+    def test_mul_mismatched_batches_raise(self, device, dtype):
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            So3.random(3, device, dtype) * So3.random(2, device, dtype)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_unit_norm(self, device, dtype, batch_size):
@@ -599,6 +653,47 @@ class TestSo3Conventions(BaseTester):
         # error also lands on the small first component, where the default float16 tolerance allows only 1.4e-3
         tol = 1e-2 if dtype == torch.float16 else None
         self.assert_close((s * s2) * p, s * (s2 * p), rtol=tol, atol=tol)
+
+    @pytest.mark.parametrize("points_shape", [(7, 3), (1, 3)])
+    def test_unbatched_rotation_rotates_a_point_set(self, points_shape, device, dtype):
+        # #6426: an unbatched So3 rotates every point of a point set, as So2 does for (N, 2); it used to raise
+        # in torch.linalg.cross because the (4,) quaternion and the points had different ranks.
+        torch.manual_seed(0)
+        s = So3.exp(torch.tensor([0.3, -0.5, 0.2], device=device, dtype=dtype))
+        p = (2 * torch.rand(points_shape) - 1).to(device, dtype)
+
+        out = s * p
+
+        assert out.shape == p.shape
+        self.assert_close(out, torch.stack([s * q for q in p.reshape(-1, 3)]).reshape(points_shape))
+        # R p in float64, on the CPU, from the same rounded quaternion and points: only the output is rounded
+        r = So3(Quaternion(s.q.data.cpu().double())).matrix()
+        self.assert_close(out.cpu(), (p.cpu().double() @ r.mT).to(dtype))
+
+    def test_unbatched_rotation_point_set_gradcheck(self, device):
+        # #6426: gradients flow through the expansion of an unbatched rotation over a point set
+        torch.manual_seed(0)
+        q = torch.randn(4, dtype=torch.float64).to(device)
+        p = torch.randn(5, 3, dtype=torch.float64).to(device)
+        self.gradcheck(lambda q, p: So3(Quaternion(q)) * p, (q, p))
+
+    # #6426: a pose maps (3,) or (N, 3) unbatched and one point per pose for a batch; other layouts, such as a
+    # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape"), [(None, (2, 5, 3)), (2, (3,)), (2, (7, 3)), (2, (2, 7, 3)), (1, (1, 7, 3))]
+    )
+    def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
+        pose = So3.identity(batch_size, device, dtype)
+        with pytest.raises(ValueError, match=r"Expected points of shape \(3,\) or \(N, 3\)"):
+            pose * torch.zeros(points_shape, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape", "out_shape"),
+        [(None, (3,), (3,)), (None, (7, 3), (7, 3)), (1, (7, 3), (7, 3)), (2, (2, 3), (2, 3)), (2, (1, 3), (2, 3))],
+    )
+    def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
+        pose = So3.identity(batch_size, device, dtype)
+        assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
 
     def test_convention_so3_adjoint_conjugates_the_tangent(self, device, dtype):
         # Ad(g) xi is the tangent of g exp(xi) g^-1: exp(Ad(g) xi) = g exp(xi) g^-1, with Ad(g) = R

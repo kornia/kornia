@@ -1,7 +1,7 @@
 # known-failure-schema: 1
 # profile: cpu-float16
 # python: 3.11
-# pytorch: 2.14.0
+# pytorch: 2.15.0
 # os: Linux
 # arch: x86_64
 # seed-scheme: sha256-nodeid-v1
@@ -78,7 +78,6 @@ call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::Te
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-6]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_smoke[cpu-float16-20]
 call	kornia.core.exceptions.BaseError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_smoke[cpu-float16-6]
-call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortImage::test_shape_extra_dims[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_all_coeff[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_five_coeff[cpu-float16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_stereo[cpu-float16]
@@ -162,9 +161,6 @@ call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConve
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-float16-5]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rotation_matrix_to_axis_angle[cpu-float16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToQuaternion::test_corner_case[cpu-float16]
-call	builtins.AssertionError	tests/geometry/test_depth.py::TestWarpFrameDepth::test_translation_normalized[cpu-float16]
-call	builtins.AssertionError	tests/geometry/test_depth_warper.py::TestDepthWarper::test_compute_subpixel_step[cpu-float16-1]
-call	builtins.AssertionError	tests/geometry/test_depth_warper.py::TestDepthWarper::test_compute_subpixel_step[cpu-float16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-float16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[cpu-float16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[cpu-float16-2]

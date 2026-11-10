@@ -29,24 +29,31 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert a grayscale image to RGB version of image.
+    r"""Convert a grayscale image to RGB.
+
+    ``rgb = grayscale_to_rgb(image)`` turns a ``(*, 1, H, W)`` grayscale image into a three-channel one.
 
     .. image:: _static/img/grayscale_to_rgb.png
 
-    The image data is assumed to be in the range of (0, 1).
-
     Convention:
-        The singleton channel at axis -3 is repeated into R, G and B. Leading dimensions are preserved.
+        The singleton channel at axis -3 is repeated into R, G and B.
 
     Args:
-        image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
+        image: grayscale image with shape ``(*, 1, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_grayscale`: the other direction, which weights the channels and cannot be undone.
+        - :class:`GrayscaleToRgb`: the module form.
 
     Example:
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
+
+    References:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
     KORNIA_CHECK_IS_TENSOR(image)
@@ -60,15 +67,16 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Convert a RGB image to grayscale version of image.
+    r"""Convert an RGB image to grayscale.
+
+    ``gray = rgb_to_grayscale(image)`` returns the weighted sum of the R, G and B channels of a ``(*, 3, H, W)`` image
+    as one channel, ``(*, 1, H, W)``.
 
     .. image:: _static/img/rgb_to_grayscale.png
 
-    The image data is assumed to be in the range of (0, 1).
-
     Convention:
-        RGB is channel-first at axis -3 and the result has one channel. Default weights are
-        ITU-R BT.601 luma weights (0.299, 0.587, 0.114) in RGB order.
+        Default weights are ITU-R BT.601 luma, ``(0.299, 0.587, 0.114)`` in RGB order, applied to the values as given:
+        the sRGB curve is not removed first.
 
     .. warning::
         Explicit ``rgb_weights`` expect a floating image: they are cast to the image's dtype, so on an integer image
@@ -76,19 +84,28 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         exactly, bit for bit as ``cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)`` does.
 
     Args:
-        image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
-        rgb_weights: Weights that will be applied on each channel (RGB).
-            The sum of the weights should add up to one.
+        image: RGB image with shape ``(*, 3, H, W)``.
+        rgb_weights: tensor of the R, G and B weights with shape ``(3,)``. Non-negative weights that sum to 1 keep
+            the output in the range of the input.
 
     Returns:
-        grayscale version of the image with shape :math:`(*,1,H,W)`.
+        Grayscale image with shape ``(*, 1, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
 
+    See Also:
+        - :func:`bgr_to_grayscale`: takes a BGR image, with the default weights only.
+        - :func:`rgb_to_y`: the Y channel of YCbCr, which has the same default weights and no ``rgb_weights``.
+        - :func:`grayscale_to_rgb`: repeats the channel back into three.
+        - :class:`RgbToGrayscale`: the module form, with ``rgb_weights`` stored.
+
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
+
+    References:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
     KORNIA_CHECK_IS_TENSOR(image)
@@ -135,20 +152,25 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
 def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to grayscale.
 
-    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
-
-    Convention:
-        BGR is channel-first at axis -3. This uses the RGB luma weights after reversing channel order.
+    ``gray = bgr_to_grayscale(image)`` converts a ``(*, 3, H, W)`` BGR image to ``(*, 1, H, W)`` with the default
+    weights of :func:`rgb_to_grayscale`.
 
     Args:
-        image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image: BGR image with shape ``(*, 3, H, W)``.
 
     Returns:
-        grayscale version of the image with shape :math:`(*,1,H,W)`.
+        Grayscale image with shape ``(*, 1, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_grayscale`: takes an RGB image and accepts ``rgb_weights``.
+        - :class:`BgrToGrayscale`: the module form.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
+
+    References:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
     KORNIA_CHECK_IS_TENSOR(image)
@@ -161,18 +183,20 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 
 class GrayscaleToRgb(nn.Module):
-    r"""nn.Module to convert a grayscale image to RGB version of image.
+    r"""Convert a grayscale image to RGB (module form).
 
-    See the Convention block on :func:`grayscale_to_rgb`.
+    ``out = GrayscaleToRgb()(image)`` is :func:`grayscale_to_rgb`.
 
-    The image data is assumed to be in the range of (0, 1).
+    Convention:
+        - See the convention block of :func:`grayscale_to_rgb`.
 
     Shape:
-        - image: :math:`(*, 1, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 1, H, W)``
+        - output: ``(*, 3, H, W)``
 
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+    See Also:
+        - :func:`grayscale_to_rgb`: the one-call form.
+        - :class:`RgbToGrayscale`: the other direction.
 
     Example:
         >>> input = torch.rand(2, 1, 4, 5)
@@ -188,29 +212,36 @@ class GrayscaleToRgb(nn.Module):
         """Convert a grayscale tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 1, H, W)`.
+            image: Input tensor with shape ``(*, 1, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``1`` is a single grayscale channel, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return grayscale_to_rgb(image)
 
 
 class RgbToGrayscale(nn.Module):
-    r"""nn.Module to convert a RGB image to grayscale version of image.
+    r"""Convert an RGB image to grayscale with stored weights (module form).
 
-    See the Convention block on :func:`rgb_to_grayscale`.
+    ``conv = RgbToGrayscale(rgb_weights)`` stores the weights, and ``out = conv(image)`` is :func:`rgb_to_grayscale`
+    with them. The default ``None`` keeps the default weights of the function.
 
-    The image data is assumed to be in the range of (0, 1).
+    Convention:
+        - See the convention block of :func:`rgb_to_grayscale`.
+
+    Args:
+        rgb_weights: tensor of the R, G and B weights with shape ``(3,)``, or ``None``.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)``
 
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+    See Also:
+        - :func:`rgb_to_grayscale`: the one-call form.
+        - :class:`BgrToGrayscale`: takes a BGR image, with the default weights only.
+        - :class:`GrayscaleToRgb`: the other direction.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -233,29 +264,31 @@ class RgbToGrayscale(nn.Module):
         """Convert an RGB tensor to grayscale.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Grayscale tensor with shape :math:`(*, 1, H, W)`, computed with the module's RGB weights.
+            Grayscale tensor with shape ``(*, 1, H, W)``, computed with the module's RGB weights.
         """
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
 class BgrToGrayscale(nn.Module):
-    r"""nn.Module to convert a BGR image to grayscale version of image.
+    r"""Convert a BGR image to grayscale (module form).
 
-    See the Convention block on :func:`bgr_to_grayscale`.
+    ``out = BgrToGrayscale()(image)`` is :func:`bgr_to_grayscale`.
 
-    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
+    Convention:
+        - See the convention block of :func:`rgb_to_grayscale`.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)``
 
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+    See Also:
+        - :func:`bgr_to_grayscale`: the one-call form.
+        - :class:`RgbToGrayscale`: takes an RGB image and accepts ``rgb_weights``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -271,11 +304,11 @@ class BgrToGrayscale(nn.Module):
         """Convert a BGR tensor to grayscale.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Grayscale tensor with shape :math:`(*, 1, H, W)`.
+            Grayscale tensor with shape ``(*, 1, H, W)``.
         """
         return bgr_to_grayscale(image)

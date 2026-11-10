@@ -52,6 +52,45 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
     assert tensor.shape == (num_of_images, image_shape[-1], image_shape[-3], image_shape[-2])
 
 
+class TestImageListViews(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 4, 3), (1, 4, 1)])
+    @pytest.mark.parametrize("axis", [0, 1, 2, None])
+    @pytest.mark.parametrize("input_dtype", [np.uint8, np.float32, np.float64])
+    def test_flipped_numpy_images(self, shape, axis, input_dtype):
+        """Convert flipped views accurately and keep the batch independent of input storage."""
+        image = np.arange(np.prod(shape), dtype=input_dtype).reshape(shape)
+        flipped = np.flip(image, axis=axis)
+        assert any(stride < 0 for stride in flipped.strides)
+
+        actual = kornia.image.image_list_to_tensor([flipped, image])
+        expected = torch.from_numpy(np.stack([flipped, image])).permute(0, 3, 1, 2)
+        self.assert_close(actual, expected)
+        image[...] = 0
+        self.assert_close(actual, expected)
+
+    def test_flipped_numpy_view_with_tensor_keeps_tensor_gradients(self):
+        """Copy reversed NumPy views while preserving gradients for tensor entries."""
+        array = np.arange(18, dtype=np.float32).reshape(2, 3, 3)[..., ::-1]
+        tensor = torch.ones(2, 3, 3, requires_grad=True)
+
+        actual = kornia.image.image_list_to_tensor([tensor, array])
+
+        self.assert_close(actual[1], torch.from_numpy(array.copy()).permute(2, 0, 1))
+        actual.sum().backward()
+        self.assert_close(tensor.grad, torch.ones_like(tensor))
+
+    def test_other_conversion_errors_stay_value_errors(self):
+        with pytest.raises(ValueError):
+            kornia.image.image_list_to_tensor([memoryview(np.zeros((2, 4, 3), dtype=np.float32))])
+
+    def test_dynamo_fullgraph_accepts_numpy_images(self):
+        # Dynamo's NumPy wrapper cannot evaluate a check on img.strides, which would fail the graph for every array.
+        torch._dynamo.reset()
+        image = np.arange(24, dtype=np.float32).reshape(2, 4, 3)
+        compiled = torch.compile(lambda a: kornia.image.image_list_to_tensor([a, a]), fullgraph=True, backend="eager")
+        self.assert_close(compiled(image), torch.from_numpy(np.stack([image, image])).permute(0, 3, 1, 2))
+
+
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
@@ -205,6 +244,38 @@ def test_perform_keep_shape_video_non_contiguous(device, dtype):
 
     assert result.shape == expected.shape
     assert_close(result, expected)
+
+
+@pytest.mark.parametrize("shape", [(0, 3, 16, 24), (2, 0, 3, 16, 24), (0, 2, 3, 16, 24)])
+def test_perform_keep_shape_image_empty_batch(device, dtype, shape):
+    # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+    op = kornia.image.perform_keep_shape_image(lambda x: x * 2)
+    assert op(torch.rand(*shape, device=device, dtype=dtype)).shape == shape
+
+
+@pytest.mark.parametrize(
+    "shape", [(2, 0, 16, 24), (2, 3, 0, 24), (2, 3, 16, 0), (16, 0), (0, 16, 24), (2, 2, 0, 16, 24)]
+)
+def test_perform_keep_shape_image_rejects_a_zero_image_size(device, dtype, shape):
+    # A zero channel, height or width raises `ValueError` before `f` is called.
+    op = kornia.image.perform_keep_shape_image(lambda x: x * 2)
+    with pytest.raises(ValueError, match="it is empty"):  # should raise ValueError before calling the function
+        op(torch.rand(*shape, device=device, dtype=dtype))
+
+
+@pytest.mark.parametrize("shape", [(0, 3, 4, 16, 24), (2, 0, 3, 4, 16, 24)])
+def test_perform_keep_shape_video_empty_batch(device, dtype, shape):
+    # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+    op = kornia.image.perform_keep_shape_video(lambda x: x * 2)
+    assert op(torch.rand(*shape, device=device, dtype=dtype)).shape == shape
+
+
+@pytest.mark.parametrize("shape", [(2, 0, 4, 16, 24), (2, 3, 0, 16, 24), (2, 3, 4, 0, 24), (2, 3, 4, 16, 0)])
+def test_perform_keep_shape_video_rejects_a_zero_image_size(device, dtype, shape):
+    # A zero channel, depth, height or width raises `ValueError` before `f` is called.
+    op = kornia.image.perform_keep_shape_video(lambda x: x * 2)
+    with pytest.raises(ValueError, match="it is empty"):  # should raise ValueError before calling the function
+        op(torch.rand(*shape, device=device, dtype=dtype))
 
 
 class TestMakeGrid(BaseTester):

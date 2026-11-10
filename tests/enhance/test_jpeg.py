@@ -75,6 +75,67 @@ class TestDiffJPEG(BaseTester):
             _DCT8_CACHE.clear()
             _DCT8_CACHE.update(cache)
 
+    @pytest.mark.parametrize("grid", [(1, 1), (1, 3), (3, 1), (2, 5), (4, 6), (7, 2)])
+    @pytest.mark.parametrize("batch", [0, 1, 3])
+    def test_chroma_patches_match_per_plane_views(self, device, dtype, grid, batch) -> None:
+        """The joint chroma patches hold the values and the order of the per-plane views, and invert to the planes."""
+        from kornia.enhance.jpeg import _patchify_8x8, _patchify_chroma, _unpatchify_8x8, _unpatchify_chroma
+
+        generator = torch.Generator().manual_seed(0)
+        height, width = 8 * grid[0], 8 * grid[1]
+        cb = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+        cr = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+
+        # Both only move values, so they must agree to the last bit in every dtype.
+        patches = _patchify_chroma(cb, cr)
+        self.assert_close(patches, torch.cat((_patchify_8x8(cb), _patchify_8x8(cr)), dim=1), rtol=0.0, atol=0.0)
+
+        n = grid[0] * grid[1]
+        cb_back, cr_back = _unpatchify_chroma(patches, height, width)
+        self.assert_close(cb_back, _unpatchify_8x8(patches[:, :n], height, width), rtol=0.0, atol=0.0)
+        self.assert_close(cr_back, _unpatchify_8x8(patches[:, n:], height, width), rtol=0.0, atol=0.0)
+        self.assert_close(cb_back, cb, rtol=0.0, atol=0.0)
+        self.assert_close(cr_back, cr, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize(
+        "shape", [(1, 3, 16, 16), (2, 3, 32, 48), (1, 3, 41, 70), (2, 3, 17, 33), (1, 3, 1, 1), (0, 3, 24, 24)]
+    )
+    def test_values_and_gradients_match_per_plane_views(self, device, dtype, shape, monkeypatch) -> None:
+        """The codec gives, to the last bit, the values and gradients of per-plane views and a slicing crop."""
+        from kornia.enhance import jpeg
+
+        def patchify_views(cb: torch.Tensor, cr: torch.Tensor) -> torch.Tensor:
+            return torch.cat((jpeg._patchify_8x8(cb), jpeg._patchify_8x8(cr)), dim=1)
+
+        def unpatchify_views(patches: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
+            n = patches.shape[1] // 2
+            return jpeg._unpatchify_8x8(patches[:, :n], H, W), jpeg._unpatchify_8x8(patches[:, n:], H, W)
+
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        quality = (torch.rand(max(shape[0], 1), generator=generator) * 90.0 + 5.0).to(device=device, dtype=dtype)
+        weights = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        codec = kornia.enhance.JPEGCodecDifferentiable()
+
+        def run() -> tuple[torch.Tensor, torch.Tensor]:
+            x = image.clone().requires_grad_(True)
+            out = codec(x, quality)
+            (out * weights).sum().backward()
+            return out.detach(), x.grad
+
+        actual, actual_grad = run()
+        monkeypatch.setattr(jpeg, "_patchify_chroma", patchify_views)
+        monkeypatch.setattr(jpeg, "_unpatchify_chroma", unpatchify_views)
+        monkeypatch.setattr(jpeg, "_crop_padding", lambda image, H, W: image[..., :H, :W])
+        expected, expected_grad = run()
+
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+        # The CUDA backward of the bilinear chroma upsampling adds atomically, in no fixed order: compare the gradients
+        # to the last bit on CPU only.
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        self.assert_close(actual_grad, expected_grad, **exact)
+
     def test_smoke(self, device, dtype) -> None:
         """This test standard usage."""
         B, H, W = 2, 32, 32
@@ -282,6 +343,25 @@ class TestDiffJPEG(BaseTester):
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "expected 16 or 1, got 8" in str(errinfo.value)
         assert "jpeg_quality needs one quality per image" in str(errinfo.value)
+
+    def test_empty_batch(self, device, dtype):
+        # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+        x = torch.rand(0, 3, 16, 24, device=device, dtype=dtype)
+        no_quality = torch.zeros(0, device=device, dtype=dtype)
+        one_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        out = kornia.enhance.jpeg_codec_differentiable(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = kornia.enhance.jpeg_codec_differentiable(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        module = kornia.enhance.JPEGCodecDifferentiable()
+        out = module(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = module(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
 
     def test_cardinality(self, device, dtype) -> None:
         B, H, W = 1, 16, 16

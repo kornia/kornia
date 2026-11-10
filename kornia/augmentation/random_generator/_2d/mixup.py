@@ -22,6 +22,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils.param_validation import _in_sampler_rebuild, _numbers_to_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]
@@ -64,7 +65,10 @@ class MixupGenerator(RandomGeneratorBase):
 
         _joint_range_check(lambda_val, "lambda_val", bounds=(0, 1))
         self.lambda_sampler = UniformDistribution(lambda_val[0], lambda_val[1], validate_args=False)
-        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        # A rebuild does not check ``p`` again, which would read it on the device.
+        self.prob_sampler = Bernoulli(
+            _numbers_to_tensor(float(self.p), device, dtype), validate_args=False if _in_sampler_rebuild() else None
+        )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -74,7 +78,9 @@ class MixupGenerator(RandomGeneratorBase):
 
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
-        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
+        # An index permutation: int64 whatever the sampling dtype (CUDA has no bfloat16 randperm, and float16 holds
+        # integers exactly only up to 2048). torch draws the same permutation for every dtype.
+        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=torch.long)
         mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
         mixup_lambdas = mixup_lambdas * batch_probs
 

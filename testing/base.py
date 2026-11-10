@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import math
 import sys
+import types
 from contextlib import contextmanager
 from functools import cache
 from typing import Any, Callable, Iterator, Optional, Sequence, Union
@@ -39,6 +40,16 @@ DYNAMO_UNAVAILABLE_REASON = "torch.compile requires torch>=2.4 on Python>=3.12 a
 DYNAMIC_EXPORT_UNAVAILABLE_REASON = (
     f"named torch.export dynamic shapes require torch>=2.2, and {DYNAMO_UNAVAILABLE_REASON}"
 )
+
+
+# gradcheck computes the analytical Jacobian twice and, with its default nondet_tol=0, fails when the two differ at all.
+# On CUDA, cuDNN's default convolution algorithms and the backward kernels that accumulate with atomics need not repeat
+# their rounding: two backward passes of raw_to_rgb differed by up to 8.9e-16 (gradients up to 5), and of
+# HausdorffERLoss3D by up to 4.3e-19, in 1 to 3 % of random float64 cases. This tolerance is 1e5 times that and 1e5
+# times below gradcheck's own atol, so the default kernels, the ones users run, stay under test. Deterministic
+# algorithms are no substitute: they swap in other kernels, and torch's deterministic reflection_pad2d backward returns
+# wrong gradients for large pads (pytorch/pytorch#203421).
+CUDA_GRADCHECK_NONDET_TOL = 1e-10
 
 
 @contextmanager
@@ -62,6 +73,14 @@ def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
+def skip_unsupported_autocast(device: torch.device, autocast_dtype: str) -> None:
+    """Skip a test of a caller's autocast region on a device without one, or that cannot run ``autocast_dtype``."""
+    if device.type not in ("cpu", "cuda", "mps"):
+        pytest.skip("CPU, CUDA and MPS autocast")
+    if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+
+
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
     return not (
@@ -76,6 +95,22 @@ def dynamic_export_is_available() -> bool:
     ``torch.export.Dim`` and the ``dynamic_shapes`` argument both landed in PyTorch 2.2.
     """
     return dynamo_is_available() and hasattr(getattr(torch, "export", None), "Dim")
+
+
+def script_uncached(fn: Callable[..., Any]) -> torch.jit.ScriptFunction:
+    """``torch.jit.script`` a fresh copy of ``fn``, with no profiling history from earlier calls.
+
+    ``torch.jit.script`` caches one compiled function per Python function, and the profiling executor specializes
+    and fuses it on the shapes of the calls it has seen, so a test that scripts a shared function inherits whatever
+    other tests ran before it. A copy with the same code object, globals and annotations compiles to the same
+    graph but starts its own history, which makes a test of a call sequence deterministic.
+    """
+    copy = types.FunctionType(fn.__code__, fn.__globals__, fn.__name__, fn.__defaults__, fn.__closure__)
+    copy.__annotations__ = dict(fn.__annotations__)
+    copy.__kwdefaults__ = fn.__kwdefaults__
+    copy.__module__ = fn.__module__
+    copy.__qualname__ = fn.__qualname__
+    return torch.jit.script(copy)
 
 
 # {dtype: (rtol, atol)}
@@ -330,20 +365,6 @@ def supports_nearest_3d_grid_sample(device: torch.device, dtype: torch.dtype) ->
     return _supports_kernel_probe(_nearest_3d_grid_sample_op, device.type, dtype)
 
 
-def _unit_size_3d_affine_grid_op(device_type: str, dtype: torch.dtype) -> None:
-    theta = _probe_zeros(device_type, dtype, 1, 3, 4)
-    F.affine_grid(theta, [1, 1, 1, 2, 2], align_corners=True)
-
-
-def supports_unit_size_3d_affine_grid(device: torch.device, dtype: torch.dtype) -> bool:
-    """Whether 3D ``affine_grid`` with ``align_corners=True`` can build a grid with a size-1 axis for ``dtype``.
-
-    PyTorch builds a size-1 axis through ``torch.tensor``, which has no CPU kernel for half precision.
-    Probed at runtime and cached per (device type, dtype).
-    """
-    return _supports_kernel_probe(_unit_size_3d_affine_grid_op, device.type, dtype)
-
-
 def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
     F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
 
@@ -524,4 +545,6 @@ class BaseTester:
                 for i, r, d in zip(inputs, requires_grad, dtypes)
             ]
 
+        if any(isinstance(t, torch.Tensor) and t.device.type == "cuda" for t in _all_inputs):
+            kwargs.setdefault("nondet_tol", CUDA_GRADCHECK_NONDET_TOL)
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)

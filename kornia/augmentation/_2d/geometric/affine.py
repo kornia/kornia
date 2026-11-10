@@ -28,11 +28,17 @@ from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.Tensor image.
+    r"""Warp images by a random 2D affine transformation, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomAffine(degrees, ...)(input)`` warps each image of shape ``(B, C, H, W)`` with one sampled
+    affine transform about its center.
 
     .. image:: _static/img/RandomAffine.png
 
-    The transformation is computed so that the image center is kept invariant.
+    .. note::
+        Unlike torchvision's ``RandomAffine``, which transforms every image, this class transforms each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to transform every sample.
 
     Args:
         degrees: Range of degrees to select from.
@@ -48,7 +54,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             Will keep original scale by default.
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
@@ -57,12 +63,12 @@ class RandomAffine(GeometricAugmentationBase2D):
             Can be a float, int, or a torch.Tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
@@ -70,7 +76,7 @@ class RandomAffine(GeometricAugmentationBase2D):
           move content right and down.
         - a positive ``degrees`` rotates the displayed image clockwise, unlike :class:`RandomRotation`
           (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-        - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
+        - ``shear`` draws degrees, converted to radians and applied about the image center with the sign and the
           x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
           :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
         - in :class:`~kornia.augmentation.container.AugmentationSequential`, a ``fill_value`` with more than one
@@ -79,6 +85,11 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
+
+    See Also:
+        - :class:`RandomRotation`: samples rotation without translation, scaling or shear.
+        - :class:`RandomPerspective`: samples a projective four-corner warp.
+        - :class:`RandomAffine3D`: applies the corresponding sampled transform to volumes.
 
     Examples:
         >>> import torch

@@ -262,6 +262,34 @@ class TestImageHistogram2d(BaseTester):
         assert torch.isfinite(hist).all()
         assert torch.isfinite(pdf).all()
 
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("bandwidth", [0.1, 0.5, 2.0])
+    def test_explicit_bandwidth_keeps_automatic_centers_on_the_range_6664(self, device, dtype, kernel, bandwidth):
+        # The automatic centers are the equal-width bin centers over [min, max], so they must match explicitly passed
+        # equal-width centers for any bandwidth. The bandwidth only sets the kernel width.
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        centers = torch.tensor([0.125, 0.375, 0.625, 0.875], device=device, dtype=dtype)
+
+        hist_auto, pdf_auto = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=bandwidth, kernel=kernel, return_pdf=True
+        )
+        hist_explicit, pdf_explicit = TestImageHistogram2d.fcn(
+            image, 0.0, 1.0, 4, bandwidth=bandwidth, centers=centers, kernel=kernel, return_pdf=True
+        )
+
+        self.assert_close(hist_auto, hist_explicit)
+        self.assert_close(pdf_auto, pdf_explicit)
+
+    def test_explicit_bandwidth_does_not_change_which_range_the_bins_cover_6664(self, device, dtype):
+        # With the bandwidth fixed, moving max stretches the bins over [min, max]: [0, 2] gives centers 0.25, 0.75, 1.25
+        # and 1.75, so 0.25 and 1.75 each fall exactly on an outer center. The uniform kernel with bandwidth 0.25
+        # counts a pixel in a bin when it lies within 0.25 of the center, so each pixel lands in exactly one bin.
+        image = torch.tensor([[0.25, 1.75]], device=device, dtype=dtype)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 2.0, 4, bandwidth=0.25, kernel="uniform")
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(hist, torch.tensor([1.0, 0.0, 0.0, 1.0], device=device, dtype=output_dtype))
+
     def test_empty_centers_select_automatic_centers(self):
         image = torch.rand(4, 4)
         hist_none, pdf_none = TestImageHistogram2d.fcn(image, 0.0, 1.0, 4, return_pdf=True)
@@ -282,6 +310,21 @@ class TestImageHistogram2d(BaseTester):
 
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
+
+    @pytest.mark.parametrize(
+        "epsilon,expected_value",
+        [(0.0, 0.25), (1e-10, 0.24998611622339154), (1e-6, 0.16073222839317233)],
+    )
+    def test_epsilon(self, device, dtype, epsilon, expected_value):
+        samples = torch.full((2, 4), 0.5, device=device, dtype=dtype)
+        bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.125, device=device, dtype=dtype)
+
+        actual = TestHistogram2d.fcn(samples, samples, bins, bandwidth, epsilon=epsilon)
+        # Each joint bin is 4 * exp(-16): raw / (4 * raw + epsilon), using Python's math.exp.
+        expected = torch.full((2, 2, 2), expected_value, device=device, dtype=dtype)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
     def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):

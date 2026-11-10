@@ -20,9 +20,9 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 def get_planckian_coeffs(mode: str) -> torch.Tensor:
@@ -92,7 +92,10 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
 
 
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
-    r"""Apply planckian jitter transformation to input torch.Tensor.
+    r"""Shift the illuminant color (Planckian jitter), applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPlanckianJitter(...)(input)`` changes the illumination of selected RGB images ``(B, 3, H, W)``
+    along its color-temperature model.
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
@@ -110,13 +113,13 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
           The entries index the table like a Python sequence: one past the end raises at construction, and a
           negative one counts from the end.
         same_on_batch: apply the same transformation across the batch.
-        p: probability that the random erasing operation will be performed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -130,6 +133,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         ``pl``'s shape depends on ``mode``, so a ``state_dict`` saved by an instance built with one mode
         does not load into an instance built with the other. Tracked in
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
+
+    See Also:
+        - :class:`ColorJiggle`: samples general color adjustments instead of illuminant coefficients.
 
     Examples:
         To apply planckian jitter based on mode

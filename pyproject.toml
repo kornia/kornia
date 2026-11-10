@@ -76,7 +76,8 @@ build-backend = "hatchling.build"
 # uv configuration
 # =============================================================================
 # PyTorch: Use standard PyPI version (simpler, more compatible)
-# For CUDA: pixi run -e cuda install (uses reinstall workaround)
+# For CUDA: pixi run -e cuda install
+# PyPI's Linux wheels are CUDA builds; on Windows that task reinstalls torch from the index below
 # Note: uv doesn't support per-environment sources
 
 # torch is installed from standard PyPI (no custom index needed)
@@ -93,7 +94,6 @@ omit = [
   "*/setup.py",
   "kornia/models/sam/*",
   "kornia/models/siglip2/*",
-  "kornia/models/paligemma/*",
   "kornia/models/kimi_vl/*",
   "kornia/models/qwen25/*",
   "kornia/models/smolvlm2/*",
@@ -174,10 +174,9 @@ filterwarnings = [
 markers = [
   "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
   "compile_conformance: torch.compile conformance of the promised operators (#5819); deselected unless --compile-conformance selects packages",
-  "mps_process_abort: aborts the pytest process on MPS on virtualized Apple GPUs (#4204); skipped there unless --run-mps-process-abort",
   "onnx_conformance: ONNX conformance of the promised operators (#5819); deselected unless --onnx-conformance selects packages",
   "slow: mark test as slow to run",
-  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul and cuDNN precision; xfail by default, run with --tf32 to activate",
 ]
 testpaths = ["tests"]
 # Test configuration via environment variables:
@@ -299,11 +298,9 @@ ignore = [
   "UP045",  # Use `X | None` for type annotations
   "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
   "D100",  # Allow Undocumented public module
-  "D101",  # TODO: Undocumented public class
-  "D102",  # TODO: Undocumented public method
   "D104",  # TODO: Undocumented public package
   "D105",  # Allow Undocumented magic method
-  "D107",  # TODO: Undocumented public init
+  "D107",  # Allow Undocumented public init: the class docstring documents the constructor
 ]
 
 [tool.ruff.lint.flake8-import-conventions.aliases]
@@ -453,11 +450,6 @@ invalid-assignment = "ignore"
 redundant-cast = "ignore"
 
 [[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true

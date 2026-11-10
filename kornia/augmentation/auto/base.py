@@ -24,7 +24,7 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
-from kornia.augmentation.container.ops import InputSequentialOps
+from kornia.augmentation.container.ops import InputSequentialOps, _filter_child_options, _validate_extra_args
 from kornia.augmentation.container.params import ParamItem
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
@@ -35,25 +35,35 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Base class for policy-based image augmentations.
+    """Build and replay image augmentation policies made of named operations.
+
+    ``output = MyPolicy(policy)(input)`` applies :class:`~kornia.augmentation.auto.PolicySequential` children to
+    floating images of shape ``(B, C, H, W)`` once a subclass implements two hooks: ``compose_subpolicy_sequential``,
+    which builds one sub-policy, and ``get_forward_sequence``, which picks the sub-policies for a call or, given
+    ``params``, returns the recorded ones. Without ``get_forward_sequence``, ``forward(input)`` raises
+    ``NotImplementedError``.
 
     Convention:
-        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
-          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
-          that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
+        - a concrete policy selects one or more :class:`~kornia.augmentation.auto.PolicySequential` children for each
+          forward call and records that selected path, including every operation parameter dictionary, in ``_params``.
+          Passing that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
           path and reproduces their output.
-        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
-          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
-          enabled, their geometric transformation matrices
-          compose in that same execution order; a nonempty policy containing only intensity
-          operations has the identity matrix. An empty selected sub-policy has no matrix.
-          ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
-          intensity operation cannot be undone.
+        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy, and
+          for :class:`~kornia.augmentation.auto.RandAugment` the order in which its sub-policies were drawn. When
+          matrix computation is enabled, their geometric transformation matrices compose in that same execution order;
+          a nonempty policy containing only intensity operations has the identity matrix. An empty selected sub-policy
+          has no matrix. ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an
+          applied intensity operation cannot be undone.
         - input normalization, random-number generation, parameter placement, replay, and serialization follow
           the canonical augmentation contract in :doc:`/get-started/conventions`. This base does not expose a
           per-instance generator.
 
     Concrete policies define how they select children and interpret policy magnitudes.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.PolicySequential`: runs the operations in one sub-policy.
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains arbitrary image transforms without a policy.
+
     """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
@@ -111,14 +121,16 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(PolicySequential, module)
+            child_args = _filter_child_options(module, extra_args, param)
             mat = module.get_transformation_matrix(
-                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
+                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=child_args
             )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
@@ -234,6 +246,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)

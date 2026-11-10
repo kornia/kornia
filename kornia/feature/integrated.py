@@ -61,11 +61,13 @@ def _in_sift_layout(descriptors: torch.Tensor, layout: str) -> torch.Tensor:
 
 
 def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Return the keypoint scales and orientations, shape :math:`(1, N)`, that LightGlue takes for ``lafs``.
+    r"""Return the keypoint scales and orientations, shape ``(1, N)``, that LightGlue takes for ``lafs``.
 
     LightGlue's ``"sift"`` weights were trained on COLMAP keypoints, whose scale is the detection sigma and whose
-    orientation is the image angle of the frame's x-axis in :math:`(-\pi, \pi]`: the negative of the LAF
-    orientation. The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
+    orientation is, for the similarity frames ``A = s R`` of the SIFT features (nearly so for
+    :class:`SIFTFeatureScaleSpace`'s), the image angle of the frame's x-axis in :math:`(-\pi, \pi]`, which is the
+    negative of the LAF orientation; for another frame the two differ, and the negated LAF orientation is passed.
+    The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
     :class:`SIFTFeatureScaleSpace`'s. Every other feature keeps the LAF scale and the LAF orientation in
     :math:`[0, 2\pi)`. The ``"sift"`` scale is converted here rather than through :class:`LightGlue`'s
     ``scale_coef``, which the ``"doghardnet"`` configurations use, so that ``LightGlue("sift")`` itself keeps taking
@@ -136,33 +138,51 @@ def get_laf_descriptors(
     patch_size: int = 32,
     grayscale_descriptor: bool = True,
 ) -> torch.Tensor:
-    r"""Get local descriptors, corresponding to LAFs (keypoints).
+    r"""Describe LAFs on an image by running a patch descriptor on one patch sampled per LAF.
+
+    ``descs = get_laf_descriptors(img, lafs, patch_descriptor, patch_size)`` takes images ``(B, C, H, W)``, their
+    LAFs ``(B, N, 2, 3)`` in pixels and a patch descriptor module, and returns one descriptor per LAF, ``(B, N, D)``.
+    The descriptor determines the output dtype. The function converts a 3-channel image to grayscale when
+    ``grayscale_descriptor`` is set, samples a ``patch_size`` x ``patch_size`` patch per LAF with
+    :func:`extract_patches_from_pyramid`, and runs the descriptor on the stack of the ``B * N`` patches.
+    The patch follows the LAF's scale and orientation, so orient the LAFs first, e.g. with :class:`LAFOrienter`,
+    unless upright descriptors are wanted. ``patch_size`` must be what the descriptor takes: 32 for :class:`HardNet`
+    and the other learned descriptors, 41 for a default :class:`SIFTDescriptor`. For the module form, use
+    :class:`LAFDescriptor`; for SIFT descriptors of LAFs without sampling patches, :class:`SIFTDescriptorFromPyramid`.
 
     Convention:
         - The descriptor sees the patches of :func:`~kornia.feature.extract_patches_from_pyramid` at ``patch_size``;
           see its Convention block for how they are sampled. ``patch_size`` is this argument, 32 by default, and is
           not read from the descriptor, so it has to be a size the descriptor accepts.
-        - With ``grayscale_descriptor=True``, a 3-channel image is converted to grayscale first.
         - The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and
           dtype of ``img`` for the call (a TorchScript module is called on a cast copy). SOSNet and HyNet retain their
           final BatchNorm statistics in float32 for float16 images. The module keeps its device, dtype and
           parameters, every submodule is switched to eval for the call and gets its train/eval mode back afterwards,
           and gradients reach the module's parameters.
-        - An empty LAF set gives a :math:`(B, 0, D)` result, ``D`` as wide as a non-empty result, and a warning.
+        - An empty LAF set gives a ``(B, 0, D)`` result, ``D`` as wide as a non-empty result, and a warning.
           That result does not require grad, so no gradient reaches ``img`` or the descriptor's parameters through
           it.
 
     Args:
-        img: image features with shape :math:`(B,C,H,W)`.
-        lafs: local affine frames :math:`(B,N,2,3)`.
+        img: image features with shape ``(B,C,H,W)``.
+        lafs: local affine frames ``(B,N,2,3)`` in the pixels of ``img``, with its batch size.
         patch_descriptor: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
             or :class:`~kornia.feature.HardNet`.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image; a 3-channel ``img`` is
-            then converted to grayscale.
+            then converted to grayscale. An image with another channel count is passed on unchanged.
 
     Returns:
-        Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+        Local descriptors of shape ``(B,N,D)`` where :math:`D` is descriptor size.
+
+    See Also:
+        - :class:`LAFDescriptor`: the module form, which holds the descriptor, a pretrained :class:`HardNet` by
+          default.
+        - :func:`extract_patches_from_pyramid`: the patch sampler, for the patches themselves.
+        - :func:`laf_from_center_scale_ori`: LAFs from keypoint centres, scales and orientations, to describe here.
+        - :class:`SIFTDescriptorFromPyramid`: SIFT descriptors of LAFs, pooled from a gradient pyramid without
+          sampling patches.
+        - :class:`LAFOrienter`: orients LAFs from their patches, before they are described.
 
     """
     KORNIA_CHECK_LAF(lafs)
@@ -195,7 +215,17 @@ def get_laf_descriptors(
 
 
 class LAFDescriptor(nn.Module):
-    r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
+    r"""Describe LAFs with a held patch descriptor, as a module (HardNet by default).
+
+    ``describer = LAFDescriptor()``, then ``descs = describer(img, lafs)`` takes images ``(B, C, H, W)`` and their
+    LAFs ``(B, N, 2, 3)`` in pixels and returns one descriptor per LAF, ``(B, N, D)``: ``forward`` calls
+    :func:`get_laf_descriptors` with the held descriptor, ``patch_size`` and ``grayscale_descriptor``, which samples a
+    patch per LAF with :func:`extract_patches_from_pyramid`. By default it holds a pretrained :class:`HardNet` on
+    32 x 32 grayscale patches, converts an RGB image to grayscale and returns ``(B, N, 128)``; with another
+    descriptor, pass the patch size it takes, e.g. ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)``. It is the
+    descriptor of the HardNet local features, such as :class:`DoGHardNet`, and of the ``"patch"`` backend of
+    :class:`SIFTFeature` and :class:`SIFTFeatureScaleSpace`. For SIFT descriptors of LAFs without sampling patches,
+    use :class:`SIFTDescriptorFromPyramid` instead.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.get_laf_descriptors`, which ``forward`` calls with this
@@ -209,6 +239,16 @@ class LAFDescriptor(nn.Module):
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image; a 3-channel image is then
             converted to grayscale.
+
+    See Also:
+        - :func:`get_laf_descriptors`: the function form, which takes the descriptor in each call.
+        - :class:`HardNet`: the default descriptor; :class:`SIFTDescriptor`, :class:`HardNet8`, :class:`HyNet`,
+          :class:`SOSNet`, :class:`TFeat` and :class:`MKDDescriptor` fit as well.
+        - :func:`extract_patches_from_pyramid`: the patch sampler, for the patches themselves.
+        - :func:`laf_from_center_scale_ori`: LAFs from keypoint centres, scales and orientations, to describe here.
+        - :class:`SIFTDescriptorFromPyramid`: SIFT descriptors of LAFs, pooled from a gradient pyramid without
+          sampling patches.
+        - :class:`LocalFeature`: runs a detector and a descriptor such as this module in one call.
 
     """
 
@@ -237,48 +277,62 @@ class LAFDescriptor(nn.Module):
         r"""Describe the given LAFs with :func:`~kornia.feature.get_laf_descriptors`.
 
         Args:
-            img: image features with shape :math:`(B,C,H,W)`.
-            lafs: local affine frames :math:`(B,N,2,3)`.
+            img: image features with shape ``(B,C,H,W)``.
+            lafs: local affine frames ``(B,N,2,3)``.
 
         Returns:
-            Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+            Local descriptors of shape ``(B,N,D)`` where :math:`D` is descriptor size.
 
         """
         return get_laf_descriptors(img, lafs, self.descriptor, self.patch_size, self.grayscale_descriptor)
 
 
 class LocalFeature(nn.Module):
-    """nn.Module, which combines local feature detector and descriptor.
+    """Detect and describe LAFs in one call with a given detector and LAF descriptor module.
+
+    ``feature = LocalFeature(detector, descriptor)``, then ``lafs, responses, descs = feature(img, mask)`` runs a
+    detector and descriptor as one pipeline. It takes images ``(B, C, H, W)`` and an optional mask. The detector
+    returns LAFs ``(B, N, 2, 3)`` in pixels and responses ``(B, N)``. The descriptor returns one descriptor per LAF,
+    ``(B, N, D)``. ``scaling_coef`` changes the LAF shape before description. Use :class:`LAFDescriptor` to adapt a
+    patch descriptor such as :class:`HardNet`; :class:`SIFTDescriptorFromPyramid` already takes images and LAFs.
+    The detector and descriptor define accepted batch sizes, channels and intensity ranges. To match features from two
+    images, use :class:`LocalFeatureMatcher`. For learned features, use :class:`DISK`, :class:`ALIKED`, :class:`XFeat`
+    or :class:`DeDoDe`.
 
     Convention:
-        - ``forward`` runs the detector, multiplies the shape ``A`` of every LAF by ``scaling_coef``
-          (:func:`~kornia.feature.scale_laf`) and describes the scaled LAFs. It returns ``(lafs, responses, descs)``
-          with shapes :math:`(B, N, 2, 3)`, :math:`(B, N)` and :math:`(B, N, D)`: the scaled LAFs, in the frame of
-          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`),
-          the detector's responses and one descriptor per LAF. ``scaling_coef`` leaves the centres and the responses
+        - The returned LAFs use the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`). ``scaling_coef`` multiplies their shape ``A``
+          (:func:`~kornia.feature.scale_laf`) before the description and leaves the centres and the responses
           unchanged.
-        - ``N`` comes from the detector. The detectors of every preset (:class:`~kornia.feature.ScaleSpaceDetector`,
-          :class:`~kornia.feature.MultiResolutionDetector`, :class:`~kornia.feature.KeyNetDetector` and the dedicated
-          detector of ``SIFTFeatureScaleSpace(descriptor_backend="pyramid")``) return ``num_features`` slots for every
-          image, not the largest count in the batch.
-        - A slot that the detector did not fill holds a zero LAF and a zero response, and all such slots of an image
-          share one descriptor: with :class:`~kornia.feature.LAFDescriptor`, that of a patch sampled at the origin.
-          :class:`LocalFeatureMatcher` drops these slots before matching. Drop them yourself before any other
-          matcher, including :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_mnn`,
-          :func:`~kornia.feature.match_fginn`, :func:`~kornia.feature.match_adalam` and
-          :class:`~kornia.feature.LightGlueMatcher`, since identical descriptors match each other at zero distance and
-          a mutual test does not reject a pair of them: keep the slots where :func:`~kornia.feature.laf_is_filled` is
-          true, ``descs[b][laf_is_filled(lafs)[b]]`` for image ``b``, rather than testing the response (see the
-          Convention block of :func:`~kornia.feature.laf_is_filled`). The ratio tests of
-          :func:`~kornia.feature.match_snn` and :func:`~kornia.feature.match_smnn` do not replace this filtering: when
-          the other image has exactly one padded slot, the padded slots of the two images can match each other at zero
-          distance.
+        - Cast the module to the image dtype before calling it, for example ``feature.to(img.dtype)``. See each preset
+          for its supported dtypes.
+        - A detector can return zero-LAF padding when fewer than ``N`` features are found. ``laf_is_filled(lafs)`` is
+          ``True`` for detections; index LAFs, responses and descriptors with it to discard padding before matching.
+          :class:`LocalFeatureMatcher` does this automatically.
 
     Args:
-        detector: the detection module.
-        descriptor: the descriptor module.
+        detector: the detection module, called as ``detector(img, mask)`` and returning ``(lafs, responses)``, such
+            as :class:`~kornia.feature.ScaleSpaceDetector`.
+        descriptor: the descriptor module, called as ``descriptor(img, lafs)`` and returning ``(B, N, D)``, such as
+            :class:`~kornia.feature.LAFDescriptor`.
         scaling_coef: the multiplier of the detector's LAFs before the description, see the Convention block. An
             ``int`` is converted to ``float``. Must be positive.
+
+    Raises:
+        ValueError: if ``scaling_coef`` is not positive.
+
+    See Also:
+        - :class:`ScaleSpaceDetector`: a scale-space detector for a batch of images.
+        - :class:`MultiResolutionDetector`: a detector for one image per call.
+        - :func:`laf_is_filled`: returns the detection slots to keep and discard padding.
+        - :class:`LocalFeatureMatcher`: runs a local feature on two images and matches the descriptors.
+        - :class:`SIFTFeatureScaleSpace`: the SIFT preset for a batch of images.
+
+    Example:
+        >>> feature = LocalFeature(ScaleSpaceDetector(10), LAFDescriptor(SIFTDescriptor(32), patch_size=32))
+        >>> lafs, responses, descs = feature(torch.rand(2, 1, 64, 64))
+        >>> lafs.shape, responses.shape, descs.shape
+        (torch.Size([2, 10, 2, 3]), torch.Size([2, 10]), torch.Size([2, 10, 128]))
 
     """
 
@@ -297,14 +351,14 @@ class LocalFeature(nn.Module):
         """Run forward.
 
         Args:
-            img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask saying where a detection may be, shape :math:`(B,1,H,W)` with the spatial size of the
+            img: image to extract features with shape ``(B,C,H,W)``.
+            mask: a mask saying where a detection may be, shape ``(B,1,H,W)`` with the spatial size of the
                 image. It is forwarded to the detector unchanged; see the detector for its semantics.
 
         Returns:
-            - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding lafs with shape :math:`(B,N)`.
-            - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+            - Detected local affine frames with shape ``(B,N,2,3)``.
+            - Response function values for corresponding lafs with shape ``(B,N)``.
+            - Local descriptors of shape ``(B,N,D)`` where :math:`D` is descriptor size.
 
         The Convention block of :class:`LocalFeature` gives the frame, ``N`` and the slots the detector did not fill,
         which have to be dropped before matching.
@@ -353,23 +407,30 @@ class _SIFTFeature(LocalFeature):
 
 
 class SIFTFeature(_SIFTFeature):
-    """Multiresolution DoG detection followed by a (Root)SIFT descriptor.
+    """Detect per-level DoG keypoints and describe them with SIFT, one image per call.
 
-    For new scale-space SIFT pipelines, start with :class:`SIFTFeatureScaleSpace` and explicitly select
-    ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
+    ``sift = SIFTFeature(2048)`` loads a per-level DoG detector and SIFT descriptor. ``lafs, responses, descs =
+    sift(img)`` takes one grayscale image ``(1, 1, H, W)``; a batch or color image raises. It returns LAFs
+    ``(1, N, 2, 3)``, DoG-response magnitudes ``(1, N)``, strongest first, and RootSIFT descriptors
+    ``(1, N, 128)`` in kornia's layout. Use :func:`laf_is_filled` to keep detections and discard padding.
+    ``descriptor_backend`` chooses patches (``"patch"``, the default) or a gradient pyramid (``"pyramid"``). For
+    scale-space extrema or batches, use :class:`SIFTFeatureScaleSpace` with ``descriptor_backend="pyramid"``.
+
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 11x faster than one on
+    this module (640 px, 2,048 features). This module takes one image per call; for batches use
+    :class:`SIFTFeatureScaleSpace`. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
-        - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of one grayscale
-          image per call, :math:`(1, 1, H, W)`. The detector is a :class:`~kornia.feature.MultiResolutionDetector` on
-          the magnitude of a single-scale :class:`~kornia.feature.BlobDoGSingle` response. With
-          ``descriptor_backend="patch"``, the default, ``LAFOrienter(19)`` orients the LAFs unless ``upright`` and
-          :class:`~kornia.feature.SIFTDescriptor` describes 41 x 41 patches. ``"pyramid"`` keeps the detector and
-          orients and describes its LAFs with :class:`SIFTDescriptorFromPyramid`, which integrates smoothed image
-          gradients without extracting patches.
-        - The detector applies the response independently at each image resolution, with 2-D non-maximum
-          suppression. It does not select extrema across scale or refine positions and scales to subpixel precision,
-          and it does not apply classical SIFT's contrast or Hessian edge rejection. One orientation is assigned per
-          detection unless ``upright=True``.
+        - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract. The detector is
+          a :class:`~kornia.feature.MultiResolutionDetector` on the magnitude of a single-scale
+          :class:`~kornia.feature.BlobDoGSingle` response. With ``descriptor_backend="patch"``, the default,
+          ``LAFOrienter(19)`` orients the LAFs unless ``upright`` and :class:`~kornia.feature.SIFTDescriptor`
+          describes 41 x 41 patches. ``"pyramid"`` keeps the detector and orients and describes its LAFs with
+          :class:`SIFTDescriptorFromPyramid`, which integrates smoothed image gradients without extracting patches.
+        - The detector applies the response independently at each image resolution. It does not apply classical
+          SIFT's contrast or Hessian edge rejection. One orientation is assigned per detection unless
+          ``upright=True``.
         - Extrema of both polarities are kept: dark blobs are DoG maxima and bright blobs are DoG minima. On each
           image-pyramid level, a keypoint is a strict maximum of the response magnitude in its ``config["nms_size"]``
           window (15 pixels by default), so a stronger extremum of either polarity suppresses a weaker one.
@@ -377,13 +438,48 @@ class SIFTFeature(_SIFTFeature):
         - The frames are those of :class:`~kornia.feature.MultiResolutionDetector`: a pixel of a pyramid level, with a
           scale of ``config["s_mult"]`` (22 by default) times that level's pixel size whatever the size of the blob.
           Unlike the 6-sigma frames of :class:`SIFTFeatureScaleSpace`, their scale is not a fixed multiple of the
-          detection sigma.
+          detection sigma: a sixth of it, which ``LightGlueMatcher("sift")`` takes as the detection sigma, is not that
+          sigma here (see :ref:`sift-pipelines`).
         - Descriptors come in kornia's SIFT layout; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
         - Known defects: ``descriptor_backend="pyramid"`` is less accurate than the patch backend on Oxford
           homographies at 2048 features, and not faster on CPU at 1024 features
           (`#5748 <https://github.com/kornia/kornia/issues/5748>`_).
+
+    Args:
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        rootsift: if ``True``, the default, return RootSIFT descriptors, otherwise SIFT.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        config: the pyramid and suppression settings of :class:`~kornia.feature.MultiResolutionDetector`, whose
+            ``config`` argument lists them with their defaults.
+        compile_model: wrap the DoG response and the non-maxima suppression with :func:`torch.compile`, see
+            :class:`~kornia.feature.MultiResolutionDetector`.
+        score_threshold: the response magnitude a detection has to exceed. Must be non-negative.
+        descriptor_backend: ``"patch"`` or ``"pyramid"``, see the Convention block.
+        descriptor_layout: ``"kornia"`` or ``"opencv"``, the order of the descriptor values.
+
+    Raises:
+        ValueError: for a ``descriptor_backend`` or ``descriptor_layout`` other than those listed, or a negative
+            ``score_threshold``.
+
+    See Also:
+        - :class:`SIFTFeatureScaleSpace`: SIFT on a DoG scale space, with extrema across scale, sub-pixel refinement
+          and 6-sigma frames, for a batch of images.
+        - :class:`MultiResolutionDetector`: its detector, on the magnitude of the DoG.
+        - :class:`BlobDoGSingle`: the single-scale DoG response whose magnitude it detects on.
+        - :class:`SIFTDescriptor`: the descriptor of the ``"patch"`` backend, run on 41 x 41 patches through
+          :class:`LAFDescriptor`.
+        - :class:`SIFTDescriptorFromPyramid`: the orientation and descriptor of the ``"pyramid"`` backend.
+        - :func:`convert_sift_descriptor_layout`: the reordering that ``descriptor_layout="opencv"`` applies.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
+    Example:
+        >>> lafs, responses, descs = SIFTFeature(100)(torch.rand(1, 1, 64, 64))
+        >>> lafs.shape, responses.shape, descs.shape
+        (torch.Size([1, 100, 2, 3]), torch.Size([1, 100]), torch.Size([1, 100, 128]))
+
     """
 
     def __init__(
@@ -428,23 +524,33 @@ class SIFTFeature(_SIFTFeature):
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
-    """DoG scale-space detection, position/scale refinement and (Root)SIFT description.
+    """Detect refined DoG scale-space extrema and describe them with SIFT, for a batch.
 
-    For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
+    ``sift = SIFTFeatureScaleSpace(2048, descriptor_backend="pyramid")`` builds a DoG scale-space SIFT pipeline.
+    ``lafs, responses, descs = sift(img)`` takes grayscale images ``(B, 1, H, W)``. It returns six-sigma LAFs
+    ``(B, N, 2, 3)``, absolute DoG responses ``(B, N)``, strongest first, and RootSIFT descriptors ``(B, N, 128)``.
+    Use :func:`laf_is_filled` to keep detections and discard padding. The ``"pyramid"`` backend reuses Gaussian
+    images and accepts RGB input; ``"patch"`` samples patches and requires grayscale input. Use
+    ``descriptor_layout="opencv"`` with ``LightGlueMatcher("sift")``; use :class:`DoGHardNet` for HardNet
+    descriptors on the ``"patch"`` detections.
+
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 8x faster than one on this
+    module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px, 2,048 features). See the
+    `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale
-          images :math:`(B, 1, H, W)`; the pyramid backend converts an RGB image to grayscale first.
+          images ``(B, 1, H, W)``; the pyramid backend converts an RGB image to grayscale first.
           ``descriptor_backend="patch"``, the default, runs :class:`~kornia.feature.ScaleSpaceDetector` with
           :class:`~kornia.feature.BlobDoG` on ``ScalePyramid(3, 1.6, 32, double_image=True)``, keeping minima as well
           as maxima, then ``LAFOrienter(19)`` unless ``upright``, and :class:`~kornia.feature.SIFTDescriptor` on 41 x
           41 patches. ``"pyramid"`` runs a dedicated DoG detector and reuses its Gaussian images and the octave and
           layer of each detection for orientation and description: it refines only sparse extrema, ranks all valid
           candidates by absolute response, and computes image gradients once per used layer.
-        - Both backends search 3-D DoG extrema and refine position and scale. Neither applies classical SIFT's contrast
-          or Hessian edge rejection, and each assigns one orientation per detection unless ``upright=True``. The
-          backend selects a different detector as well as different orientation and description stages, so the
-          backends can return different detections as well as different descriptors; the feature budget is the same.
+        - Each backend assigns one orientation per detection unless ``upright=True``. The backend selects a different
+          detector as well as different orientation and description stages, so the backends can return different
+          detections as well as different descriptors; the feature budget is the same.
         - On both backends the LAF scale is 6 times the detection sigma, and ``responses`` is the absolute DoG, the
           same for a bright blob as for a dark one. The LAF centres are in the frame of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`) on
@@ -453,6 +559,41 @@ class SIFTFeatureScaleSpace(LocalFeature):
         - Descriptors come in kornia's SIFT layout; ``descriptor_layout="opencv"`` returns them in OpenCV's, which
           :class:`~kornia.feature.LightGlueMatcher` expects with ``"sift"``.
           :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two.
+
+    Args:
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        rootsift: if ``True``, the default, return RootSIFT descriptors, otherwise SIFT.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`. With ``"patch"``, the
+            ``compile_modules`` of :class:`~kornia.feature.ScaleSpaceDetector`; with ``"pyramid"``, ``"scale_pyr"``
+            and ``"subpix"`` only, both for ``True``, while the orientation and description run eagerly.
+        descriptor_backend: ``"patch"`` or ``"pyramid"``, see the Convention block.
+        descriptor_layout: ``"kornia"`` or ``"opencv"``, the order of the descriptor values.
+
+    Raises:
+        ValueError: for a ``descriptor_backend`` or ``descriptor_layout`` other than those listed, or a
+            ``compile_modules`` name the selected backend does not have.
+
+    See Also:
+        - :class:`SIFTFeature`: a per-level DoG approximation of SIFT, without selection across scale or sub-pixel
+          refinement, one image per call.
+        - :class:`ScaleSpaceDetector`: the detector of the ``"patch"`` backend, on a :class:`BlobDoG` response.
+        - :class:`BlobDoG`: the scale-space DoG response of the ``"patch"`` backend.
+        - :class:`SIFTDescriptor`: the descriptor of the ``"patch"`` backend, run on 41 x 41 patches through
+          :class:`LAFDescriptor`.
+        - :func:`convert_sift_descriptor_layout`: the reordering that ``descriptor_layout="opencv"`` applies.
+        - :class:`LightGlueMatcher`: its ``"sift"`` weights match these features, in the ``"opencv"`` layout.
+        - :class:`DoGHardNet`: the detections of the ``"patch"`` backend described by HardNet, at twice the frame
+          scale.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
+    Example:
+        >>> sift = SIFTFeatureScaleSpace(100, descriptor_backend="pyramid")
+        >>> lafs, responses, descs = sift(torch.rand(2, 1, 64, 64))
+        >>> lafs.shape, responses.shape, descs.shape
+        (torch.Size([2, 100, 2, 3]), torch.Size([2, 100]), torch.Size([2, 100, 128]))
+
     """
 
     def __init__(
@@ -513,7 +654,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
     def forward(
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Detect and describe sparse SIFT features, sharing scale space when selected."""
+        """Detect and describe SIFT features; the ``"pyramid"`` backend reuses the detector's Gaussian images."""
         if self.descriptor_backend == "patch":
             lafs, responses, descriptors = super().forward(img, mask)
             return lafs, responses, _in_sift_layout(descriptors, self.descriptor_layout)
@@ -527,14 +668,38 @@ class SIFTFeatureScaleSpace(LocalFeature):
 
 
 class GFTTAffNetHardNet(LocalFeature):
-    """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor.
+    """Detect GFTT corners over scale with AffNet shapes and HardNet descriptors.
+
+    ``feature = GFTTAffNetHardNet(2048)`` loads pretrained AffNet and HardNet in evaluation mode. ``lafs, responses,
+    descs = feature(img)`` takes grayscale images ``(B, 1, H, W)``; convert color images with
+    :func:`~kornia.color.rgb_to_grayscale` first. It returns affine LAFs ``(B, N, 2, 3)``, Shi-Tomasi responses
+    ``(B, N)``, strongest first, and unit-norm HardNet descriptors ``(B, N, 128)``. Use :func:`laf_is_filled` to keep
+    detections and discard padding. For blobs, use :class:`HesAffNetHardNet` or :class:`DoGAffNetHardNet`.
 
     Convention:
         A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale
-        images :math:`(B, 1, H, W)`: a :class:`~kornia.feature.ScaleSpaceDetector` with the
+        images ``(B, 1, H, W)``: a :class:`~kornia.feature.ScaleSpaceDetector` with the
         :class:`~kornia.feature.CornerGFTT` response, its maxima only and ``mr_size=6``, whose LAFs get their affine
         shape from :class:`~kornia.feature.LAFAffNetShapeEstimator`, then their orientation from ``LAFOrienter(19)``
         unless ``upright``, and are described by :class:`~kornia.feature.HardNet` on 32 x 32 patches.
+
+    Args:
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    See Also:
+        - :class:`HesAffNetHardNet`: the same pipeline on Hessian blobs, 2048 slots by default.
+        - :class:`DoGAffNetHardNet`: the same shapes and descriptors on DoG blobs, which
+          ``LightGlueMatcher("dog_affnet_hardnet")`` matches.
+        - :class:`CornerGFTT`: the corner response it detects on.
+        - :class:`ScaleSpaceDetector`: its detector.
+        - :class:`LAFAffNetShapeEstimator`: the AffNet shape estimation it runs before the orientation.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
     """
 
     def __init__(
@@ -564,14 +729,39 @@ class GFTTAffNetHardNet(LocalFeature):
 
 
 class HesAffNetHardNet(LocalFeature):
-    """Convenience module, which implements Hessian detector + AffNet-HardNet descriptor.
+    """Detect Hessian blobs over scale with AffNet shapes and HardNet descriptors.
+
+    ``feature = HesAffNetHardNet(2048)`` loads pretrained AffNet and HardNet in evaluation mode. ``lafs, responses,
+    descs = feature(img)`` takes grayscale images ``(B, 1, H, W)``; convert color images with
+    :func:`~kornia.color.rgb_to_grayscale` first. It returns affine LAFs ``(B, N, 2, 3)``, Hessian responses
+    ``(B, N)``, strongest first, and unit-norm HardNet descriptors ``(B, N, 128)``. Use :func:`laf_is_filled` to keep
+    detections and discard padding. For corners use :class:`GFTTAffNetHardNet`; for LightGlue-compatible DoG blobs,
+    use :class:`DoGAffNetHardNet`.
 
     Convention:
         A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale
-        images :math:`(B, 1, H, W)`: a :class:`~kornia.feature.ScaleSpaceDetector` with the
+        images ``(B, 1, H, W)``: a :class:`~kornia.feature.ScaleSpaceDetector` with the
         :class:`~kornia.feature.BlobHessian` response, its maxima only and ``mr_size=6``, whose LAFs get their affine
         shape from :class:`~kornia.feature.LAFAffNetShapeEstimator`, then their orientation from ``LAFOrienter(19)``
         unless ``upright``, and are described by :class:`~kornia.feature.HardNet` on 32 x 32 patches.
+
+    Args:
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
+            :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    See Also:
+        - :class:`GFTTAffNetHardNet`: the same pipeline on Shi-Tomasi corners, 8000 slots by default.
+        - :class:`DoGAffNetHardNet`: the same shapes and descriptors on DoG blobs, which
+          ``LightGlueMatcher("dog_affnet_hardnet")`` matches.
+        - :class:`BlobHessian`: the blob response it detects on.
+        - :class:`ScaleSpaceDetector`: its detector, with this response by default.
+        - :class:`LAFAffNetShapeEstimator`: the AffNet shape estimation it runs before the orientation.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
     """
 
     def __init__(
@@ -623,7 +813,13 @@ def _dog_detector(
 
 
 class DoGHardNet(LocalFeature):
-    """Convenience module, which implements DoG detector + HardNet descriptor.
+    """Detect DoG blobs over scale and describe them with HardNet, without affine adaptation.
+
+    ``feature = DoGHardNet(2048)`` loads pretrained HardNet in evaluation mode. ``lafs, responses, descs =
+    feature(img)`` takes grayscale images ``(B, 1, H, W)``. It returns 12-sigma DoG LAFs ``(B, N, 2, 3)``, absolute
+    DoG responses ``(B, N)``, strongest first, and unit-norm HardNet descriptors ``(B, N, 128)``. Use
+    :func:`laf_is_filled` to keep detections and discard padding before calling ``LightGlueMatcher("doghardnet")``.
+    Choose :class:`DoGAffNetHardNet` for affine shapes or :class:`SIFTFeatureScaleSpace` for SIFT descriptors.
 
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract. The detector is
@@ -631,17 +827,26 @@ class DoGHardNet(LocalFeature):
           ``"patch"`` backend, and the orientation is estimated on its 6-sigma frames. The returned LAFs are those
           frames scaled by two (``scaling_coef=2``), to 12 sigma or six times OpenCV's ``KeyPoint.size``, and
           :class:`~kornia.feature.HardNet` describes them on 32 x 32 patches.
-        - These are the frames the ``"doghardnet"`` weights of :class:`~kornia.feature.LightGlueMatcher` expect: pass
-          the LAFs and descriptors, without the padded slots, to ``LightGlueMatcher("doghardnet")``.
-        - The image must have one channel, :math:`(B, 1, H, W)`: convert a color image with
+        - The image must have one channel, ``(B, 1, H, W)``: convert a color image with
           :func:`~kornia.color.rgb_to_grayscale` first.
 
     Args:
-        num_features: the number of features to detect.
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
         upright: if ``True``, skip the orientation estimation and return upright frames.
         device: the device of the detector and descriptor modules. Default: CPU.
         compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
             :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    See Also:
+        - :class:`DoGAffNetHardNet`: the same detections with AffNet shapes, estimated before the orientation.
+        - :class:`SIFTFeatureScaleSpace`: the same detections with SIFT descriptors, at 6 sigma, with its
+          ``"patch"`` backend.
+        - :class:`ScaleSpaceDetector`: its detector, on a :class:`BlobDoG` response.
+        - :class:`BlobDoG`: the scale-space DoG response it detects on.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`LightGlueMatcher`: its ``"doghardnet"`` weights match these features.
+        - :class:`KeyNetHardNet`: HardNet descriptors of KeyNet detections, one image per call.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
 
     """
 
@@ -661,20 +866,36 @@ class DoGHardNet(LocalFeature):
 
 
 class DoGAffNetHardNet(LocalFeature):
-    """Convenience module, which implements DoG detector + AffNet-HardNet descriptor.
+    """Detect DoG blobs over scale with AffNet shapes and HardNet descriptors.
+
+    ``feature = DoGAffNetHardNet(2048)`` loads pretrained AffNet and HardNet in evaluation mode. ``lafs, responses,
+    descs = feature(img)`` takes grayscale images ``(B, 1, H, W)``. It returns the outputs of :class:`DoGHardNet`,
+    with affine LAF shapes adapted by AffNet before orientation. Use :func:`laf_is_filled` to keep detections and
+    discard padding before calling ``LightGlueMatcher("dog_affnet_hardnet")``. Choose :class:`GFTTAffNetHardNet` or
+    :class:`HesAffNetHardNet` for corners or Hessian blobs.
 
     Convention:
         As :class:`~kornia.feature.DoGHardNet`, with the affine shape of each 6-sigma DoG frame estimated by
         :class:`~kornia.feature.LAFAffNetShapeEstimator` before its orientation. The scale of the returned LAFs, the
-        square root of their determinant, is again 12 sigma. Pass the LAFs and descriptors, without the padded slots,
-        to ``LightGlueMatcher("dog_affnet_hardnet")``. The image must have one channel, :math:`(B, 1, H, W)`.
+        square root of their determinant, is again 12 sigma. The image must have one channel, ``(B, 1, H, W)``.
 
     Args:
-        num_features: the number of features to detect.
+        num_features: the number of slots per image; the strongest detections fill them, the rest are padding.
         upright: if ``True``, skip the orientation estimation and return upright frames.
         device: the device of the detector and descriptor modules. Default: CPU.
         compile_modules: the detector sub-modules to wrap with :func:`torch.compile`, see
             :class:`~kornia.feature.ScaleSpaceDetector`.
+
+    See Also:
+        - :class:`DoGHardNet`: the same detections and descriptors without affine adaptation.
+        - :class:`LAFAffNetShapeEstimator`: the AffNet shape estimation it runs before the orientation.
+        - :class:`ScaleSpaceDetector`: its detector, on a :class:`BlobDoG` response.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`LightGlueMatcher`: its ``"dog_affnet_hardnet"`` mode matches these features.
+        - :class:`GFTTAffNetHardNet`: the same shapes and descriptors on Shi-Tomasi corners.
+        - :class:`HesAffNetHardNet`: the same shapes and descriptors on Hessian blobs.
+        - :class:`KeyNetAffNetHardNet`: the same shapes and descriptors on KeyNet detections, one image per call.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
 
     """
 
@@ -695,14 +916,42 @@ class DoGAffNetHardNet(LocalFeature):
 
 
 class KeyNetHardNet(LocalFeature):
-    """Convenience module, which implements KeyNet detector + HardNet descriptor.
+    """Detect KeyNet keypoints and describe them with HardNet, without affine adaptation.
+
+    ``feature = KeyNetHardNet(2048)`` loads pretrained KeyNet, OriNet and HardNet in evaluation mode. ``lafs,
+    responses, descs = feature(img)`` takes one grayscale image ``(1, 1, H, W)`` in ``[0, 1]``; a batch or color image
+    raises. It returns LAFs ``(1, N, 2, 3)``, KeyNet responses ``(1, N)``, strongest first, and unit-norm HardNet
+    descriptors ``(1, N, 128)``. Use :func:`laf_is_filled` to keep detections and discard padding. Choose
+    :class:`KeyNetAffNetHardNet` for AffNet shapes and its LightGlue weights. For batches, use :class:`DoGHardNet`.
 
     Convention:
         A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of one grayscale
-        image per call, :math:`(1, 1, H, W)`: a :class:`~kornia.feature.KeyNetDetector`, whose LAFs get their
+        image per call, ``(1, 1, H, W)``: a :class:`~kornia.feature.KeyNetDetector`, whose LAFs get their
         orientation from :class:`~kornia.feature.OriNet` on 32 x 32 patches unless ``upright``, and are described by
         :class:`~kornia.feature.HardNet` on 32 x 32 patches. ``scale_laf`` is the ``scaling_coef`` of
         :class:`~kornia.feature.LocalFeature`: it multiplies the detector's LAFs before the description.
+
+    Args:
+        num_features: the number of slots; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        scale_laf: the multiplier of the detector's LAFs before the description. Must be positive.
+        compile_model: wrap the KeyNet response and the non-maxima suppression with :func:`torch.compile`, see
+            :class:`~kornia.feature.KeyNetDetector`.
+        score_threshold: the KeyNet response a detection has to exceed. Must be non-negative.
+
+    Raises:
+        ValueError: if ``scale_laf`` is not positive or ``score_threshold`` is negative.
+
+    See Also:
+        - :class:`KeyNetAffNetHardNet`: the same detections with AffNet shapes, estimated before the orientation.
+        - :class:`KeyNetDetector`: its detector.
+        - :class:`KeyNet`: the learned response it detects on.
+        - :class:`OriNet`: the learned orientation, run on each LAF's patch through :class:`LAFOrienter`.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`DoGHardNet`: HardNet descriptors of DoG detections, for a batch of images.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
     """
 
     def __init__(
@@ -730,13 +979,42 @@ class KeyNetHardNet(LocalFeature):
 
 
 class KeyNetAffNetHardNet(LocalFeature):
-    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor.
+    """Detect KeyNet keypoints with AffNet shapes and HardNet descriptors.
+
+    ``feature = KeyNetAffNetHardNet(2048)`` loads pretrained KeyNet, AffNet, OriNet and HardNet in evaluation mode.
+    ``lafs, responses, descs = feature(img)`` takes one grayscale image ``(1, 1, H, W)`` in ``[0, 1]``. It returns
+    the outputs of :class:`KeyNetHardNet`, with affine LAF shapes adapted by AffNet before orientation. Use
+    :func:`laf_is_filled` to keep detections and discard padding before calling
+    ``LightGlueMatcher("keynet_affnet_hardnet")``. For batches, use :class:`DoGAffNetHardNet`.
 
     .. image:: _static/img/keynet_affnet.jpg
 
     Convention:
         As :class:`~kornia.feature.KeyNetHardNet`, with the affine shape of each frame estimated by
         :class:`~kornia.feature.LAFAffNetShapeEstimator` before its orientation.
+
+    Args:
+        num_features: the number of slots; the strongest detections fill them, the rest are padding.
+        upright: if ``True``, skip the orientation estimation and return upright frames.
+        device: the device of the detector and descriptor modules. Default: CPU.
+        scale_laf: the multiplier of the detector's LAFs before the description. Must be positive.
+        compile_model: wrap the KeyNet response and the non-maxima suppression with :func:`torch.compile`, see
+            :class:`~kornia.feature.KeyNetDetector`.
+        score_threshold: the KeyNet response a detection has to exceed. Must be non-negative.
+
+    Raises:
+        ValueError: if ``scale_laf`` is not positive or ``score_threshold`` is negative.
+
+    See Also:
+        - :class:`KeyNetHardNet`: the same detections and descriptors without affine adaptation.
+        - :class:`KeyNetDetector`: its detector.
+        - :class:`LAFAffNetShapeEstimator`: the AffNet shape estimation it runs before the orientation.
+        - :class:`OriNet`: the learned orientation, run on each LAF's patch through :class:`LAFOrienter`.
+        - :class:`HardNet`: its descriptor, run on 32 x 32 patches through :class:`LAFDescriptor`.
+        - :class:`LightGlueMatcher`: its ``"keynet_affnet_hardnet"`` weights match these features.
+        - :class:`DoGAffNetHardNet`: the same shapes and descriptors on DoG detections, for a batch of images.
+        - :class:`LocalFeature`: its base class, which gives the output contract.
+
     """
 
     def __init__(
@@ -765,7 +1043,17 @@ class KeyNetAffNetHardNet(LocalFeature):
 
 
 class LocalFeatureMatcher(nn.Module):
-    r"""nn.Module, which finds correspondences between two images based on local features.
+    r"""Detect, describe and match the local features of two images with a descriptor matcher.
+
+    ``matcher = LocalFeatureMatcher(local_feature, DescriptorMatcher("snn", 0.8))`` builds the module and
+    ``out = matcher({"image0": img0, "image1": img1})`` runs ``local_feature`` on both batches of images, which the
+    :class:`LocalFeature` presets take as grayscale ``(B, 1, H, W)``, except :class:`SIFTFeature`,
+    :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet`, which take one image per call, ``(1, 1, H, W)``. It
+    matches the descriptors of each pair of images and returns a dict of the matches of all pairs: ``keypoints0``
+    and ``keypoints1`` ``(NC, 2)``, ``lafs0`` and ``lafs1`` ``(1, NC, 2, 3)``, ``confidence`` ``(NC,)`` and the pair
+    of each match, ``batch_indexes`` ``(NC,)``. Features already computed for an image can be passed instead of
+    running ``local_feature`` on it. For a matcher that reads the LAFs, such as :class:`LightGlueMatcher`, call it on
+    the outputs of the local feature yourself; for matching without a detector, use :class:`LoFTR`.
 
     Convention:
         - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the returned LAF tensors ``lafs0`` and
@@ -780,11 +1068,21 @@ class LocalFeatureMatcher(nn.Module):
           need LAFs and do not fit.
 
     Args:
-        local_feature: Local feature detector. See :class:`~kornia.feature.GFTTAffNetHardNet`.
+        local_feature: Local feature detector and descriptor, called as ``local_feature(image, mask)`` and returning
+            ``(lafs, responses, descriptors)`` like :class:`~kornia.feature.LocalFeature`. See
+            :class:`~kornia.feature.GFTTAffNetHardNet`.
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
     Returns:
         Dict[str, torch.Tensor]: Dictionary with image correspondences and confidence scores.
+
+    See Also:
+        - :class:`LocalFeature`: the detector and descriptor pipeline that ``local_feature`` usually is.
+        - :class:`DescriptorMatcher`: the descriptor-only matcher it takes.
+        - :class:`LightGlueMatcher`: a learned matcher, which takes the LAFs and the image sizes as well.
+        - :class:`LoFTR`: matches two images directly, without a detector.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the next step, which keeps the matches one geometric model
+          explains.
 
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
@@ -837,29 +1135,31 @@ class LocalFeatureMatcher(nn.Module):
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
-            image0: left image with shape :math:`(N, 1, H1, W1)`.
-            image1: right image with shape :math:`(N, 1, H2, W2)`.
+            image0: left image with shape ``(N, 1, H1, W1)``. Required also with ``lafs0`` and ``descriptors0``:
+                its first dimension gives the number of image pairs.
+            image1: right image with shape ``(N, 1, H2, W2)``; not read when ``lafs1`` and ``descriptors1`` are
+                given.
             mask0 (optional): left image mask. '0' suppresses detection, with shape
-                :math:`(N, H1, W1)` or :math:`(N, 1, H1, W1)`.
+                ``(N, H1, W1)`` or ``(N, 1, H1, W1)``.
             mask1 (optional): right image mask. '0' suppresses detection, with shape
-                :math:`(N, H2, W2)` or :math:`(N, 1, H2, W2)`.
-            lafs0 (optional): pre-extracted LAFs of image0, :math:`(N, M0, 2, 3)`. When ``lafs0`` and
+                ``(N, H2, W2)`` or ``(N, 1, H2, W2)``.
+            lafs0 (optional): pre-extracted LAFs of image0, ``(N, M0, 2, 3)``. When ``lafs0`` and
                 ``descriptors0`` are both given, they are matched and ``local_feature`` does not run on image0.
-            descriptors0 (optional): pre-extracted descriptors of image0, :math:`(N, M0, D)`.
-            lafs1 (optional): pre-extracted LAFs of image1, :math:`(N, M1, 2, 3)`; with ``descriptors1``, as for image0.
-            descriptors1 (optional): pre-extracted descriptors of image1, :math:`(N, M1, D)`.
+            descriptors0 (optional): pre-extracted descriptors of image0, ``(N, M0, D)``.
+            lafs1 (optional): pre-extracted LAFs of image1, ``(N, M1, 2, 3)``; with ``descriptors1``, as for image0.
+            descriptors1 (optional): pre-extracted descriptors of image1, ``(N, M1, D)``.
 
         Returns:
-            - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
-            - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, ``1 - descriptor distance`` :math:`(NC)`. This lies in :math:`[0, 1]`
+            - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
+            - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
+            - ``confidence``, ``1 - descriptor distance`` ``(NC,)``. This lies in :math:`[0, 1]`
               only for the ratio-based ``DescriptorMatcher`` modes (``snn``, ``smnn``); ``nn`` and
               ``mnn`` return raw distances, which are unbounded for an arbitrary descriptor, so the
               confidence has no lower bound in general -- it goes at least down to -1, the value
               reached by unit-norm descriptors, whose distance tops out at 2.0.
-            - ``lafs0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
-            - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
-            - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
+            - ``lafs0``, matching LAFs from image0 ``(1, NC, 2, 3)``.
+            - ``lafs1``, matching LAFs from image1 ``(1, NC, 2, 3)``.
+            - ``batch_indexes``, batch indexes for the keypoints and lafs ``(NC,)``.
 
         """
         num_image_pairs: int = data["image0"].shape[0]
@@ -965,35 +1265,56 @@ class LocalFeatureMatcher(nn.Module):
 
 
 class LightGlueMatcher(GeometryAwareDescriptorMatcher):
-    r"""LightGlue-based matcher in kornia API.
+    r"""Match descriptors and LAFs with LightGlue, called like GeometryAwareDescriptorMatcher.
 
-    This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed".
-    See :cite:`LightGlue2023` for more details.
+    ``matcher = LightGlueMatcher("disk")`` loads the LightGlue weights trained for that local feature, and
+    ``scores, idxs = matcher(desc1, desc2, lafs1, lafs2, hw1, hw2)`` takes the descriptors ``(B1, D)`` and
+    ``(B2, D)`` of two images (or ``(1, B1, D)`` and ``(1, B2, D)``), their LAFs ``(1, B1, 2, 3)`` and
+    ``(1, B2, 2, 3)`` in pixels and, optionally, the image sizes ``(H, W)``, and returns LightGlue's matching scores
+    ``(B3, 1)``, higher for better matches, and the index pairs ``(B3, 2)``, in the format of
+    :class:`GeometryAwareDescriptorMatcher`. The descriptors must come from the feature the weights were trained for,
+    see ``feature_name`` in the Convention block. To pass batches of
+    keypoints in dicts and read every output of the network, use :class:`LightGlue`; for an exported ONNX model, use
+    :class:`OnnxLightGlue`. It is based on the original code of "LightGlue: Local Feature Matching at Light Speed",
+    see :cite:`LightGlue2023` for more details.
 
     Convention:
-        - ``lafs1`` and ``lafs2`` are LAFs in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+        - ``lafs1`` and ``lafs2`` use the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), and their centres go to LightGlue unchanged as
           the keypoints. ``hw1`` and ``hw2`` are the ``(H, W)`` of each image, which become LightGlue's
           ``image_size`` ``(W, H)``; without them, the image size is taken as the largest keypoint coordinates of
           that image, ``(max x, max y)``.
-        - What the network gets besides the keypoints depends on ``feature_name`` (case-insensitive):
+        - Choose ``feature_name`` for the source of the descriptors (case-insensitive). The network receives the
+          following data besides keypoints:
 
-          - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"superpoint"``: nothing else.
-          - ``"sift"``: the scale and orientation of the COLMAP keypoints the weights were trained on: the negated
+          - ``"aliked"``: use the 128-D descriptors of :class:`ALIKED`. The 64-D ``"aliked-t16"`` descriptors are
+            incompatible with these weights.
+          - ``"dedodeb"``, ``"dedodeg"``: use the ``B``, respectively ``G``, descriptors of :class:`DeDoDe`. Build
+            the LAFs at keypoints minus 0.5, because DeDoDe puts pixel ``i`` at ``i + 0.5``.
+          - ``"disk"``, ``"raco-aliked"``, ``"superpoint"``, ``"xfeat"``: use descriptors from the named feature and
+            no additional LAF attributes. For ``"xfeat"``, pass the 64-D
+            descriptors of :meth:`~kornia.feature.XFeat.detectAndCompute` and LAFs centred on its keypoints, such as
+            ``laf_from_center_scale_ori(keypoints[None])``, and call the matcher under ``torch.no_grad()`` or
+            ``torch.inference_mode()``: it raises on XFeat's inference tensors with gradients enabled
+            (`#6533 <https://github.com/kornia/kornia/issues/6533>`_).
+          - ``"sift"``: use :class:`SIFTFeatureScaleSpace` with ``descriptor_layout="opencv"``. The weights expect
+            the scale and orientation of the COLMAP keypoints they were trained on: the negated
             LAF orientation in :math:`(-\pi, \pi]`, and a sixth of the LAF scale, which is the detection sigma for
             6-sigma DoG frames such as :class:`~kornia.feature.SIFTFeatureScaleSpace`'s. The descriptors must be in
             OpenCV's SIFT layout, which these weights expect, while kornia's SIFT descriptors use another order of the
             same values: create the feature with ``descriptor_layout="opencv"``, or convert the descriptors with
             ``convert_sift_descriptor_layout(descs, "kornia", "opencv")``
             (:func:`~kornia.feature.convert_sift_descriptor_layout`).
-          - ``"doghardnet"``, ``"dog_affnet_hardnet"``: pass the LAFs the HardNet descriptors were computed on, at
+          - ``"doghardnet"``, ``"dog_affnet_hardnet"``: use :class:`DoGHardNet` or :class:`DoGAffNetHardNet`.
+            Pass the LAFs the HardNet descriptors were computed on, at
             the scale the weights were trained with: 12 sigma, six times OpenCV's ``KeyPoint.size`` and twice the
             6-sigma DoG frames of :class:`~kornia.feature.SIFTFeatureScaleSpace`. :class:`~kornia.feature.DoGHardNet`
             and :class:`~kornia.feature.DoGAffNetHardNet` return such LAFs and their descriptors; with another
             6-sigma DoG detector, apply :func:`~kornia.feature.scale_laf` with ``2.0`` to its LAFs before describing
             them. The network takes a sixth of the LAF scale, which is ``KeyPoint.size`` for these frames, and the
             LAF orientation in :math:`[0, 2\pi)`.
-          - ``"keynet_affnet_hardnet"``: the ends of the two LAF axes, ``c + A[:, 0]`` and ``c + A[:, 1]``,
+          - ``"keynet_affnet_hardnet"``: use :class:`KeyNetAffNetHardNet`. The network receives the ends of the two
+            LAF axes, ``c + A[:, 0]`` and ``c + A[:, 1]``,
             normalised like the keypoints.
         - The first returned value is LightGlue's matching score, not a distance: higher is better, and only matches
           scoring above ``filter_threshold`` (0.1 by default) are returned. The index rows are ``(index in desc1,
@@ -1005,6 +1326,13 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         feature_name: type of feature for matching, one of ``known_modes``.
         params: keyword arguments of :class:`~kornia.feature.LightGlue`, such as ``filter_threshold``.
 
+    See Also:
+        - :class:`LightGlue`: takes batches of keypoints in dictionaries and returns all network outputs.
+        - :class:`OnnxLightGlue`: runs an exported LightGlue model for one image pair.
+        - :class:`LocalFeatureMatcher`: matches local features with a descriptor-only matcher.
+        - :class:`LoFTR`: matches images directly, without a detector.
+        - :class:`GeometryAwareDescriptorMatcher`: offers FGINN and AdaLAM with the same call.
+
     """
 
     known_modes: ClassVar[List[str]] = [
@@ -1015,8 +1343,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         "dog_affnet_hardnet",
         "doghardnet",
         "keynet_affnet_hardnet",
+        "raco-aliked",
         "sift",
         "superpoint",
+        "xfeat",
     ]
 
     def __init__(self, feature_name: str = "disk", params: Optional[Dict] = None) -> None:
@@ -1042,20 +1372,20 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``, or ``(1, B1, D)`` for a batch of one.
+            desc2: Batch of descriptors of a shape ``(B2, D)``, or ``(1, B2, D)`` for a batch of one.
+            lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
+            lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
             hw1: ``(H, W)`` of the first image; see the Convention block.
             hw2: ``(H, W)`` of the second image; see the Convention block.
 
         Return:
-            - LightGlue's matching score of each match, higher is better, shape of :math:`(B3, 1)`.
+            - LightGlue's matching score of each match, higher is better, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
-        if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
+        if (desc1.shape[-2] < 2) or (desc2.shape[-2] < 2):
             return _no_match(desc1)
         keypoints1 = get_laf_center(lafs1)
         keypoints2 = get_laf_center(lafs2)

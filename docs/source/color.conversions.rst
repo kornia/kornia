@@ -3,8 +3,8 @@ Color conversion
 
 .. currentmodule:: kornia.color
 
-Conversions between color spaces, on float image tensors of shape :math:`(*, C, H, W)`. Most
-conversions exist as a function and as an ``nn.Module``; each page below documents one color scheme.
+Conversions between color spaces, on float image tensors of shape ``(*, C, H, W)``. Every conversion except
+:func:`rgb_to_y` exists as a function and as an ``nn.Module``; each page below documents one color scheme.
 
 .. toctree::
    :maxdepth: 1
@@ -55,6 +55,7 @@ All functions
    rgb_to_xyz
    xyz_to_rgb
    rgb_to_ycbcr
+   rgb_to_y
    ycbcr_to_rgb
    rgb_to_yuv
    yuv_to_rgb

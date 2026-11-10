@@ -1,7 +1,7 @@
 # known-failure-schema: 1
 # profile: cpu-bfloat16
 # python: 3.11
-# pytorch: 2.14.0
+# pytorch: 2.15.0
 # os: Linux
 # arch: x86_64
 # seed-scheme: sha256-nodeid-v1
@@ -164,9 +164,6 @@ call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMat
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rotation_matrix_to_axis_angle[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToQuaternion::test_corner_case[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_depth.py::TestDepthTo3d::test_unproject_normalized[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/test_depth.py::TestWarpFrameDepth::test_translation_normalized[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/test_depth_warper.py::TestDepthWarper::test_compute_subpixel_step[cpu-bfloat16-1]
-call	builtins.AssertionError	tests/geometry/test_depth_warper.py::TestDepthWarper::test_compute_subpixel_step[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-bfloat16-5]
@@ -218,7 +215,6 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotat
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotationMatrix2d::test_rotation_90deg_and_scale[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestRotationMatrix2d::test_rotation_90deg_and_scale[cpu-bfloat16-5]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpAffine::test_rotation_inverse[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_convention_normalize_invert_equivalence[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpPerspective::test_rotation_inverse[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90x[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90y[cpu-bfloat16]

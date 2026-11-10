@@ -91,18 +91,18 @@ class DETRPostProcessor(nn.Module):
         """Post-process outputs from DETR.
 
         Args:
-            logits: tensor with shape :math:`(N, Q, K)`, where :math:`N` is the batch size, :math:`Q` is the number of
+            logits: tensor with shape ``(N, Q, K)``, where :math:`N` is the batch size, :math:`Q` is the number of
                 queries, :math:`K` is the number of classes.
-            boxes: tensor with shape :math:`(N, Q, 4)`, where :math:`N` is the batch size, :math:`Q` is the number of
+            boxes: tensor with shape ``(N, Q, 4)``, where :math:`N` is the batch size, :math:`Q` is the number of
                 queries.
-            original_sizes: tensor with shape :math:`(N, 2)`, where :math:`N` is the batch size and each element
+            original_sizes: tensor with shape ``(N, 2)``, where :math:`N` is the batch size and each element
                 represents the image size of (img_height, img_width).
 
         Returns:
             Processed detections, each a row (class_id, confidence_score, x, y, w, h). A tensor of shape
-            :math:`(N, T, 6)`, :math:`T` = ``num_top_queries``, when ``confidence_filtering`` is ``False`` or
+            ``(N, T, 6)``, :math:`T` = ``num_top_queries``, when ``confidence_filtering`` is ``False`` or
             ``confidence_threshold`` is 0; with ``filter_as_zero``, the same tensor with the detections at or below the
-            threshold set to zero. Otherwise a list of :math:`N` tensors of shape :math:`(D, 6)`, where :math:`D` is the
+            threshold set to zero. Otherwise a list of :math:`N` tensors of shape ``(D, 6)``, where :math:`D` is the
             number of detections above the threshold in that image.
 
         """

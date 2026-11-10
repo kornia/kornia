@@ -28,20 +28,27 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 class CFA(Enum):
-    r"""Define the configuration of the color filter array.
+    r"""Pattern of the Bayer color filter array of a raw image.
 
-    So far only bayer images is supported and the enum sets the pixel order for bayer. Note that this can change due
-    to things like rotations and cropping of images. Take care if including the translations in pipeline.
-    This implementations is optimized to be reasonably fast, look better than simple nearest neighbour.
-    On top of this care is taken to make it reversible going raw -> rgb -> raw. the raw samples remain intact
-    during conversion and only unknown samples are interpolated.
+    ``CFA.BG`` and its siblings name the 2x2 cell that tiles the mosaic. As in OpenCV, the name reads pixel (1, 1) and
+    its right neighbor, so ``BG`` is the sensor usually called RGGB. The members, with the colors of the top-left cell
+    read row by row:
 
-    The names are based on the OpenCV convention where the BG indicates pixel 1,1 (counting from 0,0) is
-    blue and its neighbour to the right is green. In that case the top left pixel is red. Other options are GB, RG and
-    GR
+    - ``BG``: R G / G B.
+    - ``GB``: G R / B G.
+    - ``RG``: B G / G R.
+    - ``GR``: G B / R G.
 
-    reference:
-        https://en.wikipedia.org/wiki/Color_filter_array
+    Rotating or flipping a mosaic of even height and width changes its pattern, and so does cropping an odd number of
+    rows or columns from its top or left.
+
+    See Also:
+        - :func:`raw_to_rgb`: demosaics a mosaic with this pattern.
+        - :func:`rgb_to_raw`: samples an RGB image with this pattern.
+
+    References:
+        [1] https://en.wikipedia.org/wiki/Color_filter_array
+
     """
 
     BG = 0
@@ -51,25 +58,29 @@ class CFA(Enum):
 
 
 def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
-    r"""Convert a raw bayer image to RGB version of image.
+    r"""Demosaic a Bayer raw image to RGB.
 
-    We are assuming a CFA with 2 green, 1 red, 1 blue. A bilinear interpolation is used for R/G and a fix convolution
-    for the green pixels. To simplify calculations we expect the Height Width to be evenly divisible by 2.
-
-    The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2.
-    for simplicity reasons
+    ``rgb = raw_to_rgb(image, cfa)`` converts a ``(*, 1, H, W)`` mosaic in :math:`[0, 1]` to a full-resolution
+    ``(*, 3, H, W)`` RGB image. It interpolates red and blue bilinearly and green from its four nearest green samples.
 
     Convention:
-        Input is a single-channel Bayer mosaic at axis -3. cfa uses OpenCV's Bayer names, which
-        read the pattern from pixel (1, 1): CFA.BG, GB, RG and GR are sensors whose top-left 2x2
-        cell is RGGB, GRBG, BGGR and GBRG. Height and width must be even.
+        Height and width must be even. The mosaic samples are kept, so ``rgb_to_raw(raw_to_rgb(x, cfa), cfa)``
+        returns ``x``.
+        Away from the outermost pixel ring the result equals OpenCV's ``COLOR_BAYER_*2RGB`` up to its 8-bit rounding
+        (checked against OpenCV 5.0). In that ring OpenCV repeats the values of the ring inside it, and this function
+        keeps the samples.
 
     Args:
-        image: raw image to be converted to RGB with shape :math:`(*,1,H,W)`.
-        cfa: The configuration of the color filter.
+        image: raw mosaic with shape ``(*, 1, H, W)``.
+        cfa: pattern of the mosaic, see :class:`CFA`.
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`raw_to_rgb_2x2_downscaled`: one RGB pixel per 2x2 cell, without interpolation.
+        - :func:`rgb_to_raw`: samples an RGB image back into a mosaic.
+        - :class:`RawToRgb`: the module form.
 
     Example:
         >>> rawinput = torch.randn(2, 1, 4, 6)
@@ -89,7 +100,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     image = image.reshape(-1, 1, image.shape[-2], image.shape[-1])
 
-    # BG is defined as pel 1,1 being blue, that is the top left is actually green. This matches
+    # BG is defined as pel 1,1 being blue, that is the top left is red (RGGB). This matches
     # opencv naming so makes sense to keep
     if cfa == CFA.BG:
         r = image[..., :, ::2, ::2]
@@ -195,20 +206,24 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
 
 def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
-    r"""Convert a RGB image to RAW version of image with the specified color filter array.
+    r"""Sample an RGB image into a Bayer raw image.
 
-    The image data is assumed to be in the range of (0, 1).
+    ``raw = rgb_to_raw(image, cfa)`` keeps one channel at each pixel of a ``(*, 3, H, W)`` RGB image, the one that
+    the pattern ``cfa`` puts there, and returns the ``(*, 1, H, W)`` mosaic.
 
     Convention:
-        Selects samples into a one-channel Bayer mosaic using the same OpenCV cfa naming as
-        raw_to_rgb. The inverse conversion requires even height and width.
+        The inverse conversion requires even height and width.
 
     Args:
-        image: RGB image to be converted to bayer raw with shape :math:`(*,3,H,W)`.
-        cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue.
+        image: RGB image with shape ``(*, 3, H, W)``.
+        cfa: pattern of the mosaic, see :class:`CFA`.
 
     Returns:
-        raw version of the image with shape :math:`(*,1,H,W)`.
+        raw mosaic with shape ``(*, 1, H, W)``.
+
+    See Also:
+        - :func:`raw_to_rgb`: the inverse, which interpolates the missing samples.
+        - :class:`RgbToRaw`: the module form.
 
     Example:
         >>> rgbinput = torch.rand(2, 3, 4, 6)
@@ -245,26 +260,25 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
 
 def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
-    r"""Convert the raw bayer image to RGB version of it and resize width and height by half.
+    r"""Convert a Bayer raw image to RGB at half the height and width.
 
-    This is done efficiently by converting each superpixel of bayer image to the corresponding rgb triplet.
-    R and B channels of the raw image are left as are, while two G channels of raw image are averaged to obtain the
-    output G channel.
-
-    We are assuming a CFA with 2 green, 1 red, 1 blue.
-    The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2
-    for simplicity reasons.
+    ``rgb = raw_to_rgb_2x2_downscaled(image, cfa)`` turns each 2x2 cell of a ``(*, 1, H, W)`` mosaic in
+    :math:`[0, 1]` into one RGB pixel: red and blue are the cell's samples and green is the mean of its two green
+    samples.
 
     Convention:
-        Converts each 2x2 Bayer cell into one RGB pixel, so an even (H, W) mosaic produces
-        (H/2, W/2). cfa uses the same OpenCV naming as raw_to_rgb.
+        Height and width must be even.
 
     Args:
-        image: raw image to be converted to RGB and downscaled with shape :math:`(*,1,H,W)`.
-        cfa: The configuration of the color filter.
+        image: raw mosaic with shape ``(*, 1, H, W)``.
+        cfa: pattern of the mosaic, see :class:`CFA`.
 
     Returns:
-        downscaled RGB version of the image with shape :math:`(*,3,\frac{H}{2},\frac{W}{2})`.
+        RGB image with shape ``(*, 3, H / 2, W / 2)``.
+
+    See Also:
+        - :func:`raw_to_rgb`: keeps the resolution and interpolates.
+        - :class:`RawToRgb2x2Downscaled`: the module form.
 
     Example:
         >>> rawinput = torch.randn(2, 1, 4, 6)
@@ -309,15 +323,21 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
 
 class RawToRgb(nn.Module):
-    r"""nn.Module to convert a bayer raw image to RGB version of image.
+    r"""Demosaic a Bayer raw image to RGB (module form).
 
-    See the Convention block on :func:`raw_to_rgb`.
+    ``conv = RawToRgb(cfa)`` stores the pattern, and ``out = conv(image)`` is :func:`raw_to_rgb` with it.
 
-    The image data is assumed to be in the range of (0, 1).
+    Convention:
+        - See the convention block of :func:`raw_to_rgb`.
 
     Shape:
-        - image: :math:`(*, 1, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 1, H, W)``
+        - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`raw_to_rgb`: the one-call form.
+        - :class:`RawToRgb2x2Downscaled`: half the resolution, without interpolation.
+        - :class:`RgbToRaw`: the inverse.
 
     Example:
         >>> rawinput = torch.rand(2, 1, 4, 6)
@@ -337,34 +357,39 @@ class RawToRgb(nn.Module):
         """Convert a Bayer raw tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 1, H, W)`.
+            image: Input tensor with shape ``(*, 1, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)` using this module's CFA pattern.
+            RGB tensor with shape ``(*, 3, H, W)`` using this module's CFA pattern.
         """
         return raw_to_rgb(image, cfa=self.cfa)
 
 
 class RgbToRaw(nn.Module):
-    r"""nn.Module to convert a RGB image to bayer raw version of image.
+    r"""Sample an RGB image into a Bayer raw image (module form).
 
-    See the Convention block on :func:`rgb_to_raw`.
+    ``conv = RgbToRaw(cfa)`` stores the pattern, and ``out = conv(image)`` is :func:`rgb_to_raw` with it.
 
-    The image data is assumed to be in the range of (0, 1).
+    Convention:
+        - See the convention block of :func:`rgb_to_raw`.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)``
 
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+    See Also:
+        - :func:`rgb_to_raw`: the one-call form.
+        - :class:`RawToRgb`: the inverse.
 
     Example:
         >>> rgbinput = torch.rand(2, 3, 4, 6)
         >>> raw = RgbToRaw(CFA.GB)
         >>> output = raw(rgbinput)  # 2x1x4x6
+
+    References:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
 
@@ -379,27 +404,32 @@ class RgbToRaw(nn.Module):
         """Convert an RGB tensor to Bayer raw.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Raw tensor with shape :math:`(*, 1, H, W)` using this module's CFA pattern.
+            Raw tensor with shape ``(*, 1, H, W)`` using this module's CFA pattern.
         """
         return rgb_to_raw(image, cfa=self.cfa)
 
 
 class RawToRgb2x2Downscaled(nn.Module):
-    r"""nn.Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
+    r"""Convert a Bayer raw image to RGB at half the height and width (module form).
 
-    See the Convention block on :func:`raw_to_rgb_2x2_downscaled`.
+    ``conv = RawToRgb2x2Downscaled(cfa)`` stores the pattern, and ``out = conv(image)`` is
+    :func:`raw_to_rgb_2x2_downscaled` with it.
 
-    The image width and height have to be divisible by two. The image
-    data is assumed to be in the range of (0, 1).
+    Convention:
+        - See the convention block of :func:`raw_to_rgb_2x2_downscaled`.
 
     Shape:
-        - image: :math:`(*, 1, H, W)`
-        - output: :math:`(*, 3, \frac{H}{2}, \frac{W}{2})`
+        - image: ``(*, 1, H, W)``
+        - output: ``(*, 3, H / 2, W / 2)``
+
+    See Also:
+        - :func:`raw_to_rgb_2x2_downscaled`: the one-call form.
+        - :class:`RawToRgb`: keeps the resolution and interpolates.
 
     Example:
         >>> rawinput = torch.rand(2, 1, 4, 6)
@@ -416,11 +446,11 @@ class RawToRgb2x2Downscaled(nn.Module):
         """Convert a Bayer raw tensor to downscaled RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 1, H, W)`.
+            image: Input tensor with shape ``(*, 1, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H / 2, W / 2)`.
+            RGB tensor with shape ``(*, 3, H / 2, W / 2)``.
         """
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

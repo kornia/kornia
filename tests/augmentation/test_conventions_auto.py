@@ -261,7 +261,7 @@ class TestAutoAugmentConventions(BaseTester):
         nonzero = ops.Posterize(initial_magnitude=5.5, magnitude_range=(0.0, 8.0), symmetric_megnitude=True)
         signed = nonzero.forward_parameters(torch.Size([64, 1, 1, 1]))["bits_factor"]
         assert set(signed.tolist()) == {5, -5}
-        # Every built-in mapping is odd (identity, x * 180, truncation), so {5, -5} holds for either order. A
+        # Every built-in mapping is odd (identity, rad2deg(atan(x)), truncation), so {5, -5} holds for either order. A
         # mapping that is not odd separates them: sign after gives {13, -13}, sign before would give {13, 7}.
         from kornia.augmentation import RandomRotation
         from kornia.augmentation.auto.operations.base import OperationBase
@@ -461,7 +461,11 @@ class TestAutoAugmentConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_policy_shear_entries_are_mapped_to_degrees_4441(self):
-        # #4441: every policy applies ShearX's 180 factor, so ("shear_x", -0.3, 0.3) shears by up to 54 degrees.
+        # #4441: every policy applies ShearX's mapping, so ("shear_x", -0.3, 0.3) shears by up to
+        # rad2deg(atan(0.3)), about 16.7 degrees (#6250: the magnitude is the shear factor).
+        import math
+
+        bound = math.degrees(math.atan(0.3))
         torch.manual_seed(17)
         trivial = (
             TrivialAugment(policy=[[("shear_x", -0.3, 0.3)]])
@@ -469,16 +473,17 @@ class TestAutoAugmentConventions(BaseTester):
             .data[0]
             .data["shear_x"]
         )
-        assert bool((trivial.abs() <= 0.3 * 180).all())
-        assert trivial.abs().max() > 30.0
+        assert bool((trivial.abs() <= bound + 1e-3).all())
+        assert trivial.abs().max() > 15.0
         assert (trivial < 0).any()
         assert (trivial > 0).any()
-        # AutoAugment's shear bins are fractions too, so the mapping is applied once: bin b of either shear op spans
-        # the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), times 180, and 256 rows reach both ends.
+        # AutoAugment's shear bins are factors too, so the mapping is applied once: bin b of either shear op spans
+        # rad2deg(atan) of the adjacent points b and b + 1 of linspace(-0.3, 0.3, 11), and 256 rows reach both ends.
         edges = [-0.3 + 0.06 * point for point in range(11)]
         for name in ("shear_x", "shear_y"):
             for magnitude_bin in range(10):
-                low, high = edges[magnitude_bin] * 180, edges[magnitude_bin + 1] * 180
+                low = math.degrees(math.atan(edges[magnitude_bin]))
+                high = math.degrees(math.atan(edges[magnitude_bin + 1]))
                 auto = (
                     AutoAugment(policy=[[(name, 1.0, magnitude_bin)]])
                     .forward_parameters(torch.Size([256, 1, 8, 6]))[0]
@@ -496,7 +501,20 @@ class TestAutoAugmentConventions(BaseTester):
             .data[0]
             .data["shear_x"]
         )
-        self.assert_close(mapped.abs(), torch.full_like(mapped, 0.29 * 180))
+        self.assert_close(mapped.abs(), torch.full_like(mapped, math.degrees(math.atan(0.29))))
+
+    @pytest.mark.device_agnostic
+    def test_shear_magnitude_is_the_shear_factor_6250(self):
+        # #6250: ShearX(0.3) shears by rad2deg(atan(0.3)), about 16.7 degrees, so the shear
+        # matrix off-diagonal is the factor 0.3 (up to sign), not tan(54 degrees) = 1.38.
+        import math
+
+        operation = ops.ShearX(initial_magnitude=0.3, initial_probability=1.0, symmetric_megnitude=False)
+        image = torch.zeros(1, 3, 32, 32)
+        params = operation.forward_parameters(image.shape)
+        self.assert_close(params["shear_x"], torch.full_like(params["shear_x"], math.degrees(math.atan(0.3))))
+        matrix = operation.op.compute_transformation(image, params, operation.op.flags)
+        self.assert_close(matrix[0, 0, 1].abs(), torch.full_like(matrix[0, 0, 1], 0.3))
 
     @pytest.mark.device_agnostic
     def test_convention_operation_wrappers_pickle_and_replay_4469(self):
@@ -570,7 +588,7 @@ class TestAutoAugmentConventions(BaseTester):
             low, high = (float(bound) for bound in operation.magnitude_range)
             expected = low + (high - low) * 10 / 30
             if name in ("shear_x", "shear_y"):
-                expected *= 180
+                expected = math.degrees(math.atan(expected))
             elif name == "posterize":
                 # The range runs backwards: 8 - 4 * 10 / 30 = 6.67 -> 6 bits, truncation and not rounding.
                 expected = math.floor(high - (high - low) * 10 / 30)

@@ -347,6 +347,64 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
         pass
 
 
+@pytest.mark.parametrize(
+    "module_name,parameter_name",
+    [
+        ("Normalize", "mean"),
+        ("Normalize", "std"),
+        ("Denormalize", "mean"),
+        ("Denormalize", "std"),
+        ("Rescale", "factor"),
+    ],
+)
+class TestEnhanceConstructorParameters(BaseTester):
+    @staticmethod
+    def _module(module_name, parameter_name, device, dtype, requires_grad=True):
+        if module_name == "Rescale":
+            kwargs = {"factor": torch.tensor(2.0, device=device, dtype=dtype)}
+        else:
+            kwargs = {
+                "mean": torch.tensor([0.5], device=device, dtype=dtype),
+                "std": torch.tensor([2.0], device=device, dtype=dtype),
+            }
+        parameter = torch.nn.Parameter(kwargs[parameter_name], requires_grad=requires_grad)
+        kwargs[parameter_name] = parameter
+        return getattr(kornia.enhance, module_name)(**kwargs), parameter
+
+    def test_optimizer_updates_constructor_parameter(self, module_name, parameter_name, device, dtype):
+        module, parameter = self._module(module_name, parameter_name, device, dtype)
+        assert dict(module.named_parameters()) == {parameter_name: parameter}
+
+        optimizer = torch.optim.SGD(module.parameters(), lr=0.125)
+        before = parameter.detach().clone()
+        module(torch.ones(1, 1, 2, 2, device=device, dtype=dtype)).sum().backward()
+        gradient = {("Normalize", "mean"): -2.0, ("Normalize", "std"): -0.5}.get((module_name, parameter_name), 4.0)
+        self.assert_close(parameter.grad, torch.full_like(parameter, gradient))
+        optimizer.step()
+        self.assert_close(parameter, before - 0.125 * gradient)
+
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_constructor_parameter_moves_and_round_trips(
+        self, module_name, parameter_name, requires_grad, device, dtype
+    ):
+        module, parameter = self._module(module_name, parameter_name, device, dtype, requires_grad)
+        assert dict(module.named_parameters())[parameter_name] is parameter
+        target_dtype = torch.float32 if device.type == "mps" else torch.float64
+        module = module.to(dtype=target_dtype)
+        moved = dict(module.named_parameters())[parameter_name]
+        assert isinstance(moved, torch.nn.Parameter)
+        assert moved.requires_grad == requires_grad
+        assert moved.dtype == target_dtype
+
+        restored, _ = self._module(module_name, parameter_name, device, target_dtype, requires_grad)
+        with torch.no_grad():
+            getattr(restored, parameter_name).zero_()
+        restored.load_state_dict(module.state_dict(), strict=True)
+        self.assert_close(getattr(restored, parameter_name), moved)
+        data = torch.ones(1, 1, 2, 2, device=device, dtype=target_dtype)
+        self.assert_close(restored(data), module(data))
+
+
 class TestDenormalize(BaseTester):
     def test_smoke(self, device, dtype):
         mean = [0.5]

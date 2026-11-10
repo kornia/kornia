@@ -39,10 +39,15 @@ __all__ = ["OnnxLightGlue"]
 
 
 class OnnxLightGlue:
-    r"""Wrapper for loading LightGlue-ONNX models and running inference via ONNXRuntime.
+    r"""Match the keypoints and descriptors of one image pair with an exported LightGlue ONNX model.
 
-    LightGlue :cite:`LightGlue2023` performs fast descriptor-based deep keypoint matching.
-    This module requires `onnxruntime` to be installed.
+    ``matcher = OnnxLightGlue("disk", device="cpu")`` downloads an exported LightGlue :cite:`LightGlue2023` model,
+    or loads your own ONNX file, into an onnxruntime session, and ``out = matcher(data)`` takes the dicts of
+    :class:`LightGlue` for a batch of one: float32 ``keypoints`` ``(1, M, 2)`` in pixels and ``descriptors``
+    ``(1, M, D)`` on that device, with ``image_size`` ``(1, 2)`` as ``(W, H)`` or an ``image``. It returns the
+    matched index pairs ``matches`` ``(S, 2)`` and their ``scores`` ``(S,)``. It needs ``onnxruntime`` and runs on
+    CPU or CUDA only. For batches, other devices or dtypes, scales, orientations or LAFs, or the full outputs of the
+    network, use :class:`LightGlue` instead.
 
     If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
     for how to export the model to ONNX and optimize it.
@@ -52,13 +57,21 @@ class OnnxLightGlue:
           with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
           :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
           or LAFs, and it runs on CPU or CUDA only.
+        - Known defect: the session and its inputs are bound to GPU 0 for every CUDA ``device``, so
+          ``device="cuda:1"`` does not run on GPU 1 (`#6427 <https://github.com/kornia/kornia/issues/6427>`_).
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device raises ``ValueError``. ``None`` means
-          ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
+        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device type raises ``ValueError``. ``None``
+          means ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
+
+    See Also:
+        - :class:`LightGlue`: the PyTorch network, which also runs batches, on MPS, and in float16, bfloat16 or
+          float64 (see its Convention block), and returns every output.
+        - :class:`LightGlueMatcher`: LightGlue on descriptors and LAFs, returning scores and index pairs like the
+          other kornia matchers.
 
     """
 
@@ -129,23 +142,23 @@ class OnnxLightGlue:
 
         ``data`` (``dict``):
             ``image0`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, M, 2)`
+                ``keypoints`` (`float32`): ``(1, M, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, M, D)`
+                ``descriptors`` (`float32`): ``(1, M, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
             ``image1`` (``dict``):
-                ``keypoints`` (`float32`): :math:`(1, N, 2)`
+                ``keypoints`` (`float32`): ``(1, N, 2)``
 
-                ``descriptors`` (`float32`): :math:`(1, N, D)`
+                ``descriptors`` (`float32`): ``(1, N, D)``
 
-                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+                ``image``: ``(1, C, H, W)`` or ``image_size``: ``(1, 2)``
 
         ``output`` (``dict``):
-            ``matches`` (`int64`): :math:`(S, 2)`
+            ``matches`` (`int64`): ``(S, 2)``
 
-            ``scores`` (`float32`): :math:`(S)`
+            ``scores`` (`float32`): ``(S,)``
 
         """
         # Input validation.

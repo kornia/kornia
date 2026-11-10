@@ -30,7 +30,9 @@ from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
 class Resize(GeometricAugmentationBase2D):
-    """Resize to size.
+    """Resample images to a requested spatial size, applied to a batch with probability ``p`` (default 1.0).
+
+    ``output = Resize(size, ...)(input)`` resamples images of shape ``(B, C, H, W)`` to ``size``.
 
     Args:
         size: Size (h, w) in pixels of the resized region or just one side.
@@ -38,7 +40,7 @@ class Resize(GeometricAugmentationBase2D):
         resample: Resampling mode.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling. No effect for upscaling.
-        p: probability of the augmentation been applied.
+        p: probability of resizing the batch; one draw decides for every sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
@@ -52,10 +54,13 @@ class Resize(GeometricAugmentationBase2D):
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
         bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
-        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        the corner pixel centers onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
         ``nearest-exact`` interpolation.
-        :meth:`inverse` resamples to the prior canvas and cannot recover
-        values discarded by a resize.
+        ``inverse()`` resamples to the prior canvas and cannot recover values discarded by a resize.
+
+    See Also:
+        - :class:`LongestMaxSize`: bounds the longest image side while preserving aspect ratio.
+        - :class:`SmallestMaxSize`: sets the shortest image side while preserving aspect ratio.
 
     """
 
@@ -165,16 +170,26 @@ class Resize(GeometricAugmentationBase2D):
 
 
 class LongestMaxSize(Resize):
-    """Rescale an image so that maximum side is equal to max_size, keeping the aspect ratio of the initial image.
+    """Resize so the longest side equals ``max_size``, applied to a batch with probability ``p`` (default 1.0).
+
+    ``output = LongestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
+    Use :class:`SmallestMaxSize` to set the shortest side instead.
 
     Args:
-        max_size: maximum size of the image after the transformation.
+        max_size: length of the longest output side.
+        resample: Resampling mode, as in :class:`Resize`.
+        align_corners: interpolation flag, as in :class:`Resize`.
+        p: probability of resizing the batch; one draw decides for every sample.
 
     Convention:
         See :class:`Resize` for the common resize conventions. This behaves like
         ``Resize(max_size, side="long", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
         are not accepted constructor arguments. Its longest output side equals ``max_size`` and the other
         side is truncated while preserving aspect ratio.
+
+    See Also:
+        - :class:`SmallestMaxSize`: makes the shortest side equal to its bound.
+        - :class:`Resize`: resamples to an explicit output size.
 
     """
 
@@ -190,16 +205,26 @@ class LongestMaxSize(Resize):
 
 
 class SmallestMaxSize(Resize):
-    """Rescale an image so that minimum side is equal to max_size, keeping the aspect ratio of the initial image.
+    """Resize so the shortest side equals ``max_size``, applied to a batch with probability ``p`` (default 1.0).
+
+    ``output = SmallestMaxSize(max_size)(input)`` resizes images while preserving their aspect ratio.
+    Use :class:`LongestMaxSize` to bound the longest side instead.
 
     Args:
-        max_size: maximum size of the image after the transformation.
+        max_size: length of the shortest output side.
+        resample: Resampling mode, as in :class:`Resize`.
+        align_corners: interpolation flag, as in :class:`Resize`.
+        p: probability of resizing the batch; one draw decides for every sample.
 
     Convention:
         See :class:`Resize` for the common resize conventions. This behaves like
         ``Resize(max_size, side="short", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
         are not accepted constructor arguments. Its shortest output side equals ``max_size`` and the other
         side is truncated while preserving aspect ratio.
+
+    See Also:
+        - :class:`LongestMaxSize`: makes the longest side equal to its bound.
+        - :class:`Resize`: resamples to an explicit output size.
 
     """
 

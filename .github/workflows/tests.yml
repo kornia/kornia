@@ -8,7 +8,7 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.14.0"]'
+        default: '["2.15.0"]'
       torch-channel:
         # "pinned" (default) installs exactly the pytorch-version matrix value, byte-identical
         # to prior behavior. "stable" ignores pytorch-version for the install step itself and
@@ -113,7 +113,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.2
+        uses: prefix-dev/setup-pixi@v0.11.2
         with:
           pixi-version: v0.40.0
           cache: true

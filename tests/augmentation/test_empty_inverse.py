@@ -152,10 +152,10 @@ class TestEmptyGeometricInverse(BaseTester):
         output = sequence(image)
         saved_params = deepcopy(sequence._params)
 
-        # With p < 1 an empty batch keeps its input size, because the blend falls back to the skipped
-        # branch (tracked in #4429). This pins the current forward, which the tracked shapes must follow.
-        crop_size = (4, 5) if crop_p == 1.0 else (height, width)
-        output_size = (3, 4) if resize_p == 1.0 else crop_size
+        # An empty batch has no sample to skip, so every stage takes its configured output size whatever its
+        # probability (#4429), as on 0.8.3 for the crops; the tracked shapes must follow that forward.
+        crop_size = (4, 5)
+        output_size = (3, 4)
         assert saved_params[0].data["forward_input_shape"].tolist() == [0, 3, height, width]
         assert saved_params[1].data["forward_input_shape"].tolist() == [0, 3, *crop_size]
         assert output.shape == (0, 3, *output_size)
@@ -373,10 +373,8 @@ class TestEmptyGeometricInverse(BaseTester):
             pytest.skip("The forward resampling kernel does not support this device/dtype's backward pass.")
         image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         output = aug(image)
-        # With p < 1 an empty batch keeps its input size (blend fallback, tracked in #4429); the inverse
-        # must undo whichever size the forward produced.
-        expected_size = output_size if p == 1.0 else (6, 8)
-        assert output.shape == (0, 3, *expected_size)
+        # An empty batch takes the configured output size whatever ``p`` is (#4429); the inverse undoes it.
+        assert output.shape == (0, 3, *output_size)
         restored = aug.inverse(output)
         assert restored.shape == image.shape
         assert restored.device == image.device
@@ -519,9 +517,8 @@ class TestEmptyCenterResizedCropHistory(BaseTester):
         for key in standalone:
             self.assert_close(params[0].data[key], standalone[key], rtol=0, atol=0)
         assert params[0].data["forward_input_shape"].tolist() == [0, 3, *input_size]
-        # Follow the current empty-gate blend, not a desired probability specification (#4429).
-        expected_size = crop_size if p == 1.0 else input_size
-        assert params[1].data["forward_input_shape"].tolist() == [0, 3, *expected_size]
+        # An empty gate takes the crop's configured size whatever ``p`` is, as the image forward does (#4429).
+        assert params[1].data["forward_input_shape"].tolist() == [0, 3, *crop_size]
         if crop_type is K.CenterCrop:
             assert params[0].data["output_size"].shape == (0, 2)
         else:

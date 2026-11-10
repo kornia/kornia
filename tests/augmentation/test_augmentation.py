@@ -22,6 +22,7 @@ import pickle
 import re
 import subprocess
 import sys
+import warnings
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
 
@@ -83,12 +84,13 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.augmentation.utils import oversized_random_crop_params
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -123,6 +125,10 @@ class CommonTests(BaseTester):
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
+    # input shapes the shared tests use; override for an augmentation that needs square images
+    _batch_shape = (4, 3, 5, 6)
+    _p0_shape = (2, 3, 4, 5)
+    _inverse_shape = (1, 3, 50, 100)
 
     ############################################################################################################
     # Fixtures
@@ -206,7 +212,7 @@ class CommonTests(BaseTester):
         )
 
         # generate_parameters can be called and returns the correct amount of parameters
-        batch_shape = (4, 3, 5, 6)
+        batch_shape = self._batch_shape
         generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
@@ -227,7 +233,7 @@ class CommonTests(BaseTester):
         assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
-        batch_shape = (4, 3, 5, 6)
+        batch_shape = self._batch_shape
         expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         augmentation = self._create_augmentation_from_params(**params)
@@ -264,7 +270,7 @@ class CommonTests(BaseTester):
 
     def _test_random_p_0_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0)
-        test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
+        test_input = torch.rand(self._p0_shape, device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
         self.assert_close(output, test_input)
 
@@ -316,7 +322,7 @@ class CommonTests(BaseTester):
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)
 
-        input_tensor = torch.zeros((1, 3, 50, 100), device=self.device, dtype=self.dtype)
+        input_tensor = torch.zeros(self._inverse_shape, device=self.device, dtype=self.dtype)
         input_tensor[:, :, 20:30, 40:60] = 1.0
 
         augmentation = self._create_augmentation_from_params(**params, p=1.0)
@@ -754,6 +760,10 @@ class TestRandomRotation90(CommonTests):
         "align_corners": (False, True),
     }
     _augmentation_cls = RandomRotation90
+    # an odd number of quarter turns of a non-square image raises (#4409), so use square images
+    _batch_shape = (4, 3, 5, 5)
+    _p0_shape = (2, 3, 5, 5)
+    _inverse_shape = (1, 3, 50, 50)
     _default_param_set: dict["str", Any] = {
         "times": (-3, 3),
         "align_corners": True,
@@ -768,7 +778,7 @@ class TestRandomRotation90(CommonTests):
 
     @pytest.mark.parametrize(
         "input_shape,expected_output_shape",
-        [((3, 4, 5), (1, 3, 4, 5)), ((2, 3, 4, 5), (2, 3, 4, 5))],
+        [((3, 5, 5), (1, 3, 5, 5)), ((2, 3, 5, 5), (2, 3, 5, 5))],
     )
     def test_cardinality(self, input_shape, expected_output_shape):
         self._test_cardinality_implementation(
@@ -3097,6 +3107,15 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_black_pixel_gradient_is_finite(self, device, dtype):
+        # gamma < 1 has an infinite derivative at black pixels; they get a zero gradient instead of NaN.
+        image = torch.tensor([[[[0.0, 0.25, 0.5]]]], device=device, dtype=dtype).repeat(2, 3, 1, 1).requires_grad_()
+        out = RandomGamma(gamma=(0.5, 0.5), p=1.0)(image)
+        out.sum().backward()
+        expected_grad = torch.tensor([0.0, 1.0, 0.5**0.5], device=device, dtype=dtype).expand_as(image)
+        self.assert_close(out, image.detach().sqrt())
+        self.assert_close(image.grad, expected_grad)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
@@ -3366,6 +3385,14 @@ class TestCenterCrop(BaseTester):
         with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
             CenterCrop([4, 6])
 
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode returned an empty crop for a negative size, where the resample mode raised.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            CenterCrop(size, cropping_mode=cropping_mode)(inp)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
@@ -3632,7 +3659,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
@@ -3660,7 +3688,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
@@ -3687,6 +3716,20 @@ class TestRandomCrop(BaseTester):
         image = torch.zeros(1, 3, 2, 2)
         with pytest.raises(ValueError, match="one value per channel"):
             RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode raised an error about the input image size, where the resample mode named the crop size.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            RandomCrop(size, cropping_mode=cropping_mode, p=1.0)(inp)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_negative_size_raises_on_empty_batch(self, cropping_mode, device, dtype):
+        inp = torch.rand(0, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            RandomCrop((-2, 3), cropping_mode=cropping_mode, p=1.0)(inp)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         torch.manual_seed(0)
@@ -4665,7 +4708,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
             ValueError,
-            match=r"The length of salt_vs_pepper must be greater than 0\s+and less than or equal to 2, "
+            match=r"The length of salt_vs_pepper must be greater than 0 and less than or equal to 2, "
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
@@ -4673,7 +4716,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
         with pytest.raises(
             BaseError,
-            match=r"Salt_vs_pepper values must be between 0 and 1\.\s+"
+            match=r"Salt_vs_pepper values must be between 0 and 1\. "
             r"Recommended value 0\.5\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
@@ -4681,13 +4724,13 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
             ValueError,
-            match=r"The length of amount must be greater than 0\s+and less than or equal to 2, "
+            match=r"The length of amount must be greater than 0 and less than or equal to 2, "
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
             BaseError,
-            match=r"amount of noise values must be between 0 and 1\.\s+"
+            match=r"amount of noise values must be between 0 and 1\. "
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4895,6 +4938,16 @@ class TestRandomGaussianIllumination(BaseTester):
         actual = aug(input_tensor, params=params)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("param", ["gain", "center", "sigma", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomGaussianIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
+
 
 class TestRandomLinearIllumination(BaseTester):
     def _get_expected(self, device, dtype):
@@ -4961,6 +5014,16 @@ class TestRandomLinearIllumination(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    @pytest.mark.parametrize("param", ["gain", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomLinearIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
+
 
 class TestRandomLinearCornerIllumination(BaseTester):
     def _get_expected(self, device, dtype):
@@ -5026,6 +5089,16 @@ class TestRandomLinearCornerIllumination(BaseTester):
         transform = RandomLinearCornerIllumination(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
+
+    @pytest.mark.parametrize("param", ["gain", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomLinearCornerIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
 
 
 class TestRandomChannelDropout(BaseTester):
@@ -5305,6 +5378,35 @@ class TestDenormalize(BaseTester):
 
 
 class TestRandomFisheye(BaseTester):
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradients(self, device, dtype, gamma_value):
+        center_x = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        center_y = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        gamma = torch.full((2,), gamma_value, device=device, dtype=dtype, requires_grad=True)
+        image = torch.arange(63, device=device, dtype=dtype).reshape(1, 1, 7, 9) / 63
+
+        output = RandomFisheye(center_x, center_y, gamma, p=1.0)(image)
+        gradients = torch.autograd.grad(output.sum(), (center_x, center_y, gamma))
+        assert torch.isfinite(output).all()
+        for gradient in gradients:
+            assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradcheck(self, device, gamma_value):
+        image = torch.arange(63, device=device, dtype=torch.float64).reshape(1, 1, 7, 9) / 63
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+
+        def apply(center_x, center_y, gamma):
+            params = {"center_x": center_x, "center_y": center_y, "gamma": gamma, "batch_prob": image.new_ones(1)}
+            return aug(image, params=params)
+
+        self.gradcheck(
+            apply,
+            (bounds[:1], bounds[:1], torch.tensor([gamma_value], device=device)),
+            nondet_tol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3])
@@ -5333,6 +5435,21 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_output_6601(self, autocast_dtype, device):
+        # 0.017 off on a [0, 1] image in bfloat16, through elastic_transform2d.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image = torch.rand(1, 1, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+
+        def run():
+            torch.manual_seed(5)
+            return RandomElasticTransform(p=1.0)(image)
+
+        expected = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = run()
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_zero_padding_with_replayed_noise(self, device, dtype):
         image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
         noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
@@ -6089,18 +6206,55 @@ class TestRandomAutoContrast(BaseTester):
         out = aug(x_data)
         assert out.shape == x_data.shape
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("args", "kwargs", "clip_output"),
+        [((), {"clip_output": True}, True), ((), {"clip_output": False}, False), ((False,), {}, False)],
+    )
+    def test_clip_output_deprecated(self, args, kwargs, clip_output):
+        with pytest.warns(DeprecationWarning, match="clip_output") as record:
+            aug = kornia.augmentation.RandomAutoContrast(*args, **kwargs)
+        assert [w.filename for w in record if "clip_output" in str(w.message)] == [__file__]
+        assert aug.clip_output is clip_output
+
+    @pytest.mark.device_agnostic
+    def test_no_warning_without_clip_output(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+            kornia.augmentation.auto.operations.AutoContrast()
+            kornia.augmentation.auto.AutoAugment()
+        assert aug.clip_output is True
+
+    @pytest.mark.parametrize("clip_output", [None, True, False])
     @pytest.mark.parametrize(("scale", "shift"), [(1.0, 0.0), (2.0, 0.0), (1.0, -1.0), (0.0, 0.5)])
-    def test_clip_output_does_not_change_the_output(self, scale, shift, device, dtype):
-        # #4436: normalize_min_max already lands in [0, 1], so the documented clamp is a no-op, even for the
-        # out-of-range inputs a caller would reach for it to protect against. The constant image (scale 0)
-        # comes back as zeros either way.
+    def test_clip_output_does_not_change_the_output(self, clip_output, scale, shift, device, dtype):
         torch.manual_seed(0)
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype) * scale + shift
-        clipped = kornia.augmentation.RandomAutoContrast(clip_output=True, p=1.0)(x.clone())
-        unclipped = kornia.augmentation.RandomAutoContrast(clip_output=False, p=1.0)(x.clone())
-        self.assert_close(clipped, unclipped, rtol=0.0, atol=0.0)
-        assert unclipped.min().item() >= 0.0
-        assert unclipped.max().item() <= 1.0
+        if clip_output is None:
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+        else:
+            with pytest.warns(DeprecationWarning, match="clip_output"):
+                aug = kornia.augmentation.RandomAutoContrast(clip_output=clip_output, p=1.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = aug(x)
+        self.assert_close(actual, kornia.enhance.normalize_min_max(x), rtol=0.0, atol=0.0)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("clip_output", [None, True, False])
+    def test_quantized_input_gradient(self, clip_output):
+        # Repeated extrema with unequal weights expose the clamp's boundary gradient (#4436).
+        x = (torch.arange(16, dtype=torch.float64).repeat(2).reshape(1, 1, 4, 8) / 16).requires_grad_()
+        weights = torch.arange(32, dtype=torch.float64).reshape_as(x) / 32
+        if clip_output is None:
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+        else:
+            with pytest.warns(DeprecationWarning, match="clip_output"):
+                aug = kornia.augmentation.RandomAutoContrast(clip_output=clip_output, p=1.0)
+        actual = torch.autograd.grad((aug(x) * weights).sum(), x)[0]
+        expected = torch.autograd.grad((kornia.enhance.normalize_min_max(x) * weights).sum(), x)[0]
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
@@ -6496,8 +6650,9 @@ class TestRandomJPEGEmptyBatch(BaseTester):
     @pytest.mark.parametrize("p", [1.0, 0.5])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_empty_batch(self, p, same_on_batch, device, dtype):
-        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
-        # keeps the shape like the other classes in the empty-batch convention.
+        # #4429: for an empty batch, no JPEG quality is drawn and there are no pixels to code, so the
+        # augmentation bypasses the codec entirely and keeps the input's shape, matching the other
+        # classes' empty-batch convention.
         image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
         output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
         assert output.shape == image.shape
@@ -6508,21 +6663,31 @@ class TestRandomJPEGEmptyBatch(BaseTester):
 
     @pytest.mark.parametrize(
         ("params_batch", "batch", "error", "match"),
-        [(0, 2, RuntimeError, r"amin\(\)"), (2, 0, ValueError, r"Invalid input tensor, it is empty\.")],
+        [
+            (0, 2, ShapeError, r"jpeg_quality needs one quality per image"),
+            (2, 0, ShapeError, r"jpeg_quality needs one quality per image"),
+        ],
     )
     def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
-        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut; a
+        # Replaying parameters drawn for another batch size still raises, now at the codec's batch-size check; a
         # non-empty batch with no drawn quality must not come back uncoded.
         aug = RandomJPEG(p=1.0)
         params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
         with pytest.raises(error, match=match):
             aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
 
-    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
-    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
-        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
-        # raise as they did before the empty-batch shortcut.
-        with pytest.raises(ValueError, match=r"it is empty|expected 3"):
+    @pytest.mark.parametrize(
+        ("shape", "match"),
+        [
+            ((0, 1, 8, 10), r"expected 3"),
+            ((0, 3, 0, 10), r"it is empty"),
+            ((0, 3, 8, 0), r"it is empty"),
+        ],
+    )
+    def test_empty_batch_keeps_the_input_checks(self, shape, match, device, dtype):
+        # The codec checks for three channels (for (0, 1, 8, 10)) and for non-empty images
+        # (for (0, 3, 0, 10) and (0, 3, 8, 0)).
+        with pytest.raises(ValueError, match=match):
             RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 

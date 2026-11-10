@@ -43,8 +43,9 @@ class TwoWayTransformer(nn.Module):
         embedding_dim: The dimension of the embeddings.
         num_heads: The number of heads in the multi-head attention.
         mlp_dim: The dimension of the internal MLP layers.
-        activation: The activation function to use. Default: :class:`nn.GELU`.
-        attention_type: The type of attention mechanism to apply. Default: "unnorm".
+        activation: The activation function to use. Default: :class:`nn.ReLU`.
+        attention_downsample_rate: The factor by which the cross-attention layers reduce the embedding dimension.
+            Default: 2.
     """
 
     def __init__(
@@ -139,8 +140,9 @@ class TwoWayAttentionBlock(nn.Module):
         embedding_dim: The dimension of the embeddings.
         num_heads: The number of attention heads.
         mlp_dim: The dimension of the internal MLP layers. Default: 2048.
-        activation: The activation function to use. Default: :class:`nn.GELU`.
-        attention_type: The type of attention mechanism. Default: "unnorm".
+        activation: The activation function to use. Default: :class:`nn.ReLU`.
+        attention_downsample_rate: The factor by which the cross-attention layers reduce the embedding dimension.
+            Default: 2.
         skip_first_layer_pe: Whether to skip position encoding in the first layer. Default: False.
     """
 
@@ -189,8 +191,8 @@ class TwoWayAttentionBlock(nn.Module):
         """Run one two-way transformer block for prompt and image tokens.
 
         Args:
-            queries: Prompt token tensor with shape :math:`(B, N_q, D)`.
-            keys: Image token tensor with shape :math:`(B, N_k, D)`.
+            queries: Prompt token tensor with shape ``(B, N_q, D)``.
+            keys: Image token tensor with shape ``(B, N_k, D)``.
             query_pe: Positional encoding for ``queries`` with the same shape.
             key_pe: Positional encoding for ``keys`` with the same shape.
 
@@ -259,12 +261,12 @@ class Attention(nn.Module):
         """Apply scaled dot-product attention to query, key, and value tokens.
 
         Args:
-            q: Query tensor with shape :math:`(B, N_q, D)`.
-            k: Key tensor with shape :math:`(B, N_k, D)`.
-            v: Value tensor with shape :math:`(B, N_k, D)`.
+            q: Query tensor with shape ``(B, N_q, D)``.
+            k: Key tensor with shape ``(B, N_k, D)``.
+            v: Value tensor with shape ``(B, N_k, D)``.
 
         Returns:
-            Tensor with shape :math:`(B, N_q, D)` after multi-head attention
+            Tensor with shape ``(B, N_q, D)`` after multi-head attention
             and output projection.
         """
         # Input projections

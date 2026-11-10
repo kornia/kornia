@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._layout import _patch_conv_layout
 from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
@@ -40,8 +41,17 @@ urls["yosemite"] = [
 
 
 class FilterResponseNorm2d(nn.Module):
-    r"""Filter Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
-    in the Training of Deep Neural Networks', see :cite:`FRN2019` for more details.
+    r"""Normalise each channel map by its root mean square, without batch statistics (FRN).
+
+    ``frn = FilterResponseNorm2d(C)``, then ``y = frn(x)`` takes feature maps ``(B, C, H, W)`` and returns them in the
+    same shape, each map divided by the root of its mean square plus ``|eps|``, then, by default, scaled and shifted per
+    channel. It subtracts no mean and uses no batch statistics, so it behaves the same in training and eval mode and for
+    any batch size. :class:`HyNet` applies it, followed by :class:`TLU`, after every convolution but the last, where
+    :class:`HardNet` uses BatchNorm and ReLU, and on the raw patch, which HardNet standardises instead. A float16 or
+    bfloat16 input is normalised in float32, and the output dtype is the promotion of the input's and the layer's, so a
+    float16 input to a float32 layer returns float32. This is the Filter Response Normalization layer from 'Filter
+    Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep Neural Networks', see
+    :cite:`FRN2019` for more details.
 
     .. math::
         y = \gamma \frac{x}{\sqrt{\nu^2 + |\epsilon|}} + \beta
@@ -63,10 +73,14 @@ class FilterResponseNorm2d(nn.Module):
         torch.Tensor: Normalized features
 
     Shape:
-        - Input: :math:`(B, \text{num_features}, H, W)`
-        - Output: :math:`(B, \text{num_features}, H, W)`
+        - Input: ``(B, num_features, H, W)``
+        - Output: ``(B, num_features, H, W)``
 
-    """  # noqa: D205
+    See Also:
+        - :class:`TLU`: the learned threshold that follows each of these layers in HyNet.
+        - :class:`HyNet`: the patch descriptor built from these layers.
+
+    """
 
     def __init__(
         self,
@@ -145,8 +159,14 @@ class FilterResponseNorm2d(nn.Module):
 
 
 class TLU(nn.Module):
-    r"""TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
-    Neural Networks', see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
+    r"""Floor each channel at a learned threshold, the TLU activation that follows FRN in HyNet.
+
+    ``tlu = TLU(C)``, then ``y = tlu(x)`` takes feature maps ``(B, C, H, W)`` and returns
+    ``torch.max(x, tau)``, the input floored at a learned threshold ``tau`` per channel, in the same shape. It is the
+    activation that the FRN paper pairs with :class:`FilterResponseNorm2d`, which subtracts no mean, in place of a
+    ReLU. The output dtype is the promotion of the input's and the layer's. This is the TLU layer from 'Filter
+    Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep Neural Networks', see
+    :cite:`FRN2019` for more details.
 
     .. math::
         y = \max(x, {\tau})
@@ -162,10 +182,14 @@ class TLU(nn.Module):
         torch.Tensor
 
     Shape:
-        - Input: :math:`(B, \text{num_features}, H, W)`
-        - Output: :math:`(B, \text{num_features}, H, W)`
+        - Input: ``(B, num_features, H, W)``
+        - Output: ``(B, num_features, H, W)``
 
-    """  # noqa:D205
+    See Also:
+        - :class:`FilterResponseNorm2d`: the normalisation that each of these layers follows in HyNet.
+        - :class:`HyNet`: the patch descriptor built from these layers.
+
+    """
 
     def __init__(self, num_features: int) -> None:
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau."""
@@ -204,11 +228,15 @@ class TLU(nn.Module):
 
 
 class HyNet(nn.Module):
-    r"""nn.Module, which computes HyNet descriptors of given grayscale patches of 32x32.
+    r"""Describe 32 x 32 grayscale patches with the learned HyNet CNN, built on FRN layers.
 
-    This is based on the original code from paper
-    "HyNet: Learning Local Descriptor with Hybrid Similarity Measure and Triplet Loss".
-    See :cite:`hynet2020` for more details.
+    ``hynet = HyNet()`` builds the network with its pretrained weights (trained on Liberty), in eval mode, and
+    ``descs = hynet(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns unit-norm descriptors
+    ``(B, dim_desc)``, ``(B, 128)`` by default. Its :class:`FilterResponseNorm2d` layers, each followed by
+    :class:`TLU`, subtract no mean, and the first runs on the raw patch, so unlike :class:`HardNet` its descriptor
+    changes with an intensity offset (see the Convention block). To describe LAFs on an image, pass it to
+    :class:`LAFDescriptor`. This is based on the original code from paper "HyNet: Learning Local Descriptor with
+    Hybrid Similarity Measure and Triplet Loss". See :cite:`hynet2020` for more details.
 
     Convention:
         - It takes the ``(B, 1, 32, 32)`` patches of :class:`~kornia.feature.HardNet` and returns unit-norm rows, but
@@ -233,8 +261,16 @@ class HyNet(nn.Module):
         HyNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, \text{dim\_desc})`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, dim_desc)``
+
+    See Also:
+        - :class:`HardNet`: a descriptor of the same patches with BatchNorm, which standardises each patch first.
+        - :class:`SOSNet`: a descriptor of the same patches, trained with second-order similarity regularisation.
+        - :class:`HardNet8`: the wider follow-up of HardNet, with a PCA to 128 dimensions.
+        - :class:`FilterResponseNorm2d`: the normalisation layer of this network.
+        - :class:`TLU`: the learned-threshold activation that follows each of its FRN layers.
+        - :class:`LAFDescriptor`: runs a patch descriptor such as this one on a patch per LAF of an image.
 
     Note:
         With float16 weights, the final BatchNorm keeps its running statistics in float32.
@@ -328,7 +364,8 @@ class HyNet(nn.Module):
             HyNet descriptors with shape ``(B, D)``.
         """
         KORNIA_CHECK_SHAPE(x, ["B", "1", "32", "32"])
-        x = self.layer1(x)
+        # The leading FilterResponseNorm2d and TLU are pointwise, so the layout reaches the first convolution.
+        x = self.layer1(_patch_conv_layout(x))
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)

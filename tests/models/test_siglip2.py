@@ -743,7 +743,7 @@ class TestSigLip2Components(BaseTester):
             pixel_values = torch.rand(1, 3, *size, device=device, dtype=dtype)
             with pytest.raises(ValueError, match="32"):
                 embeddings(pixel_values)
-            # SigLip2VisionModel, and through it SigLip2Model and PaliGemma, embed the image first.
+            # SigLip2VisionModel, and through it SigLip2Model, embed the image first.
             with pytest.raises(ValueError, match="32"):
                 model(pixel_values)
 

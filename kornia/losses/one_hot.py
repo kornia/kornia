@@ -29,25 +29,29 @@ _INDUCTOR_KEEPS_ASSERT_ASYNC = torch_version_ge(2, 9)
 def one_hot(
     labels: torch.Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 0.0
 ) -> torch.Tensor:
-    r"""Convert an integer label x-D torch.Tensor to a one-hot (x+1)-D torch.Tensor.
+    r"""Convert int64 class labels ``(N, *)`` to a one-hot tensor ``(N, C, *)``.
+
+    ``onehot = one_hot(labels, num_classes, device, dtype)`` puts a 1 at each label's class and 0 elsewhere.
 
     Convention:
-        - int64 ``labels`` of shape ``(N, *)`` become ``(N, C, *)``: the class axis is dim 1, where
-          :func:`~torch.nn.functional.one_hot` puts it last. With the default ``eps=0.0`` the result is
-          ``F.one_hot(labels, num_classes).movedim(-1, 1).to(device, dtype)``. Labels outside ``[0, num_classes)``
-          are not validated by kornia; the result for them is undefined.
+        - The class axis is dim 1, where :func:`~torch.nn.functional.one_hot` puts it last. With the default
+          ``eps=0.0`` the result is ``F.one_hot(labels, num_classes).movedim(-1, 1).to(device, dtype)``.
+        - Kornia does not validate the labels: a label outside ``[0, num_classes)`` raises a ``RuntimeError`` from
+          torch on the CPU in eager mode.
 
     Args:
-        labels: torch.Tensor with labels of shape :math:`(N, *)`, where N is batch size.
-          Each value is an integer representing correct classification.
-        num_classes: number of classes in labels.
-        device: the desired device of returned torch.Tensor.
-        dtype: the desired data type of returned torch.Tensor.
-        eps: optional smoothing floor. The default 0 returns the exact one-hot. A non-zero value replaces the
-          zeros with ``eps`` and keeps the ones, which needs a floating point ``dtype``.
+        labels: int64 class labels ``(N, *)`` in ``[0, num_classes)``.
+        num_classes: number of classes ``C``.
+        device: device of the result.
+        dtype: data type of the result.
+        eps: smoothing floor. The default 0 returns the exact one-hot. A non-zero value replaces the zeros with ``eps``
+          and keeps the ones, which needs a floating point ``dtype``.
 
     Returns:
-        the labels in one hot torch.Tensor of shape :math:`(N, C, *)`,
+        the one-hot tensor ``(N, C, *)``.
+
+    See Also:
+        - :func:`~kornia.losses.dice_loss`: the segmentation losses take int64 class indices, not this tensor.
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])

@@ -77,33 +77,61 @@ urls: Dict[str, Dict[str, str]] = {
 
 
 class DeDoDe(nn.Module):
-    r"""nn.Module which detects and/or describes local features in an image using the DeDode method.
+    r"""Detect the n best keypoints of each RGB image and describe them with two networks (DeDoDe).
+
+    ``dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")`` loads trained
+    weights in evaluation mode. ``keypoints, scores, descriptions = dedode(images, n=10_000)`` takes RGB images
+    ``(B, 3, H, W)`` in :math:`[0, 1]` and returns the best ``N = min(n, H W)`` keypoints per image.
+    Outputs are ``(x, y)`` pixel coordinates ``(B, N, 2)`` with pixel centres at ``i + 0.5``, scores ``(B, N)``
+    and unnormalised descriptors ``(B, N, 256)``. Use :class:`ALIKED` or :class:`DISK` when the keypoint count
+    should depend on image content.
 
     See :cite:`edstedt2024dedode` for details.
 
     Convention:
+        - :meth:`detect` and :meth:`describe` run the detector and descriptor separately. The default descriptor,
+          ``G``, combines VGG19 with a frozen DINOv2 ViT-L/14 backbone and loads the backbone's weights in the
+          constructor. Descriptor ``B`` uses VGG19 alone.
+        - For :class:`LightGlueMatcher`, construct LAFs centred on the keypoints minus 0.5 and pass them with the
+          descriptors in ``"dedodeb"`` or ``"dedodeg"`` mode, matching the descriptor variant.
         - :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and apply
           the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
           already normalized. ``pad_if_not_divisible`` zero-pads the normalized image at the bottom and right to
           multiples of 14, so the padding is the ImageNet mean colour, and removes it from the maps again.
-        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel frame of
+        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel convention of
           :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
           :meth:`detect` returns it normalized, as ``(2 i + 1) / (W, H) - 1`` in :math:`[-1, 1]`
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
           ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
-        - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
-          threshold and no padding. Keypoints, and the descriptions of
-          :meth:`forward` and of ``describe(images, keypoints)``, are float32; descriptions are not normalized. The
-          dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA, the dtype of the model
-          on CPU and MPS.
+        - The keypoints of an image come in descending order of score, with no threshold and no padding. Keypoints,
+          and the descriptions of :meth:`forward` and of ``describe(images, keypoints)``, are float32. The scoremap
+          softmax and the keypoint sampling run in at least float32, so the scores are float32 for a half-precision
+          model and float64 for a float64 one. The dense map of ``describe(images)`` follows the network dtype:
+          ``amp_dtype`` on CUDA, the dtype of the model on CPU and MPS.
+        - kornia detects and describes at the size of the input. The authors resize every image to 784 x 784, without
+          keeping its aspect ratio, in ``detect_from_path`` and ``describe_keypoints_from_path``, and train the
+          detector and the ``B`` descriptor at 512 x 512 (``G`` at 560 x 560). The 51-pixel coverage window of the
+          keypoint sampling and the 14-pixel patches of ``G`` do not scale with the image. After resizing to
+          784 x 784, the normalized keypoints of :meth:`detect` hold for the original image unchanged; multiply those
+          of :meth:`forward` by ``(W / 784, H / 784)``.
         - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
           ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
           and MPS it has no effect, so the default argument runs there with float32 weights and images.
 
     Args:
-        detector_model: The detector model kind. Available options are: `L`.
-        descriptor_model: The descriptor model kind. Available options are: `G` or `B`
+        detector_model: The detector model kind. Available options are: ``"L"``.
+        descriptor_model: The descriptor model kind. Available options are: ``"G"`` or ``"B"``.
         amp_dtype: The dtype of the automatic mixed precision used on CUDA; it has no effect on other devices.
+
+    See Also:
+        - :class:`ALIKED`: learned sub-pixel keypoints whose count follows each image's score map, for RGB images of
+          any size.
+        - :class:`DISK`: learned integer-pixel keypoints with 128-D descriptors from one U-Net, for RGB images whose
+          sides are multiples of 16.
+        - :class:`XFeat`: learned keypoints with 64-D descriptors, and its own mutual-nearest-neighbour and refined
+          matching of image pairs.
+        - :class:`LightGlueMatcher`: matches the descriptions and keypoints with the ``"dedodeb"`` weights for the
+          ``B`` descriptor and the ``"dedodeg"`` weights for ``G``.
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
@@ -153,9 +181,9 @@ class DeDoDe(nn.Module):
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
-            n: The number of keypoints to detect.
+            n: The number of keypoints to detect in each image, at most ``H W``; ``None`` keeps every pixel.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
@@ -163,12 +191,12 @@ class DeDoDe(nn.Module):
                 keypoints are never reported in it.
 
         Returns:
-            keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
-                unlike `.detect()` function.
+            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints in pixels, with pixel
+                ``i`` at ``i + 0.5``, unlike :meth:`detect`, which normalises them.
 
-            scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+            scores: A torch.Tensor of shape ``(B, N)`` containing the scores of the detected keypoints.
 
-            descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
+            descriptions: A torch.Tensor of shape ``(B, N, DIM)`` containing the descriptions
                 of the detected keypoints. DIM is 256 for both B and G.
 
         """
@@ -201,7 +229,7 @@ class DeDoDe(nn.Module):
             detector is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
@@ -213,9 +241,9 @@ class DeDoDe(nn.Module):
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
         Returns:
-            keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
+            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints,
             normalized to the range :math:`[-1, 1]`.
-            scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+            scores: A torch.Tensor of shape ``(B, N)`` containing the scores of the detected keypoints.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
@@ -228,6 +256,9 @@ class DeDoDe(nn.Module):
         if crop_h is not None and crop_w is not None:
             logits = logits[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
+        # at least float32: the probabilities are about 1 / (H W), below the smallest normal float16 for images above
+        # 128 x 128, and bfloat16 keeps 8 significant bits of them
+        logits = logits.to(torch.promote_types(logits.dtype, torch.float32))
         scoremap = logits.reshape(B, H * W).softmax(dim=-1).reshape(B, H, W)
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
@@ -250,9 +281,9 @@ class DeDoDe(nn.Module):
             descriptor is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
-            keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
+            keypoints: An optional torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
@@ -263,9 +294,9 @@ class DeDoDe(nn.Module):
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
-            descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
+            descriptions: A torch.Tensor of shape ``(B, N, DIM)`` containing the descriptions
                 of the detected keypoints.
-                If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
+                If the dense descriptors are requested, the shape is ``(B, DIM, H, W)``.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])

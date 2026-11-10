@@ -20,19 +20,23 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import solarize
 
 
 class RandomSolarize(IntensityAugmentationBase2D):
-    r"""Solarize given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Solarize images at a random threshold and addition, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomSolarize(thresholds, additions, ...)(input)`` offsets then inverts selected image values above a
+    sampled threshold, after clamping the selected input to ``[0, 1]``.
 
     .. image:: _static/img/RandomSolarize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         thresholds:
             If float x, threshold will be generated from (0.5 - x, 0.5 + x).
             If tuple (x, y), threshold will be generated from (x, y).
@@ -44,8 +48,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -53,14 +57,18 @@ class RandomSolarize(IntensityAugmentationBase2D):
         - the addition comes first: the drawn ``additions`` value is added to the whole image and the sum
           is clamped into ``[0, 1]``, and only then is everything at or above the drawn ``thresholds``
           replaced by ``1 - value``.
-        - the scalar forms are centred, not absolute: a scalar ``thresholds`` is a half-width around
-          ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults centre on
+        - the scalar forms are centered, not absolute: a scalar ``thresholds`` is a half-width around
+          ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults center on
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
         - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, so a
           range that reaches an endpoint is applied rather than rejected.
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.
+
+    See Also:
+        - :class:`RandomInvert`: inverts every pixel rather than values above a threshold.
+        - :class:`RandomPosterize`: reduces bit depth rather than applying a threshold.
 
     Examples:
         >>> rng = torch.manual_seed(0)

@@ -21,7 +21,7 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import TypeCheckError, ValueCheckError
+from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
@@ -96,6 +96,18 @@ class TestParametrizedLine(BaseTester):
         from_scalar = line.point_at(Scalar(steps))
         assert type(from_scalar) is torch.Tensor
         self.assert_close(from_scalar, expected)
+
+    def test_unbatched_point_at_n_steps_6483(self, device, dtype):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0], device=device, dtype=dtype),
+        )
+        for n in (1, 2, 3):
+            steps = torch.arange(1.0, n + 1, device=device, dtype=dtype)
+            expected = torch.stack([line.point_at(s) for s in steps])
+            assert expected.shape == (n, 2)
+            self.assert_close(line.point_at(steps), expected)
+            self.assert_close(line.point_at(steps[:, None]), expected)
 
     def test_scalar_point_at_preserves_line_dtype(self, device, dtype):
         line = ParametrizedLine(
@@ -213,6 +225,58 @@ class TestParametrizedLine(BaseTester):
         )
         self.assert_close(steps, torch.stack(expected_steps))
         self.assert_close(points, torch.stack(expected_points))
+
+    @pytest.mark.parametrize("num_planes", [1, 3, 4])
+    def test_unbatched_line_intersect_batch_of_planes_6483(self, device, dtype, num_planes):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype),
+        )
+        normal = Vector3(torch.tensor([[0.0, 0.0, 1.0]] * num_planes, device=device, dtype=dtype))
+        offset = Scalar(-torch.arange(1.0, num_planes + 1, device=device, dtype=dtype))
+        steps, points = line.intersect(Hyperplane(normal, offset))
+        expected_points = torch.tensor([[1.0, 2.0, z] for z in range(1, num_planes + 1)], device=device, dtype=dtype)
+        self.assert_close(steps, -offset.data)
+        self.assert_close(points, expected_points)
+
+    @pytest.mark.parametrize("line_batch", [(), (1,)])
+    @pytest.mark.parametrize("plane_batch", [(2, 3), (3, 2), (2, 1), (1, 3), (2, 2, 2)])
+    def test_line_intersect_multi_axis_batch_of_planes_6497(self, line_batch, plane_batch, device, dtype):
+        """Each plane of a multi-axis batch gets its own point: ``point.shape == lambda.shape + (3,)``."""
+        origin = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype).expand(*line_batch, 3)
+        direction = torch.tensor([1.0, -1.0, 2.0], device=device, dtype=dtype).expand(*line_batch, 3)
+        line = ParametrizedLine(origin, direction)
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype).expand(*plane_batch, 3).clone()
+        offset = -torch.arange(1.0, torch.Size(plane_batch).numel() + 1, device=device, dtype=dtype).view(plane_batch)
+
+        steps, points = line.intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        assert steps.shape == plane_batch
+        assert points.shape == (*plane_batch, 3)
+        expected = [
+            line.intersect(Hyperplane(Vector3(n), Scalar(d)))[1].squeeze(0)
+            for n, d in zip(normal.view(-1, 3), offset.view(-1))
+        ]
+        self.assert_close(points.view(-1, 3), torch.stack(expected))
+        # Each point lies on its own plane, n . p + d = 0, with this normal along z: z = -d.
+        self.assert_close(points[..., 2], -offset)
+
+    def test_unbatched_line_keeps_its_dtype_for_one_plane_6497(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # A 0-d step does not promote the line's dtype; a (1,) one would.
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0, 0.0], device=device, dtype=torch.float32),
+            torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float32),
+        )
+        plane = Hyperplane(
+            Vector3(torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float64)),
+            Scalar(torch.tensor(-3.0, device=device, dtype=torch.float64)),
+        )
+        steps, point = line.intersect(plane)
+        assert steps.dtype == torch.float64
+        assert point.dtype == torch.float32
+        self.assert_close(point, torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32))
 
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
@@ -376,6 +440,18 @@ class TestParametrizedLine(BaseTester):
         plain.point_at(2.0).sum().backward()
         self.assert_close(plain.origin.grad, torch.ones_like(origin))
         self.assert_close(plain.direction.grad, torch.full_like(direction, 2.0))
+
+    def test_getitem_6483(self, device, dtype):
+        origin = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+        line = ParametrizedLine(origin, direction)
+        self.assert_close(line[0], origin)
+        self.assert_close(line[1], direction)
+        self.assert_close(line[-2], origin)
+        self.assert_close(line[-1], direction)
+        for idx in (2, 5, -3):
+            with pytest.raises(IndexError):
+                line[idx]
 
     def test_integer_input_raises(self, device):
         # An integer origin or direction cannot be optimizable state: the constructor names the dtype instead of
@@ -660,7 +736,13 @@ class TestFitLine(BaseTester):
             return line.origin, line.direction
 
         origin, direction = torch_optimizer(op)(points)
-        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        # The origin is 0 only up to the rounding of coordinates of 40000: CUDA Inductor turns the mean into a
+        # product with 1 / 3 and fuses it with the shift back by the first point, so float32 gives 0.0012, a quarter
+        # of an ulp of the coordinates, where eager and CPU Inductor round the mean to 40000 exactly. Half dtypes are
+        # centred in float32, so the bound follows float32's rounding: their own eps would allow an origin of 39 in
+        # float16 and 312 in bfloat16.
+        atol = 40000 * torch.finfo(torch.promote_types(dtype, torch.float32)).eps
+        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype), rtol=0.0, atol=atol)
         expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
         self.assert_close(direction, expected)
 
@@ -958,6 +1040,77 @@ class TestFitLine(BaseTester):
                     (line.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=dtype)
                 )
 
+    def test_fit_line_weights_shape_must_match_points_6525(self, device, dtype):
+        # #6525: the shape check named the weights' dimensions "B" and "N" without tying them to the points', so
+        # (B, 1) weights passed. They broadcast in the weighted sums but not in the normaliser, so the centroid came
+        # out wrong: the sum of the points for D >= 3, and for D = 2 the first point plus the sum of the offsets
+        # from it. They also skipped the weight checks of _reject_degenerate_line, which compare the weights' shape
+        # with the points': zero weights gave a NaN line in 2-D, and a negative weight was accepted.
+        points_2d = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device, dtype=dtype)
+        points_3d = torch.nn.functional.pad(points_2d, (0, 1))
+        for points in (points_2d, points_3d):
+            # Weights of the points' shape still give the weighted centroid, here the mean of the points.
+            line = fit_line(points, torch.ones(1, 4, device=device, dtype=dtype))
+            self.assert_close(line.origin, points.mean(-2))
+
+            # Any other second dimension is a shape error, (B, 1) included, whatever the weights' values.
+            for n in (1, 3, 5):
+                for value in (1.0, 0.0, -1.0):
+                    with pytest.raises(ShapeError, match=r"expected \(1, 4\)"):
+                        fit_line(points, torch.full((1, n), value, device=device, dtype=dtype))
+
+            # So is a weights tensor of the wrong rank, or the wrong batch size, and a (B, 1) tensor is no exception
+            # in a batch.
+            for weights in (torch.ones(4, device=device, dtype=dtype), torch.ones(1, 4, 1, device=device, dtype=dtype)):
+                with pytest.raises(ShapeError, match=r"expected \(1, 4\)"):
+                    fit_line(points, weights)
+            batch = torch.cat([points, points])
+            for weights in (torch.ones(1, 4, device=device, dtype=dtype), torch.ones(2, 1, device=device, dtype=dtype)):
+                with pytest.raises(ShapeError, match=r"expected \(2, 4\)"):
+                    fit_line(batch, weights)
+
+            # With N == 1 the (B, 1) weights have the points' shape, and the single point is rejected as before.
+            with pytest.raises(ValueCheckError, match="at least two points"):
+                fit_line(points[:, :1], torch.ones(1, 1, device=device, dtype=dtype))
+
+    def test_fit_line_weights_shape_2d_centroid_not_at_origin_6525(self, device, dtype):
+        # The first point is not at the origin here, so the 2-D branch's wrong centroid (the first point plus the sum
+        # of the offsets from it) differs from the sum of the points: (2, 0), (4, 0) with one weight gave (4, 0).
+        points = torch.tensor([[[2.0, 0.0], [4.0, 0.0]]], device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"expected \(1, 2\)"):
+            fit_line(points, torch.ones(1, 1, device=device, dtype=dtype))
+        self.assert_close(fit_line(points, torch.ones(1, 2, device=device, dtype=dtype)).origin, points.mean(-2))
+
+    @pytest.mark.parametrize("d", [2, 3])
+    def test_fit_line_weights_shape_with_dynamic_n_export_6525(self, device, d):
+        # Under a dynamic torch.export the point count N is symbolic. The weights' size is compared with it without
+        # specializing it, so weights that share the points' N still export, and the program runs for another N.
+        # Mismatched weights are not exported here: up to torch 2.12 a non-strict export that raises leaves a global
+        # buffer-registration hook installed, and later compiled tests in the process fail on it. The upper bound
+        # keeps torch 2.5.1 from guarding N against the largest int64 in the D >= 3 branch.
+        from torch.export import Dim
+
+        class FitLine(torch.nn.Module):
+            def forward(self, points, weights):
+                line = fit_line(points, weights)
+                return line.origin, line.direction
+
+        n = Dim("n", min=2, max=64)
+        points = torch.nn.functional.pad(
+            torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device), (0, d - 2)
+        )
+        program = torch.export.export(
+            FitLine(),
+            (points, torch.ones(1, 4, device=device)),
+            dynamic_shapes={"points": {1: n}, "weights": {1: n}},
+            strict=False,
+        )
+        longer = torch.nn.functional.pad(
+            torch.stack([torch.arange(6.0, device=device), torch.zeros(6, device=device)], -1)[None], (0, d - 2)
+        )
+        origin, _ = program.module()(longer, torch.ones(1, 6, device=device))
+        self.assert_close(origin, longer.mean(-2))
+
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
         # on identical points returns what an eager call returns with checks disabled.
@@ -1146,3 +1299,35 @@ class TestConventionsFitLine(BaseTester):
             self.assert_close(torch.linalg.vector_norm(line.direction[i]), one)
             single = fit_line(rows[i : i + 1], w[i : i + 1] if weighted else None).direction[0]
             self.assert_close(line.direction[i], torch.sign((line.direction[i] * single).sum()) * single)
+
+
+def _direction_with_fixed_sign_6213(points, reference):
+    # The direction's sign is unspecified for D >= 3; fix it against a reference for central differences.
+    direction = fit_line(points).direction
+    return direction * torch.where((direction.detach() * reference).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+
+
+class TestFitLineGradient(BaseTester):
+    """``fit_line``'s gradient is finite when the other eigenvalues of the scatter matrix are equal (#6213)."""
+
+    @pytest.mark.parametrize("dim", [3, 4])
+    def test_points_along_a_coordinate_axis_6213(self, device, dim):
+        # The scatter matrix of points along an axis is diag(s, 0, ..., 0): its other eigenvalues are all zero, and
+        # torch's SVD backward divided by their zero gaps, so every entry of the gradient was NaN.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        points = torch.zeros(1, 5, dim, device=device, dtype=torch.float64)
+        points[..., 0] = torch.linspace(0.0, 1.0, 5, device=device, dtype=torch.float64)
+        reference = fit_line(points).direction.detach()
+        self.gradcheck(lambda p: _direction_with_fixed_sign_6213(p, reference), (points,), fast_mode=False)
+
+    def test_equal_spread_across_the_line_6213(self, device):
+        # A cloud along x with the same spread in y and z: the two smaller eigenvalues are equal.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        x = torch.linspace(-2.0, 2.0, 5, dtype=torch.float64)
+        across = torch.tensor([[0.1, 0.0], [0.0, 0.1], [-0.1, 0.0], [0.0, -0.1]], dtype=torch.float64)
+        points = torch.cat([torch.cat([torch.full((4, 1), float(t), dtype=torch.float64), across], -1) for t in x])
+        points = points[None].to(device)
+        reference = fit_line(points).direction.detach()
+        self.gradcheck(lambda p: _direction_with_fixed_sign_6213(p, reference), (points,), fast_mode=False)

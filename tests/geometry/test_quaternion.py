@@ -49,6 +49,61 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
+    def test_from_coeffs_integer_and_types(self, device: torch.device, dtype: torch.dtype) -> None:
+        # 1. Normal Python float coefficients produce (4,)
+        q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
+        assert q_float.data.is_floating_point()
+        assert q_float.data.dtype == torch.get_default_dtype()
+        assert q_float.data.shape == (4,)
+        self.assert_close(q_float.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+        # 2. Integer-only coefficients produce floating-point data with default dtype
+        q_int = Quaternion.from_coeffs(1, 0, 0, 0)
+        assert q_int.data.is_floating_point()
+        assert q_int.data.dtype == torch.get_default_dtype()
+        assert q_int.data.shape == (4,)
+        self.assert_close(q_int.data, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+        # Operations on integer-constructed quaternion must succeed
+        self.assert_close(q_int.matrix(), torch.eye(3))
+        self.assert_close(q_int.to_axis_angle(), torch.zeros(3))
+
+        # Mixed float and int coefficients
+        q_mixed = Quaternion.from_coeffs(1, 0.0, 0, 0.0)
+        assert q_mixed.data.is_floating_point()
+        assert q_mixed.data.dtype == torch.get_default_dtype()
+
+        # 3. Complex Python scalar coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
+            Quaternion.from_coeffs(1 + 2j, 0, 0, 0)
+
+        # 4. Complex tensor coefficients raise ValueError
+        with pytest.raises(ValueError, match="real"):
+            Quaternion.from_coeffs(torch.tensor(1.0 + 1.0j), 0.0, 0.0, 0.0)
+
+        # 5. Four tensor coefficients of shape (1,) preserve original upstream behavior
+        t_w = torch.tensor([1.0])
+        t_z = torch.tensor([0.0])
+        q_1d = Quaternion.from_coeffs(t_w, t_z, t_z, t_z)
+        expected_shape = torch.tensor([t_w, t_z, t_z, t_z]).shape
+        assert q_1d.data.shape == expected_shape
+
+        # 6. Mixed float32 and float64 tensor coefficients preserve original behavior (promote to float64)
+        t_f32 = torch.tensor(1.0, dtype=torch.float32)
+        t_f64 = torch.tensor(0.0, dtype=torch.float64)
+        q_promoted = Quaternion.from_coeffs(t_f32, t_f64, t_f32, t_f32)
+        expected_promoted = torch.tensor([t_f32, t_f64, t_f32, t_f32])
+        assert q_promoted.data.dtype == expected_promoted.dtype
+        assert q_promoted.data.dtype == torch.float64
+
+        # Default floating-point dtype behavior when default is changed
+        orig_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            q_f64_default = Quaternion.from_coeffs(1, 0, 0, 0)
+            assert q_f64_default.data.dtype == torch.float64
+        finally:
+            torch.set_default_dtype(orig_default)
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size, device, dtype)
@@ -321,6 +376,30 @@ class TestQuaternion(BaseTester):
 
         # The quaternion's parameter should have gradients
         assert q.data.grad is not None
+
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None), (1, 3), (3, 1)])
+    def test_mul_broadcasts_an_unbatched_or_size_one_batch(self, device, dtype, left_batch, right_batch):
+        # #6481: the Hamilton product used to raise in torch.linalg.cross when one operand was unbatched
+        q1 = Quaternion.random(left_batch, device, dtype)
+        q2 = Quaternion.random(right_batch, device, dtype)
+        expected = torch.stack(
+            [(Quaternion(a) * Quaternion(b)).data for a, b in zip(*torch.broadcast_tensors(q1.data, q2.data))]
+        )
+        self.assert_close((q1 * q2).data, expected)
+
+    def test_mul_unbatched_by_a_tensor_of_scalars(self, device, dtype):
+        q = Quaternion.random(None, device, dtype)
+        s = torch.tensor([1.0, 2.0, -3.0], device=device, dtype=dtype)
+        expected = s[:, None] * q.data
+        self.assert_close((q * s).data, expected)
+        self.assert_close((s * q).data, expected)
+
+    @pytest.mark.parametrize(("left_shape", "right_shape"), [((3, 4), (2, 4)), ((2, 3, 4), (3, 4))])
+    def test_mul_incompatible_batches_raise(self, device, dtype, left_shape, right_shape):
+        q1 = Quaternion(torch.rand(left_shape, device=device, dtype=dtype))
+        q2 = Quaternion(torch.rand(right_shape, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            q1 * q2
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_inverse(self, device, dtype, batch_size):
@@ -748,6 +827,40 @@ class TestQuaternionAverage(BaseTester):
         with pytest.raises(ValueError, match="zero"):
             average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
 
+    def test_average_quaternions_weight_shapes(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Issue 6482 reproduction: Quaternion.random(6) with torch.ones(6, 1)
+        q6 = Quaternion.random(6, device=device, dtype=dtype)
+        w6_2d = torch.ones(6, 1, device=device, dtype=dtype)
+        w6_1d = torch.ones(6, device=device, dtype=dtype)
+        out6_2d = average_quaternions(q6, w=w6_2d)
+        out6_1d = average_quaternions(q6, w=w6_1d)
+        self.assert_close(out6_2d.data, out6_1d.data)
+
+        Q = Quaternion.random(3, device=device, dtype=dtype)
+        w_1d = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        w_2d = torch.tensor([[1.0], [2.0], [3.0]], device=device, dtype=dtype)
+
+        # (M, 1) weights must match (M,) weights
+        out_1d = average_quaternions(Q, w=w_1d)
+        out_2d = average_quaternions(Q, w=w_2d)
+        self.assert_close(out_1d.data, out_2d.data)
+
+        # Incompatible shapes must raise ValueError mentioning the expected shape
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 2), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((3, 1, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2, 1), device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"must be \(3,\) or \(3, 1\)"):
+            average_quaternions(Q, w=torch.zeros((2,), device=device, dtype=dtype))
+
     def test_member_norm_is_not_a_weight_4974(self, device, dtype):
         # #4974: the members were used as stored, so a member stored as 3 q counted 9 times (the result was scipy's
         # Rotation.mean with weights [9, 1]). Reference: scipy 1.18.1 Rotation.from_rotvec(rv).mean().as_rotvec().
@@ -883,3 +996,63 @@ class TestQuaternionConventions(BaseTester):
                 assert out.shape == (1, 4)
                 # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
                 self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
+
+
+def _average_with_fixed_sign_6213(data, reference, weights=None):
+    # The mean's sign is arbitrary; fix it against a reference for central differences.
+    mean = average_quaternions(Quaternion(data), weights).data
+    return mean * torch.where((mean.detach() * reference).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+
+
+def _yaw_only_6213(device):
+    yaw = torch.tensor([0.1, -0.3, 0.5, 0.2], dtype=torch.float64)
+    zero = torch.zeros_like(yaw)
+    return torch.stack([torch.cos(yaw / 2), zero, zero, torch.sin(yaw / 2)], -1).to(device)
+
+
+class TestQuaternionAverageGradient(BaseTester):
+    """``average_quaternions``' gradient is finite when the three smaller eigenvalues are not distinct (#6213)."""
+
+    def test_identical_members_6213(self, device):
+        # Two identity quaternions: sum q q^T = diag(2, 0, 0, 0), and eigh's backward divided by the zero gaps.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        reference = average_quaternions(Quaternion(data)).data.detach()
+        self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
+
+    def test_rotations_about_one_axis_have_first_and_second_derivatives_6213(self, device):
+        # Members about a common coordinate axis span a plane, so two of the eigenvalues are zero.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = _yaw_only_6213(device)
+        reference = average_quaternions(Quaternion(data)).data.detach()
+        self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
+        q = data.clone().requires_grad_(True)
+        assert torch.autograd.gradgradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (q,))
+
+    def test_weighted_rotations_about_one_axis_6213(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = _yaw_only_6213(device)
+        weights = torch.tensor([0.5, 1.0, 2.0, 0.25], device=device, dtype=torch.float64)
+        reference = average_quaternions(Quaternion(data), weights).data.detach()
+        self.gradcheck(lambda q, w: _average_with_fixed_sign_6213(q, reference, w), (data, weights), fast_mode=False)
+
+    def test_forward_mode_under_no_grad_6213(self, device):
+        # torch.func.jvp runs under no_grad too, so a call whose input carries a tangent needs the gradient path even
+        # when grad mode is off; skipping it there made the tangent 0.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        g = torch.Generator().manual_seed(0)
+        q = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)
+        t = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)
+
+        def average(x):
+            return average_quaternions(Quaternion(x)).data
+
+        _, expected = torch.func.jvp(average, (q,), (t,))
+        with torch.no_grad():
+            _, actual = torch.func.jvp(average, (q,), (t,))
+        assert expected.abs().max() > 1e-3
+        self.assert_close(actual, expected)

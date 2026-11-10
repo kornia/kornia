@@ -20,18 +20,18 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
-from kornia.core.utils import _to_device_nonblocking
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_contrast
 
 
 class RandomContrast(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the contrast of a torch.Tensor image.
+    r"""Scale pixel values by a random contrast factor.
 
-    The factor scales the raw values: the output is ``input * factor``. torchvision's and PIL's contrast blends
-    the image with its grayscale mean instead (``factor * input + (1 - factor) * mean``); :class:`ColorJitter`'s
-    contrast step is that formula.
+    ``output = RandomContrast(contrast)(input)`` computes ``input * factor`` for each selected image using a sampled
+    contrast factor, with clamping enabled by default. Use :class:`ColorJitter` for torchvision-compatible contrast,
+    which blends the image with its grayscale mean, ``factor * input + (1 - factor) * mean``.
 
     .. image:: _static/img/RandomContrast.png
 
@@ -45,8 +45,8 @@ class RandomContrast(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - with ``clip_output=True``, input values are clamped into ``[0, 1]`` before the operation
@@ -60,6 +60,11 @@ class RandomContrast(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_contrast`
+
+    See Also:
+        - :class:`RandomBrightness`: adds an offset instead of scaling values.
+        - :class:`ColorJiggle`: combines this raw-value scaling with color adjustments.
+        - :class:`ColorJitter`: blends with the grayscale mean as torchvision does.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -96,8 +101,10 @@ class RandomContrast(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.contrast: torch.Tensor = _range_bound(contrast, "contrast", center=1.0)
-        self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(contrast, "contrast", center=1.0)
+        self.contrast: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", center, bounds))
+        _load_unowned_learnable_range(self, "contrast", center)
 
         self.clip_output = clip_output
 
