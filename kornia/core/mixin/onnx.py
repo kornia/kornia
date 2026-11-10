@@ -362,25 +362,34 @@ def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
 
 
 class ONNXExportMixin:
-    """Mixin class that provides ONNX export functionality for objects that support it.
+    """Add ``to_onnx`` export to an ``nn.Module``, with dynamic batch, height and width by default.
+
+    ``onnx_model = module.to_onnx("model.onnx")`` traces the module on a random dummy input, writes the ONNX file and
+    returns the ``onnx.ModelProto``; :meth:`to_onnx` documents its arguments. By default the input is a batch of
+    3-channel images whose batch, height and width are dynamic. Exporting and running the result need the
+    ``kornia[onnx]`` extra.
 
     Attributes:
         ONNX_EXPORTABLE:
-            A flag indicating whether the object can be exported to ONNX. Default is True.
+            Whether the object can be exported; :meth:`to_onnx` raises ``RuntimeError`` when it is ``False``.
+            Default is ``True``.
         ONNX_DEFAULT_INPUTSHAPE:
-            Default input shape for the ONNX export. A list of integers where `-1` indicates
-            dynamic dimensions. Default is [-1, 3, -1, -1]: a batch of 3-channel images of any
+            Default input shape for the ONNX export. A list of integers where ``-1`` indicates
+            dynamic dimensions. Default is ``[-1, 3, -1, -1]``: a batch of 3-channel images of any
             batch size, height and width. A class whose models take another channel count declares its own.
         ONNX_DEFAULT_OUTPUTSHAPE:
-            Default output shape for the ONNX export. A list of integers where `-1` indicates
-            dynamic dimensions. Default is [-1, -1, -1, -1].
+            Default output shape for the ONNX export, with ``-1`` for dynamic dimensions. Default is
+            ``[-1, -1, -1, -1]``. Only the legacy TorchScript exporter reads it.
         ONNX_EXPORT_PSEUDO_SHAPE:
-            This is used to create a dummy input tensor for the ONNX export. Default is [1, 3, 256, 256].
-            It dimension shall match the ONNX_DEFAULT_INPUTSHAPE and ONNX_DEFAULT_OUTPUTSHAPE.
-            Non-image dimensions are allowed.
+            Shape of the dummy input the export traces, with each dynamic dimension raised to at least 2. Default is
+            ``[1, 3, 256, 256]``. Its rank matches ``ONNX_DEFAULT_INPUTSHAPE``; non-image dimensions are allowed.
+        ADDITIONAL_METADATA:
+            ``(key, value)`` pairs written into the metadata of every export, before the ``additional_metadata`` of
+            the call. Default is ``[]``.
 
-    Note:
-        - If `ONNX_EXPORTABLE` is False, indicating that the object cannot be exported to ONNX.
+    See Also:
+        - :class:`ONNXRuntimeMixin`: runs an exported model in an ONNX Runtime session.
+        - :class:`~kornia.onnx.module.ONNXModule`: loads an exported file and runs it with ONNX Runtime.
 
     """
 
@@ -648,7 +657,20 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
-    """Provide methods to manage ONNX Runtime inference sessions."""
+    """Run an ONNX Runtime session on NumPy arrays or CPU tensors, and switch its execution provider.
+
+    ``outputs = obj(*inputs)`` runs the object's ``onnxruntime.InferenceSession``, the one :meth:`get_session` returns
+    and :meth:`set_session` replaces, on one NumPy array or CPU tensor per session input, and returns a list of NumPy
+    arrays; a tensor on another device raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
+    :meth:`as_openvino` switch the execution provider; a provider the installed onnxruntime build does not offer leaves
+    the session on the CPU with an onnxruntime warning, without raising. It needs the ``kornia[onnx]`` extra.
+
+    See Also:
+        - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models into one session and runs it with this
+          mixin.
+        - :class:`ONNXExportMixin`: exports a torch module to the ``ModelProto`` a session is built from.
+
+    """
 
     def _create_session(
         self,
@@ -793,7 +815,17 @@ class ONNXRuntimeMixin:
 
 
 class ONNXMixin:
-    """Provide functionality for exporting and loading models in ONNX format."""
+    """Load ONNX graphs and chain them into one, for the classes that run ONNX models.
+
+    It has no public methods. :class:`~kornia.onnx.module.ONNXModule` uses it to load an ``onnx.ModelProto``, a file, an
+    ``hf://`` name or a URL, and :class:`~kornia.onnx.sequential.ONNXSequential` also to chain several into one graph
+    and save it. It needs the ``kornia[onnx]`` extra.
+
+    See Also:
+        - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models with this mixin and runs them.
+        - :class:`ONNXRuntimeMixin`: the session half of the same classes.
+
+    """
 
     def _load_op(
         self,

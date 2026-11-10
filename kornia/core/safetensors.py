@@ -15,12 +15,18 @@
 # limitations under the License.
 #
 
-"""Read ``.safetensors`` checkpoints with nothing but :mod:`torch`.
+"""Read and check ``.safetensors`` checkpoints with torch alone, without the ``safetensors`` package.
 
-The format is small enough to read directly -- an 8-byte little-endian length,
-a JSON header of that length, then one contiguous byte buffer the header indexes
-into -- so a checkpoint published in it costs kornia no dependency. See
-https://github.com/huggingface/safetensors#format for the specification.
+The format (https://github.com/huggingface/safetensors#format) is an 8-byte little-endian header length, a JSON header
+of that length naming each tensor's dtype, shape and byte range, and one byte buffer those ranges index into. Both
+functions reject a file whose ranges overlap, leave bytes uncovered or run past its end, with a ``ValueError`` that
+names the file. The dtypes read are ``F64``, ``F32``, ``F16``, ``BF16``, ``I64``, ``I32``, ``I16``, ``I8``, ``U8`` and
+``BOOL``; another one is rejected by name.
+
+Which function to use:
+
+- A checkpoint read into a state dict on a chosen device: :func:`load_safetensors`.
+- A header checked without reading tensors, as the ``validate`` of the download functions: :func:`check_safetensors`.
 """
 
 from __future__ import annotations
@@ -282,28 +288,25 @@ def _check_the_buffer_is_covered_once(path: str, parsed: dict[str, _TensorEntry]
 
 
 def check_safetensors(path: str | os.PathLike[str]) -> None:
-    """Check that *path* is a readable safetensors file, without reading tensors.
+    """Check that a file is a readable ``.safetensors`` checkpoint by its header alone, without reading tensors.
 
-    The header half of :func:`load_safetensors`: the length prefix, the JSON
-    header, every entry's dtype, shape and byte range, and that those ranges
-    cover the buffer exactly once. A file this accepts is one
-    :func:`load_safetensors` can build on the CPU, including an empty tensor's
-    shape, which no byte range bounds; another device can add limits of its own.
-    It reads only the header, so it stays cheap on a multi-gigabyte checkpoint.
-
-    Written for :func:`kornia.core.download_file_from_url`'s ``validate``
-    argument, where it turns a truncated cache entry into a re-download instead
-    of a permanent failure. Every truncation the download path can produce is
-    visible here: a file cut short after a 2xx leaves the declared header length
-    or the entries' ``data_offsets`` pointing past the end.
+    ``check_safetensors(path)`` returns ``None`` when the file passes the header checks of :func:`load_safetensors` and
+    raises otherwise. It reads only the header, so it is cheap on a multi-gigabyte checkpoint, which makes it the
+    ``validate`` argument of :func:`download_hf_file` and :func:`download_file_from_url`: a cached file cut short,
+    inside its header or its byte buffer, is rejected and fetched again instead of being returned.
 
     Args:
         path: the checkpoint to check.
 
     Raises:
         ValueError: if the file is not a readable safetensors checkpoint. The
-            message names *path*, as :func:`load_safetensors` does.
+            message names ``path``, as :func:`load_safetensors` does.
         OSError: if the file cannot be opened.
+
+    See Also:
+        - :func:`load_safetensors`: runs the same checks and also reads the tensors.
+        - :func:`download_hf_file`: takes this function as ``validate`` for a checkpoint it downloads.
+
     """
     path = os.fspath(path)
     with open(path, "rb") as f:
@@ -357,22 +360,13 @@ def load_safetensors(
     device: str | torch.device = "cpu",
     include: Callable[[str], bool] | None = None,
 ) -> dict[str, torch.Tensor]:
-    """Load a ``.safetensors`` checkpoint into a state dict.
+    """Read a ``.safetensors`` checkpoint into a state dict on a chosen device.
 
-    A pure-torch reader for the format described at
-    https://github.com/huggingface/safetensors#format: eight bytes of
-    little-endian header length, a JSON header of that length naming each
-    tensor's dtype, shape and byte range, and one contiguous byte buffer those
-    ranges index into. The optional ``__metadata__`` key is ignored.
-
-    The file is memory-mapped rather than read whole, so a multi-gigabyte
-    checkpoint is not held in memory twice. The mapping is private
-    (:data:`mmap.ACCESS_COPY`) rather than read-only: :func:`torch.frombuffer`
-    warns on a buffer it cannot write to, and a private mapping is writable
-    without touching the file -- nothing here writes to it, so no page is ever
-    copied. Every tensor is copied out of the mapping before it is returned, so
-    the returned state dict owns its storage and the file is closed by the time
-    this function returns.
+    ``state_dict = load_safetensors(path, device="cpu")`` returns a dict from tensor name to tensor, in the order the
+    header lists them, with each tensor of its stored dtype and shape on ``device``. The ``__metadata__`` entry is
+    ignored. The file is memory-mapped rather than read whole, and every tensor is copied out of the mapping, so the
+    returned tensors own their storage, are writable, and the file is closed when the function returns. ``include``
+    selects tensors by name; the whole header is still checked, as in :func:`check_safetensors`.
 
     Args:
         path: the checkpoint to read.
@@ -385,7 +379,7 @@ def load_safetensors(
         The state dict, in the order the header lists it.
 
     Raises:
-        ValueError: if the file is not a readable safetensors checkpoint --
+        ValueError: if the file is not a readable safetensors checkpoint:
             truncated, a header that is not JSON or nests too deeply to decode,
             an entry naming a dtype this reader does not accept, a shape torch
             cannot build, a byte range that does not match the tensor it belongs
@@ -393,8 +387,14 @@ def load_safetensors(
             for. Every message names the file.
         OSError: if the file cannot be opened or mapped.
 
+    See Also:
+        - :func:`check_safetensors`: the same header checks without reading tensors.
+        - :func:`download_hf_file`: downloads a checkpoint from a Hugging Face repository and returns its path.
+        - :func:`load_state_dict_from_url`: downloads and loads a ``torch.load`` checkpoint instead.
+
     Example:
         >>> state_dict = load_safetensors("model.safetensors")  # doctest: +SKIP
+
     """
     path = os.fspath(path)
     with open(path, "rb") as f:

@@ -2,13 +2,75 @@ kornia.core
 ===========
 
 .. meta::
-   :description: The kornia.core module in Kornia provides foundational classes and utilities for tensor manipulation. Key classes like TensorWrapper allow for enhanced handling of image tensors with support for various operations and transformations in computer vision tasks.
+   :description: The kornia.core module provides the helpers that download and read pretrained weights, the ImageModule and ONNX base classes, TensorWrapper and small batched tensors, the device and autocast helpers, and, with them, the kornia.config settings and the kornia.constants enums.
 
 .. currentmodule:: kornia.core
+
+Building blocks shared across kornia: functions that download and read pretrained weights, base classes that give a
+module NumPy and PIL inputs and outputs or an ONNX export, small tensor helpers, and the device and autocast helpers of
+``kornia.core.utils``. The process-wide settings of ``kornia.config`` and the enums of ``kornia.constants`` that the
+augmentations take are documented here too.
+
+Weights
+-------
+
+Helpers for fetching and reading pretrained weights. :func:`load_state_dict_from_url` is the one models load a
+``torch.load``-able checkpoint with; :func:`download_hf_file` (or :func:`download_file_from_url`) and
+:func:`load_safetensors` are the two halves of the same job for a ``.safetensors`` checkpoint; :func:`check_safetensors`
+is the ``validate=`` callable that lets the download half reject a truncated cache entry.
+
+.. autofunction:: hf_url
+
+.. autofunction:: load_state_dict_from_url
+
+.. autofunction:: download_file_from_url
+
+.. autofunction:: download_hf_file
+
+.. autofunction:: load_safetensors
+
+.. autofunction:: check_safetensors
+
+Image modules
+-------------
+
+Subclass :class:`ImageModule`, or chain modules in :class:`ImageSequential`, for a module whose call also takes NumPy
+arrays, PIL images and image paths and returns tensors, NumPy arrays or PIL images; :class:`ImageModuleMixIn` holds the
+conversions. For augmentation pipelines, use :class:`~kornia.augmentation.container.ImageSequential` instead.
+
+.. autoclass:: ImageModule
+    :members:
+
+.. autoclass:: ImageSequential
+    :members:
+
+.. autoclass:: ImageModuleMixIn
+    :members:
+
+ONNX export and runtime
+-----------------------
+
+The mixins behind ``to_onnx`` and :class:`~kornia.onnx.sequential.ONNXSequential`. They need the ``kornia[onnx]``
+extra.
+
+.. autoclass:: ONNXExportMixin
+    :members:
+
+.. autoclass:: ONNXRuntimeMixin
+    :members:
+
+.. autoclass:: ONNXMixin
+
+Tensor helpers
+--------------
 
 .. autoclass:: TensorWrapper
     :members:
     :undoc-members:
+
+.. autofunction:: eye_like
+
+.. autofunction:: vec_like
 
 .. autofunction:: kornia.core.utils.batched_forward
 
@@ -22,28 +84,6 @@ Device and autocast helpers
 .. autofunction:: kornia.core.utils.get_cuda_or_mps_device_if_available
 
 .. autofunction:: kornia.core.utils.is_autocast_enabled
-
-Weights
--------
-
-Helpers for fetching and reading pretrained weights. :func:`load_state_dict_from_url`
-is the one models load a ``torch.load``-able checkpoint with;
-:func:`download_hf_file` (or :func:`download_file_from_url`) and
-:func:`load_safetensors` are the two halves of the same job for a
-``.safetensors`` checkpoint; :func:`check_safetensors` is the ``validate=``
-callable that lets the download half reject a truncated cache entry.
-
-.. autofunction:: hf_url
-
-.. autofunction:: load_state_dict_from_url
-
-.. autofunction:: download_file_from_url
-
-.. autofunction:: download_hf_file
-
-.. autofunction:: load_safetensors
-
-.. autofunction:: check_safetensors
 
 Validation
 ----------
@@ -149,3 +189,43 @@ check raises ``torch.jit.Error`` instead, which none of these clauses catches.
 
 .. autoexception:: ImageError
     :show-inheritance:
+
+Configuration
+-------------
+
+.. currentmodule:: kornia.config
+
+``kornia.config.kornia_config`` holds the process-wide settings: ``lazyloader.installation_mode`` takes an
+:class:`InstallationMode`, and ``hub_cache_dir`` and ``hub_onnx_dir`` set where sample images and ONNX models are
+downloaded to.
+
+.. autoclass:: InstallationMode
+    :members:
+    :undoc-members:
+
+Constants
+---------
+
+.. currentmodule:: kornia.constants
+
+The enums that augmentations take for ``resample``, ``padding_mode`` and ``border_type``, and the dtype code of the mix
+augmentations. Each enum's ``get`` takes a member, its name in any case or its integer value and returns the member, so
+those arguments accept all three. A name that names no member raises an error that is both a ``KeyError`` and a
+``ValueError``. :class:`DataKey`, for the ``data_keys`` of the augmentation containers, is documented with
+:doc:`the containers <augmentation.container>`.
+
+.. autoclass:: Resample
+    :members:
+    :undoc-members:
+
+.. autoclass:: SamplePadding
+    :members:
+    :undoc-members:
+
+.. autoclass:: BorderType
+    :members:
+    :undoc-members:
+
+.. autoclass:: DType
+    :members:
+    :undoc-members:

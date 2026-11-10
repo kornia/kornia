@@ -83,7 +83,7 @@ Data & deployment
    * - :doc:`kornia.onnx <onnx>`
      - Run and chain ONNX models with ONNX Runtime.
    * - :doc:`kornia.core <core>`
-     - Tensor wrapper and shared utilities.
+     - Weight downloads, image-module and ONNX base classes, tensor helpers, configuration and constants.
 
 .. toctree::
    :caption: Image processing

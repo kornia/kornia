@@ -190,6 +190,12 @@ SEE_ALSO_EXCEPTIONS: dict[str, str] = {
     "kornia.core.exceptions.BaseError": (
         "the base of every kornia check error; the kornia.core.exceptions catalog lists its subclasses"
     ),
+    "kornia.constants.DType": "the only dtype-code enum in kornia; no other object names a dtype by an integer",
+    "kornia.config.InstallationMode": "the only configuration enum in kornia; no other object sets a nearby policy",
+    "kornia.core.utils.batched_forward": (
+        "the only micro-batching helper, apart from its deprecated alias in kornia.utils"
+    ),
+    "kornia.core.utils.is_autocast_enabled": "the only autocast query, apart from its deprecated alias in kornia.utils",
 }
 """Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
 

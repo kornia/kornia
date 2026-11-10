@@ -62,14 +62,12 @@ def _hf_repo_id(repo: str) -> str:
 
 
 def hf_url(repo: str, filename: str) -> str:
-    """Return the HuggingFace URL for a file in a model repo.
+    """Build the ``resolve/main`` URL of one file in a Hugging Face model repository.
 
-    Both arguments are percent-encoded, ``/`` excepted, because they are path
-    segments rather than URL syntax: unencoded, the ``#`` of ``"a#b.pth"`` would
-    start a fragment and fetch the file ``a``, and a space would make the URL
-    invalid. Names made of letters, digits, ``-``, ``_``, ``.`` and ``~`` are
-    unchanged. Pass the plain name: one that is already percent-encoded, such as
-    ``"a%20b.pth"``, is encoded again.
+    ``url = hf_url(repo, filename)`` returns ``https://huggingface.co/<owner>/<name>/resolve/main/<filename>`` and
+    makes no request. A ``repo`` without a ``/`` names a repository of the ``kornia`` organization. Both arguments are
+    percent-encoded except for ``/``, so a ``#`` or a space stays part of the name; letters, digits, ``-``, ``_``,
+    ``.`` and ``~`` are unchanged, and an already encoded name such as ``"a%20b.pth"`` is encoded again.
 
     Args:
         repo: repository name under the ``kornia`` HF org (e.g. ``"hardnet"``),
@@ -83,11 +81,16 @@ def hf_url(repo: str, filename: str) -> str:
         A ``resolve/main`` URL that can be passed directly to
         :func:`load_state_dict_from_url` or :func:`download_file_from_url`.
 
+    See Also:
+        - :func:`download_hf_file`: downloads the file at this URL under a cache name that carries the repository.
+        - :func:`load_state_dict_from_url`: loads a ``torch.load`` checkpoint from this URL.
+
     Example:
         >>> hf_url("hardnet", "HardNetPP.pth")
         'https://huggingface.co/kornia/hardnet/resolve/main/HardNetPP.pth'
         >>> hf_url("google/siglip2-base-patch16-224", "model.safetensors")
         'https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors'
+
     """
     return f"{_HF_BASE}/{quote(_hf_repo_id(repo), safe='/')}/resolve/main/{quote(filename, safe='/')}"
 
@@ -996,102 +999,38 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget,
 
 
 def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = None, **kwargs: Any) -> dict[str, Any]:
-    """Load a state dict from a URL, trying fallback URLs on failure.
+    """Load a torch checkpoint from a URL or from fallback URLs, cached in the torch hub.
 
-    Replacement for :func:`torch.hub.load_state_dict_from_url` that also accepts
-    an ordered list of URLs. Each URL is tried in turn; a :mod:`warnings` message
-    is emitted for every failed attempt before the next source is tried. It
-    deliberately differs from the torch function in two ways, both described
-    below: the ``weights_only`` default and where progress is reported.
+    ``state_dict = load_state_dict_from_url(url)`` takes a URL or a list of URLs tried in order, downloads the first
+    that works into ``<torch.hub.get_dir()>/checkpoints`` (or ``model_dir``) unless the file is already there, and
+    returns what :func:`torch.load` reads from it with ``weights_only=True``. Without ``map_location`` each tensor loads
+    on the device it was saved from. For a file :func:`torch.load` cannot read, such as a ``.safetensors`` checkpoint,
+    use :func:`download_file_from_url` and :func:`load_safetensors`.
 
-    The checkpoint is loaded with ``weights_only=True`` unless the caller passes
-    ``weights_only=False``, whereas the torch function defaults to ``False`` on
-    every torch version kornia supports; ``weights_only=True`` is
-    ``torch.load``'s own default since torch 2.6. ``torch.load`` then unpickles
-    only tensors, primitive types and plain containers, and refuses a pickled
-    callable instead of running it. A checkpoint that stores any other type
-    fails with a :class:`RuntimeError` chained to the
-    :class:`pickle.UnpicklingError` that names the type. Allowlist the type for
-    the call with ``torch.serialization.safe_globals([...])``, or pass
-    ``weights_only=False``, but only for a file you trust, because unpickling it
-    can run arbitrary code.
-
-    On older torch, ``weights_only=True`` narrows what a checkpoint can do but
-    does not guarantee that it runs no code. PyTorch's advisories report
-    checkpoints crafted to run code despite it before torch 2.6
-    (`GHSA-53q9-r3pm-6pq6
-    <https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6>`__)
-    and to corrupt memory, potentially running code, before torch 2.10
-    (`GHSA-63cw-57p8-fm3p
-    <https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p>`__).
-    kornia supports torch 2.5.1 and later, so load a checkpoint from a source
-    you do not trust only on torch 2.10 or later, which fixes both.
-
-    Progress reporting is written to :data:`sys.stderr`. This is the second
-    deliberate deviation from the torch function, which since torch 2.x writes
-    its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
-    accompanying progress bar already goes to stderr). Status output on stdout
-    corrupts any caller that treats stdout as data -- most visibly doctests,
-    where the line is captured as unexpected example output and fails an
-    example that downloads on a cold cache.
-
-    That line is reached only when the file is absent from the cache, so this
-    function fetches a missing file itself -- announcing it on stderr -- and
-    leaves torch with nothing to report. Nothing process-global is touched:
-    redirecting :data:`sys.stdout` around the call would divert unrelated
-    threads' output for the whole transfer, and concurrent calls restoring out
-    of order would leave stdout permanently pointing at stderr.
-
-    When multiple URLs are given and ``file_name`` is not already in *kwargs*,
-    the basename of the **first** URL is used as the local cache filename for
-    all attempts. This guarantees that:
-
-    * a file successfully downloaded from the primary source is found on the
-      next call without re-downloading;
-    * hash validation (``check_hash=True``) uses the filename — and therefore
-      the hash embedded in it — of the primary URL consistently across all
-      fallback attempts.
-
-    Because that one path is shared, a failed attempt moves the cache entry aside
-    before the next URL is tried. Otherwise a single bad write would be handed
-    straight back to torch by every remaining source -- and by every later
-    process -- making the fallback URLs unreachable. If no source ends up
-    transferring the file, the source the entry was moved aside for is tried once
-    more, this time against an empty path, so a poisoned entry is repaired inside
-    the call rather than after one guaranteed spurious failure -- which matters
-    most for the single-source checkpoints, where there is no fallback to do it.
-    Should the call still fail, the entry is put back, so a failure the cache
-    could not have fixed never costs the caller a checkpoint it already had. A
-    path is refetched at most once per process this way; see
-    :func:`_discard_cache_entry` and :func:`_settle_quarantine`.
-
-    Only an entry that *predates* the call is ever quarantined. Bytes a source
-    transferred itself and then could not load are not something the caller had,
-    so there is nothing to make reversible: they are deleted outright while a
-    later source remains, which is what hands that source an empty path to fetch
-    into (see :func:`_drop_failed_download`). After the last source they are left
-    where they are -- deleting them would make every later call in the process
-    transfer the file again, unbounded and up to 2.4 GB a time, to fail in the
-    same way -- but no discard is spent on them either, so the next call can still
-    move them aside and reach the sources behind them.
-
-    Each URL is attempted up to :data:`_MAX_ATTEMPTS` times, with exponential
-    backoff, when it fails with a transient network condition such as an HTTP
-    429. Unauthenticated CI matrices trip the rate limits of huggingface.co and
-    github.com routinely, and a retry is far cheaper than a failed job. A
-    response that names its own delay in ``Retry-After`` -- or, on a rate-limit
-    response, ``X-RateLimit-Reset`` -- is honoured instead of the guess, clamped
-    to :data:`_MAX_BACKOFF_SECONDS`, and the call as a whole never waits longer
-    than :data:`_MAX_CALL_SLEEP_SECONDS`. A server that stalls -- accepts the
-    connection and then sends nothing -- fails the attempt after ``timeout``
-    seconds and counts as transient too.
-
-    The arguments are checked before the cache is consulted or a request made:
-    ``file_name`` must be a bare file name, as it names an entry in the flat cache
-    directory, and without it the first URL's path must end in one; a keyword
-    the torch function does not take raises :class:`TypeError` there and then,
-    rather than being mistaken for a corrupt cache entry. A leading ``~`` in
-    ``model_dir`` is expanded.
+    Convention:
+        - ``weights_only`` defaults to ``True``, where the torch function defaults to ``False`` on every torch version
+          kornia supports. A checkpoint that pickles a type other than tensors, primitive types and plain containers
+          then raises :class:`RuntimeError`, chained to the :class:`pickle.UnpicklingError` that names the type.
+          Allowlist the type with ``torch.serialization.safe_globals([...])``, or pass ``weights_only=False``, but only
+          for a file you trust: unpickling it can run arbitrary code.
+        - ``weights_only=True`` does not stop a crafted checkpoint from running code before torch 2.6
+          (`GHSA-53q9-r3pm-6pq6 <https://github.com/pytorch/pytorch/security/advisories/GHSA-53q9-r3pm-6pq6>`__)
+          or from corrupting memory before torch 2.10
+          (`GHSA-63cw-57p8-fm3p <https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p>`__).
+          Load a checkpoint from a source you do not trust only on torch 2.10 or later.
+        - With several URLs and no ``file_name``, every source caches under the first URL's file name, so a later call
+          finds the file whichever source served it, and ``check_hash=True`` checks the hash in that one name.
+        - A source is tried up to 3 times. A ``URLError``, a ``ConnectionError``, a stalled or truncated transfer,
+          HTTP 408, 425, 429, 500, 502, 503 or 504, and a 403 with ``Retry-After`` or ``X-RateLimit-Remaining: 0``
+          are retried after a doubling wait from 1 s, or after the delay the server names in ``Retry-After`` or
+          ``X-RateLimit-Reset``; the waits of one call add up to at most 60 s. A warning names each retry and each
+          source given up for the next.
+        - A cached file that fails to load is moved aside, the remaining sources are fetched into the emptied path,
+          and, when none of them transferred a file, the source that failed is fetched once more; if nothing loads,
+          the file is put back. A file this
+          call downloaded and could not load is deleted when another source remains, and left in place after the last
+          one. A cache path is refetched this way at most once per process.
+        - The ``Downloading: "<url>" to <path>`` line goes to stderr; the torch function writes it to stdout.
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right. A
@@ -1105,29 +1044,30 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
             bound for callers that take no ``timeout``, such as ``pretrained=True``
             model constructors.
         **kwargs: forwarded to :func:`torch.hub.load_state_dict_from_url`
-            (``map_location``, ``check_hash``, ``file_name``, …), with
-            ``weights_only`` set to ``True`` unless it is passed as ``False``.
+            (``map_location``, ``check_hash``, ``file_name``, ``model_dir``, ``progress``), with
+            ``weights_only`` set to ``True`` unless it is passed as ``False``. ``file_name`` must be a bare file name,
+            and a leading ``~`` in ``model_dir`` is expanded.
 
     Returns:
         The loaded state dict.
 
     Raises:
         TypeError: if ``url`` is not a URL string or a list of them, ``timeout``
-            is not a number, or a keyword is not one the torch function takes.
+            is not a number, or a keyword is not one the torch function takes. The arguments are checked before the
+            cache is read or a request is made.
         ValueError: if ``url`` is empty or has no scheme (a local path is not a
             URL); if ``timeout`` is not greater than 0 and
             at most ``threading.TIMEOUT_MAX``, or it is omitted and
             ``KORNIA_DOWNLOAD_TIMEOUT`` holds such a value or no number (the message
             names which); if ``file_name`` is not a bare file name, or it is omitted
             and the first URL does not end in one.
-        RuntimeError: if every URL fails. The message carries the failing
-            exception's type and text, the source it came from and the cache path in play, and the
-            exception itself is chained; without them a rate limit is
-            indistinguishable from a dead link in a CI failure summary, and a
-            caller stuck behind a corrupt entry has no file to delete. Where a
-            load failure set the cache entry aside and the refetch then failed
-            too, the load failure is the one reported and chained, and the
-            refetch failure rides along as context.
+        RuntimeError: if every URL fails. The message names the last error, the source it came from and the cache
+            path to delete if the file there is corrupt, and the error is chained. When a cached file was moved aside
+            and fetching it again failed too, the load failure is the one reported and chained.
+
+    See Also:
+        - :func:`download_file_from_url`: the same cache, fallback and retries, returning the path instead of loading.
+        - :func:`hf_url`: builds the URL of a file in a Hugging Face repository.
 
     Example:
         >>> sd = load_state_dict_from_url([          # doctest: +SKIP
@@ -1135,6 +1075,7 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
         ...     "https://github.com/DagnyT/hardnet/raw/master/"
         ...     "pretrained/pretrained_all_datasets/HardNet%2B%2B.pth",  # fallback
         ... ])
+
     """
     urls = _url_list(url)
     timeout = _resolve_timeout(timeout)
@@ -1256,46 +1197,21 @@ def download_file_from_url(
     validate: Callable[[str], None] | None = None,
     timeout: float | None = None,
 ) -> str:
-    """Download a file into the torch hub cache and return its path, without loading it.
+    """Download a file into the torch hub cache, with fallback URLs, and return its path.
 
-    The sibling of :func:`load_state_dict_from_url` for a checkpoint torch
-    cannot unpickle -- a ``.safetensors`` file, read afterwards with
-    :func:`kornia.core.load_safetensors`. It shares that function's cache, its
-    fallback-URL handling, its retry-with-backoff on transient failures and rate
-    limits (see :data:`_MAX_ATTEMPTS` and :func:`_retry_delay`), its bound on a
-    stalled server (see ``timeout``), and its habit of
-    announcing a transfer on :data:`sys.stderr` rather than stdout. A file
-    already in the cache is returned as it is, with no request made.
+    ``path = download_file_from_url(url, file_name=name)`` takes a URL or a list of URLs tried in order, downloads the
+    first that works to ``<model_dir>/<file_name>`` and returns that path without loading the file. A file already at
+    that path is returned with no request. Retries, fallback and the stderr status line work as in
+    :func:`load_state_dict_from_url`.
 
-    Pass ``validate`` to get :func:`load_state_dict_from_url`'s quarantine as
-    well. That function hooks its quarantine on the *load* step, which a
-    download-only function does not have: without one, nothing here can tell a
-    truncated cache entry from an intact one, so a bad file is handed back as a
-    cache hit on every later call and the caller keeps failing until it is
-    deleted by hand.
-
-    ``validate`` supplies the missing step: it is called with the cache path
-    after each attempt, and raising from it rejects the file. What follows
-    depends on where the file came from.
-
-    A rejected *cache entry* -- one the call found rather than fetched -- is
-    quarantined as :func:`load_state_dict_from_url` quarantines a checkpoint that
-    fails to load: it is moved aside so the remaining sources see an empty path,
-    the source that was handed it is re-fetched once, and if nothing usable turns
-    up the original is put back.
-
-    A rejected *fresh transfer* is deleted outright, whether or not a later
-    source could have used the emptied path. Those bytes arrived during this call
-    and ``validate`` refused them, which is a verdict on the file itself, unlike
-    the ambiguous load failures that function has to weigh; keeping them would end
-    the call having added a poisoned entry to a cache that had none. Nothing is
-    re-fetched in that case, so a one-URL call -- what :func:`download_hf_file`
-    makes -- raises with the cache left empty rather than poisoned.
-
-    Without ``validate`` nothing is quarantined, as before. The path is returned
-    to the caller and named in the failure message so that a file which turns
-    out to be unreadable can be deleted; :func:`kornia.core.load_safetensors`
-    names it in every error it raises for the same reason.
+    Convention:
+        - ``validate(path)`` runs after each attempt, on a cache hit too, and raising from it rejects the file.
+        - A rejected file that was already cached is moved aside, the remaining sources are fetched into the emptied
+          path, and, when none of them transferred a file, the source that handed it back is fetched once more; if
+          nothing passes, the file is put back.
+        - A rejected file that this call downloaded is deleted and the next source, if any, is tried, so a one-URL call
+          on an empty cache raises with the cache still empty.
+        - Without ``validate``, a truncated cached file is returned on every call until it is deleted.
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right. A
@@ -1303,22 +1219,20 @@ def download_file_from_url(
             cache entry of that name is returned instead of the local file; read
             a local file directly.
         file_name: name to cache the file under. Defaults to the basename of the
-            URL -- of the *first* URL when several are given, so that every
-            source shares one cache slot. Pass it explicitly whenever that
+            URL, of the first URL when several are given, so that every
+            source shares one cache slot. Pass it whenever that
             basename is not unique to this file: two repositories publishing a
             ``model.safetensors`` each would otherwise share one cache entry, and
-            the second model would silently load the first one's weights (see
-            :func:`_hf_cache_file_name`). Must be a bare filename: the cache is
-            one flat directory, so a value carrying a path separator or naming
-            ``.``/``..`` would write outside it. Without it, the first URL's path
-            must end in a file name.
+            the second model would load the first one's weights. Must be a bare
+            file name: the cache is one flat directory, and a value with a path separator or naming
+            ``.`` or ``..`` would write outside it.
         model_dir: directory to cache the file in. Defaults to torch's
             ``<hub dir>/checkpoints``, which is the cache CI restores. A leading
             ``~`` is expanded.
         progress: whether to display a progress bar during a transfer.
         validate: called with the cache path after each attempt, to decide
             whether what is there is usable. Raising rejects the entry. Keep it
-            cheap -- a header parse, not a full read -- since it runs on cache
+            cheap, a header parse such as :func:`check_safetensors` rather than a full read, since it runs on cache
             hits too.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails, which then counts as transient; it bounds each wait, not
@@ -1342,11 +1256,17 @@ def download_file_from_url(
             type and text, the source it came from and the cache path in play,
             and the exception itself is chained.
 
+    See Also:
+        - :func:`load_state_dict_from_url`: downloads the same way and loads the file with :func:`torch.load`.
+        - :func:`download_hf_file`: downloads one file of a Hugging Face repository under a repository-specific name.
+        - :func:`load_safetensors`: reads a downloaded ``.safetensors`` checkpoint into a state dict.
+
     Example:
         >>> path = download_file_from_url(                      # doctest: +SKIP
         ...     hf_url("kimi-vl-a3b-instruct-vision", "model.safetensors"),
         ...     file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
         ... )
+
     """
     urls = _url_list(url)
     file_name = _check_cache_file_name(urls, file_name)
@@ -1460,14 +1380,13 @@ def download_hf_file(
     validate: Callable[[str], None] | None = None,
     timeout: float | None = None,
 ) -> str:
-    """Download one file from a HuggingFace repo and return the path it is cached at.
+    """Download one file of a Hugging Face repository into the torch hub cache and return its path.
 
-    :func:`download_file_from_url` with the two decisions a Hub file needs
-    already made: the ``resolve/main`` URL, and a cache name that carries the
-    repository id. The second one is not optional -- every repository publishing
-    a single-shard checkpoint calls it ``model.safetensors``, and the cache is
-    one flat directory, so caching under the URL basename would serve one
-    repository's weights for another's, silently and on every later call.
+    ``path = download_hf_file(repo, filename)`` downloads ``hf_url(repo, filename)`` with :func:`download_file_from_url`
+    and caches it as ``<owner>--<name>--<filename>``, for example ``kornia--hardnet--HardNetPP.pth``, so two
+    repositories that both publish ``model.safetensors`` do not share a cache entry. A file already cached under that
+    name is returned with no request. For a ``.safetensors`` checkpoint, pass ``validate=check_safetensors`` and read
+    the path with :func:`load_safetensors`.
 
     Args:
         repo: repository name under the ``kornia`` HF org, or a full
@@ -1477,8 +1396,8 @@ def download_hf_file(
             ``<hub dir>/checkpoints``, which is the cache CI restores.
         progress: whether to display a progress bar during a transfer.
         validate: forwarded to :func:`download_file_from_url`, which documents
-            it. Pass :func:`kornia.core.check_safetensors` for a checkpoint, so
-            that a truncated cache entry is re-fetched rather than handed back
+            it. Pass :func:`check_safetensors` for a checkpoint, so
+            that a truncated cache entry is fetched again rather than handed back
             on every later call.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails; it bounds each wait, not the whole transfer. ``None``
@@ -1487,8 +1406,7 @@ def download_hf_file(
             :func:`download_file_from_url`.
 
     Returns:
-        The path of the cached file. Read a ``.safetensors`` one with
-        :func:`kornia.core.load_safetensors`.
+        The path of the cached file.
 
     Raises:
         TypeError: if ``timeout`` is not a number.
@@ -1499,10 +1417,15 @@ def download_hf_file(
             holds such a value or no number (the message names which).
         RuntimeError: if the download fails; see :func:`download_file_from_url`.
 
+    See Also:
+        - :func:`download_file_from_url`: downloads from any URL, under a cache name you choose.
+        - :func:`hf_url`: only builds the URL, without a request.
+
     Example:
         >>> path = download_hf_file(                        # doctest: +SKIP
         ...     "kimi-vl-a3b-instruct-vision", "model.safetensors"
         ... )
+
     """
     return download_file_from_url(
         hf_url(repo, filename),
