@@ -99,6 +99,24 @@ class TestBasicAugmentationBase(BaseTester):
             assert len(output["degrees"]) == input_shape[0]
             assert output["batch_prob"].sum().item() == num
 
+    @pytest.mark.parametrize(
+        "p, p_batch, same_on_batch", [(0.5, 1.0, False), (0.5, 1.0, True), (1.0, 0.5, False), (0.5, 0.5, False)]
+    )
+    def test_batch_prob_ignores_the_default_dtype(self, p, p_batch, same_on_batch, device):
+        # The draws use the augmentation's dtype. With a float64 default they used to be float64, which MPS does not
+        # have: every augmentation moved there with p < 1 raised.
+        augmentation = _BasicAugmentationBase(p, p_batch, same_on_batch).to(device=device, dtype=torch.float32)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            batch_prob = augmentation.__batch_prob_generator__((8,), p, p_batch, same_on_batch)
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert batch_prob.device == device
+        assert batch_prob.dtype == torch.float32
+        assert batch_prob.shape == (8,)
+        assert ((batch_prob == 0) | (batch_prob == 1)).all()
+
     @pytest.mark.parametrize("keepdim", [True, False])
     def test_forward(self, device, dtype, keepdim):
         torch.manual_seed(42)

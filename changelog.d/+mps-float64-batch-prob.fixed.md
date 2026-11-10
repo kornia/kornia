@@ -1,0 +1,1 @@
+An augmentation moved to MPS with `p < 1` (the default is 0.5) or `p_batch < 1` no longer raises when the default dtype is float64. The probability draws used the default dtype, and MPS has no float64. They now use the augmentation's dtype, or float32 for half precision.
