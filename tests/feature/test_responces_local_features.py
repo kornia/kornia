@@ -217,6 +217,21 @@ class TestCornerHarris(BaseTester):
         self.assert_close(harris(img), expected, rtol=0.0, atol=0.0)
         harris.k = torch.tensor(0.06, dtype=torch.float64, device=device)
         self.assert_close(harris(img), kornia.feature.harris_response(img, 0.06), rtol=0.0, atol=0.0)
+        # An integer k is not the number cast to its dtype: 0.04 truncates to the k = 0 assigned here.
+        harris.k = torch.tensor(0, device=device)
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0), rtol=0.0, atol=0.0)
+
+    def test_trainable_k_keeps_its_float64_gradient(self, device):
+        # A trainable k at the number's value gets the exact number in float64 and still its gradient, -sum(trace^2).
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
+        harris = kornia.feature.CornerHarris(0.04).to(device)
+        harris.k = torch.nn.Parameter(torch.tensor(0.04, device=device))
+        harris(img).sum().backward()
+        k = torch.tensor(0.04, dtype=torch.float64, device=device, requires_grad=True)
+        kornia.feature.harris_response(img, k).sum().backward()
+        self.assert_close(harris.k.grad.double(), k.grad)
 
 
 class TestCornerGFTT(BaseTester):

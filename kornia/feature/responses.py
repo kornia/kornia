@@ -566,12 +566,14 @@ class CornerHarris(nn.Module):
         """
         k = self.k
         number = self.__dict__.get("_k_number")  # absent from a module pickled before it existed
-        if number is not None and input.dtype == torch.float64:
+        if number is not None and input.dtype == torch.float64 and k.is_floating_point():
             # While the buffer still holds the number as built (not loaded or assigned another k), apply it exactly.
             built = torch.tensor(number).to(device=k.device, dtype=k.dtype)
             # One-dimensional: the TorchScript ONNX exporter casts a 0-dimensional constant to the buffer's float32.
             exact = torch.tensor([number], dtype=torch.float64, device=k.device)
-            k = torch.where(k == built, exact, k.to(torch.float64)).reshape(k.shape)
+            k64 = k.to(torch.float64)
+            # ``k64 - k64.detach()`` is zero, so the value stays exact while a trainable ``k`` keeps its gradient.
+            k = torch.where(k == built, exact + (k64 - k64.detach()), k64).reshape(k.shape)
         return harris_response(input, k, self.grads_mode, sigmas)
 
 
