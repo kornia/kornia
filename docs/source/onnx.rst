@@ -29,10 +29,10 @@ ONNX graphs (local files, ``onnx.ModelProto`` objects, or pre-exported Kornia op
         # Load a Hugging Face operator
         ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
         # Load a downloaded operator from the cache: the same name, served from the cache directory
-        # (".kornia_hub/onnx_models" by default) without a download
+        # (kornia_config.hub_onnx_dir, "<torch.hub.get_dir()>/kornia/onnx_models" by default) without a download
         ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb", download=False)
         # Load a local file by its path
-        ONNXLoader.load_model(".kornia_hub/onnx_models/operators/kornia.color.gray.GrayscaleToRgb.onnx")
+        ONNXLoader.load_model("models/kornia.color.gray.GrayscaleToRgb.onnx")
 
 .. autofunction:: kornia.onnx.utils.add_metadata
 
