@@ -659,8 +659,9 @@ class ONNXRuntimeMixin:
     """Run an ONNX Runtime session on NumPy arrays or CPU tensors, and switch its execution provider.
 
     ``outputs = obj(*inputs)`` runs the object's ``onnxruntime.InferenceSession``, the one :meth:`get_session` returns
-    and :meth:`set_session` replaces, on one NumPy array or CPU tensor per session input, and returns a list of NumPy
-    arrays; a tensor on another device raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
+    and :meth:`set_session` replaces, on one NumPy array or CPU tensor per session input, and returns ONNX Runtime's
+    list of outputs unchanged: a NumPy array for each tensor output, and a list or dict for a sequence or map output. A
+    tensor on another device raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
     :meth:`as_openvino` switch the execution provider; a provider the installed onnxruntime build does not offer leaves
     the session on the CPU with an onnxruntime warning, without raising.
 
@@ -794,7 +795,9 @@ class ONNXRuntimeMixin:
                 first). The number of inputs must match the expected inputs of the session.
 
         Returns:
-            list: The outputs from the ONNX model inference, as numpy arrays for numpy and torch inputs alike.
+            list: The outputs of ONNX Runtime, unchanged and in the order of ``get_session().get_outputs()``, for
+            numpy and torch inputs alike: a numpy array for each tensor output, a list or dict for a sequence or map
+            output.
 
         Raises:
             ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``, or an

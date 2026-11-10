@@ -17,10 +17,10 @@
 
 """Validate inputs: check conditions, shapes, sizes, types, devices and image layouts.
 
-Every ``KORNIA_CHECK*`` function returns ``True`` when its check passes. On failure it raises an error from
-``kornia.core.exceptions``, or returns ``False`` with ``raises=False``. A ``msg`` argument, where a check takes one, is
-a string or a function without arguments that returns it, called only on failure; see :func:`KORNIA_CHECK`. To turn the
-checks off, see :func:`disable_checks`.
+Every ``KORNIA_CHECK*`` function returns ``True`` when its check passes, and also without checking while the checks
+are disabled. On failure it raises an error from ``kornia.core.exceptions``, or returns ``False`` with
+``raises=False``. A ``msg`` argument, where a check takes one, is a string or a function without arguments that
+returns it, called only on failure; see :func:`KORNIA_CHECK`. To turn the checks off, see :func:`disable_checks`.
 
 Which function to use:
 

@@ -8,8 +8,8 @@ kornia.morphology
 
 Dilate, erode, open and close images ``(B, C, H, W)`` by a structuring element, and reconstruct them from a seed.
 Every function applies one 2D ``kernel`` to every channel: its non-zero cells form the neighborhood, and in every
-function except :func:`reconstruction` a ``structuring_element`` of the same shape makes the operation non-flat. :func:`dilation` reflects
-the kernel and :func:`erosion` does not, as in ``scipy.ndimage``;
+function except :func:`reconstruction` a ``structuring_element`` of the same shape makes the operation non-flat.
+:func:`dilation` reflects the kernel and :func:`erosion` does not, as in ``scipy.ndimage``;
 :doc:`Conventions & Pitfalls </get-started/conventions>` maps the kernels and the border modes onto scipy,
 scikit-image and OpenCV.
 

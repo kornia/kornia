@@ -102,9 +102,11 @@ class ImageModuleMixIn:
     Convention:
         - Non-tensor inputs convert as :meth:`to_tensor` describes; a tensor passes through unchanged.
         - ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
-          output fed back in converts to the same tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a
-          floating image to :math:`[0, 1]` and round it to 8 bits on the CPU, and pass a ``uint8`` image through with
-          its values.
+          output fed back in converts to a tensor with the same values and layout. The array is detached and on the
+          CPU, and a ``bfloat16`` output becomes ``float32``, so the round trip keeps neither the gradient history nor,
+          outside a module that moves its inputs to its own device and dtype, the device and dtype.
+        - ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to :math:`[0, 1]` and round it
+          to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
 
     See Also:
         - :class:`ImageModule`: an ``nn.Module`` base class whose call applies these conversions.
@@ -343,11 +345,12 @@ class ImageModuleMixIn:
 
         A ``(C, H, W)`` or ``(B, C, H, W)`` tensor becomes a channels-last ``(H, W, C)`` or
         ``(B, H, W, C)`` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
-        converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
-        to be an image, so a non-image element of a tuple output, such as a ``(B, N, 4)`` box tensor, is moved to
-        channels-last too. :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it
-        converts its images and masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold
-        boxes, keypoints or labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
+        converts back to a tensor with the same values and layout. The array is detached and on the CPU. A tensor of
+        any other rank keeps its shape. Every 3-D or 4-D tensor is taken to be an image, so a non-image element of a
+        tuple output, such as a ``(B, N, 4)`` box tensor, is moved to channels-last too.
+        :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it converts its images and
+        masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold boxes, keypoints or
+        labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
@@ -481,7 +484,7 @@ class ImageModuleMixIn:
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
-        """Write the last output to one image file, a grid of images for a batch.
+        """Write the last output to one image file, as a grid of images for a batch.
 
         Args:
             name: Path of the image file to write, its format given by the extension: ``.jpg``, ``.jpeg``, ``.png``,

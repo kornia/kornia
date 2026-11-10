@@ -226,7 +226,9 @@ class HomographyTracker(nn.Module):
         """Match frame ``x`` against the target from scratch with ``initial_matcher``.
 
         On success it stores the homography as ``previous_homography`` and sets ``keypoints0_num``, ``keypoints1_num``
-        and ``inliers_num``; a failure sets all three to 0 through :meth:`no_match`.
+        and ``inliers_num``; a failure sets all three to 0 through :meth:`no_match` and leaves
+        ``previous_homography`` as it was. After a failed call made while a previous homography exists, call
+        :meth:`reset_tracking` to have the next :meth:`forward` match from scratch.
 
         Args:
             x: frame ``(1, 1, H, W)``.

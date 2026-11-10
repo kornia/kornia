@@ -830,8 +830,8 @@ def gradient(
 
     ``out = gradient(tensor, kernel)`` returns ``dilation(tensor, kernel) - erosion(tensor, kernel)`` with the same
     arguments, a ``(B, C, H, W)`` edge-strength map that is large where the image changes. Under a non-``geodesic``
-    border it equals ``scipy.ndimage.morphological_gradient`` with the matching mode, and for a kernel symmetric about
-    its origin it is the value range over each neighborhood.
+    border it equals ``scipy.ndimage.morphological_gradient`` with the matching mode, and for a flat kernel (no
+    ``structuring_element``) symmetric about its origin it is the value range over each neighborhood.
 
     .. image:: _static/img/gradient.png
 
@@ -1099,8 +1099,9 @@ def reconstruction(
         num_iters: number of steps to run. Default: ``None``, which runs until the result stops changing.
             That can take far more steps than :math:`\max(H, W)` when ``mask`` has winding paths. A fixed
             count always runs that many steps, even past convergence; ``0`` returns
-            :math:`\min(\text{seed}, \text{mask})`. It has no data-dependent exit, so ``torch.compile`` captures it
-            as one graph, but the loop is unrolled and compile time grows with the count.
+            :math:`\min(\text{seed}, \text{mask})` for ``"dilation"`` and :math:`\max(\text{seed}, \text{mask})`
+            for ``"erosion"``. It has no data-dependent exit, so ``torch.compile`` captures it as one graph, but the
+            loop is unrolled and compile time grows with the count.
         check_every: number of steps between convergence checks when ``num_iters`` is ``None``. Each check syncs
             the device with the host, and steps past convergence are wasted, so a larger value suits inputs that
             take many steps. For inputs without NaN, the output does not depend on it. Default: ``4``.
