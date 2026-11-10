@@ -33,6 +33,7 @@ from testing.base import BaseTester
                 degrees=torch.tensor(30.0, device="cpu") if tensor_range else 30.0,
                 translate=(0.1, 0.1),
                 scale=(0.8, 1.2),
+                shear=(1.0, 5.0, 1.0, 5.0),
                 p=1.0,
             ),
             id="affine",
@@ -101,14 +102,23 @@ class TestGeometricParameterDevice(BaseTester):
                 assert value.device == torch.device("cpu"), name
 
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
-    def test_default_dtype_after_sampler_move(self, make_aug, device, default_dtype):
+    def test_default_dtype_after_sampler_move(self, make_aug, device, default_dtype, monkeypatch):
         # A float64 default must not force float64 sampling on MPS.
         aug = make_aug().to(device=device, dtype=torch.float32)
+        generator = aug._param_generator
+        if hasattr(generator, "rand_val_sampler"):
+            # Fix the draw so the corner offsets are known: a zero draw still moves the area-preserving corners,
+            # so comparing end points with start points would miss it.
+            low = generator.rand_val_sampler.low
+            monkeypatch.setattr(
+                generator.rand_val_sampler,
+                "rsample",
+                lambda shape: torch.full(shape, 0.25, device=low.device, dtype=low.dtype),
+            )
         original_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)
             params = aug.forward_parameters((4, 3, 8, 9))
-            generator = aug._param_generator
             assert generator.dtype == torch.float32
             sampler = generator.degree_sampler if hasattr(generator, "degree_sampler") else generator.rand_val_sampler
             assert sampler.low.dtype == torch.float32
@@ -121,7 +131,7 @@ class TestGeometricParameterDevice(BaseTester):
             # unwritten on torch 2.14 (pytorch/pytorch#197715).
             if "scale" in params:
                 # Compare in float32, the sampler's dtype, so a draw that rounds to the bound stays inside it.
-                # Angle, scale and translations each take their own copy, so each is checked.
+                # Angle, scale, translations and both shears each take their own copy, so each is checked.
                 scale = params["scale"].float()
                 assert ((scale >= 0.8) & (scale <= 1.2)).all()
                 angle = params["angle"].float()
@@ -131,8 +141,20 @@ class TestGeometricParameterDevice(BaseTester):
                 translations = params["translations"].float()
                 assert (translations.abs() <= torch.tensor([0.9, 0.8]) + 1e-6).all()
                 assert (translations != 0).any()
+                # The shear ranges exclude zero, so the bounds also catch an unwritten draw.
+                for name in ("shear_x", "shear_y"):
+                    shear = params[name].float()
+                    assert ((shear >= 1.0) & (shear <= 5.0)).all(), name
             else:
-                assert (params["end_points"] != params["start_points"]).any()
+                # distortion_scale=0.5 on a 9 x 8 image: the largest offset is 2.25 in x and 2.0 in y.
+                offsets = params["end_points"] - params["start_points"]
+                if generator.sampling_method == "basic":
+                    # Each corner moves inward by a quarter of the largest offset.
+                    expected = [[0.5625, 0.5], [-0.5625, 0.5], [-0.5625, -0.5], [0.5625, -0.5]]
+                else:
+                    # Every corner moves by 2 * (0.25 - 0.5) of the largest offset.
+                    expected = [[-1.125, -1.0]] * 4
+                self.assert_close(offsets, offsets.new_tensor(expected).expand_as(offsets))
         finally:
             torch.set_default_dtype(original_dtype)
 
