@@ -410,7 +410,6 @@ def rotate(
         center = _compute_tensor_center(tensor, angle)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     # A singleton angle and center describe one transform shared by all images. Keep
     # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
     # parameters keep the original reduction order, which matters for half-precision gradients.
@@ -517,7 +516,6 @@ def rotate3d(
         center = _compute_tensor_center3d(tensor)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     batch = tensor.shape[0] if tensor.dim() == 5 else 1
     yaw = yaw.expand(batch)
     pitch = pitch.expand(batch)
@@ -666,7 +664,6 @@ def scale(
         center = _compute_tensor_center(tensor, scale_factor)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     batch = tensor.shape[0] if tensor.dim() == 4 else 1
     center = center.expand(batch, -1)
     scale_factor = scale_factor.expand(batch, 2)
