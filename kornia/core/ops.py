@@ -76,26 +76,37 @@ def _check_n(n: int) -> None:
 
 
 def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
-    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
+    """Build a batch of ``N x N`` identity matrices with the batch size, dtype and device of a tensor.
+
+    ``eye = eye_like(n, input)`` returns a ``(B, N, N)`` tensor holding one identity matrix per sample, where ``B`` is
+    ``input.shape[0]``, with the dtype and device of ``input`` (a ``bool`` input gives ``True`` on the diagonal). The
+    result does not require grad.
+
+    Convention:
+        - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
+        - ``shared_memory=True`` returns one identity expanded along the batch: writing into one sample, such as
+          ``eye[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
+          ``add_`` raises ``RuntimeError``.
 
     Args:
-        n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
-        input: image tensor that will determine the batch size of the output matrix.
-          The expected shape is ``(B, *)``.
-        shared_memory: when set, all samples in the batch will share the same memory.
+        n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
+            A ``float`` or a ``bool`` is rejected.
+        input: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
+        shared_memory: whether to return an expanded view instead of a copy per sample.
 
     Returns:
-       The identity matrix with the same batch size as the input ``(B, N, N)``.
+        The identity matrices, ``(B, N, N)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.
         BaseError: if ``n`` is not positive, or if ``input`` has no dimension.
 
-    Notes:
-        When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
-        without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
-        use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+    See Also:
+        - :func:`vec_like`: a batch of ``(N, 1)`` zero vectors instead.
+
+    Example:
+        >>> eye_like(2, torch.zeros(3, 5)).shape
+        torch.Size([3, 2, 2])
 
     """
     _check_n(n)
@@ -108,26 +119,36 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
 
 
 def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
-    r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
+    """Build a batch of ``N x 1`` zero column vectors with the batch size, dtype and device of a tensor.
+
+    ``vec = vec_like(n, tensor)`` returns a ``(B, N, 1)`` tensor of zeros, where ``B`` is ``tensor.shape[0]``, with the
+    dtype and device of ``tensor``. The result does not require grad.
+
+    Convention:
+        - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
+        - ``shared_memory=True`` returns one vector expanded along the batch: writing into one sample, such as
+          ``vec[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
+          ``add_`` raises ``RuntimeError``.
 
     Args:
-        n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
-        tensor: image tensor that will determine the batch size of the output matrix.
-          The expected shape is ``(B, *)``.
-        shared_memory: when set, all samples in the batch will share the same memory.
+        n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
+            A ``float`` or a ``bool`` is rejected.
+        tensor: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
+        shared_memory: whether to return an expanded view instead of a copy per sample.
 
     Returns:
-        The vector with the same batch size as the input ``(B, N, 1)``.
+        The zero vectors, ``(B, N, 1)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.
         BaseError: if ``n`` is not positive, or if ``tensor`` has no dimension.
 
-    Notes:
-        When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
-        without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
-        use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+    See Also:
+        - :func:`eye_like`: a batch of ``(N, N)`` identity matrices instead.
+
+    Example:
+        >>> vec_like(3, torch.zeros(2, 4)).shape
+        torch.Size([2, 3, 1])
 
     """
     _check_n(n)

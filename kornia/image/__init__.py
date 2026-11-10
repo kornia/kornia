@@ -15,10 +15,30 @@
 # limitations under the License.
 #
 
-"""Image submodule for Kornia.
+"""Hold, draw on, convert and print images, and tile batches into grids.
 
-This package provides image data structures and utilities, including image layout, size, pixel format,
-and channel order definitions.
+kornia's image tensors are channels first, ``(C, H, W)`` or ``(B, C, H, W)``, and NumPy arrays channels last,
+``(H, W, C)`` or ``(B, H, W, C)``. Points are :math:`(x, y)`, x the column, and sizes are ``(height, width)``. The
+conversions and :func:`make_grid` do not rescale: a ``uint8`` image stays in :math:`[0, 255]`.
+
+Which class to use:
+
+- One image with its checked layout and color space: :class:`Image`. Its parts are :class:`ImageSize`,
+  :class:`PixelFormat` with :class:`ColorSpace`, and :class:`ImageLayout` with :class:`ChannelsOrder`.
+
+Which function to use:
+
+- A NumPy array to a tensor that shares its memory: :func:`image_to_tensor`, or its module form
+  :class:`ImageToTensor`. A list of same-shape arrays to one new batch: :func:`image_list_to_tensor`.
+- A tensor to a NumPy array for display: :func:`tensor_to_image`.
+- Draw into images in place: points with :func:`draw_point2d`, line segments with :func:`draw_line`, rectangle
+  outlines or fills with :func:`draw_rectangle`, filled convex polygons with :func:`draw_convex_polygon`.
+- A batch tiled into one image: :func:`make_grid`.
+- An image in a terminal: :func:`image_to_string` returns the ANSI text, :func:`print_image` prints it and also takes
+  a file path.
+- Let a ``(B, C, H, W)`` function take any number of leading dimensions: :func:`perform_keep_shape_image`; for
+  ``(B, C, D, H, W)`` volumes, :func:`perform_keep_shape_video`.
+- Image files: :func:`~kornia.io.load_image` and :func:`~kornia.io.write_image`.
 """
 
 from .base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat

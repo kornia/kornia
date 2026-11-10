@@ -157,13 +157,22 @@ def is_mps_tensor_safe(x: torch.Tensor) -> bool:
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
-    """Try to get cuda device, if fail, return cpu.
+    """Return the CUDA device of a given index when CUDA is available, else the CPU.
+
+    ``device = get_cuda_device_if_available(index)`` returns ``torch.device(f"cuda:{index}")`` when
+    ``torch.cuda.is_available()`` is true and ``torch.device("cpu")`` otherwise. ``index`` is not checked against
+    ``torch.cuda.device_count()``: on a machine with one GPU, ``index=3`` returns ``cuda:3``, which fails only when a
+    tensor is placed on it.
 
     Args:
-        index: cuda device index
+        index: the CUDA device index.
 
     Returns:
-        torch.device
+        ``cuda:<index>`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS instead on Apple silicon.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device, else the CPU.
 
     """
     if torch.cuda.is_available():
@@ -173,10 +182,17 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
 
 
 def get_mps_device_if_available() -> torch.device:
-    """Try to get mps device, if fail, return cpu.
+    """Return the Apple MPS device when it is available, else the CPU.
+
+    ``device = get_mps_device_if_available()`` returns ``torch.device("mps")`` when
+    ``torch.backends.mps.is_available()`` is true and ``torch.device("cpu")`` otherwise.
 
     Returns:
-        torch.device
+        ``mps`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device, else the CPU.
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS or CUDA by platform.
 
     """
     dev = "cpu"
@@ -186,10 +202,17 @@ def get_mps_device_if_available() -> torch.device:
 
 
 def get_cuda_or_mps_device_if_available() -> torch.device:
-    """Check OS and platform and run get_cuda_device_if_available or get_mps_device_if_available.
+    """Return the platform's accelerator, MPS on Apple silicon and CUDA elsewhere, else the CPU.
+
+    ``device = get_cuda_or_mps_device_if_available()`` returns :func:`~kornia.core.utils.get_mps_device_if_available` on
+    macOS on ``arm64`` and :func:`~kornia.core.utils.get_cuda_device_if_available` with index 0 on every other platform.
 
     Returns:
-        torch.device
+        ``mps``, ``cuda:0`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device of a chosen index.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device on any platform.
 
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
@@ -861,16 +884,19 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
 
 def is_autocast_enabled(both: bool = True) -> bool:
-    """Check if torch autocast is enabled.
+    """Report whether a ``torch.autocast`` region is active, for any device type or for torch's default one.
+
+    ``on = is_autocast_enabled()`` returns whether autocast is enabled for any of the CPU, CUDA, MPS and XPU device
+    types, so a ``torch.autocast("cpu")`` region counts. ``is_autocast_enabled(both=False)`` returns
+    ``torch.is_autocast_enabled()`` without a device type instead, which never reports CPU autocast, and on torch 2.5.1
+    does not report MPS autocast either. A region entered with ``enabled=False`` counts as off.
 
     Args:
-        both: if True, consider the autocast regions of the CPU, CUDA, MPS and XPU device types.
+        both: whether to consider the CPU, CUDA, MPS and XPU device types (``True``) or only the one
+            ``torch.is_autocast_enabled()`` reports (``False``).
 
     Returns:
-        If ``both`` is True, whether autocast is enabled for any of the CPU, CUDA, MPS or XPU device types, on every
-        supported torch version. If ``both`` is False, ``torch.is_autocast_enabled()`` without a device type, whose
-        device type depends on the torch version: it never reports CPU autocast, and on torch 2.5.1 it does not
-        report MPS autocast either.
+        Whether autocast is enabled.
 
     """
     if both:
@@ -1167,23 +1193,25 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
 def batched_forward(
     model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs: Any
 ) -> torch.Tensor:
-    r"""Run the forward in micro-batches.
+    """Run a model in micro-batches on a chosen device and return the output on the input's device.
 
-    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
-    In the end, it transfers the output to the device of the input data tensor.
-    E.g. running HardNet on 8000x1x32x32 tensor.
-
-    Removed from ``kornia.utils.memory`` in 0.8.3 and restored here as public API.
+    ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
+    slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
+    the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference.
 
     Args:
-        model: Any torch model, which outputs a single tensor as an output.
-        data: Input data of Bx(Any) shape.
-        device: which device should we run on.
-        batch_size: "micro-batch" size.
-        **kwargs: any other arguments, which accepts model.
+        model: a module that returns one tensor whose first dimension follows its input's.
+        data: the input tensor, ``(B, *)``.
+        device: the device to run the model on.
+        batch_size: the number of samples per call, a positive integer.
+        **kwargs: keyword arguments passed to every call of ``model``.
 
     Returns:
-        output of the model.
+        The concatenated model output, on ``data.device``.
+
+    Raises:
+        BaseError: if ``batch_size`` is not positive.
 
     Example:
         >>> import torch

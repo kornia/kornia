@@ -91,22 +91,27 @@ def _to_uint8_image(image: torch.Tensor) -> torch.Tensor:
 
 
 class ImageModuleMixIn:
-    """A MixIn that handles image-based operations.
+    """Convert image inputs and outputs between tensors, NumPy and PIL, and show or save outputs.
 
-    This modules accepts multiple input and output data types, provides end-to-end visualization, file saving features.
-    Note that this MixIn fits the classes that return one image tensor only.
+    ``wrapped = obj.convert_input_output(output_type="numpy")(func)`` returns a function that converts the arguments of
+    ``func`` with :meth:`to_tensor`, calls it, and converts its output with :meth:`to_numpy` (``"numpy"``) or
+    :meth:`to_pil` (``"pil"``), or returns it as is (``"pt"``). :class:`ImageModule` and :class:`ImageSequential` apply
+    the same conversions in their call and keep the last output for :meth:`show` and :meth:`save`. PIL images,
+    :meth:`to_pil` and :meth:`show` need Pillow, the ``kornia[image]`` extra.
 
-    Non-tensor inputs are converted by :meth:`to_tensor`: a NumPy array of shape ``(H, W)``, ``(H, W, C)``
-    or ``(B, H, W, C)``, a PIL image or an image path becomes a ``(C, H, W)`` or ``(B, C, H, W)`` tensor.
-    An integer image is scaled by the maximum of its dtype (``uint8`` by 255, ``uint16`` by 65535; a signed image keeps
-    its negative values), a ``bool`` image becomes 0 and 1, and a floating image keeps its values. Tensors pass through
-    unchanged. For an :class:`torch.nn.Module` with state, converted inputs use the device of its first parameter (or
-    first buffer when it has no parameters) and the dtype of its first floating parameter or buffer, falling back to
-    the default floating dtype when none exists. A module without state and a standalone mixin keep the CPU and
-    default floating dtype. ``output_type="numpy"`` returns
-    channels-last arrays with the values of the output tensor, so a floating output fed back in converts to the same
-    tensor. ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to ``[0, 1]`` and round it to
-    8 bits on the CPU, and pass a ``uint8`` image through with its values.
+    Convention:
+        - Non-tensor inputs convert as :meth:`to_tensor` describes; a tensor passes through unchanged.
+        - ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
+          output fed back in converts to a tensor with the same values and layout. The array is detached and on the
+          CPU, and a ``bfloat16`` output becomes ``float32``. The round trip therefore drops the gradient history and,
+          outside a module that moves its inputs to its own device and dtype, an accelerator device or ``bfloat16``.
+        - ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to :math:`[0, 1]` and round it
+          to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
+
+    See Also:
+        - :class:`ImageModule`: the ``nn.Module`` base class built on this mixin.
+        - :class:`ImageSequential`: the ``nn.Sequential`` built on this mixin.
+
     """
 
     _output_image: Any
@@ -285,6 +290,11 @@ class ImageModuleMixIn:
         Returns:
             Tensor: The converted tensor.
 
+        Raises:
+            TypeError: if ``x`` is none of the supported types.
+            ValueError: if ``x`` is a NumPy array with a negative stride, such as OpenCV's ``img[..., ::-1]``; pass
+                ``img[..., ::-1].copy()``.
+
         """
         if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
@@ -340,11 +350,12 @@ class ImageModuleMixIn:
 
         A ``(C, H, W)`` or ``(B, C, H, W)`` tensor becomes a channels-last ``(H, W, C)`` or
         ``(B, H, W, C)`` array with the same values, the layout :meth:`to_tensor` accepts, so a floating array
-        converts back to the same tensor. A tensor of any other rank keeps its shape. Every 3-D or 4-D tensor is taken
-        to be an image, so a non-image element of a tuple output, such as a ``(B, N, 4)`` box tensor, is moved to
-        channels-last too. :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it
-        converts its images and masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold
-        boxes, keypoints or labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
+        converts back to a tensor with the same values and layout. The array is detached and on the CPU. A tensor of
+        any other rank keeps its shape. Every 3-D or 4-D tensor is taken to be an image, so a non-image element of a
+        tuple output, such as a ``(B, N, 4)`` box tensor, is moved to channels-last too.
+        :class:`~kornia.augmentation.container.AugmentationSequential` knows its outputs: it converts its images and
+        masks only, and rejects ``output_type="numpy"`` / ``"pil"`` when its data keys hold boxes, keypoints or
+        labels. A ``bfloat16`` tensor becomes a ``float32`` array, since NumPy has no ``bfloat16``.
 
         Args:
             x: The input to convert.
@@ -444,12 +455,19 @@ class ImageModuleMixIn:
         return output_image
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
-        """Return PIL images.
+        """Show the last output as a PIL image, a grid of images for a batch, or return that image.
 
         Args:
-            n_row: Number of images displayed in each row of the grid.
-            backend: visualization backend. Only PIL is supported now.
-            display: Whether or not to show the image.
+            n_row: Number of images displayed in each row of the grid. Defaults to ``ceil(sqrt(B))``.
+            backend: visualization backend. Only ``"pil"`` is supported.
+            display: Whether to show the image (``True``) or return it (``False``).
+
+        Returns:
+            ``None`` when ``display`` is ``True``, otherwise the PIL image.
+
+        Raises:
+            ValueError: if no output has been kept yet, the kept output is not a ``(C, H, W)`` or ``(B, C, H, W)``
+                tensor, or ``backend`` is not ``"pil"``.
 
         """
         output_image = self._get_output_image().detach().cpu()
@@ -471,11 +489,18 @@ class ImageModuleMixIn:
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
-        """Save the output image(s) to a directory.
+        """Write the last output to one image file, as a grid of images for a batch.
 
         Args:
-            name: Directory to save the images.
-            n_row: Number of images displayed in each row of the grid.
+            name: Path of the image file to write, its format given by the extension: ``.jpg``, ``.jpeg``, ``.png``,
+                ``.tif`` or ``.tiff``, in any case. Defaults to ``Kornia-<UTC date and time>.jpg`` in the working
+                directory.
+            n_row: Number of images displayed in each row of the grid. Defaults to ``ceil(sqrt(B))``.
+
+        Raises:
+            ValueError: if no output has been kept yet, or the kept output is not a ``(C, H, W)`` or ``(B, C, H, W)``
+                tensor.
+            BaseError: if ``name`` has another extension, such as ``.bmp``.
 
         """
         output_image = self._get_output_image().detach().cpu()

@@ -180,6 +180,8 @@ def distort_points(
           and a flat 8-vector.
         - :func:`~kornia.geometry.camera.distort_points_affine`: the intrinsics alone, from normalized points and a
           flat ``[fx, fy, cx, cy]``.
+        - :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`: the same distortion from
+          normalized ``Vector2`` points, with the coefficients in a 12-value parameter vector.
 
     Example:
         >>> points = torch.rand(1, 1, 2)
