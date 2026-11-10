@@ -15,6 +15,19 @@
 # limitations under the License.
 #
 
+"""Upscale RGB images with pretrained super-resolution networks: Real-ESRGAN generators or a small sub-pixel network.
+
+The builders' models return RGB images clamped to :math:`[0, 1]`.
+
+Which class to use:
+
+- Upscale by 4 or 2 without resizing the input first, with Real-ESRGAN weights: :class:`RRDBNetBuilder`.
+- Upscale a 224 x 224 resize of every input by 3 with a small network: :class:`SmallSRBuilder`.
+- Pick either builder from one dataclass: :class:`SuperResolutionConfig`, passed to
+  ``SuperResolution.from_config``.
+- Your own super-resolution network with its own pre- and post-processing: :class:`SuperResolution`.
+"""
+
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
@@ -47,27 +60,26 @@ _URLs = {
 # TODO: support patching -> SR -> unpatching pipeline
 @dataclass
 class SuperResolutionConfig:
-    """Configuration to construct a :class:`SuperResolution` model.
+    """Choose a super-resolution model by name, to build with SuperResolution.from_config.
 
-    The fields mirror the arguments accepted by :class:`RRDBNetBuilder` and
-    :class:`SmallSRBuilder`, so a config can drive either builder.
+    ``sr = SuperResolution.from_config(SuperResolutionConfig("RealESRGAN_x4plus"))`` builds that model with
+    :meth:`RRDBNetBuilder.build`; ``"small_sr"``, the default, builds with :meth:`SmallSRBuilder.build`. The fields
+    are the arguments of those builders: ``upscale_factor`` and ``image_size`` apply only to ``"small_sr"``.
 
     Args:
         model_name: Name of the model variant to build. RRDB variants are
             ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
-            ``"RealESRGAN_x4plus_anime_6B"`` and ``"RealESRGAN_x2plus"``;
-            the lightweight variant is ``"small_sr"``.
+            ``"RealESRGAN_x4plus_anime_6B"`` and ``"RealESRGAN_x2plus"``, spelled exactly;
+            the lightweight variant is ``"small_sr"``, in any case.
         pretrained: If ``True``, load pretrained weights for the selected variant.
-        upscale_factor: Integer scale used by the lightweight variant. Ignored by
-            the RRDB variants, whose scale is fixed by ``model_name``. The lightweight
-            variant resizes every input to 224 x 224 first, discarding its aspect ratio,
-            so its output is ``224 * upscale_factor`` square (672 x 672 for 3, from a
-            100 x 50 input as from a 480 x 640 one). Its pretrained weights exist only
-            for 3: another factor with ``pretrained=True`` raises a size-mismatch
-            :class:`RuntimeError`.
-        image_size: Optional fixed input size for the lightweight variant. It declares
-            the size fed to the wrapper; it does not change the pre-processor, which
-            always resizes to 224, so the output side stays ``224 * upscale_factor``.
+        upscale_factor: Integer scale of ``"small_sr"`` (see :meth:`SmallSRBuilder.build`). Ignored by
+            the RRDB variants, whose scale is fixed by ``model_name``.
+        image_size: The fixed input size of ``"small_sr"`` for ONNX export (see :meth:`SmallSRBuilder.build`).
+
+    See Also:
+        - :class:`SuperResolution`: the model that :meth:`SuperResolution.from_config` builds from this.
+        - :class:`RRDBNetBuilder`: builds the RRDB variants directly.
+        - :class:`SmallSRBuilder`: builds ``"small_sr"`` directly.
 
     """
 
@@ -78,7 +90,20 @@ class SuperResolutionConfig:
 
 
 class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
-    """SuperResolution is a module that wraps an super resolution model."""
+    """Run a super-resolution network on RGB images with its pre- and post-processing.
+
+    ``sr = SuperResolution(model, pre_processor, post_processor)`` wraps a super-resolution network.
+    ``out = sr(images)`` takes a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images, runs
+    ``pre_processor``, ``model`` and ``post_processor`` in turn, and returns what the post-processor returns. For the
+    pretrained models, use :class:`RRDBNetBuilder`, :class:`SmallSRBuilder` or :meth:`from_config`.
+
+    See Also:
+        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, without resizing the input first.
+        - :class:`SmallSRBuilder`: a small network that upscales a 224 x 224 resize by 3.
+        - :class:`SuperResolutionConfig`: picks either builder by name, for :meth:`from_config`.
+        - :func:`~kornia.geometry.transform.resize`: interpolation to any size, without a network.
+
+    """
 
     name: str = "super_resolution"
     input_image_size: Optional[int]
@@ -155,7 +180,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
 
         Returns:
-            output torch.Tensor.
+            What the post-processor returns: for the builders' models, see :class:`RRDBNetBuilder` and
+            :class:`SmallSRBuilder`.
 
         """
         output = self.pre_processor(images)
@@ -173,15 +199,16 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         output_type: str = "torch",
     ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:
-        """Draw the super resolution results.
+        """Collect the super-resolved images for display.
 
         Args:
             images: input torch.Tensor.
             edge_maps: super-resolved images; computed with :meth:`forward` when None.
-            output_type: type of the output.
+            output_type: ``"torch"`` or ``"pil"``.
 
         Returns:
-            output torch.Tensor.
+            A list with one ``(3, H', W')`` image per super-resolved image, or a list of PIL images for
+            ``output_type="pil"``.
 
         """
         if edge_maps is None:
@@ -199,7 +226,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
-        """Save the super resolution results.
+        """Save the input images and their super-resolved images as PNG files.
 
         Args:
             images: input torch.Tensor.
@@ -321,22 +348,30 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
 
 class RRDBNetBuilder:
-    """Provide a static factory to build Residual-in-Residual Dense Block (RRDB) networks."""
+    """Build a SuperResolution model around a Real-ESRGAN RRDB generator that upscales by 4 or 2.
+
+    ``sr = RRDBNetBuilder.build("RealESRNet_x4plus")`` downloads the released Real-ESRGAN weights on first use and
+    returns a :class:`SuperResolution`. ``out = sr(images)`` upscales RGB images without resizing them first: a
+    ``(B, 3, H, W)`` tensor becomes ``(B, 3, 4 H, 4 W)``, or ``(B, 3, 2 H, 2 W)`` for ``"RealESRGAN_x2plus"``,
+    clamped to :math:`[0, 1]`. A list of ``(3, H, W)`` images, of any sizes, returns a list.
+
+    See Also:
+        - :class:`SmallSRBuilder`: a small network that upscales a 224 x 224 resize by 3.
+        - :class:`~kornia.models.RRDBNet`: the generator itself, to train or to load other weights.
+        - :class:`SuperResolutionConfig`: picks this builder or the other by name.
+
+    """
 
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
-        """Build a preconfigured RRDB (Residual-in-Residual Dense Block) model.
-
-        The returned object is a :class:`SuperResolution` wrapper configured for
-        inference. Internally, this factory selects architecture hyperparameters
-        based on ``model_name``, and optionally loads pretrained weights.
+        """Build a Real-ESRGAN super-resolution model.
 
         Args:
-            model_name: Name of the RRDB variant to construct. Supported options are:
-                ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
-                ``"RealESRGAN_x4plus_anime_6B"``, and ``"RealESRGAN_x2plus"``.
+            model_name: Name of the RRDB variant to construct, spelled exactly: ``"RealESRGAN_x4plus"`` and
+                ``"RealESRNet_x4plus"`` (23 blocks, x4), ``"RealESRGAN_x4plus_anime_6B"`` (6 blocks, x4) and
+                ``"RealESRGAN_x2plus"`` (23 blocks, x2), which needs even ``H`` and ``W``.
             pretrained: If ``True``, download and load pretrained weights for the
-                selected model variant.
+                selected model variant; otherwise the network is randomly initialized.
 
         Returns:
             A :class:`SuperResolution` wrapper ready for inference.
@@ -372,20 +407,26 @@ class RRDBNetBuilder:
 
 
 class SmallSRBuilder:
-    """Provide a static factory to build lightweight Super-Resolution models."""
+    """Build a SuperResolution model around a small sub-pixel network that upscales a 224 x 224 resize.
+
+    ``sr = SmallSRBuilder.build()`` downloads the weights on first use and returns a :class:`SuperResolution`.
+    ``out = sr(images)`` resizes each RGB image in :math:`[0, 1]` to 224 x 224, discarding its aspect ratio, and
+    returns one ``(B, 3, 224 r, 224 r)`` tensor in :math:`[0, 1]`, ``r = upscale_factor``.
+
+    See Also:
+        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, keeping the aspect ratio.
+        - :class:`SuperResolutionConfig`: picks this builder or the other by name.
+
+    """
 
     @staticmethod
     def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
     ) -> SuperResolution:
-        """Build a lightweight super-resolution (SR) model wrapper.
-
-        SR stands for *super-resolution*, which means generating a higher
-        resolution output from a lower resolution input.
+        """Build the small super-resolution model.
 
         Args:
-            model_name: Name of the model variant to build. Currently only
-                ``"small_sr"`` is supported.
+            model_name: Name of the model variant to build. Only ``"small_sr"`` (any case) is supported.
             pretrained: If ``True``, load pretrained weights for the selected model.
             upscale_factor: Integer scale used by ``SmallSRNetWrapper``. The pre-processor
                 first resizes every input to 224 x 224, discarding its aspect ratio, so the
@@ -393,13 +434,14 @@ class SmallSRBuilder:
                 480 x 640 input both give 672 x 672. Pretrained weights exist only for
                 ``3``; another factor with ``pretrained=True`` raises a size-mismatch
                 :class:`RuntimeError`.
-            image_size: Optional fixed input size. It declares the size fed to the
-                wrapper and does not change the pre-processor, which always resizes to
-                224; the output side is therefore ``224 * upscale_factor``.
+            image_size: Optional fixed input height and width of the graph that
+                :meth:`SuperResolution.to_onnx` exports; ``None`` leaves them dynamic. It does not
+                change the pre-processor, which always resizes to 224, so the output side stays
+                ``224 * upscale_factor``.
 
         Returns:
             A :class:`SuperResolution` instance configured with resizing pre-processing
-            and identity post-processing.
+            and identity post-processing, the network's output being in :math:`[0, 1]` already.
 
         Raises:
             ValueError: If ``model_name`` is not supported.
