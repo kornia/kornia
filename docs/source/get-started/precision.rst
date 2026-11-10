@@ -294,11 +294,14 @@ PyTorch 2.14.0:
 
 **Open CUDA-only issues that the test suite does not exercise:**
 
-- `#6278 <https://github.com/kornia/kornia/issues/6278>`_: ``RANSAC(compile=True)`` on CUDA can store a CPU program
-  in the inductor cache after a CPU compile, and later CUDA processes that share the cache segfault.
 - `#6427 <https://github.com/kornia/kornia/issues/6427>`_: ``OnnxLightGlue`` binds GPU 0 for any CUDA device.
 - `#6559 <https://github.com/kornia/kornia/issues/6559>`_: batched SVD of matrices with more than 32 rows makes
   ``solve_pnp_dlt``, ``fit_plane`` and ``find_essential`` up to 200× slower on CUDA than on CPU.
+
+**Fixed upstream:** on PyTorch before 2.15, ``RANSAC(compile=True)`` on CUDA can store a CPU program in the inductor
+cache after a CPU compile, and later CUDA processes that share the cache segfault
+(`#6278 <https://github.com/kornia/kornia/issues/6278>`_). Reproduced on 2.14.0, not on 2.15.0. On an older
+PyTorch, use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device or set ``KORNIA_RANSAC_AOT=0``.
 
 For CUDA half tests, use ``--isolate-half-precision`` so each test gets a fresh process. They are skipped by default
 without it; selecting a half dtype alone does not exercise CUDA half support:
