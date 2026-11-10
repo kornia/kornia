@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import io
+
 import pytest
 import torch
 
@@ -161,6 +163,78 @@ class TestApplyColorMap(BaseTester):
         actual = apply_colormap(input_tensor, cm)
 
         self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    @pytest.mark.parametrize(
+        "num_colors, edges, expected",
+        [
+            (1, [85.0, 170.0], [0, 0, 0, 0, 0, 0]),
+            (3, [85.0, 170.0], [0, 1, 1, 1, 2, 2]),
+            (7, [182.14285278320312], [4, 4, 5]),
+            (64, [63.75, 127.5], [15, 16, 16, 31, 32, 32]),
+            (256, [63.75, 127.5], [63, 64, 64, 127, 128, 128]),
+        ],
+    )
+    def test_dynamo_bin_edges_6656(self, device, dtype, torch_optimizer, num_colors, edges, expected, as_module):
+        # Expected indices follow float32 divide-then-multiply rounding.
+        # Derived using np.searchsorted(np.arange(1, N), np.float32(v / 255) * N, side="right").
+        values = torch.stack(
+            (
+                torch.nextafter(edges, torch.full_like(edges, -torch.inf)),
+                edges,
+                torch.nextafter(edges, torch.full_like(edges, torch.inf)),
+            ),
+            dim=-1,
+        ).flatten()
+        if dtype == torch.float64:
+            expected = [index for index in expected[1::3] for _ in range(3)]
+        values = torch.cat(
+            (values, values.new_tensor([-torch.inf, -1.0, -0.0, 0.0, 255.0, 300.0, torch.inf, torch.nan]))
+        )
+        expected = [*expected, 0, 0, 0, 0, num_colors - 1, num_colors - 1, num_colors - 1, num_colors - 1]
+        image = values.to(device).reshape(1, 1, -1)
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=num_colors, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+
+        eager = op(*args)
+        actual = torch_optimizer(op)(*args)
+
+        self.assert_close(eager[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+        self.assert_close(actual, eager, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_dynamo_independent_ranges_6656(self, device, dtype, torch_optimizer, as_module):
+        image = torch.tensor(
+            [[[[0.25, 0.5, 1.0]], [[85.0, 170.0, 255.0]]], [[[0.5, 0.0, 0.0]], [[0.0, 300.0, torch.nan]]]],
+            device=device,
+            dtype=dtype,
+        )
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=3, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+        # Each channel selects its own range; NaN maps to the last color.
+        indices = torch.tensor([[[0, 1, 2], [1, 2, 2]], [[1, 0, 0], [0, 2, 2]]], device=device)
+        expected = cm.colors[:, indices].permute(1, 2, 0, 3).reshape(2, 6, 1, 3)
+
+        self.assert_close(op(*args), expected, rtol=0.0, atol=0.0)
+        self.assert_close(torch_optimizer(op)(*args), expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.device_agnostic
+    def test_legacy_onnx_bin_edges_6656(self):
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=3)
+        op = ApplyColorMap(cm).eval()
+        image = torch.tensor([[[85.0, 170.0, 255.0, -torch.inf, torch.nan, 300.0]]])
+        expected = cm.colors[:, [1, 2, 2, 0, 2, 2]].reshape(1, 3, 1, -1)
+        with io.BytesIO() as buffer:
+            torch.onnx.export(op, (image,), buffer, opset_version=18, dynamo=False)
+            session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+
+        actual = session.run(None, {session.get_inputs()[0].name: image.numpy()})[0]
+
+        self.assert_close(torch.from_numpy(actual), expected, rtol=0.0, atol=0.0)
 
     def test_uint8_selects_equal_bins_6622(self, device, dtype):
         # floor(v * 16 / 255): each of the 16 colors covers 15 or 16 byte values, including the first and the last.

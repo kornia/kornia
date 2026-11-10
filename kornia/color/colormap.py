@@ -277,9 +277,15 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
             torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
             torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
         )
+        input_tensor = input_tensor.float()
+        # Compiled CUDA division can misclassify colormap bin edges (#6656).
+        # Use addcdiv for precise division while preserving eager and ONNX behavior.
+        if torch.compiler.is_compiling():
+            input_tensor = torch.addcdiv(input_tensor.new_zeros(()), input_tensor, max_value)
+        else:
+            input_tensor = input_tensor / max_value
     else:
-        max_value = 255.0
-    input_tensor = input_tensor.float() / max_value
+        input_tensor = input_tensor.float() / 255.0
 
     colors = colors.permute(1, 0)
     num_colors, channels_cmap = colors.shape
