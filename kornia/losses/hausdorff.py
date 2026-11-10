@@ -214,7 +214,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - Each erosion keeps only the part of the neighbourhood-averaged squared error above 0.5. Where every pixel's
           true-class probability is above :math:`1 - 1/\sqrt{2} \approx 0.29`, the loss and gradient are zero: a
           uniform softmax over two or three classes gives zero, and so does a two-class prediction that is 70 %
-          confident and wrong.
+          confident and wrong (`#6676 <https://github.com/kornia/kornia/issues/6676>`_).
         - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
           :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
           in pixels.

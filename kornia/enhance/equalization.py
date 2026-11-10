@@ -497,9 +497,9 @@ def equalize_clahe(
           divide is reflect-padded at its end. OpenCV uses the same tiles when the grid divides both axes or neither;
           when it divides one, OpenCV also pads that axis by one pixel per tile and Kornia does not.
         - Lookup tables are blended with weights anchored at each tile's centre, ``(p + 0.5) / tile_size - 0.5`` for
-          pixel ``p``, which keeps flip symmetry on unpadded grids. This shifts the phase by half a pixel, at most half
-          an interpolation step per axis, from that of OpenCV and scikit-image, so the output differs from
-          ``cv2.createCLAHE`` even for the same lookup tables. The output is not rounded to 8-bit levels.
+          pixel ``p``, which keeps flip symmetry on unpadded grids. This is half a pixel from the phase of OpenCV and
+          scikit-image, a blending-weight difference of at most ``0.5 / tile_size`` per axis, so the output differs
+          from ``cv2.createCLAHE`` even for the same lookup tables. The output is not rounded to 8-bit levels.
         - The default path rounds the lookup tables to nearest like OpenCV; ``slow_and_differentiable=True`` does not.
 
     Args:
