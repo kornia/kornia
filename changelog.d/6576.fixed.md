@@ -1,0 +1,1 @@
+`center_crop3d`, `crop_and_resize3d` and `crop_by_boxes3d` crop an axis-aligned box with a one-voxel axis when the output has one voxel on that axis too, such as `center_crop3d(volume, (1, h, w))`, instead of raising `torch.linalg.LinAlgError`. Resizing a one-voxel axis to more voxels, or a longer axis to one voxel, still raises.

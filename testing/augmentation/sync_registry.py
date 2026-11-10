@@ -420,7 +420,9 @@ INHERENT_SITES: dict[str, str] = {
 
 # Thin wrappers whose synchronizations belong to their caller. A site is the deepest kornia frame that is not one of
 # them, so that INHERENT_SITES names the caller, which is what decides whether the synchronization is inherent.
-PASS_THROUGH: frozenset[str] = frozenset({"core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"})
+PASS_THROUGH: frozenset[str] = frozenset(
+    {"core/utils.py:_to_device_nonblocking", "core/utils.py:_torch_inverse_cast", "core/utils.py:_torch_solve_cast"}
+)
 
 
 def _inputs_2d(device: torch.device, dtype: torch.dtype) -> dict[str, torch.Tensor]:
@@ -531,7 +533,11 @@ def sync_sites(fn: Callable[[], Any]) -> collections.Counter[str]:
     def hook(message: Any, category: Any, filename: str, lineno: int, file: Any = None, line: Any = None) -> None:
         if _SYNC_MESSAGE not in str(message):
             return
-        keys = [f"{f.filename[len(root) :]}:{f.name}" for f in traceback.extract_stack() if f.filename.startswith(root)]
+        keys = [
+            f"{f.filename[len(root) :].replace(os.sep, '/')}:{f.name}"
+            for f in traceback.extract_stack()
+            if f.filename.startswith(root)
+        ]
         callers = [k for k in keys if k not in PASS_THROUGH]
         sites[callers[-1] if callers else keys[-1] if keys else "<outside kornia>"] += 1
 

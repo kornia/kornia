@@ -20,22 +20,23 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import shift_rgb
 
-
-def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[float]]) -> Tuple[Any, Any]:
-    # A number is a half-width, bounded by itself; a (low, high) pair -- a tuple, a list or a 1-D tensor -- is the
-    # range and only needs to be finite and ordered. A 0-d tensor is a half-width too, but bounds computed from a
-    # learnable one would carry its autograd graph into the generator, where no copy can take it. ``[-limit, limit]``
-    # is inside its own bounds by construction, so the tensor is left unbounded instead.
-    if isinstance(limit, (tuple, list, torch.Tensor)):
-        return (-float("inf"), float("inf"))
-    return (-limit, limit)
+# A shift range has no domain: a (low, high) pair -- a tuple, a list or a 1-D tensor -- only needs to be finite and
+# ordered, and a number or 0-d tensor is a non-negative half-width, whose ``[-limit, limit]`` no bound can refuse.
+# Bounds taken from the constructor's own limit refused a checkpoint of a wider valid range at load time, and bounds
+# computed from a learnable tensor would carry its autograd graph into the generator, where no copy can take it.
+_SHIFT_BOUNDS = (-float("inf"), float("inf"))
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Shift each RGB channel by a random offset, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomRGBShift(r_shift_limit, g_shift_limit, b_shift_limit, ...)(input)`` offsets the channels of
+    selected RGB images ``(B, 3, H, W)`` separately and clamps their output to ``[0, 1]``. Use
+    :class:`RandomBrightness` for one shared additive offset.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -61,6 +62,10 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           negative limit raises a ``ValueError`` at construction.
         - a ``(low, high)`` pair, as in ``albumentations.RGBShift``, is the sampling range itself. It must be
           finite with ``low <= high``, otherwise it raises a ``ValueError`` at construction.
+
+    See Also:
+        - :class:`RandomBrightness`: offsets all channels equally instead of each RGB channel separately.
+        - :class:`ColorJiggle`: combines RGB color adjustments with HSV operations.
 
     Examples:
         >>> import torch
@@ -123,9 +128,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
-            (r_shift_limit, "r_shift", 0, _shift_bounds(r_shift_limit)),
-            (g_shift_limit, "g_shift", 0, _shift_bounds(g_shift_limit)),
-            (b_shift_limit, "b_shift", 0, _shift_bounds(b_shift_limit)),
+            (r_shift_limit, "r_shift", 0, _SHIFT_BOUNDS),
+            (g_shift_limit, "g_shift", 0, _SHIFT_BOUNDS),
+            (b_shift_limit, "b_shift", 0, _SHIFT_BOUNDS),
         )
 
     def apply_transform(

@@ -94,7 +94,6 @@ omit = [
   "*/setup.py",
   "kornia/models/sam/*",
   "kornia/models/siglip2/*",
-  "kornia/models/paligemma/*",
   "kornia/models/kimi_vl/*",
   "kornia/models/qwen25/*",
   "kornia/models/smolvlm2/*",

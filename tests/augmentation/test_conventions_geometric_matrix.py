@@ -26,7 +26,133 @@ import kornia.augmentation as K
 from kornia.augmentation._2d.geometric.rotation import _range_allows_odd_turns
 from kornia.constants import Resample, SamplePadding
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
+
+
+class TestGeometricAugmentationAutocast(BaseTester):
+    """A caller's autocast region does not reach the matrix or the sampling grid of these augmentations (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @pytest.mark.parametrize(
+        "name,make",
+        [
+            ("RandomAffine", lambda: K.RandomAffine(25.0, (0.1, 0.1), (0.9, 1.1), 10.0, p=1.0)),
+            ("RandomRotation", lambda: K.RandomRotation(25.0, p=1.0)),
+            ("RandomPerspective", lambda: K.RandomPerspective(0.3, p=1.0)),
+            ("RandomShear", lambda: K.RandomShear(10.0, p=1.0)),
+            ("RandomAffine3D", lambda: K.RandomAffine3D(25.0, p=1.0)),
+            ("RandomRotation3D", lambda: K.RandomRotation3D(25.0, p=1.0)),
+            ("RandomPerspective3D", lambda: K.RandomPerspective3D(0.3, p=1.0)),
+        ],
+        ids=lambda case: case if isinstance(case, str) else "",
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
+        # In bfloat16 a seeded float32 RandomRotation of a 256 px [0, 1] image was up to 0.83 off, RandomAffine 0.41
+        # and RandomPerspective 0.94, from the half-precision products of the matrix builders and the warps.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        generator = torch.Generator().manual_seed(0)
+        shape = (1, 1, 32, 32, 32) if name.endswith("3D") else (1, 3, 256, 256)
+        image = torch.rand(shape, generator=generator).to(device)
+
+        def run():
+            torch.manual_seed(3)
+            augmentation = make()
+            return augmentation(image), augmentation.transform_matrix
+
+        expected, expected_matrix = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, actual_matrix = run()
+        assert actual.dtype == actual_matrix.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_matrix, expected_matrix, rtol=0, atol=0)
+
+
+class TestContainerAutocast(BaseTester):
+    """A caller's autocast region does not reach a container's chained matrix or its points (#6601)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device):
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(1, 1, 64, 64, generator=generator).to(device)
+        return image, (torch.rand(1, 20, 2, generator=generator) * 64).to(device)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("data_key", ["keypoints", "bbox_xyxy"])
+    def test_region_does_not_change_the_container_6601(self, data_key, autocast_dtype, device):
+        # The chained matrix was 0.34 off in bfloat16, returned in bfloat16, and the keypoints 1.24 off in float32.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, points = self._inputs(device)
+        if data_key == "bbox_xyxy":
+            points = torch.cat([points, points + 3.0], dim=-1)
+
+        def run():
+            torch.manual_seed(5)
+            sequence = K.AugmentationSequential(
+                K.RandomAffine(25.0, (0.1, 0.1), (0.9, 1.1), p=1.0),
+                K.RandomRotation(15.0, p=1.0),
+                data_keys=["input", data_key],
+            )
+            _, moved = sequence(image, points)
+            return moved, sequence.transform_matrix
+
+        expected, expected_matrix = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, actual_matrix = run()
+        assert actual_matrix.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_matrix, expected_matrix, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_get_transformation_matrix_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, _ = self._inputs(device)
+        torch.manual_seed(5)
+        sequence = K.ImageSequential(K.RandomAffine(25.0, p=1.0), K.RandomRotation(15.0, p=1.0))
+        sequence(image)
+        expected = sequence.get_transformation_matrix(image, sequence._params)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = sequence.get_transformation_matrix(image, sequence._params)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_a_nested_matrix_6601(self, autocast_dtype, device):
+        # A nested sequence is the other product of get_transformation_matrix.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, _ = self._inputs(device)
+        torch.manual_seed(5)
+        sequence = K.ImageSequential(
+            K.ImageSequential(K.RandomAffine(25.0, p=1.0)), K.ImageSequential(K.RandomRotation(15.0, p=1.0))
+        )
+        sequence(image)
+        expected = sequence.get_transformation_matrix(image, sequence._params)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = sequence.get_transformation_matrix(image, sequence._params)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("matrix_half", [True, False], ids=["half-new", "half-chained"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_chain_in_float32_in_a_region_6601(self, matrix_half, autocast_dtype, device):
+        # Autocast reconciled a half matrix with a float32 one, so leaving the region must too; the mix raises outside.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        new = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [0.0, 0.0, 1.0]]], device=device)
+        chained = torch.tensor([[[1.1, 0.2, -3.0], [-0.2, 1.1, 7.0], [0.0, 0.0, 1.0]]], device=device)
+        new_input, chained_input = (new.to(half), chained) if matrix_half else (new, chained.to(half))
+        sequence = K.AugmentationSequential(K.RandomAffine(25.0, p=1.0), K.RandomRotation(15.0, p=1.0))
+        sequence._transform_matrix = chained_input
+        with torch.autocast(device.type, dtype=half):
+            sequence._update_transform_matrix(new_input)
+        assert sequence._transform_matrix.dtype == torch.float32
+        self.assert_close(sequence._transform_matrix, new_input.float() @ chained_input.float(), rtol=0, atol=0)
 
 
 class TestConventionGeometricMatrices(BaseTester):

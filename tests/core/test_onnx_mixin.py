@@ -124,7 +124,7 @@ _NOT_CALL_STATE = {
     "ImageSequential.disable_features": (("_disable_features",), "a property setter"),
     "SequentialBase.keepdim": (("_keepdim",), "a property setter"),
     "SequentialBase.same_on_batch": (("_same_on_batch",), "a property setter"),
-    "OperationBase._init_magnitude": (("_factor_name", "_magnitude", "magnitude_range"), "a constructor helper"),
+    "OperationBase._init_magnitude": (("_factor_name", "_magnitude"), "a constructor helper"),
     "TransformMatrixMinIn._parse_transformation_matrix_mode": (("_transformation_matrix_arg",), "a constructor helper"),
     "ImageSequentialBase.transform_inputs": (
         ("_sequence_matrices",),
@@ -139,6 +139,19 @@ _NOT_CALL_STATE = {
         ("device",),
         "unpickling; the samplers it rebuilds follow torch.load's map_location",
     ),
+    "RandomGeneratorBase._ranges_need_rebuild": (
+        ("_range_versions",),
+        (
+            "which range version the samplers were built from; an export's run rebuilds them too and neither is "
+            "restored, so a later call compares it with the samplers it belongs to"
+        ),
+    ),
+    "PlainUniformGenerator._ranges_loaded": (("samplers",), "load_state_dict, not a call"),
+    "Rotation90Generator._find_whole_range": (
+        ("_whole_range",),
+        "the constructor, load_state_dict and the rebuild of a copy, not a call",
+    ),
+    "RandomRotation90._load_from_state_dict": (("_allows_odd_turns",), "load_state_dict, not a call"),
     "RandomTransplantation.params_from_input": (
         ("excluded_labels",),
         "a constructor argument moved to the mask's device; its values never change",

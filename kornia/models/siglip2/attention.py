@@ -23,9 +23,9 @@ import math
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
 
 __all__ = ["SigLip2Attention"]
@@ -153,7 +153,7 @@ class SigLip2Attention(nn.Module):
             )
 
         dropout_p = self.dropout.p if self.training and self.dropout.p > 0.0 else 0.0
-        attention_output = F.scaled_dot_product_attention(
+        attention_output = scaled_dot_product_attention(
             query,
             key,
             value,

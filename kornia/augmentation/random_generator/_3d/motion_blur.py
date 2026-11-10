@@ -20,6 +20,7 @@ from typing import Dict, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound, _tuple_range_reader
 from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
@@ -82,7 +83,9 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         angle: torch.Tensor = _tuple_range_reader(
             self.angle, 3, device=device, dtype=dtype, name="angle", bounds=(-360, 360)
         )
-        direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
+        direction = _range_bound(
+            self.direction, "direction", center=0.0, bounds=(-1, 1), dtype=_range_bound_dtype(dtype)
+        ).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")

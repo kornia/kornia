@@ -24,6 +24,15 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 from kornia.core.utils import is_exporting
 
+# On Apple M1 and M2, an MPS batched matmul that contracts 32767 or more samples adds memory past the end of its
+# operands to the result whenever both output dimensions are at least 16, so the error depends on what the allocator
+# put there (pytorch/pytorch#195163). Seen on an M1 with torch 2.5.1, 2.9.1, 2.14, 2.15 and nightly 2.16.0.dev20261012.
+# M3 and later do not show it upstream but take this path too. Reassess when pytorch/pytorch#195012 ships: it routes
+# these shapes to slower Metal kernels, so keep the chunks unless they lose to that route, and remove them only once
+# the oldest supported torch has a fix. Chunks against one contraction on an M1, torch 2.15: forward 0.97 to 1.00 at
+# 33856 samples and 1.05 to 1.08 at 262144; forward and backward 0.88 to 0.90 and 0.82 to 0.83.
+_MPS_MAX_CONTRACTED_SAMPLES = 16384
+
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
@@ -86,11 +95,11 @@ def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> to
 
 
 class MIKernel(Enum):
-    """Available kernels for mutual-information density estimation.
+    """Choose the kernel that spreads a sample over the histogram bins of the mutual-information losses.
 
-    Pass a member as the ``kernel_function`` of the mutual-information losses. The members are not callable: a
-    member's ``value`` is the kernel ``f(d, window_radius=1.0)``, the weight that a sample at distance ``d`` from a bin
-    centre, in bin widths, gives that bin.
+    Pass a member as the ``kernel_function`` of a mutual-information loss. The members are not callable: a member's
+    ``value`` is the kernel ``f(d, window_radius=1.0)``, the weight that a sample at distance ``d`` from a bin centre,
+    in bin widths, gives that bin.
 
     Convention:
         - Every kernel is 0 outside ``|d| <= window_radius``. With ``u = |d| / window_radius``:
@@ -103,6 +112,10 @@ class MIKernel(Enum):
             :func:`~kornia.losses.mutual_information_loss`).
           - ``truncated_gaussian``: the normal density with standard deviation ``window_radius``, cut at one
             standard deviation.
+
+    See Also:
+        - :func:`~kornia.losses.mutual_information_loss`: takes a member as ``kernel_function``, as do the other
+          mutual-information losses and their module forms.
     """
 
     xu = member(xu_kernel)
@@ -148,6 +161,16 @@ def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> t
     nontrivial = diff > eps
     safe_diff = torch.where(nontrivial, diff, torch.ones_like(diff))
     return torch.where(nontrivial, (data - min_val.unsqueeze(-1)) / safe_diff * (num_bins - 1), 0)
+
+
+def _contract_kernels_in_chunks(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int) -> torch.Tensor:
+    """Return ``einsum("...in,...jn->...ij", vals_1, vals_2)``, contracting at most ``chunk_size`` samples at a time."""
+    # One split, not a slice per chunk: the backward of a slice allocates a gradient of the full tensor for each chunk.
+    chunks = zip(vals_1.split(chunk_size, dim=-1), vals_2.split(chunk_size, dim=-1))
+    joint_histogram = torch.einsum("...in,...jn->...ij", *next(chunks))
+    for chunk_1, chunk_2 in chunks:
+        joint_histogram = joint_histogram + torch.einsum("...in,...jn->...ij", chunk_1, chunk_2)
+    return joint_histogram
 
 
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -222,9 +245,9 @@ class EntropyBasedLossBase(torch.nn.Module):
         # This empty, non-persistent buffer follows Module.to without adding a state_dict key.
         self.register_buffer("_reference_dtype", reference_signal.new_empty(0), persistent=False)
         self.initial_shape = reference_signal.shape
-        signal = reference_signal[..., mask]
-        # Without a mask the gather keeps every sample: checking its size would guard on a data-dependent size
-        # and break ``fullgraph`` capture.
+        # Without a mask the gather would keep every sample and only give the signal a data-dependent size, which
+        # ``fullgraph`` capture cannot guard on.
+        signal = reference_signal if self._ref_mask_is_full else reference_signal[..., mask]
         KORNIA_CHECK(self._ref_mask_is_full or signal.shape[-1] > 0, "mask must select at least one sample.")
         if signal.dtype in (torch.float16, torch.bfloat16):
             signal = signal.float()
@@ -343,6 +366,8 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         # Autocast would undo the promotion at this matrix multiplication.
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
+            if other_signal.device.type == "mps" and other_signal.shape[-1] > _MPS_MAX_CONTRACTED_SAMPLES:
+                return _contract_kernels_in_chunks(vals_1, vals_2, _MPS_MAX_CONTRACTED_SAMPLES)
             return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     def entropies(
@@ -376,24 +401,45 @@ class EntropyBasedLossBase(torch.nn.Module):
 
 
 class MILossFromRef(EntropyBasedLossBase):
-    """Mutual-information loss against a stored reference signal.
+    r"""Compute the mutual-information loss of signals ``(*, N)`` against a reference (module form).
 
-    The module form of :func:`~kornia.losses.mutual_information_loss`, built on the target:
-    ``MILossFromRef(target, target_mask)(input, input_mask)`` equals
-    ``mutual_information_loss(input, target, input_mask, target_mask)``.
+    ``criterion = MILossFromRef(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)`` is
+    :func:`~kornia.losses.mutual_information_loss` with ``input=other_signal`` and ``target=reference_signal``.
 
     Convention:
-        - See the Convention block of :func:`~kornia.losses.mutual_information_loss`. ``reference_signal`` is
-          ``(*, N)`` with a boolean ``(N,)`` ``mask``, and the module is called with an ``other_signal`` of the same
-          shape and its own ``(N,)`` mask.
+        - See the Convention block of :func:`~kornia.losses.mutual_information_loss`.
         - At construction the reference is restricted to its mask, min-max normalised and stored as the buffer
           ``signal``, next to a copy of the mask as the buffer ``mask``; later in-place changes to the reference
           tensor or to the mask tensor are not seen. The cache is not detached: a reference that requires grad
           receives a gradient from the first backward pass, and a second backward pass through the same module
-          raises.
-          Half-precision references are normalised and cached in float32. The final loss and constant-signal
+          raises. Half-precision references are normalised and cached in float32. The final loss and constant-signal
           threshold follow the original reference dtype, including after ``.to(dtype)``; converting the cache
           itself to a lower precision can round its stored bin positions.
+
+    Args:
+        reference_signal: reference signals ``(*, N)``.
+        mask: boolean region of interest ``(N,)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: signals with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(N,)`` of ``other_signal``, or ``None``.
+        - Output: the loss per leading index, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.mutual_information_loss`: the one-call form.
+        - :class:`~kornia.losses.NMILossFromRef`: Studholme's normalization, in ``[-2, -1]``.
+        - :class:`~kornia.losses.MILossFromRef2D`: the same loss for images ``(*, H, W)``.
+        - :class:`~kornia.losses.MILossFromRef3D`: the same loss for volumes ``(*, D, H, W)``.
+
+    Example:
+        >>> reference = torch.rand(2, 64)
+        >>> criterion = MILossFromRef(reference)
+        >>> loss = criterion(torch.rand(2, 64))
+
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -419,15 +465,40 @@ class MILossFromRef(EntropyBasedLossBase):
 
 
 class NMILossFromRef(EntropyBasedLossBase):
-    """Normalized mutual-information loss against a stored reference signal.
+    r"""Compute the normalized mutual-information loss of signals ``(*, N)`` against a reference (module form).
 
-    This variant divides the sum of marginal entropies by joint entropy before
-    negating the value. It is the module form of :func:`~kornia.losses.normalized_mutual_information_loss`,
-    built on the target.
+    ``criterion = NMILossFromRef(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)`` is
+    :func:`~kornia.losses.normalized_mutual_information_loss` with ``input=other_signal`` and
+    ``target=reference_signal``.
 
     Convention:
         See the Convention blocks of :func:`~kornia.losses.normalized_mutual_information_loss` for the loss and of
         :class:`~kornia.losses.MILossFromRef` for the stored reference.
+
+    Args:
+        reference_signal: reference signals ``(*, N)``.
+        mask: boolean region of interest ``(N,)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: signals with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(N,)`` of ``other_signal``, or ``None``.
+        - Output: the loss per leading index, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.normalized_mutual_information_loss`: the one-call form.
+        - :class:`~kornia.losses.MILossFromRef`: the unnormalized mutual information, in nats.
+        - :class:`~kornia.losses.NMILossFromRef2D`: the same loss for images ``(*, H, W)``.
+        - :class:`~kornia.losses.NMILossFromRef3D`: the same loss for volumes ``(*, D, H, W)``.
+
+    Example:
+        >>> reference = torch.rand(2, 64)
+        >>> criterion = NMILossFromRef(reference)
+        >>> loss = criterion(torch.rand(2, 64))
+
     """
 
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
@@ -453,17 +524,33 @@ class NMILossFromRef(EntropyBasedLossBase):
 
 
 class MILossFromRef2D(MILossFromRef):
-    """Mutual Information loss module specifically designed for 2D image data.
+    r"""Compute the mutual-information loss of images ``(*, H, W)`` against a reference (module form).
 
-    This class extends MILossFromRef to handle 2D image inputs by automatically
-    reshaping batched 2D images into the format expected by the base entropy
-    computation methods. It computes mutual information between reference 2D images
-    and other images using kernel density estimation.
+    ``criterion = MILossFromRef2D(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)``
+    is :func:`~kornia.losses.mutual_information_loss_2d` with ``input=other_signal`` and ``target=reference_signal``.
 
     Convention:
-        See the Convention block of :class:`~kornia.losses.MILossFromRef`. This is the module form of
-        :func:`~kornia.losses.mutual_information_loss_2d`, built on the target: the reference and ``other_signal`` are
-        ``(*, H, W)`` images, flattened as there, and both masks are ``(H, W)``.
+        See the Convention block of :class:`~kornia.losses.MILossFromRef`; the flattening and the batch axes are those
+        of :func:`~kornia.losses.mutual_information_loss_2d`.
+
+    Args:
+        reference_signal: reference images ``(*, H, W)``.
+        mask: boolean region of interest ``(H, W)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: images with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(H, W)`` of ``other_signal``, or ``None``.
+        - Output: the loss per image, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.mutual_information_loss_2d`: the one-call form.
+        - :class:`~kornia.losses.NMILossFromRef2D`: Studholme's normalization, in ``[-2, -1]``.
+        - :class:`~kornia.losses.MILossFromRef`: the same loss for signals ``(*, N)``.
+        - :class:`~kornia.losses.MILossFromRef3D`: the same loss for volumes ``(*, D, H, W)``.
     """
 
     def __init__(
@@ -541,17 +628,33 @@ class MILossFromRef2D(MILossFromRef):
 
 
 class MILossFromRef3D(MILossFromRef):
-    """Mutual Information loss module specifically designed for 3D image data.
+    r"""Compute the mutual-information loss of volumes ``(*, D, H, W)`` against a reference (module form).
 
-    This class extends MILossFromRef to handle 3D image inputs by automatically
-    reshaping batched 3D images into the format expected by the base entropy
-    computation methods. It computes mutual information between reference 3D images
-    and other images using kernel density estimation.
+    ``criterion = MILossFromRef3D(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)``
+    is :func:`~kornia.losses.mutual_information_loss_3d` with ``input=other_signal`` and ``target=reference_signal``.
 
     Convention:
-        See the Convention block of :class:`~kornia.losses.MILossFromRef`. This is the module form of
-        :func:`~kornia.losses.mutual_information_loss_3d`, built on the target: the reference and ``other_signal`` are
-        ``(*, D, H, W)`` volumes, flattened as there, and both masks are ``(D, H, W)``.
+        See the Convention block of :class:`~kornia.losses.MILossFromRef`; the flattening and the batch axes are those
+        of :func:`~kornia.losses.mutual_information_loss_3d`.
+
+    Args:
+        reference_signal: reference volumes ``(*, D, H, W)``.
+        mask: boolean region of interest ``(D, H, W)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: volumes with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(D, H, W)`` of ``other_signal``, or ``None``.
+        - Output: the loss per volume, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.mutual_information_loss_3d`: the one-call form.
+        - :class:`~kornia.losses.NMILossFromRef3D`: Studholme's normalization, in ``[-2, -1]``.
+        - :class:`~kornia.losses.MILossFromRef`: the same loss for signals ``(*, N)``.
+        - :class:`~kornia.losses.MILossFromRef2D`: the same loss for images ``(*, H, W)``.
     """
 
     def __init__(
@@ -629,17 +732,34 @@ class MILossFromRef3D(MILossFromRef):
 
 
 class NMILossFromRef2D(NMILossFromRef):
-    """Normalized Mutual Information loss module specifically designed for 2D image data.
+    r"""Compute the normalized mutual-information loss of images ``(*, H, W)`` against a reference (module form).
 
-    This class extends NMILossFromRef to handle 2D image inputs by automatically
-    reshaping batched 2D images into the format expected by the base entropy
-    computation methods. It computes normalized mutual information between reference 2D images
-    and other images using kernel density estimation.
+    ``criterion = NMILossFromRef2D(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)``
+    is :func:`~kornia.losses.normalized_mutual_information_loss_2d` with ``input=other_signal`` and
+    ``target=reference_signal``.
 
     Convention:
-        See the Convention block of :class:`~kornia.losses.NMILossFromRef`. This is the module form of
-        :func:`~kornia.losses.normalized_mutual_information_loss_2d`, built on the target: the reference and
-        ``other_signal`` are ``(*, H, W)`` images, flattened as there, and both masks are ``(H, W)``.
+        See the Convention block of :class:`~kornia.losses.NMILossFromRef`; the flattening and the batch axes are
+        those of :func:`~kornia.losses.normalized_mutual_information_loss_2d`.
+
+    Args:
+        reference_signal: reference images ``(*, H, W)``.
+        mask: boolean region of interest ``(H, W)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: images with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(H, W)`` of ``other_signal``, or ``None``.
+        - Output: the loss per image, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.normalized_mutual_information_loss_2d`: the one-call form.
+        - :class:`~kornia.losses.MILossFromRef2D`: the unnormalized mutual information, in nats.
+        - :class:`~kornia.losses.NMILossFromRef`: the same loss for signals ``(*, N)``.
+        - :class:`~kornia.losses.NMILossFromRef3D`: the same loss for volumes ``(*, D, H, W)``.
     """
 
     def __init__(
@@ -716,17 +836,34 @@ class NMILossFromRef2D(NMILossFromRef):
 
 
 class NMILossFromRef3D(NMILossFromRef):
-    """Normalized Mutual Information loss module specifically designed for 3D image data.
+    r"""Compute the normalized mutual-information loss of volumes ``(*, D, H, W)`` against a reference (module form).
 
-    This class extends NMILossFromRef to handle 3D image inputs by automatically
-    reshaping batched 3D images into the format expected by the base entropy
-    computation methods. It computes normalized mutual information between reference 3D images
-    and other images using kernel density estimation.
+    ``criterion = NMILossFromRef3D(reference_signal, mask)`` stores the reference. ``loss = criterion(other_signal)``
+    is :func:`~kornia.losses.normalized_mutual_information_loss_3d` with ``input=other_signal`` and
+    ``target=reference_signal``.
 
     Convention:
-        See the Convention block of :class:`~kornia.losses.NMILossFromRef`. This is the module form of
-        :func:`~kornia.losses.normalized_mutual_information_loss_3d`, built on the target: the reference and
-        ``other_signal`` are ``(*, D, H, W)`` volumes, flattened as there, and both masks are ``(D, H, W)``.
+        See the Convention block of :class:`~kornia.losses.NMILossFromRef`; the flattening and the batch axes are
+        those of :func:`~kornia.losses.normalized_mutual_information_loss_3d`.
+
+    Args:
+        reference_signal: reference volumes ``(*, D, H, W)``.
+        mask: boolean region of interest ``(D, H, W)`` of the reference, common to the batch; ``None`` keeps
+          every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
+
+    Shape:
+        - other_signal: volumes with the shape of ``reference_signal``.
+        - other_mask: boolean region of interest ``(D, H, W)`` of ``other_signal``, or ``None``.
+        - Output: the loss per volume, in the dtype of the reference.
+
+    See Also:
+        - :func:`~kornia.losses.normalized_mutual_information_loss_3d`: the one-call form.
+        - :class:`~kornia.losses.MILossFromRef3D`: the unnormalized mutual information, in nats.
+        - :class:`~kornia.losses.NMILossFromRef`: the same loss for signals ``(*, N)``.
+        - :class:`~kornia.losses.NMILossFromRef2D`: the same loss for images ``(*, H, W)``.
     """
 
     def __init__(
@@ -811,26 +948,31 @@ def mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the mutual-information loss of flat tensors.
+    r"""Compute the mutual-information loss of two flat signals ``(*, N)``.
+
+    ``loss = mutual_information_loss(input, target)`` returns the negative mutual information of ``input`` and
+    ``target`` from their kernel (Parzen-window) joint histogram, one value per leading index.
+
+    .. math::
+
+        \text{loss} = -(H(X) + H(Y) - H(X, Y))
 
     Convention:
-        - The loss is the negative mutual information, :math:`-(H(X) + H(Y) - H(X, Y))`, in nats: minimising it
-          maximises the mutual information. It is symmetric in ``input`` and ``target``.
-          :ref:`Registration <mutual-information-porting>` maps the losses onto scikit-learn and scikit-image.
+        - The loss is in nats: minimising it maximises the mutual information. It is symmetric in ``input`` and
+          ``target``. :ref:`Registration <mutual-information-porting>` maps the losses onto scikit-learn and
+          scikit-image.
         - ``input`` and ``target`` are ``(*, N)`` tensors of one shape and one floating dtype; a single ``target`` is
-          not broadcast over a batch of inputs. There is no ``reduction``: the result holds one loss per leading
-          index, shape ``*``, in the input dtype (:ref:`Losses and metrics <losses-metrics-conventions>` lists the
-          defaults of the other losses).
+          not broadcast over a batch of inputs. There is no ``reduction``
+          (:ref:`Losses and metrics <losses-metrics-conventions>` lists the defaults of the other losses).
         - Each signal is min-max normalised per sample, over its mask, so no data range is assumed. A positive
           rescaling and a shift of one sample leave its loss unchanged up to roundoff when both its original and
-          transformed ranges exceed the absolute threshold ``torch.finfo(dtype).eps``. One outlier squeezes the
-          other values of its sample into a few bins. A sample whose range is at most that threshold counts as
-          constant: its MI is 0 and it gets a zero gradient.
+          transformed ranges exceed the absolute threshold ``torch.finfo(dtype).eps``. One outlier
+          squeezes the other values of its sample into a few bins. A sample whose range is at most that threshold
+          counts as constant: its MI is 0 and it gets a zero gradient.
         - The joint histogram has ``num_bins`` bins per signal, and each value spreads over the bins within
           ``window_radius`` bin widths of it, weighted by ``kernel_function``, a :class:`~kornia.losses.MIKernel`
           member. With continuous values and the default ``window_radius``, this soft histogram scores an image
-          against itself below its entropy. The estimate depends on ``num_bins`` and ``window_radius``, in no fixed
-          direction, so values compare only at equal ``num_bins``, ``window_radius`` and kernel.
+          against itself below its entropy. Values compare only at equal ``num_bins``, ``window_radius`` and kernel.
         - With ``MIKernel.xu`` (the default) and ``MIKernel.truncated_gaussian``, ``input`` and ``target`` both get
           gradients. ``MIKernel.rectangular`` is piecewise constant: its loss has no gradient and serves for
           evaluation only.
@@ -844,21 +986,30 @@ def mutual_information_loss(
           The constant-signal threshold remains ``torch.finfo(input dtype).eps``.
 
     Args:
-        input (torch.Tensor): Batch of flat tensors shape (B,N) where B
-            is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of flat tensors, same shape as
-            input.
-        input_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: flat signals ``(*, N)``.
+        target: flat signals with the shape of ``input``.
+        input_mask: boolean region of interest ``(N,)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(N,)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per leading index, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.MILossFromRef`: the module form, built on the target.
+        - :func:`~kornia.losses.normalized_mutual_information_loss`: Studholme's normalization, in ``[-2, -1]``.
+        - :func:`~kornia.losses.mutual_information_loss_2d`: the same loss for images ``(*, H, W)``.
+        - :func:`~kornia.losses.mutual_information_loss_3d`: the same loss for volumes ``(*, D, H, W)``.
+
+    Example:
+        >>> input = torch.rand(2, 3, 64)
+        >>> target = torch.rand(2, 3, 64)
+        >>> loss = mutual_information_loss(input, target)
+
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef(
@@ -880,32 +1031,39 @@ def mutual_information_loss_2d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the mutual-information loss of 2d tensors.
+    r"""Compute the mutual-information loss of two images ``(*, H, W)``.
 
-    mi = (H(X) + H(Y) - H(X,Y))
-    To have a loss function, the opposite is returned.
-    Can also handle two batches of 2d tensors, then a batch of loss values is returned.
+    ``loss = mutual_information_loss_2d(input, target)`` returns the negative mutual information of ``input`` and
+    ``target`` from their kernel (Parzen-window) joint histogram, one value per image.
+
+    .. math::
+
+        \text{loss} = -(H(X) + H(Y) - H(X, Y))
 
     Convention:
         See the Convention block of :func:`~kornia.losses.mutual_information_loss`; this function applies it to
         ``input.flatten(-2)`` and ``target.flatten(-2)``. Every axis before the last two is a batch axis, so a
-        ``(B, C, H, W)`` input gives one loss per image and channel, ``(B, C)``. The masks are ``(H, W)``.
+        ``(B, C, H, W)`` input gives one loss per image and channel, ``(B, C)``.
 
     Args:
-        input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
-            is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        input_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: images ``(*, H, W)``.
+        target: images with the shape of ``input``.
+        input_mask: boolean region of interest ``(H, W)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(H, W)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per image, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.MILossFromRef2D`: the module form, built on the target.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_2d`: Studholme's normalization, in ``[-2, -1]``.
+        - :func:`~kornia.losses.mutual_information_loss`: the same loss for flat signals ``(*, N)``.
+        - :func:`~kornia.losses.mutual_information_loss_3d`: the same loss for volumes ``(*, D, H, W)``.
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef2D(
@@ -927,32 +1085,39 @@ def mutual_information_loss_3d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the mutual-information loss of 3d tensors.
+    r"""Compute the mutual-information loss of two volumes ``(*, D, H, W)``.
 
-    mi = (H(X) + H(Y) - H(X,Y))
-    To have a loss function, the opposite is returned.
-    Can also handle two batches of 3d tensors, then a batch of loss values is returned.
+    ``loss = mutual_information_loss_3d(input, target)`` returns the negative mutual information of ``input`` and
+    ``target`` from their kernel (Parzen-window) joint histogram, one value per volume.
+
+    .. math::
+
+        \text{loss} = -(H(X) + H(Y) - H(X, Y))
 
     Convention:
         See the Convention block of :func:`~kornia.losses.mutual_information_loss`; this function applies it to
-        ``input.flatten(-3)`` and ``target.flatten(-3)``, with ``(D, H, W)`` masks. Every axis before the last three
-        is a batch axis, so a ``(B, C, H, W)`` tensor is read as ``B`` volumes of depth ``C`` and gives ``(B,)``.
+        ``input.flatten(-3)`` and ``target.flatten(-3)``. Every axis before the last three is a batch axis, so a
+        ``(B, C, H, W)`` tensor is read as ``B`` volumes of depth ``C`` and gives ``(B,)``.
 
     Args:
-        input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
-            B is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        input_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: volumes ``(*, D, H, W)``.
+        target: volumes with the shape of ``input``.
+        input_mask: boolean region of interest ``(D, H, W)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(D, H, W)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per volume, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.MILossFromRef3D`: the module form, built on the target.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_3d`: Studholme's normalization, in ``[-2, -1]``.
+        - :func:`~kornia.losses.mutual_information_loss`: the same loss for flat signals ``(*, N)``.
+        - :func:`~kornia.losses.mutual_information_loss_2d`: the same loss for images ``(*, H, W)``.
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = MILossFromRef3D(
@@ -974,34 +1139,50 @@ def normalized_mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the normalized mutual-information loss of flat tensors.
+    r"""Compute the normalized mutual-information loss of two flat signals ``(*, N)``.
+
+    ``loss = normalized_mutual_information_loss(input, target)`` returns the negative normalized mutual information of
+    ``input`` and ``target`` from their kernel (Parzen-window) joint histogram, one value per leading index.
+
+    .. math::
+
+        \text{loss} = -\frac{H(X) + H(Y)}{H(X, Y)}
 
     Convention:
-        - The loss is the negative of Studholme's normalized mutual information,
-          :math:`(H(X) + H(Y)) / H(X, Y)`, which lies in :math:`[1, 2]`: the loss lies in ``[-2, -1]`` and is ``-1``
-          when one signal is constant and the other is not; for two constant signals its value is undefined. With
-          continuous values and the default ``window_radius``, even an image against itself scores above ``-2``.
+        - The loss is the negative of Studholme's normalized mutual information, which lies in :math:`[1, 2]`: the
+          loss lies in ``[-2, -1]`` and is ``-1`` when one signal is constant and the other is not. Two constant
+          signals give a finite value below ``-1`` that changes with the dtype, ``num_bins`` and the number of
+          samples, because histogram cells are floored at machine epsilon. With continuous values and the default
+          ``window_radius``, even an image against itself scores above ``-2``.
           :ref:`Registration <mutual-information-porting>` maps this normalisation onto scikit-image and
           scikit-learn.
-        - Everything else, the known defect included, is as in the Convention block of
-          :func:`~kornia.losses.mutual_information_loss`.
+        - Everything else is as in the Convention block of :func:`~kornia.losses.mutual_information_loss`.
 
     Args:
-        input (torch.Tensor): Batch of flat tensors shape (B,N) where B
-            is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of flat tensors, same shape as
-            input.
-        input_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (N,), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: flat signals ``(*, N)``.
+        target: flat signals with the shape of ``input``.
+        input_mask: boolean region of interest ``(N,)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(N,)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per leading index, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.NMILossFromRef`: the module form, built on the target.
+        - :func:`~kornia.losses.mutual_information_loss`: the unnormalized mutual information, in nats.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_2d`: the same loss for images ``(*, H, W)``.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_3d`: the same loss for volumes ``(*, D, H, W)``.
+
+    Example:
+        >>> input = torch.rand(2, 3, 64)
+        >>> target = torch.rand(2, 3, 64)
+        >>> loss = normalized_mutual_information_loss(input, target)
+
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef(
@@ -1023,31 +1204,38 @@ def normalized_mutual_information_loss_2d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the normalized mutual-information loss of 2d tensors.
+    r"""Compute the normalized mutual-information loss of two images ``(*, H, W)``.
 
-    nmi = (H(X) + H(Y)) / H(X,Y)
-    To have a loss function, the opposite is returned.
-    Can also handle two batches of 2d tensors, then a batch of loss values is returned.
+    ``loss = normalized_mutual_information_loss_2d(input, target)`` returns the negative normalized mutual information
+    of ``input`` and ``target`` from their kernel (Parzen-window) joint histogram, one value per image.
+
+    .. math::
+
+        \text{loss} = -\frac{H(X) + H(Y)}{H(X, Y)}
 
     Convention:
-        See the Convention block of :func:`~kornia.losses.normalized_mutual_information_loss`; the flattening, the
-        batch axes and the ``(H, W)`` masks are those of :func:`~kornia.losses.mutual_information_loss_2d`.
+        See the Convention block of :func:`~kornia.losses.normalized_mutual_information_loss`; the
+        flattening and the batch axes are those of :func:`~kornia.losses.mutual_information_loss_2d`.
 
     Args:
-        input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
-            is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        input_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (H, W), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: images ``(*, H, W)``.
+        target: images with the shape of ``input``.
+        input_mask: boolean region of interest ``(H, W)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(H, W)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per image, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.NMILossFromRef2D`: the module form, built on the target.
+        - :func:`~kornia.losses.mutual_information_loss_2d`: the unnormalized mutual information, in nats.
+        - :func:`~kornia.losses.normalized_mutual_information_loss`: the same loss for flat signals ``(*, N)``.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_3d`: the same loss for volumes ``(*, D, H, W)``.
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef2D(
@@ -1069,31 +1257,38 @@ def normalized_mutual_information_loss_3d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute the normalized mutual-information loss of 3d tensors.
+    r"""Compute the normalized mutual-information loss of two volumes ``(*, D, H, W)``.
 
-    nmi = (H(X) + H(Y)) / H(X,Y)
-    To have a loss function, the opposite is returned.
-    Can also handle two batches of 3d tensors, then a batch of loss values is returned.
+    ``loss = normalized_mutual_information_loss_3d(input, target)`` returns the negative normalized mutual information
+    of ``input`` and ``target`` from their kernel (Parzen-window) joint histogram, one value per volume.
+
+    .. math::
+
+        \text{loss} = -\frac{H(X) + H(Y)}{H(X, Y)}
 
     Convention:
-        See the Convention block of :func:`~kornia.losses.normalized_mutual_information_loss`; the flattening, the
-        batch axes and the ``(D, H, W)`` masks are those of :func:`~kornia.losses.mutual_information_loss_3d`.
+        See the Convention block of :func:`~kornia.losses.normalized_mutual_information_loss`; the
+        flattening and the batch axes are those of :func:`~kornia.losses.mutual_information_loss_3d`.
 
     Args:
-        input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
-            B is any batch dimensions tuple, possibly empty.
-        target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        input_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
-        target_mask (torch.Tensor): boolean roi mask of shape (D, H, W), common to the batch. Defaults to None.
-        kernel_function (MIKernel): Used kernel function for kernel
-            density estimate, by default MIKernel.xu
-        num_bins (int): The number of bins used for KDE, defaults to 64.
-        window_radius (float): The smoothing window radius in KDE, in
-            terms of bin width units, defaults to 1.
+        input: volumes ``(*, D, H, W)``.
+        target: volumes with the shape of ``input``.
+        input_mask: boolean region of interest ``(D, H, W)`` of ``input``, common to the batch; ``None`` keeps
+          every position.
+        target_mask: boolean region of interest ``(D, H, W)`` of ``target``, common to the batch; ``None``
+          keeps every position.
+        kernel_function: kernel that spreads each value over the bins.
+        num_bins: number of bins per signal.
+        window_radius: radius of the kernel in bin widths.
 
     Returns:
-        torch.Tensor: tensor of losses, shape B (common batch dims tuple
-        of input and target)
+        the loss per volume, with shape ``*``, in the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.NMILossFromRef3D`: the module form, built on the target.
+        - :func:`~kornia.losses.mutual_information_loss_3d`: the unnormalized mutual information, in nats.
+        - :func:`~kornia.losses.normalized_mutual_information_loss`: the same loss for flat signals ``(*, N)``.
+        - :func:`~kornia.losses.normalized_mutual_information_loss_2d`: the same loss for images ``(*, H, W)``.
     """
     KORNIA_CHECK_SAME_SHAPE(input, target)
     module = NMILossFromRef3D(

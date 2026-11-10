@@ -55,7 +55,7 @@ class PatchAffineShapeEstimator(nn.Module):
     :class:`LAFAffineShapeEstimator`, which runs it on each LAF's patch.
 
     For float16 and bfloat16 inputs, the gradients, Gaussian weighting, moments, and normalization are computed
-    in float32.
+    in float32; for a float64 input, the Gaussian weighting is built in float64.
     The output keeps the input dtype.
 
     Convention:
@@ -109,11 +109,12 @@ class PatchAffineShapeEstimator(nn.Module):
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", str(self.patch_size), str(self.patch_size)])
         dtype = patch.dtype
-        # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
         if dtype in (torch.float16, torch.bfloat16):
+            # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
             patch = patch.float()
-            # `.to(dtype)` also quantizes buffers, so rebuild this derived kernel instead of upcasting
-            # half-precision coefficients that have already lost their float32 precision.
+        if dtype in (torch.float16, torch.bfloat16, torch.float64):
+            # The buffer holds the kernel rounded to float32, or coarser after `.to(dtype)`: rebuild it in the
+            # compute dtype instead of upcasting coefficients that have already lost precision.
             sigma = float(self.patch_size) / math.sqrt(2.0)
             weighting = get_gaussian_kernel2d(
                 (self.patch_size, self.patch_size),

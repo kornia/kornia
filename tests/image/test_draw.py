@@ -942,6 +942,32 @@ class TestDrawRectangle(BaseTester):
 
 
 class TestFillConvexPolygon(BaseTester):
+    @pytest.mark.parametrize("as_list", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_near_coincident_endpoints_close_independently(self, device, dtype, as_list, reverse):
+        """Fill the closing edge's scanline identically when drawn alone or in a batch."""
+        polygon = torch.tensor(
+            [[100.0, 100.0 - 1 / 2048], [200.0, 50.0], [200.0, 150.0], [100.0, 100.0 + 1 / 2048]],
+            device=device,
+            dtype=dtype,
+        )
+        if reverse:
+            polygon = polygon.flip(0)
+        other = torch.tensor([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]], device=device, dtype=dtype)
+        color = torch.ones(1, device=device, dtype=dtype)
+        single_polygons = [polygon] if as_list else polygon[None]
+        batch_polygons = [polygon, other] if as_list else torch.stack([polygon, other])
+
+        single = draw_convex_polygon(torch.zeros(1, 1, 201, 201, device=device, dtype=dtype), single_polygons, color)
+        batch = draw_convex_polygon(torch.zeros(2, 1, 201, 201, device=device, dtype=dtype), batch_polygons, color)
+
+        # At y=100 the closing and right vertical edges cross x=100 and x=200: fill both boundaries and their span.
+        expected_row = torch.zeros(201, device=device, dtype=dtype)
+        expected_row[100:201] = 1.0
+        self.assert_close(single[0, 0, 100], expected_row)
+        self.assert_close(batch[0, 0, 100], expected_row)
+        self.assert_close(single[0], batch[0])
+
     @pytest.mark.parametrize("vertex_dtype", [torch.float32, torch.bfloat16, torch.float16])
     def test_edge_maths_does_not_depend_on_the_vertex_dtype(self, vertex_dtype, device, dtype):
         # vertices 260 and 280 are exact in bfloat16; the fill must be columns 260..280 (21 px) in every row

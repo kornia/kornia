@@ -21,9 +21,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
+from kornia.enhance.adjust import _clip_unit_fresh
 
 
 def _generate_plasma(
@@ -61,6 +62,9 @@ def _plasma_for_input(plasma: torch.Tensor, image: torch.Tensor) -> torch.Tensor
 class RandomPlasmaBrightness(IntensityAugmentationBase2D):
     r"""Shift brightness by a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomPlasmaBrightness(roughness, intensity, ...)(input)`` adds a sampled fractal field to each
+    selected image ``(B, C, H, W)`` and clamps it to ``[0, 1]``.
+
     .. image:: _static/img/RandomPlasmaBrightness.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -87,6 +91,10 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
+
+    See Also:
+        - :class:`RandomGaussianIllumination`: uses a smooth Gaussian field instead of a fractal field.
+        - :class:`RandomLinearIllumination`: uses a linear illumination ramp.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -130,11 +138,14 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         intensity = _to_device_nonblocking(params["intensity"], image.device, image.dtype).view(-1, 1, 1, 1)
         brightness_map = 2 * _plasma_for_input(params["plasma"], image) - 1
         brightness_map = brightness_map * intensity
-        return (image + brightness_map).clamp_(0, 1)
+        return _clip_unit_fresh(image + brightness_map)
 
 
 class RandomPlasmaContrast(IntensityAugmentationBase2D):
     r"""Scale contrast by a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPlasmaContrast(roughness, ...)(input)`` scales contrast locally with a sampled fractal field on
+    selected ``(B, C, H, W)`` images.
 
     .. image:: _static/img/RandomPlasmaContrast.png
 
@@ -161,6 +172,10 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
+
+    See Also:
+        - :class:`RandomPlasmaBrightness`: offsets brightness with a fractal map.
+        - :class:`RandomPlasmaShadow`: uses a fractal map to darken selected areas.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -199,11 +214,14 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         image = _clamp_unit_range(image)
         contrast_map = 4 * _plasma_for_input(params["plasma"], image)
-        return ((image - 0.5) * contrast_map + 0.5).clamp_(0, 1)
+        return _clip_unit_fresh((image - 0.5) * contrast_map + 0.5)
 
 
 class RandomPlasmaShadow(IntensityAugmentationBase2D):
     r"""Add shadows from a diamond-square fractal map, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPlasmaShadow(roughness, shade_intensity, ...)(input)`` darkens areas chosen by a sampled
+    fractal field in selected ``(B, C, H, W)`` images.
 
     .. image:: _static/img/RandomPlasmaShadow.png
 
@@ -233,6 +251,10 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
+
+    See Also:
+        - :class:`RandomPlasmaBrightness`: offsets brightness with a fractal map.
+        - :class:`RandomPlasmaContrast`: scales contrast with a fractal map.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -286,4 +308,4 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         shade_quantity = _to_device_nonblocking(params["shade_quantity"], image.device, image.dtype).view(-1, 1, 1, 1)
         shade_map = _plasma_for_input(params["plasma"], image)
         shade_map = (shade_map < shade_quantity).to(image.dtype) * shade_intensity
-        return (image + shade_map).clamp_(0, 1)
+        return _clip_unit_fresh(image + shade_map)

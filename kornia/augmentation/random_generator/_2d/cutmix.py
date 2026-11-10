@@ -64,6 +64,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
     """
 
+    # Its ``make_samplers`` reads the values of a range, and its draws carry no gradient back to the range.
+    _follows_ranges_in_forward = False
+
     def __init__(
         self,
         cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,

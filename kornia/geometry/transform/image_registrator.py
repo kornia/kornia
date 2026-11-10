@@ -254,7 +254,7 @@ class ImageRegistrator(nn.Module):
     masked loss of ``src_img`` warped onto ``dst_img`` plus ``dst_img`` warped back onto ``src_img``, and returns the
     model's matrix, ``(1, 3, 3)`` for the built-in models (with the matrix after each level as well, when
     ``output_intermediate_models=True``); :meth:`warp_src_into_dst` then warps an image by it. With
-    more than one level, both sides need at least ``3 * 2 ** (pyramid_levels - 2)`` pixels, 24 for the default 5. To
+    more than one level, both sides need at least ``2 ** (pyramid_levels - 1)`` pixels, 16 for the default 5. To
     align images from matched keypoints instead, use :class:`~kornia.geometry.ransac.RANSAC`.
 
     Convention:

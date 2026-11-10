@@ -27,7 +27,7 @@ from kornia.augmentation.utils.random import _sample_distribution
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.exceptions import InputRankError
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -65,7 +65,7 @@ def _pad_with_fill(
 def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
-    :class:`~kornia.geometry.boxes.Boxes` records per-sample trailing padding in ``_N`` and its default export
+    :class:`~kornia.geometry.boxes.Boxes` records which rows are list padding in ``_padding`` and its default export
     returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
     zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
     ``'vertices'`` modes, which reads as a real one-pixel box.
@@ -73,13 +73,10 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     out = boxes.to_tensor(mode, as_padded_sequence=True)
     if not isinstance(out, torch.Tensor):
         raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
-    if boxes._N is None:
+    if boxes._padding is None or not boxes._is_batched:
         return out
-    num_boxes = out.shape[1]
-    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
-    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
-    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
-    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
+    padding = _to_device_nonblocking(boxes._padding, out.device)
+    return out.masked_fill(padding.reshape(padding.shape + (1,) * (out.dim() - 2)), 0.0)
 
 
 def _frame_boxes(boxes: VideoBoxes) -> Boxes:
@@ -90,8 +87,9 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
     videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
     frames = Boxes(boxes._data, False, mode=boxes._mode)
-    frames._N = boxes._N
     frames._valid = boxes._valid
+    if frames._data is not boxes._data:  # the constructor cast integer coordinates, into a copy
+        frames._detach_masks()
     frames._is_batched = boxes._is_batched
     return frames
 
@@ -99,12 +97,13 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
 def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
     """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
 
-    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
-    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
-    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    A ``VideoBoxes`` is a dense container and keeps no list padding. Padding a child adds, such as the rows a partial
+    ``RandomMosaic`` gate pads a skipped frame with, is marked invalid instead; every export zeroes invalid rows and
+    every indexed read or write carries them.
     """
     boxes = VideoBoxes(frames._data, False, mode=frames._mode)
     boxes._valid = frames._valid
+    boxes._set_padding(frames._padding)
     boxes._is_batched = frames._is_batched
     boxes.temporal_channel_size = temporal_channel_size
     return boxes
@@ -510,9 +509,14 @@ def _shape_validation(param: torch.Tensor, shape: Union[Tuple[int, ...], List[in
 
 
 def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Perform deep copy on any dict.
+    """Copy an augmentation parameter dictionary while cloning tensor values.
 
-    Support torch.Tensor copying here.
+    ``copied = deepcopy_dict(params)`` returns a new dictionary whose tensor values are ``clone()`` copies; non-tensor
+    values are kept by reference. Use ``override_parameters`` to copy and replace selected entries.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: stores parameter dictionaries for replay.
+
     """
     out = {}
     for k, v in params.items():
@@ -530,14 +534,21 @@ def override_parameters(
     if_none_exist: str = "ignore",
     in_place: bool = False,
 ) -> Dict[str, Any]:
-    """Override params dict w.r.t params_override.
+    """Replace selected entries of an augmentation parameter dictionary.
+
+    ``updated = override_parameters(params, params_override)`` returns a copied dictionary with existing keys
+    replaced, unless ``in_place=True``. With no override it returns ``params`` itself; use ``deepcopy_dict`` when a
+    new dictionary with cloned tensor values is needed without replacement. Cloning preserves autograd history;
+    non-tensor values remain shared.
 
     Args:
         params: source parameters.
         params_override: key-values to override the source parameters.
-        if_none_exist: behaviour if the key in `params_override` does not exist in `params`.
-            'raise' | 'ignore'.
+        if_none_exist: ``"ignore"`` skips keys absent from ``params``; ``"raise"`` raises ``RuntimeError``.
         in_place: if to override in-place or not.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: accepts recorded parameter lists for replay.
 
     """
     # Nothing to override (None or an empty kwargs dict — the common forward path): return the
@@ -548,12 +559,12 @@ def override_parameters(
         return params
     out = params if in_place else deepcopy_dict(params)
     for k, v in params_override.items():
-        if k in params_override:
+        if k in params:
             out[k] = v
         elif if_none_exist == "ignore":
             pass
         elif if_none_exist == "raise":
-            raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
+            raise RuntimeError(f"Param `{k}` does not exist in the source parameters.")
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out

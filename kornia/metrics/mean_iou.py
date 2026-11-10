@@ -23,17 +23,15 @@ from .confusion_matrix import confusion_matrix
 
 
 def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:
-    r"""Calculate the Intersection-Over-Union (IoU) of every class in every sample.
+    """Compute the IoU of every class in every sample from label maps.
 
-    The function internally computes the confusion matrix.
+    ``iou = mean_iou(pred, target, num_classes)`` takes class labels of shape ``(B, *)`` and returns float32 IoUs in
+    :math:`[0, 1]` with shape ``(B, K)``. Despite the name, nothing is averaged.
 
     Convention:
-        - See the Convention block of :func:`~kornia.metrics.confusion_matrix`, which counts the labels: the same
-          label contract, one result per sample.
-        - The result is the IoU of every class in every sample, ``(B, K)`` float32, each a fraction in
-          :math:`[0, 1]`; despite the name, neither axis is averaged. Averaging it over :math:`B` gives the mean of
-          per-image IoUs; for the IoU of a whole dataset, sum :func:`~kornia.metrics.confusion_matrix` over all
-          images and take the IoU of the sum.
+        - The labels follow :func:`~kornia.metrics.confusion_matrix`, whose counts the IoU is computed from. To
+          average, take the mean over :math:`B` for the mean of per-image IoUs; for the IoU of a whole dataset, sum
+          the confusion matrices over all images and take the IoU of the sum.
         - ``eps`` is added to the numerator and the denominator, so a class absent from both maps scores 1 (NaN with
           ``eps=0``), and a class only predicted or only in the target scores about 0. Exclude absent classes before
           averaging over :math:`K`: a larger ``num_classes`` can only raise the average.
@@ -41,17 +39,17 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
           :func:`~kornia.metrics.mean_average_precision` and scikit-learn.
 
     Args:
-        pred : tensor with estimated targets returned by a
-          classifier. The shape can be ``(B, *)`` and must contain integer
-          values between 0 and K-1.
-        target: tensor with ground truth (correct) target
-          values. The shape must be that of ``pred``, and it must contain integer
-          values between 0 and K-1.
-        num_classes: total possible number of classes in target.
+        pred: predicted class labels in :math:`[0, K)`, with shape ``(B, *)``.
+        target: ground-truth class labels in :math:`[0, K)`, with the shape of ``pred``.
+        num_classes: the number of classes :math:`K`, at least 2.
         eps: the value added to the numerator and the denominator of every IoU.
 
     Returns:
-        a tensor with the IoU of every class, with shape ``(B, K)`` where K is the number of classes.
+        the IoU of every class, with shape ``(B, K)``.
+
+    See Also:
+        - :func:`~kornia.metrics.confusion_matrix`: the per-sample counts the IoU is computed from.
+        - :func:`~kornia.metrics.mean_iou_bbox`: the IoU of boxes, not label maps.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])
@@ -109,34 +107,37 @@ def _promote_integer_boxes(boxes: torch.Tensor) -> torch.Tensor:
 
 
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
-    """Compute the IoU of the cartesian product of two sets of boxes.
+    """Compute the IoU of every pair of boxes from two sets.
+
+    ``iou = mean_iou_bbox(boxes_1, boxes_2)`` takes boxes of shape ``(B1, 4)`` and ``(B2, 4)`` and returns the IoU of
+    each box of the first set with each box of the second, as fractions in :math:`[0, 1]`. Despite the name, nothing
+    is averaged.
 
     Convention:
-        - The result is the IoU of every pair, ``(B1, B2)``, each a fraction in :math:`[0, 1]`; despite the name,
-          nothing is averaged, and swapping the two sets transposes it.
         - Boxes are exclusive in every ``box_format``: the area of ``(x1, y1, x2, y2)`` is
           :math:`(x_2 - x_1)(y_2 - y_1)`, with no ``+ 1``, as in :func:`~kornia.geometry.bbox.nms`. A box with a
           non-positive width or height raises ``AssertionError``, unless the call captures a graph
           (``torch.compile`` or ``torch.export``), which skips the check and gives such a box an IoU of 0 or NaN. A
           :class:`~kornia.geometry.boxes.Boxes` gives the same IoU through ``to_tensor('xyxy')``, not through its
           inclusive ``'xyxy_plus'`` export.
+        - Swapping the two sets transposes the result.
 
     Args:
-        boxes_1: a tensor of bounding boxes in ``(B1, 4)``.
-        boxes_2: a tensor of bounding boxes in ``(B2, 4)``.
-        box_format: the bounding box format. Supported formats are:
-            - 'xyxy': (x1, y1, x2, y2) where (x1, y1) is top-left and (x2, y2) is bottom-right
-            - 'xywh': (x, y, w, h) where (x, y) is top-left, w is width, h is height
-            - 'cxcywh': (cx, cy, w, h) where (cx, cy) is center, w is width, h is height
-            Default: 'xyxy'.
+        boxes_1: the first set of boxes, with shape ``(B1, 4)``.
+        boxes_2: the second set of boxes, with shape ``(B2, 4)``.
+        box_format: ``'xyxy'`` for ``(x1, y1, x2, y2)`` with the top-left and bottom-right corners, ``'xywh'`` for
+            ``(x, y, w, h)`` with the top-left corner, or ``'cxcywh'`` for ``(cx, cy, w, h)`` with the center.
 
     Returns:
-        a tensor in dimensions ``(B1, B2)``, representing the
-        IoU of each of the boxes in set 1 with each of the boxes in set 2.
+        the IoU matrix with shape ``(B1, B2)``.
 
     .. note::
         Integer (and bool) boxes are computed in ``float32``, so the result is ``float32`` and widths, areas and the
         union do not wrap around in a narrow integer dtype such as ``uint8``, ``int8`` or ``int16``.
+
+    See Also:
+        - :func:`~kornia.metrics.mean_iou`: the IoU of label maps, not boxes.
+        - :func:`~kornia.metrics.mean_average_precision`: scores detections with this IoU.
 
     Example:
         >>> # XYXY format

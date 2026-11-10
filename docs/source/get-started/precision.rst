@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **243 float16 and 255 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **239 float16 and 251 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -51,7 +51,7 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
    * - ``kornia.geometry.transform``
      - ⚠️
      - ⚠️
-     - 31 / 31
+     - 31 / 30
      - Rotation matrices, affine/perspective warps and homography-warper accuracy
    * - ``kornia.geometry.camera``
      - ⚠️
@@ -102,7 +102,7 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
    * - ``kornia.geometry (other)``
      - ⚠️
      - ⚠️
-     - 6 / 13
+     - 3 / 10
      - Box-transform and depth accuracy
    * - ``kornia.image``
      - ⚠️

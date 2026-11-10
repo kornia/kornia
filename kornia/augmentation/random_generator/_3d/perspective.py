@@ -24,6 +24,7 @@ from kornia.augmentation.random_generator._2d.perspective import _as_scalar_tens
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.param_validation import _in_sampler_rebuild
 from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
@@ -56,12 +57,14 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
-        if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
+        self._assign_derived_range(
+            "_distortion_scale", torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        )
+        if not _in_sampler_rebuild() and not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}")
         self.rand_sampler = Uniform(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
+            _constant_tensor(0, device=device, dtype=dtype),
+            _constant_tensor(1, device=device, dtype=dtype),
             validate_args=False,
         )
 

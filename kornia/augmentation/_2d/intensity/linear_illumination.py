@@ -19,14 +19,17 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomLinearIllumination(...)(input)`` adds a sampled edge-to-edge ramp to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -59,6 +62,10 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomGaussianIllumination`: adds a smooth Gaussian-shaped illumination field.
+        - :class:`RandomLinearCornerIllumination`: starts its ramp from a corner.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -142,11 +149,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomLinearCornerIllumination(...)(input)`` adds a sampled ramp from one corner to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
@@ -179,6 +189,9 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomLinearIllumination`: starts the linear illumination ramp from an edge.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -262,4 +275,4 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))

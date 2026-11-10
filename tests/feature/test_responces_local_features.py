@@ -181,6 +181,58 @@ class TestCornerHarris(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.harris_response, (img, k), nondet_tol=1e-4)
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with k = 0.04 as a Python float (snippet in the PR); a k rounded to
+        # float32 misses them by far more than 1e-12, which allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(144, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 12, 12).to(device)
+        expected = torch.tensor([6.762681164244819e-05, 6.084829785087058e-05], device=device, dtype=torch.float64)
+        for harris in (kornia.feature.CornerHarris(0.04), kornia.feature.CornerHarris(0.04).double()):
+            scores = harris.to(device)(img)
+            self.assert_close(torch.stack([scores[0, 0, 5, 6], scores[0, 0, 2, 9]]), expected, rtol=1e-12, atol=0.0)
+
+    @pytest.mark.parametrize("k", [0.04, 0.0400238037099375])
+    def test_number_k_keeps_float32_and_half_precision_results(self, device, dtype, k):
+        # The float32 buffer a number k replaced is matched by building k in at least float32. A k built in float16
+        # changes MPS results for 0.04, and CPU results for 0.0400238037099375, just below a float16 midpoint.
+        if dtype == torch.float64:
+            pytest.skip("a float64 image uses k exactly; see test_float64_matches_the_numpy_reference")
+        _skip_without_half_padding(device, dtype)
+        img = torch.rand(2, 1, 32, 32, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        expected = kornia.feature.harris_response(img, torch.tensor(k, device=device))
+        self.assert_close(kornia.feature.CornerHarris(k).to(device)(img), expected, rtol=0.0, atol=0.0)
+
+    def test_loaded_or_assigned_k_applies_to_float64(self, device):
+        # A float64 image uses a number k exactly while the buffer holds it as built; a k loaded from a state dict or
+        # assigned after construction replaces it, as in every other dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
+        harris = kornia.feature.CornerHarris(0.04).to(device)
+        harris.load_state_dict(kornia.feature.CornerHarris(0.04).state_dict())
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0.04), rtol=0.0, atol=0.0)
+        harris.load_state_dict({"k": torch.tensor(0.05)})
+        expected = kornia.feature.harris_response(img, torch.tensor(0.05, device=device).double())
+        self.assert_close(harris(img), expected, rtol=0.0, atol=0.0)
+        harris.k = torch.tensor(0.06, dtype=torch.float64, device=device)
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0.06), rtol=0.0, atol=0.0)
+        # An integer k is not the number cast to its dtype: 0.04 truncates to the k = 0 assigned here.
+        harris.k = torch.tensor(0, device=device)
+        self.assert_close(harris(img), kornia.feature.harris_response(img, 0), rtol=0.0, atol=0.0)
+
+    def test_trainable_k_keeps_its_float64_gradient(self, device):
+        # A trainable k at the number's value gets the exact number in float64 and still its gradient, -sum(trace^2).
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
+        harris = kornia.feature.CornerHarris(0.04).to(device)
+        harris.k = torch.nn.Parameter(torch.tensor(0.04, device=device))
+        harris(img).sum().backward()
+        k = torch.tensor(0.04, dtype=torch.float64, device=device, requires_grad=True)
+        kornia.feature.harris_response(img, k).sum().backward()
+        self.assert_close(harris.k.grad.double(), k.grad)
+
 
 class TestCornerGFTT(BaseTester):
     def test_sigmas_wrong_length_is_rejected_5724(self, device):
@@ -647,7 +699,7 @@ class TestConventionsResponses(BaseTester):
         img = torch.rand(2, 1, 24, 30, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
         img = img.to(device, dtype)
         sigmas = torch.tensor([2.0, 0.5], device=device, dtype=dtype)
-        if name == "harris":  # k = 1 / 16 is exact in every dtype, so the buffer cast does not round it
+        if name == "harris":  # k = 1 / 16 is exact in every dtype, so building it in any dtype cannot round it
             module = kornia.feature.CornerHarris(0.0625, grads_mode="diff")
             expected = kornia.feature.harris_response(img, 0.0625, "diff", sigmas)
         elif name == "gftt":

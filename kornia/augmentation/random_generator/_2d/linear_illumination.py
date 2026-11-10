@@ -20,6 +20,7 @@ from __future__ import annotations
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.augmentation.utils.random import _with_generator
 from kornia.enhance.normalize import normalize_min_max
@@ -58,13 +59,15 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
+        range_dtype = _range_bound_dtype(dtype)
         gain = _range_bound(
             self.gain,
             "gain",
+            dtype=range_dtype,
         ).to(device, dtype)
         self.gain_sampler = UniformDistribution(gain[0], gain[1], validate_args=False)
 
-        sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
+        sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0, dtype=range_dtype).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
         # Draw the directions on the sampler device but always in float32: on MPS, half-precision
@@ -157,13 +160,15 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
+        range_dtype = _range_bound_dtype(dtype)
         gain = _range_bound(
             self.gain,
             "gain",
+            dtype=range_dtype,
         ).to(device, dtype)
         self.gain_sampler = UniformDistribution(gain[0], gain[1], validate_args=False)
 
-        sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
+        sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0, dtype=range_dtype).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
         # Draw the directions on the sampler device but always in float32: on MPS, half-precision

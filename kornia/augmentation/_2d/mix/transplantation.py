@@ -34,19 +34,10 @@ __all__ = ["RandomTransplantation"]
 class RandomTransplantation(MixAugmentationBaseV2):
     r"""Paste a labelled region from the previous batch image, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomTransplantation.png
-
-    Randomly transplant (copy and paste) image features and corresponding segmentation masks between images in a batch.
-    The transplantation transform works as follows:
-
-        1. Based on the parameter `p`, a certain number of images in the batch are selected as acceptor of a
-           transplantation.
-        2. For each acceptor, the image below in the batch is selected as donor (via circling: :math:`i - 1 \mod B`).
-        3. From the donor, a random label is selected and the corresponding image features and segmentation mask are
-           transplanted to the acceptor.
-
-    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
-    shifts` :cite:`sellner2023semantic`.
+    ``image_out, mask_out = RandomTransplantation(data_keys=["input", "mask"])(input, mask)`` copies the region of
+    one drawn label, image features and segmentation mask alike, from the previous batch image into each selected
+    image. Use :class:`RandomTransplantation3D` for volume dispatch in
+    :class:`~kornia.augmentation.container.AugmentationSequential`.
 
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only
@@ -108,14 +99,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
           integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
           raises ``NotImplementedError``. A mask is needed only to draw the parameters; a call that draws them
           without one, or whose inputs do not match ``data_keys``, raises a kornia error that names the mask (and
-          the key count, on a mismatch) before any input is read. With a complete
-          ``params`` any subset of the inputs is accepted, which is how
-          :class:`~kornia.augmentation.container.AugmentationSequential` applies the transplant, one input at a
-          time. Outputs come back in input order, a single one as a bare
-          tensor.
+          the key count, on a mismatch) before any input is read. With a complete ``params`` any subset of the
+          inputs is accepted, which is how :class:`~kornia.augmentation.container.AugmentationSequential` applies
+          the transplant, one input at a time. Outputs come back in input order, a single one as a bare tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
-          ``RuntimeError``, and the ``inverse()`` of a
-          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error.
+          ``RuntimeError``, and the ``inverse()`` of a :class:`~kornia.augmentation.container.AugmentationSequential`
+          holding one raises the same error.
         - a mask with a singleton channel axis, ``(B, 1, *spatial)``, next to an image of the same rank is read as
           the ``(B, *spatial)`` mask: the labels and ``selection`` come from its spatial layout and it comes back in
           its own ``(B, 1, *spatial)`` layout. That is the layout a container hands on once any other augmentation
@@ -123,6 +112,14 @@ class RandomTransplantation(MixAugmentationBaseV2):
           (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). A further mask one rank above the driving
           mask is read as ``(B, C, *spatial)``, and every channel moves through the same ``selection``. With no
           image in the call, a mask keeps its own rank and a size-1 first spatial axis is not squeezed.
+
+    .. image:: _static/img/RandomTransplantation.png
+
+    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
+    shifts` :cite:`sellner2023semantic`.
+
+    See Also:
+        - :class:`RandomTransplantation3D`: performs transplantation on 3D volumes and masks.
 
     Examples:
         >>> import torch

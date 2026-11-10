@@ -22,16 +22,31 @@ from torch import nn
 
 
 class Rescale(nn.Module):
-    r"""Initialize the Rescale operator.
+    """Multiply the input by a constant factor.
+
+    ``op = Rescale(factor)`` stores ``factor`` and ``out = op(input)`` returns ``input * factor``. A tensor factor is
+    stored as a non-persistent buffer, so ``.to()`` moves it, and an ``nn.Parameter`` stays a parameter that optimizers
+    and checkpoints include.
 
     Convention:
-        factor is a scalar float or 0-D tensor and multiplies every element.
-        A float is kept as a Python number and applied like one: a float64 input keeps
-        its precision and an integer input promotes to the default float dtype. A tensor
-        is stored as a non-persistent buffer, so ``.to()`` moves apply to it.
+        A float factor is applied as a Python number: a float64 input keeps its precision and an integer input promotes
+        to the default float dtype.
 
     Args:
-        factor: The scaling factor. Could be a float or a 0-d torch.Tensor.
+        factor: scaling factor, a ``float`` or a 0-d tensor. An ``int`` raises ``TypeError``.
+
+    Shape:
+        - Input: any shape.
+        - Output: same shape as the input.
+
+    See Also:
+        - :class:`~kornia.geometry.transform.Rescale`: resizes an image by a factor instead of multiplying its values.
+        - :func:`adjust_contrast`: multiplies an image by a factor and clamps it to :math:`[0, 1]`.
+
+    Example:
+        >>> Rescale(0.5)(torch.ones(1, 1, 2, 2))
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
 
     """
 
@@ -40,7 +55,10 @@ class Rescale(nn.Module):
         if isinstance(factor, float):
             self.factor = factor
         elif isinstance(factor, torch.Tensor) and factor.ndim == 0:
-            self.register_buffer("factor", factor, persistent=False)
+            if isinstance(factor, nn.Parameter):
+                self.factor = factor
+            else:
+                self.register_buffer("factor", factor, persistent=False)
         else:
             raise TypeError(f"Expected factor to be a float or a 0-d torch.Tensor, got {factor}.")
 
