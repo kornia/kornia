@@ -143,12 +143,12 @@ def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
-    r"""Compute the Euclidean distance to the nearest positive pixel per channel, in 2D or 3D.
+    r"""Compute the distance to the nearest positive pixel per channel, weighted for values below 1, in 2D or 3D.
 
     ``dist = distance_transform(image)`` takes a floating ``(B, C, H, W)`` image or ``(B, C, D, H, W)`` volume and
-    returns the distance in pixels to the nearest positive pixel of the same channel. A binary mask gets the exact
-    distance up to floating-point rounding. A value :math:`0 < v < 1` is a soft source that adds :math:`-h \log v` to
-    the squared distance, and the result is piecewise differentiable in the image:
+    returns, per channel, the distance to the nearest positive pixel. For a binary mask it is the Euclidean distance
+    in pixels, exact up to floating-point rounding. A value :math:`0 < v < 1` is a soft source that adds
+    :math:`-h \log v` to the squared distance, and the result is piecewise differentiable in the image:
 
     .. math::
         D(p) = \sqrt{\min_{q: v(q)>0} \left(\|p-q\|_2^2 - h\log v(q)\right)},
