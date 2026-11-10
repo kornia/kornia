@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
     _shear_bound,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["AffineGenerator"]
 
@@ -156,14 +156,16 @@ class AffineGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(width, "width")
         _check_positive_int_or_traced(height, "height")
 
-        angle = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        angle = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch), _device, _dtype
+        )
 
         # compute torch.Tensor ranges
         if self.scale_2_sampler is not None:
             _scale = _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch).unsqueeze(1).repeat(1, 2)
             if self.scale_4_sampler is not None:
                 _scale[:, 1] = _adapted_rsampling((batch_size,), self.scale_4_sampler, same_on_batch)
-            _scale = _scale.to(device=_device, dtype=_dtype)
+            _scale = _to_device_nonblocking(_scale, _device, _dtype)
         else:
             _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
 
@@ -175,7 +177,7 @@ class AffineGenerator(RandomGeneratorBase):
                 ],
                 dim=-1,
             )
-            translations = translations.to(device=_device, dtype=_dtype)
+            translations = _to_device_nonblocking(translations, _device, _dtype)
         else:
             translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
@@ -186,8 +188,8 @@ class AffineGenerator(RandomGeneratorBase):
         if self.shear_x_sampler is not None and self.shear_y_sampler is not None:
             sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
             sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
-            sx = sx.to(device=_device, dtype=_dtype)
-            sy = sy.to(device=_device, dtype=_dtype)
+            sx = _to_device_nonblocking(sx, _device, _dtype)
+            sy = _to_device_nonblocking(sy, _device, _dtype)
         else:
             sx = torch.zeros(batch_size, device=_device, dtype=_dtype)
             sy = torch.zeros(batch_size, device=_device, dtype=_dtype)

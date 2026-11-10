@@ -24,7 +24,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.param_validation import _in_sampler_rebuild
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["PerspectiveGenerator"]
 
@@ -128,11 +128,11 @@ class PerspectiveGenerator(RandomGeneratorBase):
         fx = self._distortion_scale * x_extent / 2
         fy = self._distortion_scale * y_extent / 2
 
-        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
+        factor = _to_device_nonblocking(torch.stack([fx, fy], dim=0).view(-1, 1, 2), _device, _dtype)
 
         # TODO: This line somehow breaks the gradcheck
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        rand_val: torch.Tensor = _to_device_nonblocking(
+            _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch), _device, _dtype
         )
         if self.sampling_method == "basic":
             pts_norm = _constant_tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
