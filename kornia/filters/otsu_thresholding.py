@@ -447,6 +447,7 @@ def otsu_threshold(
     See Also:
         - :class:`OtsuThreshold`: the module form, without ``return_mask``.
         - :func:`in_range`: thresholds with bounds you give instead of a histogram.
+        - :func:`~kornia.enhance.threshold`: thresholds at a level you give, with OpenCV's modes.
 
     Example:
         >>> import torch

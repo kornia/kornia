@@ -1322,6 +1322,7 @@ class Rescale(nn.Module):
         - :func:`rescale`: the one-call form, whose ``align_corners`` defaults to ``None``.
         - :class:`Resize`: the output size instead of a factor.
         - :class:`Scale`: zoom the content by a factor and keep the size.
+        - :class:`~kornia.enhance.Rescale`: multiplies the values by a factor instead of resizing.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)

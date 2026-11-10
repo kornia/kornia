@@ -176,15 +176,14 @@ def focal_loss(
 ) -> torch.Tensor:
     r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
-    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
+    ``loss = focal_loss(pred, target, alpha)`` scales the cross entropy :math:`-\log p_t` of each pixel's target class
+    by :math:`\alpha_t (1 - p_t)^{\gamma}` :cite:`lin2018focal`, so that pixels the softmax already classifies well
+    count less. :math:`p_t` is the softmax probability of the target class and :math:`\alpha_t` the class weight set by
+    ``alpha``.
 
     .. math::
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
-
-    Where:
-       - :math:`p_t` is the softmax probability of the target class.
-       - :math:`\alpha_t` is :math:`1 - \alpha` for class 0 and :math:`\alpha` for every other class.
 
     Convention:
         - ``pred`` holds logits ``(B, C, *)`` and the softmax over dim 1 is taken inside. ``target`` holds int64
@@ -194,10 +193,10 @@ def focal_loss(
           by 1. With ``C = 2`` the target slice equals :func:`~kornia.losses.binary_focal_loss_with_logits` of the
           logit difference ``pred[:, 1:] - pred[:, :1]`` and the target ``target[:, None]``, with the same ``alpha``
           and ``gamma``: class 1 is the positive class.
-        - The default ``reduction='none'`` returns a ``(B, C, *)`` map whose target slice holds the focal term above
-          and whose other slices are 0, also where their log-probability overflows to ``-inf``. ``'mean'`` divides
-          its sum by every element of that map, ``C`` times the pixel count, so with ``gamma=0`` and ``alpha=None``
-          it is the mean cross entropy divided by ``C``.
+        - The ``'none'`` map holds the focal term above in the target-class slice and 0 in the other slices, also
+          where their log-probability overflows to ``-inf``. ``'mean'`` divides its sum by every element of that map,
+          ``C`` times the pixel count, so with ``gamma=0`` and ``alpha=None`` it is the mean cross entropy divided by
+          ``C``.
         - ``weight`` multiplies the slice of class ``c`` by ``weight[c]``; ``'mean'`` is not normalised by the
           weights.
         - A pixel labelled ``ignore_index`` (default ``-100``) is 0 in every slice and still counts in the ``'mean'``
@@ -213,22 +212,22 @@ def focal_loss(
           same NaN and infinity positions and a zero gradient at ignored pixels, and supports double backward.
 
     Args:
-        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
-        target: labels torch.Tensor with shape ``(N, *)`` where each value is an integer
-          representing correct classification :math:`target[i] \in [0, C)`.
-        alpha: Weighting factor :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; class 0 is weighted by
-          :math:`1 - \alpha`. ``None`` weights every class by 1.
-        gamma: Focusing parameter :math:`\gamma >= 0`.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value contribute 0 to the loss but stay in the ``'mean'`` denominator.
+        pred: logits ``(B, C, *)``.
+        target: int64 class indices ``(B, *)`` in ``[0, C)``, or ``ignore_index``.
+        alpha: weight :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; ``None`` weights every class by 1.
+        gamma: focusing exponent :math:`\gamma \ge 0`.
+        reduction: ``'none'`` (default) keeps the ``(B, C, *)`` map, ``'mean'`` averages it, ``'sum'`` adds it.
+        weight: class weights ``(C,)``.
+        ignore_index: label whose pixels contribute 0 but stay in the ``'mean'`` denominator.
 
-    Return:
-        the computed loss.
+    Returns:
+        the loss, a ``(B, C, *)`` map for ``reduction='none'`` and a scalar otherwise.
+
+    See Also:
+        - :class:`~kornia.losses.FocalLoss`: the module form.
+        - :func:`~kornia.losses.binary_focal_loss_with_logits`: a sigmoid per element in place of the softmax over
+          the classes.
+        - :func:`~kornia.losses.dice_loss`: an overlap loss; ignored pixels leave the average.
 
     Example:
         >>> C = 5  # num_classes
@@ -339,37 +338,32 @@ def focal_loss(
 
 
 class FocalLoss(nn.Module):
-    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices (module form).
 
-    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
-
-    .. math::
-
-        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
-
-    Where:
-       - :math:`p_t` is the softmax probability of the target class.
-       - :math:`\alpha_t` is :math:`1 - \alpha` for class 0 and :math:`\alpha` for every other class.
+    ``criterion = FocalLoss(alpha, gamma, reduction, weight, ignore_index)`` stores its arguments, and
+    ``loss = criterion(pred, target)`` is :func:`~kornia.losses.focal_loss`. A plain tensor ``weight`` is stored as a
+    non-persistent buffer, so ``criterion.to(device)`` moves it and ``state_dict`` omits it.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.focal_loss`.
 
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; class 0 is weighted by
-          :math:`1 - \alpha`. ``None`` weights every class by 1.
-        gamma: Focusing parameter :math:`\gamma >= 0`.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value contribute 0 to the loss but stay in the ``'mean'`` denominator.
+        alpha: weight :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; ``None`` weights every class by 1.
+        gamma: focusing exponent :math:`\gamma \ge 0`.
+        reduction: ``'none'`` (default), ``'mean'`` or ``'sum'``, as in :func:`~kornia.losses.focal_loss`.
+        weight: class weights ``(C,)``.
+        ignore_index: label whose pixels contribute 0 but stay in the ``'mean'`` denominator.
 
     Shape:
-        - Pred: ``(N, C, *)`` where C = number of classes.
-        - Target: ``(N, *)`` where each value is an integer
-          representing correct classification :math:`target[i] \in [0, C)`.
+        - pred: logits ``(B, C, *)``.
+        - target: int64 class indices ``(B, *)`` in ``[0, C)``, or ``ignore_index``.
+        - Output: a ``(B, C, *)`` map for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :func:`~kornia.losses.focal_loss`: the one-call form.
+        - :class:`~kornia.losses.BinaryFocalLossWithLogits`: a sigmoid per element in place of the softmax over the
+          classes.
+        - :class:`~kornia.losses.DiceLoss`: an overlap loss; ignored pixels leave the average.
 
     Example:
         >>> C = 5  # num_classes
@@ -428,22 +422,21 @@ def binary_focal_loss_with_logits(
 ) -> torch.Tensor:
     r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
-    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
+    ``loss = binary_focal_loss_with_logits(pred, target)`` scales the binary cross entropy of each logit by
+    :math:`\alpha_t (1 - p_t)^{\gamma}` :cite:`lin2018focal`, so that elements the sigmoid already classifies well
+    count less. For a target of 0 or 1, :math:`p_t` is the sigmoid probability of the target value, and
+    :math:`\alpha_t` is ``alpha`` for a target of 1 and ``1 - alpha`` for a target of 0.
 
     .. math::
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    Where, for a target of 0 or 1:
-       - :math:`p_t` is the sigmoid probability of the target value.
-       - :math:`\alpha_t` is :math:`\alpha` for a target of 1 and :math:`1 - \alpha` for a target of 0.
-
     Convention:
         - Every element of ``pred`` is an independent binary logit: ``pred`` is ``(B, C, *)`` with at least two
-          dimensions and ``target`` has its shape, with values in ``[0, 1]``. The default ``reduction='none'``
-          returns that shape; ``'mean'`` and ``'sum'`` reduce it as in :func:`~kornia.losses.focal_loss`.
-        - ``alpha`` (default ``0.25``) weights the positive term and :math:`1 - \alpha` the negative term. A
-          fractional target :math:`t` weights the two terms by :math:`t` and :math:`1 - t`:
+          dimensions and ``target`` has its shape, with values in ``[0, 1]``. ``'mean'`` and ``'sum'`` reduce the
+          loss map as in :func:`~kornia.losses.focal_loss`.
+        - ``alpha`` defaults to ``0.25``. A fractional target :math:`t` weights the two terms by :math:`t` and
+          :math:`1 - t`:
           :math:`t \alpha (1 - p)^\gamma (-\log p) + (1 - t) (1 - \alpha) p^\gamma (-\log (1 - p))`, where :math:`p`
           is the sigmoid of the logit.
         - ``pos_weight`` and ``weight`` are ``(C,)`` vectors applied along dim 1: ``pos_weight[c]`` scales the
@@ -455,24 +448,21 @@ def binary_focal_loss_with_logits(
           ``sigmoid_focal_loss`` and torch's ``pos_weight``.
 
     Args:
-        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
-        target: labels torch.Tensor with the same shape as pred ``(N, C, *)``
-          where each value is between 0 and 1.
-        alpha: Weighting factor :math:`\alpha \in [0, 1]` of the positive term; the negative term is weighted by
-          :math:`1 - \alpha`.
-        gamma: Focusing parameter :math:`\gamma >= 0`.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
-        pos_weight: a weight of the positive term of each channel, with shape :math:`(num\_of\_classes,)`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: target entries with this value contribute 0 to the loss but stay in the ``'mean'``
-          denominator.
+        pred: logits ``(B, C, *)``.
+        target: targets in ``[0, 1]`` with the shape of ``pred``, or ``ignore_index``.
+        alpha: weight :math:`\alpha \in [0, 1]` of the positive term; ``None`` weights both terms by 1.
+        gamma: focusing exponent :math:`\gamma \ge 0`.
+        reduction: ``'none'`` (default) keeps the map of ``pred``'s shape, ``'mean'`` averages it, ``'sum'`` adds it.
+        pos_weight: weight of the positive term of each channel ``(C,)``.
+        weight: channel weights ``(C,)``.
+        ignore_index: target value whose entries contribute 0 but stay in the ``'mean'`` denominator.
 
     Returns:
-        the computed loss.
+        the loss, a map with the shape of ``pred`` for ``reduction='none'`` and a scalar otherwise.
+
+    See Also:
+        - :class:`~kornia.losses.BinaryFocalLossWithLogits`: the module form.
+        - :func:`~kornia.losses.focal_loss`: a softmax over the classes against class indices, for exclusive classes.
 
     Examples:
         >>> C = 3  # num_classes
@@ -556,40 +546,34 @@ def binary_focal_loss_with_logits(
 
 
 class BinaryFocalLossWithLogits(nn.Module):
-    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1] (module form).
 
-    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
-
-    .. math::
-
-        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
-
-    where, for a target of 0 or 1:
-       - :math:`p_t` is the sigmoid probability of the target value.
-       - :math:`\alpha_t` is :math:`\alpha` for a target of 1 and :math:`1 - \alpha` for a target of 0.
+    ``criterion = BinaryFocalLossWithLogits(alpha, gamma, reduction, pos_weight, weight, ignore_index)`` stores its
+    arguments, and ``loss = criterion(pred, target)`` is :func:`~kornia.losses.binary_focal_loss_with_logits`. A plain
+    tensor ``pos_weight`` or ``weight`` is stored as a non-persistent buffer, so ``criterion.to(device)`` moves it and
+    ``state_dict`` omits it.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.binary_focal_loss_with_logits`. Unlike the function,
         ``alpha`` has no default here.
 
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]` of the positive term; the negative term is weighted by
-          :math:`1 - \alpha`.
-        gamma: Focusing parameter :math:`\gamma >= 0`.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
-        pos_weight: a weight of the positive term of each channel, with shape :math:`(num\_of\_classes,)`.
-        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: target entries with this value contribute 0 to the loss but stay in the ``'mean'``
-          denominator.
+        alpha: weight :math:`\alpha \in [0, 1]` of the positive term; ``None`` weights both terms by 1.
+        gamma: focusing exponent :math:`\gamma \ge 0`.
+        reduction: ``'none'`` (default), ``'mean'`` or ``'sum'``, as in
+            :func:`~kornia.losses.binary_focal_loss_with_logits`.
+        pos_weight: weight of the positive term of each channel ``(C,)``.
+        weight: channel weights ``(C,)``.
+        ignore_index: target value whose entries contribute 0 but stay in the ``'mean'`` denominator.
 
     Shape:
-        - Pred: ``(N, C, *)`` where C = number of classes.
-        - Target: the same shape as Pred ``(N, C, *)``
-          where each value is between 0 and 1.
+        - pred: logits ``(B, C, *)``.
+        - target: targets in ``[0, 1]`` with the shape of ``pred``, or ``ignore_index``.
+        - Output: a map with the shape of ``pred`` for ``reduction='none'``, a scalar otherwise.
+
+    See Also:
+        - :func:`~kornia.losses.binary_focal_loss_with_logits`: the one-call form.
+        - :class:`~kornia.losses.FocalLoss`: a softmax over the classes against class indices, for exclusive classes.
 
     Examples:
         >>> C = 3  # num_classes
