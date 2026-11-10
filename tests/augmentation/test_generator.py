@@ -19,6 +19,7 @@
 
 import concurrent.futures
 import copy
+import inspect
 import io
 import pickle
 from unittest import mock
@@ -27,9 +28,11 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.augmentation.random_generator import AffineGenerator
+from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.random_generator import AffineGenerator, Rotation90Generator
 from kornia.augmentation.utils import _adapted_rsampling
 
+from testing.augmentation.sync_registry import AUG_CASES, EXCLUDED
 from testing.base import BaseTester
 
 
@@ -48,81 +51,120 @@ def _equal_params(left, right):
         assert left == right
 
 
-_FACTORIES = [
-    lambda: K.RandomHorizontalFlip(p=0.5),
-    lambda: K.RandomAffine(45.0, translate=(0.2, 0.2), scale=(0.7, 1.3), shear=15.0, p=0.5),
-    lambda: K.RandomCrop((8, 8), padding=1),
-    lambda: K.RandomResizedCrop((8, 8)),
-    lambda: K.RandomPerspective(0.5),
-    lambda: K.ColorJitter(0.2, 0.2, 0.2, 0.2),
-    lambda: K.ColorJiggle(0.2, 0.2, 0.2, 0.2),
-    lambda: K.RandomGaussianNoise(p=1.0),
-    lambda: K.RandomGaussianBlur((3, 3), (0.2, 1.0)),
-    lambda: K.RandomMotionBlur(3, 30.0, 0.5),
-    lambda: K.RandomElasticTransform(kernel_size=(3, 3), sigma=(1.0, 1.0)),
-    lambda: K.RandomThinPlateSpline(p=1.0),
-    lambda: K.RandomPlasmaBrightness(p=1.0),
-    lambda: K.RandomPlasmaContrast(p=1.0),
-    lambda: K.RandomPlasmaShadow(p=1.0),
-    lambda: K.RandomJigsaw(grid=(2, 2)),
-    lambda: K.RandomChannelShuffle(p=1.0),
-    lambda: K.RandomChannelDropout(p=1.0),
-    lambda: K.RandomRain(number_of_drops=(1, 3), drop_height=(1, 3), drop_width=(-1, 1)),
-    lambda: K.RandomMixUpV2(p=1.0),
-    lambda: K.RandomCutMixV2(num_mix=2, beta=0.5, p=1.0, use_correct_lambda=True),
-    lambda: K.RandomSaltAndPepperNoise(p=1.0),
-]
+_CASES = [case for case in AUG_CASES if case.kind in ("2d", "3d", "mix") and case.name in K.__all__]
 
 
 class TestExplicitGenerator(BaseTester):
-    @pytest.mark.parametrize("factory", _FACTORIES, ids=lambda f: f().__class__.__name__)
+    def test_registry_covers_exported_augmentations(self):
+        """Every concrete built-in with stream support has a parameter-sampling case."""
+        exported = {
+            name
+            for name in K.__all__
+            if inspect.isclass(aug := getattr(K, name))
+            and issubclass(aug, _BasicAugmentationBase)
+            and EXCLUDED.get(name) != "abstract base"
+            and aug._supports_explicit_generator
+        }
+        assert {case.name for case in _CASES} == exported
+
+    @pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
     @pytest.mark.parametrize("same_on_batch", [False, True])
-    def test_parameter_draws_match_global_stream_without_consuming_it(self, factory, same_on_batch):
+    @pytest.mark.parametrize("sampling_device", ["cpu", "cuda"])
+    def test_parameter_draws_match_global_stream_without_consuming_it(
+        self, case, same_on_batch, sampling_device, dtype
+    ):
         """An explicit stream replaces the generator, not the sampling algorithm or draw order."""
-        aug = factory()
+        if sampling_device == "cuda" and not torch.cuda.is_available():
+            pytest.skip("CUDA sampling needs a CUDA device")
+        aug = case.build()
+        aug.p = 0.5
         aug.same_on_batch = same_on_batch
-        shape = torch.Size((4, 3, 16, 16))
+        aug.set_rng_device_and_dtype(torch.device(sampling_device), dtype)
+        shape = torch.Size((4, 3, 8, 32, 32) if case.kind == "3d" else (4, 3, 32, 32))
         torch.manual_seed(123)
-        expected = aug.forward_parameters(shape)
+        # Some CUDA-configured samplers mix global CPU and CUDA draws; an explicit stream owns both.
+        kwargs = (
+            {"generator": torch.Generator(device=sampling_device).manual_seed(123)} if sampling_device == "cuda" else {}
+        )
+        expected = aug.forward_parameters(shape, **kwargs)
         torch.manual_seed(789)
         before = torch.random.get_rng_state().clone()
-        actual = aug.forward_parameters(shape, generator=torch.Generator().manual_seed(123))
+        cuda_before = torch.cuda.get_rng_state().clone() if torch.cuda.is_available() else None
+        actual = aug.forward_parameters(shape, generator=torch.Generator(device=sampling_device).manual_seed(123))
         _equal_params(actual, expected)
         assert torch.equal(before, torch.random.get_rng_state())
+        if cuda_before is not None:
+            assert torch.equal(cuda_before, torch.cuda.get_rng_state())
         assert aug._generator is None
 
-    def test_issue_reproduction_4427(self, device, dtype):
-        """The previously swallowed generator keyword controls affine draws."""
-        x = torch.linspace(0, 1, 96, device=device, dtype=dtype).reshape(2, 1, 6, 8)
-        aug = K.RandomAffine(180.0, p=1.0)
+    @pytest.mark.parametrize(
+        ("factory", "parameter"),
+        [
+            pytest.param(lambda: K.RandomAffine(180.0, p=1.0), "angle", id="affine"),
+            pytest.param(lambda: K.RandomRotation90((0, 3), p=1.0), "times", id="rotation90"),
+        ],
+    )
+    def test_issue_reproduction_4427(self, factory, parameter, device, dtype):
+        """Call-local streams control the sampled transform and reproduce it from the same seed."""
+        x = torch.linspace(0, 1, 256, device=device, dtype=dtype).reshape(4, 1, 8, 8)
+        aug = factory()
         a = aug(x, generator=torch.Generator().manual_seed(1))
-        angle = aug._params["angle"].clone()
+        draw = aug._params[parameter].clone()
         b = aug(x, generator=torch.Generator().manual_seed(2))
-        assert not torch.equal(angle, aug._params["angle"])
+        assert not torch.equal(draw, aug._params[parameter])
         assert not torch.equal(a, b)
         self.assert_close(a, aug(x, generator=torch.Generator().manual_seed(1)))
 
-    def test_nested_random_apply_and_replay(self, device, dtype):
+    @pytest.mark.parametrize("sampling_device", ["cpu", "cuda"])
+    def test_nested_random_apply_and_replay(self, sampling_device, device, dtype):
         """Order selection, gates, noise, and nested children share the call's stream."""
+        if sampling_device == "cuda" and not torch.cuda.is_available():
+            pytest.skip("CUDA streams need a CUDA device")
         x = torch.linspace(0, 1, 768, device=device, dtype=dtype).reshape(4, 3, 8, 8)
         seq = K.AugmentationSequential(
-            K.ImageSequential(K.RandomHorizontalFlip(p=0.5), K.RandomGaussianNoise(p=1.0)),
+            K.ImageSequential(
+                K.RandomHorizontalFlip(p=0.5), K.RandomGaussianNoise(p=1.0), K.RandomRotation90((0, 3), p=1.0)
+            ),
             K.RandomAffine(30.0, p=0.5),
             K.ColorJitter(0.2, 0.2, 0.2, 0.2),
             random_apply=(2, 3),
         )
+        seq.to(device=sampling_device, dtype=dtype)
         before = torch.random.get_rng_state().clone()
-        expected = seq(x, generator=torch.Generator().manual_seed(19))
+        cuda_before = torch.cuda.get_rng_state().clone() if torch.cuda.is_available() else None
+        expected = seq(x, generator=torch.Generator(device=sampling_device).manual_seed(19))
         params = seq._params
         assert torch.equal(before, torch.random.get_rng_state())
         torch.rand(17)
-        actual = seq(x, generator=torch.Generator().manual_seed(19))
+        actual = seq(x, generator=torch.Generator(device=sampling_device).manual_seed(19))
         assert torch.equal(expected, actual)
-        generator = torch.Generator().manual_seed(42)
+        generator = torch.Generator(device=sampling_device).manual_seed(42)
         state = generator.get_state().clone()
         assert torch.equal(seq(x, params=params, generator=generator), expected)
         assert torch.equal(generator.get_state(), state)
+        if cuda_before is not None:
+            assert torch.equal(cuda_before, torch.cuda.get_rng_state())
         assert not torch.equal(before, torch.random.get_rng_state())  # only the unrelated draw consumed it
+
+    @pytest.mark.parametrize("persistent", [False, True])
+    def test_rotation90_generator_stream(self, persistent, device, dtype):
+        """The standalone quarter-turn sampler accepts persistent and call-local streams."""
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Native streams need a CPU or CUDA device")
+        sampler = Rotation90Generator((0, 3)).to(device=device, dtype=dtype)
+        stream = torch.Generator(device=device).manual_seed(13)
+        if persistent:
+            sampler.set_generator(stream)
+        before = torch.random.get_rng_state().clone()
+        cuda_before = torch.cuda.get_rng_state().clone() if torch.cuda.is_available() else None
+        expected = sampler((8, 3, 16, 16), **({} if persistent else {"generator": stream}))
+        stream.manual_seed(13)
+        actual = sampler((8, 3, 16, 16), **({} if persistent else {"generator": stream}))
+        _equal_params(actual, expected)
+        assert torch.equal(before, torch.random.get_rng_state())
+        if cuda_before is not None:
+            assert torch.equal(cuda_before, torch.cuda.get_rng_state())
+        assert sampler._generator is (stream if persistent else None)
 
     def test_persistent_streams_and_temporary_override(self):
         """A per-call override restores different persistent streams on shared descendants."""
