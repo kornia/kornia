@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _range_bound,
 )
+from kornia.augmentation.utils.random import _with_generator
 from kornia.enhance import normalize_min_max
 from kornia.filters.kernels import gaussian
 
@@ -95,7 +96,10 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
         )
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
 
@@ -104,23 +108,34 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
         # TODO: check whether we need generate all the parameters at once
 
-        gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch)
+        gain_factor = _adapted_rsampling(
+            (batch_size, 1, 1, 1), self.gain_sampler, same_on_batch, generator=self._generator
+        )
 
-        sigma_x = width * _adapted_rsampling((batch_size, 1), self.sigma_sampler, same_on_batch)
+        sigma_x = width * _adapted_rsampling(
+            (batch_size, 1), self.sigma_sampler, same_on_batch, generator=self._generator
+        )
 
         # ``center`` maps to the pixel-centre coordinate ``center * L - 0.5``, not rounded to a whole pixel.
         # ``gaussian`` adds 0.5 to its offsets on an even-length axis, so its mean there is ``center * L``.
-        center_x = width * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch)
+        center_x = width * _adapted_rsampling(
+            (batch_size, 1), self.center_sampler, same_on_batch, generator=self._generator
+        )
         center_x = center_x - (0.5 if width % 2 else 0.0)
 
-        sigma_y = height * _adapted_rsampling((batch_size, 1), self.sigma_sampler, same_on_batch)
+        sigma_y = height * _adapted_rsampling(
+            (batch_size, 1), self.sigma_sampler, same_on_batch, generator=self._generator
+        )
 
-        center_y = height * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch)
+        center_y = height * _adapted_rsampling(
+            (batch_size, 1), self.center_sampler, same_on_batch, generator=self._generator
+        )
         center_y = center_y - (0.5 if height % 2 else 0.0)
 
-        sign = (_adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0).to(
-            device=_device, dtype=_dtype
-        ) * 2 - 1
+        sign = (
+            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch, generator=self._generator)
+            >= 0.0
+        ).to(device=_device, dtype=_dtype) * 2 - 1
 
         # Generate random gaussian for create a 2D gaussian image.
         gauss_x = gaussian(width, sigma_x, mean=center_x, device=_device, dtype=_dtype).unsqueeze(1)

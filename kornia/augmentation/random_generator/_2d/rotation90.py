@@ -24,6 +24,7 @@ import torch
 from kornia.augmentation.random_generator._2d.plain_uniform import PlainUniformGenerator
 from kornia.augmentation.random_generator.base import UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["Rotation90Generator"]
@@ -84,12 +85,15 @@ class Rotation90Generator(PlainUniformGenerator):
             sampler = self.sampler_dict["times"]
             self.sampler_dict["times"] = UniformDistribution(sampler.low, sampler.high + 1, validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
         sampler = self.sampler_dict["times"]
-        drawn = _adapted_rsampling((batch_size,), sampler, same_on_batch)
+        drawn = _adapted_rsampling((batch_size,), sampler, same_on_batch, generator=self._generator)
         if self._whole_range:
             # The clamp removes the excluded end point: for the largest draw ``u = 1 - 2 ** -24``,
             # ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` for a range such as ``(1, 1)``, which ``floor``

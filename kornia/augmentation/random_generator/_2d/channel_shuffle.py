@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["ChannelShuffleGenerator"]
 
@@ -50,12 +51,16 @@ class ChannelShuffleGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         """Generate channel permutation indices.
 
         Args:
             batch_shape: Shape of the input batch ``(B, C, H, W)``.
             same_on_batch: If ``True``, the same permutation is applied to all items in the batch.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Dictionary with key ``"channels"`` mapping to a ``(B, C)`` long tensor of permuted indices.
@@ -65,6 +70,6 @@ class ChannelShuffleGenerator(RandomGeneratorBase):
 
         # Sample uniform scores of shape (B, C); _adapted_rsampling handles same_on_batch by
         # generating (1, C) and repeating across the batch dimension when same_on_batch=True.
-        scores = _adapted_rsampling((batch_size, C), self.shuffle_sampler, same_on_batch)
+        scores = _adapted_rsampling((batch_size, C), self.shuffle_sampler, same_on_batch, generator=self._generator)
         channels = scores.argsort(dim=1).to(dtype=torch.long)
         return {"channels": channels}

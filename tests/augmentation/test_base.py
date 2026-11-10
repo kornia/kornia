@@ -809,7 +809,25 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert set(first) == set(second)
         assert all(torch.equal(first[k], second[k]) for k in first)
 
-    @pytest.mark.parametrize("keyword", ["generator", "nonsense", "resampl"])
+    def test_convention_explicit_generator_and_unchanged_constructor_keywords_4427(self, device, dtype):
+        # Explicit generators are configured by a setter or a call keyword; constructors retain their API.
+        with pytest.raises(TypeError):
+            K.RandomAffine(degrees=45.0, generator=torch.Generator())
+        with pytest.raises(TypeError):
+            K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), generator=torch.Generator())
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        aug = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)
+        gen = torch.Generator().manual_seed(2718)
+        global_state = torch.random.get_rng_state().clone()
+        with_generator = aug(x, generator=gen)
+        assert torch.equal(global_state, torch.random.get_rng_state())
+        repeated = aug(x, generator=torch.Generator().manual_seed(2718))
+        assert torch.equal(with_generator, repeated)
+        # Other unknown keywords retain the deprecation warning.
+        with pytest.warns(FutureWarning, match="nonsense"):
+            assert K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x, nonsense=1).shape == (2, 3, 6, 8)
+
+    @pytest.mark.parametrize("keyword", ["nonsense", "resampl"])
     @pytest.mark.parametrize("save_kwargs", [False, True])
     def test_unknown_override_warns(self, device, dtype, keyword, save_kwargs):
         aug = K.RandomAffine(degrees=45.0, p=1.0)

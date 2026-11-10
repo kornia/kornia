@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _shear_bound,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ShearGenerator"]
@@ -81,7 +82,10 @@ class ShearGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -94,8 +98,8 @@ class ShearGenerator(RandomGeneratorBase):
         center: torch.Tensor = _constant_tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
-        sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
-        sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
+        sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch, generator=self._generator)
+        sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch, generator=self._generator)
         sx = sx.to(device=_device, dtype=_dtype)
         sy = sy.to(device=_device, dtype=_dtype)
 

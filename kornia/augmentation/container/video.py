@@ -31,6 +31,7 @@ from kornia.augmentation.utils.helpers import (
     _video_boxes,
     _video_keypoints,
 )
+from kornia.augmentation.utils.random import _with_generator
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -305,11 +306,15 @@ class VideoSequential(ImageSequential):
 
         return input
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    @_with_generator
+    def forward_parameters(
+        self, batch_shape: torch.Size, *, generator: torch.Generator | None = None
+    ) -> List[ParamItem]:
         """Generate per-module parameters for video inputs.
 
         Args:
             batch_shape: Video batch shape, typically 5D.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Parameter list aligned with execution order, with values broadcast
@@ -583,8 +588,14 @@ class VideoSequential(ImageSequential):
 
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
+    @_with_generator
     def forward(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+        self,
+        input: torch.Tensor,
+        params: Optional[List[ParamItem]] = None,
+        extra_args: Optional[Dict[str, Any]] = None,
+        *,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
