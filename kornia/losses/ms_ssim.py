@@ -30,28 +30,32 @@ from kornia.core.exceptions import ShapeError
 
 
 class MS_SSIMLoss(nn.Module):
-    r"""Creates a criterion that computes MSSIM + L1 loss.
+    r"""Compute the multi-scale SSIM plus L1 loss between two images.
 
-    We compute the MS_SSIM + L1 loss of [1] as follows:
+    ``criterion = MS_SSIMLoss(sigmas, ...)`` builds one Gaussian mask per sigma. ``loss = criterion(img1, img2)``
+    mixes, at every pixel of two ``(B, C, H, W)`` images, one minus their multi-scale
+    SSIM with a Gaussian-filtered L1 difference, as in [1].
 
     .. math::
         \text{loss}(x, y) = c \cdot \left(\alpha \cdot \mathcal{L_{MSSIM}}(x,y)
         + (1 - \alpha) \cdot G_{\sigma_M} * \mathcal{L_1}(x,y) / L\right)
 
     Where:
-        - :math:`\alpha` is the weight parameter ``alpha``, :math:`c` is ``compensation`` and :math:`L` is
-          ``data_range``.
+        - :math:`\alpha` is ``alpha``, :math:`c` is ``compensation`` and :math:`L` is ``data_range``.
         - :math:`x` and :math:`y` are the reconstructed and true reference images.
-        - :math:`\mathcal{L_{MSSIM}}` is the MS-SSIM loss.
+        - :math:`\mathcal{L_{MSSIM}}` is one minus the mean over the channels of the MS-SSIM.
         - :math:`G_{\sigma_M}` is the Gaussian of the last entry :math:`\sigma_M` of ``sigmas``, the coarsest scale.
-        - :math:`\mathcal{L_1}` is the L1 loss.
+        - :math:`\mathcal{L_1}` is the L1 difference, averaged over the channels after the filter.
 
-    Each channel is filtered at every scale. The MS-SSIM of a channel is its luminance at the coarsest scale times its
-    contrast-structure at every scale, and :math:`\mathcal{L_{MSSIM}}` is one minus the mean of the per-channel
-    MS-SSIM: the formula of the reference implementation [2] of [1]. [2] evaluates it once per patch, at its centre;
-    this loss evaluates it at every pixel. The L1 term is filtered at the coarsest scale and averaged over the channels.
+    Reference:
+        [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
+        [2]: https://github.com/NVlabs/PL4NN/blob/master/src/loss.py (``MSSSIML1``)
+        [3]: https://github.com/psyrocloud/MS-SSIM_L1_LOSS
 
     Convention:
+        - The MS-SSIM of a channel is its luminance at the coarsest scale times its contrast-structure at every scale,
+          the formula of the reference implementation [2] of [1]. [2] evaluates it once per patch, at its centre; this
+          loss evaluates it at every pixel.
         - "Multi-scale" means one Gaussian per entry of ``sigmas``, all at full resolution, as in [1], not the dyadic
           pyramid of Wang et al.; :ref:`Losses and metrics <losses-metrics-conventions>` compares it with pytorch-msssim
           and torchmetrics.
@@ -62,44 +66,34 @@ class MS_SSIMLoss(nn.Module):
           zeros attenuate the L1 term there but can raise the MS-SSIM term, so the band scores lower on the whole than
           reflect padding would at the default ``alpha`` and can score higher at a large ``alpha``.
         - ``data_range`` is the ``max_val`` of :func:`~kornia.metrics.ssim`: it sets :math:`C_1` and :math:`C_2` and
-          divides the L1 term; pixel values are not rescaled.
+          divides the L1 term; pixel values are not rescaled. ``data_range=255.0`` on 8-bit images gives the loss of
+          the same images divided by 255 at the default ``data_range=1.0``.
         - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
           applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the ``(B, H, W)``
           map, whose channels are already averaged.
         - The two images must have the same ``(C, H, W)`` shape. Their batch sizes must match, or one of them
           must be 1, and that image is then compared with every image of the other batch.
-
-    Reference:
-        [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
-        [2]: https://github.com/NVlabs/PL4NN/blob/master/src/loss.py (``MSSSIML1``)
-        [3]: https://github.com/psyrocloud/MS-SSIM_L1_LOSS
+        - Integer and bool images count as the dtype of the Gaussian masks: float32, unless the module was moved to
+          another floating dtype. The images are filtered in the promoted dtype of the two images and the masks, with
+          float16 and bfloat16 raised to float32 and autocast disabled on CPU, CUDA and MPS. The loss is returned in
+          the promoted dtype of the two images, so two integer images give a loss in the mask dtype.
 
     Args:
-        sigmas: the Gaussian sigma of each scale; the last entry is taken as the coarsest.
-        data_range: the range of the images.
-        K: the constants :math:`(k_1, k_2)` of :math:`C_1 = (k_1 L)^2` and :math:`C_2 = (k_2 L)^2`.
-        alpha: the weight of the MS-SSIM term; the L1 term gets :math:`1 - \alpha`.
-        compensation: specifies the scaling coefficient.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
-
-    Returns:
-        The computed loss.
+        sigmas: Gaussian sigma of each scale; the last entry is the coarsest.
+        data_range: range :math:`L` of the images.
+        K: constants :math:`(k_1, k_2)` of :math:`C_1 = (k_1 L)^2` and :math:`C_2 = (k_2 L)^2`.
+        alpha: weight of the MS-SSIM term; the L1 term gets :math:`1 - \alpha`.
+        compensation: factor :math:`c` that scales the whole loss.
+        reduction: ``'mean'`` (default) averages the loss, ``'sum'`` adds it, ``'none'`` keeps one value per pixel.
 
     Shape:
-        - Input1: ``(N, C, H, W)``.
-        - Input2: ``(N, C, H, W)``.
-        - Output: ``(N, H, W)`` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
+        - Input1: ``(B, C, H, W)``.
+        - Input2: ``(B, C, H, W)``.
+        - Output: ``(B, H, W)`` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
-    Note:
-        Integer and bool images count as the dtype of the Gaussian masks: float32, unless the module was moved to
-        another floating dtype. The images are filtered in the promoted dtype of the two images and the masks, with
-        float16 and bfloat16 raised to float32 and autocast disabled on CPU, CUDA and MPS. The loss is returned in the
-        promoted dtype of the two images, so two integer images give a loss in the mask dtype. Pixel values are not
-        rescaled: pass ``data_range=255.0`` for 8-bit images, which gives the loss of the images divided by 255 at the
-        default ``data_range=1.0``.
+    See Also:
+        - :class:`~kornia.losses.SSIMLoss`: one scale and no L1 term, as ``(1 - SSIM) / 2``;
+          :func:`~kornia.losses.ssim_loss` is its one-call form.
 
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
@@ -308,7 +302,7 @@ class MS_SSIMLoss(nn.Module):
 
         # TODO: pass pointer to function e.g. to make more custom with mse, cosine, etc.
         # Compute L1 loss
-        loss_l1 = F.l1_loss(img1, img2, reduction="none")
+        loss_l1 = (img1 - img2).abs()
 
         # Average over the channels of the l1 loss filtered at the coarsest scale
         gaussian_l1 = F.conv2d(loss_l1, g_masks[S - 1 :: S], groups=CH, padding=self.pad).mean(1)

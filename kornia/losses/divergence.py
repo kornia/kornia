@@ -81,25 +81,36 @@ def _check_heatmaps(pred: torch.Tensor, target: torch.Tensor) -> None:
 
 
 def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
-    r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
+    r"""Compute the Jensen-Shannon divergence between heatmaps.
+
+    ``loss = js_div_loss_2d(pred, target)`` is the symmetric divergence of each of the ``B N`` pairs of ``(H, W)``
+    probability heatmaps.
+
+    .. math::
+
+        \text{JSD}(P, Q) = \frac{1}{2} \mathrm{KL}(P \,\|\, M) + \frac{1}{2} \mathrm{KL}(Q \,\|\, M), \quad
+        M = \frac{P + Q}{2}
 
     Convention:
-        - The divergence is :math:`\frac{1}{2} \mathrm{KL}(P \,\|\, M) + \frac{1}{2} \mathrm{KL}(Q \,\|\, M)`
-          with :math:`M = (P + Q) / 2`, in nats: symmetric in ``pred`` and ``target``, and at most :math:`\ln 2`. The
-          inputs and the reductions are those of :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
+        - The divergence is in nats and at most :math:`\ln 2`. The inputs and the reductions are those of
+          :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
         - A cell that is zero in both inputs contributes zero, including to the gradients. Both inputs must have
           the same shape; unsupported reductions raise ``NotImplementedError``.
         - Float16 and bfloat16 inputs are evaluated in float32 to avoid underflow of the mixture probabilities.
           The returned loss retains the promoted input dtype.
 
     Args:
-        pred: the input torch.Tensor with shape ``(B, N, H, W)``.
-        target: the target torch.Tensor with shape ``(B, N, H, W)``.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        pred: predicted heatmaps with shape ``(B, N, H, W)``.
+        target: target heatmaps with the same shape.
+        reduction: ``'mean'`` (default) averages the ``B N`` divergences, ``'sum'`` adds them, ``'none'`` returns them
+          with shape ``(B, N)``.
+
+    Returns:
+        the loss, a scalar or, for ``reduction='none'``, with shape ``(B, N)``.
+
+    See Also:
+        - :func:`~kornia.losses.kl_div_loss_2d`: not symmetric, and ``inf`` where ``pred`` is zero and ``target`` is
+          positive.
 
     Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)
@@ -113,18 +124,23 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
 
 
 def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
-    r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
+    r"""Compute the Kullback-Leibler divergence KL(target || pred) between heatmaps.
+
+    ``loss = kl_div_loss_2d(pred, target)`` is the divergence of each of the ``B N`` pairs of ``(H, W)`` probability
+    heatmaps, in nats.
+
+    .. math::
+
+        \mathrm{KL}(\text{target} \,\|\, \text{pred}) = \sum_{H \times W} \text{target}
+        \left(\log \text{target} - \log \text{pred}\right)
 
     Convention:
-        - ``kl_div_loss_2d(pred, target)`` is :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, the sum of
-          ``target * (log(target) - log(pred))`` over :math:`H \times W` for every :math:`(b, n)`: the order of torch's
-          ``F.kl_div(pred.log(), target)``. :ref:`Losses and metrics <losses-metrics-conventions>` maps it onto torch,
-          scipy and torchmetrics.
+        - The order is that of torch's ``F.kl_div(pred.log(), target)``.
+          :ref:`Losses and metrics <losses-metrics-conventions>` maps it onto torch, scipy and torchmetrics.
         - The inputs are probabilities, each :math:`(b, n)` slice a distribution over :math:`H \times W`. The log is
           taken inside, so log-probabilities give NaN, and nothing is normalised. A zero in ``pred`` where ``target``
           is positive gives ``inf``.
-        - ``reduction='none'`` returns ``(B, N)``; the default ``'mean'`` averages over the :math:`B N`
-          distributions and ``'sum'`` adds them.
+        - The default ``'mean'`` averages over the :math:`B N` distributions, not over every element as torch's does.
         - Both inputs must have the same shape. Unsupported reductions, including torch's ``'batchmean'``, raise
           ``NotImplementedError``. A zero in ``target`` with a finite nonnegative ``pred`` contributes zero to the
           value and gradients, including when both entries are zero.
@@ -132,13 +148,16 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
           autocast already do; ``F.kl_div`` alone would promote to float32 only after that logarithm had been rounded.
 
     Args:
-        pred: the input torch.Tensor with shape ``(B, N, H, W)``.
-        target: the target torch.Tensor with shape ``(B, N, H, W)``.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+        pred: predicted heatmaps with shape ``(B, N, H, W)``.
+        target: target heatmaps with the same shape.
+        reduction: ``'mean'`` (default) averages the ``B N`` divergences, ``'sum'`` adds them, ``'none'`` returns them
+          with shape ``(B, N)``.
+
+    Returns:
+        the loss, a scalar or, for ``reduction='none'``, with shape ``(B, N)``.
+
+    See Also:
+        - :func:`~kornia.losses.js_div_loss_2d`: symmetric and at most :math:`\ln 2`, finite where ``pred`` is zero.
 
     Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)
