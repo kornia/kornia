@@ -21,7 +21,7 @@ import torch
 import kornia
 from kornia.core._compat import torch_version
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
 
 
 class TestCropAndResize3D(BaseTester):
@@ -214,6 +214,29 @@ class TestCenterCrop3D(BaseTester):
 
 
 class TestCropByBoxes3D(BaseTester):
+    def test_crop_by_boxes3d_empty_batch_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype, requires_grad=True)
+
+        patches = kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes)
+
+        assert patches.shape == (0, 3, 0, 0, 0)
+        assert patches.dtype == inp.dtype
+        assert patches.device == inp.device
+        patches.sum().backward()
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
+
+    def test_crop_by_boxes3d_empty_batch_keeps_checks_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 4, 5, 6, device=device, dtype=dtype)
+        boxes = torch.empty(0, 8, 3, device=device, dtype=dtype)
+        one_box = torch.zeros(1, 8, 3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.transform.crop_by_boxes3d(inp, boxes, boxes, interpolation="invalid")
+        with pytest.raises(ValueError, match="same shape"):
+            kornia.geometry.transform.crop_by_boxes3d(inp, one_box, boxes)
+
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
         src_box = torch.tensor(
@@ -635,3 +658,209 @@ class TestCrop3DAffineBoxes(BaseTester):
         skewed = self._skewed_box(device, dtype)
         with pytest.raises(AssertionError, match="affine map"):
             kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
+
+    @pytest.mark.parametrize("region_dtype", ["bfloat16", "float16"])
+    def test_crop_by_boxes3d_takes_fractional_corners_in_a_region_6573(self, region_dtype, device):
+        # The two matrix products of the affine check ran in the region's dtype: in bfloat16 their rounding alone failed
+        # the check on boxes with fractional corners, which pass outside it.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and region_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = torch.rand(1, 1, 64, 64, 64, generator=torch.Generator().manual_seed(0)).to(device)
+        edges = ((11, 0, 0), (0, 7, 0), (0, 0, 5))
+        src = self._box((13.37, 27.81, 41.59), edges, device, torch.float32)
+        dst = self._box((0, 0, 0), edges, device, torch.float32)
+        expected = kornia.geometry.transform.crop_by_boxes3d(volume, src, dst, align_corners=True)
+        with torch.autocast(device.type, dtype=getattr(torch, region_dtype)):
+            actual = kornia.geometry.transform.crop_by_boxes3d(volume, src, dst, align_corners=True)
+        assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("region_dtype", ["bfloat16", "float16"])
+    def test_crop_by_boxes3d_still_rejects_in_a_region_6573(self, region_dtype, device):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and region_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = self._coordinate_volume(device, torch.float32)
+        cube = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, torch.float32)
+        skewed = self._skewed_box(device, torch.float32)
+        with (
+            torch.autocast(device.type, dtype=getattr(torch, region_dtype)),
+            pytest.raises(AssertionError, match="affine map"),
+        ):
+            kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
+
+
+class TestCrop3DOneVoxelAxis(BaseTester):
+    # A one-voxel axis makes the eight box corners coplanar, and solving the homography from them raised
+    # torch.linalg.LinAlgError (#4747). The 3D augmentations stopped solving for it in #4705.
+
+    @staticmethod
+    def _box(origin, size, device, dtype):
+        # the axis-aligned box of size = (d, h, w) voxels whose first corner is origin = (x, y, z)
+        x, y, z = origin
+        d, h, w = size
+        x1, y1, z1 = x + w - 1, y + h - 1, z + d - 1
+        corners = [[x, y, z], [x1, y, z], [x1, y1, z], [x, y1, z], [x, y, z1], [x1, y, z1], [x1, y1, z1], [x, y1, z1]]
+        return torch.tensor([corners], device=device, dtype=dtype)
+
+    @staticmethod
+    def _skip_unsupported(device, dtype):
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 4), (1, 1, 1)])
+    def test_center_crop3d_size_one_axis_4747(self, size, device, dtype):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        d, h, w = size
+        z, y, x = int(2 - d / 2), int(2.5 - h / 2), int(3 - w / 2)
+
+        out = kornia.geometry.transform.center_crop3d(volume, size)
+
+        self.assert_close(out, volume[..., z : z + d, y : y + h, x : x + w])
+
+    @pytest.mark.parametrize("size", [(1, 3, 4), (2, 1, 4), (2, 3, 1), (1, 1, 1)])
+    def test_box_crops_size_one_axis_4747(self, size, device, dtype):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(240, device=device, dtype=dtype).view(2, 1, 4, 5, 6)
+        # a different box for each volume of the batch
+        boxes = torch.cat([self._box((1, 1, 0), size, device, dtype), self._box((2, 0, 1), size, device, dtype)])
+        expected = torch.cat(
+            [
+                volume[:1, :, 0 : size[0], 1 : 1 + size[1], 1 : 1 + size[2]],
+                volume[1:, :, 1 : 1 + size[0], 0 : size[1], 2 : 2 + size[2]],
+            ]
+        )
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, boxes, size, align_corners=True)
+        self.assert_close(out, expected)
+        out = kornia.geometry.transform.crop_by_boxes3d(volume, boxes, boxes - boxes[:, :1], align_corners=True)
+        self.assert_close(out, expected)
+
+    @staticmethod
+    def _skip_without_nearest(device, dtype):
+        # a half volume samples in float32
+        if not supports_nearest_3d_grid_sample(device, torch.promote_types(dtype, torch.float32)):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+
+    @staticmethod
+    def _slice_index_volume(depth, device, dtype):
+        # each depth slice holds its index mod 5, small integers every dtype holds exactly, so neighbours differ
+        values = torch.arange(depth, device=device) % 5
+        return values.to(dtype).view(1, 1, depth, 1, 1).expand(1, 1, depth, 2, 3)
+
+    @pytest.mark.parametrize("z", [256, 257, 2048, 2049])
+    def test_box_crops_flat_axis_far_from_origin_4747(self, z, device, dtype):
+        # Past 256 (bfloat16) or 2048 (float16) the half types skip voxels, so a half box or transform would land on
+        # a neighbouring slice; the boxes come in float32, as from a detector. Nearest keeps the check to which slice
+        # is read: MPS solves the box in float32, which at z = 256 scales the map by 1.2e-4, so a bilinear crop that
+        # touches the volume's edge blends in 2.4e-4 of the zero padding, for thick boxes as well.
+        self._skip_without_nearest(device, dtype)
+        volume = self._slice_index_volume(z + 2, device, dtype)
+        box = self._box((0, 0, z), (1, 2, 3), device, torch.float32)
+
+        out = kornia.geometry.transform.crop_by_boxes3d(
+            volume, box, box - box[:, :1], interpolation="nearest", align_corners=True
+        )
+        assert out.dtype == dtype
+        self.assert_close(out, volume[..., z : z + 1, :, :])
+
+    @pytest.mark.parametrize("depth", [515, 4099])
+    def test_center_crop3d_flat_axis_far_from_origin_4747(self, depth, device, dtype):
+        # the centred slice is 257 (515) or 2049 (4099), neither a value of the half types
+        self._skip_without_nearest(device, dtype)
+        volume = self._slice_index_volume(depth, device, dtype)
+        z = depth // 2
+
+        out = kornia.geometry.transform.center_crop3d(volume, (1, 2, 3), interpolation="nearest")
+        assert out.dtype == dtype
+        self.assert_close(out, volume[..., z : z + 1, :, :])
+
+    def test_thick_box_never_widens_4747(self, device, dtype, monkeypatch):
+        # Computing both boxes pushes the fused solve kernel of compile(crop_by_boxes3d) past Metal's buffer limit at
+        # B >= 2, so a crop with no one-voxel axis has to stay off the widening.
+        self._skip_unsupported(device, dtype)
+
+        def no_widening(src_box, dst_box):
+            raise AssertionError("a crop with no one-voxel axis has no flat axis to widen")
+
+        monkeypatch.setattr("kornia.geometry.transform.crop3d._widen_one_voxel_axes", no_widening)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), (2, 2, 3), device, dtype)
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, box, (2, 2, 3), align_corners=True)
+
+        self.assert_close(out, volume[..., 1:3, 1:3, 1:4])
+
+    @pytest.mark.parametrize("size", [(1, 2, 3), (2, 2, 3)])
+    def test_integer_volume_still_raises_4747(self, size, device):
+        # A float32 detour would crop it and truncate the samples: bilinear 11.0 returned as 10.
+        volume = torch.arange(120, device=device, dtype=torch.uint8).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), size, device, torch.float32)
+        with pytest.raises(ValueError, match="floating point"):
+            kornia.geometry.transform.crop_and_resize3d(volume, box, size, align_corners=True)
+
+    def test_crop_and_resize3d_resizes_the_other_axes_of_a_flat_box_4747(self, device, dtype):
+        # The one-voxel depth keeps its place, and the (2, 3) face is resized to (3, 5), as for a 2-voxel-deep box.
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        flat = self._box((1, 1, 2), (1, 2, 3), device, dtype)
+        two_deep = self._box((1, 1, 2), (2, 2, 3), device, dtype)
+        expected = kornia.geometry.transform.crop_and_resize3d(volume, two_deep, (2, 3, 5), align_corners=True)
+
+        out = kornia.geometry.transform.crop_and_resize3d(volume, flat, (1, 3, 5), align_corners=True)
+
+        self.assert_close(out, expected[:, :, :1])
+
+    @pytest.mark.parametrize(
+        "box_size, size",
+        [
+            ((1, 2, 3), (3, 2, 3)),  # a one-voxel depth resized to 3 voxels
+            ((2, 2, 3), (1, 2, 3)),  # 2 voxels resized to 1
+            ((1, 1, 3), (3, 1, 3)),  # a one-voxel depth resized to 3 voxels, next to a one-voxel height kept
+            ((2, 1, 3), (1, 1, 3)),  # 2 voxels resized to 1, next to a one-voxel height kept
+        ],
+    )
+    def test_wart_one_voxel_axis_on_one_side_raises_4747(self, box_size, size, device, dtype):
+        # The box homography is solved from src to dst and no invertible map relates a flat box and a thick one,
+        # so these still raise.
+        volume = torch.arange(120, device=device, dtype=dtype).view(1, 1, 4, 5, 6)
+        box = self._box((1, 1, 1), box_size, device, dtype)
+        with pytest.raises(torch.linalg.LinAlgError):
+            kornia.geometry.transform.crop_and_resize3d(volume, box, size, align_corners=True)
+
+    def test_gradcheck_flat_box_4747(self, device):
+        # Finite differences move single corners off the flat box, so only the volume is gradchecked; the box
+        # gradient is checked to be finite.
+        dtype = torch.float64
+        self._skip_unsupported(device, dtype)
+        volume = (torch.arange(120, device=device, dtype=dtype) * 0.37).sin().view(1, 1, 4, 5, 6)
+        flat = self._box((1.25, 1.5, 2.0), (1, 2, 3), device, dtype)
+
+        self.gradcheck(
+            kornia.geometry.transform.crop_and_resize3d,
+            (volume, flat, (1, 3, 4), "bilinear", True),
+            requires_grad=(True, False, False, False, False),
+        )
+        flat.requires_grad_(True)
+        kornia.geometry.transform.crop_and_resize3d(volume, flat, (1, 3, 4), align_corners=True).sum().backward()
+        assert flat.grad.isfinite().all()
+
+    def test_dynamo_size_one_axis_4747(self, device, dtype, torch_optimizer):
+        self._skip_unsupported(device, dtype)
+        volume = torch.arange(240, device=device, dtype=dtype).view(2, 1, 4, 5, 6)
+        op = torch_optimizer(kornia.geometry.transform.center_crop3d)
+
+        self.assert_close(op(volume, (1, 3, 4)), kornia.geometry.transform.center_crop3d(volume, (1, 3, 4)))
+
+
+class TestCenterCrop3DOneVoxelInputAxis6433(BaseTester):
+    def test_convention_pads_around_the_axis(self, device, dtype):
+        volume = (torch.arange(4, device=device, dtype=dtype) + 1).reshape(1, 1, 1, 2, 2)
+        zero = torch.zeros_like(volume)
+        out = kornia.geometry.transform.center_crop3d(volume, (3, 2, 2))
+        self.assert_close(out, torch.cat((zero, volume, zero), dim=-3))

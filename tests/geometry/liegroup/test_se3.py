@@ -15,10 +15,12 @@
 # limitations under the License.
 #
 
+import io
 import math
 
 import pytest
 import torch
+from torch import nn
 
 from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
@@ -137,13 +139,40 @@ class TestSe3(BaseTester):
         self.assert_close(jac[:3, 4:], torch.eye(3, device=device, dtype=dtype))
         self.assert_close(jac[:3, 1:4], So3.hat(qt[0, 4:]))
 
-    # TODO: implement me
     def test_jit(self, device, dtype):
-        pass
+        # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
+        # identity row, so a branch taken while tracing would show up as a mismatch against eager.
+        v = torch.tensor(
+            [[1.0, 2.0, 3.0, 0.3, -0.4, 0.5], [-0.5, 0.3, 0.2, 0.1, 0.2, -0.3]], device=device, dtype=dtype
+        )
+        other = v * 0.5
+        other[1] = 0.0
+        for fn in (lambda x: Se3.exp(x).matrix(), lambda x: Se3.exp(x).log()):
+            traced = torch.jit.trace(fn, (v,))
+            self.assert_close(traced(other), fn(other))
 
-    # TODO: implement me
     def test_module(self, device, dtype):
-        pass
+        v = torch.tensor(
+            [[1.0, 2.0, 3.0, 0.3, -0.4, 0.5], [-0.5, 0.3, 0.2, 0.1, 0.2, -0.3]], device=device, dtype=dtype
+        )
+        source = nn.ModuleDict({"pose": Se3.exp(v)})
+        target = nn.ModuleDict({"pose": Se3.exp(v * 0.5)})
+        assert set(source.state_dict()) == {"pose._rotation._q._data", "pose._translation"}
+
+        buffer = io.BytesIO()
+        torch.save(source.state_dict(), buffer)
+        buffer.seek(0)
+        result = target.load_state_dict(torch.load(buffer, map_location=device, weights_only=True))
+        assert not result.missing_keys
+        assert not result.unexpected_keys
+        self.assert_close(target["pose"].matrix(), source["pose"].matrix())
+
+        pose = Se3.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
+        assert moved.matrix().dtype == dtype
+        assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_init(self, device, dtype, batch_size):
@@ -768,6 +797,112 @@ class TestSe3(BaseTester):
         assert t.min() >= 0, (t.min(), t.max())
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
+
+    def test_se3_batch_validation(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Incompatible batch sizes (mismatched batches)
+        q_b3 = Quaternion.identity(3, device=device, dtype=dtype)
+        t_b2 = torch.zeros(2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="broadcasts"):
+            Se3(q_b3, t_b2)
+
+        so3_b3 = So3.identity(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="broadcasts"):
+            Se3(so3_b3, t_b2)
+
+        with pytest.raises(ValueError, match=r"Shape mismatch at dimension.*expected 3, got 4"):
+            Se3(so3_b3, torch.zeros(3, 4, device=device, dtype=dtype))
+
+        # 1. Unbatched rotation with batched translation: Se3(So3.random(), torch.rand(5, 3))
+        r_unb = So3.random(device=device, dtype=dtype)
+        t_b5 = torch.rand(5, 3, device=device, dtype=dtype)
+        pose_unb_r = Se3(r_unb, t_b5)
+        ref_unb_r = Se3(So3(Quaternion(r_unb.q.data.expand(5, 4))), t_b5.clone())
+        self.assert_close(pose_unb_r.matrix(), ref_unb_r.matrix())
+        self.assert_close(pose_unb_r.log(), ref_unb_r.log())
+        self.assert_close(pose_unb_r.adjoint(), ref_unb_r.adjoint())
+        self.assert_close(pose_unb_r.inverse().matrix(), ref_unb_r.inverse().matrix())
+
+        other5 = Se3.random(5, device=device, dtype=dtype)
+        self.assert_close((pose_unb_r * other5).matrix(), (ref_unb_r * other5).matrix())
+        self.assert_close((other5 * pose_unb_r).matrix(), (other5 * ref_unb_r).matrix())
+
+        pts5 = torch.rand(5, 3, device=device, dtype=dtype)
+        self.assert_close(pose_unb_r * pts5, ref_unb_r * pts5)
+        pts1 = torch.rand(1, 3, device=device, dtype=dtype)
+        self.assert_close(pose_unb_r * pts1, ref_unb_r * pts1)
+        # an unbatched rotation keeps taking one point for all the translations, as on main
+        self.assert_close(pose_unb_r * pts5[0], ref_unb_r * pts5[0].expand(5, 3))
+        with pytest.raises(RuntimeError):
+            _ = pose_unb_r * torch.rand(4, 3, device=device, dtype=dtype)
+
+        for i in range(5):
+            self.assert_close(pose_unb_r[i].matrix(), ref_unb_r[i].matrix())
+        self.assert_close(pose_unb_r[1:4].matrix(), ref_unb_r[1:4].matrix())
+        self.assert_close(pose_unb_r[::2].matrix(), ref_unb_r[::2].matrix())
+
+        # 2. Batched rotation with unbatched translation: Se3(So3.random(3), torch.rand(3))
+        r_b3 = So3.random(3, device=device, dtype=dtype)
+        t_unb = torch.rand(3, device=device, dtype=dtype)
+        pose_unb_t = Se3(r_b3, t_unb)
+        ref_unb_t = Se3(r_b3, t_unb.expand(3, 3).clone())
+        self.assert_close(pose_unb_t.matrix(), ref_unb_t.matrix())
+        self.assert_close(pose_unb_t.log(), ref_unb_t.log())
+        self.assert_close(pose_unb_t.adjoint(), ref_unb_t.adjoint())
+        self.assert_close(pose_unb_t.inverse().matrix(), ref_unb_t.inverse().matrix())
+
+        other3 = Se3.random(3, device=device, dtype=dtype)
+        self.assert_close((pose_unb_t * other3).matrix(), (ref_unb_t * other3).matrix())
+        self.assert_close((other3 * pose_unb_t).matrix(), (other3 * ref_unb_t).matrix())
+
+        pts3 = torch.rand(3, 3, device=device, dtype=dtype)
+        self.assert_close(pose_unb_t * pts3, ref_unb_t * pts3)
+        self.assert_close(pose_unb_t * pts1, ref_unb_t * pts1)
+        with pytest.raises(ValueError):
+            _ = pose_unb_t * torch.rand(4, 3, device=device, dtype=dtype)
+
+        for i in range(3):
+            self.assert_close(pose_unb_t[i].matrix(), ref_unb_t[i].matrix())
+        self.assert_close(pose_unb_t[0:2].matrix(), ref_unb_t[0:2].matrix())
+
+        # 3. Both unbatched
+        pose_unb_both = Se3(r_unb, t_unb)
+        assert pose_unb_both.matrix().shape == (4, 4)
+        assert pose_unb_both.log().shape == (6,)
+        assert pose_unb_both.adjoint().shape == (6, 6)
+        assert pose_unb_both.inverse().matrix().shape == (4, 4)
+        t_homo = torch.cat((t_unb, torch.tensor([1.0], device=device, dtype=dtype)))
+        self.assert_close(pose_unb_both * t_unb, (pose_unb_both.matrix() @ t_homo)[:3])
+
+        # 4. Singleton batch broadcasting: (1,) and (4,)
+        s_sing1 = Se3(So3.random(1, device=device, dtype=dtype), torch.rand(4, 3, device=device, dtype=dtype))
+        ref_sing1 = Se3(So3(Quaternion(s_sing1.r.q.data.expand(4, 4))), s_sing1.t.clone())
+        self.assert_close(s_sing1.matrix(), ref_sing1.matrix())
+        self.assert_close(s_sing1.log(), ref_sing1.log())
+        self.assert_close(s_sing1.adjoint(), ref_sing1.adjoint())
+        self.assert_close(s_sing1.inverse().matrix(), ref_sing1.inverse().matrix())
+
+        s_sing2 = Se3(So3.random(4, device=device, dtype=dtype), torch.rand(1, 3, device=device, dtype=dtype))
+        ref_sing2 = Se3(s_sing2.r, s_sing2.t.expand(4, 3).clone())
+        self.assert_close(s_sing2.matrix(), ref_sing2.matrix())
+        self.assert_close(s_sing2.log(), ref_sing2.log())
+        self.assert_close(s_sing2.adjoint(), ref_sing2.adjoint())
+        self.assert_close(s_sing2.inverse().matrix(), ref_sing2.inverse().matrix())
+
+        # 5. Multi-dimensional broadcast batches: (2, 1) rotation and (1, 3) translation
+        q_raw = torch.randn(2, 1, 4, device=device, dtype=dtype)
+        q_raw = q_raw / q_raw.norm(dim=-1, keepdim=True)
+        q_2x1 = Quaternion(q_raw)
+        t_1x3 = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        s_multi = Se3(q_2x1, t_1x3)
+        ref_multi = Se3(So3(Quaternion(q_raw.expand(2, 3, 4))), t_1x3.expand(2, 3, 3).clone())
+        self.assert_close(s_multi.matrix(), ref_multi.matrix())
+        self.assert_close(s_multi.log(), ref_multi.log())
+        self.assert_close(s_multi.adjoint(), ref_multi.adjoint())
+        self.assert_close(s_multi.inverse().matrix(), ref_multi.inverse().matrix())
+        self.assert_close(s_multi[0].matrix(), ref_multi[0].matrix())
+        self.assert_close(s_multi[1].matrix(), ref_multi[1].matrix())
+        self.assert_close(s_multi[1:].matrix(), ref_multi[1:].matrix())
+        self.assert_close(s_multi[0:2].matrix(), ref_multi[0:2].matrix())
 
 
 class TestSe3HalfPrecision(BaseTester):

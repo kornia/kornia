@@ -38,7 +38,9 @@ def _warn_clip_output_deprecated(clip_output: Optional[bool]) -> None:
 
 
 class RandomAutoContrast(IntensityAugmentationBase2D):
-    r"""Apply a random auto-contrast of a torch.Tensor image.
+    r"""Rescale each selected image channel from its own minimum to maximum.
+
+    ``output = RandomAutoContrast()(input)`` maps each selected channel into ``[0, 1]`` from its observed extrema.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -60,6 +62,10 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
           rescaled by its own minimum and maximum as ``(x - min) / (max - min + 1e-6)``. This is a rescale, not
           a clamp, so an input outside ``[0, 1]`` is mapped into range rather than clipped, and a constant
           channel comes back as zeros. Empty batches preserve their shape, dtype and device.
+
+    See Also:
+        - :class:`RandomContrast`: applies a sampled multiplicative factor instead of input-dependent rescaling.
+        - :class:`Normalize`: applies supplied channel statistics instead of observed extrema.
 
     """
 

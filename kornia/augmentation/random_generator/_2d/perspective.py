@@ -23,7 +23,8 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.augmentation.utils.param_validation import _in_sampler_rebuild
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["PerspectiveGenerator"]
 
@@ -82,12 +83,14 @@ class PerspectiveGenerator(RandomGeneratorBase):
         return f"distortion_scale={self.distortion_scale}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
-        if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
+        self._assign_derived_range(
+            "_distortion_scale", torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        )
+        if not _in_sampler_rebuild() and not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
         self.rand_val_sampler = Uniform(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
+            _constant_tensor(0, device=device, dtype=dtype),
+            _constant_tensor(1, device=device, dtype=dtype),
             validate_args=False,
         )
 
@@ -125,11 +128,11 @@ class PerspectiveGenerator(RandomGeneratorBase):
         fx = self._distortion_scale * x_extent / 2
         fy = self._distortion_scale * y_extent / 2
 
-        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
+        factor = _to_device_nonblocking(torch.stack([fx, fy], dim=0).view(-1, 1, 2), _device, _dtype)
 
         # TODO: This line somehow breaks the gradcheck
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+        rand_val: torch.Tensor = _to_device_nonblocking(
+            _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch), _device, _dtype
         )
         if self.sampling_method == "basic":
             pts_norm = _constant_tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)

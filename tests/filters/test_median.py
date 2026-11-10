@@ -94,17 +94,13 @@ class TestMedianBlur(BaseTester):
         actual_module_constant = MedianBlur(kernel_size, "constant")(inp)
         self.assert_close(actual_constant, actual_module_constant)
 
-        ky = kernel_size if isinstance(kernel_size, int) else kernel_size[0]
         kx = kernel_size if isinstance(kernel_size, int) else kernel_size[1]
-        pad_y = (ky - 1) // 2
         pad_x = (kx - 1) // 2
-        if pad_y >= inp.shape[-2] or pad_x >= inp.shape[-1]:
-            with pytest.raises(RuntimeError, match="Padding size should be less"):
-                median_blur(inp, kernel_size)
-        else:
-            actual_default = median_blur(inp, kernel_size)
-            actual_reflect = median_blur(inp, kernel_size, "reflect")
-            self.assert_close(actual_default, actual_reflect)
+        # Every reflected row on a singleton height is identical, so the 2D median equals the row median.
+        padded = torch.nn.functional.pad(inp.cpu().double(), [pad_x, pad_x, 0, 0], mode="reflect")
+        expected = padded.unfold(-1, kx, 1).median(-1).values.to(inp)
+        self.assert_close(median_blur(inp, kernel_size), expected)
+        self.assert_close(MedianBlur(kernel_size)(inp), expected)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     def test_border_type(self, border_type, device, dtype):

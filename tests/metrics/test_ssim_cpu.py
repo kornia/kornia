@@ -205,15 +205,21 @@ class TestSsimCpu(BaseTester):
         expected = _nchw_reference(img1.float(), img2.float(), 11, max_val=max_val).to(actual.dtype)
         self.assert_close(actual, expected)
 
-    def test_too_small_image_raises_the_padding_error(self, device, dtype):
+    @pytest.mark.parametrize("shape", [(1, 3, 5, 6), (1, 3, 1, 7), (1, 3, 7, 1), (1, 3, 1, 1)])
+    def test_thin_images_match_the_gradient_path(self, shape, monkeypatch, device, dtype):
+        """Keep thin-image SSIM values consistent across CPU dispatch paths."""
         _require_cpu_float32(device, dtype)
-        img1, img2 = _pair((1, 3, 5, 6))
-        kernel = get_gaussian_kernel1d(11, 1.5)
-        with pytest.raises(RuntimeError) as expected:
-            filter2d_separable(img1, kernel, kernel)
-        with pytest.raises(RuntimeError) as actual:
-            ssim(img1, img2, 11)
-        assert str(actual.value) == str(expected.value)
+        calls = _count_helper_calls(monkeypatch)
+        img1, img2 = _pair(shape)
+        actual = ssim(img1, img2, 11)
+        assert len(calls) == 1
+
+        expected = ssim(img1.requires_grad_(), img2.requires_grad_(), 11)
+
+        assert len(calls) == 1
+        assert actual.shape == img1.shape
+        assert actual.is_contiguous()
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("layout", ["channels_last", "transposed", "mixed"])
     def test_noncontiguous_images_keep_the_nchw_path(self, monkeypatch, layout, device, dtype):

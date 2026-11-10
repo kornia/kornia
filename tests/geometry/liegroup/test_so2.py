@@ -15,10 +15,12 @@
 # limitations under the License.
 #
 
+import io
 import math
 
 import pytest
 import torch
+from torch import nn
 
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.conversions import angle_to_rotation_matrix
@@ -171,13 +173,40 @@ class TestSo2(BaseTester):
         self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
         self.gradcheck(lambda x: So2.exp(x).log(), (theta,))
 
-    # TODO: implement me
     def test_jit(self, device, dtype):
-        pass
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
+        # identity row, so a branch taken while tracing would show up as a mismatch against eager.
+        v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
+        other = v * 0.5
+        other[1] = 0.0
+        for fn in (lambda x: So2.exp(x).matrix(), lambda x: So2.exp(x).log()):
+            traced = torch.jit.trace(fn, (v,))
+            self.assert_close(traced(other), fn(other))
 
-    # TODO: implement me
     def test_module(self, device, dtype):
-        pass
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
+        source = nn.ModuleDict({"pose": So2.exp(v)})
+        target = nn.ModuleDict({"pose": So2.exp(v * 0.5)})
+        assert set(source.state_dict()) == {"pose._z"}
+
+        buffer = io.BytesIO()
+        torch.save(source.state_dict(), buffer)
+        buffer.seek(0)
+        result = target.load_state_dict(torch.load(buffer, map_location=device, weights_only=True))
+        assert not result.missing_keys
+        assert not result.unexpected_keys
+        self.assert_close(target["pose"].matrix(), source["pose"].matrix())
+
+        pose = So2.exp(v.cpu().float())
+        expected = pose.matrix().to(device, dtype)
+        moved = pose.to(device, dtype)
+        assert moved.matrix().dtype == dtype
+        assert moved.matrix().device == v.device
+        self.assert_close(moved.matrix(), expected)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
@@ -505,7 +534,9 @@ class TestSo2(BaseTester):
         assert s[1].z.shape == ()  # indexing reads the (B,) view, as for a (B,) z
         before = torch.view_as_real(param.detach()).clone()  # torch.equal has no complex float16 kernel
         s.log().sum().backward()
-        torch.optim.SGD(s.parameters(), lr=0.1).step()
+        # torch's CUDA foreach SGD step has no complex32 (float16) implementation.
+        foreach = False if device.type == "cuda" and dtype == torch.float16 else None
+        torch.optim.SGD(s.parameters(), lr=0.1, foreach=foreach).step()
         assert not torch.equal(torch.view_as_real(param.detach()), before)
 
     @pytest.mark.parametrize("method", ["to", "bfloat16"])
@@ -715,7 +746,9 @@ class TestSo2DtypeMigration(BaseTester):
         assert rotation._z.grad.real.dtype == dtype
         self.assert_close(rotation._z.grad.real, torch.ones(2, device=device, dtype=dtype))
         self.assert_close(rotation._z.grad.imag, torch.full((2,), 2.0, device=device, dtype=dtype))
-        torch.optim.SGD(rotation.parameters(), lr=0.125).step()
+        # torch's CUDA foreach SGD step has no complex32 (float16) implementation.
+        foreach = False if device.type == "cuda" and dtype == torch.float16 else None
+        torch.optim.SGD(rotation.parameters(), lr=0.125, foreach=foreach).step()
         self.assert_close(rotation.z.real, before.real.to(dtype) - 0.125)
         self.assert_close(rotation.z.imag, before.imag.to(dtype) - 0.25)
 

@@ -24,11 +24,9 @@ coordinates, so box ``(1, 1)``..``(2, 2)`` is a 2x2 pixel block, and the corners
 ``(h, w)``. Except for the integer slicing of :func:`crop_by_indices` and of the default mode of
 :class:`CenterCrop2D`, the crops resample by a source→destination pixel matrix through
 :func:`~kornia.geometry.transform.warp_affine` or :func:`~kornia.geometry.transform.warp_perspective`, into an output
-window that starts at destination pixel ``(0, 0)``. For these the matrix is in pixels, so along a source axis longer
-than one pixel ``align_corners`` changes only how ``'reflection'`` padding mirrors (about the outer pixel centres
-with ``True``, about the outer pixel edges with ``False``) and, in ``'nearest'`` mode, which pixel a sample exactly
-halfway between two pixels takes. Along a one-pixel source axis, ``align_corners=True`` repeats that pixel where the
-window should be padded (`#6433 <https://github.com/kornia/kornia/issues/6433>`_).
+window that starts at destination pixel ``(0, 0)``. For these the matrix is in pixels, so ``align_corners`` changes
+only how ``'reflection'`` padding mirrors (about the outer pixel centres with ``True``, about the outer pixel edges
+with ``False``) and, in ``'nearest'`` mode, which pixel a sample exactly halfway between two pixels takes.
 
 Which function to use:
 
@@ -51,7 +49,7 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core._compat import _emit_deprecation_warning
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.transform._crop import _compiled_slice_resize
@@ -197,7 +195,14 @@ def _crop_scale_translation(src: torch.Tensor, dst: torch.Tensor) -> torch.Tenso
     src_extent = src[:, 2] - src[:, 0]
     dst_extent = dst[:, 2] - dst[:, 0]
     both_zero = (src_extent == 0) & (dst_extent == 0)
-    scale = torch.where(both_zero, torch.ones_like(src_extent), dst_extent / src_extent)
+    # When both extents are zero (supported size-1 crop), replacing src_extent with 1.0 in the
+    # unselected branch prevents 0 / 0 = NaN in autograd backward (#6642), keeping boxes.grad
+    # finite with the gradient of translation. torch.where still selects ones_like for scale,
+    # leaving the forward exact.
+    # When only src_extent is zero, safe_src_extent stays 0.0, evaluating to inf and preserving
+    # the documented forward NaN for one-sided crops (#4747).
+    safe_src_extent = torch.where(both_zero, torch.ones_like(src_extent), src_extent)
+    scale = torch.where(both_zero, torch.ones_like(src_extent), dst_extent / safe_src_extent)
     transform = torch.eye(3, device=src.device, dtype=src.dtype).repeat(src.shape[0], 1, 1)
     transform[:, 0, 0] = scale[:, 0]
     transform[:, 1, 1] = scale[:, 1]
@@ -217,8 +222,7 @@ def center_crop(
     ``patches = center_crop(input_tensor, size)`` takes images ``(B, C, H, W)`` and returns their central
     ``(B, C, h, w)`` windows for ``size = (h, w)``: a sub-image of the input, with the extra pixel of an odd margin at
     the bottom/right. A ``size`` larger than the input pads by ``padding_mode`` (zeros by default), again with the extra
-    pixel at the bottom/right, except along a one-pixel input axis, which the default ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). The crop is an integer translation sampled by
+    pixel at the bottom/right. The crop is an integer translation sampled by
     :func:`~kornia.geometry.transform.warp_perspective`, so it is exact up to float rounding. For the module form, which
     slices by default, use :class:`CenterCrop2D`; for volumes, :func:`center_crop3d`.
 
@@ -338,6 +342,7 @@ def crop_by_boxes(
           :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
           image does not broadcast over a batch of boxes; ``src_box`` and ``dst_box`` have the same batch size
+        - an empty batch has no ``dst_box`` to read a size from and returns ``(0, C, 0, 0)``
         - a box axis of one pixel in one box but not in the other returns NaN (a meaningless finite value with
           ``mode='nearest'``), as in :func:`crop_and_resize`
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
@@ -404,6 +409,8 @@ def crop_by_boxes(
         )
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
+    if bbox[0].shape[0] == 0:
+        return _crop_by_boxes_to_size(input_tensor, src_box, dst_box, (0, 0), mode, padding_mode, align_corners)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
             f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}."
@@ -424,9 +431,11 @@ def _crop_by_boxes_to_size(
     padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` builds
-    # ``dst_box`` from ``size``, so it takes this path and never reads the box values back from the
-    # device -- which also keeps it capturable by ``torch.onnx.export``.
+    """Crop images by boxes with the destination size already known as Python ints.
+
+    ``crop_and_resize`` builds ``dst_box`` from ``size``, so it takes this path and never reads the box
+    values back from the device -- which also keeps it capturable by ``torch.onnx.export``.
+    """
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
@@ -434,16 +443,33 @@ def _crop_by_boxes_to_size(
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box = src_box.to(input_tensor)
     dst_box = dst_box.to(input_tensor)
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box, dst_box)
-    # A box with a size-1 axis has collinear vertices and the solve returns NaN for it (#4747). Fall back to
-    # the matrix built from the box extents there; every other box keeps the solved matrix.
+
+    KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
+    KORNIA_CHECK_SHAPE(dst_box, ["B", "4", "2"])
+    KORNIA_CHECK(src_box.shape == dst_box.shape, "Source data shape must match Destination data shape.")
+
+    # A box with a size-1 axis has collinear vertices and get_perspective_transform returns NaN for it (#4747).
+    # Mask collinear boxes with a unit square before solving so get_perspective_transform never executes
+    # a singular solve in autograd, which would otherwise poison backward gradients with NaNs (#6642).
+    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
+    axis_collinear = (
+        (src_box[:, :, 0].max(dim=-1).values == src_box[:, :, 0].min(dim=-1).values)
+        | (src_box[:, :, 1].max(dim=-1).values == src_box[:, :, 1].min(dim=-1).values)
+        | (dst_box[:, :, 0].max(dim=-1).values == dst_box[:, :, 0].min(dim=-1).values)
+        | (dst_box[:, :, 1].max(dim=-1).values == dst_box[:, :, 1].min(dim=-1).values)
+    )
+    safe_src_box = torch.where(axis_collinear[:, None, None], unit, src_box)
+    safe_dst_box = torch.where(axis_collinear[:, None, None], unit, dst_box)
+    dst_trans_src: torch.Tensor = get_perspective_transform(safe_src_box, safe_dst_box)
+
+    # A degenerate box that is not collinear, such as a triangle mapped onto a triangle of the same shape, also takes
+    # the extent matrix where its solve is not finite and its vertices 0 and 2 share a coordinate.
     solved = dst_trans_src.isfinite().all(dim=-1).all(dim=-1)
     size_one = ((src_box[:, 2] - src_box[:, 0]) == 0).any(dim=-1) | ((dst_box[:, 2] - dst_box[:, 0]) == 0).any(dim=-1)
-    fallback = (~solved & size_one)[:, None, None]
+    fallback = (axis_collinear | (~solved & size_one))[:, None, None]
     # ``torch.where`` also differentiates the branch it discards, so a box that keeps its solved matrix builds the
     # extent matrix from a unit source square: its own vertices 0 and 2 can share a coordinate (a square turned by
     # 45 degrees), and dividing by that zero extent would make the gradient with respect to the box NaN.
-    unit = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=src_box.device, dtype=src_box.dtype)
     extent_matrix = _crop_scale_translation(torch.where(fallback, src_box, unit), dst_box)
     dst_trans_src = torch.where(fallback, extent_matrix, dst_trans_src)
 
@@ -529,34 +555,6 @@ def crop_by_transform_mat(
     )
 
     return patches
-
-
-def _crop_inverse_by_transform_mat(
-    input_tensor: torch.Tensor,
-    transform: torch.Tensor,
-    out_size: Tuple[int, int],
-    mode: str = "bilinear",
-    padding_mode: str = "zeros",
-    align_corners: bool = True,
-) -> torch.Tensor:
-    """:func:`crop_by_transform_mat` for warping a crop back onto its canvas, also from a one-pixel axis.
-
-    ``grid_sample`` cannot place a source axis of length 1: with ``align_corners=True`` every sample lands on its
-    only pixel, so the whole canvas axis gets its value, and with ``False`` it blends it into the next pixel. One
-    pixel of padding on each side of such an axis, in the warp's own padding (a reflected one-pixel axis repeats
-    its pixel), gives the sampler a neighbour to interpolate towards, and ``transform`` is shifted to match.
-    ``transform`` is the ``(B, 3, 3)`` crop-to-canvas pixel matrix.
-    """
-    pad_h = int(input_tensor.shape[-2] == 1)
-    pad_w = int(input_tensor.shape[-1] == 1)
-    if pad_h or pad_w:
-        pad_mode = "constant" if padding_mode == "zeros" else "replicate"
-        input_tensor = F.pad(input_tensor, (pad_w, pad_w, pad_h, pad_h), mode=pad_mode)
-        shift = torch.eye(3, device=transform.device, dtype=transform.dtype)
-        shift[0, 2] = -pad_w
-        shift[1, 2] = -pad_h
-        transform = transform @ shift
-    return crop_by_transform_mat(input_tensor, transform[:, :2, :], out_size, mode, padding_mode, align_corners)
 
 
 def crop_by_indices(
@@ -815,9 +813,7 @@ class CenterCrop2D(nn.Module):
     the central ``(B, C, h, w)`` windows of ``(B, C, H, W)`` images, at the offsets of :func:`center_crop`. The default
     ``cropping_mode='slice'`` slices with integer indices, through :func:`crop_by_indices`, or after zero-padding when
     ``size`` exceeds the input on an axis; ``'resample'`` samples the same windows, up to float rounding, by a
-    translation through :func:`~kornia.geometry.transform.warp_affine` with the ``resample`` mode, except that with
-    ``align_corners=True`` it repeats a one-pixel input axis that ``'slice'`` zero-pads
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For one call, use
+    translation through :func:`~kornia.geometry.transform.warp_affine` with the ``resample`` mode. For one call, use
     :func:`center_crop`; in an augmentation pipeline, :class:`~kornia.augmentation.CenterCrop`.
 
     Convention:

@@ -30,6 +30,9 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 class RandomPerspective3D(GeometricAugmentationBase3D):
     r"""Warp 3D volumes with a random perspective transform, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomPerspective3D(distortion_scale, ...)(input)`` projectively warps volumes of shape
+    ``(B, C, D, H, W)``.
+
     Args:
         p: probability of applying the transformation to each sample.
         distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
@@ -55,6 +58,10 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         - a spatial dimension of 1 gets a unit source extent and no corner offset, so its single
           slice, row or column maps onto itself. At ``distortion_scale=0`` the transform matrix is
           the identity, so such a volume is reproduced under either ``align_corners`` setting too.
+
+    See Also:
+        - :class:`RandomAffine3D`: samples an affine rather than projective warp.
+        - :class:`RandomPerspective`: warps 2D images from sampled perspective endpoints.
 
     Examples:
         >>> import torch

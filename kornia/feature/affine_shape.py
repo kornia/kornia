@@ -46,12 +46,16 @@ urls["affnet"] = [
 
 
 class PatchAffineShapeEstimator(nn.Module):
-    r"""Module, which estimates the second moment matrix of the patch gradients.
+    r"""Estimate the affine shape of patches from the second-moment matrix of their gradients.
 
-    The method determines the affine shape of the local feature as in :cite:`baumberg2000`.
+    ``abc = PatchAffineShapeEstimator(patch_size)(patches)`` takes ``(B, 1, patch_size, patch_size)`` patches and
+    returns the second-moment matrix of each patch's Gaussian-weighted gradients as the ellipse coefficients
+    ``(a, b, c)`` that :func:`ellipse_to_laf` reads, ``(B, 1, 3)``, divided by the largest entry, as in
+    :cite:`baumberg2000`. It returns coefficients, not LAFs: to adapt LAFs on an image, use
+    :class:`LAFAffineShapeEstimator`, which runs it on each LAF's patch.
 
     For float16 and bfloat16 inputs, the gradients, Gaussian weighting, moments, and normalization are computed
-    in float32.
+    in float32; for a float64 input, the Gaussian weighting is built in float64.
     The output keeps the input dtype.
 
     Convention:
@@ -68,6 +72,12 @@ class PatchAffineShapeEstimator(nn.Module):
     Args:
         patch_size: the input image patch size.
         eps: for safe division.
+
+    See Also:
+        - :class:`LAFAffineShapeEstimator`: runs it on each LAF's patch and adapts the LAF's shape to the result.
+        - :class:`LAFAffNetShapeEstimator`: a learned shape, which AffNet predicts on each LAF's patch.
+        - :class:`PatchDominantGradientOrientation`: the orientation of a patch, from the same Sobel gradients.
+        - :func:`ellipse_to_laf`: turns a centre and these coefficients into a LAF.
 
     """
 
@@ -91,19 +101,20 @@ class PatchAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            patch: ``(B, 1, H, W)``
+            patch: ``(B, 1, patch_size, patch_size)``
 
         Returns:
             torch.Tensor: ellipse_shape ``(B, 1, 3)``
 
         """
-        KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
+        KORNIA_CHECK_SHAPE(patch, ["B", "1", str(self.patch_size), str(self.patch_size)])
         dtype = patch.dtype
-        # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
         if dtype in (torch.float16, torch.bfloat16):
+            # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
             patch = patch.float()
-            # `.to(dtype)` also quantizes buffers, so rebuild this derived kernel instead of upcasting
-            # half-precision coefficients that have already lost their float32 precision.
+        if dtype in (torch.float16, torch.bfloat16, torch.float64):
+            # The buffer holds the kernel rounded to float32, or coarser after `.to(dtype)`: rebuild it in the
+            # compute dtype instead of upcasting coefficients that have already lost precision.
             sigma = float(self.patch_size) / math.sqrt(2.0)
             weighting = get_gaussian_kernel2d(
                 (self.patch_size, self.patch_size),
@@ -188,10 +199,14 @@ def _finalize_laf(
 
 
 class LAFAffineShapeEstimator(nn.Module):
-    r"""Adapt local affine frames using the second-moment matrices of their image-patch gradients.
+    r"""Adapt the affine shape of LAFs to the second-moment matrix of each LAF's image patch.
 
-    It extracts a patch per LAF and runs :class:`~kornia.feature.PatchAffineShapeEstimator` on it to estimate the
-    shape.
+    ``lafs = LAFAffineShapeEstimator(patch_size)(laf, img)`` takes ``(B, N, 2, 3)`` LAFs in pixels and their
+    grayscale images ``(B, 1, H, W)``, samples each LAF's patch through its upright frame, estimates the shape with
+    ``affine_shape_detector`` (:class:`PatchAffineShapeEstimator` by default) and returns the ``(B, N, 2, 3)`` LAFs
+    with the adapted shape and the input's centres and scales. For the shape that AffNet predicts, use
+    :class:`LAFAffNetShapeEstimator` instead; to drop the rotation and the reflection and keep the shape, without
+    reading the image, use :func:`make_upright`.
 
     Convention:
         - Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so the
@@ -204,11 +219,23 @@ class LAFAffineShapeEstimator(nn.Module):
         - The centre and the scale of the input LAF are kept. With ``preserve_orientation=True`` (the default) its
           orientation is kept too; otherwise the output is upright, and an orientation estimator such as
           :class:`~kornia.feature.LAFOrienter` can be run after this module.
+        - An adapted LAF has a positive determinant: a mirrored input loses its reflection. A LAF that
+          :func:`~kornia.feature.laf_is_valid` rejects, such as the all-zero padding of a detector's unfilled slot,
+          comes back unchanged with ``preserve_orientation=True``, and with a zero ``A`` and its centre otherwise. A
+          valid LAF whose patch gives no finite, positive-definite shape is not adapted either: it comes back
+          unchanged with ``preserve_orientation=True``, and as :func:`~kornia.feature.make_upright` returns it
+          otherwise.
 
     Args:
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
         preserve_orientation: if True, the original orientation is preserved.
+
+    See Also:
+        - :class:`LAFAffNetShapeEstimator`: the same adaptation, with the shape that AffNet predicts.
+        - :class:`PatchAffineShapeEstimator`: the default ``affine_shape_detector``, on patches.
+        - :func:`make_upright`: drops the rotation and the reflection of a LAF and keeps its shape, without the image.
+        - :class:`LAFOrienter`: estimates the orientation, run after this module with ``preserve_orientation=False``.
 
     """  # pylint: disable
 
@@ -269,11 +296,16 @@ class LAFAffineShapeEstimator(nn.Module):
 
 
 class LAFAffNetShapeEstimator(nn.Module):
-    """Adapt local affine frames using affine shapes estimated by the AffNet CNN.
+    """Adapt the affine shape of LAFs to the shape the learned AffNet CNN predicts on each LAF's patch.
 
-    It extracts a patch per LAF and runs AffNet on it to estimate the shape. This is based on the original code from
-    the paper "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability".
-    See :cite:`AffNet2018` for more details.
+    ``lafs = LAFAffNetShapeEstimator()(laf, img)`` builds AffNet with its pretrained weights, in eval mode, and takes
+    ``(B, N, 2, 3)`` LAFs in pixels and their grayscale images ``(B, 1, H, W)``, predicts each LAF's shape on its
+    32 x 32 patch, sampled through its upright frame, and returns the ``(B, N, 2, 3)`` LAFs with that shape and the
+    input's centres and scales. :class:`GFTTAffNetHardNet`, :class:`HesAffNetHardNet`, :class:`DoGAffNetHardNet` and
+    :class:`KeyNetAffNetHardNet` run it with ``preserve_orientation=False``, before their orientation step. For the
+    second-moment estimate, which needs no weights, use :class:`LAFAffineShapeEstimator` instead. This is based on the
+    original code from the paper "Repeatability Is Not Enough: Learning Discriminative Affine Regions via
+    Discriminability". See :cite:`AffNet2018` for more details.
 
     Convention:
         As :class:`~kornia.feature.LAFAffineShapeEstimator`, with AffNet's prediction on a 32 x 32 patch in place of
@@ -283,6 +315,11 @@ class LAFAffNetShapeEstimator(nn.Module):
     Args:
         pretrained: Download and set pretrained weights to the model.
         preserve_orientation: if True, the original orientation is preserved.
+
+    See Also:
+        - :class:`LAFAffineShapeEstimator`: the same adaptation, with the second-moment matrix and no weights.
+        - :class:`OriNet`: the orientation network of the same paper.
+        - :class:`KeyNetAffNetHardNet`: a local feature that runs it on KeyNet detections, before OriNet and HardNet.
 
     """
 
@@ -322,7 +359,7 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        """Normalize the input by batch."""
+        """Subtract each patch's mean and divide by its standard deviation plus ``eps``."""
         # `torch.std_mean` decomposes to `prims.sum`, which has no ONNX lowering; the split form is equivalent.
         mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
         sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)

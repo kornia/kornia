@@ -20,18 +20,18 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
-from kornia.core.utils import _to_device_nonblocking
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_brightness
 
 
 class RandomBrightness(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness of a torch.Tensor image.
+    r"""Shift brightness by an additive random offset.
 
-    The shift is additive: the output is ``input + (factor - 1)``, before the default clamp. torchvision's and
-    PIL's brightness is multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that
-    formula.
+    ``output = RandomBrightness(brightness)(input)`` computes ``input + (factor - 1)`` for each selected image
+    using a sampled brightness factor, with clamping enabled by default. Use :class:`ColorJitter` for
+    torchvision-compatible multiplicative brightness, ``input * factor``.
 
     .. image:: _static/img/RandomBrightness.png
 
@@ -52,7 +52,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         - with ``clip_output=True``, input values are clamped into ``[0, 1]`` before the operation
           as well as afterwards. With ``clip_output=False``, the arithmetic is range-independent:
           neither input nor output is clamped.
-        - ``brightness`` is centred on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
+        - ``brightness`` is centered on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
           :func:`kornia.enhance.adjust_brightness`, whose own identity is ``0.0``, so the same number passed
           straight to the primitive means something else.
         - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
@@ -60,6 +60,11 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
+
+    See Also:
+        - :class:`RandomContrast`: scales values instead of adding an offset.
+        - :class:`ColorJiggle`: combines this additive brightness step with color adjustments.
+        - :class:`ColorJitter`: uses torchvision-compatible multiplicative brightness.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -96,8 +101,10 @@ class RandomBrightness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.brightness: torch.Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
-        self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
+        self.brightness: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", center, bounds))
+        _load_unowned_learnable_range(self, "brightness", center)
 
         self.clip_output = clip_output
 

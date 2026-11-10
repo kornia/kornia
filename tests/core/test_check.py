@@ -963,7 +963,10 @@ class TestCheckAsync(BaseTester):
         assert result.stdout.split() in (["returned", "AcceleratorError"], ["returned", "RuntimeError"]), (
             result.stdout + result.stderr
         )
-        assert "x must be positive" in result.stderr
+        # torch's Windows builds print only the asserted condition: the MSVC branch of CUDA_KERNEL_ASSERT_MSG in
+        # torch/headeronly/macros/Macros.h drops the message.
+        expected = "input[0] != 0" if sys.platform == "win32" else "x must be positive"
+        assert expected in result.stderr
 
     def test_valid_on_cuda_does_not_synchronize(self, device):
         if device.type != "cuda":

@@ -32,6 +32,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.safetensors import load_safetensors
 
 from .config import Qwen25VisionConfig
@@ -154,7 +155,7 @@ class Qwen25VisionAttention(nn.Module):
         qf, kf = q.to(compute_dtype), k.to(compute_dtype)
         q = (qf * cos + _rotate_half(qf) * sin).to(x.dtype)
         k = (kf * cos + _rotate_half(kf) * sin).to(x.dtype)
-        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+        out = scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
         return self.proj(out.transpose(1, 2).reshape(b, n, d))
 
 

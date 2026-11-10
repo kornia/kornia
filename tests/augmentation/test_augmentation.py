@@ -90,7 +90,7 @@ from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
 from testing.augmentation.utils import oversized_random_crop_params
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -3385,6 +3385,14 @@ class TestCenterCrop(BaseTester):
         with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
             CenterCrop([4, 6])
 
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode returned an empty crop for a negative size, where the resample mode raised.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            CenterCrop(size, cropping_mode=cropping_mode)(inp)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
@@ -3708,6 +3716,20 @@ class TestRandomCrop(BaseTester):
         image = torch.zeros(1, 3, 2, 2)
         with pytest.raises(ValueError, match="one value per channel"):
             RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(-2, 3), (3, -2)])
+    def test_negative_size_raises(self, size, cropping_mode, device, dtype):
+        # The slice mode raised an error about the input image size, where the resample mode named the crop size.
+        inp = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            RandomCrop(size, cropping_mode=cropping_mode, p=1.0)(inp)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_negative_size_raises_on_empty_batch(self, cropping_mode, device, dtype):
+        inp = torch.rand(0, 2, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="must be non-negative"):
+            RandomCrop((-2, 3), cropping_mode=cropping_mode, p=1.0)(inp)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         torch.manual_seed(0)
@@ -5413,6 +5435,21 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_output_6601(self, autocast_dtype, device):
+        # 0.017 off on a [0, 1] image in bfloat16, through elastic_transform2d.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image = torch.rand(1, 1, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+
+        def run():
+            torch.manual_seed(5)
+            return RandomElasticTransform(p=1.0)(image)
+
+        expected = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = run()
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_zero_padding_with_replayed_noise(self, device, dtype):
         image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
         noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)

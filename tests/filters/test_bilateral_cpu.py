@@ -398,15 +398,10 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         with pytest.raises(ValueError, match="color_distance_type only accepts l1 or l2"):
             bilateral_blur(image, 5, 0.1, (1.5, 1.5), color_distance_type="l3")
 
-    def test_reflect_padding_larger_than_the_image_raises_as_before(self, device, dtype):
+    def test_reflect_padding_larger_than_the_image_keeps_a_constant(self, device, dtype):
         _require_native_cpu(device, dtype)
-        image = torch.rand(1, 1, 2, 40000, device=device, dtype=dtype)
-
-        with pytest.raises(RuntimeError) as expected:
-            _unfold_reference(image, None, 5, 0.1, (1.5, 1.5), color_distance_type="l3")
-        with pytest.raises(RuntimeError) as actual:
-            bilateral_blur(image, 5, 0.1, (1.5, 1.5), color_distance_type="l3")
-        assert str(actual.value) == str(expected.value)
+        image = torch.full((1, 1, 2, 40000), 0.5, device=device, dtype=dtype)
+        self.assert_close(bilateral_blur(image, 5, 0.1, (1.5, 1.5)), image)
 
     def test_cpu_autocast_does_not_change_the_result(self, device, dtype):
         # No operation of either path is on an autocast list except the shared padding, so autocast needs no clause.

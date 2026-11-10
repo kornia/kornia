@@ -21,14 +21,16 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
-from kornia.core.utils import _to_device_nonblocking
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.param_validation import _learnable_range_bound, _load_unowned_learnable_range
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance.adjust import adjust_hue
 
 
 class RandomHue(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the hue of a torch.Tensor image.
+    r"""Rotate the hue of a three-channel image by a random number of turns.
+
+    ``output = RandomHue(hue)(input)`` samples an HSV hue rotation for each selected image.
 
     The shift is in turns of the hue circle, the unit of torchvision's ``adjust_hue`` ``hue_factor``, so a
     torchvision hue range carries over unchanged.
@@ -62,6 +64,11 @@ class RandomHue(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`
 
+    See Also:
+        - :class:`RandomSaturation`: scales HSV saturation without rotating hue.
+        - :class:`ColorJiggle`: combines hue rotation with other Kornia color adjustments.
+        - :class:`ColorJitter`: combines hue rotation with torchvision-compatible color adjustments.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
@@ -92,8 +99,10 @@ class RandomHue(IntensityAugmentationBase2D):
         self, hue: Tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.hue: torch.Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
-        self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(hue, "hue", bounds=(-0.5, 0.5))
+        self.hue: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", center, bounds))
+        _load_unowned_learnable_range(self, "hue", center)
 
     def apply_transform(
         self,

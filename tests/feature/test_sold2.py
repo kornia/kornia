@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -256,6 +258,16 @@ class TestSOLD2(BaseTester):
         cfg = DetectorCfg()
         detector = SOLD2_detector(pretrained=False, config=cfg)
         assert cfg.use_descriptor is False
+        assert detector.config.use_descriptor is False
+
+    def test_detector_config_dict_is_accepted_without_a_warning(self):
+        # SOLD2 takes a dict of DetectorCfg fields silently; its detector-only sibling takes one the same way.
+        cfg = {"grid_size": 4}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            detector = SOLD2_detector(pretrained=False, config=cfg)
+        assert cfg == {"grid_size": 4}
+        assert detector.config.grid_size == 4
         assert detector.config.use_descriptor is False
 
     def test_match_keeps_torch_diag_5722(self, device, dtype):

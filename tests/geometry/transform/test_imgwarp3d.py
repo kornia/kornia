@@ -25,7 +25,7 @@ import kornia.geometry.transform as proj
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMIC_EXPORT_UNAVAILABLE_REASON, BaseTester, assert_close, dynamic_export_is_available
 
 
 class TestWarpAffine3dEmptyBatch(BaseTester):
@@ -526,14 +526,15 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
         # returns to the homography's dtype, so a 640 voxel wide identity samples where a normalized identity grid
         # does, and in float16 within an eighth of a voxel of every column. The volume holds the column index. The
         # reference is the 2-D homography_warp of a depth slice, whose normalized grid follows align_corners; the
-        # 3-D normalized grid is corner-aligned under both settings (#4503). A CPU half 3-D warp runs in float32
-        # (#5751), so its reference does too.
+        # 3-D normalized grid is corner-aligned under both settings (#4503). A half 3-D warp runs in float32 on
+        # every device (#5751, #5814), so its reference does too.
         width = 640
         volume = torch.arange(width, device=device).to(dtype).expand(1, 1, 2, 2, width)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
 
         actual = self._warp(volume, identity, (2, 2, width), align_corners=align_corners)
-        reference_dtype = torch.float32 if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16) else dtype
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        reference_dtype = torch.float32 if half_in_float32 else dtype
         normalized = proj.homography_warp(
             volume[:, :, 0].to(reference_dtype),
             identity[:, :3, :3].to(reference_dtype),
@@ -661,8 +662,9 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
             device=device,
             dtype=dtype,
         )
-        # a CPU float16/bfloat16 warp runs in float32 and returns the input dtype (#5751)
-        work = torch.float32 if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16) else dtype
+        # a float16/bfloat16 warp runs in float32 on every device and returns the input dtype (#5751, #5814)
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        work = torch.float32 if half_in_float32 else dtype
         grid = kornia.geometry.create_meshgrid3d(
             4, 3, 6, normalized_coordinates=True, device=device, dtype=work, align_corners=align_corners
         )
@@ -926,6 +928,114 @@ class TestWarpAffine3d(BaseTester):
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(sample, P, (3, 3, 3))
         self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
+
+
+class TestWarp3dAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of warp_affine3d and warp_perspective3d (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _warp_inputs(op_name, device, dtype):
+        volume = torch.rand(1, 1, 32, 32, 32, generator=torch.Generator().manual_seed(0))
+        center, angles, scales = (
+            torch.tensor([[15.5, 15.5, 15.5]]),
+            torch.tensor([[10.0, 20.0, 25.0]]),
+            torch.ones(1, 3),
+        )
+        matrix = proj.get_projective_transform(center, angles, scales)
+        if op_name == "warp_perspective3d":
+            matrix = torch.cat([matrix, torch.tensor([[[1e-4, 0.0, 0.0, 1.0]]])], dim=1)
+        return volume.to(device=device, dtype=dtype), matrix.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _warp(op_name, volume, matrix, align_corners=False):
+        return getattr(proj, op_name)(volume, matrix, (32, 32, 32), align_corners=align_corners)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, align_corners, device):
+        # normalize_homography3d's matrix products and the grid, from F.affine_grid or transform_points, ran in the
+        # autocast dtype: up to 0.17 off in bfloat16 for a float32 volume of [0, 1] values, whose output stayed float32.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        volume, matrix = self._warp_inputs(op_name, device, src_dtype)
+        expected = self._warp(op_name, volume, matrix, align_corners)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, volume, matrix, align_corners)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # The 3D grid takes the matrix dtype, so a half volume with a matrix of the other half dtype reached grid_sample
+        # with two half dtypes under the guard, which CUDA autocast rejects.
+        self._skip_unsupported(device, autocast_dtype)
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        volume, matrix = volume.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, volume.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, volume, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        matrix.requires_grad_()
+        expected = torch.autograd.grad(self._warp(op_name, volume, matrix).sum(), matrix)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = self._warp(op_name, volume, matrix)
+        actual = torch.autograd.grad(out.sum(), matrix)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    def test_warp_perspective3d_still_scriptable_6573(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        volume = torch.rand(1, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.eye(4, device=device, dtype=dtype)[None]
+        scripted = torch.jit.script(proj.warp_perspective3d)
+        self.assert_close(scripted(volume, matrix, (3, 4, 5)), proj.warp_perspective3d(volume, matrix, (3, 4, 5)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, volume, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(volume, matrix)
+        assert actual.dtype == torch.float32
+        # A compiled graph differs from eager by up to 6.3e-06 here, inside the float32 default; this keeps the
+        # tolerance of the 2D warps, which need it.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(volume, matrix), expected, rtol=1e-3, atol=1e-3)
 
 
 class TestGetRotationMatrix3d(BaseTester):
@@ -1207,3 +1317,149 @@ class TestScaleShape3d(BaseTester):
             proj.get_projective_transform(center, angles, single),
             proj.get_projective_transform(center, angles, single.expand(batch, 3).contiguous()),
         )
+
+
+class TestWarp3dOneVoxelSourceAxis6433(BaseTester):
+    """A one-voxel source axis is sampled like a longer one under ``align_corners=True`` (#6433).
+
+    The 3D ``align_corners=False`` normalization is #4503; nothing here reads that setting.
+    """
+
+    @staticmethod
+    def _warp(op_name, volume, matrix, dsize, padding_mode="zeros", mode="bilinear"):
+        if op_name == "warp_affine3d":
+            return proj.warp_affine3d(volume, matrix[:, :3], dsize, mode, padding_mode, align_corners=True)
+        return proj.warp_perspective3d(volume, matrix, dsize, mode, padding_mode, align_corners=True)
+
+    @staticmethod
+    def _shift(x, y, z, device, dtype):
+        matrix = torch.eye(4, device=device, dtype=dtype)[None]
+        matrix[0, 0, 3], matrix[0, 1, 3], matrix[0, 2, 3] = x, y, z
+        return matrix
+
+    @staticmethod
+    def _volume(shape, device, dtype):
+        size = shape[0] * shape[1] * shape[2]
+        return (torch.arange(size, device=device, dtype=dtype) + 1).reshape(1, 1, *shape)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize(
+        ("shape", "shift"),
+        [
+            ((1, 4, 4), (0.0, 0.0, 1.0)),
+            ((4, 1, 4), (0.0, 1.0, 0.0)),
+            ((4, 4, 1), (1.0, 0.0, 0.0)),
+            ((1, 1, 1), (0.0, 1.0, 0.0)),
+        ],
+    )
+    def test_convention_shift_off_the_axis_pads(self, op_name, shape, shift, device, dtype):
+        volume = self._volume(shape, device, dtype)
+        out = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape)
+        self.assert_close(out, torch.zeros_like(volume))
+        border = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape, "border")
+        self.assert_close(border, volume)
+        reflection = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape, "reflection")
+        self.assert_close(reflection, volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("shape", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 4), (1, 1, 1)])
+    def test_convention_identity_and_half_a_voxel(self, op_name, shape, device, dtype):
+        volume = self._volume(shape, device, dtype)
+        self.assert_close(self._warp(op_name, volume, self._shift(0.0, 0.0, 0.0, device, dtype), shape), volume)
+        # Half a voxel along the one-voxel depth weighs the only slice by 1/2. Along no other axis is it a plain scale.
+        if shape[0] == 1 and shape[1:] != (1, 1):
+            half = self._warp(op_name, volume, self._shift(0.0, 0.0, 0.5, device, dtype), shape)
+            self.assert_close(half, 0.5 * volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize(
+        ("padding_mode", "second"), [("zeros", "zeros"), ("border", "same"), ("reflection", "same")]
+    )
+    def test_matches_a_two_slice_volume(self, op_name, mode, padding_mode, second, device, dtype):
+        volume = self._volume((1, 3, 4), device, dtype)
+        two = torch.cat((volume, torch.zeros_like(volume) if second == "zeros" else volume), dim=-3)
+        matrix = torch.tensor(
+            [[0.9, 0.1, 0.0, 0.2], [0.0, 1.1, 0.1, -0.3], [0.1, 0.0, 0.8, 0.3], [0.0, 0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )[None]
+        actual = self._warp(op_name, volume, matrix, (3, 3, 4), padding_mode, mode)
+        expected = self._warp(op_name, two, matrix, (3, 3, 4), padding_mode, mode)
+        # Border and reflection keep the single slice, so they agree up to the rounding of interpolating equal slices.
+        tolerance = {"atol": 0.0, "rtol": 0.0} if padding_mode == "zeros" else {}
+        self.assert_close(actual, expected, **tolerance)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_convention_batch_of_different_matrices(self, op_name, device, dtype):
+        volume = self._volume((1, 2, 3), device, dtype)
+        matrix = torch.cat([self._shift(0.0, 0.0, z, device, dtype) for z in (0.0, 1.0, 0.5)])
+        out = self._warp(op_name, volume.repeat(3, 1, 1, 1, 1), matrix, (1, 2, 3))
+        self.assert_close(out, torch.cat((volume, 0 * volume, 0.5 * volume)))
+
+    def test_gradcheck(self, device):
+        volume = self._volume((1, 2, 3), device, torch.float64).requires_grad_()
+        # No shift on a pixel centre, where bilinear sampling has a kink.
+        matrix = self._shift(0.1, 0.17, 0.3, device, torch.float64)
+        self.gradcheck(proj.warp_affine3d, (volume, matrix[:, :3], (1, 2, 3)))
+        matrix = matrix.clone().requires_grad_()
+        self.gradcheck(proj.warp_affine3d, (volume.detach(), matrix[:, :3], (1, 2, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(
+        ("trace_shape", "runtime_shape"), [((3, 4, 5), (1, 4, 5)), ((1, 4, 5), (3, 4, 5)), ((3, 4, 5), (1, 1, 1))]
+    )
+    def test_trace_keeps_the_decision(self, op_name, padding_mode, trace_shape, runtime_shape, device):
+        matrix = self._shift(0.2, 0.3, 0.6, device, torch.float32)
+        warp = self._warp
+
+        class Warp(torch.nn.Module):
+            def forward(self, volume, transform):
+                return warp(op_name, volume, transform, (2, 3, 4), padding_mode)
+
+        example = torch.rand(1, 2, *trace_shape, device=device)
+        runtime = torch.rand(1, 2, *runtime_shape, device=device)
+        traced = torch.jit.trace(Warp(), (example, matrix), check_trace=False)
+        self.assert_close(traced(runtime, matrix), Warp()(runtime, matrix), low_tolerance=True)
+
+    def test_script_warp_perspective3d(self, device):
+        volume = self._volume((1, 2, 3), device, torch.float32)
+        matrix = self._shift(0.0, 0.0, 0.5, device, torch.float32)
+        scripted = torch.jit.script(proj.warp_perspective3d)
+        out = scripted(volume, matrix, (1, 2, 3), align_corners=True)
+        self.assert_close(out, 0.5 * volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
+        matrix = self._shift(0.2, 0.3, 0.6, device, dtype)
+
+        def op(volume, transform):
+            return self._warp(op_name, volume, transform, (2, 3, 4), padding_mode)
+
+        compiled = torch_optimizer(op)
+        for shape in [(1, 4, 5), (3, 1, 1), (2, 3, 4)]:
+            volume = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+            self.assert_close(compiled(volume, matrix), op(volume, matrix))
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_dynamic_export_has_no_guard_on_the_size(self, op_name, device):
+        matrix = self._shift(0.2, 0.3, 0.6, device, torch.float32)
+        warp = self._warp
+
+        class Warp(torch.nn.Module):
+            def forward(self, volume, transform):
+                return warp(op_name, volume, transform, (2, 3, 4))
+
+        dim = torch.export.Dim
+        dims = {2: dim("D", min=1, max=64), 3: dim("H", min=1, max=64), 4: dim("W", min=1, max=64)}
+        program = torch.export.export(
+            Warp(), (torch.rand(1, 2, 3, 4, 5, device=device), matrix), dynamic_shapes={"volume": dims, "transform": {}}
+        ).module()
+        for shape in [(1, 4, 5), (3, 1, 5), (1, 1, 1), (3, 4, 5)]:
+            runtime = torch.rand(1, 2, *shape, device=device)
+            self.assert_close(program(runtime, matrix), Warp()(runtime, matrix), low_tolerance=True)

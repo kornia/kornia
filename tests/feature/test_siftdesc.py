@@ -207,6 +207,19 @@ class TestSIFTDescriptor(BaseTester):
         # A 90-degree rotation of a random 41-pixel patch matched the permuted descriptor to a mean cosine of 0.989.
         self.assert_close(sift(moved), predict(sift(patches), 8, n_bins))
 
+    def test_dynamo_tracked_patch(self, device, dtype, torch_optimizer):
+        # Tracked input takes direct differences, whose `torch.stack` form crashes Inductor on CUDA on torch 2.15.0. The
+        # conformance suite runs on CPU tensors whatever --device says, so only this test sees that crash.
+        torch.manual_seed(0)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype).requires_grad_()
+        sift = SIFTDescriptor(32).to(device, dtype)
+        actual = torch_optimizer(sift, fullgraph=True)(patches)
+        expected = sift(patches)
+        self.assert_close(actual, expected)
+        self.assert_close(
+            torch.autograd.grad(actual.sum(), patches)[0], torch.autograd.grad(expected.sum(), patches)[0]
+        )
+
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
@@ -214,6 +227,18 @@ class TestSIFTDescriptor(BaseTester):
         model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
+
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with the Gaussian window built in float64 and the pooling weights,
+        # an nn.Conv2d parameter, rounded to float32 as kornia builds them (snippet in the PR); a window rounded to
+        # float32 misses them by far more than 1e-12, which allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        patches = ((torch.arange(1024, dtype=torch.float64) * 0.23 + 0.4) % 1.0).reshape(1, 1, 32, 32).to(device)
+        expected = torch.tensor([0.140816954632648, 0.056875575617869586], device=device, dtype=torch.float64)
+        for sift in (SIFTDescriptor(32), SIFTDescriptor(32).double()):
+            desc = sift.to(device)(patches)
+            self.assert_close(torch.stack([desc[0, 22], desc[0, 0]]), expected, rtol=1e-12, atol=0.0)
 
 
 class TestSIFTDescriptorKernelBuffer(BaseTester):

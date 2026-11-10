@@ -15,15 +15,42 @@
 # limitations under the License.
 #
 
-from typing import List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from torch import Tensor, nn
+from torch.nn.parameter import is_lazy
 
 from .augment import AugmentationSequential
 
 
+def _fill_missing_augmentation_state(
+    module: nn.Module,
+    state_dict: Dict[str, Any],
+    prefix: str,
+    local_metadata: Dict[str, Any],
+    *args: Any,
+) -> None:
+    # Children used to live in a plain tuple, so old checkpoints contain no augmentation state.
+    # Version 2 records the registered layout: never hide its missing keys, even if all child state is absent.
+    if local_metadata.get("version", 1) >= 2:
+        return
+    if any(key.startswith(prefix + "augmentations.") for key in state_dict):
+        return
+    for name, value in module.state_dict(keep_vars=False).items():
+        if name.startswith("augmentations."):
+            # Lazy parameters and buffers must reach their load hooks without tensor operations.
+            state_dict[prefix + name] = (
+                value.detach().clone() if isinstance(value, Tensor) and not is_lazy(value) else value
+            )
+
+
 class ManyToManyAugmentationDispather(nn.Module):
-    r"""Dispatches different augmentations to different inputs element-wisely.
+    r"""Run one augmentation container for each matching input bundle.
+
+    ``outputs = ManyToManyAugmentationDispather(*augmentations)(*bundles)`` pairs each
+    :class:`~kornia.augmentation.container.AugmentationSequential` with the bundle at the same position and returns
+    its result. Use :class:`~kornia.augmentation.container.ManyToOneAugmentationDispather` to run several containers
+    over one shared bundle.
 
     See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
 
@@ -36,6 +63,10 @@ class ManyToManyAugmentationDispather(nn.Module):
         - the call takes one input bundle per augmentation and returns a list in that order; a different number
           of bundles raises ``ValueError`` before any augmentation runs. Each augmentation draws its own
           parameters, so the members are independent of one another.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ManyToOneAugmentationDispather`: gives every container one bundle.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: augments an aligned data bundle.
 
     Examples:
         >>> import torch
@@ -57,10 +88,13 @@ class ManyToManyAugmentationDispather(nn.Module):
 
     """
 
+    _version = 2
+
     def __init__(self, *augmentations: AugmentationSequential) -> None:
         super().__init__()
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):
@@ -88,7 +122,11 @@ class ManyToManyAugmentationDispather(nn.Module):
 
 
 class ManyToOneAugmentationDispather(nn.Module):
-    r"""Dispatches different augmentations to a single input and returns a list.
+    r"""Run several augmentation containers independently over one input bundle.
+
+    ``outputs = ManyToOneAugmentationDispather(*augmentations)(*inputs)`` gives the same inputs to every
+    :class:`~kornia.augmentation.container.AugmentationSequential` and returns one result per container. Use
+    :class:`~kornia.augmentation.container.ManyToManyAugmentationDispather` to pair containers and bundles.
 
     See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
 
@@ -104,6 +142,10 @@ class ManyToOneAugmentationDispather(nn.Module):
           as the list of augmentations and no input can be dropped.
         - with ``strict=True``, the default, the members must all declare the same ``data_keys``; a mismatch
           raises ``RuntimeError`` at construction.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ManyToManyAugmentationDispather`: pairs containers with bundles.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: augments an aligned data bundle.
 
     Examples:
         >>> import torch
@@ -125,11 +167,14 @@ class ManyToOneAugmentationDispather(nn.Module):
 
     """
 
+    _version = 2
+
     def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:
         super().__init__()
         self.strict = strict
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):

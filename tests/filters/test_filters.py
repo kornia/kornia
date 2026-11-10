@@ -877,6 +877,24 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.parametrize("size", [(50, 50), (40, 45)])
+    def test_half_input_is_transformed_in_float32(self, size, device, dtype):
+        """A half input returns the float32 result for the same values, cast back to the input dtype.
+
+        With a 15 x 15 kernel the padded sizes are 64 x 64, a power of two, and 54 x 59, which is not.
+        """
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the float16 and bfloat16 path")
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.rand(2, 3, *size, generator=generator).to(device, dtype)
+        kernel = torch.rand(1, 15, 15, generator=generator).to(device, dtype)
+
+        actual = fft_conv(sample, kernel, border_type="constant")
+        expected = fft_conv(sample.float(), kernel.float(), border_type="constant").to(dtype)
+
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("padding", ["same", "valid"])
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     @pytest.mark.parametrize("normalized", [True, False])
@@ -1399,11 +1417,12 @@ _FILTER2D_FNS = {"filter2d": filter2d, "fft_conv": fft_conv}
 
 
 def _fft_guard(name: str, device: torch.device, dtype: torch.dtype) -> None:
-    """Skip fft_conv where the device has no FFT for the dtype (fft_conv computes a CPU half input in float32)."""
+    """Skip fft_conv where the device has no FFT for the dtype it transforms (float32 for half inputs)."""
     if name != "fft_conv" or device.type == "cpu":
         return
+    fft_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     try:
-        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=dtype))
+        torch.fft.rfftn(torch.zeros(3, 5, device=device, dtype=fft_dtype))
     except (RuntimeError, NotImplementedError):
         pytest.skip("this device has no FFT for this dtype, which fft_conv needs")
 
@@ -1610,19 +1629,37 @@ class TestConventionsFilter2d(BaseTester):
         assert kernel.grad is not None
         assert kernel.grad.dtype == torch.float64
 
+    @pytest.mark.parametrize("name", ["filter2d", "fft_conv", "filter3d"])
+    def test_convention_filter2d_kernel_gradient_reaches_a_float64_cpu_kernel(self, name, device, dtype):
+        # A single MPS -> CPU float64 copy left this gradient unwritten on torch 2.14 and raised on 2.15
+        # (pytorch/pytorch#197715).
+        _fft_guard(name, device, dtype)
+        fn = filter3d if name == "filter3d" else _FILTER2D_FNS[name]
+        spatial = (3, 5, 7) if name == "filter3d" else (5, 7)
+        image = torch.ones(1, 1, *spatial, device=device, dtype=dtype)
+        kernel = torch.full((1, *((3,) * len(spatial))), 0.5, dtype=torch.float64, requires_grad=True)
+        fn(image, kernel, "constant").float().sum().backward()
+        # Zero padding: a tap at offset o from the centre lands inside the image at n - |o| positions of an axis
+        # of length n, so its gradient is the product of those counts, e.g. 4 * 6 = 24 at a 2-D corner.
+        counts = [torch.tensor([n - 1.0, n, n - 1.0], dtype=torch.float64) for n in spatial]
+        expected = counts[0][:, None] * counts[1][None, :]
+        if name == "filter3d":
+            expected = expected[:, :, None] * counts[2][None, None, :]
+        self.assert_close(kernel.grad[0], expected)
+
     @pytest.mark.parametrize("border_type, too_narrow, wide_enough", [("reflect", 2, 3), ("circular", 1, 2)])
-    def test_convention_filter2d_reflect_and_circular_need_the_axis_longer_than_the_pad(
+    def test_convention_filter2d_reflect_and_circular_extend_to_short_axes(
         self, border_type, too_narrow, wide_enough, device, dtype
     ):
         if border_type == "reflect" and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        # A kernel 4 wide pads 1 column before and 2 after. reflect needs every pad shorter than the axis, circular
-        # at most as long; a narrower axis raises.
-        kernel = _rand(1, 1, 4, device=device, dtype=dtype)
+        # A kernel 4 wide pads 1 column before and 2 after. Both borders keep a constant image constant,
+        # including where the backend's own reflection or wrapping limit was reached.
+        kernel = torch.tensor([[[1, 2, 4, 8]]], device=device, dtype=dtype)
         out = filter2d(_rand(1, 1, 3, wide_enough, device=device, dtype=dtype), kernel, border_type)
         assert out.shape == (1, 1, 3, wide_enough)
-        with pytest.raises((RuntimeError, BaseError)):
-            filter2d(_rand(1, 1, 3, too_narrow, device=device, dtype=dtype), kernel, border_type)
+        image = torch.ones(1, 1, 3, too_narrow, device=device, dtype=dtype)
+        self.assert_close(filter2d(image, kernel, border_type), image * 15, rtol=0, atol=0)
         # constant padding runs on any size
         assert filter2d(_rand(1, 1, 3, 1, device=device, dtype=dtype), kernel, "constant").shape == (1, 1, 3, 1)
 

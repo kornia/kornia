@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from enum import Enum
 from functools import update_wrapper
 from inspect import getattr_static
@@ -29,7 +30,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
-from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.helpers import _constant_tensor, _detach_recorded_graph_tensors
 from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -158,6 +159,11 @@ class _BasicAugmentationBase(nn.Module):
         dtype = probe.dtype if probe.is_floating_point() else self.dtype
         self.set_rng_device_and_dtype(probe.device, dtype)
         return out
+
+    def __getstate__(self) -> Dict[str, Any]:
+        # With a learnable range, ``_params`` and the matrix state recorded by the last call are part of its graph;
+        # a copy keeps their values, detached.
+        return _detach_recorded_graph_tensors(super().__getstate__())
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
@@ -289,6 +295,16 @@ class _BasicAugmentationBase(nn.Module):
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
 
+        # Validate before committing state. Controls are not parameters or flags and must not be saved for replay.
+        for key in kwargs:
+            if key not in params and key not in flags and key not in ("save_kwargs", "data_keys"):
+                warnings.warn(
+                    f"{type(self).__name__} got an unknown keyword argument '{key}'; it is ignored. "
+                    "Passing unknown keyword arguments is deprecated and will raise TypeError in a future release.",
+                    FutureWarning,
+                    stacklevel=3,
+                )
+
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
             self._commit_state(params=params)
@@ -328,7 +344,9 @@ class _BasicAugmentationBase(nn.Module):
         Note:
             By default, all the overwriting parameters in kwargs will not be recorded
             as in ``self._params``. If you wish it to be recorded, you may pass
-            ``save_kwargs=True`` additionally.
+            ``save_kwargs=True`` additionally. Only parameter overrides are recorded; flag overrides
+            apply to this call and must be supplied again for replay. Unknown keywords emit ``FutureWarning``
+            and are ignored.
 
         """
         in_tensor = self.__unpack_input__(input)
@@ -537,7 +555,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
 
-        # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
+        # Reuse the not-transformed Boxes container (preserves mode/_padding/is_batched/etc.)
         # and swap in the blended data, same effect as the index_put on .data.
         output = output_not_transformed.clone()
         output._data = blended_data

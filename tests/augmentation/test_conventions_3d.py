@@ -32,7 +32,6 @@ from testing.base import (
     supports_bilinear_3d_grid_sample,
     supports_nearest_3d_grid_sample,
     supports_replicate_padding_3d,
-    supports_unit_size_3d_affine_grid,
 )
 
 
@@ -136,8 +135,6 @@ class Test3DAugmentationConventions(BaseTester):
         # _LinAlgError here, because a size-1 axis makes the vertices coplanar.
         if not supports_bilinear_3d_grid_sample(device, dtype):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device and dtype")
-        if not supports_unit_size_3d_affine_grid(device, dtype):
-            pytest.skip("3D affine_grid cannot build a size-1 axis for this device and dtype")
         volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6)
         for augmentation in (K.CenterCrop3D(size, p=1.0), K.RandomCrop3D(size, p=1.0)):
             output = augmentation(volume)

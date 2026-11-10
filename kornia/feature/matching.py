@@ -303,12 +303,18 @@ def match_nn(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Match each descriptor in desc1 to its nearest neighbor in desc2, with no filtering.
 
+    ``dists, idxs = match_nn(desc1, desc2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns, for
+    every row of ``desc1`` in order, the L2 distance ``(B1, 1)`` to its nearest row of ``desc2`` and the index pair
+    ``(B1, 2)`` of the two rows; a precomputed ``dm`` ``(B1, B2)`` replaces the L2 distances. Every row is matched,
+    however ambiguous its nearest neighbour, and several rows can match the same row of ``desc2``. To keep only the
+    reliable matches, use :func:`match_mnn` (mutual nearest neighbours), :func:`match_snn` (Lowe's ratio test) or
+    :func:`match_smnn` (both) instead.
+
     Convention:
         - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
-          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched` adds the
-          batch index as a first column). ``dists`` is ``(M, 1)``, in the dtype of ``dm`` when it is given and in
-          the descriptor dtype otherwise, except that :func:`match_adalam` returns float32. Lower values are better,
-          and what they are depends on the function:
+          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows; :func:`match_smnn_batched` adds the batch
+          index as a first column. ``dists`` is ``(M, 1)``. Without ``dm``, it has the descriptor dtype, except that
+          :func:`match_adalam` returns float32. Lower values are better, and their meaning depends on the function:
 
           - :func:`match_nn`, :func:`match_mnn`: the distance, the entry of ``dm`` when it is given.
           - :func:`match_snn`: the ratio of the nearest to the second-nearest distance, not a distance.
@@ -323,13 +329,10 @@ def match_nn(
           ``1 - dists`` as ``confidence``.
         - The ratio tests of :func:`match_snn`, :func:`match_smnn`, :func:`match_smnn_batched` and
           :func:`match_fginn` keep ``ratio <= th``: a ratio equal to ``th`` passes.
-        - Without ``dm``, the L2 distances between the descriptors are used. On the CPU and CUDA, for inputs that
-          need no gradient, the matchers select on the squared distances and take the square roots of the selected
-          ones. The returned values are those of ``torch.cdist``, but two distances that round to the same value only
-          after the square root are not tied, and the nearer one is returned. A given ``dm`` is read as it is:
-          :func:`match_nn` and :func:`match_mnn` accept any matrix in which smaller is better and return its
-          entries, while the ratio tests divide its entries, so they need non-negative values, and squared
-          distances need ``th ** 2``.
+        - Without ``dm``, the functions use L2 distances. A given ``dm`` replaces them: :func:`match_nn` and
+          :func:`match_mnn` require only that smaller entries are better, while ratio tests require non-negative
+          distances. Use ``th ** 2`` for squared distances.
+        - Of tied nearest neighbours, :func:`match_nn` and :func:`match_mnn` take the one with the lower index.
         - An empty desc1 or desc2 gives a ``(0, 1)`` and a ``(0, 2)`` tensor (``(0, 3)`` for
           :func:`match_smnn_batched`). The ratio tests need a second neighbour: :func:`match_snn` and
           :func:`match_fginn` return no match unless desc2 has two rows, and :func:`match_smnn`,
@@ -343,8 +346,14 @@ def match_nn(
           to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Returns:
-        - Descriptor distance of matching descriptors, shape of ``(B1, 1)``.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B1, 2)``.
+        - Descriptor distance of matching descriptors, shape of ``(B1, 1)``, or ``(0, 1)`` when desc2 is empty.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B1, 2)``, or
+          ``(0, 2)`` when desc2 is empty.
+
+    See Also:
+        - :func:`match_mnn`: keeps only the pairs that are each other's nearest neighbours.
+        - :func:`match_snn`: keeps only the nearest neighbours that pass Lowe's ratio test.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="nn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -367,11 +376,18 @@ def match_nn(
 def match_mnn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match the descriptors of desc1 and desc2 that are each other's nearest neighbors (mutual nearest neighbors).
+    """Match the descriptors of desc1 and desc2 that are each other's nearest neighbors.
+
+    ``dists, idxs = match_mnn(desc1, desc2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns the
+    pairs whose two descriptors are each other's nearest neighbour, the mutual nearest neighbours: their L2
+    distances ``(B3, 1)`` and index pairs ``(B3, 2)``, with ``B3 <= min(B1, B2)``. Each row of either set is matched
+    at most once, but a distinctive descriptor and an ambiguous one are kept alike; to also require Lowe's ratio
+    test, use :func:`match_smnn` instead.
 
     Convention:
         See the Convention block on :func:`match_nn`. A pair is kept only when each of the two descriptors is the
-        nearest neighbour of the other.
+        nearest neighbour of the other. Ties go to the lower index in both directions, so of several identical
+        rows of desc2 only the first can be matched.
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.
@@ -383,6 +399,12 @@ def match_mnn(
         - Descriptor distance of matching descriptors, shape of ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B3, 2)``,
           where 0 <= B3 <= min(B1, B2)
+
+    See Also:
+        - :func:`match_nn`: the nearest neighbour of every row of desc1, mutual or not.
+        - :func:`match_smnn`: mutual nearest neighbours that also pass the ratio test in both directions.
+        - :func:`match_snn`: the ratio test in one direction, without the mutual check.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="mnn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -463,9 +485,13 @@ def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = Fals
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match each descriptor in desc1 to its nearest neighbor in desc2 if it passes Lowe's second-nearest ratio test.
+    """Match each descriptor in desc1 to its nearest neighbor in desc2 if it passes Lowe's ratio test.
 
-    The ratio of the first to the second nearest neighbor distance must be <= th.
+    ``dists, idxs = match_snn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
+    rows of ``desc1`` whose nearest neighbour in ``desc2`` is at most ``th`` times as far as the second-nearest, and
+    returns their ratios ``(B3, 1)``, not distances, and index pairs ``(B3, 2)``, with ``B3 <= B1``, in the order of
+    the rows of ``desc1``. Several rows of ``desc1`` can match the same row of ``desc2``; to keep only mutual
+    nearest neighbours that pass the test in both directions, use :func:`match_smnn` instead.
 
     Speed, with the same matches, on 1,024 to 8,192 RootSIFT descriptors: on an x86 CPU this is faster than faiss and
     OpenCV's ``BFMatcher``, while faiss's exact k-nearest-neighbour search runs this ratio test up to 2.2x faster on
@@ -487,6 +513,13 @@ def match_snn(
         - Ratio of the nearest to the second-nearest distance of each match, shape of ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_nn`: the nearest neighbour of every row of desc1, without the ratio test.
+        - :func:`match_mnn`: mutual nearest neighbours, without the ratio test.
+        - :func:`match_smnn`: the ratio test in both directions, on mutual nearest neighbours.
+        - :func:`match_fginn`: the same ratio test, with a second neighbour that lies elsewhere in the image.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="snn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -516,9 +549,13 @@ def match_snn(
 def match_smnn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match mutual nearest neighbors of desc1 and desc2 that also pass the second-nearest ratio test both ways.
+    """Match mutual nearest neighbors that also pass Lowe's ratio test in both directions.
 
-    The ratio of the first to the second nearest neighbor distance must be <= th in both directions.
+    ``dists, idxs = match_smnn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
+    mutual nearest neighbours whose nearest-to-second-nearest distance ratio is at most ``th`` both from ``desc1``
+    to ``desc2`` and back, and returns the larger of their two ratios ``(B3, 1)`` and their index pairs ``(B3, 2)``,
+    with ``B3 <= min(B1, B2)``, in the order of the rows of ``desc1``. For many pairs of descriptor sets, padded to
+    common sizes, use :func:`match_smnn_batched` instead of a loop.
 
     Speed, with the same matches, on 1,024 to 8,192 RootSIFT descriptors: on an x86 CPU this is faster than faiss and
     OpenCV's ``BFMatcher``, while faiss's exact k-nearest-neighbour search, run both ways, is up to 1.6x faster on
@@ -542,6 +579,14 @@ def match_smnn(
         - The larger of the two distance ratios of each match, shape of ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
           shape of ``(B3, 2)`` where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_snn`: the ratio test from desc1 to desc2 only, without the mutual check.
+        - :func:`match_mnn`: mutual nearest neighbours without the ratio test.
+        - :func:`match_smnn_batched`: the same matches for a batch of padded descriptor-set pairs, in one call.
+        - :class:`DescriptorMatcher`: the module form, with ``match_mode="smnn"`` and a default ``th`` of 0.8.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the next step, which keeps the matches one geometric model
+          explains.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -582,18 +627,22 @@ def match_smnn_batched(
     mask1: Optional[torch.Tensor] = None,
     mask2: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Match independent descriptor pairs with a batched symmetric nearest-neighbor ratio test.
+    r"""Match a batch of padded descriptor-set pairs in one call, each as match_smnn matches one pair.
 
-    Like :func:`match_smnn`, each match must pass Lowe's first/second L2 distance
-    ratio test in both directions and have mutual nearest neighbors. The returned
-    quality is the larger of the two ratios. Pairs are processed together with
-    batched distance computation and top-k reductions, without a per-pair loop.
+    ``ratios, idxs = match_smnn_batched(desc1, desc2, th)`` takes ``B`` pairs of descriptor sets, ``(B, N, D)`` and
+    ``(B, M, D)``, padded to common sizes, with optional boolean masks ``mask1`` ``(B, N)`` and ``mask2`` ``(B, M)``
+    of the valid rows, and returns the matches of every pair at once, without a loop over the pairs: the larger of
+    the two ratios ``(K, 1)`` and index rows ``(K, 3)`` of ``(batch index, index in desc1, index in desc2)``, which
+    index the padded tensors and come sorted by batch index, then index in desc1. For a single pair, use
+    :func:`match_smnn`.
 
     Convention:
         See the Convention blocks on :func:`match_nn` and :func:`match_smnn`. For each batch item it returns the
-        pairs and ratios that :func:`match_smnn` returns for the valid descriptors of that item, with the batch
-        index as the first column of the indices. For float16 and bfloat16 descriptors these are the results of
-        :func:`match_smnn` on float32 copies, with the ratios rounded back, and a few pairs and ratios can differ
+        pairs and ratios that :func:`match_smnn` returns for finite distances between the valid descriptors of that
+        item, with the batch index as the first column of the indices. Unlike :func:`match_smnn`, it rejects a match
+        when the nearest or second-nearest distance in either direction is non-finite. Without ``dm``, float16 and
+        bfloat16 descriptors give the results
+        of :func:`match_smnn` on float32 copies, with the ratios rounded back, and a few pairs and ratios can differ
         slightly from those of :func:`match_smnn` on the half-precision descriptors.
 
     Args:
@@ -621,6 +670,10 @@ def match_smnn_batched(
         As in :func:`match_smnn`, a zero second-neighbor distance produces an
         undefined ratio and that ambiguous match is rejected. Ties follow
         :func:`torch.topk` and do not have a guaranteed cross-device ordering.
+
+    See Also:
+        - :func:`match_smnn`: the same test for one pair of descriptor sets of any sizes, with no padding.
+        - :func:`match_snn`: the ratio test in one direction for one pair, without the mutual check.
 
     Example:
         >>> a = torch.tensor([[[0., 0.], [1., 1.], [2., 2.]]])
@@ -716,10 +769,17 @@ def match_fginn(
     mutual: bool = False,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match desc1 to desc2 by a ratio test against the first geometrically inconsistent nearest neighbor (FGINN).
+    """Match desc1 to desc2 by a ratio test against the first geometrically inconsistent neighbor (FGINN).
 
-    The ratio test compares the nearest distance with that of the nearest candidate whose ``lafs2`` centre lies at
-    least ``spatial_th`` from the first one's; closer candidates are skipped (see :cite:`MODS2015` for more details).
+    ``dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th, spatial_th)`` takes two descriptor sets ``(B1, D)``
+    and ``(B2, D)`` and the LAFs ``(1, B2, 2, 3)`` of ``desc2``, keeps the rows of ``desc1`` whose nearest neighbour
+    in ``desc2`` passes the ratio test of :func:`match_snn` against the nearest candidate whose ``lafs2`` centre
+    lies at least ``spatial_th`` from the nearest one's, and returns their ratios ``(B3, 1)`` and index pairs
+    ``(B3, 2)``, in the order of the rows of ``desc1``. Closer candidates are skipped (see :cite:`MODS2015` for more
+    details), so a near-duplicate detection of the same structure, such as another scale or orientation at one
+    place, does not reject the match as it can in :func:`match_snn`. ``lafs1`` is not read, and ``mutual=True`` adds
+    the mutual nearest-neighbour check. To test the local affine consistency of the matches in both images, use
+    :func:`match_adalam` instead.
 
     Convention:
         - See the Convention block on :func:`match_nn`. ``dists`` is a ratio: the nearest distance over the distance
@@ -751,6 +811,11 @@ def match_fginn(
           ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_snn`: the plain ratio test, whose second neighbour can lie on the same structure.
+        - :func:`match_adalam`: keeps the nearest-neighbour matches that local affine models of both images support.
+        - :class:`GeometryAwareDescriptorMatcher`: the module form, with ``match_mode="fginn"``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -794,13 +859,14 @@ def match_fginn(
 
 
 class DescriptorMatcher(nn.Module):
-    """nn.Module version of descriptor-only matching functions.
+    """Match two descriptor sets by nearest neighbours, mutual ones or a ratio test, as a module.
 
-    This matcher only requires descriptors (no LAFs). For geometry-aware matching that uses LAFs,
-    see :class:`~kornia.feature.GeometryAwareDescriptorMatcher`.
-
-    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
-        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+    ``matcher = DescriptorMatcher("snn", th=0.8)`` builds the module and ``dists, idxs = matcher(desc1, desc2)``
+    takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and returns what :func:`match_nn`, :func:`match_mnn`,
+    :func:`match_snn` or :func:`match_smnn` returns for them, by ``match_mode``: ``(B3, 1)`` qualities and
+    ``(B3, 2)`` index pairs. It holds no parameters and reads no LAFs, which makes it a matcher for
+    :class:`LocalFeatureMatcher`. For matchers that also read the LAFs, use :class:`GeometryAwareDescriptorMatcher`
+    instead, and for a learned one, :class:`LightGlueMatcher`.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.match_nn`. ``forward`` returns what the function of
@@ -811,6 +877,20 @@ class DescriptorMatcher(nn.Module):
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
         th: distance ratio threshold of the `snn` and `smnn` modes.
+
+    Raises:
+        NotImplementedError: for another ``match_mode``.
+
+    See Also:
+        - :func:`match_nn`: the function of ``match_mode="nn"``, which also takes a precomputed ``dm``; so do the
+          other three.
+        - :func:`match_mnn`: the function of ``match_mode="mnn"``.
+        - :func:`match_snn`: the function of the default ``match_mode="snn"``.
+        - :func:`match_smnn`: the function of ``match_mode="smnn"``, whose own ``th`` defaults to 0.95.
+        - :class:`GeometryAwareDescriptorMatcher`: the module form of :func:`match_fginn` and :func:`match_adalam`,
+          which also take LAFs.
+        - :class:`LocalFeatureMatcher`: detects and describes the features of two images, then matches them with a
+          module like this one.
 
     """
 
@@ -1018,10 +1098,14 @@ class DescriptorMatcherWithSteerer(nn.Module):
 
 
 class GeometryAwareDescriptorMatcher(nn.Module):
-    """nn.Module version of geometry-aware matching functions that use LAFs (Local Affine Frames).
+    """Match two descriptor sets that come with their LAFs, by FGINN or AdaLAM, as a module.
 
-    Unlike :class:`~kornia.feature.DescriptorMatcher`, this matcher requires both descriptors and LAFs.
-    See :func:`~kornia.feature.match_fginn` or :func:`~kornia.feature.match_adalam` for more details.
+    ``matcher = GeometryAwareDescriptorMatcher("fginn", params)`` builds the module and
+    ``dists, idxs = matcher(desc1, desc2, lafs1, lafs2)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)`` and
+    their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)``, and returns what :func:`match_fginn` or :func:`match_adalam`
+    returns for them, by ``match_mode``: ``(B3, 1)`` ratios or inverse confidences and ``(B3, 2)`` index pairs. It
+    passes no ``dm``, and no image sizes to AdaLAM; to give them, call the functions directly. For descriptors
+    without LAFs, use :class:`DescriptorMatcher` instead.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.match_nn`. ``forward`` returns what the function of
@@ -1035,6 +1119,15 @@ class GeometryAwareDescriptorMatcher(nn.Module):
     Args:
         match_mode: type of matching, can be `fginn` or `adalam`.
         params: dictionary of parameters for the matching function.
+
+    Raises:
+        NotImplementedError: for another ``match_mode``.
+
+    See Also:
+        - :func:`match_fginn`: the function of the default ``match_mode="fginn"``, whose own ``th`` defaults to 0.8.
+        - :func:`match_adalam`: the function of ``match_mode="adalam"``, which also takes the image sizes.
+        - :class:`DescriptorMatcher`: the module form of the matchers that read descriptors only.
+        - :class:`LightGlueMatcher`: a learned matcher with the same call, which also takes the image sizes.
 
     """
 

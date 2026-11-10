@@ -39,6 +39,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32
 from kornia.geometry.subpix import nms2d
 
 
@@ -78,32 +79,31 @@ class BasicLayer(nn.Module):
         r"""Run the module forward pass.
 
         Args:
-            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+            x: Input feature map with shape ``(B, C_in, H, W)``.
 
         Returns:
-            Output feature map with shape :math:`(B, C_{\text{out}}, H', W')`.
+            Output feature map with shape ``(B, C_out, H', W')``.
         """
         return self.layer(x)
 
 
 class XFeatModel(nn.Module):
-    """XFeat backbone: CNN feature extractor, keypoint and reliability heads.
+    """Compute the dense descriptors, keypoint logits and reliability map of XFeat at 1/8 resolution.
 
-    Implements the architecture from
-    "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
-
-    Input: float image tensor ``(B, C, H, W)`` (grayscale or RGB, any channel count).
-    Output:
-
-    - ``feats``: dense descriptors ``(B, 64, H/8, W/8)``.
-    - ``keypoints``: keypoint logits ``(B, 65, H/8, W/8)``.
-    - ``heatmap``: reliability map ``(B, 1, H/8, W/8)``.
+    ``net = XFeatModel().eval()`` builds the random-weight network for inference (``XFeat.from_pretrained().net``
+    is trained), and ``feats, keypoints, heatmap = net(images)`` takes float images ``(B, C, H, W)`` with any
+    channel count and ``H`` and ``W`` multiples of 8, and returns the dense descriptors ``(B, 64, H/8, W/8)``, not
+    normalised, the keypoint logits ``(B, 65, H/8, W/8)`` and the reliability map ``(B, 1, H/8, W/8)``, a sigmoid. It
+    finds no keypoints itself: for keypoints, descriptors and matches, use :class:`XFeat` instead. It implements the
+    architecture of "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
 
     Convention:
         - The channels are averaged and the result is instance-normalised, so any channel count is accepted and an
           affine change ``a x + b`` of the intensities with ``a > 0`` changes the outputs only through the norm's
           ``eps`` (``1e-5``): negligibly while the variance of the channel mean is much larger than ``eps``, and
           substantially for a low-contrast image, whose variance is close to it (see :class:`XFeat`).
+        - A new ``XFeatModel`` is in training mode. A single ``32 x 32`` image reaches BatchNorm with one value per
+          channel and raises; call ``.eval()`` for inference.
         - ``H`` and ``W`` must be multiples of 8; other sizes raise an error or give maps of mismatched sizes.
           :class:`XFeat` resizes its input to multiples of 32.
         - ``keypoints`` holds 65 logits per 8 x 8 cell: channel ``(y % 8) * 8 + x % 8`` of cell ``(y // 8, x // 8)``
@@ -112,6 +112,11 @@ class XFeatModel(nn.Module):
     Note:
         Image normalisation (``InstanceNorm2d``) is wrapped in ``torch.no_grad()``
         following the original design; backpropagating through it is not supported.
+
+    See Also:
+        - :class:`XFeat`: runs this network and detects, describes and matches keypoints from its maps.
+        - :class:`InterpolateSparse2d`: samples the descriptor map at sparse keypoints, as :class:`XFeat` does.
+
     """
 
     def __init__(self) -> None:
@@ -228,17 +233,25 @@ class XFeatModel(nn.Module):
 
 
 class InterpolateSparse2d(nn.Module):
-    """Bilinearly or bicubically sample a dense feature map at sparse 2-D positions.
+    """Sample a feature map at sparse (x, y) pixels with the XFeat weights' coordinate scaling.
+
+    ``interp = InterpolateSparse2d("bicubic")`` and ``out = interp(x, pos, H, W)`` take a feature map ``(B, C, h, w)``
+    and positions ``(B, N, 2)`` as ``(x, y)`` pixels of an image of height ``H`` and width ``W``, and return the
+    features ``(B, N, C)`` that :func:`torch.nn.functional.grid_sample` reads there with ``mode``, in the dtype of
+    ``x``. The positions are divided by ``W - 1`` and ``H - 1`` but sampled with ``align_corners=False``, as the
+    pretrained XFeat weights expect, so ``H`` and ``W`` must be greater than 1, and a map of the image's own size is
+    not read at ``pos`` itself (see the Convention block). To read a map of the image's own size at the pixel itself,
+    normalise the positions with :func:`~kornia.geometry.conversions.normalize_pixel_coordinates` and pass
+    ``align_corners=True`` to ``grid_sample`` instead.
 
     Convention:
         - ``pos`` holds ``(x, y)`` pixels of an image of height ``H`` and width ``W`` whose feature map has height
           ``h`` and width ``w``. A position ``(px, py)`` is read at ``px * w / (W - 1) - 0.5`` and
           ``py * h / (H - 1) - 0.5`` in the map's pixel frame: ``normgrid``'s ``2 p / (W - 1) - 1`` sampled with
-          ``align_corners=False``, the convention the pretrained XFeat weights use. So a map of the image's own size is
-          not read at ``p`` itself.
-        - Known defects: on CPU, float16 and bfloat16 maps go to torch's ``grid_sample`` without an upcast: the
-          half-precision kernel can return wrong values, NaN or overflow, and where torch has none the call raises
-          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+          ``align_corners=False``, the convention the pretrained XFeat weights use.
+        - A float16 or bfloat16 map is sampled in float32 and returned in its dtype, and float16 or bfloat16 positions
+          are normalised in float32: torch's half-precision ``grid_sample`` can return wrong values, NaN or overflow on
+          CPU, and a half-precision grid is off by a pixel or more on a large map.
 
     Args:
         mode: interpolation mode for :func:`torch.nn.functional.grid_sample`.
@@ -247,9 +260,17 @@ class InterpolateSparse2d(nn.Module):
             ``False``.
 
     Shape:
-        - Input ``x``: ``(B, C, H, W)``.
+        - Input ``x``: ``(B, C, h, w)``.
         - Input ``pos``: ``(B, N, 2)`` integer or float (x, y) coordinates.
         - Output: ``(B, N, C)``.
+
+    See Also:
+        - :class:`XFeat`: samples its dense descriptors at its keypoints with this module.
+        - :class:`XFeatModel`: the network whose descriptor map :class:`XFeat` samples with this module.
+        - :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`: the same division by ``W - 1`` and
+          ``H - 1``, meant for ``grid_sample`` with ``align_corners=True``, which reads a map of the image's size at
+          the pixel itself.
+
     """
 
     def __init__(self, mode: str = "bicubic", align_corners: bool = False) -> None:
@@ -271,27 +292,32 @@ class InterpolateSparse2d(nn.Module):
         """Sample ``x`` at positions ``pos``.
 
         Args:
-            x: feature map ``(B, C, H, W)``.
+            x: feature map ``(B, C, h, w)``.
             pos: sampling positions ``(B, N, 2)`` in pixel coordinates.
-            H: height used for coordinate normalisation.
-            W: width used for coordinate normalisation.
+            H: height used for coordinate normalisation, greater than 1.
+            W: width used for coordinate normalisation, greater than 1.
 
         Returns:
             Sampled features ``(B, N, C)``.
         """
-        grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
+        wide = torch.float32 if _samples_half_in_float32(x) else x.dtype
+        grid = self.normgrid(pos.float() if _samples_half_in_float32(pos) else pos, H, W).unsqueeze(-2).to(wide)
         # align_corners=False is intentional: the pretrained XFeat weights were trained
         # with normgrid using the (W-1) denominator but grid_sample using align_corners=False.
         # Changing either side would break compatibility with the pretrained weights.
-        x = F.grid_sample(x, grid, mode=self.mode, align_corners=False)
+        x = F.grid_sample(x.to(wide), grid, mode=self.mode, align_corners=False).to(x.dtype)
         return x.permute(0, 2, 3, 1).squeeze(-2)
 
 
 class XFeat(nn.Module):
-    """XFeat sparse and semi-dense local feature extractor and matcher.
+    """Detect and describe keypoints with XFeat, and match image pairs, sparse or refined (XFeat*).
 
-    Wraps :class:`XFeatModel` with NMS keypoint detection, descriptor
-    interpolation, and mutual nearest-neighbour matching helpers.
+    ``xfeat = XFeat.from_pretrained()`` loads trained weights in evaluation mode.
+    ``out = xfeat.detectAndCompute(images)`` takes images ``(B, C, H, W)`` with any channel count and returns one
+    dictionary per image. Each contains up to ``top_k`` keypoints ``(N, 2)`` in ``(x, y)`` pixels, scores ``(N,)``
+    in descending order and L2-normalised descriptors ``(N, 64)``.
+    Use :meth:`match_xfeat` to extract and match sparse features, or :meth:`match_xfeat_star` for refined matches
+    from semi-dense features. For subpixel keypoint detection, use :class:`ALIKED` instead.
 
     Reference:
         "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
@@ -300,40 +326,60 @@ class XFeat(nn.Module):
     .. image:: _static/img/XFeat.png
 
     Convention:
-        - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
-        - ``XFeat()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
-          running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
-          inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
-          run under ``torch.inference_mode``.
+        - Use the named extraction and matching methods: XFeat has no ``forward``. Its network, ``xfeat.net``,
+          is an :class:`XFeatModel` that produces dense maps. To match with LighterGlue, construct LAFs with
+          :func:`~kornia.feature.laf_from_center_scale_ori` on ``keypoints[None]`` and pass them with the descriptors
+          to :class:`LightGlueMatcher` in ``"xfeat"`` mode, with gradients disabled.
+        - ``XFeat()`` builds random weights in training mode. Batch normalisation can raise on a single small image;
+          call ``.eval()`` for inference. :meth:`from_pretrained` returns the trained model in evaluation mode.
+        - :meth:`detectAndCompute`, :meth:`detectAndComputeDense`, :meth:`match_xfeat` and :meth:`match_xfeat_star`
+          run under ``torch.inference_mode``, so they return inference tensors.
         - The image is ``(B, C, H, W)`` with any channel count. Each extraction resizes the image it gets
-          bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
+          bilinearly to ``(H', W')``: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
           intensities with a positive gain changes its maps only through the norm's ``eps``, which weighs more the
           lower the image's contrast. With the pretrained weights and ``top_k=2048``, the :math:`[0, 1]` and
           :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
-          with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01. Every output is float32.
-        - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
-          keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
-          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
-          (see :ref:`Local features <local-features-conventions>`) when ``H`` and ``W`` are multiples of 32;
-          otherwise the centre of the resized pixel is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
+          with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01.
+        - Keypoints are float32. Scores and descriptors have the dtype of the weights, and the resized image is cast to
+          it, so a float16 or bfloat16 model runs on an image of any float dtype; under autocast, the descriptors of
+          :meth:`detectAndComputeDense` have the dtype autocast gives the network. With the pretrained weights,
+          ``top_k=2048`` and the 290 HPatches pairs on an RTX 4090 with torch 2.15, :meth:`match_xfeat` keeps its
+          inliers at 3 px within 0.6 % of float32, and float16 and bfloat16 keep 99.4 % and 95.0 % of its keypoints. On
+          an Apple M1 half precision takes about 15 times as long as float32 on the CPU and about as long on MPS. On
+          torch 2.5.1 the CPU float16 instance norm is wrong: on HPatches a ``[0, 255]`` image gave no keypoints and a
+          ``[0, 1]`` one 18 % of the inliers. Use float32 or bfloat16 weights there. torch 2.15 and a 2.16 nightly are
+          correct; versions in between were not checked.
+        - :meth:`detectAndCompute` keypoints are integer pixels of the resized image, strict maxima of the keypoint
+          heatmap in their 5 x 5 window (see the note). Pixel :math:`i` of the resized image is reported at its centre
+          in the input, :math:`(i + 0.5) W / W' - 0.5` in :math:`x` and likewise in :math:`y`, in the pixel convention
+          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          That is exactly :math:`i` when ``H`` and ``W`` are multiples of 32. The reference implementation reports
+          :math:`i W / W'` instead, up to nearly half a pixel away.
         - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
           bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.
-        - With ``multiscale=False``, :meth:`detectAndComputeDense` reports cell ``(j, i)`` of the 1/8-resolution map
-          at ``8 * (j, i)``, times the same ratio: the top-left pixel of the cell, not its centre. It keeps the
-          ``top_k`` cells of highest reliability, or every cell when there are fewer or ``top_k`` is below 1. With
-          the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
-          on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and divides each
-          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. A share of 0 yields no
-          cell from its scale, and a scale with fewer cells than its share returns all of them, so there are never
-          more than ``top_k`` keypoints, and exactly ``top_k`` when both scales have enough cells. A ``top_k`` below
-          1 keeps every cell of both scales. Its descriptors are not normalised. The reference implementation gives
-          the 1.3 scale ``int(0.8 * top_k)`` and reads a share of 0 as "every cell"; kornia does not, because that
-          returns more keypoints than ``top_k`` asks for.
-        - Known defects: converting the model to float16 or bfloat16 makes every extraction raise, because
-          ``_preprocess_tensor`` passes float32 input to the half-precision weights
-          (`#5957 <https://github.com/kornia/kornia/issues/5957>`_).
+        - With ``multiscale=False``, :meth:`detectAndComputeDense` takes cell ``(j, i)`` of the 1/8-resolution map at
+          pixel ``8 * (j, i)`` of the resized image, the top-left pixel of the cell and not its centre, and reports
+          that pixel's centre in the input as above: exactly ``8 * (j, i)`` when ``H`` and ``W`` are multiples of 32.
+          It keeps up to ``top_k`` cells by reliability; ``top_k < 1`` keeps every cell.
+          With the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
+          on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and maps each
+          keypoint ``p`` of the image rescaled by ``s`` back through the pixel centre, ``(p + 0.5) / s - 0.5``;
+          ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. The reference divides by the factor, ``p / s``,
+          0.333 px up and to the left of the pixel at 0.6 and 0.115 px down and to the right at 1.3
+          (`#6537 <https://github.com/kornia/kornia/issues/6537>`_). A share of 0 yields
+          no cell from its scale, and a scale with fewer
+          cells than its share returns all of them, so there are never more than ``top_k`` keypoints, and exactly
+          ``top_k`` when both scales have enough cells. A ``top_k`` below 1 keeps every cell of both scales. Its
+          descriptors are not normalised. The reference implementation gives the 1.3 scale ``int(0.8 * top_k)`` and
+          reads a share of 0 as "every cell"; kornia does not, because that returns more keypoints than ``top_k`` asks
+          for.
+        - Known defects: autograd cannot save the inference tensors of
+          the four methods above for a backward pass, so :class:`~kornia.feature.LightGlueMatcher`, whose parameters
+          require gradients, raises on them with gradients enabled, the default grad mode: call it under
+          ``torch.no_grad()`` or ``torch.inference_mode()``, or ``clone()`` the outputs first
+          (`#6533 <https://github.com/kornia/kornia/issues/6533>`_).
 
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
@@ -350,7 +396,19 @@ class XFeat(nn.Module):
         a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
         every candidate of the reference that kornia leaves out lies in that border strip.
 
-        XFeat* (:meth:`match_xfeat_star`) moves each matched keypoint of the first image by the soft-argmax of the
+        XFeat* (:meth:`match_xfeat_star`) anchors both matched cells at bin 3: it moves both points three pixels
+        into their cells, then moves the first point by the fine displacement. Both are pixels of the image the network
+        saw, and one such pixel spans ``r / s`` input pixels per axis, for extraction scale ``s`` (0.6 or 1.3) and the
+        ratio ``r`` of the resize to multiples of 32. This differs from the raw top-left coordinates returned by
+        :meth:`detectAndComputeDense` and from the reference, which starts both points at the top-left pixel and
+        scales the displacement by ``1 / s``.
+
+        On 40 Oxford affine pairs, this match origin raises homography AUC@3 from 0.365 to 0.401 (three
+        correspondence-order seeds, float32, ``top_k=4096``, USAC_MAGSAC at 1 px), and on 813 IMC PhotoTourism
+        validation pairs scene-mean relative-pose mAA@10 from 0.458 to 0.473 (USAC_MAGSAC at 0.5 px, measured before
+        the pixel-centre mapping of the dual-scale rescale below).
+
+        The displacement of the first image is the soft-argmax of the
         fine matcher's 8 x 8 heatmap times the keypoint's scale, measured from bin 3 of each axis. This also departs
         on purpose from the reference implementation, which measures it from bin 4, the window centre: the pretrained
         fine matcher puts a zero displacement at bin 3. Matching Oxford bikes img1 with itself (pretrained weights,
@@ -361,6 +419,30 @@ class XFeat(nn.Module):
         still moves a point only about half of the way, as in the reference: on Oxford graf 1-2 to 1-5 its response to
         the true sub-cell offset has a slope of about 0.5, so bin 3 removes the constant part of the error, not that
         shrinkage.
+
+        Reporting keypoints at the pixel centre of the resize to a multiple of 32 also departs on purpose from the
+        reference. With the pretrained weights and 8 Oxford images, each matched with resizes of itself to two sizes
+        whose true map is known exactly, the share of matches within 1 px goes from 24.2 to 24.5 % for
+        :meth:`match_xfeat`, from 40.1 to 40.7 % for :class:`LightGlueMatcher` and from 28.7 to 29.1 % for
+        :meth:`match_xfeat_star`. Homography AUC on Oxford affine and HPatches stays within the noise of the estimator
+        for the first two, and on HPatches at about 320 px AUC@3 of :meth:`match_xfeat_star` gains 0.0025. The 0.6 and
+        1.3 rescale of the dual-scale extraction goes through the pixel centre as well. With the bin-3 anchor, Oxford
+        affine AUC@3 of :meth:`match_xfeat_star` stays within seed noise (0.404 before, 0.401 after), and the share of
+        matches within 1 px of an exactly known map goes from 46.6 to 50.4 % for an image matched with its 0.7 resize,
+        and from 47.6 to 48.0 %, 35.9 to 36.9 % and 21.6 to 21.2 % for its rotations by 20 degrees, by 20 degrees at
+        scale 0.7 and by -35 degrees at scale 1.2 (`#6537 <https://github.com/kornia/kornia/issues/6537>`_).
+
+    See Also:
+        - :class:`XFeatModel`: the network it runs, which returns the dense maps at 1/8 resolution.
+        - :class:`InterpolateSparse2d`: samples the dense descriptors at the keypoints.
+        - :class:`ALIKED`: learned sub-pixel keypoints with 128-D descriptors, for RGB images of any size.
+        - :class:`DISK`: learned integer-pixel keypoints with 128-D descriptors, for RGB images whose sides are
+          multiples of 16.
+        - :class:`DeDoDe`: separate learned detector and descriptor networks, with ``n`` keypoints in every image.
+        - :func:`laf_from_center_scale_ori`: turns the keypoints of one image into the LAFs that
+          :class:`LightGlueMatcher` takes.
+        - :class:`LightGlueMatcher`: matches the descriptors and keypoints with the LighterGlue ``"xfeat"`` weights
+          instead of mutual nearest neighbours.
 
     Example:
         >>> model = XFeat.from_pretrained()
@@ -403,13 +485,32 @@ class XFeat(nn.Module):
     # ------------------------------------------------------------------
 
     def _preprocess_tensor(self, x: torch.Tensor) -> Tuple[torch.Tensor, float, float]:
-        """Resize to the largest multiple of 32 not exceeding the input size (min 32); return image and scale ratios."""
+        """Resize to the largest multiple of 32 not exceeding the input size (min 32); return image and scale ratios.
+
+        Pixel ``i`` of the resized image has its centre at ``(i + 0.5) * r - 0.5`` of the input, for ratio ``r``.
+        """
         KORNIA_CHECK(x.dim() == 4, "Input must be a 4-D tensor (B, C, H, W)")
         H, W = x.shape[-2:]
-        _H, _W = max(32, (H // 32) * 32), max(32, (W // 32) * 32)
+        _H, _W = self._resized_size(H, W)
         rh, rw = H / _H, W / _W
         x = F.interpolate(x.float(), (_H, _W), mode="bilinear", align_corners=False)
-        return x, rh, rw
+        return x.to(next(self.net.parameters()).dtype), rh, rw
+
+    @staticmethod
+    def _resized_size(h: int, w: int) -> Tuple[int, int]:
+        """Return the size :meth:`_preprocess_tensor` resizes ``(h, w)`` to: multiples of 32, at least 32."""
+        return max(32, (h // 32) * 32), max(32, (w // 32) * 32)
+
+    def _cell_scales(self, x: torch.Tensor, factor: float, mkpts: torch.Tensor) -> torch.Tensor:
+        """Return input pixels per pixel of what the network saw, ``(B, K, 2)`` in x and y, for keypoints of ``x``.
+
+        ``x`` is the input rescaled by ``factor`` (1 for the input itself); :meth:`_preprocess_tensor` then resizes it
+        by the ratio ``r`` of its side to a multiple of 32, so one pixel there spans ``r / factor`` input pixels.
+        """
+        h, w = x.shape[-2:]
+        _h, _w = self._resized_size(h, w)
+        cell = torch.tensor([w / _w / factor, h / _h / factor], device=mkpts.device)
+        return cell.expand(mkpts.shape[0], mkpts.shape[1], 2)
 
     @staticmethod
     def _get_kpts_heatmap(kpts: torch.Tensor, softmax_temp: float = 1.0) -> torch.Tensor:
@@ -521,13 +622,14 @@ class XFeat(nn.Module):
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
         feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
-        mkpts = mkpts * torch.tensor([rw1, rh1], device=mkpts.device).view(1, -1)
+        # The cell's top-left pixel of the resized image, at that pixel's centre in the input (#6537).
+        mkpts = (mkpts + 0.5) * torch.tensor([rw1, rh1], device=mkpts.device).view(1, -1) - 0.5
         return mkpts, feats
 
     def _extract_dualscale(
         self, x: torch.Tensor, top_k: Optional[int], s1: float = 0.6, s2: float = 1.3
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Extract dense features at two scales and merge.
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Extract dense features at two scales and merge; return keypoints, scales, descriptors and cell scales.
 
         ``top_k`` is split into ``int(0.2 * top_k)`` for the first scale and the rest for the second;
         ``None`` keeps every cell of both. A zero share yields no cell from its scale.
@@ -539,18 +641,24 @@ class XFeat(nn.Module):
             k2 = int(top_k) - k1
         x2 = F.interpolate(x, scale_factor=s2, align_corners=False, mode="bilinear")
         mkpts_2, feats_2 = self._extract_dense(x2, k2)
+        cell_2 = self._cell_scales(x2, s2, mkpts_2)
         if k1 == 0:
             # no cell is asked of the first scale: skip its resize and backbone pass; the empty outputs take the
             # dtype and device of the computed scale, so the concatenation does not change the output dtype
             mkpts_1 = mkpts_2.new_empty((mkpts_2.shape[0], 0, 2))
             feats_1 = feats_2.new_empty((feats_2.shape[0], 0, feats_2.shape[-1]))
+            cell_1 = cell_2[:, :0]
         else:
             x1 = F.interpolate(x, scale_factor=s1, align_corners=False, mode="bilinear")
             mkpts_1, feats_1 = self._extract_dense(x1, k1)
-        mkpts = torch.cat([mkpts_1 / s1, mkpts_2 / s2], dim=1)
+            cell_1 = self._cell_scales(x1, s1, mkpts_1)
+        # interpolate with scale_factor=s and align_corners=False samples pixel p at (p + 0.5) / s - 0.5 of the input,
+        # with s itself, not the ratio of the rounded-down sizes; the reference divides by s instead (#6537).
+        mkpts = torch.cat([(mkpts_1 + 0.5) / s1 - 0.5, (mkpts_2 + 0.5) / s2 - 0.5], dim=1)
         sc1 = torch.ones(mkpts_1.shape[:2], device=mkpts_1.device) * (1 / s1)
         sc2 = torch.ones(mkpts_2.shape[:2], device=mkpts_2.device) * (1 / s2)
-        return mkpts, torch.cat([sc1, sc2], dim=1), torch.cat([feats_1, feats_2], dim=1)
+        cell = torch.cat([cell_1, cell_2], dim=1)
+        return mkpts, torch.cat([sc1, sc2], dim=1), torch.cat([feats_1, feats_2], dim=1), cell
 
     def _refine_matches(
         self,
@@ -566,11 +674,20 @@ class XFeat(nn.Module):
         feats2 = d1["descriptors"][batch_idx][idx1]
         mkpts_0 = d0["keypoints"][batch_idx][idx0].clone()
         mkpts_1 = d1["keypoints"][batch_idx][idx1]
-        sc0 = d0["scales"][batch_idx][idx0]
+        cell0 = d0["cell_scales"][batch_idx][idx0]
+        cell1 = d1["cell_scales"][batch_idx][idx1]
         offsets = self.net.fine_matcher(torch.cat([feats1, feats2], dim=-1))
         conf = F.softmax(offsets * 3, dim=-1).max(dim=-1)[0]
         offsets = self._subpix_softmax2d(offsets.view(-1, 8, 8))
-        mkpts_0 = mkpts_0 + offsets * sc0[:, None]
+        # #6640: the fine matcher measures displacement from bin 3, so both cells need that same anchor. Shifting only
+        # the refined side leaves a scale-dependent bias. Keep the raw dense-extraction grid unchanged; only matches
+        # move. Anchor and displacement are pixels of what the network saw, so both use the cell scales, r / s per
+        # axis. Full match_xfeat_star on a 240x320 image, top_k=1024, torch 2.15, i7-14700K/2 threads: 30.0 -> 30.1 ms
+        # (within spread); see the class note for the accuracy. Scale before adding the anchor: the float32 cell scales
+        # promote a float16/bfloat16 offset first, so the anchor is not rounded in half precision (bfloat16 put it up
+        # to 0.026 px off).
+        mkpts_0 = mkpts_0 + offsets * cell0 + 3.0 * cell0
+        mkpts_1 = mkpts_1 + 3.0 * cell1
         mask_good = conf > fine_conf
         return torch.cat([mkpts_0[mask_good], mkpts_1[mask_good]], dim=-1)
 
@@ -607,12 +724,19 @@ class XFeat(nn.Module):
         B, _, _H1, _W1 = x.shape
 
         M1, K1, H1 = self.net(x)
-        M1 = F.normalize(M1, dim=1)
+        # F.normalize's default eps rounds to zero in float16 and a zero descriptor became NaN, so only float16 takes
+        # _l2_normalize. Its zero-gradient mask costs float32, with bitwise-equal output, on CUDA (torch 2.15, min over
+        # 7 rounds of 300 calls): 82.0 against 32.3 us on the (1, 64, 60, 80) map, 87.6 against 30.6 us on the
+        # (1, 2048, 64) features. Dropping the mask from the helper would lose its gradient contract for other callers.
+        normalize = _l2_normalize if x.dtype == torch.float16 else F.normalize
+        # x has the weights' dtype. Autocast can give the maps another one, and on CUDA it takes F.normalize's norm in
+        # float32, which promotes a bfloat16 quotient: cast both sides.
+        M1 = normalize(M1.to(x.dtype), dim=1).to(x.dtype)
 
         K1h = self._get_kpts_heatmap(K1)
         mkpts = self._nms(K1h, threshold=detection_threshold, kernel_size=5)
 
-        scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1)
+        scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1).to(x.dtype)
         scores[torch.all(mkpts == -1, dim=-1)] = -1
 
         k = min(top_k, scores.shape[-1])
@@ -622,9 +746,10 @@ class XFeat(nn.Module):
         mkpts = torch.cat([mkpts_x[..., None], mkpts_y[..., None]], dim=-1)
 
         feats = self.interpolator(M1, mkpts, H=_H1, W=_W1)
-        feats = F.normalize(feats, dim=-1)
+        feats = normalize(feats, dim=-1).to(x.dtype)
 
-        mkpts = mkpts * torch.tensor([rw1, rh1], device=mkpts.device).view(1, 1, -1)
+        # Each keypoint is a pixel of the resized image: report that pixel's centre in the input (#6537).
+        mkpts = (mkpts + 0.5) * torch.tensor([rw1, rh1], device=mkpts.device).view(1, 1, -1) - 0.5
 
         valid = scores > 0
         return [
@@ -661,16 +786,25 @@ class XFeat(nn.Module):
             - ``'descriptors'``: ``(B, K, 64)`` coarse descriptors.
             - ``'scales'``: ``(B, K)`` extraction scale per keypoint.
         """
+        out = self._detect_dense(x, top_k, multiscale)
+        return {"keypoints": out["keypoints"], "descriptors": out["descriptors"], "scales": out["scales"]}
+
+    def _detect_dense(self, x: torch.Tensor, top_k: Optional[int], multiscale: bool) -> Dict[str, torch.Tensor]:
+        """Return :meth:`detectAndComputeDense`'s dict plus ``'cell_scales'``, which :meth:`_refine_matches` reads.
+
+        ``'cell_scales'`` is ``(B, K, 2)``: input pixels per pixel of what the network saw, in x and y.
+        """
         if top_k is None:
             top_k = self.top_k
         # a top_k below 1 means every cell; resolve it once, before the budget is split between the scales
         budget = top_k if top_k >= 1 else None
         if multiscale:
-            mkpts, sc, feats = self._extract_dualscale(x, budget)
+            mkpts, sc, feats, cell = self._extract_dualscale(x, budget)
         else:
             mkpts, feats = self._extract_dense(x, budget)
             sc = torch.ones(mkpts.shape[:2], device=mkpts.device)
-        return {"keypoints": mkpts, "descriptors": feats, "scales": sc}
+            cell = self._cell_scales(x, 1.0, mkpts)
+        return {"keypoints": mkpts, "descriptors": feats, "scales": sc, "cell_scales": cell}
 
     @torch.inference_mode()
     def match_xfeat(
@@ -692,7 +826,8 @@ class XFeat(nn.Module):
             img1: first images ``(B, C, H, W)``.
             img2: second images ``(B, C, H, W)``, with the same ``B`` as ``img1``.
             top_k: number of top keypoints to use.
-            min_cossim: minimum cosine similarity threshold. Use ``-1`` to disable.
+            min_cossim: the cosine similarity a match must exceed; a value of 0 or below, such as the default
+                ``-1``, disables the check.
 
         Returns:
             If ``B != 1``: list of ``(N, 4)`` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
@@ -724,9 +859,13 @@ class XFeat(nn.Module):
     ) -> List[torch.Tensor] | Tuple[torch.Tensor, torch.Tensor]:
         """Extract coarse features, match pairs and refine matches (XFeat*).
 
+        Both matched cells are anchored three pixels into the cell, in pixels of the image the network saw. The first
+        point also receives the fine displacement measured from bin 3. Raw :meth:`detectAndComputeDense` coordinates
+        stay at the top-left cell origin; see the class note for the coordinate convention.
+
         Args:
             im_set1: batch of images ``(B, C, H, W)``.
-            im_set2: batch of images ``(B, C, H, W)``.
+            im_set2: batch of images ``(B, C, H, W)``, with the same ``B`` as ``im_set1``.
             top_k: number of top features to use.
 
         Returns:
@@ -736,8 +875,8 @@ class XFeat(nn.Module):
         """
         if top_k is None:
             top_k = self.top_k
-        out1 = self.detectAndComputeDense(im_set1, top_k=top_k)
-        out2 = self.detectAndComputeDense(im_set2, top_k=top_k)
+        out1 = self._detect_dense(im_set1, top_k, True)
+        out2 = self._detect_dense(im_set2, top_k, True)
         idxs_list = self._batch_match(out1["descriptors"], out2["descriptors"])
         B = im_set1.shape[0]
         matches = [self._refine_matches(out1, out2, matches=idxs_list, batch_idx=b) for b in range(B)]

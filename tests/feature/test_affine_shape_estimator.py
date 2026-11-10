@@ -20,6 +20,7 @@ import math
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from kornia.feature.laf import (
     get_laf_orientation,
@@ -183,11 +184,41 @@ class TestPatchAffineShapeEstimator(BaseTester):
         expected = torch.tensor([[[0.4146, 0.0000, 1.0000]]], device=device)
         self.assert_close(abc, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize(
+        ("patch_size", "shape"),
+        [
+            (19, (2, 1, 1, 19)),
+            (19, (2, 1, 19, 1)),
+            (19, (2, 1, 1, 1)),
+            (19, (2, 1, 18, 19)),
+            (19, (2, 1, 20, 20)),
+            (19, (2, 3, 19, 19)),
+            (32, (2, 1, 19, 19)),
+            (1, (2, 1, 32, 32)),
+        ],
+    )
+    def test_rejects_patch_that_is_not_patch_size_square_6530(self, device, dtype, patch_size, shape):
+        # Without the check a strip such as (1, 19) broadcasts against the 19 x 19 weighting and gives the circle
+        # (1, 0, 1) whatever its content, and patch_size=1 weights a patch of any size uniformly.
+        patch = torch.rand(*shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            PatchAffineShapeEstimator(patch_size).to(device, dtype)(patch)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
         ori = PatchAffineShapeEstimator(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,), nondet_tol=1e-4)
+
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with the Gaussian weighting built in float64 (snippet in the PR); a
+        # weighting rounded to float32 misses them by far more than 1e-12, which allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        patch = ((torch.arange(361, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 19, 19).to(device)
+        expected = torch.tensor([1.0, 0.6483032711577077, 0.903999437822951], device=device, dtype=torch.float64)
+        for estimator in (PatchAffineShapeEstimator(19), PatchAffineShapeEstimator(19).double()):
+            self.assert_close(estimator.to(device)(patch)[0, 0], expected, rtol=1e-12, atol=0.0)
 
 
 class TestAffineShapeKernelBuffer(BaseTester):

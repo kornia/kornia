@@ -1535,3 +1535,371 @@ class TestEssentialDecompositionAutocast(BaseTester):
         actual = actual if isinstance(actual, tuple) else (actual,)
         for out, ref in zip(actual, expected):
             self.assert_close(out, ref)
+
+
+# Its two nonzero singular values are equal by construction, on every SVD backend: this is [e_z]_x.
+_AXIS_ALIGNED_ESSENTIAL_6251 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+_SVD_DECOMPOSITIONS_6251 = {
+    "decompose_essential_matrix": epi.decompose_essential_matrix,
+    "motion_from_essential": epi.motion_from_essential,
+    "project_to_essential": epi.project_to_essential,
+}
+
+
+def _exact_essential_6251(pose, device, dtype=torch.float64):
+    """An exact essential matrix ``(1, 3, 3)``: the axis-aligned one for ``pose=None``, else that of a seeded pose."""
+    if pose is None:
+        return torch.tensor([_AXIS_ALIGNED_ESSENTIAL_6251], device=device, dtype=dtype)
+    generator = torch.Generator().manual_seed(pose)
+    R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+        0.5 * torch.randn(1, 3, generator=generator, dtype=torch.float64)
+    )
+    t = torch.randn(1, 3, 1, generator=generator, dtype=torch.float64)
+    identity = torch.eye(3, dtype=torch.float64)[None]
+    E_mat = epi.essential_from_Rt(identity, torch.zeros(1, 3, 1, dtype=torch.float64), R, t)
+    return E_mat.to(device=device, dtype=dtype)
+
+
+def _candidates_on_branch_6251(E_mat, reference):
+    """The candidates of ``E_mat``, labeled as in ``reference``, the candidates of a nearby matrix.
+
+    The signs of the SVD and the order of the two largest singular values choose which rotation is ``R1`` and the sign
+    of ``t``. A rounding-level step away from an exact essential matrix can flip that choice, so central differences of
+    :func:`decompose_essential_matrix` itself step from one labeling to the other. Each labeling is smooth, and a
+    derivative is of one of them.
+    """
+    R1, R2, t = epi.decompose_essential_matrix(E_mat)
+    swap = ((R1.detach() - reference[0]) ** 2).sum((-2, -1)) > ((R2.detach() - reference[0]) ** 2).sum((-2, -1))
+    flip = (t.detach() * reference[2]).sum((-2, -1)) < 0
+    swap, flip = swap[..., None, None], flip[..., None, None]
+    return torch.where(swap, R2, R1), torch.where(swap, R1, R2), torch.where(flip, -t, t)
+
+
+def _svd_backward_candidates_6251(E_mat):
+    """``(R1, R2, t, projection)`` flattened, differentiated by ``torch.linalg.svd``'s own backward: the reference."""
+    U, S, Vh = torch.linalg.svd(E_mat)
+    mean = 0.5 * (S[..., 0] + S[..., 1])
+    projection = mean[..., None, None] * (U[..., :2] @ Vh[..., :2, :])
+    U = torch.cat([U[..., :2], U[..., 2:] * torch.linalg.det(U.detach())[..., None, None]], -1)
+    Vh = torch.cat([Vh[..., :2, :], Vh[..., 2:, :] * torch.linalg.det(Vh.detach())[..., None, None]], -2)
+    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=E_mat.device, dtype=E_mat.dtype)
+    return torch.cat([(U @ W @ Vh).flatten(), (U @ W.mT @ Vh).flatten(), U[..., 2:].flatten(), projection.flatten()])
+
+
+class TestEssentialGradientAtEqualSingularValues(BaseTester):
+    """The derivatives of the SVD decompositions exist where the two largest singular values are equal (#6251)."""
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_backward_is_finite_6251(self, device, dtype, name):
+        # torch.linalg.svd's backward divides by the difference of the squares of those two values, here exactly 0.
+        if name != "project_to_essential":
+            _skip_half(dtype, _NO_HALF_LU.format(name))
+        E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
+        outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+        (grad,) = torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)
+        assert torch.isfinite(grad).all()
+
+    @pytest.mark.parametrize("pose", [None, *range(8)])
+    def test_gradcheck_decompose_at_exact_essential_6251(self, device, pose):
+        E_mat = _exact_essential_6251(pose, device)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        self.gradcheck(lambda E: _candidates_on_branch_6251(E, reference), (E_mat,), fast_mode=False)
+
+    @pytest.mark.parametrize("pose", [None, *range(8)])
+    def test_gradcheck_project_at_exact_essential_6251(self, device, pose):
+        self.gradcheck(epi.project_to_essential, (_exact_essential_6251(pose, device),), fast_mode=False)
+
+    def test_gradcheck_choose_solution_at_exact_essential_6251(self, device):
+        # The cheirality test makes the result independent of the labeling, so no branch needs fixing here.
+        E_mat = _exact_essential_6251(3, device)
+        Rs, ts = epi.motion_from_essential(E_mat)
+        K = torch.eye(3, device=device, dtype=torch.float64)[None]
+        generator = torch.Generator().manual_seed(6251)
+        X = torch.randn(1, 8, 3, generator=generator, dtype=torch.float64).to(device)
+        X = X + torch.tensor([0.0, 0.0, 6.0], device=device, dtype=torch.float64)
+        # The scene of the candidate closest to no rotation, whatever its label: in front of both cameras.
+        k = int(Rs.diagonal(dim1=-2, dim2=-1).sum(-1).argmax())
+        X2 = X @ Rs[:, k].mT + ts[:, k].mT
+        x1, x2 = X[..., :2] / X[..., 2:], X2[..., :2] / X2[..., 2:]
+
+        def pose_and_points(E):
+            return epi.motion_from_essential_choose_solution(E, K, K, x1, x2)[:3]
+
+        assert int(epi.motion_from_essential_choose_solution(E_mat, K, K, x1, x2)[3]) == 8
+        self.gradcheck(pose_and_points, (E_mat,), fast_mode=False)
+
+    @pytest.mark.parametrize("pose", [None, 4])
+    def test_second_derivatives_at_exact_essential_6251(self, device, pose):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        E_mat = _exact_essential_6251(pose, device).requires_grad_()
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        assert torch.autograd.gradgradcheck(lambda E: _candidates_on_branch_6251(E, reference), (E_mat,))
+        assert torch.autograd.gradgradcheck(epi.project_to_essential, (E_mat,))
+
+    @pytest.mark.parametrize("seed", range(4))
+    def test_same_derivatives_as_the_svd_backward_off_the_manifold_6251(self, device, seed):
+        # Where the singular values are distinct torch's own backward is right, and the first and second derivatives
+        # must not move.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        generator = torch.Generator().manual_seed(seed)
+        E_mat = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        weights = torch.randn(30, generator=generator, dtype=torch.float64).to(device)
+
+        def outputs(E):
+            R1, R2, t = epi.decompose_essential_matrix(E)
+            return torch.cat([R1.flatten(), R2.flatten(), t.flatten(), epi.project_to_essential(E).flatten()])
+
+        expected = torch.autograd.functional.jacobian(_svd_backward_candidates_6251, E_mat)
+        self.assert_close(torch.autograd.functional.jacobian(outputs, E_mat), expected, atol=1e-10, rtol=1e-10)
+        expected = torch.autograd.functional.hessian(
+            lambda E: (_svd_backward_candidates_6251(E) * weights).sum(), E_mat
+        )
+        actual = torch.autograd.functional.hessian(lambda E: (outputs(E) * weights).sum(), E_mat)
+        self.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
+
+    def _pipeline_gradient(self, num_points, noise, seed, device):
+        # The reproduction of #6251.
+        g = torch.Generator().manual_seed(100 + seed)
+        X = torch.randn(1, num_points, 3, generator=g, dtype=torch.float64) + torch.tensor(
+            [0.0, 0.0, 5.0], dtype=torch.float64
+        )
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            0.2 * torch.randn(1, 3, generator=g, dtype=torch.float64)
+        )
+        t = torch.randn(1, 3, 1, generator=g, dtype=torch.float64)
+        X2 = X @ R.mT + t.mT
+        x1 = X[..., :2] / X[..., 2:] + noise * torch.randn(1, num_points, 2, generator=g, dtype=torch.float64)
+        x2 = X2[..., :2] / X2[..., 2:] + noise * torch.randn(1, num_points, 2, generator=g, dtype=torch.float64)
+        x1 = x1.to(device).requires_grad_()
+        candidates = epi.find_essential(x1, x2.to(device))[0]
+        usable = torch.isfinite(candidates).flatten(1).all(1) & (candidates.detach().flatten(1).norm(dim=1) > 1e-6)
+        if not usable.any():
+            return None
+        k = int(usable.nonzero()[0])
+        Rs, ts = epi.motion_from_essential(candidates[k : k + 1])
+        (grad,) = torch.autograd.grad(Rs.sum() + ts.sum(), x1)
+        return grad
+
+    @pytest.mark.parametrize("num_points, noise", [(5, 0.0), (8, 1e-3), (20, 1e-3)])
+    def test_find_essential_pipeline_has_finite_gradients_6251(self, device, num_points, noise):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        grads = [self._pipeline_gradient(num_points, noise, seed, device) for seed in range(60)]
+        grads = [grad for grad in grads if grad is not None]
+        assert len(grads) > 30
+        assert sum(int(not torch.isfinite(grad).all()) for grad in grads) == 0
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("pose", [None, 4, "generic"])
+    def test_requires_grad_leaves_the_value_bitwise_unchanged_6251(self, device, dtype, name, pose):
+        if name != "project_to_essential":
+            _skip_half(dtype, _NO_HALF_LU.format(name))
+        if pose == "generic":
+            generator = torch.Generator().manual_seed(6251)
+            E_mat = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device=device, dtype=dtype)
+        else:
+            E_mat = _exact_essential_6251(pose, device, dtype)
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        expected = fn(E_mat)
+        actual = fn(E_mat.clone().requires_grad_())
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert out.requires_grad
+            assert out.dtype == ref.dtype
+            assert torch.equal(out, ref)
+            assert torch.equal(out.signbit(), ref.signbit())
+
+    def test_value_keeps_a_negative_zero_6251(self, device, dtype):
+        from kornia.geometry.epipolar.essential import _with_derivatives_of
+
+        value = torch.tensor([-0.0, 0.0, -1.0], device=device, dtype=dtype)
+        smooth = torch.ones(3, device=device, dtype=dtype, requires_grad=True)
+        out = _with_derivatives_of(value, smooth)
+        assert torch.equal(out, value)
+        assert torch.equal(out.signbit(), value.signbit())
+
+    def test_no_grad_call_records_nothing_6251(self, device, dtype):
+        E_mat = _exact_essential_6251(4, device, dtype).requires_grad_()
+        with torch.no_grad():
+            assert not epi.project_to_essential(E_mat).requires_grad
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("entry", [1e308, 0.9 * torch.finfo(torch.float64).max])
+    def test_near_maximum_matrix_keeps_its_value_6251(self, device, name, entry):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # The sum of the two largest singular values overflows here, though the matrix and its rotations are finite. A
+        # recorded derivative must not change the value: the projection itself overflows with or without one.
+        E_mat = torch.diag(torch.tensor([entry, entry, 0.0], device=device, dtype=torch.float64))[None]
+        expected = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = _SVD_DECOMPOSITIONS_6251[name](E_mat.clone().requires_grad_())
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert torch.equal(out.detach().nan_to_num(7.0), ref.nan_to_num(7.0))
+            if name != "project_to_essential":
+                assert torch.isfinite(ref).all()
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_gradient_of_unbatched_and_nested_batches_6251(self, device, name):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+
+        def gradient(E_mat):
+            E_mat = E_mat.clone().requires_grad_()
+            outputs = fn(E_mat)
+            outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+            return torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)[0]
+
+        flat = torch.cat([_exact_essential_6251(pose, device) for pose in range(6)])
+        expected = gradient(flat)
+        assert torch.isfinite(expected).all()
+        self.assert_close(gradient(flat.view(2, 3, 3, 3)), expected.view(2, 3, 3, 3))
+        self.assert_close(gradient(flat[0]), expected[0])
+
+    def test_rows_of_a_batch_are_independent_6251(self, device):
+        # Only some rows are degenerate: a zero matrix and a rank-one matrix have no derivative, but must not touch the
+        # gradient of any other row, and stay finite themselves.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        exact = _exact_essential_6251(4, device)
+        generator = torch.Generator().manual_seed(6251)
+        generic = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        rank_one = torch.zeros_like(exact)
+        rank_one[0, 0, 0] = 2.0
+        rows = [
+            exact,
+            _exact_essential_6251(None, device),
+            generic,
+            -exact,
+            1e-6 * exact,
+            torch.zeros_like(exact),
+            rank_one,
+        ]
+        batch = torch.cat(rows)
+        weights = torch.randn(3, 3, generator=generator, dtype=torch.float64).to(device)
+
+        def per_row_grads(E_mat):
+            # Does not depend on the labeling of the candidates, which a batched SVD need not share with a single one.
+            leaf = E_mat.clone().requires_grad_()
+            R1, R2, t = epi.decompose_essential_matrix(leaf)
+            rotations = (R1 * weights).sum((-2, -1)) * (R2 * weights).sum((-2, -1))
+            translations = (t[..., 0] * weights[0]).sum(-1) ** 2
+            projections = (epi.project_to_essential(leaf) * weights).sum((-2, -1))
+            return torch.autograd.grad((rotations + translations + projections).sum(), leaf)[0]
+
+        grads = per_row_grads(batch)
+        assert torch.isfinite(grads).all()
+        for row, grad in zip(rows[:5], grads[:5]):
+            self.assert_close(grad[None], per_row_grads(row), atol=1e-12, rtol=1e-9)
+
+    @pytest.mark.parametrize("scale", [-1.0, 1e-6, -1e-6, 1e6, "largest", "smallest"])
+    def test_scale_and_sign_of_the_matrix_6251(self, device, dtype, scale):
+        # R1, R2 and t do not depend on the scale or sign of E, so their Jacobian scales as 1 / scale; the projection is
+        # linear in the scale, so its Jacobian does not change. A negated or rescaled matrix can flip the labeling. The
+        # squares of the entries of the last two scales are out of range, and the result must not depend on them.
+        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
+        if dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        if isinstance(scale, str):
+            scale = torch.finfo(dtype).max ** (0.8 if scale == "largest" else -0.8)
+        atol = 1e-9 if dtype == torch.float64 else 1e-3
+        E_mat = _exact_essential_6251(4, device, dtype)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+        jacobian = torch.autograd.functional.jacobian
+
+        def candidates(E):
+            return _candidates_on_branch_6251(E, reference)
+
+        for actual, expected in zip(jacobian(candidates, scale * E_mat), jacobian(candidates, E_mat)):
+            self.assert_close(actual[0] * scale, expected[0], atol=atol, rtol=atol)
+        self.assert_close(
+            jacobian(epi.project_to_essential, scale * E_mat),
+            jacobian(epi.project_to_essential, E_mat),
+            atol=atol,
+            rtol=atol,
+        )
+
+    def test_gradient_follows_the_float64_one_in_every_dtype_6251(self, device, dtype):
+        # float32 is decomposed in float64 and half precision in float32, so the gradient keeps that precision.
+        # The reference comes from the CPU: MPS has no float64.
+        # The half tolerances sit between the error of the float32 work dtype and that of working in the half dtype, at
+        # the pose below: 2.3e-04 against 4.8e-04 for float16 and 8.6e-04 against 3.8e-03 for bfloat16.
+        tolerances = {torch.float16: 3.5e-4, torch.bfloat16: 2e-3, torch.float32: 1e-5, torch.float64: 1e-12}
+        E_mat = _exact_essential_6251(4, device, dtype)
+        jacobian = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat)
+        assert jacobian.dtype == dtype
+        expected = torch.autograd.functional.jacobian(epi.project_to_essential, E_mat.cpu().double())
+        atol = tolerances[dtype]
+        self.assert_close(jacobian.cpu().double(), expected, atol=atol, rtol=0.0)
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    @pytest.mark.parametrize("diagonal", [(2.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0), (2.0, 1.0, 1.0)])
+    def test_convention_no_derivative_gradient_is_finite_6251(self, device, dtype, name, diagonal):
+        # With s2 == s3 the singular vector u3 is not unique, so no derivative exists. The choice is a finite gradient
+        # instead of NaN; its value is not part of the convention, as it depends on the basis the SVD returns.
+        if name != "project_to_essential":
+            _skip_half(dtype, _NO_HALF_LU.format(name))
+        E_mat = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))[None].requires_grad_()
+        outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
+        outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+        (grad,) = torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)
+        assert torch.isfinite(grad).all()
+
+    def test_forward_mode_and_torch_func_6251(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        E_mat = _exact_essential_6251(None, device)
+        generator = torch.Generator().manual_seed(6251)
+        tangent = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device)
+        reference = tuple(out.detach() for out in epi.decompose_essential_matrix(E_mat))
+
+        def outputs(E):
+            R1, R2, t = _candidates_on_branch_6251(E, reference)
+            return torch.cat([R1.flatten(), R2.flatten(), t.flatten(), epi.project_to_essential(E).flatten()])
+
+        expected = torch.autograd.functional.jacobian(outputs, E_mat)
+        assert torch.isfinite(expected).all()
+        _, jvp = torch.func.jvp(outputs, (E_mat,), (tangent,))
+        self.assert_close(jvp, expected.flatten(1) @ tangent.flatten(), atol=1e-10, rtol=1e-10)
+        self.assert_close(torch.func.jacrev(outputs)(E_mat), expected, atol=1e-10, rtol=1e-10)
+        self.assert_close(torch.func.jacfwd(outputs)(E_mat), expected, atol=1e-10, rtol=1e-10)
+
+    @pytest.mark.parametrize("name", ["decompose_essential_matrix", "project_to_essential"])
+    def test_autocast_does_not_change_the_gradient_6251(self, device, name):
+        _skip_without_bfloat16_autocast(device)
+        E_mat = _exact_essential_6251(4, device, torch.float32).requires_grad_()
+
+        def grad_of_sum(outputs):
+            outputs = outputs if isinstance(outputs, tuple) else (outputs,)
+            return torch.autograd.grad(sum(output.sum() for output in outputs), E_mat)[0]
+
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        expected = grad_of_sum(fn(E_mat))
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            outputs = fn(E_mat)
+        actual = grad_of_sum(outputs)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
+    def test_dynamo_gradient_at_equal_singular_values_6251(self, device, dtype, torch_optimizer, name):
+        if name != "project_to_essential":
+            _skip_half(dtype, _NO_HALF_LU.format(name))
+        fn = _SVD_DECOMPOSITIONS_6251[name]
+        E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
+        compiled = torch_optimizer(fn, fullgraph=True)
+        expected, actual = fn(E_mat), compiled(E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference)
+        eager_gradient = torch.autograd.grad(sum(value.sum() for value in expected), E_mat)[0]
+        compiled_gradient = torch.autograd.grad(sum(value.sum() for value in actual), E_mat)[0]
+        assert torch.isfinite(compiled_gradient).all()
+        self.assert_close(compiled_gradient, eager_gradient)
