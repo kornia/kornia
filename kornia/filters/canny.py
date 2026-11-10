@@ -262,12 +262,13 @@ def canny(
         elif torch.jit.is_tracing():
             strong = _hysteresis_loop_traced(high, low)
         else:
+            # A tensor loop condition, not `if not bool(...): break`: Dynamo resumes after a graph break on the
+            # condition, while a break inside the loop body makes it run the whole of canny eagerly.
+            strong_old = ~high
             strong = high
-            while True:
-                prev = strong
+            while (strong_old != strong).any():
+                strong_old = strong
                 strong = _hysteresis_step(strong, low)
-                if not bool((strong != prev).any()):
-                    break
 
         edges = strong.to(dtype)
     else:

@@ -441,6 +441,21 @@ class TestCanny(BaseTester):
         self.assert_close(compiled(img)[1], Canny()(img)[1])
         assert counter.frame_count <= 3
 
+    def test_dynamo_hysteresis_keeps_the_suppression_compiled(self, device, dtype, torch_optimizer):
+        # A graph break inside the body of the hysteresis loop makes Dynamo skip canny's frame and run all of canny
+        # eagerly (only its callees compile); a break on the loop condition keeps the suppression in a graph.
+        self._require_padding(device, dtype)
+        targets = []
+
+        def recording_backend(gm, example_inputs):
+            targets.extend(str(node.target) for node in gm.graph.nodes if node.op == "call_function")
+            return gm.forward
+
+        compiled = torch_optimizer(Canny(), backend=recording_backend)
+        img = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        self.assert_close(compiled(img)[1], Canny()(img)[1])
+        assert any("atan2" in target for target in targets)
+
     @staticmethod
     def _require_padding(device, dtype):
         # gaussian_blur2d pads by reflection and spatial_gradient by replication, even with kernel_size=1
