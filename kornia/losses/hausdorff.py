@@ -221,14 +221,22 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - The default ``'mean'`` is the plain mean of the ``'none'`` tensor.
         - :math:`e` is nonzero exactly where thresholding :math:`p_c` at 0.5 gets the pixel wrong,
           :math:`|p_c - [y = c]| > 1/2`, and is 1 for a fully wrong pixel. A correct pixel adds nothing and gets no
-          gradient, however uncertain; a probability of exactly 0.5 counts as correct.
+          gradient, however uncertain; a probability of exactly 0.5 counts as correct. With two classes this is the
+          argmax decision. With three or more it is a one-vs-rest margin, stricter than argmax: a pixel whose true
+          class wins the argmax with :math:`p_c < 1/2` still counts in channel :math:`c`.
         - :math:`\varepsilon` takes the minimum over the pixel and its four neighbours. Pixels outside the image count
           as :math:`+\infty`, so the image border is not an edge of an error.
         - The weight of a misclassified pixel is :math:`\sum_{i=1}^{\min(k, d - 1)} i^\alpha`, for its city-block
           distance :math:`d` to the nearest correctly classified pixel. It is a constant: the gradient reaches each
           misclassified pixel through :math:`e`, in proportion to that weight. The pixels on the edge of an error
-          (:math:`d = 1`) get none, and errors at most two pixels wide add nothing, so pair the loss with an overlap
-          loss such as :class:`~kornia.losses.DiceLoss`, as the paper does.
+          (:math:`d = 1`) get none, and errors at most two pixels wide add nothing.
+        - The weight measures how thick an error is, not how far it lies from the target, so a thin or small error
+          far from the object, which can set the Hausdorff distance, adds little or nothing
+          (`#6680 <https://github.com/kornia/kornia/issues/6680>`_).
+        - Use it as an auxiliary term next to an overlap loss, never alone, as the paper does:
+          ``region_loss + lam * hausdorff_loss``, with ``lam`` set so that both terms weigh the same (the paper
+          recomputes it from their means after each epoch) or ramped up from a small value. Choose ``k`` from the
+          expected error radius in pixels: an error deeper than ``k`` gets the same weight as one ``k`` deep.
         - The value is a unitless surrogate, at most :math:`\sum_{i=1}^{k} i^\alpha` per pixel (385 at the
           defaults), not a distance in pixels.
         - The paper erodes :math:`(p_c - [y = c])^2` itself, by a convolution followed by a soft threshold at 0.5,
@@ -255,6 +263,11 @@ class HausdorffERLoss(_HausdorffERLossBase):
         >>> input = torch.randn(5, 3, 20, 20).softmax(1)
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
+
+        Next to :class:`~kornia.losses.DiceLoss`, which takes the logits and ``(B, H, W)`` labels:
+
+        >>> logits = torch.randn(5, 3, 20, 20)
+        >>> loss = kornia.losses.DiceLoss()(logits, target[:, 0]) + 0.1 * hdloss(logits.softmax(1), target)
 
     """
 
