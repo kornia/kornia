@@ -28,7 +28,6 @@ from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
 from kornia.geometry.transform._crop import _corner_aligned_resize_transform, _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
-from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat
 
 
 class Resize(GeometricAugmentationBase2D):
@@ -166,11 +165,6 @@ class Resize(GeometricAugmentationBase2D):
             # ``nearest-exact``, so invert a resize with the same interpolation rule.
             return resize(input, size, interpolation="nearest-exact")
 
-        if flags["align_corners"]:
-            # Pads a one-pixel output axis so grid_sample places it at its source pixel instead of everywhere.
-            return _crop_inverse_by_transform_mat(
-                input, transform, size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
-            )
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],

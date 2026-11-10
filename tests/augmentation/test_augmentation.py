@@ -5731,8 +5731,18 @@ class TestResize:
         mapped = kornia.geometry.transform_points(matrix, sampled[None])[0]
         torch.testing.assert_close(mapped, expected, rtol=tol, atol=tol)
         # Keypoints and box corners mapped through the matrix come back through its inverse.
-        back = kornia.geometry.transform_points(torch.linalg.inv(matrix.double()).to(dtype), mapped[None])[0]
+        # MPS has no float64, so the reference inverse is built on the CPU.
+        inv = torch.linalg.inv(matrix.cpu().double()).to(device, dtype)
+        back = kornia.geometry.transform_points(inv, mapped[None])[0]
         torch.testing.assert_close(back, sampled, rtol=tol, atol=tol)
+
+    def test_inverse_one_row_output_restores_its_source_row_6644(self, device, dtype):
+        # The one-pixel output row goes back to source row 0, which it sampled; the other rows are padding.
+        img = torch.rand(1, 2, 6, 7, device=device, dtype=dtype) + 1
+        aug = Resize((1, 7))
+        inverse = aug.inverse(aug(img))
+        torch.testing.assert_close(inverse[..., 0, :], img[..., 0, :])
+        assert (inverse[..., 1:, :] == 0).all()
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_matrix_unchanged_without_one_pixel_axis_6644(self, align_corners, device, dtype):
