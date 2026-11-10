@@ -296,7 +296,6 @@ PyTorch 2.14.0:
 
 - `#6278 <https://github.com/kornia/kornia/issues/6278>`_: ``RANSAC(compile=True)`` on CUDA can store a CPU program
   in the inductor cache after a CPU compile, and later CUDA processes that share the cache segfault.
-- `#6427 <https://github.com/kornia/kornia/issues/6427>`_: ``OnnxLightGlue`` binds GPU 0 for any CUDA device.
 - `#6559 <https://github.com/kornia/kornia/issues/6559>`_: batched SVD of matrices with more than 32 rows makes
   ``solve_pnp_dlt``, ``fit_plane`` and ``find_essential`` up to 200× slower on CUDA than on CPU.
 
