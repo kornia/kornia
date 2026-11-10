@@ -1,1 +1,0 @@
-On MPS with a float64 default dtype, `RandomAffine3D`, `RandomRotation3D` and `RandomMotionBlur3D` return their sampled parameters. Before, they raised on torch 2.15 and came out as zeros on torch 2.14: every angle, translation and shear, and the motion-blur angle and direction.
