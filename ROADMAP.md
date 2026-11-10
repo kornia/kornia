@@ -65,11 +65,9 @@ mathematical defects, numerical instability, and upstream workarounds.
    special paths solely for synthetic extremes: half-precision overflow far beyond
    image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
    scaled by `1e15`. These are examples, not universal magnitude cutoffs; `1e5` already
-   exceeds float16's finite range. Supporting each feature does not mean supporting every
-   combination: a float64 ONNX export, for example, has no deployment use (ONNX targets
-   float32/half inference, and onnxruntime has no float64 `Conv`), so its rounding is not
-   a defect. Stop implementation and explain the supported input form. Expanding
-   scope requires an explicit maintainer decision backed by a concrete application.
+   exceeds float16's finite range. Supporting each feature does not imply supporting every
+   combination; float64 ONNX export is outside Kornia’s supported scope. Stop implementation
+   and explain the supported input form. Expanding scope requires an explicit maintainer decision backed by a concrete application.
    A synthetic failure is insufficient; documented exceptions remain supported.
 3. **Check the existing solution first.** If a supported dtype conversion, parameter
    such as `num_iters`, or workflow adequately solves the reported need, do not add
