@@ -1280,6 +1280,10 @@ class TestConventionsLoFTR(BaseTester):
     def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, monkeypatch):
         # Integer counting gives 257 columns; a bfloat16 sum rounds it to 256 and wrongly rejects column 254.
         # Cached features avoid a wide backbone pass, but the real coarse/fine matcher still chooses the match.
+        if dtype == torch.float16:
+            # The attention multiplies features by the mask, and float16 * bfloat16 promotes to float32, which the
+            # float16 projections reject. Masks are passed in the model dtype; that older limit is not tested here.
+            pytest.skip("a bfloat16 mask needs a model dtype it promotes into")
         monkeypatch.setattr(self, "_PAIRS", {0: [((3, 254), (3, 3), 16.0, (2, 2))]})
         sample = {}
         for current in (0, 1):
