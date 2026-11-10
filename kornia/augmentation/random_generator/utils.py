@@ -21,9 +21,15 @@ import torch
 
 
 def _range_bound_dtype(dtype: torch.dtype) -> torch.dtype:
-    """Normalize bounds without rounding below the requested sampler precision.
+    """Choose a bound dtype without rounding below the requested sampler precision.
 
-    Retain a wider ambient dtype so lower-precision samplers keep their existing rounding.
+    ``range_dtype = _range_bound_dtype(dtype)`` promotes ``dtype`` with the current default dtype
+    for range normalization. Retaining a wider ambient dtype keeps the existing rounding for
+    lower-precision samplers, while float64 samplers avoid intermediate float32 rounding.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomAffine`: Configure an affine augmentation whose sampler
+          bounds use this normalization dtype.
     """
     return torch.promote_types(torch.get_default_dtype(), dtype)
 

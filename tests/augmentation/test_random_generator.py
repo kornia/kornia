@@ -46,7 +46,7 @@ from kornia.augmentation.random_generator import (
 )
 from kornia.augmentation.utils import _truncate_to_start
 
-from testing.base import assert_close
+from testing.base import BaseTester, assert_close
 
 
 class RandomGeneratorBaseTests:
@@ -793,7 +793,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             )(torch.Size([batch_size, 1, 200, 200]))
 
 
-class TestRandomAffineGen(RandomGeneratorBaseTests):
+class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
     def test_float64_constant_angle_is_not_rounded_via_float32_4426(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64.")
@@ -806,7 +806,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         finally:
             torch.set_default_dtype(default_dtype)
         angle = generator((4, 3, 8, 9))["angle"]
-        assert_close(angle, torch.full((4,), 0.1, device=device, dtype=torch.float64), rtol=0, atol=0)
+        self.assert_close(angle, torch.full((4,), 0.1, device=device, dtype=torch.float64), rtol=0, atol=0)
 
     @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
     def test_tensor_range_keeps_placement(self, range_name, device, dtype):

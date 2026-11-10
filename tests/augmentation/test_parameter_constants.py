@@ -88,6 +88,9 @@ class TestSamplerBoundsPrecision(BaseTester):
     def test_sampler_bounds_keep_requested_precision_4426(
         self, make_generator, ranges, sampler_name, expected, tensor_ranges, default_dtype, device, dtype
     ):
+        # Exercise the float64 ambient default only on backends that support that precision.
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64 range normalization.")
         if tensor_ranges:
             ranges = {name: torch.tensor(value, device=device, dtype=dtype) for name, value in ranges.items()}
         previous_dtype = torch.get_default_dtype()
