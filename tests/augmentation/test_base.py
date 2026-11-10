@@ -949,6 +949,22 @@ class TestConventionAugmentationBase2D(BaseTester):
             warnings.simplefilter("error", FutureWarning)
             flips(x, x)
 
+    def test_container_inverse_applies_the_mask_options(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
+        torch.manual_seed(0)
+        x = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        mask = (torch.rand(1, 1, 16, 16, device=device) > 0.5).to(dtype)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(30.0, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.BILINEAR, "align_corners": True}},
+        )
+        out, _ = aug(x, mask)
+        # Invert a binary mask: bilinear mask options blend its labels, the default nearest would keep them binary.
+        _, inverted = aug.inverse(out, mask)
+        assert not ((inverted == 0) | (inverted == 1)).all()
+
     def test_container_mask_only_call_keeps_input_options_for_matrices(self, device, dtype):
         from kornia.constants import DataKey, Resample
 
