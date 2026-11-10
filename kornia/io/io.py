@@ -209,7 +209,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
         device: the device where you want to get your image placed.
 
     Return:
-        Image torch.Tensor with shape :math:`(C, H, W)`, as decoded.
+        Image torch.Tensor with shape ``(C, H, W)``, as decoded.
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
@@ -347,7 +347,7 @@ def load_image(
         device: the device where you want to get your image placed.
 
     Return:
-        Image torch.Tensor with shape :math:`(C, H, W)`.
+        Image torch.Tensor with shape ``(C, H, W)``.
 
     Raises:
         TypeCheckError: if ``desired_type`` is not an :class:`ImageLoadType` (also a ``TypeError``).
@@ -416,7 +416,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
           and PNG also 4. Any other dtype or channel count raises.
         - The tensor is written as it is, in RGB order with alpha last, without conversion, scaling or clamping: a
           ``float32`` TIFF keeps values outside [0, 1].
-        - ``image`` is channels first. A channels-last :math:`(H, W, C)` tensor is not detected: its first axis is
+        - ``image`` is channels first. A channels-last ``(H, W, C)`` tensor is not detected: its first axis is
           read as the channels.
         - :ref:`Files and arrays <image-io-conventions>` maps ``cv2.imwrite`` onto these arguments.
         - An image with zero height or width raises ``ShapeError`` before anything is written, so no empty or
@@ -424,7 +424,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
 
     Args:
         path_file: Path with a .jpg, .jpeg, .png, .tif or .tiff extension, in any letter case.
-        image: Image torch.Tensor with shape :math:`(C, H, W)` or :math:`(H, W)`.
+        image: Image torch.Tensor with shape ``(C, H, W)`` or ``(H, W)``.
         quality: The quality of the JPEG encoding, an integer in [0, 100] and not a ``bool``. It is validated for
             every format and used only for JPEG.
 

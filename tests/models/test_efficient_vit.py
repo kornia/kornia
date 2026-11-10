@@ -199,6 +199,17 @@ class TestEfficientViT:
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
+    @pytest.mark.parametrize("model_name", ["b0", "l0"])
+    def test_empty_batch_6266(self, device, dtype, model_name: str):
+        """An empty batch goes through the linear attention and keeps every stage's channels and size."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = getattr(vit, f"efficientvit_backbone_{model_name}")().to(device, dtype).eval()
+        feats = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
+        ref = model(torch.rand(1, 3, 64, 64, device=device, dtype=dtype))
+        assert {k: v.shape[1:] for k, v in feats.items()} == {k: v.shape[1:] for k, v in ref.items()}
+        assert all(v.shape[0] == 0 for v in feats.values())
+
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="requires torch 2.0.0 or higher")
     @pytest.mark.parametrize("model_name", ["l0", "l1", "l2", "l3"])
@@ -221,3 +232,16 @@ class TestEfficientViT:
         config = EfficientViTConfig.from_pretrained(model_type, resolution)
         assert model_type in config.checkpoint
         assert str(resolution) in config.checkpoint
+
+    def test_forward_returns_a_dict(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = EfficientViT(backbone=vit.efficientvit_backbone_b0()).to(device, dtype).eval()
+        image = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+
+        with torch.no_grad():
+            out = model(image)
+
+        assert isinstance(out, dict)
+        # stride 32: (64 // 32, 96 // 32)
+        assert out["stage_final"].shape[-2:] == (2, 3)

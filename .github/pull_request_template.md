@@ -19,6 +19,6 @@ For internal changes without a fragment, explain why and ask for the no-changelo
 $ pixi run test-module tests/...
 ```
 
-## How did AI help?
+## Which part was done by a human, if any?
 
-<!-- If you used AI, briefly say what it helped with and what you checked or changed afterward. Otherwise, leave this blank. -->
+<!-- State what the human did vs. what AI did (e.g., "All of it, no AI used", "Human diagnosed the bug and reviewed the diff; AI wrote the fix and tests", or "None — human asked to fix #123 and AI did the rest"). -->

@@ -85,7 +85,7 @@ def _validate_params(distortion: CameraDistortionType, params: torch.Tensor) -> 
     was accepted and projected to a silently wrong ``(1, 1, 2)`` result.
 
     Raises:
-        ValueError: if ``params`` is not of shape :math:`(N,)` or :math:`(B, N)`,
+        ValueError: if ``params`` is not of shape ``(N,)`` or ``(B, N)``,
             with ``N`` the length the distortion model reads.
 
     """
@@ -115,10 +115,10 @@ class CameraModelBase:
           :meth:`unproject` the reverse; a raw :class:`torch.Tensor` is not accepted. This type system is kept
           separate from :doc:`kornia.geometry.camera </geometry.camera>` by design
           (`#4274 <https://github.com/kornia/kornia/issues/4274>`_).
-        - ``params`` is a flat ``(N,)`` or batched :math:`(B, N)` vector whose length is fixed by the model:
+        - ``params`` is a flat ``(N,)`` or batched ``(B, N)`` vector whose length is fixed by the model:
           ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 for ``BROWN_CONRADY`` and 8 for
           ``KANNALA_BRANDT_K3``; another length or a rank above 2 raises ``ValueError``.
-        - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` ``K``, not the :math:`(B, 4, 4)`
+        - :meth:`matrix` and its alias :meth:`K` return the ``(*, 3, 3)`` ``K``, not the ``(B, 4, 4)``
           ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
         - :meth:`project` is ``distortion.distort(params, projection.project(points))`` and :meth:`unproject`
           the reverse; ``depth`` is the camera-frame ``z``, shaped ``(*,)`` where
@@ -155,7 +155,7 @@ class CameraModelBase:
             distortion: Distortion type
             projection: Projection type
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, N)` or :math:`(N,)`, with
+            params: Camera parameters of shape ``(B, N)`` or ``(N,)``, with
                     :math:`N` fixed by ``distortion``: 4 for
                     :class:`AffineTransform` (pinhole and orthographic), 12 for
                     :class:`BrownConradyTransform`, 8 for
@@ -303,7 +303,7 @@ class PinholeModel(CameraModelBase):
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+            params: Camera parameters of shape ``(B, 4)`` of the form :math:`(fx, fy, cx, cy)`.
 
         """
         if params.shape[-1] != 4 or len(params.shape) > 2:
@@ -385,7 +385,7 @@ class BrownConradyModel(CameraModelBase):
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(12,)` or :math:`(B, 12)`, ordered as
+            params: Camera parameters of shape ``(12,)`` or ``(B, 12)``, ordered as
                 :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`. The first four values
                 are the camera intrinsics and the trailing eight values are the Brown-Conrady
                 distortion coefficients.
@@ -408,7 +408,7 @@ class KannalaBrandtK3(CameraModelBase):
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 8)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
+            params: Camera parameters of shape ``(B, 8)`` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
 
         """
         if params.shape[-1] != 8 or len(params.shape) > 2:
@@ -428,7 +428,7 @@ class Orthographic(CameraModelBase):
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+            params: Camera parameters of shape ``(B, 4)`` of the form :math:`(fx, fy, cx, cy)`.
 
         """
         if params.shape[-1] != 4 or len(params.shape) > 2:
@@ -468,7 +468,7 @@ class CameraModel:
         Args:
             image_size: Image size
             model_type: Camera model type
-            params: Camera parameters of shape :math:`(B, N)`.
+            params: Camera parameters of shape ``(B, N)``.
 
         """
         self._model = get_model_from_type(model_type, image_size, params)

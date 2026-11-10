@@ -19,11 +19,14 @@ Run it
 .. code-block:: python
 
     import torch
+    from kornia.enhance import normalize
     from kornia.io import load_image
     from kornia.geometry import resize
     from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 
     image = resize(load_image("panda.jpg")[None], (224, 224))  # (1, 3, 224, 224) float in [0, 1]
+    # the backbones were trained on images normalized with the ImageNet mean and standard deviation
+    image = normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))
 
     model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224)).eval()
     with torch.no_grad():

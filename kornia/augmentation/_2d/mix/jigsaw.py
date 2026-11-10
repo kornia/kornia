@@ -22,19 +22,15 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey
+from kornia.core.utils import _to_device_nonblocking
 
 __all__ = ["RandomJigsaw"]
 
 
 class RandomJigsaw(MixAugmentationBaseV2):
-    r"""RandomJigsaw augmentation.
+    r"""Shuffle the tiles of each image like a jigsaw puzzle, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomJigsaw.png
-
-    Make Jigsaw puzzles for each image individually. To mix with different images in a
-    batch, referring to :class:`kornia.augmentation.RandomMosaic`.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``output = RandomJigsaw(grid, ...)(input)`` rearranges the grid cells of each selected image.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
@@ -59,6 +55,13 @@ class RandomJigsaw(MixAugmentationBaseV2):
           ``arange(N).view(rows, columns).T.flatten()``, ``[0, 2, 1, 3]`` for a ``2 x 2`` grid.
         - ``p`` is a per-sample gate; ``same_on_batch=True`` shares one gate draw and one permutation. Only image
           input is implemented.
+
+    .. image:: _static/img/RandomJigsaw.png
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    See Also:
+        - :class:`RandomMosaic`: composes a crop from multiple images in the batch.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))
@@ -108,7 +111,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
             .reshape(c, -1, piece_size_h, piece_size_w)
         )
         perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
-        input = input[:, perm, :, :]
+        input = input[:, _to_device_nonblocking(perm, input.device), :, :]
         return (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)

@@ -295,6 +295,18 @@ class TestRandomMixUpV2(BaseTester):
 
 
 class TestRandomCutMixV2(BaseTester):
+    # A model moved to half precision moves its augmentations too. CutMix's Beta draw used to raise there on CPU
+    # ("dirichlet" has no Half kernel), on 0.8.3 as well for a direct .to(); it now draws in float32.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_module_moved_to_half_precision(self, device, half_dtype):
+        torch.manual_seed(0)
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"]).to(device=device, dtype=half_dtype)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=half_dtype)
+        out_image, out_labels = aug(image, torch.tensor([0, 1], device=device))
+        assert out_image.dtype == half_dtype
+        assert torch.isfinite(out_image).all()
+        assert torch.isfinite(out_labels).all()
+
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         expected_repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"

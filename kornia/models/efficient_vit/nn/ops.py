@@ -97,7 +97,7 @@ class ConvLayer(nn.Module):
         """Apply dropout, convolution, optional normalization, and activation.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after the configured convolutional layer stack.
@@ -175,7 +175,7 @@ class DSConv(nn.Module):
         """Apply depthwise then pointwise convolution.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map with ``out_channels`` produced by the pointwise
@@ -248,7 +248,7 @@ class MBConv(nn.Module):
         """Apply an inverted bottleneck convolution block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after expansion, depthwise convolution, and projection.
@@ -320,7 +320,7 @@ class FusedMBConv(nn.Module):
         """Apply a fused mobile inverted bottleneck convolution.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after fused spatial convolution and pointwise
@@ -382,7 +382,7 @@ class ResBlock(nn.Module):
         """Apply the two-convolution residual-block main branch.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after the block's convolutional transformations.
@@ -469,14 +469,14 @@ class LiteMLA(nn.Module):
 
     @torch.amp.autocast(device_type="cuda", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
-        B, _, H, W = list(qkv.size())
+        _, _, H, W = list(qkv.size())
 
         dtype = qkv.dtype
 
         if qkv.dtype == torch.float16:
             qkv = qkv.float()
 
-        qkv = torch.reshape(qkv, (B, -1, 3 * self.dim, H * W))
+        qkv = qkv.unflatten(1, (-1, 3 * self.dim)).flatten(-2)
         qkv = torch.transpose(qkv, -1, -2)
         q, k, v = (qkv[..., 0 : self.dim], qkv[..., self.dim : 2 * self.dim], qkv[..., 2 * self.dim :])
 
@@ -493,13 +493,13 @@ class LiteMLA(nn.Module):
         out = out[..., :-1] / (out[..., -1:] + self.eps)
 
         out = torch.transpose(out, -1, -2)
-        return torch.reshape(out, (B, -1, H, W)).to(dtype)
+        return out.flatten(1, 2).unflatten(-1, (H, W)).to(dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply lightweight multi-scale linear attention.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after multi-scale query/key/value aggregation, linear
@@ -564,7 +564,7 @@ class EfficientViTBlock(nn.Module):
         """Apply an EfficientViT attention-plus-local block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map with the same shape after the context module and local

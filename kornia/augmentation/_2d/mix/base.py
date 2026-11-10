@@ -29,6 +29,7 @@ from kornia.augmentation.utils import (
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
 from kornia.core.check import KORNIA_UNWRAP
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 
 
@@ -40,10 +41,12 @@ def _export_boxes(box: Boxes, mode: str, box_input: Any) -> torch.Tensor:
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
-    r"""MixAugmentationBase base class for customized mix augmentation implementations.
+    r"""Build a custom augmentation that mixes samples through data-key handlers.
 
-    For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required.
-    "apply_transform" will need to handle the probabilities internally.
+    ``output = MyAugmentation(...)(input)`` combines batch samples or rearranges image content once a subclass
+    implements ``apply_transform`` and provides parameter generation, either through ``_param_generator`` or
+    by overriding ``generate_parameters``. Implement the additional data-key handlers that the operation supports;
+    the Convention block below describes how each handler uses the probability gate.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -72,11 +75,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         - ``batch_prob`` gates the result: a selected image is mixed and an unselected image keeps its input
           values, except where a concrete class changes the output size (see
           :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
-          instead. The box handlers use the same gate. The class-label
-          handlers of :class:`~kornia.augmentation.RandomMixUpV2` and :class:`~kornia.augmentation.RandomCutMixV2`
-          ignore ``batch_prob``; their sampled gate is batch-wide, but a ``params`` whose ``batch_prob`` selects
-          only some rows labels the unselected, unchanged rows as mixed
-          (`#4775 <https://github.com/kornia/kornia/issues/4775>`_).
+          instead. The box and class-label handlers use the same gate: an unselected row's label describes an
+          unmixed image (its own class twice, with lambda 0).
+
+    See Also:
+        - :class:`AugmentationBase2D`: base class for single-image 2D augmentations.
 
     """
 
@@ -157,7 +160,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         applied_post = self.apply_non_transform(applied, params, flags)
 
         if applied_post.shape == non_applied.shape and applied_post.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (applied_post.dim() - 1))).to(applied_post.device)
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (applied_post.dim() - 1))), applied_post.device
+            )
             output = torch.where(to_apply_expanded, applied_post, non_applied)
         else:
             # Shape-changing mix augmentations (e.g. RandomMosaic when ``output_size``
@@ -217,12 +222,22 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self._validate_data_key(DataKey.CLASS)
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
-        output = input
-        if sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_class(input, params, flags)
-        if sum(to_apply) != 0:
-            output = self.apply_transform_class(input, params, flags)
-        return output
+        if sum(to_apply) == len(to_apply):
+            return self.apply_transform_class(input, params, flags)
+        if sum(to_apply) == 0:
+            return self.apply_non_transform_class(input, params, flags)
+
+        applied = self.apply_transform_class(input, params, flags)
+        non_applied = self.apply_non_transform_class(input, params, flags)
+        if applied.dim() < 2 or applied.shape != non_applied.shape:
+            # Not one row per sample in both handlers (e.g. a subclass returning one label per sample): keep the
+            # transformed labels, as ``transform_input`` keeps the transformed images when it cannot blend.
+            return applied
+
+        # The batch axis is -2 for both RandomMixUpV2 (B, 3) and RandomCutMixV2 (num_mix, B, 3).
+        view_shape = [1] * (applied.dim() - 2) + [-1, 1]
+        mask = _to_device_nonblocking(to_apply.view(*view_shape), applied.device)
+        return torch.where(mask, applied, non_applied)
 
     def apply_non_transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -322,7 +337,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return outputs
 
     @torch.jit.ignore
-    def inverse(self, **kwargs: Any) -> Optional[torch.Tensor]:
+    def inverse(self, *args: Any, **kwargs: Any) -> Optional[torch.Tensor]:
+        # Accept the usual ``inverse(output, params=...)`` call too, so every call form raises this error rather
+        # than a signature TypeError.
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property

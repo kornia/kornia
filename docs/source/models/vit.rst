@@ -23,11 +23,14 @@ Run it
 .. code-block:: python
 
     import torch
+    from kornia.enhance import normalize
     from kornia.io import load_image
     from kornia.geometry import resize
     from kornia.models.vit import VisionTransformer
 
     image = resize(load_image("panda.jpg")[None], (224, 224))  # (1, 3, 224, 224) float in [0, 1]
+    # the AugReg weights were trained on images normalized with mean = std = 0.5, i.e. in [-1, 1]
+    image = normalize(image, torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]))
 
     vit = VisionTransformer.from_config("vit_b/16", pretrained=True).eval()  # AugReg ImageNet-21k weights
     with torch.no_grad():

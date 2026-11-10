@@ -11,14 +11,15 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
 - **Model chaining**: combine multiple ONNX models into one graph, with control over how the outputs of one model
   feed the inputs of the next.
 - **Export**: save the combined model as a single ONNX file.
-- **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``.
+- **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``, on numpy arrays or CPU torch
+  tensors of a dtype numpy has (not bfloat16 or float8). It returns numpy arrays.
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
-The :ref:`ONNX, torch.compile and torch.export survey <export-support>` records whether each operator, model
-and augmentation exported in one dated measurement, with the cause of each failure. It is a snapshot, not a
-support guarantee, and Kornia's tests check only part of it: export your own pipeline and compare it with eager
-before relying on it.
+Which operators Kornia promises to export, and how continuous integration checks it, is stated in
+:ref:`What Kornia promises <export-support-promise>`. The survey on the same page records whether each operator, model
+and augmentation exported in one dated measurement, with the cause of each failure: for anything the promise does not
+cover, export your own pipeline and compare it with eager before relying on it.
 
 Quickstart
 ----------
@@ -35,8 +36,8 @@ Quickstart
    ``torch.onnx.export`` turns it into an ONNX file that :class:`~kornia.onnx.sequential.ONNXSequential`
    can load, chain and re-export. Use the ``torch.export``-based exporter (``dynamo=True``). It is the
    default of ``torch.onnx.export`` from PyTorch 2.9, which deprecates the TorchScript-based one, and it is
-   the exporter the :ref:`export survey <export-support>` measures. Passing ``dynamo=True`` explicitly makes
-   the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
+   the exporter :ref:`Kornia's ONNX promise <export-support-promise>` covers. Passing ``dynamo=True`` explicitly
+   makes the same call work on PyTorch 2.5 to 2.8, where the TorchScript-based exporter is still the default:
 
    .. code-block:: python
 
@@ -97,10 +98,17 @@ Quickstart
 
 4. **Map inputs and outputs between models**
 
+   ``io_maps`` holds one list of ``(output, input)`` name pairs per joint between consecutive models:
+   ``io_maps[0]`` connects the first model to the second, ``io_maps[1]`` the second to the third, and so on.
+
    .. code-block:: python
 
-      io_maps = [("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]
+      # one joint, which feeds two outputs of model1 to two inputs of model2
+      io_maps = [[("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]]
       onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", io_maps=io_maps)
+
+   The merged graph does not check a later model's declared input types: ``ONNXSequential`` warns when the tensor
+   element types of an output and the input it feeds differ at a joint.
 
 5. **Export the combined model**
 
@@ -157,6 +165,9 @@ Then move a sequence between devices with ``as_cuda()`` / ``as_cpu()``:
    onnx_seq(inp)
    print("--- CPU %s seconds ---" % (time.time() - start_time))
 
+On an onnxruntime build without CUDA, ``as_cuda()`` only warns and the sequence keeps running on the CPU;
+``get_session().get_providers()`` shows which provider runs.
+
 A typical result:
 
 .. code-block:: console
@@ -173,15 +184,20 @@ Yes. Models can come from ONNX files, ``onnx.ModelProto`` objects or ``hf://`` r
 differ, as a fresh export and a Hub operator do, pass ``auto_ir_version_conversion=True``.
 
 **What if the input/output names of two models do not match?**
-Use the ``io_maps`` argument to say which output feeds which input.
+Use the ``io_maps`` argument to say which output feeds which input: one list of ``(output, input)`` name pairs per
+joint, as in step 4.
 
 **Can I use custom ONNX Runtime session options?**
-Yes, pass your own session options to the ``create_session`` method.
+Yes. Pass them as ``session_options=`` to the constructor of
+:class:`~kornia.onnx.sequential.ONNXSequential`, or replace the session of an existing object with
+``seq.set_session(seq.create_session(session_options=...))``. ``create_session`` alone returns a new session and leaves
+the object on the one it already has.
 
 **Which operators export?**
-The :ref:`ONNX, torch.compile and torch.export survey <export-support>` lists every surveyed operator with
-its ONNX export, ``torch.export`` and ``torch.compile`` outcome in one dated measurement, searchable by name and
-filterable by result. Treat an entry as a starting point, not a guarantee.
+The promised ones: :ref:`What Kornia promises <export-support-promise>` counts them per package, and the survey on the
+same page marks them *promised*. The survey lists every surveyed operator with its ONNX export, ``torch.export`` and
+``torch.compile`` outcome in one dated measurement, searchable by name and filterable by result; treat an entry that is
+not promised as a starting point, not a guarantee.
 
 **Where are the pre-exported Kornia operators?**
 In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with

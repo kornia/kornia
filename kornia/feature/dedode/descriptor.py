@@ -40,10 +40,10 @@ class DeDoDeDescriptor(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            images: Input image batch with shape :math:`(B, C, H, W)`.
+            images: Input image batch with shape ``(B, C, H, W)``.
 
         Returns:
-            Dense descriptor map with shape :math:`(B, D, H, W)`.
+            Dense descriptor map with shape ``(B, D, H, W)``.
         """
         features, sizes = self.encoder(images)
         context = None

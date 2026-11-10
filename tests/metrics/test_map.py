@@ -254,11 +254,11 @@ class TestMeanAveragePrecision(BaseTester):
             kornia.metrics.mean_average_precision([boxes] * 2, [labels] * 2, [scores] * 2, [boxes], [labels], 3)
         with pytest.raises(BaseError, match=r"same length.*pred_scores 1"):
             kornia.metrics.mean_average_precision([boxes] * 2, [labels] * 2, [scores], [boxes] * 2, [labels] * 2, 3)
-        with pytest.raises(BaseError, match=r"one row per object.*2 boxes and 1 labels"):
+        with pytest.raises(BaseError, match=r"(?s)expected 1, got 2\..*one row per object in every image \(image 0\)"):
             kornia.metrics.mean_average_precision([boxes], [labels], [scores], [boxes], [labels[:1]], 3)
-        with pytest.raises(BaseError, match=r"one row per detection.*2 boxes, 2 labels and 1 scores"):
+        with pytest.raises(BaseError, match=r"(?s)expected 1, got 2\..*pred_boxes and pred_scores must.*\(image 0\)"):
             kornia.metrics.mean_average_precision([boxes], [labels], [scores[:1]], [boxes], [labels], 3)
-        with pytest.raises(BaseError, match=r"one row per detection.*1 boxes, 2 labels and 2 scores"):
+        with pytest.raises(BaseError, match=r"(?s)expected 2, got 1\..*pred_boxes and pred_labels must.*\(image 0\)"):
             kornia.metrics.mean_average_precision([boxes[:1]], [labels], [scores], [boxes], [labels], 3)
         # each of the five lists in turn one image short
         lists = [[boxes] * 2, [labels] * 2, [scores] * 2, [boxes] * 2, [labels] * 2]
@@ -284,14 +284,14 @@ class TestMeanAveragePrecision(BaseTester):
 
         mean_ap, _ = kornia.metrics.mean_average_precision(boxes, labels, scores, boxes, labels, 2)
         self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
-        with pytest.raises(BaseError, match=r"one row per object in every image. Got image 0: 2 boxes and 1 labels"):
+        with pytest.raises(BaseError, match=r"(?s)expected 1, got 2\..*one row per object in every image \(image 0\)"):
             kornia.metrics.mean_average_precision(boxes, labels, scores, boxes, one_each, 2)
         with pytest.raises(
-            BaseError, match=r"one row per detection in every image. Got image 0: 2 boxes, 1 labels and 1 scores"
+            BaseError, match=r"(?s)expected 1, got 2\..*pred_labels must have one row per detection in every image"
         ):
             kornia.metrics.mean_average_precision(boxes, one_each, one_score_each, boxes, labels, 2)
         # the first image is consistent, so the second is named
-        with pytest.raises(BaseError, match=r"Got image 1: 2 boxes and 1 labels"):
+        with pytest.raises(BaseError, match=r"(?s)expected 1, got 2\..*\(image 1\)"):
             kornia.metrics.mean_average_precision(
                 [a, a, b],
                 one_each + one_each[:1],
@@ -301,11 +301,11 @@ class TestMeanAveragePrecision(BaseTester):
                 2,
             )
         # the first image holds the extra row, of each kind the checks compare in turn
-        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes and 2 labels"):
+        with pytest.raises(BaseError, match=r"(?s)expected 2, got 1\..*one row per object.*\(image 0\)"):
             kornia.metrics.mean_average_precision(boxes, labels, scores, [a, b], labels, 2)
-        with pytest.raises(BaseError, match=r"Got image 0: 2 boxes, 1 labels and 2 scores"):
+        with pytest.raises(BaseError, match=r"(?s)expected 1, got 2\..*pred_boxes and pred_labels must.*\(image 0\)"):
             kornia.metrics.mean_average_precision(boxes, one_each, scores, boxes, labels, 2)
-        with pytest.raises(BaseError, match=r"Got image 0: 1 boxes, 1 labels and 2 scores"):
+        with pytest.raises(BaseError, match=r"(?s)expected 2, got 1\..*pred_boxes and pred_scores must.*\(image 0\)"):
             kornia.metrics.mean_average_precision([a, b], one_each, scores, boxes, labels, 2)
 
     @pytest.mark.parametrize("box_dtype", [torch.int64, torch.int32, torch.uint8])

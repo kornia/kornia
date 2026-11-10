@@ -29,8 +29,10 @@ from kornia.feature.loftr.backbone import ResNetFPN_8_2
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
 from kornia.feature.loftr.loftr_module.linear_attention import LinearAttention
+from kornia.feature.loftr.loftr_module.transformer import LoFTREncoderLayer
 from kornia.feature.loftr.utils.coarse_matching import CoarseMatching
 from kornia.feature.loftr.utils.fine_matching import FineMatching
+from kornia.feature.loftr.utils.position_encoding import PositionEncodingSine
 from kornia.geometry import resize, transform_points, warp_perspective
 
 from testing.base import BaseTester
@@ -192,6 +194,20 @@ class TestLoFTR(BaseTester):
         far = out["keypoints1"][out["keypoints1"][:, 0] > 256, 0]
         assert (far % 2 != 0).any()  # sub-2-px positions exist past 256, which bfloat16 cannot hold
 
+    def test_position_encoding_growth_preserves_half_dtype(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        position_encoding = PositionEncodingSine(4, max_shape=(2, 2)).to(device, dtype)
+        features = torch.zeros(1, 4, 3, 3, device=device, dtype=dtype)
+
+        encoded = position_encoding(features)
+
+        assert position_encoding.pe.dtype == dtype
+        assert encoded.dtype == dtype
+        layer = LoFTREncoderLayer(4, 1).to(device, dtype).eval()
+        with torch.no_grad():
+            layer(encoded.flatten(2).transpose(1, 2), encoded.flatten(2).transpose(1, 2))
+
     def test_mask_is_read_at_the_coarse_cell_pixels_5728(self, device, dtype):
         # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels
         # (image0: on the ones with y < 64 and x < 40, so coarse rows 0..7 and columns 0..4), so every such cell is
@@ -250,9 +266,13 @@ class TestLoFTR(BaseTester):
             single = model.extract_features(images[1:])
         assert batched["coarse"].shape == (2, 256, 13, 9)
         assert batched["fine"].shape == (2, 128, 50, 34)
-        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size)
-        self.assert_close(batched["coarse"][1:], single["coarse"])
-        self.assert_close(batched["fine"][1:], single["fine"])
+        # a batch of images gives each image's features (up to the backend's choice of kernel for the batch size).
+        # CUDA half convolutions accumulate in an order that depends on the batch size, so batched and single
+        # features differ by up to about eps times the largest feature (0.003 in float16, 0.03 in bfloat16), less
+        # than half features differ from float32 ones (0.006 and 0.05); CPU gives the same features for both.
+        low_tolerance = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(batched["coarse"][1:], single["coarse"], low_tolerance=low_tolerance)
+        self.assert_close(batched["fine"][1:], single["fine"], low_tolerance=low_tolerance)
 
     def test_inputs_are_validated(self, device, dtype):
         model = _loftr_matching_every_cell(device, dtype)
@@ -302,6 +322,20 @@ class TestLoFTR(BaseTester):
         out_jit = model_jit(sample)
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
+
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch flattens the coarse maps without a -1 to infer and returns no matches."""
+        loftr = _loftr_matching_every_cell(device, dtype)
+        out = loftr(
+            {
+                "image0": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+                "image1": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+            }
+        )
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["confidence"].shape == (0,)
+        assert out["batch_indexes"].shape == (0,)
 
 
 class TestLoFTRConfigIsPerInstance(BaseTester):
@@ -699,6 +733,16 @@ class TestCoarseMatching(BaseTester):
         assert torch.equal(out["mkpts0_c"], expected)  # products of small integers and 1.3671875: exact in float32
 
 
+def _autocast_softmax_dtype(device: torch.device) -> torch.dtype:
+    """The dtype ``F.softmax`` returns for a float16 input under float16 autocast on ``device``.
+
+    The coarse confidence is a product of softmaxes, so its dtype follows the device's autocast policy: CPU autocast
+    keeps float16, while CUDA autocast runs softmax in float32 (it is on CUDA's float32 list) and returns float32.
+    """
+    with torch.autocast(device.type, dtype=torch.float16):
+        return F.softmax(torch.zeros(1, device=device, dtype=torch.float16), 0).dtype
+
+
 class TestCoarseMatchingSelection(BaseTester):
     """The row max / column max selection and the dual softmax against their reference formulations."""
 
@@ -837,7 +881,7 @@ class TestCoarseMatchingSelection(BaseTester):
         data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
         with torch.autocast(device.type, dtype=torch.float16):
             cm(feat0, feat1, data)
-        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=torch.float16)
+        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=_autocast_softmax_dtype(device))
         self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
 
     def test_temperature_scaling_autocast(self, device):
@@ -849,7 +893,8 @@ class TestCoarseMatchingSelection(BaseTester):
         data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
         with torch.autocast(device.type, dtype=torch.float16):
             cm(feat0, feat1, data)
-        self.assert_close(data["conf_matrix"], torch.ones(1, 1, 1, device=device, dtype=torch.float16))
+        expected = torch.ones(1, 1, 1, device=device, dtype=_autocast_softmax_dtype(device))
+        self.assert_close(data["conf_matrix"], expected)
         for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
             self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
 

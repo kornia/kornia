@@ -3,11 +3,16 @@
 
 .. currentmodule:: kornia.augmentation
 
-Spatial transformations and erasing operations. Matrix, inverse and annotation support depend on the class
-and configuration. Non-rigid transforms do not carry boxes or keypoints
-along with the image (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasing` changes image
-and mask values without moving coordinates. See
-:class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths and their limitations.
+Spatial transforms, plus ``RandomErasing``, which changes image and mask values without moving coordinates. The
+non-rigid ``RandomElasticTransform``, ``RandomThinPlateSpline`` and ``RandomFisheye`` cannot move boxes or
+keypoints, so a container call that passes them raises; the last two raise for masks too. ``.inverse()`` leaves
+these steps applied (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). See
+:class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths.
+
+``RandomAffine`` combines rotation, translation, scale and shear in one warp; ``RandomPerspective`` warps
+projectively. ``RandomCrop`` cuts a fixed-size patch at a random position, ``RandomResizedCrop`` cuts a patch of
+random size and aspect ratio and resizes it, and ``CenterCrop`` always cuts the center. ``RandomRotation90``
+rotates by multiples of 90 degrees.
 
 .. autoclass:: CenterCrop
 .. autoclass:: PadTo

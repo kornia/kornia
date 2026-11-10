@@ -138,6 +138,25 @@ class TestLoadSafetensors:
 
         assert "__metadata__" not in load_safetensors(path)
 
+    def test_include_selects_tensors(self, tmp_path, tensors) -> None:
+        path = _write(tmp_path, _build(tensors))
+
+        loaded = load_safetensors(path, include=lambda name: name in {"scale", "empty"})
+
+        assert list(loaded) == ["scale", "empty"]
+        assert torch.equal(loaded["scale"], tensors["scale"])
+        assert loaded["empty"].shape == tensors["empty"].shape
+
+    def test_include_still_validates_unselected_entries(self, tmp_path) -> None:
+        header = {
+            "kept": {"dtype": "F32", "shape": [1], "data_offsets": [0, 4]},
+            "skipped": {"dtype": "F32", "shape": [2], "data_offsets": [4, 8]},
+        }
+        path = _write(tmp_path, _pack(header, b"\x00" * 8))
+
+        with pytest.raises(ValueError, match="skipped"):
+            load_safetensors(path, include=lambda name: name == "kept")
+
     def test_reads_a_path_object(self, tmp_path, tensors) -> None:
         path = _write(tmp_path, _build(tensors))
 

@@ -162,6 +162,46 @@ class TestDilate(BaseTester):
         assert actual.dtype == expected.dtype
         assert torch.equal(actual, expected)
 
+    @pytest.mark.parametrize("se_dtype", [torch.bool, torch.uint8, torch.int8, torch.int64])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution", "auto"])
+    def test_non_float_structuring_element_matches_float(self, device, dtype, se_dtype, engine):
+        # Every engine adds a bool or integer structuring element in the compute dtype, so it gives the float
+        # structuring element's result, as in :func:`erosion`.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+        values = [[0, 1, 0], [1, 2, 1], [0, 1, 0]]
+        if se_dtype in (torch.int8, torch.int64):
+            values[0][0] = -128
+        structuring_element = torch.tensor(values, device=device).to(se_dtype)
+
+        expected = dilation(tensor, kernel, structuring_element=structuring_element.to(dtype), engine=engine)
+        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert actual.dtype == tensor.dtype
+        assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    @pytest.mark.parametrize("non_flat", [False, True])
+    def test_non_contiguous_kernel(self, device, dtype, engine, non_flat):
+        # A transposed kernel or structuring element is a strided view, which every engine must read by its
+        # values. ``convolution`` flattened the kernel with ``view`` and raised on one.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype).T
+        structuring_element = None
+        if non_flat:
+            structuring_element = torch.tensor([[0.0, 1.0, 0.0], [2.0, 0.0, 3.0]], device=device, dtype=dtype).T
+        assert not kernel.is_contiguous()
+
+        expected = dilation(
+            tensor,
+            kernel.contiguous(),
+            structuring_element=structuring_element.contiguous() if structuring_element is not None else None,
+            engine=engine,
+        )
+        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert torch.equal(actual, expected)
+
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
         # Every documented border_type must pass the validation (#4736).
@@ -566,6 +606,62 @@ class TestDilate(BaseTester):
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         assert torch.equal(op_script(tensor, kernel, engine="shift"), dilation(tensor, kernel, engine="shift"))
+
+    @pytest.mark.parametrize("kernel_shape", [(3, 3), (3, 4), (5, 5)])
+    @pytest.mark.parametrize("partial", [False, True])
+    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "replicate"])
+    def test_unfold_engine_forward_only_matches_autograd_path(self, device, dtype, kernel_shape, partial, border_type):
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        # Without a backward graph a flat ``unfold`` reduction takes ``amax``; it must match the ``torch.max``
+        # path, signed zeros included: the flat offsets turn every ``-0.0`` term into ``+0.0``. The sign and
+        # payload of a nan are the backend's choice (vectorised CPU bfloat16 arithmetic sets the sign bit).
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        tensor[1, 0, ::2] = -0.0
+        tensor[1, 0, 1::2] = 0.0
+        kernel = torch.ones(kernel_shape, device=device, dtype=dtype)
+        if partial:
+            kernel[0, 0] = 0.0
+            kernel[-1, 1] = 0.0
+
+        forward = dilation(tensor, kernel, border_type=border_type, engine="unfold")
+        recorded = dilation(tensor.clone().requires_grad_(True), kernel, border_type=border_type, engine="unfold")
+
+        recorded = recorded.detach()
+        torch.testing.assert_close(forward, recorded, rtol=0.0, atol=0.0, equal_nan=True)
+        numbers = ~forward.isnan()
+        assert torch.equal(torch.signbit(forward[numbers]), torch.signbit(recorded[numbers]))
+        assert forward.dtype == recorded.dtype
+
+    def test_unfold_engine_reduces_values_only_without_derivatives(self, device, dtype, monkeypatch):
+        calls = []
+        original = morphology_module._unfold_reduces_values_only
+
+        def wrapped(*args, **kwargs):
+            calls.append(original(*args, **kwargs))
+            return calls[-1]
+
+        monkeypatch.setattr(morphology_module, "_unfold_reduces_values_only", wrapped)
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        dilation(tensor, kernel, engine="unfold")
+        dilation(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="unfold")
+        with torch.enable_grad():
+            dilation(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.no_grad():
+            dilation(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.autograd.forward_ad.dual_level():
+            dilation(torch.autograd.forward_ad.make_dual(tensor, torch.rand_like(tensor)), kernel, engine="unfold")
+        torch.func.vmap(lambda x: dilation(x, kernel, engine="unfold"))(tensor[None])
+
+        plain = device.type in ("cpu", "cuda")
+        assert calls == [plain, False, False, plain, False, False]
 
     def test_even_kernel_centre(self, device, dtype):
         # `dilation` reflects the kernel contents but padded with the unreflected origin, so an

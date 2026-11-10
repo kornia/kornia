@@ -37,6 +37,7 @@ committed and rendered by ``docs/generate_export_support.py`` at docs build time
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -76,12 +77,16 @@ def _worker(label: str, cmd: list[str]) -> tuple[str, int]:
 
 
 def main(argv: list[str]) -> int:
-    merge_only = "--merge-only" in argv
-    force = "--force" in argv
-    groups = [a for a in argv if not a.startswith("--")] or GROUPS
-    unknown = sorted(set(groups) - set(GROUPS))
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("groups", nargs="*", metavar="group", help=f"case groups to probe (default: all of {GROUPS})")
+    parser.add_argument("--merge-only", action="store_true", help="re-merge existing results into the JSON")
+    parser.add_argument("--force", action="store_true", help="merge even if the results are incomplete")
+    args = parser.parse_args(argv)
+    unknown = sorted(set(args.groups) - set(GROUPS))
     if unknown:
-        sys.exit(f"unknown case group(s) {unknown}; choose from {GROUPS}")
+        parser.error(f"unknown case group(s) {unknown}; choose from {GROUPS}")
+    merge_only, force = args.merge_only, args.force
+    groups = args.groups or GROUPS
     RESULTS.mkdir(exist_ok=True)
 
     if not merge_only:

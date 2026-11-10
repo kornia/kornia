@@ -357,3 +357,109 @@ class TestCachedDownloader:
             server.shutdown()
             server.server_close()
         assert path.read_bytes() == payload
+
+
+class TestForceDownload:
+    @staticmethod
+    def _cache(url: str, tmp_path: Path, **kwargs) -> str:
+        return CachedDownloader.download_to_cache(url, "model", cache_dir=str(tmp_path), suffix=".pth", **kwargs)
+
+    def test_a_cached_file_is_fetched_again_only_when_forced(self, download_server, tmp_path):
+        responses, base_url, hits = download_server
+        url = f"{base_url}/model"
+        responses["/model"] = (b"old", 3)
+        path = self._cache(url, tmp_path)
+
+        responses["/model"] = (b"new weights", 11)  # the file changed on the server
+        assert self._cache(url, tmp_path) == path
+        assert self._cache(url, tmp_path, force_download=False) == path
+        assert Path(path).read_bytes() == b"old"  # a cached file is used as it is
+        assert hits == ["/model"]
+
+        assert self._cache(url, tmp_path, force_download=True) == path
+        assert Path(path).read_bytes() == b"new weights"
+        assert hits == ["/model", "/model"]
+        assert [p.name for p in tmp_path.iterdir()] == ["model.pth"]  # no partial file is left beside it
+
+        assert self._cache(url, tmp_path) == path  # the new file is the cached one
+        assert Path(path).read_bytes() == b"new weights"
+        assert hits == ["/model", "/model"]
+
+    def test_forcing_a_file_that_is_not_cached_downloads_it_once(self, download_server, tmp_path):
+        responses, base_url, hits = download_server
+        responses["/model"] = (b"weights", 7)
+
+        path = self._cache(f"{base_url}/model", tmp_path, force_download=True)
+
+        assert Path(path).read_bytes() == b"weights"
+        assert hits == ["/model"]
+
+    def test_download_replaces_the_file_when_forced(self, download_server, tmp_path):
+        responses, base_url, hits = download_server
+        path = tmp_path / "plain.pth"
+        path.write_bytes(b"damaged")
+        responses["/model"] = (b"weights", 7)
+
+        CachedDownloader.download(f"{base_url}/model", str(path))
+        assert path.read_bytes() == b"damaged"
+        assert hits == []
+
+        CachedDownloader.download(f"{base_url}/model", str(path), force_download=True)
+        assert path.read_bytes() == b"weights"
+        assert hits == ["/model"]
+
+    @pytest.mark.parametrize("failure", ["http_error", "truncated"])
+    def test_a_failed_fetch_leaves_the_cached_file_as_it_was(self, download_server, tmp_path, failure):
+        responses, base_url, hits = download_server
+        url = f"{base_url}/model"
+        responses["/model"] = (b"old", 3)
+        path = self._cache(url, tmp_path)
+
+        if failure == "http_error":
+            del responses["/model"]
+            expected = ValueError  # the server answers 404
+        else:
+            responses["/model"] = (b"new", 100)  # the body ends before its Content-Length
+            expected = ContentTooShortError
+        with pytest.raises(expected):
+            self._cache(url, tmp_path, force_download=True)
+
+        assert hits == ["/model", "/model"]
+        assert Path(path).read_bytes() == b"old"
+        assert [p.name for p in tmp_path.iterdir()] == ["model.pth"]
+
+    def test_forcing_without_downloading_raises_before_any_fetch(self, download_server, tmp_path):
+        responses, base_url, hits = download_server
+        url = f"{base_url}/model"
+        responses["/model"] = (b"old", 3)
+        path = self._cache(url, tmp_path)
+
+        with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
+            self._cache(url, tmp_path, download=False, force_download=True)
+        with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
+            CachedDownloader.download(url, path, download_if_not_exists=False, force_download=True)
+
+        assert hits == ["/model"]
+        assert Path(path).read_bytes() == b"old"
+
+    def test_force_download_is_keyword_only(self, tmp_path):
+        with pytest.raises(TypeError):
+            CachedDownloader.download_to_cache("http://127.0.0.1:9/model", "m", True, True)  # type: ignore[misc]
+        with pytest.raises(TypeError):
+            CachedDownloader.download("http://127.0.0.1:9/model", str(tmp_path / "m"), True, True)  # type: ignore[misc]
+
+    def test_a_download_override_that_predates_the_keyword_keeps_working(self, tmp_path):
+        # CachedDownloader.download is a public classmethod, so a subclass may override it with the old signature:
+        # download_to_cache hands it force_download only when it is set
+        calls = []
+
+        class Legacy(CachedDownloader):
+            @classmethod
+            def download(cls, url, file_path, download_if_not_exists=True):
+                calls.append((url, file_path, download_if_not_exists))
+
+        path = Legacy.download_to_cache("http://example.com/m", "m", cache_dir=str(tmp_path), suffix=".pth")
+
+        assert calls == [("http://example.com/m", path, True)]
+        with pytest.raises(TypeError, match="force_download"):
+            Legacy.download_to_cache("http://example.com/m", "m", cache_dir=str(tmp_path), force_download=True)

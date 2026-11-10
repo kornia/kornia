@@ -22,10 +22,14 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    r"""Apply random channel dropout to a batch of images.
+    r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomChannelDropout(num_drop_channels, fill_value, ...)(input)`` replaces selected channels of each
+    selected image ``(B, C, H, W)`` with a constant.
 
     .. image:: _static/img/RandomChannelDropout.png
 
@@ -35,13 +39,13 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_drop_channels: Number of channels to drop randomly. Default is 1.
         fill_value: Value to fill the dropped channels with. Default is 0.0.
         same_on_batch: Apply the same transformation across the batch. Defaults to False.
-        p: Probability of applying the transformation. Defaults to 0.5.
+        p: Probability of applying the transformation to each sample. Defaults to 0.5.
         keepdim: Whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``. Defaults to False.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(C, H, W)`` or ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -59,6 +63,10 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             we will randomly choose two channels to drop.
         If num_drop_channels is set to 3, it means that for each image in the batch,
             we will randomly choose three channels to drop (all image).
+
+    See Also:
+        - :class:`RandomChannelShuffle`: permutes channels instead of replacing them.
+        - :class:`RandomGrayscale`: computes grayscale instead of removing channels.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -131,8 +139,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
 
         out = input.clone()
-        out[params["batch_idx"], params["channel_idx"], ...] = self.fill_value.to(
-            device=input.device, dtype=input.dtype
-        )
+        batch_idx = _to_device_nonblocking(params["batch_idx"], input.device)
+        channel_idx = _to_device_nonblocking(params["channel_idx"], input.device)
+        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(self.fill_value, input.device, input.dtype)
 
         return out

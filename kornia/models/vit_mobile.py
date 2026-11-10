@@ -112,7 +112,7 @@ class Attention(nn.Module):
         """Apply multi-head self-attention to MobileViT tokens.
 
         Args:
-            x: Token tensor with shape :math:`(B, P, N, D)`, where
+            x: Token tensor with shape ``(B, P, N, D)``, where
                 :math:`B` is batch size, :math:`P` is patch area,
                 :math:`N` is number of patches, and :math:`D` is embedding
                 dimension.
@@ -166,7 +166,7 @@ class Transformer(nn.Module):
         """Run stacked attention and feed-forward residual layers.
 
         Args:
-            x: Token tensor with shape :math:`(B, P, N, D)`.
+            x: Token tensor with shape ``(B, P, N, D)``.
 
         Returns:
             Tensor with the same shape as ``x`` after all transformer layers.
@@ -277,7 +277,7 @@ class MobileViTBlock(nn.Module):
         """Fuse local convolutions with global transformer context.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map tensor with the same spatial size as ``x``. Local
@@ -321,8 +321,14 @@ class MobileViT(nn.Module):
     Args:
         mode: 'xxs', 'xs' or 's', defaults to 'xxs'.
         in_channels: the number of channels for the input image.
-        patch_size: image_size must be divisible by patch_size.
+        patch_size: the patch size :math:`(p_h, p_w)` the MobileViT blocks unfold their feature maps into, at strides
+            8, 16 and 32 of the input. Each of those maps must split into whole patches, which an input height and
+            width that are multiples of :math:`32 p_h` and :math:`32 p_w` guarantee: with the default ``(2, 2)``,
+            192, 256 and 320 px run, and 224 and 288 px raise.
         dropout: dropout ratio in Transformer.
+
+    Raises:
+        ValueError: if ``mode`` is not ``'xxs'``, ``'xs'`` or ``'s'``.
 
     Example:
         >>> img = torch.rand(1, 3, 256, 256)
@@ -348,6 +354,8 @@ class MobileViT(nn.Module):
             expansion = 4
             dims = [144, 192, 240]
             channels = [16, 32, 64, 64, 96, 96, 128, 128, 160, 160, 640]
+        else:
+            raise ValueError(f"mode must be 'xxs', 'xs' or 's'. Got: {mode!r}")
 
         kernel_size = 3
         depth = [2, 4, 3]
@@ -380,13 +388,13 @@ class MobileViT(nn.Module):
         r"""Run the MobileViT backbone and return final feature maps.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`C`
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`C`
                 matches the configured input channel count.
 
         Returns:
             Feature tensor from the final MobileViT stage. For the default
             configuration, a :math:`256 \times 256` input produces
-            :math:`(B, 320, 8, 8)`.
+            ``(B, 320, 8, 8)``.
         """
         x = self.conv1(x)
         x = self.mv2[0](x)

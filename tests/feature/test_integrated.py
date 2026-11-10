@@ -79,6 +79,52 @@ class TestGetLAFDescriptors(BaseTester):
         self.assert_close(descs_test_from_rgb, descs_reference)
         self.assert_close(descs_test_from_gray, descs_reference)
 
+    def test_empty_batch(self, device, dtype):
+        # Zero images with a (0, N) LAF set: N > 0 slots per image, none of which exists.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype)
+        descs = get_laf_descriptors(img, lafs, sift, PS)
+        assert descs.shape == (0, 5, 128)
+        assert descs.dtype == dtype
+
+    def test_empty_batch_gradients_reach_both_inputs(self, device, dtype):
+        # The patches of an empty batch are linked to the image and the LAFs, so a loss on the descriptors alone
+        # backpropagates (a zero gradient), also through a descriptor with no parameters.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        get_laf_descriptors(img, lafs, sift, PS).sum().backward()
+        assert img.grad is not None
+        assert lafs.grad is not None
+        assert img.grad.shape == img.shape
+        assert lafs.grad.shape == lafs.shape
+
+    @pytest.mark.parametrize("n_lafs", [0, 4])
+    @pytest.mark.parametrize("n_images", [0, 2])
+    @pytest.mark.parametrize("shape", [(64, 1), (), (3, 5)])
+    def test_the_width_is_everything_a_patch_descriptor_returns(self, device, dtype, shape, n_images, n_lafs):
+        # The descriptor width is the numel of what one patch yields, whatever the rank of the output, also when
+        # the batch of patches is empty and `-1` could not infer it.
+        class Stub(torch.nn.Module):
+            def forward(self, patches):
+                return patches.new_ones(patches.shape[0], *shape)
+
+        PS = 8
+        img = torch.rand(n_images, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(n_images, n_lafs, 2, 3, device=device, dtype=dtype)
+        lafs[..., 0, 0] = 8.0
+        lafs[..., 1, 1] = 8.0
+        lafs[..., 0, 2] = 24.0
+        lafs[..., 1, 2] = 24.0
+        width = torch.Size(shape).numel()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the empty-LAF warning
+            descs = get_laf_descriptors(img, lafs, Stub(), PS)
+        assert descs.shape == (n_images, n_lafs, width)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         B, C, H, W = 1, 1, 32, 32
@@ -414,19 +460,14 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         else:
             module = torch.jit.trace(SIFTDescriptor(32).to(device), patch)
         before = self._state(module)
-        if kind == "trace_sift" and image_dtype == torch.float64:
-            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did
-            with pytest.raises(RuntimeError, match="Double but found Float"):
-                get_laf_descriptors(img, lafs, module, 32)
-            self._assert_state_equal(before, self._state(module))
-            return
         out = get_laf_descriptors(img, lafs, module, 32)
         self._assert_state_equal(before, self._state(module))
         reference = copy.deepcopy(module).to(img).eval()
         patches = extract_patches_from_pyramid(img, lafs, 32)
         B, N, C, H, W = patches.shape
         self.assert_close(out, reference(patches.view(B * N, C, H, W)).view(B, N, -1))
-        assert out.dtype == image_dtype
+        # the trace holds its float32 casts, so a float64 image gets a float32 descriptor
+        assert out.dtype == (torch.float32 if kind == "trace_sift" else image_dtype)
 
     def test_empty_lafs_leave_the_module_alone_5724(self, device):
         if torch.device(device).type == "mps":
@@ -440,9 +481,10 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         assert out.shape == (1, 0, 5)
         assert out.dtype == torch.float32
 
-    def test_torchscript_gradients_reach_the_module_5724(self, device):
+    def test_torchscript_gradients_reach_the_module_5724(self, device, cudnn_tf32_follows_option):
         # a float32 CPU module: on the CPU the image is float64 (a dtype cast), elsewhere the module is on another
-        # device than the image (a device cast)
+        # device than the image (a device cast). On CUDA, cuDNN's default TF32 convolutions make even two eager
+        # backward passes differ by ~5e-5, so the fixture keeps them in float32 unless --tf32 is passed.
         image_dtype = torch.float64 if torch.device(device).type == "cpu" else torch.float32
         img, lafs = self._inputs(device, image_dtype)
         plain = HardNet(False).eval()
@@ -500,6 +542,26 @@ class TestLocalFeature(BaseTester):
     def test_non_positive_scaling_coef_message_5724(self, coef):
         with pytest.raises(ValueError, match="should be > 0"):
             LocalFeature(ScaleSpaceDetector(10), SIFTDescriptor(32), coef)
+
+    def test_empty_batch(self, device, dtype):
+        # H != W; the detector and the descriptor both accept a batch of zero images.
+        PS, n = 16, 7
+        local_feature = LocalFeature(ScaleSpaceDetector(n), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, dtype)
+        one = local_feature(torch.rand(1, 1, 48, 64, device=device, dtype=dtype))
+        lafs, responses, descs = local_feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, n, 2, 3)
+        assert responses.shape == (0, n)
+        assert descs.shape == (0, n, 128)
+        for actual, expected in zip((lafs, responses, descs), one):
+            assert actual.dtype == expected.dtype
+            assert actual.device == expected.device
+
+    def test_empty_batch_sift_feature_scale_space(self, device, dtype):
+        feature = kornia.feature.SIFTFeatureScaleSpace(7).to(device, dtype)
+        lafs, responses, descs = feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, 7, 2, 3)
+        assert responses.shape == (0, 7)
+        assert descs.shape == (0, 7, 128)
 
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)
@@ -823,6 +885,39 @@ class TestDoGHardNet(BaseTester):
         # ``KeyPoint.size`` the weights were trained with: 2 sigma, a third of the 6-sigma DoG frame.
         expected = get_laf_scale(dog_lafs).reshape(1, -1) / 3.0
         self.assert_close(seen["image0"]["scales"] * scale_coef, expected, low_tolerance=preset == "DoGAffNetHardNet")
+
+
+class TestLightGlueMatcherBatch(BaseTester):
+    def test_batch_of_one_descriptors_match_like_unbatched(self, device, dtype, monkeypatch):
+        from kornia.feature import LightGlueMatcher
+
+        class _RecordingLightGlue(nn.Module):
+            # Stands in for the network, whose construction downloads weights. It pairs descriptors row by row, so
+            # both layouts return the same matches if they reach it.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                desc0 = data["image0"]["descriptors"]
+                desc1 = data["image1"]["descriptors"]
+                count = min(desc0.shape[1], desc1.shape[1])
+                matches0 = torch.full((desc0.shape[0], desc0.shape[1]), -1, device=desc0.device)
+                matches0[:, :count] = torch.arange(count, device=desc0.device)
+                return {"matches0": matches0, "matching_scores0": torch.ones_like(matches0, dtype=torch.float32)}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
+        matcher = LightGlueMatcher("disk")
+        centers = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        lafs = kornia.feature.laf_from_center_scale_ori(centers)
+        descriptors = torch.rand(5, 8, device=device, dtype=dtype)
+        unbatched_scores, unbatched_matches = matcher(descriptors, descriptors, lafs, lafs, (10, 20), (10, 20))
+        batched_scores, batched_matches = matcher(descriptors[None], descriptors[None], lafs, lafs, (10, 20), (10, 20))
+        # (1, N, D) used to take the fewer-than-two-descriptors early exit, which read the batch size (1) as the
+        # descriptor count and silently returned no matches.
+        assert unbatched_matches.shape == (5, 2)
+        assert batched_matches.shape == unbatched_matches.shape
+        self.assert_close(batched_scores, unbatched_scores)
+        assert torch.equal(batched_matches, unbatched_matches)
 
 
 class TestLocalFeatureMatcher(BaseTester):

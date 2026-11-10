@@ -1,0 +1,1 @@
+`kornia.metrics.aepe` and `AEPE` no longer return NaN gradients where the predicted flow equals the target. The gradient at an exact match is now 0, the subgradient `torch.linalg.vector_norm` uses, so a loss masked to the valid pixels stays finite and the values are unchanged.

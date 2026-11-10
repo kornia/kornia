@@ -25,7 +25,7 @@ import torch
 from torch import nn
 
 from .attention import SigLip2Attention
-from .config import SigLip2TextConfig
+from .config import SigLip2TextConfig, _activation
 
 __all__ = ["SigLip2TextEmbeddings", "SigLip2TextEncoder", "SigLip2TextLayer", "SigLip2TextModel"]
 
@@ -81,13 +81,16 @@ class SigLip2TextMLP(nn.Module):
     """MLP (feed-forward network) for text encoder.
 
     Args:
-        config: Text encoder configuration.
+        config: Text encoder configuration. Its ``hidden_act`` selects the activation.
+
+    Raises:
+        ValueError: if ``config.hidden_act`` is not ``"gelu_pytorch_tanh"``, ``"gelu_new"`` or ``"gelu"``.
     """
 
     def __init__(self, config: SigLip2TextConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.activation = nn.GELU()
+        self.activation = _activation(config.hidden_act)
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout_p)
 

@@ -181,7 +181,9 @@ def _norm_compile(c: dict | None) -> tuple[str, int, str]:
         why = ""
         if reasons:
             why = _reason("", str(reasons[0])) or str(reasons[0]).split("\n")[0]
-        return "ok-breaks", breaks, f"{breaks} graph break{'s' if breaks != 1 else ''}: {why}".rstrip(": ")
+        # 0 breaks: explain records none, but torch.compile(..., fullgraph=True) refused the case (#6194)
+        lead = f"{breaks} graph break{'s' if breaks != 1 else ''}" if breaks else "not captured in one graph"
+        return "ok-breaks", breaks, f"{lead}: {why}".rstrip(": ")
     if s == "ok-unverified":
         return (
             "ok-unverified",

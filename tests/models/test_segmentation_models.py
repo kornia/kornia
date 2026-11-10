@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import re
+
 import pytest
 import torch
 from torch import nn
@@ -191,6 +193,37 @@ class TestSemanticSegmentation(BaseTester):
         model = SegmentationModelsBuilder.build(logits_net, IMAGENET_PARAMS).to(device, dtype)
         with pytest.raises(ValueError, match="softmax"):
             model.visualize(torch.rand(1, 3, 6, 6, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_save_writes_the_same_files_for_every_output_type(self, device, dtype, as_list, tmp_path):
+        model = SegmentationModelsBuilder.build(_stand_in_network(3), IMAGENET_PARAMS).to(device, dtype)
+        images = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        if as_list:
+            images = list(images)
+
+        written = {}
+        for output_type in ("torch", "pil"):
+            directory = tmp_path / output_type
+            model.save(images, directory=str(directory), output_type=output_type, manual_seed=7)
+            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
+            written[output_type] = {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in directory.iterdir()}
+
+        # source, mask and overlay of each of the two images
+        assert len(written["torch"]) == 6
+        assert written["pil"] == written["torch"]
+
+        # the mask files are the visualization with the colormap seed given to save
+        reference = tmp_path / "reference"
+        model._save_outputs(model.visualize(images, manual_seed=7), str(reference), suffix="_mask")
+        masks = {name: data for name, data in written["torch"].items() if "_mask_" in name}
+        assert masks == {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in reference.iterdir()}
+        # and the colormap reaches it too: "random" is the only one there is
+        with pytest.raises(ValueError, match="Unsupported colormap"):
+            model.save(images, directory=str(tmp_path / "jet"), colormap="jet")
+
+        with pytest.raises(RuntimeError, match="Output type numpy is not supported"):
+            model.save(images, directory=str(tmp_path / "numpy"), output_type="numpy")
+        assert not (tmp_path / "numpy").exists()
 
     def test_preprocessing_onnx_export(self, device):
         # The pipeline is documented as ONNX-friendly: export it and compare the runtime against eager.

@@ -203,10 +203,43 @@ class TestRgbToRgba(BaseTester):
         assert result.shape == expected.shape
         self.assert_close(result, expected)
 
+    @pytest.mark.parametrize("leading", [(), (2,), (2, 3)])
+    def test_rgba_rank1_tensor_background_matches_tuple_6621(self, leading, device, dtype):
+        # A (3,) tensor used to raise a bare IndexError; it is now the tensor form of the 3-tuple.
+        image = torch.tensor([0.2, 0.4, 0.6, 0.5], device=device, dtype=dtype).view(4, 1, 1).expand(*leading, 4, 2, 2)
+        background = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+
+        result = kornia.color.rgba_to_rgb(image, background)
+        expected = kornia.color.rgba_to_rgb(image, (1.0, 0.0, 0.0))
+        assert result.shape == (*leading, 3, 2, 2)
+        self.assert_close(result, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("shape", [(), (2,), (4,), (3, 1), (1, 3), (0,)])
+    def test_rgba_low_rank_tensor_background_raises_value_error_6621(self, shape, device, dtype):
+        # Every tensor below rank 3 other than (3,) used to raise a bare IndexError reading shape[-3].
+        image = torch.ones(1, 4, 2, 2, device=device, dtype=dtype)
+        background = torch.zeros(shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match=r"background_color torch.Tensor must have shape \(3,\)"):
+            kornia.color.rgba_to_rgb(image, background)
+
     def test_rgba_to_rgb_jit_with_default_background(self, device, dtype):
         image = torch.rand(4, 2, 2, device=device, dtype=dtype)
         scripted = torch.jit.script(kornia.color.rgba_to_rgb)
         self.assert_close(scripted(image), kornia.color.rgba_to_rgb(image))
+
+    def test_rgba_to_rgb_jit_with_custom_background_6621(self, device, dtype):
+        # The annotation names the tuple and the list the docstring documents, and both still script.
+        image = torch.tensor([0.2, 0.4, 0.6, 0.5], device=device, dtype=dtype).view(4, 1, 1).expand(2, 4, 2, 2)
+        expected = kornia.color.rgba_to_rgb(image, (1.0, 0.0, 0.5))
+        scripted = torch.jit.script(kornia.color.rgba_to_rgb)
+        for background in (
+            (1.0, 0.0, 0.5),
+            [1.0, 0.0, 0.5],
+            torch.tensor([1.0, 0.0, 0.5], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0, 0.5], device=device, dtype=dtype).view(3, 1, 1),
+        ):
+            self.assert_close(scripted(image, background), expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("aval", [0.4, 45.0])
     def test_unit(self, device, dtype, aval):
@@ -491,6 +524,17 @@ class TestLinearRgb(BaseTester):
 
 
 class TestRgb255Normals(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("op", [kornia.color.normals_to_rgb255, kornia.color.rgb255_to_normals])
+    def test_integer_preserves_default_floating_dtype(self, op):
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            data = torch.zeros(3, 1, 1, dtype=torch.int64)
+            assert op(data).dtype == torch.float64
+        finally:
+            torch.set_default_dtype(previous)
+
     # Smoke tests: check if the functions execute and return a tensor
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
@@ -514,12 +558,13 @@ class TestRgb255Normals(BaseTester):
         data_rgb = torch.rand(1, 3, 3, 2, device=device, dtype=dtype)
         rgb255 = kornia.color.rgb_to_rgb255(data_rgb)
         rgb_restored = kornia.color.rgb255_to_rgb(rgb255)
-        torch.testing.assert_close(data_rgb, rgb_restored, atol=1e-4, rtol=1e-4)
+        self.assert_close(data_rgb, rgb_restored)
 
+    def test_normals_back_and_forth(self, device, dtype):
         data_normals = torch.nn.functional.normalize(torch.rand(1, 3, 3, 2, device=device, dtype=dtype), p=2, dim=1)
         rgb255_normals = kornia.color.normals_to_rgb255(data_normals)
         normals_restored = kornia.color.rgb255_to_normals(rgb255_normals)
-        torch.testing.assert_close(data_normals, normals_restored, atol=1e-4, rtol=1e-4)
+        self.assert_close(data_normals, normals_restored)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

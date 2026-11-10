@@ -25,34 +25,26 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
 from kornia.constants import DataKey
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 __all__ = ["RandomTransplantation"]
 
 
 class RandomTransplantation(MixAugmentationBaseV2):
-    r"""RandomTransplantation augmentation.
+    r"""Paste a labelled region from the previous batch image, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomTransplantation.png
-
-    Randomly transplant (copy and paste) image features and corresponding segmentation masks between images in a batch.
-    The transplantation transform works as follows:
-
-        1. Based on the parameter `p`, a certain number of images in the batch are selected as acceptor of a
-           transplantation.
-        2. For each acceptor, the image below in the batch is selected as donor (via circling: :math:`i - 1 \mod B`).
-        3. From the donor, a random label is selected and the corresponding image features and segmentation mask are
-           transplanted to the acceptor.
-
-    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
-    shifts` :cite:`sellner2023semantic`.
+    ``image_out, mask_out = RandomTransplantation(data_keys=["input", "mask"])(input, mask)`` copies the region of
+    one drawn label, image features and segmentation mask alike, from the previous batch image into each selected
+    image. Use :class:`RandomTransplantation3D` for volume dispatch in
+    :class:`~kornia.augmentation.container.AugmentationSequential`.
 
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only
           parts of the image are annotated and the non-annotated regions (with a specific label index) should be
           excluded from the augmentation. If no label is left in a donor image, that acceptor receives nothing
           while the rest of the batch is transplanted as usual.
-        p: probability for applying an augmentation to an image. This parameter controls how many images in a batch
-          receive a transplant.
+        p: probability of applying the transformation to each sample. This parameter controls how many images in a
+          batch receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.Tensor.
@@ -70,18 +62,18 @@ class RandomTransplantation(MixAugmentationBaseV2):
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
     Inputs:
-        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
+        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: ``(B, *)``.
         - (optional) Additional image or mask tensors where the features are transplanted based on the first
-          segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
+          segmentation mask: ``(B, C, *)`` (`DataKey.INPUT`) or ``(B, *)`` (`DataKey.MASK`).
 
     Returns:
         torch.Tensor | list[torch.Tensor]:
 
         torch.Tensor:
-            - Augmented mask tensors: :math:`(B, *)`.
+            - Augmented mask tensors: ``(B, *)``.
         list[torch.Tensor]:
-            - Augmented mask tensors: :math:`(B, *)`.
-            - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
+            - Augmented mask tensors: ``(B, *)``.
+            - Additional augmented image or mask tensors: ``(B, C, *)`` (`DataKey.INPUT`) or ``(B, *)``
               (`DataKey.MASK`).
 
     Convention:
@@ -105,14 +97,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
           integer or floating). Only ``"input"`` / ``"image"`` and ``"mask"`` keys are implemented; any other key
           raises ``NotImplementedError``. A mask is needed only to draw the parameters; a call that draws them
           without one, or whose inputs do not match ``data_keys``, raises a kornia error that names the mask (and
-          the key count, on a mismatch) before any input is read. With a complete
-          ``params`` any subset of the inputs is accepted, which is how
-          :class:`~kornia.augmentation.container.AugmentationSequential` applies the transplant, one input at a
-          time. Outputs come back in input order, a single one as a bare
-          tensor.
+          the key count, on a mismatch) before any input is read. With a complete ``params`` any subset of the
+          inputs is accepted, which is how :class:`~kornia.augmentation.container.AugmentationSequential` applies
+          the transplant, one input at a time. Outputs come back in input order, a single one as a bare tensor.
         - like every mix augmentation it is not geometric: ``transform_matrix`` and ``inverse()`` both raise
-          ``RuntimeError``, and the ``inverse()`` of a
-          :class:`~kornia.augmentation.container.AugmentationSequential` holding one raises the same error.
+          ``RuntimeError``, and the ``inverse()`` of a :class:`~kornia.augmentation.container.AugmentationSequential`
+          holding one raises the same error.
         - a mask with a singleton channel axis, ``(B, 1, *spatial)``, next to an image of the same rank is read as
           the ``(B, *spatial)`` mask: the labels and ``selection`` come from its spatial layout and it comes back in
           its own ``(B, 1, *spatial)`` layout. That is the layout a container hands on once any other augmentation
@@ -120,6 +110,14 @@ class RandomTransplantation(MixAugmentationBaseV2):
           (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). A further mask one rank above the driving
           mask is read as ``(B, C, *spatial)``, and every channel moves through the same ``selection``. With no
           image in the call, a mask keeps its own rank and a size-1 first spatial axis is not squeezed.
+
+    .. image:: _static/img/RandomTransplantation.png
+
+    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
+    shifts` :cite:`sellner2023semantic`.
+
+    See Also:
+        - :class:`RandomTransplantation3D`: performs transplantation on 3D volumes and masks.
 
     Examples:
         >>> import torch
@@ -234,16 +232,17 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def transform_input(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         # Expand selection to the channel dimension
-        selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
-        acceptor[selection] = donor[selection]
-        return acceptor
+        selection = _to_device_nonblocking(selection, acceptor.device).unsqueeze(dim=self._channel_dim).expand_as(donor)
+        # The same values as ``acceptor[selection] = donor[selection]``, without the ``nonzero`` that boolean indexing
+        # runs, which reads the selection back on the host.
+        return torch.where(selection, donor, acceptor)
 
     def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         if acceptor.ndim == selection.ndim + 1:
             # A mask with a singleton channel axis, ``(B, 1, *spatial)``, as a container hands it on (#4707).
             selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
-        acceptor[selection] = donor[selection]
-        return acceptor
+        # As in ``transform_input``: a ``where`` instead of boolean indexing, which reads the selection on the host.
+        return torch.where(_to_device_nonblocking(selection, acceptor.device), donor, acceptor)
 
     def _check_mask_given(self, input: Sequence[torch.Tensor], data_keys: list[DataKey]) -> None:
         # The parameters are drawn from the mask, so name it before any lookup fails on its absence.
@@ -371,8 +370,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
-                f"augmentation should be applied ({len(params['acceptor_indices'])}).",
+                lambda: (
+                    f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
+                    f"augmentation should be applied ({len(params['acceptor_indices'])})."
+                ),
             )
 
             for d, selected_label in zip(range(len(params["donor_indices"])), selected_labels):
@@ -405,8 +406,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         outputs: list[torch.Tensor] = []
         for dcate, _input in zip(keys, input):
-            acceptor = _input[self._params["acceptor_indices"]].clone()
-            donor = _input[self._params["donor_indices"]]
+            # The indices are drawn on the CPU; indexing device data with them would copy them with a blocking transfer.
+            acceptor_indices = _to_device_nonblocking(self._params["acceptor_indices"], _input.device)
+            acceptor = _input[acceptor_indices].clone()
+            donor = _input[_to_device_nonblocking(self._params["donor_indices"], _input.device)]
 
             output: torch.Tensor
             if dcate == DataKey.INPUT:
@@ -417,14 +420,14 @@ class RandomTransplantation(MixAugmentationBaseV2):
                 applied = self.transform_input(acceptor, donor, self._params["selection"])
                 output = self.apply_non_transform(_input, self._params, self.flags)
                 output = output.index_put(
-                    (self._params["acceptor_indices"],),
+                    (acceptor_indices,),
                     self.apply_non_transform_mask(applied, self._params, self.flags),
                 )
             elif dcate == DataKey.MASK:
                 applied = self.transform_mask(acceptor, donor, self._params["selection"])
                 output = self.apply_non_transform_mask(_input, self._params, self.flags)
                 output = output.index_put(
-                    (self._params["acceptor_indices"],),
+                    (acceptor_indices,),
                     self.apply_non_transform_mask(applied, self._params, self.flags),
                 )
             else:

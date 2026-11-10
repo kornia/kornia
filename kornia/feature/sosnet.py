@@ -36,10 +36,14 @@ urls["hp_a"] = [
 
 
 class SOSNet(nn.Module):
-    r"""128-dimensional SOSNet model definition for 32x32 patches.
+    r"""Describe 32 x 32 grayscale patches with SOSNet, trained with second-order similarity.
 
-    This is based on the original code from paper
-    "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
+    ``sosnet = SOSNet()`` builds the network with its pretrained weights (trained on Liberty), in eval mode, and
+    ``descs = sosnet(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns unit-norm descriptors
+    ``(B, 128)``. It has the convolution stack of :class:`HardNet`, preceded by an ``InstanceNorm2d``, and was trained
+    with a second-order similarity regularisation. To describe LAFs on an image, pass it to :class:`LAFDescriptor`.
+    This is based on the original code from paper "SOSNet: Second Order Similarity Regularization for Local
+    Descriptor Learning".
 
     Convention:
         - See the Convention block on :class:`~kornia.feature.HardNet`.
@@ -48,8 +52,16 @@ class SOSNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
+
+    See Also:
+        - :class:`HardNet`: the same convolution stack, trained without the second-order regularisation.
+        - :class:`HyNet`: a descriptor of the same patches with FRN layers, which subtract no mean.
+        - :class:`HardNet8`: the wider follow-up of HardNet, with a PCA to 128 dimensions.
+        - :class:`TFeat`: a shallow network for the same patches that also starts with an ``InstanceNorm2d``, without
+          L2 normalisation.
+        - :class:`LAFDescriptor`: runs a patch descriptor such as this one on a patch per LAF of an image.
 
     Note:
         With float16 weights, the final BatchNorm keeps its running statistics in float32.
@@ -101,11 +113,11 @@ class SOSNet(nn.Module):
         """Compute SOSNet descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            input: Input tensor with shape ``(B, 1, 32, 32)``.
             eps: Small constant added before normalization for stability.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, 128)`.
+            Descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.layers(input)
@@ -124,4 +136,4 @@ class SOSNet(nn.Module):
             descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
         else:
             descr = self.desc_norm(descr + eps)
-        return descr.view(descr.size(0), -1)
+        return descr.flatten(1)

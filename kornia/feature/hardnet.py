@@ -23,6 +23,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import _is_tracing_or_exporting, _l2_normalize, is_mps_tensor_safe
+from kornia.feature._layout import _patch_conv_layout
 
 urls: Dict[str, str | list[str]] = {}
 urls["hardnet++"] = [
@@ -40,10 +41,15 @@ urls["hardnet8v2"] = [
 
 
 class HardNet(nn.Module):
-    r"""Module, which computes HardNet descriptors of given grayscale patches of 32x32.
+    r"""Describe 32 x 32 grayscale patches with the learned 128-D HardNet CNN.
 
-    This is based on the original code from paper "Working hard to know your neighbor's
-    margins: Local descriptor learning loss". See :cite:`HardNet2017` for more details.
+    ``hardnet = HardNet()`` builds the network with its pretrained weights, in eval mode, and
+    ``descs = hardnet(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns unit-norm descriptors
+    ``(B, 128)``. Each patch is standardised first, so its intensity range does not matter. To describe LAFs on an
+    image, use :class:`LAFDescriptor`, which holds a pretrained HardNet by default; the HardNet local features such as
+    :class:`DoGHardNet` and :class:`KeyNetHardNet` use it that way. :class:`HardNet8` is the wider follow-up network,
+    with the same patches and output size. This is based on the original code from paper "Working hard to know your
+    neighbor's margins: Local descriptor learning loss". See :cite:`HardNet2017` for more details.
 
     Convention:
         - Patches are ``(B, 1, 32, 32)``, one grayscale channel, and another shape raises; ``patch_size`` is a class
@@ -72,8 +78,16 @@ class HardNet(nn.Module):
         torch.Tensor: HardNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
+
+    See Also:
+        - :class:`HardNet8`: the follow-up network, wider, with a PCA from 512 to 128 dimensions.
+        - :class:`SOSNet`: the same convolution stack, trained with second-order similarity regularisation.
+        - :class:`HyNet`: a descriptor of the same patches, with FRN layers that subtract no mean.
+        - :class:`TFeat`: a shallow network for the same patches, without L2 normalisation.
+        - :class:`SIFTDescriptor`: handcrafted SIFT histograms of patches, with no weights.
+        - :class:`LAFDescriptor`: runs this network, by default, on a patch per LAF of an image.
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -134,29 +148,29 @@ class HardNet(nn.Module):
         """Compute HardNet descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+            input: Grayscale patch tensor of shape ``(B, 1, 32, 32)``.
 
         Returns:
-            L2-normalized descriptor tensor with shape :math:`(B, 128)`.
+            L2-normalized descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
-        # oneDNN's float32 convolutions avoid repeated activation reorders with
-        # channels-last input. Keep CUDA's existing layout, which is faster there.
-        if input.device.type == "cpu" and input.dtype == torch.float32:
-            x_norm = x_norm.to(memory_format=torch.channels_last)
-        x_features: torch.Tensor = self.features(x_norm)
-        x_out = x_features.view(x_features.size(0), -1)
+        x_features: torch.Tensor = self.features(_patch_conv_layout(x_norm))
+        x_out = x_features.flatten(1)
         # A constant patch drives the features to zero; the default `eps` is not representable in
         # float16, where the normalisation would then return NaN.
         return _l2_normalize(x_out, dim=1)
 
 
 class HardNet8(nn.Module):
-    r"""Module, which computes HardNet8 descriptors of given grayscale patches of 32x32.
+    r"""Describe 32 x 32 grayscale patches with HardNet8, a wider HardNet with a PCA to 128-D.
 
-    This is based on the original code from paper "Improving the HardNet Descriptor".
-    See :cite:`HardNet2020` for more details.
+    ``hardnet8 = HardNet8()`` builds the network with its pretrained ``hardnet8v2`` weights, in eval mode, and
+    ``descs = hardnet8(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns unit-norm descriptors
+    ``(B, 128)``: the 512 L2-normalised features of the network, projected by the PCA stored with the weights and
+    normalised again. It takes the patches of :class:`HardNet` and returns descriptors of the same size, but they are
+    not interchangeable with HardNet's; pass it to :class:`LAFDescriptor` to describe LAFs on an image. This is based
+    on the original code from paper "Improving the HardNet Descriptor". See :cite:`HardNet2020` for more details.
 
     Convention:
         See the Convention block on :class:`~kornia.feature.HardNet`.
@@ -169,8 +183,14 @@ class HardNet8(nn.Module):
         torch.Tensor: HardNet8 descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
+
+    See Also:
+        - :class:`HardNet`: the original, narrower network, the default descriptor of :class:`LAFDescriptor`.
+        - :class:`SOSNet`: HardNet's convolution stack, trained with second-order similarity regularisation.
+        - :class:`HyNet`: a descriptor of the same patches, with FRN layers that subtract no mean.
+        - :class:`LAFDescriptor`: runs a patch descriptor such as this one on a patch per LAF of an image.
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -251,17 +271,17 @@ class HardNet8(nn.Module):
         """Compute HardNet8 descriptors with PCA projection.
 
         Args:
-            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+            input: Grayscale patch tensor of shape ``(B, 1, 32, 32)``.
 
         Returns:
-            L2-normalized descriptor tensor with shape :math:`(B, 128)`, after the PCA projection.
+            L2-normalized descriptor tensor with shape ``(B, 128)``, after the PCA projection.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
-        x_features: torch.Tensor = self.features(x_norm)
+        x_features: torch.Tensor = self.features(_patch_conv_layout(x_norm))
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
         components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
-        x_flat = x_features.view(x_features.size(0), -1)
+        x_flat = x_features.flatten(1)
         x_prePCA = _l2_normalize(x_flat, dim=1)
         pca = torch.mm(x_prePCA - mean, components)
         return _l2_normalize(pca, dim=1)

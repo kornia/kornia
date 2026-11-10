@@ -28,6 +28,83 @@ from kornia.augmentation.utils.helpers import _constant_tensor
 
 from testing.base import BaseTester
 
+
+class TestSamplerBoundsPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "make_generator,ranges,sampler_name,expected",
+        [
+            (rg.AffineGenerator, {"degrees": 0.1}, "degree_sampler", (-0.1, 0.1)),
+            (rg.AffineGenerator, {"degrees": (0.1, 0.2)}, "degree_sampler", (0.1, 0.2)),
+            (partial(rg.AffineGenerator, 0.0), {"translate": (0.1, 0.2)}, "translate_x_sampler", (-0.1, 0.1)),
+            (partial(rg.AffineGenerator, 0.0), {"translate": (0.1, 0.2)}, "translate_y_sampler", (-0.2, 0.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2)}, "scale_2_sampler", (0.7, 1.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_2_sampler", (0.7, 1.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_4_sampler", (0.8, 1.3)),
+            (rg.TranslateGenerator, {"translate_x": (0.1, 0.2)}, "translate_x_sampler", (0.1, 0.2)),
+            (rg.TranslateGenerator, {"translate_y": (0.1, 0.2)}, "translate_y_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator, 3, direction=0.0), {"angle": (0.1, 0.2)}, "angle_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator, 3, 0.0), {"direction": (0.1, 0.2)}, "direction_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator3D, 3, 0.0), {"direction": (0.1, 0.2)}, "direction_sampler", (0.1, 0.2)),
+            (
+                partial(rg.SaltAndPepperGenerator, salt_and_pepper=(0.0, 1.0)),
+                {"amount": (0.1, 0.2)},
+                "amount_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.SaltAndPepperGenerator, amount=(0.0, 1.0)),
+                {"salt_and_pepper": (0.1, 0.2)},
+                "salt_and_pepper_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearIlluminationGenerator, sign=(-1.0, 1.0)),
+                {"gain": (0.1, 0.2)},
+                "gain_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearIlluminationGenerator, gain=(0.0, 1.0)),
+                {"sign": (0.1, 0.2)},
+                "sign_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearCornerIlluminationGenerator, sign=(-1.0, 1.0)),
+                {"gain": (0.1, 0.2)},
+                "gain_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearCornerIlluminationGenerator, gain=(0.0, 1.0)),
+                {"sign": (0.1, 0.2)},
+                "sign_sampler",
+                (0.1, 0.2),
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("tensor_ranges", [False, True])
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_sampler_bounds_keep_requested_precision_4426(
+        self, make_generator, ranges, sampler_name, expected, tensor_ranges, default_dtype, device, dtype
+    ):
+        # Exercise the float64 ambient default only on backends that support that precision.
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64 range normalization.")
+        if tensor_ranges:
+            ranges = {name: torch.tensor(value, device=device, dtype=dtype) for name, value in ranges.items()}
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            generator = make_generator(**ranges)
+            generator.set_rng_device_and_dtype(device, dtype)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+        sampler = getattr(generator, sampler_name)
+        bounds = torch.stack((sampler.low, sampler.high))
+        self.assert_close(bounds, torch.tensor(expected, device=device, dtype=dtype), rtol=0, atol=0)
+
+
 # Numeric constructor inputs deliberately keep the generated parameters on CPU, except for the
 # resize and illumination generators, which follow the device and dtype the generator was moved to.
 # Include both branches which construct destination corners in crop generators.
@@ -131,8 +208,7 @@ class TestAugmentationConstantTransfer(BaseTester):
             params = aug.forward_parameters(input.shape)
             return aug(input, params=params), params
 
-        # Crop3D validates crop sizes and still has a separate graph break.
-        compiled = torch_optimizer(apply, fullgraph=not isinstance(aug, K.RandomCrop3D))
+        compiled = torch_optimizer(apply, fullgraph=True)
         for _ in range(2):
             actual, params = compiled(input)
             if device.type == "cuda":

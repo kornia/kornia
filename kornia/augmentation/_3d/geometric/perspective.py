@@ -23,14 +23,18 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply random perspective transformation to 3D volumes (5D torch.Tensor).
+    r"""Warp 3D volumes with a random perspective transform, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPerspective3D(distortion_scale, ...)(input)`` projectively warps volumes of shape
+    ``(B, C, D, H, W)``.
 
     Args:
-        p: probability of the image being perspectively transformed.
+        p: probability of applying the transformation to each sample.
         distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
@@ -39,8 +43,8 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -57,6 +61,10 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         - a spatial dimension of 1 gets a unit source extent and no corner offset, so its single
           slice, row or column maps onto itself. At ``distortion_scale=0`` the transform matrix is
           the identity; output identity still requires ``align_corners=True`` as described above.
+
+    See Also:
+        - :class:`RandomAffine3D`: samples an affine rather than projective warp.
+        - :class:`RandomPerspective`: warps 2D images from sampled perspective endpoints.
 
     Examples:
         >>> import torch
@@ -127,7 +135,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         elif isinstance(width, int) and width == 1:
             order = [0, 4, 7, 3, 1, 5, 6, 2] if depth > 1 else [0, 3, 2, 1, 4, 7, 6, 5]
             start_points, end_points = start_points[:, order], end_points[:, order]
-        return get_perspective_transform3d(start_points, end_points).to(input)
+        return _to_device_nonblocking(get_perspective_transform3d(start_points, end_points), input.device, input.dtype)
 
     def apply_transform(
         self,

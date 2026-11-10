@@ -29,6 +29,7 @@ from kornia.augmentation.random_generator import (
     RotationGenerator3D,
     center_crop_generator3d,
 )
+from kornia.geometry.bbox import infer_bbox_shape3d
 
 from testing.base import assert_close
 
@@ -439,6 +440,34 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
 class TestRandomCropGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("resize_to", [None, (2, 2, 2)])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_oversized_crop_is_rejected_for_empty_batches_4429(
+        self, batch_size, size, resize_to, same_on_batch, device, dtype
+    ):
+        """A fixed crop must fit the source volume even when no rows are sampled."""
+        generator = CropGenerator3D(size, resize_to)
+        generator.set_rng_device_and_dtype(device, dtype)
+
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input_size=\(4, 5, 6\)"):
+            generator((batch_size, 1, 4, 5, 6), same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_dynamo_fixed_crop_parameters_4429(self, batch_size, device, dtype, torch_optimizer):
+        """Fullgraph compilation captures a legal fixed-size crop for empty and non-empty batches."""
+        generator = CropGenerator3D((3, 4, 5))
+        generator.set_rng_device_and_dtype(device, dtype)
+        optimized = torch_optimizer(generator, fullgraph=True)
+
+        params = optimized((batch_size, 1, 4, 5, 6))
+
+        assert params["src"].shape == (batch_size, 8, 3)
+        assert params["dst"].shape == (batch_size, 8, 3)
+        assert params["output_size"].tolist() == [[3, 4, 5]] * batch_size
+        assert params["output_size"].dtype == torch.long
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("input_size", [(200, 200, 200)])
     @pytest.mark.parametrize("size", [(100, 100, 100), torch.tensor([50, 60, 70])])
     @pytest.mark.parametrize("resize_to", [None, (100, 100, 100)])
@@ -448,7 +477,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
 
         param_gen = CropGenerator3D(size=size, resize_to=resize_to)
-        param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        params = param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        expected = torch.as_tensor(resize_to if resize_to is not None else size).expand(batch_size, 3)
+        assert_close(params["output_size"].to(device=device, dtype=dtype), expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
         "input_size,size,resize_to",
@@ -465,6 +496,17 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
             )(batch_shape=torch.Size((2, 1, *input_size)))
+
+    @pytest.mark.parametrize("resize_to", [None, (2, 3, 2)])
+    def test_boxes_measure_crop_and_output_size_4018(self, resize_to, device, dtype):
+        # kornia#4018: src measures the crop size and dst the output size, inclusively, with dst at the origin.
+        size = torch.tensor([[2, 3, 4], [1, 1, 1], [4, 5, 6]], device=device, dtype=dtype)
+        params = CropGenerator3D(size, resize_to)(torch.Size((3, 1, 4, 5, 6)))
+        output_size = size if resize_to is None else torch.tensor([resize_to] * 3, device=device, dtype=dtype)
+        for key, expected in (("src", size), ("dst", output_size)):
+            measured = torch.stack(infer_bbox_shape3d(params[key].to(dtype)), dim=-1)
+            assert_close(measured, expected, atol=0.0, rtol=0.0)
+        assert_close(params["dst"][:, 0], torch.zeros(3, 3, device=device, dtype=params["dst"].dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -527,7 +569,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -593,7 +637,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -656,7 +702,9 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
                 dtype=torch.long,
             ).repeat(2, 1, 1),
         }
+        expected["output_size"] = torch.tensor([[120, 150, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -840,3 +888,13 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
                 angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
                 direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
             )
+
+
+def test_crop3d_output_size_owns_storage(device):
+    size = torch.tensor([[4, 5, 6]], device=device, dtype=torch.long)
+    generator = CropGenerator3D(size)
+    params = generator((1, 1, 8, 10, 12))
+    params["output_size"][0, 0] = 2
+    assert_close(size, torch.tensor([[4, 5, 6]], device=device))
+    size[0, 1] = 3
+    assert_close(params["output_size"], torch.tensor([[2, 5, 6]], device=device))

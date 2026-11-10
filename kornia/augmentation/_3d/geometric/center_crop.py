@@ -23,11 +23,14 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.geometric.crop import _crop_translation3d
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import crop_by_transform_mat3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
-    r"""Apply center crop on 3D volumes (5D torch.Tensor).
+    r"""Extract a centered 3D subvolume, applied to a batch with probability ``p`` (default 1.0).
+
+    ``output = CenterCrop3D(size)(input)`` extracts a centered ``(D, H, W)`` patch.
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -40,8 +43,8 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, out_d, out_h, out_w)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, out_d, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -58,6 +61,10 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           An integer ``size`` is supported here but not by :class:`RandomCrop3D`
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
+
+    See Also:
+        - :class:`RandomCrop3D`: samples the subvolume position.
+        - :class:`CenterCrop`: extracts a centered patch from a 2D image.
 
     Examples:
         >>> import torch
@@ -110,7 +117,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             self.size = (size, size, size)
         else:
             raise TypeError(f"Invalid `size` type. Expected int or tuple[int, int, int] (D, H, W). Got {size!r}.")
-        self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
+        self.flags = {"size": self.size, "align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(
@@ -120,7 +127,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+        transform = _crop_translation3d(src, dst)
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

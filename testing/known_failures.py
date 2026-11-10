@@ -28,6 +28,7 @@ _EXCEPTION_TYPES: dict[str, type[BaseException]] = {
     "NotImplementedError": NotImplementedError,
     "RuntimeError": RuntimeError,
     "TypeError": TypeError,
+    "ValueError": ValueError,
     "pytest.fail.Exception": pytest.fail.Exception,
 }
 

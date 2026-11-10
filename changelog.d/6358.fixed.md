@@ -1,0 +1,1 @@
+`transform_tensor(input, shape=..., match_channel=False)` on 3D augmentations now inserts the missing channel axis at dim 1, so a `(B, D, H, W)` mask becomes `(B, 1, D, H, W)` instead of `(B, D, 1, H, W)`, and a `(D, H, W)` or `(C, D, H, W)` input now reaches 5 dimensions.

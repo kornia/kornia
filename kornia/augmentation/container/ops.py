@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, Type, TypeVar, Union
 
@@ -22,13 +23,14 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
+from kornia.augmentation.utils.helpers import deepcopy_dict, override_parameters
 from kornia.constants import DataKey
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .params import ParamItem
+from .params import ParamItem, PatchParamItem
 
 DataType = Union[torch.Tensor, List[torch.Tensor], Boxes, Keypoints]
 
@@ -36,6 +38,61 @@ DataType = Union[torch.Tensor, List[torch.Tensor], Boxes, Keypoints]
 SequenceDataType = Union[List[torch.Tensor], List[List[torch.Tensor]], List[Boxes], List[Keypoints]]
 
 T = TypeVar("T")
+
+
+_ALWAYS_SUPPORTED_OPTIONS = frozenset({"resample", "align_corners", "antialias"})
+
+
+def _parameter_keys(params: Optional[Union[Dict[str, Any], List[ParamItem], List[PatchParamItem]]]) -> set[str]:
+    if isinstance(params, dict):
+        return set(params)
+    keys: set[str] = set()
+    if params is not None:
+        for param in params:
+            keys = keys | _parameter_keys(param.param.data if isinstance(param, PatchParamItem) else param.data)
+    return keys
+
+
+def _supported_options(
+    module: nn.Module, params: Optional[Union[Dict[str, Any], List[ParamItem], List[PatchParamItem]]]
+) -> set[str]:
+    keys = {"save_kwargs", "data_keys"} | _parameter_keys(params)
+    for child in module.modules():
+        # Only augmentations consume flag overrides; a plain module's own ``flags`` attribute is unrelated.
+        # Rebind with ``|``: Dynamo on torch 2.5 cannot trace set.update() or set.add() with a module's flag keys.
+        if isinstance(child, _BasicAugmentationBase):
+            keys = keys | set(child.flags)
+    return keys
+
+
+def _validate_extra_args(
+    module: nn.Module, extra_args: Optional[Dict[str, Any]], params: Optional[List[ParamItem]]
+) -> Dict[str, Any]:
+    if not extra_args:
+        return {}
+    # Default mask interpolation options remain valid even for a pipeline consisting entirely of flips. The default
+    # mask ``extra_args`` hold only these, so skip walking the pipeline for them on every call.
+    if extra_args.keys() <= _ALWAYS_SUPPORTED_OPTIONS:
+        return dict(extra_args)
+    supported = _supported_options(module, params) | _ALWAYS_SUPPORTED_OPTIONS
+    for key in extra_args:
+        if key not in supported:
+            warnings.warn(
+                f"{type(module).__name__} got an unknown extra_args option '{key}'; it is ignored. "
+                "Passing unknown options is deprecated and will raise TypeError in a future release.",
+                FutureWarning,
+                stacklevel=3,
+            )
+    return {key: value for key, value in extra_args.items() if key in supported}
+
+
+def _filter_child_options(module: nn.Module, extra_args: Optional[Dict[str, Any]], param: ParamItem) -> Dict[str, Any]:
+    # Dispatch invariant: validate at the public container boundary, then filter at every child boundary.
+    # All forward, inverse and matrix traversals use the current ParamItem, never a child's cached state.
+    if not extra_args:
+        return {}
+    supported = _supported_options(module, param.data)
+    return {key: value for key, value in extra_args.items() if key in supported}
 
 
 class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
@@ -61,8 +118,11 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         return _params
 
     @classmethod
-    def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
+    def get_transform_matrix(
+        cls, module: nn.Module, param: ParamItem, input: Any, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
+        extra_args = _filter_child_options(module, extra_args, param)
         params = cls.get_instance_module_param(param)
         # The image call records the params dict it was given, and its values and their versions, next to the matrix
         # it computed. The matrix is reused while the dict holds the same values unedited: the annotations of the same
@@ -95,7 +155,11 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
             left, right, top, bottom = padding_size[0].tolist()
             input_shape = (*input_shape[:-2], input_shape[-2] - top - bottom, input_shape[-1] - left - right)
         matrix_input = torch.empty((), device=device, dtype=dtype).expand(input_shape)
-        return module.generate_transformation_matrix(matrix_input, params, module.flags)
+        # Compute from a copy of the params, as the image call does (its ``data_keys`` override copies the dict). Under
+        # export the caller's tensors can be graph constants, and a child that copies one as-is into its matrix, as
+        # ``RandomAffine`` does with ``center``, makes torch 2.9's dynamo ONNX exporter rename that constant and fail.
+        flags = module.flags if extra_args is None else override_parameters(module.flags, extra_args, in_place=False)
+        return module.generate_transformation_matrix(matrix_input, deepcopy_dict(params), flags)
 
     @classmethod
     def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:
@@ -350,8 +414,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Raises:
             AssertionError: A non-augmentation module receives non-empty params.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
@@ -382,8 +445,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Raises:
             NotImplementedError: Inverse for 3D geometric ops is not supported.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, K.MixAugmentationBaseV2):
@@ -460,6 +522,13 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         if fill is not None and not isinstance(fill, (int, float)):
             extra_args = dict(extra_args)
             extra_args.setdefault("fill", 0.0)
+        # The warp-based augmentations (RandomAffine) store their fill as the ``fill_value`` tensor, a scalar as a
+        # 0-d tensor. Apply the same rule: a per-channel fill pads the mask with background, one element applies to
+        # both (#6021).
+        fill_value = module.flags.get("fill_value")
+        if isinstance(fill_value, torch.Tensor) and fill_value.numel() > 1:
+            extra_args = dict(extra_args)
+            extra_args.setdefault("fill_value", torch.zeros((), device=fill_value.device, dtype=fill_value.dtype))
         return extra_args
 
     @classmethod
@@ -475,8 +544,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
             module, K.IntensityAugmentationBase2D
@@ -548,8 +616,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Returns:
             One transformed mask per sample, in the same order.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase3D):
             raise NotImplementedError("3D mask lists are not supported.")
         if isinstance(module, (K.VideoSequential, K.MixAugmentationBaseV2)):
@@ -600,10 +667,10 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             input = module.inverse_masks(
                 input,
@@ -641,9 +708,9 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         Returns:
             One inverse-transformed mask per sample, in the same order.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         if isinstance(module, K.GeometricAugmentationBase2D):
+            extra_args = cls._mask_extra_args(module, extra_args)
             transform = module.compute_inverse_transformation(cls.get_transform_matrix(module, param, input))
             params = cls.get_instance_module_param(param)
             output = [
@@ -693,8 +760,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
@@ -745,8 +811,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
@@ -791,8 +856,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, K.RigidAffineAugmentationBase2D) and not isinstance(
@@ -851,8 +915,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         Returns:
             Keypoints after inverse transformation.
         """
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _filter_child_options(module, extra_args, param)
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):

@@ -19,13 +19,17 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomLinearIllumination(...)(input)`` adds a sampled edge-to-edge ramp to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -35,14 +39,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -58,6 +62,10 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomGaussianIllumination`: adds a smooth Gaussian-shaped illumination field.
+        - :class:`RandomLinearCornerIllumination`: starts its ramp from a corner.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -102,8 +110,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -119,8 +127,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")
@@ -141,11 +149,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear from corner illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomLinearCornerIllumination(...)(input)`` adds a sampled ramp from one corner to selected images
+    ``(B, C, H, W)`` and clamps them to ``[0, 1]``.
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
@@ -155,14 +166,14 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -178,6 +189,9 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
+    See Also:
+        - :class:`RandomLinearIllumination`: starts the linear illumination ramp from an edge.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -222,8 +236,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -239,8 +253,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")
@@ -261,4 +275,4 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        return _clamp_unit_range(input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)))

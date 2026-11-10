@@ -635,12 +635,15 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         # Compare against the independent documented formula on the same quantized pixels in ordinary units.
         # The derivative of s * f(x / s) is f'(x / s), so a finite scale must leave this gradient unchanged.
         work_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        normalized = (x.detach().to(work_dtype) / scale).requires_grad_(True)
+        # Divide by a tensor: CUDA divides a tensor by a Python scalar as a multiplication by its reciprocal, and the
+        # reciprocal of a subnormal scale overflows to inf, which turns the reference into inf and NaN (0 * inf).
+        work_scale = torch.tensor(scale, device=device, dtype=work_dtype)
+        normalized = (x.detach().to(work_dtype) / work_scale).requires_grad_(True)
         (expected_grad,) = torch.autograd.grad(_documented_soft_threshold(normalized, 256), normalized)
         self.assert_close(grad, expected_grad.to(dtype))
         expected = otsu_threshold(normalized.detach(), slow_and_differentiable=True)[1]
         self.assert_close(
-            threshold.detach().to(work_dtype) / scale,
+            threshold.detach().to(work_dtype) / work_scale,
             expected,
             rtol=max(8 * limits.eps, 1e-11),
             # Subnormal thresholds round in units of the smallest subnormal, rather than relative to their value.

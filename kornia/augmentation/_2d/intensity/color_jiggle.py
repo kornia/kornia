@@ -22,7 +22,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -60,11 +61,14 @@ def _apply_order_cond(
 ) -> torch.Tensor:
     # Every step runs, and torch.where keeps its output only when a factor in the batch is not neutral. There is
     # no data-dependent Python branch, so eager and compiled mode run this same code path, and fullgraph
-    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input.
+    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input. The condition is
+    # computed from the CPU factors and moved without waiting for the queued kernels, as a CPU condition in
+    # ``torch.where`` would be copied with a blocking transfer.
     for idx in order:
         factor = factors[idx]
         output = branches[idx](input, factor)
-        input = torch.where((factor != neutral[idx]).any(), output, input)
+        apply = _to_device_nonblocking((factor != neutral[idx]).any(), input.device)
+        input = torch.where(apply, output, input)
     return input
 
 
@@ -116,7 +120,10 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+    r"""Jiggle color with Kornia's additive-brightness and HSV formulas.
+
+    ``output = ColorJiggle(brightness, contrast, saturation, hue)(input)`` applies a sampled order of enabled color
+    steps. Use :class:`ColorJitter` when reproducing torchvision's multiplicative and grayscale-blend formulas.
 
     .. image:: _static/img/ColorJiggle.png
 
@@ -137,8 +144,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
           The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
           entry is ignored, including on replay.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -164,6 +171,11 @@ class ColorJiggle(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.adjust_brightness`,
         :func:`kornia.enhance.adjust_contrast`. :func:`kornia.enhance.adjust_saturation`,
         :func:`kornia.enhance.adjust_hue`.
+
+    See Also:
+        - :class:`ColorJitter`: torchvision-compatible alternative with different brightness, contrast and saturation.
+        - :class:`RandomBrightness`: applies only the additive brightness step.
+        - :class:`RandomHue`: applies only an HSV hue rotation.
 
     Examples:
         >>> rng = torch.manual_seed(0)

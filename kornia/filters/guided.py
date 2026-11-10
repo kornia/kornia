@@ -31,8 +31,10 @@ from .kernels import _unpack_2d_ks
 
 
 def _check_subsample(subsample: int) -> None:
-    msg = f"`subsample` must be a positive integer. Got: {subsample!r}"
-    KORNIA_CHECK_TYPE(subsample, Integral, f"{msg} ({type(subsample).__name__})")
+    def msg() -> str:
+        return f"`subsample` must be a positive integer. Got: {subsample!r}"
+
+    KORNIA_CHECK_TYPE(subsample, Integral, lambda: f"{msg()} ({type(subsample).__name__})")
     # ``bool`` is an ``int``, and ``subsample=True`` would otherwise run as 1.
     KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 
@@ -119,6 +121,10 @@ def _guided_blur_multichannel_guidance(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
+    # One compute dtype for the whole path: ``mean_I @ a`` needs ``mean_I`` in the dtype ``a`` is solved in, so a
+    # guidance narrower than ``input`` (float16, float32 or uint8 next to float64) is promoted to the pair's dtype.
+    # ``Tensor.to`` is a no-op when the dtypes already match, so every other pair is unaffected.
+    guidance = guidance.to(torch.promote_types(guidance.dtype, input.dtype))
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
     # The input channel count is spelled out instead of inferred with ``-1``: an empty batch has no elements, so
@@ -182,12 +188,13 @@ def guided_blur(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
-    r"""Blur a torch.Tensor using a Guided filter.
+    r"""Smooth an image with a guided filter, which follows the edges of a guidance image.
+
+    ``out = guided_blur(guidance, input, kernel_size, eps)`` smooths a ``(B, C_i, H, W)`` ``input`` along the edges of a
+    ``(B, C_g, H, W)`` ``guidance`` by fitting a local linear model :cite:`he2010guided`. ``subsample`` above 1 selects
+    the fast guided filter :cite:`he2015fast`. Pass the same tensor twice to smooth an image along its own edges.
 
     .. image:: _static/img/guided_blur.png
-
-    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
-    and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
     Convention:
         - ``guidance`` comes first and ``input`` second, the opposite of
@@ -200,35 +207,39 @@ def guided_blur(
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
         - An integer or bool ``guidance`` or ``input`` is converted to float32 before the covariance products, on its
           own scale, and the result has the promoted dtype of the two: a float16 ``input`` with a uint8 ``guidance``
-          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype.
+          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype. With grayscale
+          guidance, a tensor-valued ``eps`` also participates in result dtype promotion; multichannel guidance
+          retains the promoted dtype of ``guidance`` and ``input``.
+        - A float16 or bfloat16 ``guidance`` or ``input`` is converted to float32 before the window statistics, and
+          the coefficients are solved in float32 as well (in float64 with a float64 tensor ``eps``). Autocast is
+          disabled inside the filter, so a float32 call in an autocast region returns float32. The result has the
+          dtype of the rule above.
 
-    Arguments:
-        guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
-        input: the input torch.Tensor with shape :math:`(B,C_i,H,W)`.
-        kernel_size: the size of the kernel.
-        eps: regularization parameter. Smaller values preserve more edges.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
-          Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
-          ``max(W // subsample, 1)`` columns: every ``subsample``-th pixel when ``H`` is a multiple of ``subsample``
-          (likewise ``W``), and otherwise, for row ``i``, the pixel nearest to
-          ``(i + 0.5) * H / rows - subsample / 2`` (a tie rounds up), which keeps the subsampled grid aligned with the
-          bilinear upsample of the coefficient maps as it is on a multiple; a single pixel, the first, on an axis
-          shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
-          back to the size of the input. Default: 1 (no subsampling)
-        separable: use two one-dimensional box-filter passes, reducing work for
-          large windows. Default: False
+    Args:
+        guidance: image whose edges are kept, with shape ``(B, C_g, H, W)``.
+        input: image to smooth, with shape ``(B, C_i, H, W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        eps: regularization of the local variance; smaller values keep more edges.
+        border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        subsample: subsampling factor of the fast guided filter, a positive integer; ``1`` means none. Guidance and
+          input are subsampled by nearest neighbour and the coefficient maps resized back to the input's size, so ``H``
+          and ``W`` need not be multiples of it.
+        separable: ``True`` applies the window means as two 1D passes, which saves work for large windows.
 
     Returns:
-        the blurred torch.Tensor with same shape as `input` :math:`(B, C_i, H, W)`.
+        the smoothed image with shape ``(B, C_i, H, W)``.
 
     Raises:
         TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
         BaseError: if ``subsample`` is not positive, or is a ``bool``.
 
-    Examples:
+    See Also:
+        - :class:`GuidedBlur`: the module form.
+        - :func:`joint_bilateral_blur`: another filter that follows a guidance image, with sigmas in place of
+          ``eps``, and ``input`` first.
+        - :func:`bilateral_blur`: weights each neighbour by its distance and colour instead of fitting a linear model.
+
+    Example:
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = guided_blur(guidance, input, 3, 0.1)
@@ -253,9 +264,27 @@ def guided_blur(
     input_is_guidance = input is guidance
     guidance = _to_floating(guidance)
     input = guidance if input_is_guidance else _to_floating(input)
+    output_dtype = torch.promote_types(guidance.dtype, input.dtype)
+    # E[g*g] - E[g]*E[g] loses the local variance in half precision, before
+    # even a promoted solve can help. Promote before all window statistics.
+    if guidance.dtype in (torch.float16, torch.bfloat16):
+        guidance = guidance.float()
+    if input_is_guidance:
+        input = guidance
+    elif input.dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
 
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(
+        blur = _guided_blur_grayscale_guidance
+        if isinstance(eps, torch.Tensor):
+            output_dtype = torch.promote_types(output_dtype, eps.dtype)
+    else:
+        blur = _guided_blur_multichannel_guidance
+    # Autocast would lower the box-filter convolutions back to half precision. A meta tensor carries only a shape and
+    # ``torch.autocast("meta")`` raises, so the CPU autocast stands in for it.
+    device_type = "cpu" if guidance.device.type == "meta" else guidance.device.type
+    with torch.autocast(device_type=device_type, enabled=False):
+        return blur(
             guidance,
             input,
             kernel_size,
@@ -263,56 +292,38 @@ def guided_blur(
             border_type,
             subsample,
             separable=separable,
-        )
-    return _guided_blur_multichannel_guidance(
-        guidance,
-        input,
-        kernel_size,
-        eps,
-        border_type,
-        subsample,
-        separable=separable,
-    )
+        ).to(output_dtype)
 
 
 class GuidedBlur(nn.Module):
-    r"""Blur a torch.Tensor using a Guided filter.
+    r"""Smooth an image with a stored guided filter (module form).
 
-    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
-    and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
+    ``blur = GuidedBlur(kernel_size, eps)`` stores its arguments, and ``out = blur(guidance, input)`` is
+    :func:`guided_blur` on a ``(B, C_g, H, W)`` guidance and a ``(B, C_i, H, W)`` image.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.guided_blur`.
 
-    Arguments:
-        kernel_size: the size of the kernel.
-        eps: regularization parameter. Smaller values preserve more edges.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        subsample: subsampling factor for Fast Guided filtering, a positive integer (a ``bool`` is rejected).
-          Guidance and input are subsampled by nearest neighbour to ``max(H // subsample, 1)`` rows and
-          ``max(W // subsample, 1)`` columns: every ``subsample``-th pixel when ``H`` is a multiple of ``subsample``
-          (likewise ``W``), and otherwise, for row ``i``, the pixel nearest to
-          ``(i + 0.5) * H / rows - subsample / 2`` (a tie rounds up), which keeps the subsampled grid aligned with the
-          bilinear upsample of the coefficient maps as it is on a multiple; a single pixel, the first, on an axis
-          shorter than ``subsample``. ``H`` and ``W`` need not be multiples of it: the coefficient maps are resized
-          back to the size of the input. Default: 1 (no subsampling)
-        separable: use two one-dimensional box-filter passes, reducing work for
-          large windows. Default: False
-
-    Returns:
-        the blurred input torch.Tensor.
+    Args:
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        eps: regularization of the local variance, as in :func:`guided_blur`.
+        border_type: padding mode, as in :func:`guided_blur`.
+        subsample: subsampling factor of the fast guided filter, a positive integer; ``1`` means none.
+        separable: ``True`` applies the window means as two 1D passes.
 
     Raises:
         TypeCheckError: if ``subsample`` is not an integer (NumPy integers are accepted).
         BaseError: if ``subsample`` is not positive, or is a ``bool``. Both are raised by the constructor.
 
     Shape:
-        - Input: :math:`(B, C_g, H, W)`, :math:`(B, C_i, H, W)`
-        - Output: :math:`(B, C_i, H, W)`
+        - Input: ``(B, C_g, H, W)``, ``(B, C_i, H, W)``
+        - Output: ``(B, C_i, H, W)``
 
-    Examples:
+    See Also:
+        - :func:`guided_blur`: the one-call form.
+        - :class:`JointBilateralBlur`: another filter that follows a guidance image, with the input first.
+
+    Example:
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)
         >>> blur = GuidedBlur(3, 0.1)
@@ -358,17 +369,17 @@ class GuidedBlur(nn.Module):
         in the filtered result.
 
         Args:
-            guidance: Guidance tensor with shape :math:`(B, C_g, H, W)`, where
+            guidance: Guidance tensor with shape ``(B, C_g, H, W)``, where
                 :math:`B` is the batch size, :math:`C_g` is the number of
                 guidance channels, :math:`H` is the height, and :math:`W` is
                 the width.
-            input: Tensor to filter with shape :math:`(B, C_i, H, W)`, where
+            input: Tensor to filter with shape ``(B, C_i, H, W)``, where
                 :math:`C_i` is the number of channels in the signal being
                 smoothed. Its batch and spatial dimensions must equal those
                 of ``guidance``.
 
         Returns:
-            Tensor with shape :math:`(B, C_i, H, W)` containing the
+            Tensor with shape ``(B, C_i, H, W)`` containing the
             edge-aware filtered version of ``input``.
         """
         return guided_blur(

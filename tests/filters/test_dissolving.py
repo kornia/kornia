@@ -15,6 +15,10 @@
 # limitations under the License.
 #
 
+import re
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 import torch
 
@@ -22,17 +26,52 @@ from kornia.filters.dissolving import StableDiffusionDissolving
 
 from testing.base import BaseTester
 
-# `StableDiffusionDissolving` lazily imports `diffusers`, which ships in the `kornia[sd]` extra and
-# is therefore absent from the default dev environment.
-pytest.importorskip("diffusers", reason='`diffusers` is not installed. Install it with: pip install "kornia[sd]"')
-
 WEIGHTS_CACHE_DIR = "weights/"
+
+
+@pytest.mark.device_agnostic
+class TestStableDiffusionDissolvingVersion(BaseTester):
+    @pytest.fixture
+    def diffusers_stub(self, monkeypatch):
+        stub = SimpleNamespace(DDIMScheduler=Mock(), StableDiffusionPipeline=Mock(), StableDiffusionXLPipeline=Mock())
+        for pipeline in (stub.StableDiffusionPipeline, stub.StableDiffusionXLPipeline):
+            pipeline.from_pretrained.return_value.scheduler.timesteps = [0]
+        monkeypatch.setattr("kornia.filters.dissolving.diffusers", stub)
+        return stub
+
+    @pytest.mark.parametrize("version", ["invalid_version", "2.1", ""])
+    def test_exception(self, version, diffusers_stub):
+        message = f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+        with pytest.raises(NotImplementedError, match=re.escape(message)):
+            StableDiffusionDissolving(version=version)
+        diffusers_stub.StableDiffusionPipeline.from_pretrained.assert_not_called()
+        diffusers_stub.StableDiffusionXLPipeline.from_pretrained.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "version, model_id",
+        [
+            ("1.4", "CompVis/stable-diffusion-v1-4"),
+            ("1.5", "runwayml/stable-diffusion-v1-5"),
+            ("xl", "stabilityai/stable-diffusion-xl-base-1.0"),
+        ],
+    )
+    def test_supported_version(self, version, model_id, diffusers_stub):
+        model = StableDiffusionDissolving(version=version)
+        pipeline = (
+            diffusers_stub.StableDiffusionXLPipeline if version == "xl" else diffusers_stub.StableDiffusionPipeline
+        )
+        pipeline.from_pretrained.assert_called_once()
+        assert pipeline.from_pretrained.call_args.args == (model_id,)
+        assert model.model.is_sdxl is (version == "xl")
 
 
 @pytest.mark.slow
 class TestStableDiffusionDissolving(BaseTester):
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
+        pytest.importorskip(
+            "diffusers", reason='`diffusers` is not installed. Install it with: pip install "kornia[sd]"'
+        )
         return StableDiffusionDissolving(version="1.5", cache_dir=WEIGHTS_CACHE_DIR)
 
     @pytest.fixture(scope="class")
@@ -63,7 +102,3 @@ class TestStableDiffusionDissolving(BaseTester):
         dissolved_image = sdm_2_1(dummy_image, step_number)
         assert isinstance(dissolved_image, torch.Tensor), "Dissolve failed"
         assert dissolved_image.shape == dummy_image.shape, "Dissolved image shape mismatch"
-
-    def test_invalid_version(self):
-        with pytest.raises(NotImplementedError):
-            StableDiffusionDissolving(version="invalid_version")

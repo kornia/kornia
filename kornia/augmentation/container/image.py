@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
+import operator
+import warnings
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -29,10 +31,18 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
-from .base import ImageSequentialBase
+from .base import ImageSequentialBase, _chain_transform_matrices
+from .ops import _filter_child_options, _validate_extra_args
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
+
+_RANDOM_APPLY_SUM_RULE_MESSAGE = (
+    "`random_apply` samples with replacement when the drawn count is above the sum of `random_apply_weights`, so "
+    "children repeat although they could fill the count. This is deprecated since kornia 0.9.1: a future minor release "
+    "stops these repeats, which changes what the call selects for a given seed and how often each child runs. Weights "
+    "that sum to at least the largest count give that behavior now (kornia#6114)."
+)
 
 
 class ImageModuleForSequentialMixIn(ImageModuleMixIn):
@@ -55,7 +65,12 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
 
 
 class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
-    r"""nn.Sequential for creating kornia image processing pipeline.
+    r"""Chain image augmentations and image-processing modules on one image tensor.
+
+    ``output = ImageSequential(*modules)(input)`` runs selected children on an image tensor and stores their order and
+    sampled Kornia augmentation parameters in ``_params`` for replay. Ordinary ``nn.Module`` children also run,
+    but their internal randomness is not recorded; use :class:`~kornia.augmentation.container.AugmentationSequential`
+    when masks, boxes or keypoints must receive the matching geometric transform.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -66,14 +81,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum.
+            ``random_apply_weights``. Selections repeat when the requested count is larger than the number of children
+            that can be drawn: the children with a nonzero weight, mix augmentations not counted, plus one place when
+            the count and the mix augmentations together reach the number of children, since a mix augmentation is then
+            certain to take a place. With only mix children one of them is drawn, and with all weights 0 and no mix
+            child nothing is.
+            An int or a range that is not fixed to the number of children also repeats when the drawn count is larger
+            than the sum of the weights. That rule is deprecated since kornia 0.9.1: the calls whose draw it changes
+            emit a ``FutureWarning``, and a future minor release stops them repeating, which changes what they select
+            for a given seed and how often each child runs. Weights that sum to at least the largest count give the
+            future behavior now.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If True, the whole list of args will be processed as a sequence in a random order.
+            If True, the whole list of args will be processed as a sequence in a random order, whatever the scale of
+            the weights, and so will a count fixed to the number of children. With a non-mix child of weight 0 or more
+            than one mix augmentation, that count cannot be filled: children repeat and some may be left out.
             If False, the whole list of args will be processed as a sequence in original order.
-        random_apply_weights: a list of selection weights for each operation. The length shall be as
-            same as the number of operations. By default, operations are sampled uniformly.
+        random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
+            length shall be as same as the number of operations. Multiplying the weights by a constant does not change
+            the selection probabilities; it changes whether selections repeat only through the deprecated rule of
+            ``random_apply``. Integer and boolean weights are converted to floating point. By default, operations are
+            sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -101,6 +130,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     Note:
         The output cache retains a detached reference to the last tensor output and is omitted when pickled.
         Setting ``disable_features = True`` clears it.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: also transforms aligned masks and annotations.
+        - :class:`~kornia.augmentation.container.PatchSequential`: runs transforms on a regular patch grid.
+        - :class:`~kornia.augmentation.container.VideoSequential`: runs transforms on videos.
 
     Examples:
         >>> _ = torch.manual_seed(77)
@@ -149,7 +183,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
@@ -168,7 +202,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
+        # ``torch.multinomial`` samples floating-point weights only, so integer or boolean weights are converted; a
+        # tensor argument is tested against ``None`` rather than for its truth value, which is ambiguous.
+        weights = torch.as_tensor(random_apply_weights) if random_apply_weights is not None else torch.ones(len(self))
+        if weights.dim() != 1:
+            raise ValueError(f"`random_apply_weights` must be one-dimensional. Got shape {tuple(weights.shape)}.")
+        if not weights.is_floating_point():
+            weights = weights.to(torch.get_default_dtype())
+        self.random_apply_weights = weights
         self.if_unsupported_ops = if_unsupported_ops
         self._output_image = None
 
@@ -181,6 +222,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
+        requested = random_apply
         if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
         elif isinstance(random_apply, bool) and random_apply is True:
@@ -205,10 +247,20 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
+        # The stored upper bound is exclusive. A negative count or an upper bound below the lower one used to fail
+        # only at call time, in torch.multinomial or torch.randint.
+        if random_apply is not False and (random_apply[0] < 0 or random_apply[1] <= random_apply[0]):
+            raise ValueError(
+                "random_apply must select a non-negative number of transformations, with the lower bound not above "
+                f"the upper one. Got {requested}."
+            )
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
         """Get a forward sequence when random apply is in need.
+
+        Whether the draw samples with replacement follows the ``random_apply`` argument's description, including its
+        deprecated rule for counts above the sum of the weights.
 
         Args:
             with_mix: if to require a mix augmentation for the sequence.
@@ -228,32 +280,73 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         multinomial_weights[mix_indices] = 0
 
-        total_weight = multinomial_weights.sum()
-        if total_weight == 0:
+        total_weight = multinomial_weights.sum().item()
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights, as its docs
+        # say. A certain mix insertion below takes one place, so one place more than those can be filled without
+        # replacement; the draw leaves that place to the insertion.
+        num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
+        num_mix = len(mix_indices) if with_mix else 0
+        mix_place = int(num_mix != 0 and num_mix + num_samples >= len(self))
+        replacement = num_samples > num_nonzero + mix_place
+        # A range fixed to the number of children is what True stores. It promises the whole list, so repeating a member
+        # because of the weights' scale breaks that contract (#6114). Any other count keeps the sum rule until the
+        # deprecation window closes, including a range's draw of the number of children, whose seeded run moves with
+        # the rest of that range.
+        if self.random_apply != (len(self), len(self) + 1):
+            replacement = replacement or num_samples > total_weight
+            self._warn_if_sum_rule_changes_a_draw(self.random_apply, total_weight, num_nonzero, num_mix)
+        # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
+        if total_weight == 0 or num_samples == 0:
+            count = 0
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
-            indices = torch.multinomial(
-                multinomial_weights,
-                num_samples,
-                replacement=num_samples > total_weight.item(),
-            )
+            count = num_samples
+            drawn = num_samples if replacement else min(num_samples, num_nonzero)
+            indices = torch.multinomial(multinomial_weights, drawn, replacement=replacement)
 
         mix_added = False
-        # Make the selection fair.
+        # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
         if (
             with_mix
+            and num_samples > 0
             and len(mix_indices) != 0
-            and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
+            and (torch.rand(1) < ((len(mix_indices) + count) / len(self))).item()
         ):
-            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            # Draw among the mix members only: an ordinary member with weight 0 is also 0 in
+            # ``multinomial_weights`` and must not be inserted in their place.
+            mix_mask = torch.zeros_like(multinomial_weights, dtype=torch.float32)
+            mix_mask[mix_indices] = 1.0
+            mix_idx = torch.multinomial(mix_mask, 1)
             if len(indices) == 0:
                 indices = mix_idx
+            elif len(indices) < count:
+                indices = torch.cat([indices, mix_idx])
             else:
                 indices[-1] = mix_idx
             indices = indices[torch.randperm(len(indices))]
             mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
+
+    def _warn_if_sum_rule_changes_a_draw(
+        self, count_range: Tuple[int, int], total_weight: float, num_nonzero: int, num_mix: int
+    ) -> None:
+        """Warn if ``count_range``, with its exclusive end, holds a count whose draw the deprecated sum rule changes.
+
+        The rule changes a drawn count above ``total_weight`` that the members can fill without repeating. Those counts
+        run up to ``num_nonzero``, plus one when the certain mix place is open at that count, so the largest one in the
+        range decides. A count of 1 does not change, since ``torch.multinomial`` draws it the same way with and without
+        replacement, and neither do all-zero weights, which skip the draw. The whole range warns and not only the count
+        drawn in this call: a seeded run moves at the first draw of such a count.
+
+        This takes a few comparisons of values the draw has already read: no host conversion and no random number, so
+        the unaffected path keeps its draw. The message is a constant, so the default filter prints it once per
+        location.
+        """
+        drawable = num_nonzero + int(num_mix != 0 and num_mix + num_nonzero + 1 >= len(self))
+        changes_up_to = min(count_range[1] - 1, drawable)
+        if total_weight != 0 and changes_up_to > total_weight and changes_up_to >= max(count_range[0], 2):
+            warnings.warn(_RANDOM_APPLY_SUM_RULE_MESSAGE, FutureWarning, stacklevel=3)
 
     def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> List[int]:
         """Get all the mix augmentations since they are label-involved.
@@ -336,16 +429,20 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
+
+        Returns:
+            the chained matrix, or ``None`` if no geometric module contributes one. In a caller's autocast region it
+            keeps the input's dtype, and float32 input is computed in float32.
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
+            child_args = _filter_child_options(module, extra_args, param)
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 # Ignore error for 5-dim video. Keep try/except: Dynamo on torch 2.5.1 cannot trace
@@ -356,13 +453,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     pass
                 # Standardize shape
                 if recompute:
-                    flags = override_parameters(module.flags, extra_args, in_place=False)
+                    flags = override_parameters(module.flags, child_args, in_place=False)
                     mat = module.generate_transformation_matrix(input, param.data, flags)
                 elif module.transform_matrix is not None:
                     mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
@@ -375,10 +472,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
-                        input, maybe_param_data, recompute=recompute, extra_args=extra_args
+                        input, maybe_param_data, recompute=recompute, extra_args=child_args
                     )
                 mat = module.identity_matrix(input) if _mat is None else _mat
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
         return res_mat
 
     def inverse_inputs(
@@ -472,11 +569,12 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
     """Get the new batch shape if the augmentation changes the image size.
 
     Note:
-       Augmentations that change the image size must provide the parameter `output_size`.
-       Empty RandomCrop, CenterCrop, RandomResizedCrop and Resize batches have no sampled
-       output-size rows, so their configured size is used only when the image forward path
-       always applies the transform. Other probability branches retain the current empty-gate
-       fallback tracked in #4429.
+       Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       `PadTo` and `RandomMosaic(output_size=...)` provide none, so their configured size is used; with
+       `crop_if_exceeds=False`, `PadTo` keeps a dimension that is already larger.
+       Empty crops and resizes have no sampled output-size rows, so their configured size is used,
+       whatever their probability: an empty gate takes the transformed branch, as the image
+       forward does (#4429).
 
     """
     data = param.data
@@ -508,31 +606,62 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
 
-    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)):
-        # Match the image forward's unconditional path. An empty gate selects the original
-        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
-        if module.p != 1.0 or module.p_batch != 1.0:
+    # PadTo and RandomMosaic(output_size=...) return their configured size (PadTo(crop_if_exceeds=False): at least
+    # the input size) but emit no ``output_size``.
+    # No branch below matches them, so the final return passes the updated shape on.
+    if isinstance(module, (K.PadTo, K.RandomMosaic)):
+        size = module.flags["size" if isinstance(module, K.PadTo) else "output_size"]
+        if size is not None:
+            new_batch_shape = list(batch_shape)
+            dims = [operator.index(dim) for dim in size]
+            if isinstance(module, K.PadTo) and not module.flags.get("crop_if_exceeds", True):
+                # A dimension already larger than the target is kept, not cropped.
+                dims = [max(old, dim) for old, dim in zip(new_batch_shape[-len(dims) :], dims)]
+            new_batch_shape[-len(dims) :] = dims
+            batch_shape = torch.Size(new_batch_shape)
+
+    if (
+        batch_shape[0] == 0
+        and isinstance(module, _AugmentationBase)
+        and ("output_size" in data or isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)))
+    ):
+        # Match the image forward: an empty gate takes the transformed branch under any probability,
+        # including Resize's p_batch setting (#4429).
+        size = module.flags.get("size")
+        if size is None:
             return batch_shape
-        size = module.flags["size"]
         if isinstance(module, K.Resize) and isinstance(size, int):
             size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = size
+        new_batch_shape[-len(size) :] = [operator.index(dim) for dim in size]
         return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        if is_exporting():
+        size = getattr(module, "flags", {}).get("size") if module is not None else None
+        # Fixed, always-applied 3D crops also use this static path in eager/compile:
+        # reading their gate and output-size tensors would add needless device synchronization.
+        static_crop3d = (
+            isinstance(module, (K.CenterCrop3D, K.RandomCrop3D))
+            and module.p == 1.0
+            and module.p_batch == 1.0
+            and size is not None
+            and all(isinstance(dim, int) for dim in size)
+        )
+        if is_exporting() or static_crop3d:
             # The sampled ``output_size`` is an unbacked tensor under export (no python int for
             # ``torch.Size``). Use the module's static ``flags["size"]`` — known at construction —
             # so the tracked shape stays correct for a *subsequent* shape-dependent child (e.g. a
             # resample-mode crop after a resize). Fall back to leaving the shape unchanged when the
             # size isn't statically available.
-            size = getattr(module, "flags", {}).get("size") if module is not None else None
-            if size is None:
+            # Export must not propagate the cropped canvas of a statically skipped 3D crop.
+            # Intermediate probabilities still require data-dependent control flow in forward.
+            if size is None or (isinstance(module, (K.CenterCrop3D, K.RandomCrop3D)) and module.p_batch == 0.0):
                 return batch_shape
+            if isinstance(module, K.Resize) and isinstance(size, int):
+                size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
             new_batch_shape = list(batch_shape)
-            new_batch_shape[-2:] = size
+            new_batch_shape[-data["output_size"].shape[-1] :] = [operator.index(dim) for dim in size]
             return torch.Size(new_batch_shape)
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
@@ -543,9 +672,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
         if prob <= 0.5:
             return batch_shape
-        # Mutate only last two dims
+        # The generator declares how many spatial axes it changes (H/W or D/H/W).
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = data["output_size"][0]
+        new_batch_shape[-data["output_size"].shape[-1] :] = data["output_size"][0]
         return torch.Size(new_batch_shape)
 
     return batch_shape

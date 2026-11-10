@@ -15,10 +15,15 @@
 # limitations under the License.
 #
 
+import pickle
+import re
+import warnings
+
 import pytest
 import torch
 
 import kornia
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -74,12 +79,73 @@ class TestSSIMLoss(BaseTester):
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
         self.gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), nondet_tol=1e-8)
 
+    def test_int_max_val_6663(self, device, dtype):
+        # An int max_val used to raise a TypeError.
+        img1 = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        expected = kornia.losses.ssim_loss(img1, img2, 3, max_val=2.0)
+        self.assert_close(kornia.losses.ssim_loss(img1, img2, 3, max_val=2), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.SSIMLoss(3, max_val=2)(img1, img2), expected, rtol=0, atol=0)
+
 
 # The variances are differences of Gaussian-filtered moments, which cancel badly in half precision.
 _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
+    @pytest.mark.parametrize("shape", [(3, 16, 16), (1, 1, 3, 16, 16), (16, 16)])
+    def test_non_4d_inputs_raise(self, shape, device, dtype):
+        # MS-SSIM is defined for BxCxHxW only; equal-shaped inputs of another rank must not
+        # fall through to conv2d (a 3-D pair takes its unbatched path) and its confusing errors.
+        img = torch.rand(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="BxCxHxW"):
+            kornia.losses.MS_SSIMLoss()(img, img)
+
+    @pytest.mark.parametrize("target_shape", [(3, 3, 16, 16), (2, 1, 16, 16), (2, 3, 1, 16), (2, 3, 16, 1)])
+    def test_shape_mismatch_raises(self, target_shape, device, dtype):
+        # GH#6157 a height or width of 1 used to broadcast silently to a wrong loss; mismatched shapes must raise.
+        img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        img2 = torch.rand(target_shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=re.escape(f"batch size of 1. Got: {img1.shape} and {img2.shape}.")):
+            kornia.losses.MS_SSIMLoss()(img1, img2)
+
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    def test_batch_of_one_broadcasts(self, reduction, device, dtype):
+        # GH#6157 a batch of one is compared with every image of the other batch, in either argument.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        single = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        criterion = kornia.losses.MS_SSIMLoss(reduction=reduction).to(device, dtype)
+        repeated = single.expand_as(img)
+        self.assert_close(criterion(img, single), criterion(img, repeated), rtol=0, atol=0)
+        self.assert_close(criterion(single, img), criterion(repeated, img), rtol=0, atol=0)
+
+    def test_batch_of_one_does_not_warn_6663(self, device, dtype):
+        # The L1 term used to warn that the target size differs from the input size.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        single = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        criterion = kornia.losses.MS_SSIMLoss().to(device, dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            criterion(single, img)
+            criterion(img, single)
+
+    def test_shape_mismatch_raises_when_checks_disabled(self, device, dtype):
+        # GH#6157 the shape guard must hold even with Kornia checks disabled
+        # globally; the loss must never broadcast mismatched inputs silently.
+        img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        img2 = torch.rand(3, 3, 16, 16, device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(
+                ValueError,
+                match=r"batch size of 1\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[3, 3, 16, 16\]\)",
+            ):
+                kornia.losses.MS_SSIMLoss()(img1, img2)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_high_pixel_values_use_float32_moments(self, device, dtype):
         # The float64 reference is computed on the CPU, so the device leg needs no float64 support.
@@ -130,6 +196,52 @@ class TestMS_SSIMLoss(BaseTester):
             assert loss.dtype == torch.float32
             self.assert_close(loss, criterion(img1.double(), img2.double()).float(), atol=0.0, rtol=0.0)
 
+    def test_float64_images_match_a_float64_built_loss(self, device):
+        # The Gaussian mask buffer is rounded to float32, also after ``.double()``; float64 images are filtered with
+        # masks built in float64, as in a loss constructed under a float64 default dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            reference = kornia.losses.MS_SSIMLoss().to(device)
+        finally:
+            torch.set_default_dtype(previous)
+        for criterion in (kornia.losses.MS_SSIMLoss(), kornia.losses.MS_SSIMLoss().double()):
+            self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
+
+    def test_float64_images_match_the_numpy_reference(self, device):
+        # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks built in
+        # float32 are off by 7.2e-8 on Apple M1 and 8.1e-8 on x86 and CUDA. 1e-12 allows for the summation order. 0.3
+        # and 0.7 are not float32 numbers.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img1 = ((torch.arange(64, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 8, 8).to(device)
+        img2 = ((torch.arange(64, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 8, 8).to(device)
+        expected = torch.tensor(54.83400477404822, device=device, dtype=torch.float64)
+        sigmas = (0.3, 0.7, 1.5)
+        for criterion in (kornia.losses.MS_SSIMLoss(sigmas), kornia.losses.MS_SSIMLoss(sigmas).double()):
+            self.assert_close(criterion.to(device)(img1, img2), expected, rtol=1e-12, atol=0.0)
+
+    def test_float64_images_run_in_a_module_pickled_before_sigmas_were_stored(self, device):
+        # A whole module pickled by an older release has no ``sigmas``; it keeps filtering float64 images with its
+        # restored float32 masks, as it did then.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        criterion = kornia.losses.MS_SSIMLoss().to(device)
+        legacy = kornia.losses.MS_SSIMLoss().to(device)
+        del legacy.sigmas
+        restored = pickle.loads(pickle.dumps(legacy))  # noqa: S301
+        generator = torch.Generator().manual_seed(0)
+        img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
+        loss = restored(img1, img2)
+        assert loss.dtype == torch.float64
+        self.assert_close(loss, criterion(img1, img2), rtol=1e-6, atol=0.0)
+
     def test_autocast_keeps_msssim_convolutions_in_float32(self):
         generator = torch.Generator().manual_seed(0)
         img1 = (180 + torch.rand(1, 3, 64, 64, generator=generator) * 75).round()
@@ -165,9 +277,13 @@ class TestMS_SSIMLoss(BaseTester):
             criterion(torch.rand(1), 2)
         assert "Output type is not a torch.Tensor. Got" in str(errinfo)
 
-        with pytest.raises(ValueError) as errinfo:
+        with pytest.raises(ValueError, match="BxCxHxW"):
             criterion(torch.rand(1), torch.rand(1, 2))
-        assert "Input shapes should be same. Got" in str(errinfo)
+
+        with pytest.raises(
+            ValueError, match=r"batch size of 1\. Got: torch\.Size\(\[3, 1, 8, 8\]\) and torch\.Size\(\[2, 1, 8, 8\]\)"
+        ):
+            criterion(torch.rand(3, 1, 8, 8), torch.rand(2, 1, 8, 8))
 
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
@@ -506,6 +622,14 @@ class TestSSIM3DLoss(BaseTester):
     @pytest.mark.skip("loss have no exception case")
     def test_exception(self):
         pass
+
+    def test_int_max_val_6663(self, device, dtype):
+        # An int max_val used to raise a TypeError.
+        img1 = torch.rand(1, 2, 6, 6, 6, device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 6, 6, 6, device=device, dtype=dtype)
+        expected = kornia.losses.ssim3d_loss(img1, img2, 3, max_val=2.0)
+        self.assert_close(kornia.losses.ssim3d_loss(img1, img2, 3, max_val=2), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.SSIM3DLoss(3, max_val=2)(img1, img2), expected, rtol=0, atol=0)
 
 
 class TestConventionsSSIMLoss(BaseTester):

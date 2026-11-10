@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -25,8 +25,11 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import _raise_input_rank_error
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -38,25 +41,41 @@ from .params import ParamItem, PatchParamItem
 __all__ = ["PatchSequential"]
 
 
+def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device) -> torch.Tensor:
+    """Return the patch ``indices`` as a long tensor on ``device``, without a host-to-device copy that waits.
+
+    Indexing a CUDA tensor with a Python list copies the list to the device and waits for every queued kernel.
+    ``forward_parameters`` stores evenly spaced indices, which ``torch.arange`` builds on the device; any other list is
+    a device literal. Both index exactly the patches the list names.
+    """
+    if isinstance(indices, torch.Tensor):
+        return _to_device_nonblocking(indices, device)
+    values = [int(i) for i in indices]
+    if len(values) > 1:
+        step = values[1] - values[0]
+        if step > 0 and all(v == values[0] + k * step for k, v in enumerate(values)):
+            return torch.arange(values[0], values[-1] + 1, step, device=device)
+    return _device_literal(values, device=device, dtype=torch.long)
+
+
 class PatchSequential(ImageSequential):
-    r"""Container for performing patch-level image data augmentation.
+    r"""Apply image transforms independently to a regular grid of image patches.
+
+    ``output = PatchSequential(*modules, grid_size=...)(input)`` splits each image into a grid, runs the configured
+    children on the patch batch, then joins the patches.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
     .. image:: _static/img/PatchSequential.png
 
-    PatchSequential breaks input images into patches by a given grid size, which will be resembled back
-    afterwards.
-
-    Different image processing and augmentation methods will be performed on each patch region as
-    in :cite:`lin2021patch`.
+    Processing runs on each patch region as in :cite:`lin2021patch`.
 
     Args:
         *args: a list of processing modules.
         grid_size: positive ``(rows, columns)`` of patches in each image.
         padding: ``"same"`` temporarily zero-pads to a multiple of ``grid_size`` and removes the added
             border after augmentation, preserving the input spatial size. ``"valid"`` crops the remainder
-            before augmentation and keeps the cropped spatial size. Padding and cropping are centred;
+            before augmentation and keeps the cropped spatial size. Padding and cropping are centered;
             an odd extra pixel is placed on the right or bottom. Both modes preserve the batch size.
             Geometric transforms can move the temporary zero border into the retained image; removing
             the added border does not undo that movement.
@@ -67,15 +86,28 @@ class PatchSequential(ImageSequential):
         patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
-        random_apply: randomly select children to apply in random order. Selections may repeat when the requested
-            count is larger than the sum of the selection weights.
+        random_apply: randomly select children to apply in random order. Selections repeat when the requested count is
+            larger than the number of children that can be drawn: the children with a nonzero selection weight, mix
+            augmentations not counted, plus one place when the count and the mix augmentations together reach the number
+            of children, since a mix augmentation is then certain to take a place. With only mix children one of them is
+            drawn, and with all weights 0 and no mix child nothing is.
+            An int or a range that is not fixed to the number of children also repeats when the drawn count is larger
+            than the sum of the weights. That rule is deprecated since kornia 0.9.1, with a ``FutureWarning`` on the
+            calls whose draw it changes, as in :class:`~kornia.augmentation.container.ImageSequential`.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
-            If ``True``, the whole list of args will be processed in a random order.
+            If ``True`` and not ``patchwise_apply``, the whole list of args will be processed in a random order,
+            whatever the scale of the weights, and so will a count fixed to the number of children. With a non-mix child
+            of weight 0 or more than one mix augmentation, that count cannot be filled: children repeat and some may be
+            left out.
+            If ``True`` and ``patchwise_apply``, 1 to 4 transformations will be selected per patch, a range under the
+            deprecated rule above. Once a patch has drawn a mix augmentation, later patches count no place for one.
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
 
     Convention:
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
@@ -97,6 +129,16 @@ class PatchSequential(ImageSequential):
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_patch_sequential.html>`__.
+
+    .. warning::
+        Under ``torch.compile`` with the default inductor backend, torch earlier than 2.15 returns wrong values when a
+        child reads the patches at other positions, a flip for example, after an earlier child has written them
+        (`pytorch/pytorch#198270 <https://github.com/pytorch/pytorch/issues/198270>`__). Eager execution,
+        the ``aot_eager`` backend and torch 2.15 or later are not affected.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: applies its child sequence to whole images.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: transforms images with aligned annotations.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -158,7 +200,7 @@ class PatchSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -230,7 +272,7 @@ class PatchSequential(ImageSequential):
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
         if len(batch_shape) != 4:
-            raise ValueError(f"Expected image shape (B, C, H, W). Got {batch_shape}.")
+            _raise_input_rank_error(batch_shape, "(B, C, H, W)")
         height, width = batch_shape[-2:]
         if height <= 0 or width <= 0:
             raise ValueError("PatchSequential requires non-empty spatial dimensions.")
@@ -290,7 +332,7 @@ class PatchSequential(ImageSequential):
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
         if input.ndim != 4:
-            raise ValueError(f"Expected image shape (B, C, H, W). Got {input.shape}.")
+            _raise_input_rank_error(input.shape, "(B, C, H, W)")
         height, width = input.shape[-2:]
         if pad is not None:
             height, width = height + pad[2] + pad[3], width + pad[0] + pad[1]
@@ -374,7 +416,9 @@ class PatchSequential(ImageSequential):
                     (width + left + right) // self.grid_size[1],
                 )
             )
-        if len(batch_shape) != 5 or batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
+        if len(batch_shape) != 5:
+            _raise_input_rank_error(batch_shape, "either (B, C, H, W) or (B, rows * columns, C, h, w)")
+        if batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
             raise ValueError(
                 f"Expected image shape (B, C, H, W) or patch shape (B, rows * columns, C, h, w). Got {batch_shape}."
             )
@@ -402,10 +446,11 @@ class PatchSequential(ImageSequential):
 
         """
         if self.random_apply:
-            with_mix = False
+            # A mix augmentation may be drawn until one has been added, so at most one is applied in this call.
+            with_mix = True
             for i in range(batch_shape[0]):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
-                with_mix = mix_added
+                with_mix = with_mix and not mix_added
                 for s in seq:
                     if isinstance(s[1], (_AugmentationBase, SequentialBase, K.MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
@@ -434,10 +479,11 @@ class PatchSequential(ImageSequential):
         for patch_param in params:
             # input, out_param = self.apply_by_param(input, params=patch_param)
             module = self.get_submodule(patch_param.param.name)
-            _input = input[patch_param.indices]
+            indices = _patch_indices(patch_param.indices, input.device)
+            _input = input[indices]
             output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
             # Mix operations may promote to their parameter dtype; the patch buffer retains the image dtype.
-            input[patch_param.indices] = output.to(input)
+            input[indices] = output.to(input)
 
         return input.reshape(in_shape)
 

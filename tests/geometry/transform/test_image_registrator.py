@@ -58,6 +58,9 @@ class TestSimilarity(BaseTester):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
+            text = repr(s)
+            assert text.startswith("Similarity(angle = ")
+            assert ",\n shift=" in text
 
     @pytest.mark.parametrize(
         "height, width, expected",
@@ -111,6 +114,88 @@ class TestHomography(BaseTester):
     def test_repr(self, device, dtype):
         h = kornia.geometry.transform.Homography().to(device, dtype)
         assert h is not None
+
+
+class TestBaseModel(BaseTester):
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseModel()
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseModel.__abstractmethods__ == {"reset_model", "forward", "forward_inverse"}
+
+    @pytest.mark.parametrize("missing", ["reset_model", "forward", "forward_inverse"])
+    def test_subclass_missing_a_method_is_rejected(self, missing):
+        methods = {
+            "reset_model": lambda self: None,
+            "forward": lambda self: torch.eye(3)[None],
+            "forward_inverse": lambda self: torch.eye(3)[None],
+        }
+        del methods[missing]
+        incomplete = type("Incomplete", (kornia.geometry.transform.BaseModel,), methods)
+
+        with pytest.raises(TypeError, match=missing):
+            incomplete()
+
+    @pytest.mark.parametrize("model_cls", [Homography, Similarity])
+    def test_builtin_models_stay_concrete(self, model_cls):
+        model = model_cls()
+        assert isinstance(model, kornia.geometry.transform.BaseModel)
+        assert not getattr(model_cls, "__abstractmethods__", None)
+
+    def test_custom_model_with_registrator(self, device, dtype):
+        """Verify registration resets and invokes a custom model in both warp directions."""
+        # A complete BaseModel subclass is still an ordinary nn.Module: ImageRegistrator resets it, calls both of its
+        # transforms, optimizes its parameters and returns what it produces.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+
+        calls = {"reset_model": 0, "forward": 0, "forward_inverse": 0}
+        shift_after_reset = 0.25
+
+        class Translation(kornia.geometry.transform.BaseModel):
+            def __init__(self) -> None:
+                super().__init__()
+                self.shift = torch.nn.Parameter(torch.zeros(2))
+
+            def _homography(self, sign: float) -> torch.Tensor:
+                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
+                homography[:2, 2] = sign * self.shift
+                return homography[None]
+
+            def reset_model(self) -> None:
+                calls["reset_model"] += 1
+                torch.nn.init.constant_(self.shift, shift_after_reset)
+
+            def forward(self) -> torch.Tensor:
+                calls["forward"] += 1
+                return self._homography(1.0)
+
+            def forward_inverse(self) -> torch.Tensor:
+                calls["forward_inverse"] += 1
+                return self._homography(-1.0)
+
+        model = Translation()
+        assert [name for name, _ in model.named_parameters()] == ["shift"]
+
+        ir = ImageRegistrator(
+            model, warper=kornia.geometry.transform.HomographyWarper, num_iterations=1, pyramid_levels=1
+        ).to(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 16, 16).to(device, dtype)
+        result = ir.register(image, image)
+
+        assert result.shape == (1, 3, 3)
+        # register() resets the model once and fits it through both warp directions
+        assert calls["reset_model"] == 1
+        assert calls["forward"] >= 1
+        assert calls["forward_inverse"] >= 1
+        # the result is the custom model's own transform: reset to the sentinel shift, then moved by one optimizer step
+        # of learning rate 1e-3 at most
+        expected_shift = torch.full((2,), shift_after_reset, device=device, dtype=dtype)
+        self.assert_close(result.detach()[0, :2, 2], expected_shift, atol=0.05, rtol=0.0)
 
 
 class TestImageRegistrator(BaseTester):
@@ -260,11 +345,13 @@ class TestImageRegistrator(BaseTester):
     @pytest.mark.parametrize("height, width", [(32, 48), (48, 32)])
     def test_register_rotation_non_square_5063(self, device, dtype, height, width):
         # dst is src rotated by angle_to_rotation_matrix(6 deg) about the image centre, in pixels. The model maps dst to
-        # src, so rot converges to -6 on a non-square image as on a square one: measured -6.00 to -6.01 in float32 and
-        # float64, -5.78 to -5.85 in float16 and bfloat16. Rotating in the anisotropic normalized frame converged to
-        # -5.27 and -5.42 in float32, and -4.99 to -5.38 in half precision.
-        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
-            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        # src, so rot converges to -6 on a non-square image as on a square one: measured -6.00 to -6.01 in every dtype,
+        # since half precision is optimized in float32 (bfloat16 then rounds the angle to -6.0). Optimizing in the half
+        # dtype stopped at -5.78 to -5.85, and rotating in the anisotropic normalized frame converged to -5.27 and
+        # -5.42 in float32.
+        sampled = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype  # the dtype register() samples
+        if not supports_bilinear_2d_grid_sample_backward(device, sampled):
+            pytest.skip(f"torch has no {sampled} bilinear grid_sample kernel with backward on {device.type}")
 
         def scene(degrees: float) -> torch.Tensor:
             # smooth analytic blobs, so the fixture needs no seed; sampled at R^-1 (x - c) + c
@@ -283,7 +370,18 @@ class TestImageRegistrator(BaseTester):
 
         ir = ImageRegistrator("rotation", lr=0.1, num_iterations=60, pyramid_levels=1, tolerance=0.0).to(device, dtype)
         ir.register(scene(0.0), scene(6.0))
-        assert abs(ir.model.rot.item() + 6.0) < 0.4
+        assert abs(ir.model.rot.item() + 6.0) < 0.05
+
+    def test_different_shapes_message_6454(self, device, dtype):
+        # The message carried a run of spaces from its string literal.
+        ir = ImageRegistrator("similarity").to(device, dtype)
+        src = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        dst = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            ir.get_single_level_loss(src, dst, ir.model())
+        assert str(excinfo.value) == (
+            "Cannot register images of different shapes torch.Size([1, 1, 8, 8]) torch.Size([1, 1, 6, 6])"
+        )
 
 
 class TestConventionsImageRegistrator(BaseTester):
@@ -291,17 +389,16 @@ class TestConventionsImageRegistrator(BaseTester):
 
     def _scene(self, dx: float, dy: float, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         # Four Gaussian blobs, moved by (dx, dy) pixels. Analytic, so the fixture needs no seed; register() draws no
-        # random numbers either, so every run is deterministic.
+        # random numbers either, so every run is deterministic. Built in float64 on the CPU and then cast, so no
+        # device needs a half arange kernel (torch 2.5.1 has no bfloat16 arange on MPS).
         ys, xs = torch.meshgrid(
-            torch.arange(self.height, device=device, dtype=dtype),
-            torch.arange(self.width, device=device, dtype=dtype),
-            indexing="ij",
+            torch.arange(self.height, dtype=torch.float64), torch.arange(self.width, dtype=torch.float64), indexing="ij"
         )
         blobs = [(12.0, 9.0, 4.0, 1.0), (30.0, 20.0, 6.0, 0.8), (38.0, 7.0, 3.0, 0.6), (20.0, 24.0, 3.5, 0.9)]
-        img = torch.zeros(self.height, self.width, device=device, dtype=dtype)
+        img = torch.zeros(self.height, self.width, dtype=torch.float64)
         for cx, cy, sigma, amplitude in blobs:
             img = img + amplitude * torch.exp(-((xs - dx - cx) ** 2 + (ys - dy - cy) ** 2) / (2 * sigma**2))
-        return img[None, None]
+        return img[None, None].to(dtype).to(device)
 
     @staticmethod
     def _skip_without_kernels(device: torch.device, dtype: torch.dtype) -> None:
@@ -407,3 +504,82 @@ class TestConventionsImageRegistrator(BaseTester):
         assert set(seen) == {((1, 1, self.height, self.width), (1, 1, self.height, self.width))}
         with pytest.raises(ValueError):
             ir.register(dst.expand(1, 3, -1, -1), dst)
+
+    @pytest.mark.parametrize("resize", [False, True])
+    @pytest.mark.parametrize("model_type", ["similarity", "homography"])
+    def test_convention_image_registrator_optimizes_half_in_float32(self, device, dtype, model_type, resize):
+        # Adam's second-moment estimate 0.001 * g**2 and its eps of 1e-8 are both 0 in float16 once |g| < 0.0055, so
+        # a float16 optimization divided by zero: a float16 similarity registration of this scene ended in NaN on CPU
+        # and raised in linalg.inv on CUDA. A half model is optimized in float32 and handed back in its own dtype, so
+        # it ends where a float32 registration of the same half images does. With allow_shape_mismatch=True that
+        # includes the resize of src_img, which runs in float32 as well.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 registration")
+        self._skip_without_kernels(device, torch.float32)  # register() samples half images in float32
+        src = self._scene(0.0, 0.0, device, dtype)
+        dst = self._scene(3.0, -1.5, device, dtype)
+        if resize:
+            src = src[..., ::2, ::2]
+        kwargs = {"lr": 3e-3, "num_iterations": 40, "pyramid_levels": 2, "allow_shape_mismatch": resize}
+        ir = ImageRegistrator(model_type, **kwargs).to(device, dtype)
+        reference = ImageRegistrator(model_type, **kwargs).to(device)
+        actual = ir.register(src, dst)
+        expected = reference.register(src.float(), dst.float())
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        for tensor in [*ir.model.parameters(), *ir.model.buffers()]:
+            assert tensor.dtype == dtype
+        expected_parameters = dict(reference.model.named_parameters())
+        # The same float32 optimization: bit for bit on CPU, up to CUDA's atomic grid_sample backward elsewhere.
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        for name, parameter in ir.model.named_parameters():
+            assert parameter.grad is None or parameter.grad.dtype == dtype
+            self.assert_close(parameter, expected_parameters[name].to(dtype), **exact)
+        self.assert_close(actual, expected.to(dtype))
+
+    @pytest.mark.parametrize("model_is_half", [True, False])
+    @pytest.mark.parametrize("other", ["float32", "other half"])
+    def test_convention_image_registrator_warps_mixed_dtypes(self, device, dtype, model_is_half, other):
+        # register() optimizes a half model or image in float32, so a model and images of different dtypes, one of
+        # them half, register; the warps then sample such a pair in float32 as well and return the image's dtype.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 registration")
+        self._skip_without_kernels(device, torch.float32)  # register() and these warps sample in float32
+        other_half = torch.bfloat16 if dtype == torch.float16 else torch.float16
+        other_dtype = torch.float32 if other == "float32" else other_half
+        model_dtype, image_dtype = (dtype, other_dtype) if model_is_half else (other_dtype, dtype)
+        src = self._scene(0.0, 0.0, device, image_dtype)
+        dst = self._scene(3.0, -1.5, device, image_dtype)
+        ir = ImageRegistrator("similarity", lr=1e-2, num_iterations=10, pyramid_levels=1).to(device, model_dtype)
+        model = ir.register(src, dst).detach()
+        assert model.dtype == model_dtype
+        assert (model[0, :2, 2].abs() > 0.01).all()  # a model away from the identity
+        size = (self.height, self.width)
+        expected_src_to_dst = homography_warp(src.float(), model.float(), size, align_corners=False).to(image_dtype)
+        inverse = ir.model.forward_inverse().detach().float()
+        expected_dst_to_src = homography_warp(dst.float(), inverse, size, align_corners=False).to(image_dtype)
+        exact = {"rtol": 0.0, "atol": 0.0}
+        self.assert_close(ir.warp_src_into_dst(src).detach(), expected_src_to_dst, **exact)
+        self.assert_close(ir.warp_dst_into_src(dst).detach(), expected_dst_to_src, **exact)
+
+    def test_convention_image_registrator_failed_setup_keeps_model_dtype(self, device, dtype, monkeypatch):
+        # register() promotes a half model and images to float32 only inside the region that gives the model's tensors
+        # their dtype back, so an error while it prepares the images, such as running out of memory in the float32
+        # copy of src_img, leaves the model in its own dtype.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float16/bfloat16 registration")
+        src = self._scene(0.0, 0.0, device, dtype)
+        ir = ImageRegistrator("similarity", num_iterations=1, pyramid_levels=1).to(device, dtype)
+        to_float = torch.Tensor.float
+
+        def out_of_memory(tensor: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+            if tensor.dim() == 4:  # an image, not one of the model's tensors
+                raise torch.OutOfMemoryError("fake out of memory")
+            return to_float(tensor, *args, **kwargs)
+
+        monkeypatch.setattr(torch.Tensor, "float", out_of_memory)
+        with pytest.raises(torch.OutOfMemoryError):
+            ir.register(src, src)
+        monkeypatch.undo()
+        for tensor in [*ir.model.parameters(), *ir.model.buffers()]:
+            assert tensor.dtype == dtype

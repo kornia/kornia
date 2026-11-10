@@ -149,7 +149,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
         (
             *_audited(
                 "tests/augmentation/container/test_augmentation_sequential.py",
-                79,
+                80,
                 "torch.randn",
                 2,
                 (
@@ -172,7 +172,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                     (f"tests/core/test_check.py::TestCheckShape::{test_name}",),
                     "value-independent",
                 )
-                for test_name, lines in (("test_valid", range(73, 77)), ("test_invalid", range(85, 89)))
+                for test_name, lines in (("test_valid", range(84, 88)), ("test_invalid", range(96, 100)))
                 for line in lines
             ),
             *(
@@ -188,7 +188,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                179,
+                198,
                 "torch.randn",
                 1,
                 (

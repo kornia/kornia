@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -24,8 +24,15 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.geometry.boxes import Boxes
-from kornia.geometry.keypoints import Keypoints
+from kornia.augmentation.utils.helpers import (
+    _frame_boxes,
+    _frame_keypoints,
+    _raise_input_rank_error,
+    _video_boxes,
+    _video_keypoints,
+)
+from kornia.geometry.boxes import Boxes, VideoBoxes
+from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
 from .params import ParamItem
 
@@ -33,25 +40,33 @@ __all__ = ["VideoSequential"]
 
 
 class VideoSequential(ImageSequential):
-    r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
+    r"""Apply an image augmentation sequence to a video while optionally sharing draws across frames.
+
+    ``output = VideoSequential(*modules, data_format=...)(video)`` accepts ``(B, T, C, H, W)`` by default or
+    ``(B, C, T, H, W)`` with ``data_format="BCTHW"``, flattens it for the child modules, then restores that layout.
+    ``same_on_frame=True`` shares supported augmentation draws across each clip's frames; use
+    :class:`~kornia.augmentation.container.AugmentationSequential` to transform a video with aligned annotations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
-
-    `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
-    By default, `VideoSequential` enabled `same_on_frame` to make sure the same augmentations happen
-    across temporal dimension. Meanwhile, it will not affect other augmentation behaviours like the
-    settings on `same_on_batch`, etc.
 
     Args:
         *args: a list of augmentation module.
         data_format: only BCTHW and BTCHW are supported.
-        same_on_frame: apply the same transformation across the channel per frame.
+        same_on_frame: share each clip's sampled transform parameters across its temporal frames.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+            apply transformation. Selections repeat when the requested count is larger than the number of children
+            that can be drawn, or, for an int or a range that is not fixed to the number of children, than the sum of
+            the weights. That second rule is deprecated since kornia 0.9.1, with a ``FutureWarning`` on the calls whose
+            draw it changes. See :class:`~kornia.augmentation.container.ImageSequential`.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If None, the whole list of args will be processed as a sequence.
+            If True, the whole list of args will be processed as a sequence in a random order, whatever the scale of
+            the weights, and so will a count fixed to the number of children. With a non-mix child of weight 0 or more
+            than one mix augmentation, that count cannot be filled: children repeat and some may be left out.
+            If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: selection weights for each child, as in
+            :class:`~kornia.augmentation.container.ImageSequential`.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, as in
             :class:`~kornia.augmentation.container.ImageSequential`: ``'raise'`` or ``'skip'``.
 
@@ -59,17 +74,19 @@ class VideoSequential(ImageSequential):
         - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
           (the default) and ``"BCTHW"``, case-insensitively; any other spelling raises ``AssertionError``.
           The output keeps the input layout.
-        - ``same_on_frame`` is ``True`` by default, so one draw is shared by every frame of a clip and the
-          clip stays temporally consistent. With ``same_on_frame=False`` each frame is drawn independently.
+        - ``same_on_frame`` is ``True`` by default, so supported Kornia augmentation parameters are shared by every
+          frame of a clip. With ``same_on_frame=False`` each frame draws parameters independently. It does not
+          synchronize randomness inside ordinary ``nn.Module`` children such as ``Dropout``. Nested
+          :class:`ImageSequential` and other ``SequentialBase`` children require ``same_on_frame=False``.
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
           no ``data_keys`` and no ``.transform_matrix`` attribute. Register a ``VideoSequential`` as a child of
           :class:`~kornia.augmentation.container.AugmentationSequential` to augment video masks, boxes and keypoints
           alongside the clip. For video boxes, use ``bbox`` vertices with shape ``(B, T, N, 4, 2)``;
           coordinate keys ``bbox_xyxy`` and ``bbox_xywh`` do not accept ``(B, T, N, 4)`` tensors.
 
-    Note:
-        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
-        Those transformations in ``kornia.geometry`` will not be taken into account.
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: applies the same kind of sequence to images.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: transforms a video with aligned annotations.
 
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
@@ -138,7 +155,7 @@ class VideoSequential(ImageSequential):
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(
@@ -188,6 +205,56 @@ class VideoSequential(ImageSequential):
         if same_on_batch:
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
+
+    def _broadcast_cutmix_params(self, params: Dict[str, torch.Tensor], frame_num: int) -> None:
+        """Repeat the parameters of :class:`~kornia.augmentation.RandomCutMixV2` over the frames of each video.
+
+        The generator lays its parameters out as ``(num_mix, B, ...)``: the video is axis 1, so the repeat of
+        :meth:`__broadcast_param__` over axis 0 would repeat the mixes instead of the frames. ``mix_pairs`` also
+        holds video indices, which must become indices into the ``B * T`` flattened frames. Frame ``t`` of a video
+        is mixed with frame ``t`` of its partner video, so all frames of a video cut the same box from the same
+        partner.
+
+        Args:
+            params: Parameters drawn for the ``B`` videos; updated in place to cover the ``B * T`` frames.
+            frame_num: Number of frames ``T`` in each video.
+        """
+        for key, value in list(params.items()):
+            if not value.numel():
+                continue
+            if key == "mix_pairs":
+                # (num_mix, B) => (num_mix, B * T), entry [m, b * T + t] = pairs[m, b] * T + t.
+                frames = torch.arange(frame_num, device=value.device, dtype=value.dtype)
+                params[key] = (value[..., None] * frame_num + frames).reshape(value.shape[0], -1)
+            elif key == "crop_src":
+                # (num_mix, B, 4, 2) => (num_mix, B * T, 4, 2)
+                params[key] = value.repeat_interleave(frame_num, dim=1)
+            elif key == "batch_prob":
+                # (B,) => (B * T,)
+                params[key] = self.__repeat_param_across_channels__(value, frame_num)
+            # ``image_shape`` is the (H, W) of every image and ``forward_input_shape`` / ``video_batch_size`` are
+            # metadata: none of them has a per-video axis, so they stay as drawn.
+
+    @staticmethod
+    def _batch_index_param(module: nn.Module) -> Optional[str]:
+        """Name the parameter of a mix augmentation that holds indices into the image batch.
+
+        Along its first axis the parameter has one row per image, and its values index the batch as well. Drawn per
+        video, those values are video indices, which must become indices into the ``B * T`` flattened frames.
+        """
+        if isinstance(module, K.RandomMixUpV2):
+            return "mixup_pairs"
+        if isinstance(module, K.PatchMix):
+            return "mix_pairs"
+        if isinstance(module, K.RandomMosaic):
+            return "permutation"
+        return None
+
+    @staticmethod
+    def _video_to_frame_indices(v: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Map video indices, already repeated over the frames, to frame ``t`` of each indexed video."""
+        frames = torch.arange(v.shape[0], device=v.device, dtype=v.dtype) % frame_num
+        return v * frame_num + frames.view(-1, *([1] * (v.ndim - 1)))
 
     @staticmethod
     def _record_video_batch_size(
@@ -257,7 +324,13 @@ class VideoSequential(ImageSequential):
         params = []
         for name, module in named_modules:
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
-                is_same_on_batch = getattr(module, "same_on_batch", False)
+                batch_index_param = self._batch_index_param(module)
+                is_cutmix = isinstance(module, K.RandomCutMixV2)
+                # A mix pairs the images of a batch with each other, so it needs one draw per video, or per frame with
+                # same_on_frame=False, never a shared one. Its own generator applies same_on_batch.
+                is_same_on_batch = (
+                    getattr(module, "same_on_batch", False) and batch_index_param is None and not is_cutmix
+                )
 
                 if self.same_on_frame and is_same_on_batch:
                     mod_shape = torch.Size([1, *batch_shape[1:]])
@@ -270,7 +343,10 @@ class VideoSequential(ImageSequential):
 
                 mod_param = module.forward_parameters(mod_shape)
 
-                if isinstance(mod_param, dict):
+                if isinstance(mod_param, dict) and self.same_on_frame and is_cutmix:
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    self._broadcast_cutmix_params(mod_param, frame_num)
+                elif isinstance(mod_param, dict):
                     self._record_video_batch_size(mod_param, original_batch_size)
                     for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
@@ -284,6 +360,8 @@ class VideoSequential(ImageSequential):
                         mod_param[k] = self.__broadcast_param__(
                             v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
                         )
+                        if self.same_on_frame and k == batch_index_param:
+                            mod_param[k] = self._video_to_frame_indices(mod_param[k], frame_num)
                 elif isinstance(mod_param, list):
                     self._record_video_batch_size(mod_param, original_batch_size)
 
@@ -392,8 +470,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -404,6 +482,9 @@ class VideoSequential(ImageSequential):
             )
             input = super().transform_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().transform_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
@@ -414,8 +495,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -426,6 +507,9 @@ class VideoSequential(ImageSequential):
             )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().inverse_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
@@ -439,8 +523,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -449,6 +533,10 @@ class VideoSequential(ImageSequential):
             input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().transform_keypoints(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
+        elif isinstance(input, VideoKeypoints):
+            # The children index frames; VideoKeypoints indexes videos (#6375).
+            frames = super().transform_keypoints(_frame_keypoints(input), params, extra_args=extra_args)
+            input = _video_keypoints(frames, input.temporal_channel_size)
         else:
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
@@ -462,8 +550,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -472,6 +560,9 @@ class VideoSequential(ImageSequential):
             input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
+        elif isinstance(input, VideoKeypoints):
+            frames = super().inverse_keypoints(_frame_keypoints(input), params, extra_args=extra_args)
+            input = _video_keypoints(frames, input.temporal_channel_size)
         else:
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input
@@ -497,7 +588,7 @@ class VideoSequential(ImageSequential):
     ) -> torch.Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
-            raise AssertionError(f"Input must be a 5-dim torch.Tensor. Got {input.shape}.")
+            _raise_input_rank_error(input.shape, "(" + ", ".join(self.data_format) + ")")
 
         if params is None:
             self._params = self.forward_parameters(input.shape)

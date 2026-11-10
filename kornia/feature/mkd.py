@@ -91,11 +91,11 @@ class MKDGradients(nn.Module):
         """Compute gradient magnitude and orientation channels for grayscale patches.
 
         Args:
-            x: Patch tensor with shape :math:`(B, 1, H, W)`, where ``B`` is batch size,
+            x: Patch tensor with shape ``(B, 1, H, W)``, where ``B`` is batch size,
                 ``1`` is the grayscale channel, and ``H``/``W`` are patch height and width.
 
         Returns:
-            Tensor with shape :math:`(B, 2, H, W)`. Channel 0 stores gradient magnitude,
+            Tensor with shape ``(B, 2, H, W)``. Channel 0 stores gradient magnitude,
             and channel 1 stores gradient orientation in radians.
         """
         if not isinstance(x, torch.Tensor):
@@ -164,11 +164,11 @@ class VonMisesKernel(nn.Module):
         """Embed orientation values with the Von Mises kernel basis.
 
         Args:
-            x: Orientation tensor with shape :math:`(B, 1, H, W)`, where values are
+            x: Orientation tensor with shape ``(B, 1, H, W)``, where values are
                 angular orientations in radians.
 
         Returns:
-            Kernel embedding with shape :math:`(B, D, H, W)`, where ``D`` is the
+            Kernel embedding with shape ``(B, D, H, W)``, where ``D`` is the
             number of channels produced by the configured coefficient list.
         """
         if not isinstance(x, torch.Tensor):
@@ -235,11 +235,11 @@ class EmbedGradients(nn.Module):
         """Embed gradient magnitude and orientation into kernel descriptor channels.
 
         Args:
-            grads: Gradient tensor with shape :math:`(B, 2, H, W)`. Channel 0 contains
+            grads: Gradient tensor with shape ``(B, 2, H, W)``. Channel 0 contains
                 magnitudes, and channel 1 contains orientations.
 
         Returns:
-            Embedded gradient tensor with shape :math:`(B, D, H, W)`, where ``D`` is
+            Embedded gradient tensor with shape ``(B, D, H, W)``, where ``D`` is
             the number of channels produced by the orientation kernel.
         """
         if not isinstance(grads, torch.Tensor):
@@ -370,11 +370,11 @@ class ExplicitSpacialEncoding(nn.Module):
         """Apply explicit spatial encoding to embedded patch features.
 
         Args:
-            x: Feature map with shape :math:`(B, C, H, W)`, where ``C`` must match
+            x: Feature map with shape ``(B, C, H, W)``, where ``C`` must match
                 ``in_dims`` and ``H``/``W`` are expected to match ``fmap_size``.
 
         Returns:
-            Encoded descriptor tensor with shape :math:`(B, D)`, where ``D`` is the
+            Encoded descriptor tensor with shape ``(B, D)``, where ``D`` is the
             flattened spatial-kernel descriptor dimension.
         """
         if not isinstance(x, torch.Tensor):
@@ -426,8 +426,8 @@ class Whitening(nn.Module):
         l2-normalized, whitened descriptors.
 
     Shape:
-        - Input: :math:`(N, in_{dims})`.
-        - Output: :math:`(N, output_{dims})`.
+        - Input: ``(N, in_dims)``.
+        - Output: ``(N, output_dims)``.
 
     Examples:
         >>> descs = torch.rand(23, 238)
@@ -531,11 +531,11 @@ class Whitening(nn.Module):
         """Whiten and L2-normalize local descriptors.
 
         Args:
-            x: Descriptor tensor with shape :math:`(N, D)`, where ``N`` is the number
+            x: Descriptor tensor with shape ``(N, D)``, where ``N`` is the number
                 of descriptors and ``D`` is the input descriptor dimension.
 
         Returns:
-            Whitened descriptor tensor with shape :math:`(N, O)`, where ``O`` is
+            Whitened descriptor tensor with shape ``(N, O)``, where ``O`` is
             ``output_dims``.
         """
         if not isinstance(x, torch.Tensor):
@@ -552,10 +552,17 @@ class Whitening(nn.Module):
 
 
 class MKDDescriptor(nn.Module):
-    r"""nn.Module that computes Multiple Kernel local descriptors.
+    r"""Describe square grayscale patches with handcrafted Multiple Kernel Descriptors (MKD).
 
-    This is based on the paper "Understanding and Improving Kernel Local Descriptors".
-    See :cite:`mukundan2019understanding` for more details.
+    ``mkd = MKDDescriptor()``, then ``descs = mkd(patches)`` takes grayscale patches
+    ``(B, 1, patch_size, patch_size)``, 32 pixels square by default, and returns unit-norm descriptors ``(B, D)``,
+    ``(B, 128)`` with the defaults: the gradient magnitudes and orientations of each patch embedded in polar and
+    Cartesian spatial kernels (``kernel_type="concat"``), then whitened by ``whitening="pcawt"`` and reduced to
+    ``output_dims``. It has no CNN; only the whitening is learned, on ``training_set``, and the module is in eval mode
+    when built. To describe LAFs on an image, wrap it in :class:`LAFDescriptor` with the same ``patch_size``; for SIFT
+    histograms, use :class:`SIFTDescriptor`, and for a learned descriptor, :class:`HardNet`. This is based on the
+    paper "Understanding and Improving Kernel Local Descriptors". See :cite:`mukundan2019understanding` for more
+    details.
 
     Convention:
         - Patches are ``(B, 1, patch_size, patch_size)``: ``patch_size`` must be the input's size, and another size
@@ -581,8 +588,13 @@ class MKDDescriptor(nn.Module):
         Descriptors of the patches, of unit norm except as stated in the Convention block.
 
     Shape:
-        - Input: :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
-        - Output: :math:`(B, D)`, with :math:`D` as in the Convention block.
+        - Input: ``(B, 1, patch_size, patch_size)``.
+        - Output: ``(B, D)``, with :math:`D` as in the Convention block.
+
+    See Also:
+        - :class:`SIFTDescriptor`: the handcrafted SIFT histograms of gradient orientation of a patch.
+        - :class:`HardNet`: a learned descriptor of 32 x 32 patches.
+        - :class:`LAFDescriptor`: runs this module on a patch per LAF of an image.
 
     Examples:
         >>> patches = torch.rand(23, 1, 32, 32)
@@ -665,7 +677,7 @@ class MKDDescriptor(nn.Module):
             patches: Grayscale patch tensor with shape ``(B, 1, patch_size, patch_size)``.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, D)`, with ``D`` as in the class's Convention block.
+            Descriptor tensor with shape ``(B, D)``, with ``D`` as in the class's Convention block.
 
         Raises:
             ShapeError: if ``patches`` is not ``(B, 1, patch_size, patch_size)``.
@@ -743,7 +755,7 @@ class SimpleKD(nn.Module):
         """Run the example kernel-descriptor pipeline.
 
         Args:
-            x: Grayscale patch tensor with shape :math:`(B, 1, H, W)`.
+            x: Grayscale patch tensor with shape ``(B, 1, H, W)``.
 
         Returns:
             Descriptor tensor produced by smoothing, gradient extraction, spatial

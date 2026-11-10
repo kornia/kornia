@@ -15,14 +15,17 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
 import kornia.geometry.transform as proj
-from kornia.core.utils import _torch_inverse_cast
+from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMIC_EXPORT_UNAVAILABLE_REASON, BaseTester, assert_close, dynamic_export_is_available
 
 
 class TestWarpAffine3dEmptyBatch(BaseTester):
@@ -381,20 +384,305 @@ class TestWarpPerspective3d(BaseTester):
         assert not torch.allclose(out, sample)
 
     def test_homography_warp3d_identity(self, device, dtype):
-        # The functional entry point with an already-normalized identity, both grid conventions.
+        # The functional entry point with an identity in normalized and in voxel coordinates; the voxel mode is
+        # covered in TestHomographyWarp3dVoxelCoordinates (#6187).
         dsize = (2, 3, 4)
         sample = self._arange_volume(dsize, device, dtype)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
         out = proj.homography_warp3d(sample, identity, dsize, align_corners=True)
         self.assert_close(out, sample)
         out_pix = proj.homography_warp3d(sample, identity, dsize, align_corners=True, normalized_coordinates=False)
-        assert out_pix.shape == sample.shape
+        self.assert_close(out_pix, sample)
 
     def test_gradcheck(self, device):
         sample = torch.rand(1, 1, 2, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
         M = torch.eye(4, device=device, dtype=torch.float64)[None].clone()
         M[:, :3, 3] = 0.3
         self.gradcheck(proj.warp_perspective3d, (sample, M, (2, 3, 4)), requires_grad=(True, False, False))
+
+
+class TestHomographyWarp3dVoxelCoordinates(BaseTester):
+    # homography_warp3d(normalized_coordinates=False) handed its warped voxel grid to grid_sample unnormalized, so
+    # almost every sample fell outside the volume: an identity on a (6, 8, 10) volume returned it changed by up to
+    # 0.9998 (#6187). The grid is now normalized with the source size under the call's align_corners.
+
+    # A source->destination voxel homography with a perspective row, and an affine one; their inverses are the
+    # destination->source homographies the voxel mode reads.
+    _DST_TRANS_SRC = (
+        [
+            [0.9, 0.1, 0.05, 1.5],
+            [-0.05, 1.1, 0.02, -0.7],
+            [0.03, -0.02, 0.95, 0.4],
+            [0.01, -0.02, 0.015, 1.0],
+        ],
+        [[1.2, 0.0, 0.0, -2.0], [0.0, 0.8, 0.0, 1.0], [0.0, 0.0, 1.1, -0.5], [0.0, 0.0, 0.0, 1.0]],
+    )
+
+    @staticmethod
+    def _warp(volume, src_homo_dst, dsize, **options):
+        return proj.homography_warp3d(volume, src_homo_dst, dsize, normalized_coordinates=False, **options)
+
+    @staticmethod
+    def _volume(shape, device, dtype):
+        return (torch.arange(math.prod(shape), device=device) % 11 / 11).to(dtype).view(shape)
+
+    def _homographies(self, device, dtype):
+        dst_trans_src = torch.tensor(self._DST_TRANS_SRC, dtype=torch.float64)
+        # inverted in float64 on the CPU, which every device can then take in its own dtype
+        return dst_trans_src.to(device=device, dtype=dtype), torch.linalg.inv(dst_trans_src).to(device, dtype)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("shape", [(4, 5, 6), (1, 5, 3), (3, 1, 4)])
+    def test_identity(self, shape, align_corners, device, dtype):
+        # An identity returns the input, singleton axes included, and a smaller destination is the window that starts
+        # at voxel (0, 0, 0) rather than a resize of the source.
+        volume = self._volume((1, 2, *shape), device, dtype)
+        identity = torch.eye(4, device=device, dtype=dtype)[None]
+        self.assert_close(self._warp(volume, identity, shape, align_corners=align_corners), volume)
+
+        small = (max(shape[0] - 1, 1), max(shape[1] - 2, 1), max(shape[2] - 1, 1))
+        expected = volume[..., : small[0], : small[1], : small[2]]
+        self.assert_close(self._warp(volume, identity, small, align_corners=align_corners), expected)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("axis", [0, 1, 2], ids=["x", "y", "z"])
+    def test_whole_voxel_translation(self, axis, align_corners, device, dtype):
+        # src_homo_dst maps destination voxels to source voxels, so a translation t along x samples
+        # out[..., x] = src[..., x + t], one homography per sample, and zeros where that leaves the source. The three
+        # sizes differ, so a shift along the wrong axis cannot reproduce the expected volume.
+        dsize = (3, 4, 5)
+        volume = self._volume((2, 1, *dsize), device, dtype)
+        src_homo_dst = torch.eye(4, device=device, dtype=dtype).repeat(2, 1, 1)
+        src_homo_dst[0, axis, 3] = 1.0
+        src_homo_dst[1, axis, 3] = -2.0
+        dim = 3 - axis  # the per-sample (C, D, H, W) dimension that x, y and z index
+        size = volume.shape[dim + 1]
+        expected = torch.zeros_like(volume)
+        expected[0].narrow(dim, 0, size - 1).copy_(volume[0].narrow(dim, 1, size - 1))
+        expected[1].narrow(dim, 2, size - 2).copy_(volume[1].narrow(dim, 0, size - 2))
+
+        self.assert_close(self._warp(volume, src_homo_dst, dsize, align_corners=align_corners), expected)
+        # the (N, 1, 4, 4) homography shape warp_grid3d accepts reads the same way
+        self.assert_close(self._warp(volume, src_homo_dst[:, None], dsize, align_corners=align_corners), expected)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    def test_matches_warp_perspective3d(self, padding_mode, device, dtype):
+        # warp_perspective3d takes the source->destination voxel homography; its inverse is the destination->source
+        # voxel homography the voxel mode reads. Both normalize the same way at align_corners=True, so they agree
+        # for every padding mode, with a perspective row and a destination of another size than the source. Only
+        # align_corners=True: at False warp_perspective3d's own normalization is still corner-aligned (#4503).
+        volume = self._volume((2, 3, 5, 7, 9), device, dtype)
+        dst_trans_src, src_homo_dst = self._homographies(device, dtype)
+        dsize = (4, 6, 8)
+
+        expected = proj.warp_perspective3d(volume, dst_trans_src, dsize, border_mode=padding_mode, align_corners=True)
+        actual = self._warp(volume, src_homo_dst, dsize, padding_mode=padding_mode, align_corners=True)
+        # in half precision the two matrices are rounded separately, one before and one after the inversion
+        self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
+
+    def test_align_corners_settings_sample_the_same_voxels(self, device, dtype):
+        # Each setting normalizes the voxel grid the way grid_sample then reads it, so along axes longer than one
+        # voxel both sample the same positions, also outside the source: zeros and border padding agree. Reflection
+        # padding mirrors about the outer voxel centres (True) or edges (False), and only it tells them apart.
+        volume = self._volume((2, 3, 5, 7, 9), device, dtype)
+        _, src_homo_dst = self._homographies(device, dtype)
+        dsize = (4, 6, 8)
+
+        def warp(padding_mode, align_corners):
+            return self._warp(volume, src_homo_dst, dsize, padding_mode=padding_mode, align_corners=align_corners)
+
+        # a half grid (off the CPU, which warps in float32) rounds the two normalizations differently
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(warp("zeros", True), warp("zeros", False), low_tolerance=low_tolerance)
+        self.assert_close(warp("border", True), warp("border", False), low_tolerance=low_tolerance)
+        assert not torch.allclose(warp("reflection", True), warp("reflection", False))
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_wide_identity(self, align_corners, device, dtype):
+        # Voxel coordinates reach the volume width, where float16 rounds them to half voxels from 512 and bfloat16 to
+        # whole voxels from 128. The voxel grid is warped and normalized in float32 and only the normalized grid
+        # returns to the homography's dtype, so a 640 voxel wide identity samples where a normalized identity grid
+        # does, and in float16 within an eighth of a voxel of every column. The volume holds the column index. The
+        # reference is the 2-D homography_warp of a depth slice, whose normalized grid follows align_corners; the
+        # 3-D normalized grid is corner-aligned under both settings (#4503). A half 3-D warp runs in float32 on
+        # every device (#5751, #5814), so its reference does too.
+        width = 640
+        volume = torch.arange(width, device=device).to(dtype).expand(1, 1, 2, 2, width)
+        identity = torch.eye(4, device=device, dtype=dtype)[None]
+
+        actual = self._warp(volume, identity, (2, 2, width), align_corners=align_corners)
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        reference_dtype = torch.float32 if half_in_float32 else dtype
+        normalized = proj.homography_warp(
+            volume[:, :, 0].to(reference_dtype),
+            identity[:, :3, :3].to(reference_dtype),
+            (2, width),
+            align_corners=align_corners,
+        )
+        normalized = normalized.to(dtype)[:, :, None].expand_as(actual)
+
+        # Interior columns only: the outermost ones border the zero padding, where any sub-voxel offset of the last
+        # column (value 639) costs a large value error. Values are column indices, so tolerances are in voxels.
+        actual, normalized, volume = actual[..., 1:-1], normalized[..., 1:-1], volume[..., 1:-1]
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(actual, normalized, rtol=0, atol=0.125 if dtype == torch.float16 else 1.0)
+        else:
+            self.assert_close(actual, normalized)
+        # bfloat16 stores these column indices only to within 2 to 4, so it is checked against the default path alone
+        if dtype != torch.bfloat16:
+            max_error = 0.125 if dtype == torch.float16 else 1e-3
+            assert (actual.float() - volume.float()).abs().max() <= max_error
+
+    @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
+    def test_homography_scale_is_a_gauge(self, scale, device, dtype):
+        # A homography and any nonzero multiple of it are the same warp: the voxel grid divides by the projective
+        # scale of warp_grid3d before the homogeneous division, whose absolute eps would otherwise leave the points
+        # of a small matrix undivided (#5761).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        volume = self._volume((2, 3, 5, 7, 9), device, dtype)
+        _, src_homo_dst = self._homographies(device, dtype)
+
+        expected = self._warp(volume, src_homo_dst, (4, 6, 8))
+        actual = self._warp(volume, scale * src_homo_dst, (4, 6, 8))
+        self.assert_close(actual, expected)
+
+    def test_backward_keeps_dtype(self, device, dtype):
+        # The voxel grid is warped in float32 for a half homography and cast back: gradients still reach the volume
+        # and the homography, finite and in their own dtype.
+        volume = self._volume((1, 2, 4, 5, 6), device, dtype).requires_grad_()
+        _, src_homo_dst = self._homographies(device, dtype)
+        src_homo_dst = src_homo_dst[:1].clone().requires_grad_()
+
+        self._warp(volume, src_homo_dst, (3, 4, 5)).float().square().sum().backward()
+
+        for tensor in (volume, src_homo_dst):
+            assert tensor.grad is not None
+            assert tensor.grad.dtype == dtype
+            assert torch.isfinite(tensor.grad).all()
+            assert tensor.grad.abs().sum() > 0
+
+    @pytest.mark.parametrize(("default_dtype", "width"), [(torch.float16, 4096), (torch.bfloat16, 640)])
+    def test_half_default_dtype_keeps_voxel_indices(self, default_dtype, width, device):
+        # The voxel grid is built in the homography's work dtype, not the default dtype, which would round its
+        # integer columns from 2048 (float16) or 256 (bfloat16) on and shift the samples.
+        volume = torch.arange(width, device=device, dtype=torch.float32).expand(1, 1, 1, 2, width)
+        identity = torch.eye(4, device=device, dtype=torch.float32)[None]
+        expected = self._warp(volume, identity, (1, 2, width))
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = self._warp(volume, identity, (1, 2, width))
+        finally:
+            torch.set_default_dtype(previous)
+
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual[..., 1:-1], volume[..., 1:-1])
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_autocast_does_not_reach_the_voxel_grid(self, align_corners, device):
+        # A matrix product inside a caller's bfloat16 autocast region would round the voxel columns of a 640 wide
+        # grid to whole voxels; the voxel grid is warped with elementwise products, which autocast leaves alone, in
+        # eager and scripted calls alike.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        width = 640
+        volume = torch.arange(width, device=device, dtype=torch.float32).expand(2, 1, 1, 2, width)
+        src_homo_dst = torch.eye(4, device=device, dtype=torch.float32).repeat(2, 1, 1)
+        src_homo_dst[1, 0, 3] = -1.0
+        expected = self._warp(volume, src_homo_dst, (1, 2, width), align_corners=align_corners)
+        scripted = torch.jit.script(proj.homography_warp3d)
+
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = self._warp(volume, src_homo_dst, (1, 2, width), align_corners=align_corners)
+            actual_scripted = scripted(
+                volume, src_homo_dst, (1, 2, width), align_corners=align_corners, normalized_coordinates=False
+            )
+
+        assert actual.dtype == actual_scripted.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_scripted, expected, rtol=0, atol=0)
+        self.assert_close(expected[0, ..., 1:-1], volume[0, ..., 1:-1])
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_torchscript(self, align_corners, device, dtype):
+        # A scripted call computes the eager voxel grid, bit for bit on the CPU. On CUDA, torch.jit.script returns the
+        # cached function, so a second call with the same shapes runs TorchScript's GPU fuser, which rounds the fused
+        # grid arithmetic differently from eager (about 1e-6 in float32).
+        volume = self._volume((2, 2, 5, 7, 9), device, dtype)
+        _, src_homo_dst = self._homographies(device, dtype)
+        scripted = torch.jit.script(proj.homography_warp3d)
+
+        actual = scripted(volume, src_homo_dst, (4, 6, 8), align_corners=align_corners, normalized_coordinates=False)
+        expected = self._warp(volume, src_homo_dst, (4, 6, 8), align_corners=align_corners)
+        if device.type == "cpu":
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        else:
+            self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
+        # The default normalized path is grid_sample over warp_grid3d of the reordered normalized meshgrid, bit for
+        # bit; the voxel-mode normalization must not reach it (#6187).
+        volume = self._volume((1, 2, 5, 6, 7), device, dtype)
+        src_homo_dst = torch.tensor(
+            [
+                [
+                    [0.95, 0.05, 0.02, 0.1],
+                    [-0.03, 1.05, 0.01, -0.08],
+                    [0.02, -0.01, 0.9, 0.05],
+                    [0.02, -0.01, 0.03, 1.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # a float16/bfloat16 warp runs in float32 on every device and returns the input dtype (#5751, #5814)
+        half_in_float32 = dtype in (torch.float16, torch.bfloat16)
+        work = torch.float32 if half_in_float32 else dtype
+        grid = kornia.geometry.create_meshgrid3d(4, 3, 6, normalized_coordinates=True, device=device, dtype=work)
+        warped_grid = proj.warp_grid3d(grid[..., [1, 2, 0]], src_homo_dst.to(work))
+        expected = _torch_grid_sample(volume.to(work), warped_grid, align_corners=align_corners).to(dtype)
+
+        actual = proj.homography_warp3d(volume, src_homo_dst, (4, 3, 6), align_corners=align_corners)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_gradcheck(self, align_corners, device):
+        # Gradients reach both the volume and the voxel homography; sub-voxel sample positions keep the trilinear
+        # kinks away from the finite differences.
+        volume = self._volume((1, 2, 4, 5, 6), device, torch.float64)
+        src_homo_dst = torch.tensor(
+            [[[1.05, 0.02, 0.01, 0.3], [0.01, 0.95, 0.03, -0.4], [0.02, -0.01, 1.1, 0.2], [1e-3, -2e-3, 3e-3, 1.0]]],
+            device=device,
+            dtype=torch.float64,
+        )
+
+        def warp(volume, src_homo_dst):
+            return self._warp(volume, src_homo_dst, (3, 4, 5), align_corners=align_corners)
+
+        self.gradcheck(warp, (volume, src_homo_dst), nondet_tol=1e-8)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_dynamo(self, align_corners, device, dtype, torch_optimizer):
+        # Compiled-vs-eager passes on a wrong result too: also check the compiled output against an eager reference
+        # that does not run this code, warp_perspective3d of the source->destination voxel homography in float64 on
+        # the CPU, at align_corners=True with zeros padding, where both settings sample the same voxels (see
+        # test_align_corners_settings_sample_the_same_voxels) and warp_perspective3d is correct (#4503).
+        volume = self._volume((2, 3, 5, 7, 9), device, dtype)
+        _, src_homo_dst = self._homographies(device, dtype)
+        dsize = (4, 6, 8)
+
+        eager = self._warp(volume, src_homo_dst, dsize, align_corners=align_corners)
+        compiled = torch_optimizer(proj.homography_warp3d)(
+            volume, src_homo_dst, dsize, align_corners=align_corners, normalized_coordinates=False
+        )
+        dst_trans_src = torch.tensor(self._DST_TRANS_SRC, dtype=torch.float64)
+        expected = proj.warp_perspective3d(volume.cpu().double(), dst_trans_src, dsize, align_corners=True)
+        expected = expected.to(device=device, dtype=dtype)
+
+        self.assert_close(compiled, eager)
+        self.assert_close(compiled, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
 
 
 class TestWarpAffine3d(BaseTester):
@@ -597,6 +885,114 @@ class TestWarpAffine3d(BaseTester):
         self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
 
+class TestWarp3dAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of warp_affine3d and warp_perspective3d (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _skip_unsupported(device, autocast_dtype):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+
+    @staticmethod
+    def _warp_inputs(op_name, device, dtype):
+        volume = torch.rand(1, 1, 32, 32, 32, generator=torch.Generator().manual_seed(0))
+        center, angles, scales = (
+            torch.tensor([[15.5, 15.5, 15.5]]),
+            torch.tensor([[10.0, 20.0, 25.0]]),
+            torch.ones(1, 3),
+        )
+        matrix = proj.get_projective_transform(center, angles, scales)
+        if op_name == "warp_perspective3d":
+            matrix = torch.cat([matrix, torch.tensor([[[1e-4, 0.0, 0.0, 1.0]]])], dim=1)
+        return volume.to(device=device, dtype=dtype), matrix.to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _warp(op_name, volume, matrix, align_corners=False):
+        return getattr(proj, op_name)(volume, matrix, (32, 32, 32), align_corners=align_corners)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, align_corners, device):
+        # normalize_homography3d's matrix products and the grid, from F.affine_grid or transform_points, ran in the
+        # autocast dtype: up to 0.17 off in bfloat16 for a float32 volume of [0, 1] values, whose output stayed float32.
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps" and src_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        volume, matrix = self._warp_inputs(op_name, device, src_dtype)
+        expected = self._warp(op_name, volume, matrix, align_corners)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, volume, matrix, align_corners)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    _mixed_dtypes = (
+        (torch.float32, "bfloat16"),
+        (torch.float32, "float16"),
+        (torch.bfloat16, "float32"),
+        (torch.float16, "float32"),
+        (torch.bfloat16, "float16"),
+        (torch.float16, "bfloat16"),
+    )
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("src_dtype,matrix_dtype", _mixed_dtypes)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, op_name, src_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        # The 3D grid takes the matrix dtype, so a half volume with a matrix of the other half dtype reached grid_sample
+        # with two half dtypes under the guard, which CUDA autocast rejects.
+        self._skip_unsupported(device, autocast_dtype)
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        volume, matrix = volume.to(src_dtype), matrix.to(getattr(torch, matrix_dtype))
+        expected = self._warp(op_name, volume.float(), matrix.float()).to(src_dtype)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = self._warp(op_name, volume, matrix)
+        assert actual.dtype == src_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_region_does_not_change_the_gradient_6573(self, op_name, device):
+        self._skip_unsupported(device, "bfloat16")
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        matrix.requires_grad_()
+        expected = torch.autograd.grad(self._warp(op_name, volume, matrix).sum(), matrix)[0]
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            out = self._warp(op_name, volume, matrix)
+        actual = torch.autograd.grad(out.sum(), matrix)[0]
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
+    def test_warp_perspective3d_still_scriptable_6573(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        volume = torch.rand(1, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.eye(4, device=device, dtype=dtype)[None]
+        scripted = torch.jit.script(proj.warp_perspective3d)
+        self.assert_close(scripted(volume, matrix, (3, 4, 5)), proj.warp_perspective3d(volume, matrix, (3, 4, 5)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6573(self, op_name, autocast_dtype, device, torch_optimizer):
+        self._skip_unsupported(device, autocast_dtype)
+        if device.type == "mps":
+            pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
+        volume, matrix = self._warp_inputs(op_name, device, torch.float32)
+        op = torch_optimizer(lambda x, m: self._warp(op_name, x, m))
+        expected = self._warp(op_name, volume, matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(volume, matrix)
+        assert actual.dtype == torch.float32
+        # A compiled graph differs from eager by up to 6.3e-06 here, inside the float32 default; this keeps the
+        # tolerance of the 2D warps, which need it.
+        self.assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(op(volume, matrix), expected, rtol=1e-3, atol=1e-3)
+
+
 class TestGetRotationMatrix3d(BaseTester):
     def test_smoke(self, device, dtype):
         center = torch.rand(1, 3, device=device, dtype=dtype)
@@ -663,30 +1059,55 @@ class TestGetRotationMatrix3d(BaseTester):
 
 
 class TestPerspectiveTransform3D(BaseTester):
-    @pytest.mark.skip("Not working")
+    # Box corners in bbox_generator3d order: 000, 100, 110, 010, 001, 101, 111, 011.
+    _corners = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
-        # generate input data
-        # d_max, h_max, w_max = 16, 64, 32  # height, width
-        # d = torch.ceil(d_max * torch.rand(batch_size, device=device, dtype=dtype))
-        # h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
-        # w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
+        # Eight random point pairs are in general not related by any 3D homography (15 degrees of freedom against
+        # 24 constraints), which is why this test used to fail. The destination points are the source corners
+        # mapped by known homographies instead, built in float64 and then cast.
+        torch.manual_seed(0)
+        sizes = torch.tensor([7.0, 5.0, 3.0], dtype=torch.float64) + torch.rand(batch_size, 1, 3, dtype=torch.float64)
+        offsets = torch.rand(batch_size, 1, 3, dtype=torch.float64)
+        points_src = torch.tensor(self._corners, dtype=torch.float64) * sizes + offsets
+        dst_homo_src = torch.eye(4, dtype=torch.float64) + 0.1 * torch.randn(batch_size, 4, 4, dtype=torch.float64)
+        dst_homo_src[:, 3, :3] *= 0.1
+        dst_homo_src = dst_homo_src / dst_homo_src[:, 3:, 3:]
+        points_dst = kornia.geometry.linalg.transform_points(dst_homo_src, points_src)
+        points_src = points_src.to(device, dtype)
+        points_dst = points_dst.to(device, dtype)
 
-        norm = torch.rand(batch_size, 8, 3, device=device, dtype=dtype)
-        points_src = torch.rand_like(norm, device=device, dtype=dtype)
-        points_dst = points_src + norm
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
 
-        # compute transform from source to target
-        dst_homo_src = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
-
-        # TODO: get_perspective_transform3d seems to be correct since it would result in the
-        # expected output for cropping volumes. Not sure what is going on here.
-        self.assert_close(
-            kornia.geometry.linalg.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4
-        )
+        self.assert_close(out, dst_homo_src.to(device, dtype), low_tolerance=True)
+        self.assert_close(kornia.geometry.linalg.transform_points(out, points_src), points_dst, low_tolerance=True)
 
         # compute gradient check
         self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False)
+
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor(self._corners, device=device)[None] * 4
+        points_dst = points_src // 2 + torch.tensor([1, 2, 3], device=device)
+
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
+        expected = kornia.geometry.transform.get_perspective_transform3d(
+            points_src.to(out.dtype), points_dst.to(out.dtype)
+        )
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
+
+    def test_convention_uses_corners_0_1_2_5_7(self, device, dtype):
+        # The 15 unknowns are solved exactly from corners 0, 1, 2, 5 and 7 (000, 100, 110, 101, 011); the
+        # destinations of corners 3, 4 and 6 do not enter the solve.
+        points_src = torch.tensor(self._corners, device=device, dtype=dtype)[None] * 4
+        points_dst = points_src * 2 + 1
+        moved_dst = points_dst.clone()
+        moved_dst[:, [3, 4, 6]] += 5
+        expected = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, moved_dst)
+        self.assert_close(out, expected)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d_2(self, batch_size, device, dtype):
@@ -695,26 +1116,26 @@ class TestPerspectiveTransform3D(BaseTester):
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
         dst = kornia.geometry.bbox.bbox_generator3d(
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
         out = kornia.geometry.transform.get_perspective_transform3d(src, dst)
         if batch_size == 1:
             expected = torch.tensor(
                 [
                     [
-                        [3.3000, 0.0000, 0.0000, -118.2000],
-                        [0.0000, 0.0769, 0.0000, 0.0000],
-                        [0.0000, 0.0000, 0.5517, 28.7930],
+                        [1.4348, 0.0000, 0.0000, -36.1304],
+                        [0.0000, 1.0667, 0.0000, -38.6000],
+                        [0.0000, 0.0000, 2.6250, -39.6250],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ]
                 ],
@@ -725,15 +1146,15 @@ class TestPerspectiveTransform3D(BaseTester):
             expected = torch.tensor(
                 [
                     [
-                        [0.9630, 0.0000, 0.0000, -9.3702],
-                        [0.0000, 2.0000, 0.0000, -49.9999],
-                        [0.0000, 0.0000, 0.3830, 44.0213],
+                        [0.0976, 0.0000, 0.0000, 28.7073],
+                        [0.0000, 0.0889, 0.0000, 13.0667],
+                        [0.0000, 0.0000, 11.0000, -94.0000],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ],
                     [
-                        [0.9630, 0.0000, 0.0000, -36.5555],
-                        [0.0000, 2.0000, 0.0000, -14.0000],
-                        [0.0000, 0.0000, 0.3830, 16.8940],
+                        [0.0976, 0.0000, 0.0000, -2.8049],
+                        [0.0000, 0.0889, 0.0000, 5.1111],
+                        [0.0000, 0.0000, 11.0000, -291.0000],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ],
                 ],
@@ -745,3 +1166,255 @@ class TestPerspectiveTransform3D(BaseTester):
 
         # compute gradient check
         self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (src, dst))
+
+
+class TestScaleShape3d(BaseTester):
+    """Preserve shared per-axis scales while rejecting unsupported scale shapes."""
+
+    @staticmethod
+    def _inputs(batch, device, dtype):
+        center = torch.zeros(batch, 3, device=device, dtype=dtype)
+        angles = torch.zeros(batch, 3, device=device, dtype=dtype)
+        translations = torch.zeros(batch, 3, device=device, dtype=dtype)
+        return translations, center, angles
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_projective_transform_keeps_shared_per_axis_scale(self, batch, device, dtype):
+        _, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+        matrix = proj.get_projective_transform(center, angles, scale)
+        self.assert_close(matrix, proj.get_projective_transform(center, angles, scale[None]))
+        self.assert_close(matrix[..., :3], torch.diag(scale).expand(batch, 3, 3))
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    @pytest.mark.parametrize("shape", [(), (0,), (2,), (4,), (5,), (2, 2)])
+    def test_rejects_unsupported_scale_shape(self, batch, shape, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            proj.get_projective_transform(center, angles, scale)
+        with pytest.raises(ShapeError):
+            proj.get_affine_matrix3d(translations, center, scale, angles)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_rejects_extra_scale_dimension(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.ones(batch, 3, 1, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            proj.get_projective_transform(center, angles, scale)
+        with pytest.raises(ShapeError):
+            proj.get_affine_matrix3d(translations, center, scale, angles)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_affine_matrix3d_keeps_shared_per_axis_scale(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+        matrix = proj.get_affine_matrix3d(translations, center, scale, angles)
+        self.assert_close(matrix, proj.get_affine_matrix3d(translations, center, scale[None], angles))
+        self.assert_close(matrix[..., :3, :3], torch.diag(scale).expand(batch, 3, 3))
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_per_axis_scale_is_the_diagonal(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        # A different (sx, sy, sz) for every sample, so reusing one sample's scale for the others is caught.
+        scale = torch.arange(1, 3 * batch + 1, device=device, dtype=dtype).reshape(batch, 3)  # (B, 3)
+        expected = torch.diag_embed(scale)
+
+        projective = proj.get_projective_transform(center, angles, scale)
+        assert projective.shape == (batch, 3, 4)
+        self.assert_close(projective[..., :3], expected)
+
+        affine = proj.get_affine_matrix3d(translations, center, scale, angles)
+        assert affine.shape == (batch, 4, 4)
+        self.assert_close(affine[..., :3, :3], expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_isotropic_scale_matches_the_repeated_per_axis_scale(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        angles = angles + torch.tensor([10.0, -20.0, 30.0], device=device, dtype=dtype)
+        isotropic = torch.linspace(1.0, 2.0, batch, device=device, dtype=dtype)[:, None]  # (B, 1)
+
+        self.assert_close(
+            proj.get_projective_transform(center, angles, isotropic),
+            proj.get_projective_transform(center, angles, isotropic.repeat(1, 3)),
+        )
+        self.assert_close(
+            proj.get_affine_matrix3d(translations, center, isotropic, angles),
+            proj.get_affine_matrix3d(translations, center, isotropic.repeat(1, 3), angles),
+        )
+
+    @pytest.mark.parametrize("batch", [2, 3, 4])
+    def test_the_two_reshapes_of_a_flat_scale_mean_different_things(self, batch, device, dtype):
+        # Per-sample isotropic factors use (B, 1); a (1, 3) row is per axis and shared by every sample.
+        translations, center, angles = self._inputs(batch, device, dtype)
+        per_sample = torch.arange(1, batch + 1, device=device, dtype=dtype)
+        axes = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        column_expected = torch.diag_embed(per_sample[:, None].expand(batch, 3))
+        row_expected = torch.diag(axes).expand(batch, 3, 3)
+
+        column = proj.get_projective_transform(center, angles, per_sample[:, None])
+        row = proj.get_projective_transform(center, angles, axes[None])
+        self.assert_close(column[..., :3], column_expected)
+        self.assert_close(row[..., :3], row_expected)
+
+        column = proj.get_affine_matrix3d(translations, center, per_sample[:, None], angles)
+        row = proj.get_affine_matrix3d(translations, center, axes[None], angles)
+        self.assert_close(column[..., :3, :3], column_expected)
+        self.assert_close(row[..., :3, :3], row_expected)
+
+    @pytest.mark.parametrize("batch", [1, 3])
+    def test_single_scale_factor_still_applies_to_every_sample(self, batch, device, dtype):
+        # A (1,) tensor worked before and is unambiguous, so it is still accepted.
+        _, center, angles = self._inputs(batch, device, dtype)
+        single = torch.tensor([2.0], device=device, dtype=dtype)
+        self.assert_close(
+            proj.get_projective_transform(center, angles, single),
+            proj.get_projective_transform(center, angles, single.expand(batch, 3).contiguous()),
+        )
+
+
+class TestWarp3dOneVoxelSourceAxis6433(BaseTester):
+    """A one-voxel source axis is sampled like a longer one under ``align_corners=True`` (#6433).
+
+    The 3D ``align_corners=False`` normalization is #4503; nothing here reads that setting.
+    """
+
+    @staticmethod
+    def _warp(op_name, volume, matrix, dsize, padding_mode="zeros", mode="bilinear"):
+        if op_name == "warp_affine3d":
+            return proj.warp_affine3d(volume, matrix[:, :3], dsize, mode, padding_mode, align_corners=True)
+        return proj.warp_perspective3d(volume, matrix, dsize, mode, padding_mode, align_corners=True)
+
+    @staticmethod
+    def _shift(x, y, z, device, dtype):
+        matrix = torch.eye(4, device=device, dtype=dtype)[None]
+        matrix[0, 0, 3], matrix[0, 1, 3], matrix[0, 2, 3] = x, y, z
+        return matrix
+
+    @staticmethod
+    def _volume(shape, device, dtype):
+        size = shape[0] * shape[1] * shape[2]
+        return (torch.arange(size, device=device, dtype=dtype) + 1).reshape(1, 1, *shape)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize(
+        ("shape", "shift"),
+        [
+            ((1, 4, 4), (0.0, 0.0, 1.0)),
+            ((4, 1, 4), (0.0, 1.0, 0.0)),
+            ((4, 4, 1), (1.0, 0.0, 0.0)),
+            ((1, 1, 1), (0.0, 1.0, 0.0)),
+        ],
+    )
+    def test_convention_shift_off_the_axis_pads(self, op_name, shape, shift, device, dtype):
+        volume = self._volume(shape, device, dtype)
+        out = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape)
+        self.assert_close(out, torch.zeros_like(volume))
+        border = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape, "border")
+        self.assert_close(border, volume)
+        reflection = self._warp(op_name, volume, self._shift(*shift, device, dtype), shape, "reflection")
+        self.assert_close(reflection, volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("shape", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 4), (1, 1, 1)])
+    def test_convention_identity_and_half_a_voxel(self, op_name, shape, device, dtype):
+        volume = self._volume(shape, device, dtype)
+        self.assert_close(self._warp(op_name, volume, self._shift(0.0, 0.0, 0.0, device, dtype), shape), volume)
+        # Half a voxel along the one-voxel depth weighs the only slice by 1/2. Along no other axis is it a plain scale.
+        if shape[0] == 1 and shape[1:] != (1, 1):
+            half = self._warp(op_name, volume, self._shift(0.0, 0.0, 0.5, device, dtype), shape)
+            self.assert_close(half, 0.5 * volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize(
+        ("padding_mode", "second"), [("zeros", "zeros"), ("border", "same"), ("reflection", "same")]
+    )
+    def test_matches_a_two_slice_volume(self, op_name, mode, padding_mode, second, device, dtype):
+        volume = self._volume((1, 3, 4), device, dtype)
+        two = torch.cat((volume, torch.zeros_like(volume) if second == "zeros" else volume), dim=-3)
+        matrix = torch.tensor(
+            [[0.9, 0.1, 0.0, 0.2], [0.0, 1.1, 0.1, -0.3], [0.1, 0.0, 0.8, 0.3], [0.0, 0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )[None]
+        actual = self._warp(op_name, volume, matrix, (3, 3, 4), padding_mode, mode)
+        expected = self._warp(op_name, two, matrix, (3, 3, 4), padding_mode, mode)
+        # Border and reflection keep the single slice, so they agree up to the rounding of interpolating equal slices.
+        tolerance = {"atol": 0.0, "rtol": 0.0} if padding_mode == "zeros" else {}
+        self.assert_close(actual, expected, **tolerance)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_convention_batch_of_different_matrices(self, op_name, device, dtype):
+        volume = self._volume((1, 2, 3), device, dtype)
+        matrix = torch.cat([self._shift(0.0, 0.0, z, device, dtype) for z in (0.0, 1.0, 0.5)])
+        out = self._warp(op_name, volume.repeat(3, 1, 1, 1, 1), matrix, (1, 2, 3))
+        self.assert_close(out, torch.cat((volume, 0 * volume, 0.5 * volume)))
+
+    def test_gradcheck(self, device):
+        volume = self._volume((1, 2, 3), device, torch.float64).requires_grad_()
+        # No shift on a pixel centre, where bilinear sampling has a kink.
+        matrix = self._shift(0.1, 0.17, 0.3, device, torch.float64)
+        self.gradcheck(proj.warp_affine3d, (volume, matrix[:, :3], (1, 2, 3)))
+        matrix = matrix.clone().requires_grad_()
+        self.gradcheck(proj.warp_affine3d, (volume.detach(), matrix[:, :3], (1, 2, 3)))
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(
+        ("trace_shape", "runtime_shape"), [((3, 4, 5), (1, 4, 5)), ((1, 4, 5), (3, 4, 5)), ((3, 4, 5), (1, 1, 1))]
+    )
+    def test_trace_keeps_the_decision(self, op_name, padding_mode, trace_shape, runtime_shape, device):
+        matrix = self._shift(0.2, 0.3, 0.6, device, torch.float32)
+        warp = self._warp
+
+        class Warp(torch.nn.Module):
+            def forward(self, volume, transform):
+                return warp(op_name, volume, transform, (2, 3, 4), padding_mode)
+
+        example = torch.rand(1, 2, *trace_shape, device=device)
+        runtime = torch.rand(1, 2, *runtime_shape, device=device)
+        traced = torch.jit.trace(Warp(), (example, matrix), check_trace=False)
+        self.assert_close(traced(runtime, matrix), Warp()(runtime, matrix), low_tolerance=True)
+
+    def test_script_warp_perspective3d(self, device):
+        volume = self._volume((1, 2, 3), device, torch.float32)
+        matrix = self._shift(0.0, 0.0, 0.5, device, torch.float32)
+        scripted = torch.jit.script(proj.warp_perspective3d)
+        out = scripted(volume, matrix, (1, 2, 3), align_corners=True)
+        self.assert_close(out, 0.5 * volume)
+
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    def test_dynamo(self, op_name, padding_mode, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript cannot compile this closure")
+        matrix = self._shift(0.2, 0.3, 0.6, device, dtype)
+
+        def op(volume, transform):
+            return self._warp(op_name, volume, transform, (2, 3, 4), padding_mode)
+
+        compiled = torch_optimizer(op)
+        for shape in [(1, 4, 5), (3, 1, 1), (2, 3, 4)]:
+            volume = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+            self.assert_close(compiled(volume, matrix), op(volume, matrix))
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+    def test_dynamic_export_has_no_guard_on_the_size(self, op_name, device):
+        matrix = self._shift(0.2, 0.3, 0.6, device, torch.float32)
+        warp = self._warp
+
+        class Warp(torch.nn.Module):
+            def forward(self, volume, transform):
+                return warp(op_name, volume, transform, (2, 3, 4))
+
+        dim = torch.export.Dim
+        dims = {2: dim("D", min=1, max=64), 3: dim("H", min=1, max=64), 4: dim("W", min=1, max=64)}
+        program = torch.export.export(
+            Warp(), (torch.rand(1, 2, 3, 4, 5, device=device), matrix), dynamic_shapes={"volume": dims, "transform": {}}
+        ).module()
+        for shape in [(1, 4, 5), (3, 1, 5), (1, 1, 1), (3, 4, 5)]:
+            runtime = torch.rand(1, 2, *shape, device=device)
+            self.assert_close(program(runtime, matrix), Warp()(runtime, matrix), low_tolerance=True)

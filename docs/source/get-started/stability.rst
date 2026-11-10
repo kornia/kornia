@@ -45,10 +45,13 @@ contract and the tiers above (stable core / best-effort / experimental) are what
 you may rely on.
 
 The repair window itself runs under the promises on this page, not around them:
-every semantic or default change it ships gets the promise-2 deprecation
-treatment — at least one minor release of warnings, landing at a 0.x minor
-boundary, with old-vs-new reference vectors — and only clearly-broken-output
-bugs (NaN, crashes) use the correctness escape hatch below.
+a deliberate change to a default or convention that works as documented gets the
+promise-2 deprecation treatment — at least one minor release of warnings, landing
+at a 0.x minor boundary, with old-vs-new reference vectors. A fix for a
+correctness bug (NaN, a crash, wrong math, or a result that contradicts what the
+operation is documented to do) uses the escape hatch below instead: it lands when
+it is ready, without a warning cycle, and its release note says what the old
+behavior was.
 
 What counts as public API
 -------------------------
@@ -85,6 +88,9 @@ The promises (stable core)
    :doc:`conventions </get-started/conventions>` (tensor layout, coordinate
    order, angle units, homography conventions) are part of the API surface
    and covered by the same rules.
+
+What the stable core promises for ONNX export and ``torch.compile``, and where
+CI checks it, is stated on the :ref:`support page <export-support-promise>`.
 
 Versioning caveat
 -----------------

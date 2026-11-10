@@ -415,3 +415,107 @@ class TestNormalization(BaseTester):
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=torch.float64)
 
         self.gradcheck(_mean_isotropic_scale_normalize, (points,))
+
+
+class TestSolvePnpDltAutocast(BaseTester):
+    """A caller's autocast region does not reach the PnP solve (#6168), as for the solvers of #6072."""
+
+    @staticmethod
+    def _scene(device):
+        generator = torch.Generator().manual_seed(6168)
+        K = torch.tensor([[[400.0, 0.0, 160.0], [0.0, 410.0, 120.0], [0.0, 0.0, 1.0]]])
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(torch.tensor([[0.1, -0.2, 0.05]]))
+        t = torch.tensor([[[0.2], [-0.1], [4.0]]])
+        world = torch.rand(1, 40, 3, generator=generator) * 2 - 1
+        img = kornia.geometry.conversions.convert_points_from_homogeneous((world @ R.mT + t.mT) @ K.mT)
+        weights = torch.rand(1, 40, generator=generator) + 0.5
+        return [v.to(device) for v in (world, img, K, torch.cat([R, t], -1), weights)]
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_autocast_does_not_change_the_result_6168(self, device, weighted):
+        # Under bfloat16 autocast the de-normalization products ran in bfloat16, and torch.det, which has no
+        # half-precision CPU kernel, raised NotImplementedError for float32 inputs.
+        if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        world, img, K, expected_pose, weights = self._scene(device)
+        weights = weights if weighted else None
+        expected = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(actual, expected_pose, atol=1e-4, rtol=0)
+
+
+class TestSolvePnpDltGradient(BaseTester):
+    """``solve_pnp_dlt``'s gradient is finite when other singular values of the system are equal (#6213)."""
+
+    def test_cube_corners_have_the_central_difference_gradient_6213(self, device):
+        # The corners of a cube and its centre make singular values of the DLT system equal in some poses, where
+        # torch's SVD backward made the gradient with respect to the image points NaN. Which poses tie depends on
+        # the SVD backend: 4 to 6 of these 64 on the CPUs measured, and none in float64 on CUDA, so this test pins
+        # the fix on CPU.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        dtype = torch.float64
+        g = torch.Generator().manual_seed(0)
+        corners = [[x, y, z] for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)] + [[0.0, 0.0, 0.0]]
+        cube = torch.tensor(corners, dtype=dtype)
+        batch = 64
+        rotation = axis_angle_to_rotation_matrix(torch.rand(batch, 3, generator=g, dtype=dtype) - 0.5)
+        translation = torch.tensor([0.0, 0.0, 6.0], dtype=dtype) + torch.rand(batch, 1, 3, generator=g, dtype=dtype)
+        intrinsics = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=dtype)
+        camera = cube @ rotation.mT + translation - 0.5
+        projected = camera @ intrinsics.T
+        img_points = (projected[..., :2] / projected[..., 2:]).to(device)
+        world_points = cube.expand(batch, -1, -1).to(device)
+        intrinsics = intrinsics.expand(batch, -1, -1).to(device)
+
+        def solve(u):
+            return kornia.geometry.solve_pnp_dlt(world_points, u, intrinsics).reshape(batch, -1)
+
+        u = img_points.clone().requires_grad_(True)
+        out = solve(u)
+        # Each pose depends only on its own points, so one backward per output entry gives every pose's Jacobian.
+        jac = torch.stack([torch.autograd.grad(out[:, j].sum(), u, retain_graph=True)[0] for j in range(12)], 1)
+        assert torch.isfinite(jac).all()
+        eps = 1e-5
+        columns = []
+        for i in range(img_points[0].numel()):
+            step = torch.zeros(img_points[0].numel(), device=device, dtype=dtype)
+            step[i] = eps
+            step = step.view_as(img_points[0])
+            columns.append((solve(img_points + step) - solve(img_points - step)) / (2 * eps))
+        self.assert_close(jac.reshape(batch, 12, -1), torch.stack(columns, -1), rtol=1e-5, atol=1e-7)
+
+    def test_dynamo_gradient_matches_eager_6213(self, device, dtype, torch_optimizer):
+        # The kept vector's own gap is excluded by position: CUDA Inductor evaluated (S / scale)^2 differently at its
+        # two reads, a gap of 1e-20 instead of 0, and the compiled gradient of solve_pnp_dlt was up to 1e11 times off.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt accepts float32 and float64 only")
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        g = torch.Generator().manual_seed(0)
+        batch = 2
+        world = torch.rand(batch, 10, 3, generator=g, dtype=torch.float64) * 2 - 1
+        rotation = axis_angle_to_rotation_matrix(torch.rand(batch, 3, generator=g, dtype=torch.float64) - 0.5)
+        camera = world @ rotation.mT + torch.tensor([0.0, 0.0, 6.0], dtype=torch.float64)
+        intrinsics = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        projected = camera @ intrinsics.T
+        img_points = (projected[..., :2] / projected[..., 2:]).to(device, dtype)
+        world = world.to(device, dtype)
+        intrinsics = intrinsics.expand(batch, -1, -1).to(device, dtype)
+        weights = torch.randn(batch, 3, 4, generator=g, dtype=torch.float64).to(device, dtype)
+
+        def op(u):
+            return kornia.geometry.solve_pnp_dlt(world, u, intrinsics)
+
+        u_eager = img_points.clone().requires_grad_(True)
+        u_compiled = img_points.clone().requires_grad_(True)
+        (expected,) = torch.autograd.grad((op(u_eager) * weights).sum(), u_eager)
+        (actual,) = torch.autograd.grad((torch_optimizer(op)(u_compiled) * weights).sum(), u_compiled)
+        self.assert_close(actual, expected)

@@ -32,6 +32,18 @@ from kornia.geometry.camera.distortion_kannala_brandt import (
 from testing.base import BaseTester
 
 
+def _count_nodes(graph, kind: str) -> int:
+    """Count the nodes of ``kind`` in a TorchScript graph, inside loop bodies and fusion subgraphs too."""
+    count = 0
+    for node in graph.nodes():
+        count += node.kind() == kind
+        for block in node.blocks():
+            count += _count_nodes(block, kind)
+        if node.hasAttribute("Subgraph"):
+            count += _count_nodes(node.g("Subgraph"), kind)
+    return count
+
+
 class TestDistortionAffine(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
@@ -166,6 +178,49 @@ class TestDistortionAffine(BaseTester):
         self.assert_close(
             analytic, torch.tensor([[100.0, 0.0], [0.0, 100.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
+
+    def test_dx_distort_points_batched_points_shared_params_6090(self, device, dtype):
+        # The Jacobian's shape followed the params only, so N points with one set of params returned a single (2, 2).
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (5, 2, 2)
+        expected = torch.tensor([[600.0, 0.0], [0.0, 610.0]], device=device, dtype=dtype).expand(5, 2, 2)
+        self.assert_close(jacobian, expected, atol=0.0, rtol=0.0)
+        autograd = torch.stack(
+            [torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, params), point) for point in points]
+        )
+        self.assert_close(jacobian, autograd, atol=0.0, rtol=0.0)
+
+    def test_dx_distort_points_broadcasts_points_and_params_6090(self, device, dtype):
+        points = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        params = torch.tensor(
+            [[[600.0, 610.0, 319.5, 239.5]], [[300.0, 310.0, 159.5, 119.5]]], device=device, dtype=dtype
+        )  # (2, 1, 4)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (2, 5, 2, 2)
+        self.assert_close(jacobian[:, :, 0, 0], params[..., 0].expand(2, 5), atol=0.0, rtol=0.0)
+        self.assert_close(jacobian[:, :, 1, 1], params[..., 1].expand(2, 5), atol=0.0, rtol=0.0)
+        assert (jacobian[..., 0, 1] == 0).all()
+        assert (jacobian[..., 1, 0] == 0).all()
+        assert distort_points_affine(points, params).shape[:-1] == jacobian.shape[:-2]
+
+    def test_dx_distort_points_rejects_mismatched_batches_6090(self, device, dtype):
+        # The points' batch used to be ignored, so a params batch that does not match it went unnoticed.
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.rand(3, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            dx_distort_points_affine(points, params)
+
+    def test_dx_distort_points_jit_batched_6090(self, device, dtype):
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+        op_script = torch.jit.script(dx_distort_points_affine)
+        self.assert_close(op_script(points, params), dx_distort_points_affine(points, params))
 
 
 class TestDistortionKannalaBrandt(BaseTester):
@@ -379,9 +434,17 @@ class TestDistortionKannalaBrandt(BaseTester):
         points = torch.tensor([919.5000, 1439.5000], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         op_script = torch.jit.script(undistort_points_kannala_brandt)
-        actual = op_script(points, params)
         expected = undistort_points_kannala_brandt(points, params)
-        self.assert_close(actual, expected)
+        # Twice: TorchScript optimizes the graph on the second call. With a constant-count loop it unrolled the ten
+        # Gauss-Newton steps there (24 ``aten::sub`` nodes against the 8 of the inlined scripted graph), and on CUDA its
+        # fuser then hung (#6257). The scripted function is cached across tests, so compare with its inlined graph,
+        # which optimization only shrinks, rather than with the first call.
+        scripted_subs = _count_nodes(op_script.inlined_graph, "aten::sub")
+        for _ in range(2):
+            # On CUDA the optimized call fuses the loop body, and the fused kernels keep bfloat16 intermediates in
+            # float32, so that call lands up to 4 bfloat16 ulps from eager (closer to the float64 result).
+            self.assert_close(op_script(points, params), expected, low_tolerance=dtype == torch.bfloat16)
+            assert _count_nodes(torch.jit.last_executed_optimized_graph(), "aten::sub") <= scripted_subs
 
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)

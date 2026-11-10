@@ -24,6 +24,12 @@ from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
+# These tests assert float32 tolerances, but cuDNN runs a float32 conv3d in TF32 unless `cudnn.allow_tf32` is off, and
+# it picks a TF32 kernel for the single-channel volumes most of them use. Rounding the inputs of the local moments to
+# 10 mantissa bits moves the map by up to 1.1e-2 here (a 128 vs 64 pair at max_val=255), where real float32 is within
+# 7e-6. `cudnn_tf32_follows_option` keeps cuDNN in float32 unless `--tf32` is passed (#4778).
+pytestmark = pytest.mark.usefixtures("cudnn_tf32_follows_option")
+
 
 class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize("image_dtype", [torch.uint8, torch.int16])

@@ -4,6 +4,15 @@ kornia.geometry.depth
 .. meta::
    :description: The kornia.geometry.depth module provides functions for working with depth-related transformations in 3D vision tasks. Key functionalities include computing depth from disparity, converting depth maps to 3D points, obtaining surface normals from depth data, and unprojecting depth data from mesh grids. Additionally, the module supports depth-based image warping and working with depth through plane equations, enabling advanced geometric operations in computer vision.
 
+:func:`~kornia.geometry.depth.depth_to_3d` (channels first) and
+:func:`~kornia.geometry.depth.depth_to_3d_v2` (channels last, optionally reusing rays from
+:func:`~kornia.geometry.depth.unproject_meshgrid`) turn a depth map into 3D points, and
+:func:`~kornia.geometry.depth.depth_to_normals` into surface normals. Get depth from a stereo disparity map with
+:func:`~kornia.geometry.depth.depth_from_disparity`, or for pixels on a known plane with
+:func:`~kornia.geometry.depth.depth_from_plane_equation`. Render an image from another viewpoint by depth with
+:func:`~kornia.geometry.depth.warp_frame_depth` (a 4x4 pose and one camera matrix), or with
+:class:`~kornia.geometry.depth.DepthWarper` and :func:`~kornia.geometry.depth.depth_warp` (two pinhole camera models).
+
 .. currentmodule:: kornia.geometry.depth
 
 .. autofunction:: depth_from_disparity

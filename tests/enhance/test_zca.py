@@ -37,15 +37,16 @@ class TestZCA(BaseTester):
         divisor = sample_count - 1 if unbiased else sample_count
         # The two features have zero cross covariance and variances N * scale**2 / divisor and a quarter of it.
         std = [math.sqrt(sample_count * s**2 / divisor + 1e-6) for s in (scale, scale / 2)]
-        expected_transform = torch.diag(torch.tensor([1 / s for s in std], device=device, dtype=dtype))
-        expected_inverse = torch.diag(torch.tensor(std, device=device, dtype=dtype))
+        compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        expected_transform = torch.diag(torch.tensor([1 / s for s in std], device=device, dtype=compute_dtype))
+        expected_inverse = torch.diag(torch.tensor(std, device=device, dtype=compute_dtype))
         expected = (data - mean) * torch.tensor([1 / s for s in std], device=device, dtype=dtype)
         if dim != 0:
             data, expected = data.t(), expected.t()
 
         transform, actual_mean, inverse = kornia.enhance.zca_mean(data, dim=dim, unbiased=unbiased, return_inverse=True)
         self.assert_close(transform, expected_transform)
-        self.assert_close(actual_mean, mean)
+        self.assert_close(actual_mean, mean.to(actual_mean.dtype))
         self.assert_close(inverse, expected_inverse)
         self.assert_close(kornia.enhance.zca_whiten(data, dim=dim, unbiased=unbiased), expected)
         model = kornia.enhance.ZCAWhitening(dim=dim, unbiased=unbiased)
@@ -74,7 +75,12 @@ class TestZCA(BaseTester):
         data = torch.tensor([[-300.0], [300.0]], device=device, dtype=dtype).repeat(2, 1)
         std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
         transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
-        assert transform.dtype == mean.dtype == inverse.dtype == dtype
+        assert (
+            transform.dtype
+            == mean.dtype
+            == inverse.dtype
+            == (torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype)
+        )
         # Compare dimensionless values so an absolute tolerance cannot accept a zero transform.
         self.assert_close(transform * std, torch.ones_like(transform))
         self.assert_close(mean, torch.zeros_like(mean))
@@ -93,7 +99,12 @@ class TestZCA(BaseTester):
             with torch.autocast(device_type=device.type, dtype=torch.float16):
                 transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
                 assert torch.is_autocast_enabled(device.type)
-            assert transform.dtype == mean.dtype == inverse.dtype == input_dtype
+            assert (
+                transform.dtype
+                == mean.dtype
+                == inverse.dtype
+                == (torch.float32 if input_dtype in (torch.float16, torch.bfloat16) else input_dtype)
+            )
             self.assert_close(transform * std, torch.ones_like(transform))
             self.assert_close(mean, torch.zeros_like(mean))
             self.assert_close(inverse / std, torch.ones_like(inverse))
@@ -131,7 +142,7 @@ class TestZCA(BaseTester):
         assert transform.shape == inverse.shape == (2, 2)
         assert mean.shape == (1, 2)
         assert transform.device == mean.device == inverse.device == data.device
-        assert transform.dtype == mean.dtype == inverse.dtype == half_dtype
+        assert transform.dtype == mean.dtype == inverse.dtype == torch.float32
 
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_covariance_accumulation_bfloat16_range(self, device, dtype, unbiased):
@@ -143,7 +154,12 @@ class TestZCA(BaseTester):
         divisor = data.shape[0] - 1 if unbiased else data.shape[0]
         normalized_std = math.sqrt(data.shape[0] / divisor)
         transform, mean, inverse = kornia.enhance.zca_mean(data, unbiased=unbiased, return_inverse=True)
-        assert transform.dtype == mean.dtype == inverse.dtype == dtype
+        assert (
+            transform.dtype
+            == mean.dtype
+            == inverse.dtype
+            == (torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype)
+        )
         assert transform.device == mean.device == inverse.device == device
         # Compare dimensionless values so an absolute tolerance cannot accept a zero transform.
         self.assert_close(transform * scale, torch.full_like(transform, 1 / normalized_std))
@@ -222,9 +238,6 @@ class TestZCA(BaseTester):
     def test_dim_args(self, dim, device, dtype):
         if "xla" in device.type:
             pytest.skip("buggy with XLA devices.")
-
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
@@ -314,9 +327,10 @@ class TestZCA(BaseTester):
         assert "transform_inv" in state_dict
         assert state_dict["mean_vector"].shape == zca.mean_vector.shape
         assert state_dict["transform_matrix"].shape == zca.transform_matrix.shape
-        # Without compute_inv the inverse is an empty placeholder, made on the data's device and dtype.
+        # Without compute_inv the inverse is an empty placeholder in the fit's working dtype.
         assert state_dict["transform_inv"].shape == (0,)
-        assert all(tensor.device == device and tensor.dtype == dtype for tensor in state_dict.values())
+        compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        assert all(tensor.device == device and tensor.dtype == compute_dtype for tensor in state_dict.values())
 
     def test_unfitted_state_is_empty(self):
         zca = kornia.enhance.ZCAWhitening()

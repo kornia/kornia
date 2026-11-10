@@ -33,6 +33,15 @@ class TestHardNet(BaseTester):
         out = hardnet(inp)
         assert out.shape == (1, 128)
 
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = HardNet(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     @pytest.mark.slow
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
@@ -60,6 +69,15 @@ class TestHardNet8(BaseTester):
         hardnet.eval()  # batchnorm with size 1 is not allowed in train mode
         out = hardnet(inp)
         assert out.shape == (1, 128)
+
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = HardNet8(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)

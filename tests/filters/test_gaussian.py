@@ -25,6 +25,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.filters import (
     GaussianBlur2d,
@@ -49,34 +50,98 @@ from testing.base import (
 )
 
 
+# Generated with Python math: w = [exp(-(i - mean)**2 / (2 * sigma**2)) for i in range(size)];
+# expected = [v / sum(w) for v in w], with mean = size // 2 when unspecified.
 @pytest.mark.parametrize(
     "window_size, sigma, mean, expected",
     [
-        (5, 1.0, None, torch.tensor([[0.0545, 0.2442, 0.4026, 0.2442, 0.0545]])),
+        (5, 1.0, None, [0.05448868455, 0.244201342003, 0.402619946894, 0.244201342003, 0.05448868455]),
         (
             11,
             5.0,
             None,
-            torch.tensor([[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]]),
+            [
+                0.06634166574,
+                0.079425394123,
+                0.091360949823,
+                0.100969464792,
+                0.107213067802,
+                0.10937891544,
+                0.107213067802,
+                0.100969464792,
+                0.091360949823,
+                0.079425394123,
+                0.06634166574,
+            ],
         ),
         (
             11,
             5.0,
             8.0,
-            torch.tensor([[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]]),
+            [
+                0.034263492805,
+                0.046250877542,
+                0.059984154618,
+                0.074744859274,
+                0.089485843327,
+                0.102933220947,
+                0.113758802295,
+                0.120793253768,
+                0.12323343936,
+                0.120793253768,
+                0.113758802295,
+            ],
         ),
         (
             11,
             11.0,
             3.0,
-            torch.tensor([[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]]),
+            [
+                0.092623025915,
+                0.094556631274,
+                0.095736116673,
+                0.096132538951,
+                0.095736116673,
+                0.094556631274,
+                0.092623025915,
+                0.089982225006,
+                0.086697241637,
+                0.082844679454,
+                0.078511767227,
+            ],
         ),
     ],
 )
 def test_gaussian(window_size, sigma, mean, expected, device, dtype):
-    expected = expected.to(device=device, dtype=dtype)
+    expected = torch.tensor([expected], device=device, dtype=dtype)
     result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
-    assert_close(result, expected, atol=1e-4, rtol=1e-4)
+    assert_close(result, expected)
+
+
+def test_gaussian_mixed_native_precision_mean(device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
+    sigma = torch.tensor([[1.3]], device=device, dtype=torch.float32)
+    mean = torch.tensor([[2.123456789]], device=device, dtype=torch.float64)
+    actual = gaussian(5, sigma, mean=mean)
+    expected = gaussian(5, sigma.double(), mean=mean)
+    assert actual.dtype == torch.float64
+    # Sigma's native float32 arithmetic precedes promotion by the float64 mean.
+    assert_close(actual, expected, rtol=1e-7, atol=1e-8)
+
+
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+def test_gaussian_half_default_dtype(half_dtype):
+    expected = gaussian(11, 1.3, mean=3.0, dtype=torch.float64).to(half_dtype)
+    previous = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(half_dtype)
+        actual = gaussian(11, 1.3, mean=3.0)
+        assert actual.dtype == half_dtype
+        assert_close(actual, expected, rtol=0, atol=0)
+    finally:
+        torch.set_default_dtype(previous)
 
 
 @pytest.mark.parametrize(
@@ -656,6 +721,8 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
+        # The host check names the value it read.
+        assert "got tensor([[-1.5" in str(errinfo.value)
 
     def test_sigma_zero_raises_exception(self, device, dtype):
         """Test that zero sigma raises an exception."""
@@ -664,13 +731,79 @@ class TestGaussianBlur2d(BaseTester):
             gaussian_blur2d(sample, (3, 3), (0.0, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
 
-    def test_sigma_tensor_negative_raises_exception(self, device, dtype):
-        """Test that negative sigma tensor raises an exception."""
+    @pytest.mark.parametrize("as_tuple", [False, True])
+    def test_sigma_on_the_host_negative_raises_exception(self, as_tuple, device, dtype):
+        # A CPU sigma tensor, and a tuple of 0-d tensors, are checked on the host during the call on every device.
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], dtype=dtype)
+        if as_tuple:
+            sigma = (sigma[0, 0], sigma[0, 1])
+        with pytest.raises(BaseError, match="sigma must be positive"):
+            gaussian_blur2d(sample, (3, 3), sigma)
+
+    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype):
+        # kornia#6335: reading a device sigma on the host waited for every queued kernel. torch._assert_async checks it
+        # on the device instead, so the call returns and the error surfaces at the next synchronization.
+        if device.type != "mps":
+            pytest.skip("pins MPS: a CPU sigma is read on the host, and on CUDA the assert poisons the context")
+        if not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so sigma is read on the host there")
         sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
-        with pytest.raises(Exception) as errinfo:
-            gaussian_blur2d(sample, (3, 3), sigma)
-        assert "sigma must be positive" in str(errinfo.value)
+        gaussian_blur2d(sample, (3, 3), sigma)
+        with pytest.raises(RuntimeError, match="sigma must be positive"):
+            torch.mps.synchronize()
+
+    def test_sigma_check_is_skipped_when_checks_are_disabled_6335(self, device, dtype):
+        # disable_checks() skips the check for a device sigma too: no assert is left to fail at the next sync.
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = gaussian_blur2d(sample, (3, 3), sigma)
+            # The kernel only uses sigma squared, so a negative sigma blurs like its absolute value.
+            self.assert_close(out, gaussian_blur2d(sample, (3, 3), sigma.abs()))
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
+    def test_sigma_on_the_device_does_not_synchronize_6335(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        sigma = torch.rand(2, 2, device=device, dtype=dtype) + 0.5
+        expected = gaussian_blur2d(sample, (5, 5), sigma.cpu())
+        torch.cuda.synchronize()
+        previous = torch.cuda.get_sync_debug_mode()
+        torch.cuda.set_sync_debug_mode("error")
+        try:
+            actual = gaussian_blur2d(sample, (5, 5), sigma)
+        finally:
+            torch.cuda.set_sync_debug_mode(previous)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_sigma_tuple_is_checked_on_the_host_under_any_default_device_6337(self, device, dtype):
+        # A tuple sigma is built on the CPU whatever the default device: under a meta default it used to land on meta,
+        # where the check had nothing to read and an invalid sigma passed; under a CUDA default it was a device assert.
+        sample = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(BaseError, match="sigma must be positive"):
+            gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
+
+    def test_sigma_tuple_under_a_cuda_default_device_does_not_synchronize_6337(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        expected = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+        torch.cuda.synchronize()
+        previous = torch.cuda.get_sync_debug_mode()
+        with torch.device(device):
+            torch.cuda.set_sync_debug_mode("error")
+            try:
+                actual = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+            finally:
+                torch.cuda.set_sync_debug_mode(previous)
+        self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_kernel_size_even_raises_exception(self, device, dtype):
         """Test that even kernel size raises an exception."""
@@ -736,7 +869,7 @@ class TestGaussianBlur2d(BaseTester):
         # a torch reshape error
         for rows in (2, 3):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
-            with pytest.raises(BaseError, match=f"sigma batch of {rows} for an input batch of 4"):
+            with pytest.raises(BaseError, match=rf"(?s)expected 4 or 1, got {rows}\..*sigma must have a batch of 1 or"):
                 gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
         # one row for the whole batch and one row per sample run
         for rows in (1, 4):
@@ -756,7 +889,7 @@ class TestGaussianBlur2d(BaseTester):
         sigma = (1.5, 1.5)
         output_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=True)
         output_non_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=False)
-        assert_close(output_sep, output_non_sep, atol=1e-4, rtol=1e-4)
+        assert_close(output_sep, output_non_sep)
 
     def test_different_kernel_sizes(self, device, dtype):
         """Test with various kernel sizes."""

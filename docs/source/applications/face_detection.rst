@@ -28,7 +28,8 @@ Using our API you can easily detect faces in images as shown below:
     # select the device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # load the image as a (1, 3, H, W) float tensor in [0, 255], the range YuNet expects
+    # load the image as a (1, 3, H, W) RGB float tensor in [0, 255], the range FaceDetector expects;
+    # it flips the channels to the BGR order YuNet was trained on
     img = K.io.load_image("image.jpg", ImageLoadType.RGB32, device=device)[None] * 255.0
 
     # create the detector and find the faces

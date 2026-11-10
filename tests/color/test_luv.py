@@ -48,9 +48,6 @@ class TestRgbToLuv(BaseTester):
             assert kornia.color.rgb_to_luv(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.tensor(
             [
                 [
@@ -102,12 +99,14 @@ class TestRgbToLuv(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            # The literal reference above predates input quantization; isolate arithmetic error on half inputs.
+            expected = kornia.color.rgb_to_luv(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.rgb_to_luv(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         # Generate on CPU with a fixed seed so the test is order-independent.
         torch.manual_seed(0)
         data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
@@ -115,7 +114,13 @@ class TestRgbToLuv(BaseTester):
         rgb = kornia.color.luv_to_rgb
 
         data_out = luv(rgb(data))
-        self.assert_close(data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = luv(rgb(wide).to(dtype).double()).to(device=device, dtype=dtype)
+            self.assert_close(data_out, reference)
+        else:
+            self.assert_close(data_out, data)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -161,8 +166,6 @@ class TestLuvToRgb(BaseTester):
             assert kornia.color.luv_to_rgb(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         data = torch.tensor(
             [
                 [
@@ -219,12 +222,13 @@ class TestLuvToRgb(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            expected = kornia.color.luv_to_rgb(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.luv_to_rgb(data), expected)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         # Generate on CPU with a fixed seed so the test is order-independent.
         torch.manual_seed(0)
         data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
@@ -232,7 +236,13 @@ class TestLuvToRgb(BaseTester):
         rgb = kornia.color.luv_to_rgb
 
         data_out = rgb(luv(data))
-        self.assert_close(data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = rgb(luv(wide).to(dtype).double()).to(device=device, dtype=dtype)
+            self.assert_close(data_out, reference)
+        else:
+            self.assert_close(data_out, data)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -269,13 +279,12 @@ def test_luv_converters_float16_black_are_finite(function):
 @pytest.mark.parametrize(
     "half_dtype, scale, luv_atol, rgb_atol",
     [
-        # A subnormal float16 eps overflows the backward of rgb_to_luv (1e-5) and luv_to_rgb (1e-8).
-        (torch.float16, 1e-5, 5e-2, 2e-5),
-        (torch.float16, 1e-8, 5e-2, 2e-5),
-        # A float16 eps floor much larger than the smallest normal moves these values.
-        (torch.float16, 1e-3, 5e-2, 2e-5),
-        # bfloat16 represents the default eps and must keep it.
-        (torch.bfloat16, 1e-4, 2e-3, 2e-5),
+        # Half inputs are converted in float32 with the caller's eps, so dark pixels match the float32 conversion up to
+        # the rounding of the output. In float16, 1e-5 is subnormal and 1e-8 rounds to black.
+        (torch.float16, 1e-5, 1e-4, 2e-5),
+        (torch.float16, 1e-8, 1e-4, 2e-5),
+        (torch.float16, 1e-3, 1e-4, 2e-5),
+        (torch.bfloat16, 1e-4, 1e-4, 2e-5),
     ],
 )
 def test_luv_converters_half_dark_pixels_match_float32(half_dtype, scale, luv_atol, rgb_atol):

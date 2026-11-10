@@ -15,8 +15,11 @@
 # limitations under the License.
 #
 
+"""Soft-argmax over whole heatmaps and sliding windows, and quadratic refinement of 3D scale-space maxima."""
+
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Optional
 
@@ -176,10 +179,22 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
 
 
 class ConvSoftArgmax2d(nn.Module):
-    r"""nn.Module that calculates soft argmax 2d per window.
+    r"""Compute a soft-argmax (x, y) per window; the module form of conv_soft_argmax2d.
+
+    ``op = ConvSoftArgmax2d(kernel_size, stride, padding)`` stores the arguments of :func:`conv_soft_argmax2d`, and
+    ``coords = op(heatmap)`` returns what that function returns for them: the ``(B, C, 2, H_out, W_out)`` window
+    coordinates in ``(x, y)`` order, normalized by default, and with ``output_value=True`` the pair
+    ``(coords, values)``.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax2d`.
+
+    See Also:
+        - :func:`conv_soft_argmax2d`: the function form.
+        - :class:`ConvSoftArgmax3d`: the module for ``(B, C, D, H, W)`` volumes, in voxels and with values by
+          default.
+        - :class:`SpatialSoftArgmax2d`: one soft-argmax per channel over the whole map.
+
     """
 
     def __init__(
@@ -221,7 +236,7 @@ class ConvSoftArgmax2d(nn.Module):
         window coordinates, which gives differentiable subpixel coordinates.
 
         Args:
-            x: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            x: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is the number of heatmap
                 channels, :math:`H` is height, and :math:`W` is width.
 
@@ -243,16 +258,27 @@ class ConvSoftArgmax2d(nn.Module):
 
 
 class ConvSoftArgmax3d(nn.Module):
-    r"""nn.Module that calculates soft argmax 3d per window.
+    r"""Compute a soft-argmax (d, x, y) per window; the module form of conv_soft_argmax3d.
+
+    ``op = ConvSoftArgmax3d(kernel_size, stride, padding)`` stores the arguments of :func:`conv_soft_argmax3d`, and
+    ``coords, values = op(volume)`` returns what that function returns for them: the ``(B, C, 3, D_out, H_out, W_out)``
+    window coordinates in ``(d, x, y)`` order, in voxels by default, and the ``(B, C, D_out, H_out, W_out)``
+    softmax-pooled values; with ``output_value=False``, the coordinates alone. Passing ``strict_maxima_bonus`` emits a
+    :class:`DeprecationWarning` and has no effect.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax3d`.
+
+    See Also:
+        - :func:`conv_soft_argmax3d`: the function form.
+        - :class:`ConvSoftArgmax2d`: the module for ``(B, C, H, W)`` maps, normalized and without values by default.
+
     """
 
     def __init__(
         self,
         kernel_size: tuple[int, int, int] = (3, 3, 3),
-        stride: tuple[int, int, int] = (1, 1, 1),
+        stride: int | tuple[int, int, int] = (1, 1, 1),
         padding: tuple[int, int, int] = (1, 1, 1),
         temperature: torch.Tensor | float = 1.0,
         normalized_coordinates: bool = False,
@@ -287,7 +313,7 @@ class ConvSoftArgmax3d(nn.Module):
         """Estimate local 3D coordinates from response-volume windows.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth or scale level, :math:`H` is height, and
                 :math:`W` is width.
@@ -341,7 +367,15 @@ def conv_soft_argmax2d(
     eps: float = 1e-8,
     output_value: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
+    r"""Compute a soft-argmax (x, y) in every sliding window of a (B, C, H, W) heatmap.
+
+    ``coords = conv_soft_argmax2d(heatmap)`` takes a ``(B, C, H, W)`` heatmap and returns, for every ``kernel_size``
+    window at every ``stride``, the mean position of its pixels under the softmax of the window's values divided by
+    ``temperature``: ``(B, C, 2, H_out, W_out)`` with ``(x, y)`` along dimension 2, normalized to :math:`[-1, 1]` by
+    default or in pixels with ``normalized_coordinates=False``. With ``output_value=True`` it also returns the
+    softmax-weighted mean value of each window, ``(B, C, H_out, W_out)``. The default ``(3, 3)`` window with stride 1
+    and padding 1 gives ``H_out, W_out = H, W``. Each window locates its own peak; for one location per channel over
+    the whole map, use :func:`spatial_soft_argmax2d`, and for ``(B, C, D, H, W)`` volumes, :func:`conv_soft_argmax3d`.
 
     .. math::
         xy(X) = \frac{\sum_{p \in X} (x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
@@ -363,8 +397,8 @@ def conv_soft_argmax2d(
           accepted and has no effect (`#5020 <https://github.com/kornia/kornia/issues/5020>`_).
 
     Args:
-        input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
-        kernel_size: the size of the window.
+        input: the given heatmap with shape ``(B, C, H, W)``.
+        kernel_size: the size ``(ky, kx)`` of the window.
         stride: the stride of the window.
         padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
@@ -372,22 +406,33 @@ def conv_soft_argmax2d(
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: accepted for backward compatibility and ignored; every window's softmax denominator is at least 1.
-        output_value: if True, val is output, if False, only ij.
+        output_value: whether to also return the softmax-pooled value of each window.
 
     Returns:
-        Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
-        On each window, the function computed returns with shapes :math:`(N, C, 2, H_{out},
-        W_{out})`, :math:`(N, C, H_{out}, W_{out})`,
+        the coordinates of each window, ``(B, C, 2, H_out, W_out)`` with ``(x, y)`` along dimension 2, and with
+        ``output_value=True`` also the softmax-pooled heatmap values, ``(B, C, H_out, W_out)``,
 
         where
 
          .. math::
-             H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
+             H_{out} = \left\lfloor\frac{H  + 2 \times \text{padding}[0] -
                (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
-             W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
+             W_{out} = \left\lfloor\frac{W  + 2 \times \text{padding}[1] -
                (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+
+    Raises:
+        TypeError: if ``input`` is not a tensor.
+        ValueError: if ``input`` is not 4D, if ``padding`` is negative or more than half of ``kernel_size`` on an
+          axis, or if ``temperature`` is not positive.
+
+    See Also:
+        - :func:`conv_soft_argmax3d`: the same per-window soft-argmax over a ``(B, C, D, H, W)`` volume, returning
+          ``(d, x, y)``, in voxels and with values by default.
+        - :func:`spatial_soft_argmax2d`: one soft-argmax per channel, over the whole map.
+        - :class:`ConvSoftArgmax2d`: the module form.
+        - :func:`nms2d`: the strict local maxima of a window, at integer positions and without a softmax.
 
     Examples:
         >>> input = torch.randn(20, 16, 50, 32)
@@ -466,7 +511,7 @@ def conv_soft_argmax2d(
 def conv_soft_argmax3d(
     input: torch.Tensor,
     kernel_size: tuple[int, int, int] = (3, 3, 3),
-    stride: tuple[int, int, int] = (1, 1, 1),
+    stride: int | tuple[int, int, int] = (1, 1, 1),
     padding: tuple[int, int, int] = (1, 1, 1),
     temperature: torch.Tensor | float = 1.0,
     normalized_coordinates: bool = False,
@@ -474,7 +519,16 @@ def conv_soft_argmax3d(
     output_value: bool = True,
     strict_maxima_bonus: Optional[float] = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
+    r"""Compute a soft-argmax (d, x, y) in every sliding window of a (B, C, D, H, W) volume.
+
+    ``coords, values = conv_soft_argmax3d(volume)`` takes a ``(B, C, D, H, W)`` volume and returns, for every
+    ``kernel_size`` window at every ``stride``, the mean position of its voxels under the softmax of the window's
+    values divided by ``temperature``, ``(B, C, 3, D_out, H_out, W_out)`` with ``(d, x, y)`` along dimension 2, and
+    the softmax-weighted mean value of each window, ``(B, C, D_out, H_out, W_out)``. Unlike
+    :func:`conv_soft_argmax2d`, it defaults to voxel coordinates and to returning the values; pass
+    ``normalized_coordinates=True`` for :math:`[-1, 1]` coordinates and ``output_value=False`` for the coordinates
+    alone. To refine only the strict maxima of a scale-space volume by a quadratic fit, use
+    :func:`conv_quad_interp3d` instead.
 
     .. math::
         dxy(X) = \frac{\sum_{p \in X} (d_p, x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
@@ -490,37 +544,47 @@ def conv_soft_argmax3d(
           :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
-        input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
-        kernel_size:  size of the window.
-        stride: stride of the window.
+        input: the given heatmap with shape ``(B, C, D, H, W)``.
+        kernel_size: the size ``(kd, ky, kx)`` of the window.
+        stride: stride of the window, an ``int`` for every axis or a tuple ``(sd, sy, sx)``.
         padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
         eps: accepted for backward compatibility and ignored; every window's softmax denominator is at least 1.
-        output_value: if True, val is output, if False, only ij.
+        output_value: whether to also return the softmax-pooled value of each window.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
           :class:`DeprecationWarning`. Select strict maxima with :func:`~kornia.geometry.subpix.nms3d` instead.
 
     Returns:
-        Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
-        On each window, the function computed returns with shapes :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`,
-        :math:`(N, C, D_{out}, H_{out}, W_{out})`,
+        the coordinates of each window, ``(B, C, 3, D_out, H_out, W_out)`` with ``(d, x, y)`` along dimension 2, and
+        with ``output_value=True`` (the default) also the softmax-pooled values, ``(B, C, D_out, H_out, W_out)``,
 
         where
 
          .. math::
-             D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
+             D_{out} = \left\lfloor\frac{D  + 2 \times \text{padding}[0] -
              (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
-             H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[1] -
+             H_{out} = \left\lfloor\frac{H  + 2 \times \text{padding}[1] -
              (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
          .. math::
-             W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
+             W_{out} = \left\lfloor\frac{W  + 2 \times \text{padding}[2] -
              (\text{kernel\_size}[2] - 1) - 1}{\text{stride}[2]} + 1\right\rfloor
+
+    Raises:
+        TypeError: if ``input`` is not a tensor.
+        ValueError: if ``input`` is not 5D, if ``padding`` is negative or more than half of ``kernel_size`` on an
+          axis, or if ``temperature`` is not positive.
+
+    See Also:
+        - :func:`conv_soft_argmax2d`: the same per-window soft-argmax over a ``(B, C, H, W)`` map, returning
+          ``(x, y)``, normalized and without values by default.
+        - :func:`conv_quad_interp3d`: refines only the strict maxima of a volume, by a quadratic fit.
+        - :class:`ConvSoftArgmax3d`: the module form.
 
     Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
@@ -562,7 +626,7 @@ def conv_soft_argmax3d(
     h_out = (h + 2 * py - ky) // sy + 1
     w_out = (w + 2 * px - kx) // sx + 1
     pad = [px, px, py, py, pz, pz]
-    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, stride)
+    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, (sz, sy, sx))
     weights = torch.softmax(logits, dim=2)
 
     # We need to output also coordinates
@@ -572,7 +636,7 @@ def conv_soft_argmax3d(
     grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
     grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=(sz, sy, sx))
 
     # Coordinates of maxima residual to window center: the softmax-weighted voxel offsets of each window
     offsets = window_kernel.reshape(3, kz * ky * kx)
@@ -592,7 +656,7 @@ def conv_soft_argmax3d(
     if not output_value:
         return coords_max
 
-    windows = _unfold3d(F.pad(input, pad), kernel_size, stride)
+    windows = _unfold3d(F.pad(input, pad), kernel_size, (sz, sy, sx))
     x_softmaxpool = (weights * windows).sum(2).view(b, c, d_out, h_out, w_out)
     return coords_max, x_softmaxpool
 
@@ -600,7 +664,14 @@ def conv_soft_argmax3d(
 def spatial_soft_argmax2d(
     input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True
 ) -> torch.Tensor:
-    r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
+    r"""Compute one soft-argmax (x, y) per heatmap channel over the whole map.
+
+    ``coords = spatial_soft_argmax2d(heatmap, temperature)`` takes a ``(B, N, H, W)`` heatmap and returns one ``(x, y)``
+    per channel, ``(B, N, 2)``: the mean pixel position under the softmax of ``heatmap / temperature`` over all
+    ``H x W`` pixels, normalized to :math:`[-1, 1]` by default or in pixels with ``normalized_coordinates=False``. It
+    is a differentiable mean, not a maximum: it lands on the peak only when the peak dominates the map at the given
+    temperature, and the rest of the map pulls it away otherwise. For one location per sliding window, use
+    :func:`conv_soft_argmax2d`.
 
     Convention:
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to
@@ -610,14 +681,21 @@ def spatial_soft_argmax2d(
           not either peak.
 
     Args:
-        input: the given heatmap with shape :math:`(B, N, H, W)`.
+        input: the given heatmap with shape ``(B, N, H, W)``.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-        the expected coordinates of each map with shape :math:`(B, N, 2)`.
+        the expected coordinates of each map with shape ``(B, N, 2)``.
+
+    See Also:
+        - :func:`spatial_softmax2d`: the softmax step alone, to inspect or reuse the probability maps.
+        - :func:`spatial_expectation2d`: the expectation step alone, for maps that already sum to one.
+        - :func:`conv_soft_argmax2d`: one soft-argmax per sliding window, for maps with several peaks.
+        - :class:`SpatialSoftArgmax2d`: the module form.
+        - :func:`render_gaussian2d`: the other direction, a Gaussian probability map around a given ``(x, y)``.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -634,10 +712,20 @@ def spatial_soft_argmax2d(
 
 
 class SpatialSoftArgmax2d(nn.Module):
-    r"""Compute the Spatial Soft-Argmax 2D of a given heatmap.
+    r"""Compute a soft-argmax (x, y) per channel; the module form of spatial_soft_argmax2d.
+
+    ``op = SpatialSoftArgmax2d(temperature)`` stores the temperature, ``torch.tensor(1.0)`` for ``None``, and
+    ``normalized_coordinates``, and ``coords = op(heatmap)`` returns
+    ``spatial_soft_argmax2d(heatmap, temperature, normalized_coordinates)``: one ``(x, y)`` per channel of a
+    ``(B, N, H, W)`` heatmap, ``(B, N, 2)``, normalized by default.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.spatial_soft_argmax2d`.
+
+    See Also:
+        - :func:`spatial_soft_argmax2d`: the function form.
+        - :class:`ConvSoftArgmax2d`: one soft-argmax per sliding window instead of per channel.
+
     """
 
     def __init__(self, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True) -> None:
@@ -650,7 +738,7 @@ class SpatialSoftArgmax2d(nn.Module):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"temperature={self.temperature}, "
+            f"(temperature={self.temperature}, "
             f"normalized_coordinates={self.normalized_coordinates})"
         )
 
@@ -662,7 +750,7 @@ class SpatialSoftArgmax2d(nn.Module):
         taking the hard argmax of each heatmap.
 
         Args:
-            input: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            input: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`H` is height, and :math:`W` is width.
 
@@ -672,6 +760,52 @@ class SpatialSoftArgmax2d(nn.Module):
             ``self.normalized_coordinates``.
         """
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
+
+
+def _scale_to_unit_hessian(
+    dxx: torch.Tensor,
+    dyy: torch.Tensor,
+    dss: torch.Tensor,
+    dxy: torch.Tensor,
+    dxs: torch.Tensor,
+    dys: torch.Tensor,
+    r0: torch.Tensor,
+    r1: torch.Tensor,
+    r2: torch.Tensor,
+) -> tuple[torch.Tensor, ...]:
+    """Scale a Cramer system by the power of two that brings its largest Hessian magnitude to about 1.
+
+    On a flat float32 image the Hessian entries are rounding noise of about 1e-15. Their determinants reach float32's
+    smallest subnormal, and the relative floor ``eps * m**3`` underflows to 0, so tiny determinants count as solved,
+    their shifts are inaccurate, and the backward of ``num / det``, ``(num / det) / det``, is inf: NaN behind the
+    callers' masks, which then spreads to every pixel. Scaled, the largest Hessian magnitude is about 1. Cramer's shifts
+    do not change when H and the right-hand side are scaled together, and a power of two scales every product exactly,
+    so wherever the unscaled solve neither underflows nor overflows, the shifts and the ``solved`` mask stay the same,
+    bit for bit. A factor above 1 is capped so that it takes the right-hand side no higher than ``2**64``: a tiny
+    Hessian next to a large finite right-hand side would otherwise scale it to inf. The cap never scales a system
+    down, so a large right-hand side alone leaves the system as it is.
+    """
+
+    def _exponent(*entries: torch.Tensor) -> torch.Tensor:
+        magnitude = torch.stack([t.abs() for t in entries]).amax(0).detach()
+        usable = torch.isfinite(magnitude) & (magnitude > 0)
+        exponent = torch.floor(torch.log2(torch.where(usable, magnitude, torch.ones_like(magnitude))))
+        # An unusable magnitude imposes no cap on the right-hand side.
+        return torch.where(usable, exponent, torch.full_like(exponent, -math.inf))
+
+    # The largest exponent whose power of two and its reciprocal are both normal numbers: 126 in float32.
+    limit = -math.log2(torch.finfo(dxx.dtype).tiny)
+    hessian = _exponent(dxx, dyy, dss, dxy, dxs, dys)
+    hessian = torch.where(torch.isfinite(hessian), hessian, torch.zeros_like(hessian))
+    # 2**-exponent scales max |H| to [1, 2). An upward factor stops at 2**(63 - exponent_r), which keeps max |r| below
+    # 2**64; the cap is at most 0, so it never scales down a system the Hessian alone would leave as it is.
+    exponent = torch.maximum(hessian, (_exponent(r0, r1, r2) - 63).clamp(max=0)).clamp(-limit, limit)
+    # 2**-exponent. In eager mode, exp2 of a negative integer is one ulp below its power of two on MPS, and exp2 of a
+    # non-negative integer and its reciprocal are exact: build the factor from those. (MPS inductor's exp2 is inexact
+    # from 2**13; the refiners do not compile on MPS today.)
+    power = torch.exp2(exponent.abs())
+    factor = torch.where(exponent > 0, power.reciprocal(), power)
+    return tuple(t * factor for t in (dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2))
 
 
 def _solve_cramer_sym3x3_cuda(
@@ -695,7 +829,7 @@ def _solve_cramer_sym3x3_cuda(
     All inputs must be 1-D tensors of the same length: the packed layout indexes
     a single batch dimension and silently reshapes anything wider.
     """
-    system = torch.stack((dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
+    system = torch.stack(_scale_to_unit_hessian(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
     # Row-major H followed by H with successive columns replaced by the RHS.
     indices = torch.tensor(
         (
@@ -713,6 +847,8 @@ def _solve_cramer_sym3x3_cuda(
     scale = system[:, :6].abs().amax(1, keepdim=True)
     solved = det.abs() > eps * scale * scale * scale
     shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
+    # An unsolved shift is 0, as in the scalar solve.
+    shifts = torch.where(solved, shifts, torch.zeros_like(shifts))
     sx, sy, ss = shifts.unbind(1)
     return sx, sy, ss, solved[:, 0]
 
@@ -765,8 +901,7 @@ def _solve_cramer_sym3x3(
 
     Returns:
         (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
-        systems (``|det| > eps * m**3``).  Outputs for unsolved entries are numerically
-        meaningless and should be discarded by the caller.
+        systems (``|det| > eps * m**3``). The shifts of an unsolved system are 0.
     """
     # The packed solve indexes one batch dimension, while the scalar code below
     # is rank-agnostic. Dispatch only where the two agree, so a wider caller
@@ -774,18 +909,16 @@ def _solve_cramer_sym3x3(
     if dxx.is_cuda and dxx.ndim == 1 and dxx.dtype in (torch.float32, torch.float64):
         return _solve_cramer_sym3x3_cuda(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2, eps)
 
-    # float16 cannot carry this solve. The determinant is a product of three
-    # second derivatives, so for a [0, 1] response it lands around 1e-4 and
-    # far below, and the relative floor admits it. The forward divides
-    # by it once and stays finite, but the backward of ``num / safe_det``
-    # scales by ``1 / safe_det**2``, and that square is not representable in
-    # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
-    # to NaN. bfloat16 keeps float32's exponent range and is unaffected.
+    # float16 is solved in float32 and the shifts are rounded once: the relative
+    # floor of the scaled system, about 1e-7, is below float16's smallest normal
+    # number (finfo.tiny is 6.1e-5). bfloat16 keeps float32's exponent range and
+    # is solved in its own dtype, as before.
     in_dtype = dxx.dtype
     if in_dtype == torch.float16:
         dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()
         dxy, dxs, dys = dxy.float(), dxs.float(), dys.float()
         r0, r1, r2 = r0.float(), r1.float(), r2.float()
+    dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2 = _scale_to_unit_hessian(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2)
 
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
@@ -800,6 +933,9 @@ def _solve_cramer_sym3x3(
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+    # An unsolved shift is 0, not the numerator: on the scaled system that can exceed float16's range, and the callers
+    # multiply it by the gradient before masking, where an inf would make the backward NaN.
+    sx, sy, ss = (torch.where(solved, t, torch.zeros_like(t)) for t in (sx, sy, ss))
 
     if in_dtype == torch.float16:
         sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)
@@ -815,7 +951,15 @@ def conv_quad_interp3d(
     dilation_radius: int = 1,
     allow_scale_steps: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Subpixel localization of 3D scale-space extrema via quadratic interpolation.
+    r"""Refine 3D scale-space maxima by quadratic fit, precomputing the solve near each maximum.
+
+    ``coords, values = conv_quad_interp3d(response)`` takes a ``(B, C, D, H, W)`` scale-space response, with the scale
+    levels along ``D``, finds its strict ``3 x 3 x 3`` maxima with :func:`nms3d` (or reads ``precomputed_nms_mask``),
+    and returns for every voxel its ``(d, x, y)`` coordinates, ``(B, C, 3, D, H, W)``, and its value,
+    ``(B, C, D, H, W)``; only the refined maxima move off their grid index and change value. It solves the fit once
+    for every voxel within ``dilation_radius`` of a maximum and then follows the moves by table lookup, which suits
+    CUDA; :func:`iterative_quad_interp3d` solves again at each maximum on every iteration with no radius limit, which
+    suits the CPU, and :class:`AdaptiveQuadInterp3d` picks between the two by device.
 
     For each NMS maximum the function fits a 3-D quadratic to the local
     :math:`3 \times 3 \times 3` neighbourhood and solves for the sub-voxel
@@ -824,17 +968,21 @@ def conv_quad_interp3d(
     and the solve is repeated — up to ``n_iters`` times.
 
     Unlike a naive iterative approach, all Hessian solves are precomputed once at
-    the start for every voxel that any keypoint could possibly visit (the
-    **dilated NMS neighbourhood**, an L\ :math:`\infty` ball of radius
-    ``dilation_radius`` around each maximum).  The subsequent iteration loop contains
-    **no data-dependent Python control flow** and no GPU→CPU synchronisation,
-    making the function fully compatible with ``torch.compile`` / CUDA graphs.
+    the start for every voxel of the **dilated NMS neighbourhood**, an
+    L\ :math:`\infty` ball of radius ``dilation_radius`` around each maximum.  The
+    iteration loop that follows contains **no data-dependent Python control flow**
+    and no GPU→CPU synchronisation. Finding the maxima and their neighbourhoods,
+    with ``torch.where`` on the mask and boolean indexing, does depend on the data:
+    on CUDA it synchronises with the host, and a default ``torch.compile`` breaks
+    the graph there; with ``torch._dynamo.config.capture_dynamic_output_shape_ops``
+    enabled, as :class:`~kornia.feature.ScaleSpaceDetector` does when it compiles
+    its subpix module, it is captured in one graph.
 
     The ``dilation_radius`` controls the precompute footprint and should be set
     to the maximum number of integer-centre moves expected per keypoint.  With the
     default ``max_subpixel_shift=0.6`` almost all keypoints converge within 1 move,
     so the default ``dilation_radius=1`` (i.e. :math:`3^3 = 27` positions per
-    maximum) is sufficient.  Use ``dilation_radius=2`` (:math:`5^3 = 125`) for
+    maximum) covers almost all of them.  Use ``dilation_radius=2`` (:math:`5^3 = 125`) for
     extra safety.  Setting it to ``n_iters`` gives the result of
     :func:`iterative_quad_interp3d`, but is much slower on large images.
 
@@ -850,7 +998,7 @@ def conv_quad_interp3d(
           than 3 is returned unrefined.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
         n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
             last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
@@ -859,23 +1007,39 @@ def conv_quad_interp3d(
         max_subpixel_shift: threshold above which the integer centre is
             moved one step and another iteration is run.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         dilation_radius: L\ :math:`\infty` radius (in voxels) of the neighbourhood
             around each NMS maximum where the Hessian solve is precomputed.
-            Keypoints that attempt to move farther than this are marked invalid.
-        allow_scale_steps: if ``True`` (default), the iterative shift is also
-            applied along the scale (depth) axis; set to ``False`` to keep the
-            keypoint on its original scale level.
+            Keypoints that move farther are rejected, keeping their grid coordinates
+            and input value, unless the voxels they reach were precomputed for
+            another maximum.
+        allow_scale_steps: if ``True`` (default), the integer centre may also move
+            along the scale (depth) axis; set to ``False`` to keep the integer centre
+            on its original scale level. The sub-voxel scale shift is applied either way.
 
     Returns:
         Tuple ``(coords_max, y_max)``:
 
-        * ``coords_max`` — shape :math:`(B, C, 3, D, H, W)`, refined
+        * ``coords_max`` — shape ``(B, C, 3, D, H, W)``, refined
           ``[scale, x(width), y(height)]`` coordinates for each NMS maximum;
           non-maximum positions keep their grid coordinates.
-        * ``y_max`` — shape :math:`(B, C, D, H, W)`, quadratically corrected
+        * ``y_max`` — shape ``(B, C, D, H, W)``, quadratically corrected
           response at each NMS maximum; other positions keep the input value.
+
+    Raises:
+        TypeError: if ``input`` is not a tensor.
+        ValueError: if ``input`` is not 5D.
+
+    See Also:
+        - :func:`iterative_quad_interp3d`: solves again at each maximum on every iteration, with no radius limit and
+          an optional ``max_candidates`` cap; faster on the CPU.
+        - :class:`AdaptiveQuadInterp3d`: by default runs this function on CUDA and :func:`iterative_quad_interp3d`
+          elsewhere.
+        - :class:`ConvQuadInterp3d`: the module form.
+        - :func:`nms3d`: the strict maxima this function refines; pass its mask as ``precomputed_nms_mask``.
+        - :func:`conv_soft_argmax3d`: a softmax-weighted position in every window instead of a quadratic fit at the
+          maxima.
 
     Example:
         >>> input = torch.randn(2, 3, 5, 64, 64)
@@ -1092,13 +1256,18 @@ def conv_quad_interp3d(
 
 
 class ConvQuadInterp3d(nn.Module):
-    r"""Subpixel localization of 3D scale-space extrema via quadratic interpolation.
+    r"""Refine scale-space maxima by quadratic fit; the module form of conv_quad_interp3d.
+
+    ``op = ConvQuadInterp3d(n_iters, max_subpixel_shift=0.6, dilation_radius=1)`` stores the arguments, and
+    ``coords, values = op(response, precomputed_nms_mask)`` returns what :func:`conv_quad_interp3d` returns for them:
+    the ``(B, C, 3, D, H, W)`` refined ``(d, x, y)`` coordinates and the ``(B, C, D, H, W)`` values of a
+    ``(B, C, D, H, W)`` response.
 
     Wraps :func:`~kornia.geometry.subpix.conv_quad_interp3d`.  The Hessian system
     is solved once for each voxel in the dilated NMS neighbourhood (no dense
     precomputation over the whole volume), then the shift chain is followed by
-    table lookup with no GPU→CPU synchronisation — making the module compatible
-    with ``torch.compile`` and CUDA graphs.
+    table lookup with no GPU→CPU synchronisation; finding the maxima still
+    synchronises, as :func:`~kornia.geometry.subpix.conv_quad_interp3d` describes.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
@@ -1108,6 +1277,16 @@ class ConvQuadInterp3d(nn.Module):
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
             :class:`DeprecationWarning`.
         max_subpixel_shift: shift threshold that triggers integer centre move.
+        dilation_radius: radius of the precomputed neighbourhood, as in
+            :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
+        allow_scale_steps: whether the integer centre may move along the scale axis, as in
+            :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
+
+    See Also:
+        - :func:`conv_quad_interp3d`: the function form.
+        - :class:`IterativeQuadInterp3d`: the module that solves again at each maximum on every iteration.
+        - :class:`AdaptiveQuadInterp3d`: the module that picks this backend or the iterative one by device.
+
     """
 
     def __init__(
@@ -1138,14 +1317,14 @@ class ConvQuadInterp3d(nn.Module):
     def forward(
         self, x: torch.Tensor, precomputed_nms_mask: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Refine 3D extrema with convolution-based quadratic interpolation.
+        """Refine 3D extrema by quadratic interpolation, with the solve precomputed near each maximum.
 
         The method starts from local maxima in a scale-space response volume
         and fits a local quadratic model around each candidate. The fitted
         offset gives a subpixel position in scale, x, and y coordinates.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`D` is the scale/depth dimension.
             precomputed_nms_mask: Optional boolean NMS mask with the same shape
                 as ``x``. Passing it avoids recomputing local maxima.
@@ -1174,10 +1353,17 @@ def iterative_quad_interp3d(
     precomputed_nms_mask: Optional[torch.Tensor] = None,
     max_candidates: Optional[int] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
+    r"""Refine 3D scale-space maxima by quadratic fit, re-solving at each maximum per iteration.
 
-    Unlike :func:`conv_quad_interp3d`, which pre-computes the Hessian solve for all
-    voxels reachable from NMS maxima and then follows shifts by table lookup, this
+    ``coords, values = iterative_quad_interp3d(response)`` takes a ``(B, C, D, H, W)`` scale-space response and returns
+    what :func:`conv_quad_interp3d` returns: for every voxel its ``(d, x, y)`` coordinates, ``(B, C, 3, D, H, W)``, and
+    its value, ``(B, C, D, H, W)``, moved and corrected only at the refined strict ``3 x 3 x 3`` maxima. It works on
+    the maxima alone, with no precomputed neighbourhood, so a maximum is not limited to a radius around its start, and
+    ``max_candidates`` caps the work per ``(b, c)`` map; it is the faster choice on the CPU, and
+    :func:`conv_quad_interp3d` on CUDA.
+
+    Unlike :func:`conv_quad_interp3d`, which pre-computes the Hessian solve for the
+    voxels near NMS maxima and then follows shifts by table lookup, this
     function explicitly re-extracts the :math:`3 \times 3 \times 3` patch at each
     NMS maximum and iterates up to ``n_iters`` times. When the estimated subpixel
     shift along any spatial or scale axis exceeds ``max_subpixel_shift`` the integer
@@ -1188,7 +1374,7 @@ def iterative_quad_interp3d(
           ``dilation_radius`` neighbourhood.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
         n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
             last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
@@ -1196,13 +1382,13 @@ def iterative_quad_interp3d(
             :func:`~kornia.geometry.subpix.nms3d` instead.
         max_subpixel_shift: if the estimated shift along any axis is larger than this
             threshold the integer center is displaced and another iteration is run.
-        allow_scale_steps: if ``True`` (default), the iterative shift is also
-            applied along the scale (depth) axis; set to ``False`` to keep the
-            keypoint on its original scale level.
+        allow_scale_steps: if ``True`` (default), the integer centre may also move
+            along the scale (depth) axis; set to ``False`` to keep the integer centre
+            on its original scale level. The sub-voxel scale shift is applied either way.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
-        max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
+        max_candidates: if given, only the top-``max_candidates`` NMS maxima of each ``(b, c)`` map (ranked by
             pre-refinement response) are processed.  The rest keep their grid-coordinate
             values.  This is a **CPU speed-up knob**: for large images the number of 3-D
             NMS maxima can be 10x-100x larger than the desired number of keypoints,
@@ -1214,11 +1400,22 @@ def iterative_quad_interp3d(
     Returns:
         A tuple ``(coords_max, y_max)`` where
 
-        * ``coords_max`` has shape :math:`(B, C, 3, D, H, W)` and stores the refined
+        * ``coords_max`` has shape ``(B, C, 3, D, H, W)`` and stores the refined
           coordinates ``[scale, x, y]`` for every position in the input.
           Non-NMS positions keep their original grid coordinates.
-        * ``y_max`` has shape :math:`(B, C, D, H, W)` and stores the quadratically
+        * ``y_max`` has shape ``(B, C, D, H, W)`` and stores the quadratically
           corrected response values.
+
+    Raises:
+        TypeError: if ``input`` is not a tensor.
+        ValueError: if ``input`` is not 5D or ``max_candidates`` is negative.
+
+    See Also:
+        - :func:`conv_quad_interp3d`: precomputes the solve within ``dilation_radius`` of each maximum and follows the
+          moves by lookup; faster on CUDA.
+        - :class:`AdaptiveQuadInterp3d`: by default runs this function except on CUDA.
+        - :class:`IterativeQuadInterp3d`: the module form.
+        - :func:`nms3d`: the strict maxima this function refines; pass its mask as ``precomputed_nms_mask``.
 
     Example:
         >>> input = torch.randn(2, 3, 3, 8, 8)
@@ -1411,10 +1608,22 @@ def iterative_quad_interp3d(
 
 
 class IterativeQuadInterp3d(nn.Module):
-    r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
+    r"""Refine scale-space maxima by quadratic fit; the module form of iterative_quad_interp3d.
+
+    ``op = IterativeQuadInterp3d(n_iters, max_subpixel_shift=0.6, max_candidates=None)`` stores the arguments, and
+    ``coords, values = op(response, precomputed_nms_mask)`` returns what :func:`iterative_quad_interp3d` returns for
+    them: the ``(B, C, 3, D, H, W)`` refined ``(d, x, y)`` coordinates and the ``(B, C, D, H, W)`` values of a
+    ``(B, C, D, H, W)`` response. Passing ``strict_maxima_bonus`` emits a :class:`DeprecationWarning` and has no
+    effect.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.iterative_quad_interp3d`.
+
+    See Also:
+        - :func:`iterative_quad_interp3d`: the function form.
+        - :class:`ConvQuadInterp3d`: the module that precomputes the solve near each maximum.
+        - :class:`AdaptiveQuadInterp3d`: the module that picks this backend or the precomputing one by device.
+
     """
 
     def __init__(
@@ -1450,7 +1659,7 @@ class IterativeQuadInterp3d(nn.Module):
         """Refine 3D extrema by iteratively fitting local quadratic patches.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 
@@ -1470,18 +1679,20 @@ class IterativeQuadInterp3d(nn.Module):
 
 
 class AdaptiveQuadInterp3d(nn.Module):
-    r"""Subpixel localization of 3D scale-space extrema with automatic backend selection.
+    r"""Refine 3D scale-space maxima by quadratic fit with the faster backend for the device.
+
+    ``op = AdaptiveQuadInterp3d(mode="auto")`` stores the arguments of both backends, and
+    ``coords, values = op(response, precomputed_nms_mask)`` calls :func:`conv_quad_interp3d` with ``mode="conv"``, or
+    with ``mode="auto"`` for an input on CUDA, and :func:`iterative_quad_interp3d` otherwise (``mode="patch"``, or
+    ``"auto"`` on any other device). Both return the ``(B, C, 3, D, H, W)`` refined ``(d, x, y)`` coordinates and the
+    ``(B, C, D, H, W)`` values of a ``(B, C, D, H, W)`` response. With ``max_candidates`` unset they agree on every
+    maximum whose centre stays within ``dilation_radius`` voxels of its start; beyond that the conv backend may
+    reject a maximum the iterative one refines, so CPU and CUDA keypoints can differ, and ``dilation_radius=n_iters``
+    makes the two backends agree. It is the default ``subpix_module`` of :class:`~kornia.feature.ScaleSpaceDetector`.
 
     Wraps :func:`~kornia.geometry.subpix.conv_quad_interp3d` and
     :func:`~kornia.geometry.subpix.iterative_quad_interp3d`, choosing the faster
     backend based on the input device and the requested ``mode``.
-
-    Benchmarks show:
-
-    * **GPU** — :func:`conv_quad_interp3d` is 1.5-2x faster due to better
-      parallelism on the batched gather+solve.
-    * **CPU** — :func:`iterative_quad_interp3d` is faster for large images because
-      it processes only the NMS maxima directly without any dilation/dedup overhead.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
@@ -1500,10 +1711,20 @@ class AdaptiveQuadInterp3d(nn.Module):
         max_subpixel_shift: integer-centre move threshold.
         dilation_radius: L\ :math:`\infty` precompute radius for ``"conv"`` mode
             (ignored in ``"patch"`` mode).
+        allow_scale_steps: whether the integer centre may move along the scale axis, in both modes.
         max_candidates: if set, only the top-``max_candidates`` NMS maxima by
             pre-refinement response are processed in ``"patch"`` mode.  Has no effect
             in ``"conv"`` mode.  Useful on CPU when the number of 3-D NMS maxima greatly
             exceeds the desired number of keypoints (see :func:`iterative_quad_interp3d`).
+
+    Raises:
+        ValueError: if ``mode`` is not ``"patch"``, ``"conv"`` or ``"auto"``.
+
+    See Also:
+        - :func:`conv_quad_interp3d`: the backend on CUDA, with a ``dilation_radius`` limit.
+        - :func:`iterative_quad_interp3d`: the backend elsewhere, with an optional ``max_candidates`` cap.
+        - :class:`ConvQuadInterp3d`: the conv backend alone, as a module.
+        - :class:`IterativeQuadInterp3d`: the iterative backend alone, as a module.
 
     Example:
         >>> inp = torch.randn(1, 1, 3, 64, 64)
@@ -1563,7 +1784,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         :func:`conv_quad_interp3d` or :func:`iterative_quad_interp3d`.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 

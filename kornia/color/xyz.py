@@ -27,19 +27,28 @@ from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert a RGB image to XYZ.
+    r"""Convert a linear RGB image to XYZ.
+
+    ``xyz = rgb_to_xyz(image)`` converts a ``(*, 3, H, W)`` linear RGB image to CIE XYZ with the sRGB primaries and the
+    D65 white point. It does not remove the sRGB curve: for an sRGB image, pass the result of
+    :func:`rgb_to_linear_rgb`.
 
     .. image:: _static/img/rgb_to_xyz.png
 
     Convention:
-        This is the D65 linear-RGB-to-XYZ matrix transform. Pass linear RGB, for example from
-        rgb_to_linear_rgb; nonlinear sRGB values are not linearized here.
+        A matrix transform of the channels at axis -3. OpenCV's ``COLOR_RGB2XYZ`` does the same, and skimage
+        ``rgb2xyz`` linearizes its input first.
 
     Args:
-        image: RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
+        image: linear RGB image with shape ``(*, 3, H, W)``.
 
     Returns:
-         XYZ version of the image with shape :math:`(*, 3, H, W)`.
+        XYZ image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`xyz_to_rgb`: the inverse.
+        - :func:`rgb_to_linear_rgb`: the step before this one.
+        - :class:`RgbToXyz`: the module form.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -66,17 +75,24 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert a XYZ image to RGB.
+    r"""Convert an XYZ image to linear RGB.
+
+    ``rgb = xyz_to_rgb(image)`` converts a ``(*, 3, H, W)`` CIE XYZ image with the D65 white point to linear RGB with
+    the sRGB primaries. For an sRGB result, apply :func:`linear_rgb_to_rgb` to it.
 
     Convention:
-        This is the inverse D65 XYZ-to-linear-RGB matrix transform. Convert its result with
-        linear_rgb_to_rgb when nonlinear sRGB is required.
+        A matrix transform of the channels at axis -3. The result is not clipped.
 
     Args:
-        image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: XYZ image with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        Linear RGB image with shape ``(*, 3, H, W)``.
+
+    See Also:
+        - :func:`rgb_to_xyz`: the inverse.
+        - :func:`linear_rgb_to_rgb`: the step after this one.
+        - :class:`XyzToRgb`: the module form.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -103,25 +119,28 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToXyz(nn.Module):
-    r"""Convert an image from RGB to XYZ.
+    r"""Convert an image from linear RGB to XYZ (module form).
 
-    See the Convention block on :func:`rgb_to_xyz`.
+    ``out = RgbToXyz()(image)`` is :func:`rgb_to_xyz`.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Returns:
-        XYZ version of the image.
+    Convention:
+        - See the convention block of :func:`rgb_to_xyz`.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`rgb_to_xyz`: the one-call form.
+        - :class:`XyzToRgb`: the inverse.
+        - :class:`RgbToLinearRgb`: removes the sRGB curve before this module.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> xyz = RgbToXyz()
         >>> output = xyz(input)  # 2x3x4x5
 
-    Reference:
+    References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
@@ -133,34 +152,39 @@ class RgbToXyz(nn.Module):
         """Convert an RGB tensor to XYZ.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            XYZ tensor with shape :math:`(*, 3, H, W)`.
+            XYZ tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_xyz(image)
 
 
 class XyzToRgb(nn.Module):
-    r"""Converts an image from XYZ to RGB.
+    r"""Convert an image from XYZ to linear RGB (module form).
 
-    See the Convention block on :func:`xyz_to_rgb`.
+    ``out = XyzToRgb()(image)`` is :func:`xyz_to_rgb`.
 
-    Returns:
-        RGB version of the image.
+    Convention:
+        - See the convention block of :func:`xyz_to_rgb`.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
+
+    See Also:
+        - :func:`xyz_to_rgb`: the one-call form.
+        - :class:`RgbToXyz`: the inverse.
+        - :class:`LinearRgbToRgb`: applies the sRGB curve after this module.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = XyzToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
-    Reference:
+    References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     """
@@ -172,11 +196,11 @@ class XyzToRgb(nn.Module):
         """Convert an XYZ tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to XYZ channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return xyz_to_rgb(image)

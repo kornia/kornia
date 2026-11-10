@@ -28,12 +28,23 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 class ThresholdType(IntEnum):
-    """Threshold types compatible with OpenCV fixed thresholding types.
+    """Select how :func:`threshold` maps each element, with OpenCV's values for the fixed modes.
 
-    Convention:
-        These integer values match OpenCV's fixed threshold mode values.
+    Pass a member, or its integer value, as ``type``. Writing ``x`` for an element, ``t`` for ``thresh`` and ``m`` for
+    ``maxval``:
 
-    Note: THRESH_OTSU is intentionally not supported in this PR.
+    - ``THRESH_BINARY`` (0): ``m`` where ``x > t``, else ``0``.
+    - ``THRESH_BINARY_INV`` (1): ``0`` where ``x > t``, else ``m``.
+    - ``THRESH_TRUNC`` (2): ``t`` where ``x > t``, else ``x``.
+    - ``THRESH_TOZERO`` (3): ``x`` where ``x > t``, else ``0``.
+    - ``THRESH_TOZERO_INV`` (4): ``0`` where ``x > t``, else ``x``.
+    - ``THRESH_OTSU`` (8): reserved; :func:`threshold` raises ``NotImplementedError`` for it, also when it is OR-ed into
+      another mode.
+
+    See Also:
+        - :func:`threshold`: applies a mode.
+        - :class:`Threshold`: the module form.
+
     """
 
     THRESH_BINARY = 0
@@ -44,6 +55,11 @@ class ThresholdType(IntEnum):
 
     # OpenCV uses 8 for OTSU, reserved for follow-up PR.
     THRESH_OTSU = 8
+
+
+# The fixed types ``threshold`` implements. Built once here: iterating the enum class inside ``threshold`` breaks
+# ``torch.compile(fullgraph=True)`` on torch 2.9 (Dynamo cannot trace ``EnumMeta.__iter__`` there).
+_FIXED_TYPES = frozenset(int(x) for x in ThresholdType if x != ThresholdType.THRESH_OTSU)
 
 
 def _integer_threshold(input: Tensor, thresh: Union[float, Tensor]) -> tuple[Tensor, Tensor]:
@@ -76,38 +92,46 @@ def threshold(
     maxval: Union[float, Tensor] = 255.0,
     type: Union[int, ThresholdType] = ThresholdType.THRESH_BINARY,
 ) -> Tensor:
-    """Apply a fixed-level threshold to each element in the input tensor.
+    """Threshold every element at a fixed level, as ``cv2.threshold`` does.
+
+    ``out = threshold(input, thresh, maxval, type)`` compares each element with ``thresh`` and maps it to ``maxval``,
+    ``0``, ``thresh`` or itself, as the :class:`ThresholdType` ``type`` says. It takes tensors for ``thresh`` and
+    ``maxval``.
 
     Convention:
-        The comparison is strict (input > thresh). thresh and maxval broadcast
-        over input on its device. maxval is converted to the input's dtype, and
-        so is thresh on a floating-point input. On an integer input, thresh is
-        not cast: as in OpenCV, an element passes when it is greater than
-        floor(thresh), so a thresh below the dtype's range passes every element
-        and one at or above its maximum passes none. THRESH_TRUNC then writes
-        floor(thresh), or the dtype's minimum for a thresh below its range.
-        Threshold is the module wrapper; ThresholdType supplies the fixed-mode
-        values.
-
-    Implements OpenCV-like behavior for the following threshold types:
-    - THRESH_BINARY
-    - THRESH_BINARY_INV
-    - THRESH_TRUNC
-    - THRESH_TOZERO
-    - THRESH_TOZERO_INV
+        - The comparison is strict: an element passes when ``input > thresh``.
+        - ``thresh`` and ``maxval`` broadcast over ``input`` and move to its device. ``maxval`` is converted to the
+          dtype of ``input``, and so is ``thresh`` for a floating-point input.
+        - On an integer input ``thresh`` is not cast: as in OpenCV, an element passes when it is greater than
+          ``floor(thresh)``. A ``thresh`` below the dtype's range passes every element and one at or above its maximum
+          passes none. ``THRESH_TRUNC`` then writes ``floor(thresh)``, or the dtype's minimum for a ``thresh`` below its
+          range.
 
     Args:
-        input: Image tensor of shape (..., H, W). Typically (B, C, H, W).
-        thresh: Threshold value (scalar or tensor broadcastable to input).
-        maxval: Maximum value used with binary thresholding types.
-        type: Threshold type.
+        input: tensor with shape ``(*, H, W)``.
+        thresh: level, a number or a tensor that broadcasts to ``input``.
+        maxval: value written by the binary modes, a number or a tensor. The default ``255.0`` turns a :math:`[0, 1]`
+            image into 0 and 255; pass ``1.0`` to keep its range.
+        type: a :class:`ThresholdType` member or its value.
 
     Returns:
-        Thresholded tensor with same shape/dtype/device as `input`.
+        Thresholded tensor with the shape, dtype and device of ``input``.
 
     Raises:
-        NotImplementedError: if THRESH_OTSU flag is passed.
-        ValueError: if type is not supported.
+        NotImplementedError: if ``THRESH_OTSU`` is passed.
+        BaseError: if ``type`` is not a supported mode.
+
+    See Also:
+        - :class:`Threshold`: the module form.
+        - :func:`~kornia.filters.otsu_threshold`: finds the level itself with Otsu's method.
+
+    Example:
+        >>> x = torch.tensor([[0.2, 0.8]])
+        >>> threshold(x, 0.5, 1.0)
+        tensor([[0., 1.]])
+        >>> threshold(x, 0.5, 1.0, ThresholdType.THRESH_TRUNC)
+        tensor([[0.2000, 0.5000]])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
@@ -118,8 +142,8 @@ def threshold(
         raise NotImplementedError("THRESH_OTSU is not implemented yet. Please use a fixed threshold type.")
 
     KORNIA_CHECK(
-        t in {int(x) for x in ThresholdType if x != ThresholdType.THRESH_OTSU},
-        f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
+        t in _FIXED_TYPES,
+        lambda: f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
     )
 
     # Make thresh/maxval tensors on same device/dtype for safe broadcasting
@@ -163,10 +187,27 @@ def threshold(
 
 
 class Threshold(Module):
-    """Module wrapper for `kornia.enhance.threshold`.
+    """Threshold every element at a fixed level (module form).
+
+    ``op = Threshold(thresh, maxval, type)`` stores the three values as plain numbers and ``out = op(input)`` is
+    :func:`threshold` with them.
 
     Convention:
-        See threshold for the strict comparison; this module takes scalar thresh and maxval.
+        - See the convention block of :func:`threshold`; ``thresh`` and ``maxval`` are numbers here, not tensors.
+
+    Args:
+        thresh: level, a number.
+        maxval: value written by the binary modes, a number. The default ``255.0`` turns a :math:`[0, 1]` image into 0
+            and 255; pass ``1.0`` to keep its range.
+        type: a :class:`ThresholdType` member or its value.
+
+    See Also:
+        - :func:`threshold`: the one-call form.
+
+    Example:
+        >>> Threshold(0.5, 1.0)(torch.tensor([[0.2, 0.8]]))
+        tensor([[0., 1.]])
+
     """
 
     def __init__(
@@ -189,7 +230,7 @@ class Threshold(Module):
 
         Args:
             input: Input tensor to threshold. Typical image inputs are shaped
-                :math:`(*, C, H, W)`, but any tensor shape supported by
+                ``(*, C, H, W)``, but any tensor shape supported by
                 :func:`threshold` is accepted.
 
         Returns:

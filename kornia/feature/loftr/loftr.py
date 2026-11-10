@@ -78,13 +78,23 @@ default_cfg = {
 
 
 class LoFTR(nn.Module):
-    r"""nn.Module, which finds correspondences between two images.
+    r"""Match two grayscale images without a detector, by transformer-matched dense features (LoFTR).
 
-    This is based on the original code from paper "LoFTR: Detector-Free Local
-    Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
+    ``loftr = LoFTR("outdoor")`` loads pretrained weights and ``out = loftr({"image0": img0, "image1": img1})`` takes
+    two batches of ``N`` grayscale images ``(N, 1, H, W)`` in :math:`[0, 1]`, the two possibly of different sizes, and
+    returns a dict of the matches of all pairs: the pixel positions ``keypoints0`` and ``keypoints1`` ``(NC, 2)``, as
+    ``(x, y)`` in the frame of the reference implementation, half a pixel off kornia's (see the Convention block),
+    their ``confidence`` ``(NC,)`` and the pair of each match, ``batch_indexes`` ``(NC,)``. It needs no keypoints or
+    descriptors: the matches of image0 lie on a grid of 8-pixel cells, not at detected keypoints. To match one image
+    against many, compute its backbone features, which do not depend on the other image, once with
+    :meth:`extract_features` and pass them as ``features0`` or ``features1``. For matching detected keypoints and
+    their descriptors, use :class:`LightGlueMatcher` or :class:`LocalFeatureMatcher` instead.
+
+    This is based on the original code of "LoFTR: Detector-Free Local Feature Matching with Transformers", see
+    :cite:`LoFTR2021` for more details.
 
     Convention:
-        - ``image0`` and ``image1`` are grayscale :math:`(N, 1, H, W)` images in :math:`[0, 1]`, the input of the
+        - ``image0`` and ``image1`` are grayscale ``(N, 1, H, W)`` images in :math:`[0, 1]`, the input of the
           pretrained models. With the default ``config``, whose ``resolution`` (8, 2) every pretrained model uses,
           the two images can differ in size, and their heights and widths do not need to be multiples of 8 (the
           reference implementation expects multiples of 8).
@@ -99,10 +109,12 @@ class LoFTR(nn.Module):
         - ``confidence`` is the coarse matching score of the match, a dual-softmax score with the default
           ``match_type``; only matches above ``max(thr, 0)`` are returned, with the ``thr`` of
           ``config["match_coarse"]``, 0.2 by default.
+        - Known defect: with ``mask0`` or ``mask1``, the border strip in which coarse matches are dropped
+          (``border_rm`` coarse cells, 16 pixels by default) is measured from the edges of the padded image, not of
+          its valid region, so matches next to the padding are kept
+          (`#5888 <https://github.com/kornia/kornia/issues/5888>`_).
 
     Args:
-        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
-                The model works on its own deep copy, so the dict you pass is never modified.
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor', 'indoor_new'.
                     'outdoor' is trained on the MegaDepth dataset and 'indoor' and 'indoor_new'
                     on the ScanNet. 'indoor_new' also switches the positional encoding of the copy
@@ -110,12 +122,17 @@ class LoFTR(nn.Module):
                     comes back in evaluation mode. ``None`` builds random weights in training mode, where
                     ``CoarseMatching`` runs its supervised training branch and needs ground-truth data; call
                     ``.eval()`` for inference, also after loading your own weights.
+        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing.
+                The model works on its own deep copy, so the dict you pass is never modified.
 
     Returns:
         Dictionary with image correspondences and confidence scores.
 
-    The backbone features of an image do not depend on the image it is matched with. To match one image against
-    many, compute them once with :meth:`extract_features` and pass them as ``features0`` / ``features1``.
+    See Also:
+        - :class:`LightGlueMatcher`: a transformer matcher for the keypoints and descriptors of a detector.
+        - :class:`LocalFeatureMatcher`: detects, describes and matches two images with a descriptor matcher.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the next step, which keeps the matches one geometric model
+          explains, such as a :func:`~kornia.geometry.epipolar.find_fundamental` matrix.
 
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
@@ -161,13 +178,12 @@ class LoFTR(nn.Module):
         match an image against many others without running the backbone again for every pair.
 
         Args:
-            image: grayscale images with shape :math:`(N, 1, H, W)`.
+            image: grayscale images with shape ``(N, 1, H, W)``.
 
         Returns:
-            - ``coarse``, position-encoded 1/8-resolution features
-              :math:`(N, C_c, \lceil H/8 \rceil, \lceil W/8 \rceil)`.
-            - ``fine``, 1/2-resolution features :math:`(N, C_f, \lceil H/2 \rceil, \lceil W/2 \rceil)`. With the
-              default config this is 128 channels, about 96 MB in float32 for a 1024 x 736 image.
+            - ``coarse``, position-encoded 1/8-resolution features ``(N, C_c, ceil(H / 8), ceil(W / 8))``.
+            - ``fine``, 1/2-resolution features ``(N, C_f, ceil(H / 2), ceil(W / 2))``. With the default config this
+              is 128 channels, about 96 MB in float32 for a 1024 x 736 image.
 
         Example:
             >>> loftr = LoFTR(None).eval()
@@ -209,18 +225,18 @@ class LoFTR(nn.Module):
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
-            image0: left image with shape :math:`(N, 1, H1, W1)`.
-            image1: right image with shape :math:`(N, 1, H2, W2)`.
+            image0: left image with shape ``(N, 1, H1, W1)``.
+            image1: right image with shape ``(N, 1, H2, W2)``.
             features0 (optional): instead of ``image0``, its :meth:`extract_features` output.
             features1 (optional): instead of ``image1``, its :meth:`extract_features` output.
-            mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
-            mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
+            mask0 (optional): left image mask. '0' indicates a padded position ``(N, H1, W1)``.
+            mask1 (optional): right image mask. '0' indicates a padded position ``(N, H2, W2)``.
 
         Returns:
-            - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
-            - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, the coarse matching score, see the Convention block :math:`(NC)`.
-            - ``batch_indexes``, batch index of each match :math:`(NC)`.
+            - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
+            - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
+            - ``confidence``, the coarse matching score, see the Convention block ``(NC,)``.
+            - ``batch_indexes``, batch index of each match ``(NC,)``.
 
         """
         # Pixel strides of the coarse and the fine feature map, (8, 2) by default. Every stride-2 stage of the backbone
@@ -256,12 +272,10 @@ class LoFTR(nn.Module):
         # Token-major copies: the reshape of the permuted maps is a channel-strided view, and every transformer GEMM
         # on it would run on the transposed layout.
         feat_c0 = feat_c0.permute(0, 2, 3, 1)
-        n, _h, _w, c = feat_c0.shape
-        feat_c0 = feat_c0.reshape(n, -1, c).contiguous()
+        feat_c0 = feat_c0.flatten(start_dim=1, end_dim=2).contiguous()
 
         feat_c1 = feat_c1.permute(0, 2, 3, 1)
-        n1, _h1, _w1, c1 = feat_c1.shape
-        feat_c1 = feat_c1.reshape(n1, -1, c1).contiguous()
+        feat_c1 = feat_c1.flatten(start_dim=1, end_dim=2).contiguous()
 
         mask_c0 = mask_c1 = None  # mask is useful in training
         # a coarse cell takes the mask value of the pixel it sits on

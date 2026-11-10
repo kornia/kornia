@@ -27,7 +27,7 @@ import kornia
 import kornia.geometry.transform.imgwarp
 from kornia.core.check import ShapeError
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.geometry.create import create_random_homography
 
 
@@ -1084,6 +1084,23 @@ class TestExtractPatchesSimple(BaseTester):
         # extractor is meant to trace as one graph -- assert that directly.
         torch._dynamo.reset()
         self.assert_close(torch.compile(kornia.feature.extract_patches_simple, fullgraph=True)(img, laf, 10), expected)
+
+
+class TestEmptyPatchesAreLinked(BaseTester):
+    @pytest.mark.parametrize(
+        "extract", [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid]
+    )
+    @pytest.mark.parametrize("batch, n_lafs", [(0, 5), (2, 0), (0, 0)])
+    def test_zero_patches_keep_the_links_to_the_inputs(self, device, dtype, extract, batch, n_lafs):
+        img = torch.rand(batch, 2, 48, 64, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.rand(batch, n_lafs, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        patches = extract(img, laf, 16)
+        assert patches.shape == (batch, n_lafs, 2, 16, 16)
+        assert patches.dtype == dtype
+        assert patches.requires_grad
+        patches.sum().backward()
+        self.assert_close(img.grad, torch.zeros_like(img))
+        self.assert_close(laf.grad, torch.zeros_like(laf))
 
 
 class TestExtractPatchesPyr(BaseTester):
@@ -2336,3 +2353,68 @@ class TestConventionsLAF(BaseTester):
         laf = self._lafs(self._SHEARED_IN_IMAGE, device, dtype)
         assert descriptor(img, laf).shape == (1, 1, 128)
         assert descriptor.descriptor.shapes == [(1, 1, 32, 32)]
+
+
+class TestExtractPatchesAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid or the pyramid of the extractors (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device, scale):
+        image = torch.rand(1, 1, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+        laf = torch.tensor([[[[scale, 3.1, 128.7], [-2.9, scale + 0.6, 120.3]]]], device=device)
+        return image, laf
+
+    @pytest.mark.parametrize("op_name", ["extract_patches_simple", "extract_patches_from_pyramid"])
+    # 20 stays on the first level, 70 samples a coarser one, which pyrdown builds.
+    @pytest.mark.parametrize("scale", [20.3, 70.3])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_patches_6601(self, op_name, scale, autocast_dtype, device):
+        # F.affine_grid's matrix product ran in the autocast dtype and the patch still came back in float32: up to 0.54
+        # off on a [0, 1] image in bfloat16.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, laf = self._inputs(device, scale)
+        op = getattr(kornia.feature, op_name)
+        expected = op(image, laf, 32)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, laf, 32)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_levelwise_path_in_a_region_6601(self, autocast_dtype, device, monkeypatch):
+        # The path of a large batch; the same products as the atlas.
+        skip_unsupported_autocast(device, autocast_dtype)
+        monkeypatch.setattr(kornia.feature.laf, "_pyramid_atlas_fits", lambda _: False)
+        image, laf = self._inputs(device, 70.3)
+        expected = kornia.feature.extract_patches_from_pyramid(image, laf, 32)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = kornia.feature.extract_patches_from_pyramid(image, laf, 32)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_still_scriptable_6601(self, device):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image, laf = self._inputs(device, 20.3)
+        scripted = torch.jit.script(kornia.feature.extract_patches_simple)
+        self.assert_close(scripted(image, laf, 32), kornia.feature.extract_patches_simple(image, laf, 32))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
+        # 70 samples a coarser level, which pyrdown builds. Compiled on MPS, a convolution under the nested guard
+        # raised, so the guard is skipped there and the call must run (_convolution_outside_autocast).
+        if optimizer_backend == "jit":
+            pytest.skip("extract_patches_from_pyramid does not script")
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, laf = self._inputs(device, 70.3)
+        op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = op(image, laf, 32)
+        assert actual.dtype == torch.float32
+        if device.type == "mps":
+            return
+        # Compiled and eager differ by up to 3.1e-06 here; a region reaching the pyramid gives 1.9e-04 or more.
+        expected = kornia.feature.extract_patches_from_pyramid(image, laf, 32)
+        self.assert_close(actual, expected, rtol=0, atol=1e-4)
+        self.assert_close(op(image, laf, 32), expected, rtol=0, atol=1e-4)

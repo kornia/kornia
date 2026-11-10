@@ -27,10 +27,13 @@ from kornia.filters import motion_blur3d
 
 
 class RandomMotionBlur3D(IntensityAugmentationBase3D):
-    r"""Apply random motion blur on 3D volumes (5D torch.Tensor).
+    r"""Blur 3D volumes with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomMotionBlur3D(kernel_size, angle, direction, ...)(input)`` blurs intensities while retaining
+    voxel coordinates.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
@@ -54,8 +57,8 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -82,6 +85,10 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
           ``ValueError`` naming the class, the drawn kernel, the axis and the input shape, as
           :class:`~kornia.augmentation.RandomMotionBlur` does for an image.
         - this class fixes ``p_batch=1``; its ``p`` remains the per-sample gate.
+
+    See Also:
+        - :class:`RandomMotionBlur`: applies a directional kernel to 2D images.
+        - :class:`RandomEqualize3D`: equalizes intensity histograms without spatial filtering.
 
     Examples:
         >>> import torch

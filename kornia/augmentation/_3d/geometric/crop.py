@@ -25,6 +25,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _pad_with_fill
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import crop_by_transform_mat3d
 
 
@@ -40,9 +41,9 @@ def _crop_translation3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
-    r"""Apply random crop on 3D volumes (5D torch.Tensor).
+    r"""Crop random 3D subvolumes, applied to a batch with probability ``p`` (default 1.0).
 
-    Crops random sub-volumes on a given size.
+    ``output = RandomCrop3D(size, ...)(input)`` selects patches of ``(D, H, W)`` voxels.
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -70,8 +71,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, out_d, out_h, out_w)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, out_d, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -95,6 +96,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
           with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
+
+    See Also:
+        - :class:`CenterCrop3D`: extracts the deterministic centered subvolume.
+        - :class:`RandomCrop`: samples a fixed-size patch from a 2D image.
 
     Examples:
         >>> import torch
@@ -188,7 +193,9 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+        transform = _crop_translation3d(src, dst)
         for padding in self._compute_padding(tuple(input.shape), flags):
             transform[:, 0, 3] += padding[0]
             transform[:, 1, 3] += padding[2]

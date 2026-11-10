@@ -34,6 +34,7 @@ from torch.distributions import Distribution
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
+from testing import conformance, conformance_promise
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
@@ -174,37 +175,9 @@ def torch_optimizer(optimizer_backend):
 
 @pytest.fixture
 def cudnn_tf32_follows_option(request):
-    """Compute convolutions in real float32 on CUDA, so a float32 tolerance means float32.
-
-    The root ``conftest.py``'s ``--tf32`` option drives only ``set_float32_matmul_precision``, which
-    does not reach cuDNN: ``torch.backends.cudnn.allow_tf32`` keeps PyTorch's ``True`` default in
-    every run. TF32 rounds a convolution's inputs to 10 mantissa bits, and eager and inductor do not
-    have to pick the same kernel, so on a deep conv stack the two disagree by ~2e-4 -- twenty times
-    ``assert_close``'s float32 ``atol`` -- while the same comparison agrees to 6e-7 once cuDNN is in
-    real float32. A compile-vs-eager test that does not take TF32 out of the picture is measuring the
-    backend rather than the graph.
-
-    The flag follows ``--tf32`` rather than being forced off, so a ``--tf32`` run still gets TF32 in
-    cuDNN as well as in matmul. The repo-wide fix is for ``pytest_sessionstart`` to set
-    ``cudnn.allow_tf32`` from the same option; ``tests/color/test_yuv.py`` carries the same local
-    workaround for the same reason.
-
-    The alternative -- keeping TF32 on and widening the CUDA float32 bound to ~1e-3, TF32's own
-    mantissa -- was tried and dropped: it leaves the assertion a hundred times looser than the signal
-    it exists to check, so a genuine compile-vs-eager divergence below 1e-3 would pass. The objection
-    to this route is that inductor's on-disk FX graph cache is not keyed on ``allow_tf32``, so a
-    context entered after a TF32-on compile in the same process can raise out of
-    ``assert_tensor_metadata``. That applies to ``torch.backends.cudnn.flags(...)``, which swaps
-    several flags at once; assigning the single attribute, as here and in ``test_yuv.py``, does not
-    reproduce it -- ``tests/feature -k "dynamo or compile"`` on CUDA float32 is green with this fixture
-    on both a cold and a warm inductor cache.
-    """
-    previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = bool(request.config.getoption("--tf32"))
-    try:
-        yield
-    finally:
-        torch.backends.cudnn.allow_tf32 = previous
+    """Assert that cuDNN precision follows the session's opt-in TF32 setting."""
+    if torch.backends.cudnn.allow_tf32 != request.config.getoption("--tf32"):
+        pytest.fail("cuDNN TF32 setting does not match --tf32")
 
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
@@ -287,6 +260,15 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    config._conformance = {}
+    for promise in conformance_promise.PROMISES:
+        try:
+            config._conformance[promise.marker] = conformance.selection(config, promise)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        if config._conformance[promise.marker]:
+            plugin = conformance.KnownFailurePlugin(promise)
+            config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -359,7 +341,7 @@ def pytest_generate_tests(metafunc) -> None:
     metafunc.parametrize(names, combinations)
 
 
-def _apply_device_skips(items, run_mps_process_abort: bool) -> None:
+def _apply_device_skips(items) -> None:
     """Skip the test classes a device cannot run at all, before they are executed."""
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
@@ -369,16 +351,6 @@ def _apply_device_skips(items, run_mps_process_abort: bool) -> None:
     skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")
     # MPS autocast uses float16 and does not preserve original dtype — skip autocast tests on MPS
     skip_mps_autocast = pytest.mark.skip(reason="MPS autocast changes dtype to float16, not supported the same way")
-    # A module marked mps_process_abort takes the Metal shader compiler down on the paravirtualized
-    # GPU of the hosted macOS runners, and the next MPS allocation aborts the pytest process
-    # (SIGABRT). The abort site moves between runs, and SIGABRT has no exception type, so these
-    # cannot be pinned as strict xfails — the process dies and everything after it is lost. Real
-    # Apple hardware does not abort, so --run-mps-process-abort forces them back on for local
-    # diagnosis; note that doing so leaves failures the manifest does not pin. Tracked in #4204,
-    # and the marker lives on the test module so a rename cannot silently disarm this.
-    skip_mps_abort = pytest.mark.skip(
-        reason="aborts the pytest process on MPS on virtualized Apple GPUs (#4204); --run-mps-process-abort runs anyway"
-    )
 
     for item in items:
         name = item.name.lower()
@@ -389,8 +361,6 @@ def _apply_device_skips(items, run_mps_process_abort: bool) -> None:
             item.add_marker(skip_mps_cdouble)
         if on_mps and "autocast" in name:
             item.add_marker(skip_mps_autocast)
-        if on_mps and not run_mps_process_abort and item.get_closest_marker("mps_process_abort"):
-            item.add_marker(skip_mps_abort)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -425,6 +395,18 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
+    # The ONNX and torch.compile conformance tests (#5819) are opt-in: --onnx-conformance and --compile-conformance
+    # name the packages whose promised operators they run. When one is given, conformance.KnownFailurePlugin turns its
+    # known failures into strict xfails.
+    for promise in conformance_promise.PROMISES:
+        if config._conformance[promise.marker]:
+            continue
+        conformance_items = [item for item in items if item.get_closest_marker(promise.marker) is not None]
+        if conformance_items:
+            config.hook.pytest_deselected(items=conformance_items)
+            conformance_ids = {id(item) for item in conformance_items}
+            items[:] = [item for item in items if id(item) not in conformance_ids]
+
     if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
         devices = _parse_test_option(config, "--device", TEST_DEVICES)
         dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
@@ -436,7 +418,7 @@ def pytest_collection_modifyitems(config, items):
             raise pytest.UsageError(str(error)) from error
         config.pluginmanager.register(tracker, "known-failure-tracker")
 
-    _apply_device_skips(items, config.getoption("--run-mps-process-abort"))
+    _apply_device_skips(items)
 
     tf32_enabled = config.getoption("--tf32")
 
@@ -525,8 +507,7 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_TF32", "false").lower() == "true",
         help=(
-            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications "
-            "(torch.set_float32_matmul_precision('high')). "
+            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications and cuDNN convolutions. "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
         ),
@@ -565,18 +546,18 @@ def pytest_addoption(parser):
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
         ),
     )
-    parser.addoption(
-        "--run-mps-process-abort",
-        action="store_true",
-        default=os.environ.get("KORNIA_TEST_RUN_MPS_PROCESS_ABORT", "false").lower() == "true",
-        help=(
-            "Run tests marked mps_process_abort on MPS. They take the Metal shader compiler down "
-            "on the paravirtualized GPU of the hosted macOS runners and abort the pytest process, "
-            "so they are skipped by default; real Apple hardware does not abort, and this restores "
-            "them for local diagnosis. Expect failures the known-failure manifest does not pin. "
-            "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
-        ),
-    )
+    for promise in conformance_promise.PROMISES:
+        parser.addoption(
+            promise.option,
+            action="store",
+            default=os.environ.get(promise.env_var, ""),
+            metavar="PACKAGES",
+            help=(
+                f"Run the {promise.name} conformance test ({promise.test_file}, #5819) for these stable-core "
+                "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
+                f"(env: {promise.env_var})"
+            ),
+        )
     parser.addoption(
         "--xfail-known-failures",
         action="store_true",
@@ -615,6 +596,8 @@ def pytest_sessionstart(session):
     # and to run the @pytest.mark.tf32-marked tests.
     if session.config.getoption("--tf32"):
         torch.set_float32_matmul_precision("high")
+    # cuDNN allows TF32 by default independently of matmul precision; keep it opt-in too.
+    torch.backends.cudnn.allow_tf32 = session.config.getoption("--tf32")
 
     # Warm torch.compile only for explicit optimizer jobs. Ordinary jobs deselect compile tests,
     # while subprocess mode also avoids startup overhead and captured-output pollution.

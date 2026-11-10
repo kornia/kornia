@@ -6,7 +6,13 @@ Stereo Camera
 
 .. currentmodule:: kornia.geometry.camera.stereo
 
-This module provides the :class:`StereoCamera` class, which contains functionality for working with a horizontal stereo camera setup.
+:class:`StereoCamera` takes the two rectified projection matrices of a horizontal stereo rig and reprojects a
+channels-last ``(B, H, W, 1)`` disparity map to ``(B, H, W, 3)`` points in the left rectified camera frame;
+:func:`reproject_disparity_to_3D` does the same from a ``Q`` matrix, as ``cv2.reprojectImageTo3D`` does. Both raise
+:class:`StereoException` for the invalid rigs, disparity maps and ``Q`` matrices its docstring lists. A rig or ``Q``
+batch that is neither 1 nor the disparity batch raises ``ValueError``, and left and right matrices with different batch
+sizes, other than a right batch of 1, raise ``RuntimeError``. For a depth map rather than points, use
+:func:`~kornia.geometry.depth.depth_from_disparity`.
 
 The horizontal stereo camera setup is assumed to be calibrated and rectified such that the setup can be described by two camera matrices:
 
@@ -14,7 +20,7 @@ The *left rectified camera matrix*:
 
 .. math::
     P_0 = \begin{bmatrix}
-    fx & 0  & cx & 0 \\
+    fx & 0  & cx_{left} & 0 \\
     0  & fy & cy & 0 \\
     0  & 0  & 1  & 0
     \end{bmatrix}
@@ -23,7 +29,7 @@ The *right rectified camera matrix*:
 
 .. math::
     P_1 = \begin{bmatrix}
-    fx & 0  & cx & tx * fx \\
+    fx & 0  & cx_{right} & tx * fx \\
     0  & fy & cy & 0       \\
     0  & 0  & 1  & 0
     \end{bmatrix}
@@ -31,7 +37,7 @@ The *right rectified camera matrix*:
 where:
     * :math:`fx` is the focal length in the x-direction in pixels.
     * :math:`fy` is the focal length in the y-direction in pixels.
-    * :math:`cx` is the x-coordinate of the principal point in pixels.
+    * :math:`cx_{left}` and :math:`cx_{right}` are the x-coordinates of the left and right principal points in pixels.
     * :math:`cy` is the y-coordinate of the principal point in pixels.
     * :math:`tx` is the horizontal baseline in metric units.
 
@@ -102,7 +108,7 @@ Subtracting the first row from the third and inverting the expression gives:
     1
     \end{bmatrix} =
     \begin{bmatrix}
-    fy * tx & 0       & 0   & -fy * cx * tx \\
+    fy * tx & 0       & 0   & -fy * cx_{left} * tx \\
     0       & fx * tx & 0   & -fx * cy * tx \\
     0       & 0       & 0   & fx * fy * tx  \\
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
@@ -119,7 +125,7 @@ where :math:`Q` is
 .. math::
 
     Q = \begin{bmatrix}
-    fy * tx & 0       & 0   & -fy * cx * tx \\
+    fy * tx & 0       & 0   & -fy * cx_{left} * tx \\
     0       & fx * tx & 0   & -fx * cy * tx \\
     0       & 0       & 0   & fx * fy * tx  \\
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
@@ -127,13 +133,13 @@ where :math:`Q` is
 
 The :math:`Q` that :class:`StereoCamera` builds is exactly this matrix with :math:`tx = P_1[0, 3] / fx`, which the constructor requires to be strictly negative (a zero baseline or swapped cameras raise). The class's ``tx`` attribute is the positive baseline :math:`-P_1[0, 3] / fx`, so do not substitute it for :math:`tx` above.
 
-The :math:`Q[3, 3]` term is zero on every rig :class:`StereoCamera` accepts outside ``torch.export``: the constructor rejects differing :math:`cx_{left}` and :math:`cx_{right}` (`#4270 <https://github.com/kornia/kornia/issues/4270>`_).
+Rigs with differing :math:`cx_{left}` and :math:`cx_{right}` are accepted, and :math:`Q[3, 3] = fy * (cx_{left} - cx_{right})` is then non-zero, as in OpenCV's :math:`Q` for ``stereoRectify`` without ``CALIB_ZERO_DISPARITY``.
 
 Assuming :math:`fx = fy` you can further reduce this to:
 
 .. math::
     Q = \begin{bmatrix}
-    1 & 0       & 0   & -cx \\
+    1 & 0       & 0   & -cx_{left} \\
     0       & 1 & 0   & -cy \\
     0       & 0       & 0   & fx  \\
     0       & 0       & -1/tx & (cx_{left} - cx_{right}) / tx
@@ -159,9 +165,27 @@ Using the :math:`Q` matrix we can obtain the 3D points by:
 
 where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`.
 
+Numerical reconstruction validity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both :meth:`StereoCamera.reproject_disparity_to_3D` and the module-level
+:func:`reproject_disparity_to_3D` accept ``return_mask=True``:
+
+.. code-block:: python
+
+    points, reconstructed = camera.reproject_disparity_to_3D(disparity, return_mask=True)
+    # disparity: (B, H, W, 1), points: (B, H, W, 3), reconstructed: (B, H, W, 1) bool
+    usable = reconstructed & matcher_valid
+
+See the Note in :func:`reproject_disparity_to_3D` for the mask's numerical contract,
+scope, and coordinate and gradient behavior.
+
 .. autoclass:: StereoCamera
     :members:
 
     .. automethod:: __init__
 
 .. autofunction:: reproject_disparity_to_3D
+
+.. autoexception:: StereoException
+    :show-inheritance:

@@ -396,6 +396,23 @@ def test_public_names_resolve(module_name):
     )
 
 
+@pytest.mark.parametrize(
+    ("module_name", "names"),
+    [
+        ("kornia.constants", ["DataKey"]),
+        ("kornia.core.check", ["KORNIA_CHECK_SAME_SHAPE", "KORNIA_CHECK_IS_COLOR_OR_GRAY"]),
+        ("kornia.geometry.transform.pyramid", ["is_powerof_two", "find_next_powerof_two"]),
+    ],
+)
+def test_published_names_are_star_exported_4026(module_name, names):
+    mod = importlib.import_module(module_name)
+    namespace: dict = {}
+    exec(f"from {module_name} import *", namespace)  # noqa: S102
+    for name in names:
+        assert name in mod.__all__
+        assert namespace[name] is getattr(mod, name)
+
+
 if __name__ == "__main__":
     regenerate()
     print(f"regenerated {INVENTORY}")

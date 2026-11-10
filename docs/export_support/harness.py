@@ -23,10 +23,17 @@ tensor inputs. Every tensor input becomes an ONNX graph input; Python-only kwarg
 the graph. The harness:
 
   1. runs the target eagerly (reference),
-  2. exports with ``torch.onnx.export(dynamo=True, opset_version=18)``,
+  2. exports with ``torch.onnx.export(dynamo=True, opset_version=18)`` (or, with ``dynamo=False``, the legacy
+     TorchScript exporter at its highest opset up to 18),
   3. runs ``onnx.checker.check_model`` (full check),
-  4. runs the graph in onnxruntime (CPU) and compares every tensor output against the reference,
+  4. runs the graph in onnxruntime (CPU) and compares every tensor output against the reference: the same dtype,
+     and the values within the case's ``atol`` / ``rtol``,
   5. records op types, size, wall time and (on failure) the root-cause error.
+
+Importing this module (or a registry) leaves the process alone: the survey entry points (``run_cases``,
+``probe_compile.main``) call ``configure_survey_process`` for their quieter, fixed-thread-count settings, so
+``tests/onnx/test_conformance.py`` can drive ``run_case`` inside a pytest session. ``onnx`` and ``onnxruntime`` are
+imported where they are used, so the compile probe and ``tests/test_inductor_conformance.py`` do not need them.
 
 Usage from a registry file::
 
@@ -35,13 +42,15 @@ Usage from a registry file::
     if __name__ == "__main__":
         run_cases(CASES, sys.argv[1], only=sys.argv[2:] or None)
 
-Statuses: ok | ok-unverified (check=False, nondeterministic op) | eager-fail | export-fail |
-checker-fail | ort-load-fail | ort-run-fail | mismatch | no-tensor-output | skipped.
+Statuses: ok | ok-unverified (check=False, nondeterministic op: output count, shapes and finiteness checked) |
+eager-fail | export-fail | checker-fail | ort-load-fail | ort-run-fail | mismatch | no-tensor-output | skipped.
 """
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import inspect
 import io
 import json
 import logging
@@ -50,21 +59,31 @@ import subprocess
 import time
 import traceback
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import onnx
-import onnxruntime as ort
 import torch
 from torch import nn
 from torch.utils._pytree import tree_flatten
 
-logging.disable(logging.CRITICAL)
-warnings.filterwarnings("ignore")
-ort.set_default_logger_severity(3)
-torch.set_num_threads(4)
+if TYPE_CHECKING:
+    import onnx
 
 SEED = 1234
+OPSET = 18  # the opset the dynamo export requests, and the ceiling of the legacy one
+
+
+def configure_survey_process() -> None:
+    """Quiet logs and warnings and fix the thread count, for a process that runs survey probes and nothing else."""
+    logging.disable(logging.CRITICAL)
+    warnings.filterwarnings("ignore")
+    try:
+        import onnxruntime as ort
+    except ImportError:  # the compile probe runs without it
+        pass
+    else:
+        ort.set_default_logger_severity(3)
+    torch.set_num_threads(4)
 
 
 def case(
@@ -117,8 +136,13 @@ def case(
 
 
 def _flatten_outputs(out: Any) -> list[torch.Tensor]:
+    # A tensor first, before any attribute probe: on torch 2.5 ``hasattr(tensor, "data")`` inside a ``torch.export``
+    # trace raises "Attempting to use FunctionalTensor on its own", which fails the export of every operator that
+    # returns a plain tensor (the dynamo ONNX exporter then falls back to its TorchScript-trace strategy).
+    if isinstance(out, torch.Tensor):
+        return [out]
     # dataclass-like kornia containers (Boxes, Keypoints, Se3, Quaternion, Image...) expose tensors via attributes
-    if hasattr(out, "data") and isinstance(out.data, torch.Tensor) and not isinstance(out, torch.Tensor):
+    if hasattr(out, "data") and isinstance(out.data, torch.Tensor):
         return [out.data]
     if hasattr(out, "__dict__") and not isinstance(out, (torch.Tensor, dict, list, tuple)):
         vals = []
@@ -162,7 +186,8 @@ def make_wrapper(target: Any, kwargs: dict[str, Any], n_inputs: int, method: str
             return tuple(outs)
 
     Wrap.forward = ns["forward"]
-    return Wrap()
+    # in eval mode: the legacy exporter puts the wrapper back into the mode it found, children included
+    return Wrap().eval()
 
 
 # ----------------------------------------------------------------------------- utilities
@@ -175,18 +200,39 @@ def to_np(x: torch.Tensor) -> np.ndarray:
     return x.numpy()
 
 
-def close(a: np.ndarray, b: np.ndarray, atol: float, rtol: float) -> tuple[bool, str]:
-    a, b = np.asarray(a), np.asarray(b)
+def _dtype_name(x: Any) -> str:
+    """The dtype of a tensor or an array as numpy names it (``float32``, ``bfloat16``, ``bool``)."""
+    return str(x.dtype).removeprefix("torch.") if isinstance(x, torch.Tensor) else str(np.asarray(x).dtype)
+
+
+def close(a: Any, b: Any, atol: float, rtol: float) -> tuple[bool, str]:
+    """Compare a reference ``a`` with a candidate ``b``, tensors or arrays: the same shape and dtype, then the values.
+
+    The dtypes are compared before any conversion (``to_np`` widens bfloat16), the values within ``atol`` / ``rtol``.
+    Complex values are compared componentwise, including their NaN patterns: a NaN in one component must not hide
+    a mismatch in the other.
+    """
+    dtype_a, dtype_b = _dtype_name(a), _dtype_name(b)
+    a = to_np(a) if isinstance(a, torch.Tensor) else np.asarray(a)
+    b = to_np(b) if isinstance(b, torch.Tensor) else np.asarray(b)
     if a.shape != b.shape:
         return False, f"shape {a.shape} vs {b.shape}"
+    if dtype_a != dtype_b:
+        return False, f"dtype {dtype_a} vs {dtype_b}"
     if bool in (a.dtype, b.dtype):
         ok = bool(np.array_equal(a, b))
         return ok, "" if ok else f"{int((a != b).sum())} bool mismatches"
+    if np.iscomplexobj(a):
+        for component in ("real", "imag"):
+            ok, why = close(getattr(a, component), getattr(b, component), atol, rtol)
+            if not ok:
+                return False, f"{component}: {why}"
+        return True, ""
     a64, b64 = a.astype(np.float64), b.astype(np.float64)
     nan_a, nan_b = np.isnan(a64), np.isnan(b64)
     if nan_a.any() or nan_b.any():
         if not np.array_equal(nan_a, nan_b):
-            return False, f"NaN pattern differs (torch {int(nan_a.sum())}, ort {int(nan_b.sum())} NaNs)"
+            return False, f"NaN pattern differs (reference {int(nan_a.sum())}, candidate {int(nan_b.sum())} NaNs)"
         a64, b64 = a64[~nan_a], b64[~nan_b]
     ok = bool(np.allclose(a64, b64, atol=atol, rtol=rtol))
     if ok:
@@ -198,7 +244,25 @@ def close(a: np.ndarray, b: np.ndarray, atol: float, rtol: float) -> tuple[bool,
     )
 
 
+def shape_and_finite(ref: list[torch.Tensor], out: list[Any]) -> str | None:
+    """Why ``out`` cannot stand in for ``ref``: another output count or shape, or a non-finite value; else None.
+
+    The check of a random operator, whose values cannot be compared with an eager run.
+    """
+    if len(out) != len(ref):
+        return f"{len(out)} outputs vs {len(ref)}"
+    for i, (a, b) in enumerate(zip(ref, out)):
+        b = to_np(b) if isinstance(b, torch.Tensor) else np.asarray(b)
+        if tuple(a.shape) != tuple(b.shape):
+            return f"out{i}: shape {tuple(b.shape)} vs {tuple(a.shape)}"
+        if np.issubdtype(b.dtype, np.floating) and not np.isfinite(b).all():
+            return f"out{i}: non-finite values"
+    return None
+
+
 def op_types(model: onnx.ModelProto) -> list[str]:
+    import onnx
+
     s: set[str] = set()
 
     def walk(graph: onnx.GraphProto) -> None:
@@ -254,29 +318,53 @@ def _kornia_frames(e: BaseException) -> list[str]:
     return res[-6:]
 
 
-def export(m: nn.Module, inputs: list[torch.Tensor]) -> onnx.ModelProto:
-    import contextlib
+def legacy_opset() -> int:
+    """The opset a legacy (TorchScript) export requests: the highest that exporter has on this torch, at most OPSET."""
+    from torch.onnx import _constants
+
+    return min(OPSET, getattr(_constants, "ONNX_TORCHSCRIPT_EXPORTER_MAX_OPSET", _constants.ONNX_MAX_OPSET))
+
+
+def export(m: nn.Module, inputs: list[torch.Tensor], dynamo: bool = True) -> onnx.ModelProto:
+    """Export ``m`` called on ``inputs`` with the dynamo exporter (opset 18) or the legacy TorchScript one."""
+    import onnx
 
     buf = io.BytesIO()
+    if dynamo:
+        kwargs: dict[str, Any] = {
+            "dynamo": True,
+            "opset_version": OPSET,
+            "verbose": False,
+            "report": False,
+            "optimize": os.environ.get("KORNIA_SURVEY_OPTIMIZE", "1") == "1",
+        }
+    else:
+        kwargs = {
+            "dynamo": False,
+            "opset_version": legacy_opset(),
+            "verbose": False,
+            "input_names": [f"in{i}" for i in range(len(inputs))],
+        }
+    # an older torch.onnx.export lacks some of these keywords (``optimize`` arrived in torch 2.6)
+    accepted = inspect.signature(torch.onnx.export).parameters
+    kwargs = {k: v for k, v in kwargs.items() if k in accepted}
     # dynamo prints the whole FX graph on data-dependent failures; keep the survey log readable
     with torch.no_grad(), open(os.devnull, "w") as dn, contextlib.redirect_stdout(dn), contextlib.redirect_stderr(dn):
-        prog = torch.onnx.export(
-            m,
-            tuple(inputs),
-            dynamo=True,
-            opset_version=18,
-            verbose=False,
-            report=False,
-            optimize=os.environ.get("KORNIA_SURVEY_OPTIMIZE", "1") == "1",
-        )
-    prog.save(buf)
+        if dynamo:
+            torch.onnx.export(m, tuple(inputs), **kwargs).save(buf)
+        else:
+            torch.onnx.export(m, tuple(inputs), buf, **kwargs)
     return onnx.load_from_string(buf.getvalue())
 
 
 # ----------------------------------------------------------------------------- runner
 
 
-def run_case(c: dict[str, Any]) -> dict[str, Any]:
+def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
+    """Probe one case (see the module docstring) with the dynamo or the legacy exporter; return its record."""
+    import onnx
+    import onnxruntime as ort
+
     rec: dict[str, Any] = {k: c[k] for k in ("name", "group", "note", "tags", "check")}
     rec["n_inputs"] = len(c["inputs"])
     rec["input_shapes"] = [list(x.shape) + [str(x.dtype).replace("torch.", "")] for x in c["inputs"]]
@@ -292,8 +380,10 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         wrap = make_wrapper(target, c["kwargs"], len(c["inputs"]), c["method"])
         inputs = [x.detach().clone() for x in c["inputs"]]
         torch.manual_seed(SEED)
+        # Eager and the export each run on their own copy: the export reads none of the state the eager call leaves
+        # on a module, and neither leaves state (a dynamo export's fake tensors) on the case, which later tests reuse.
         with torch.no_grad():
-            ref = wrap(*copy.deepcopy(inputs))
+            ref = copy.deepcopy(wrap)(*copy.deepcopy(inputs))
         rec["n_outputs"] = len(ref)
         rec["output_shapes"] = [list(x.shape) + [str(x.dtype).replace("torch.", "")] for x in ref]
     except Exception as e:
@@ -302,7 +392,9 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         return rec
     try:
         torch.manual_seed(SEED)
-        model = export(wrap, inputs)
+        # the legacy exporter traces with the real tensors, so an operator that updates its input in place would
+        # otherwise leave onnxruntime fed with the updated values
+        model = export(copy.deepcopy(wrap), copy.deepcopy(inputs), dynamo=dynamo)
     except Exception as e:
         rec.update(
             status="export-fail",
@@ -353,14 +445,18 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         rec.update(status="ort-run-fail", error=err_str(e), error_full=err_full(e))
         return rec
     if not c["check"]:
-        rec["status"] = "ok-unverified"
+        why = shape_and_finite(list(ref), outs)
+        if why is None:
+            rec["status"] = "ok-unverified"
+        else:
+            rec.update(status="mismatch", error=why)
         return rec
     if len(outs) != len(ref):
         rec.update(status="mismatch", error=f"{len(outs)} ORT outputs vs {len(ref)} torch outputs")
         return rec
     bad = []
     for i, (a, b) in enumerate(zip(ref, outs)):
-        ok, why = close(to_np(a), b, c["atol"], c["rtol"])
+        ok, why = close(a, b, c["atol"], c["rtol"])
         if not ok:
             bad.append(f"out{i}: {why}")
     if bad:
@@ -423,6 +519,7 @@ def prepare_resume(cases: list[dict[str, Any]], out_json: str) -> dict[str, dict
 
 
 def run_cases(cases: list[dict[str, Any]], out_json: str, only: list[str] | None = None, resume: bool = True) -> None:
+    configure_survey_process()
     names = [c["name"] for c in cases]
     dup = {n for n in names if names.count(n) > 1}
     if dup:

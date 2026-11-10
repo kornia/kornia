@@ -56,6 +56,22 @@ def test_get_hanning_kernel2d_3x4(device, dtype):
     assert_close(kernel, expected)
 
 
+@pytest.mark.parametrize("default_dtype", [torch.float64, torch.float16, torch.bfloat16])
+def test_get_hanning_kernel1d_without_dtype_follows_the_default_dtype(default_dtype):
+    # dtype=None: the default dtype, with the values of the int64 ramp promoted by the multiplication (#6123). CPU
+    # only: MPS computes that promotion without rounding the ramp to a half default dtype. 4097 taps put ramp values
+    # above what float16 and bfloat16 hold exactly, where building the ramp in the default dtype rounds differently.
+    previous = torch.get_default_dtype()
+    torch.set_default_dtype(default_dtype)
+    try:
+        kernel = get_hanning_kernel1d(4097)
+        expected = 0.5 - 0.5 * torch.cos(2.0 * math.pi * torch.arange(4097) / 4096.0)
+    finally:
+        torch.set_default_dtype(previous)
+    assert kernel.dtype == default_dtype
+    assert torch.equal(kernel, expected)
+
+
 class TestConventionsHanningKernels(BaseTester):
     @pytest.mark.parametrize("window_size", [4, 5, 6])
     def test_convention_hanning_kernel1d_is_the_unnormalised_symmetric_window(self, window_size, device, dtype):
