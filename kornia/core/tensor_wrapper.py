@@ -137,7 +137,7 @@ def _unwrap(v: Any) -> Any:
 
 
 class TensorWrapper:
-    """Wrap a tensor so that torch functions, tensor methods and operators return the wrapper's class.
+    """Wrap a tensor so torch ops on it return the wrapper's class when a shape rule allows, plain tensors otherwise.
 
     ``w = TensorWrapper(tensor)`` wraps a tensor without copying it. Every torch function, tensor method, tensor
     attribute and operator applied to ``w`` runs on the wrapped tensor and wraps the tensors of its result again, by the
