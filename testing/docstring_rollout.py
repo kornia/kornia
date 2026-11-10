@@ -66,6 +66,12 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.augmentation.container.base",
     "kornia.augmentation.container.params",
     "kornia.color",
+    "kornia.config",
+    "kornia.constants",
+    "kornia.core",
+    "kornia.core.check",
+    "kornia.core.exceptions",
+    "kornia.core.safetensors",
     "kornia.enhance",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
@@ -102,14 +108,23 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.transform.pyramid",
     "kornia.geometry.transform.thin_plate_spline",
     "kornia.geometry.vector",
+    "kornia.image",
+    "kornia.io",
+    "kornia.io.sample",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.morphology.morphology",
+    "kornia.sensors.camera",
+    "kornia.tracking",
 )
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.augmentation",
     "kornia.color",
+    "kornia.config",
+    "kornia.constants",
+    "kornia.core",
     "kornia.enhance",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
@@ -160,8 +175,13 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.subpix",
     "kornia.geometry.transform",
     "kornia.geometry.vector",
+    "kornia.image",
+    "kornia.io",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.morphology",
+    "kornia.sensors",
+    "kornia.tracking",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
