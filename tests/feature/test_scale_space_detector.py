@@ -1060,6 +1060,67 @@ class TestScaleSpaceDetector(BaseTester):
             )
             assert bool(kornia.feature.laf_is_inside_image(half_frame, img, 5)[0, 0]) == kept
 
+    def test_border_check_runs_in_the_frame_dtype_for_a_narrower_response(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 images")
+
+        # A response may return float32 for a float64 image. The frames are then float64, and a frame whose half
+        # extent is 5 + 1 float32 ulp at x = 85 reaches 90 + 2**-21 > 96 - 1 - 5 there, but exactly 90 in float32.
+        class Float32Peak(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x, dtype=torch.float32)
+                if x.shape[-1] == 96:  # the first octave only
+                    out[:, :, 2, 32, 85] = 0.0
+                return out
+
+        def detect(mr_size: float, dtype: torch.dtype) -> torch.Tensor:
+            det = ScaleSpaceDetector(
+                1,
+                resp_module=Float32Peak(),
+                scale_space_response=True,
+                mr_size=mr_size,
+                subpix_module=ConvQuadInterp3d(),
+            )
+            return det.to(device)(torch.zeros(1, 1, 64, 96, device=device, dtype=dtype))[0]
+
+        scale = detect(1.0, torch.float32)[0, 0, 0, 0]  # the float32 detection scale of the peak
+        target = torch.tensor(10.0, device=device).nextafter(torch.tensor(11.0, device=device))  # 10 + 1 ulp
+        mr = target / scale
+        for _ in range(4):  # the float32 multiplier whose product with the scale is exactly the target
+            if mr * scale != target:
+                mr = mr.nextafter(torch.where(mr * scale < target, mr + 1, mr - 1))
+        assert bool(mr * scale == target)
+        assert kornia.feature.laf_is_filled(detect(float(mr), torch.float32)).tolist() == [[True]]
+        assert kornia.feature.laf_is_filled(detect(float(mr), torch.float64)).tolist() == [[False]]
+
+    def test_border_check_preserves_a_wider_response_dtype(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 responses")
+
+        class Float64Peak(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x, dtype=torch.float64)
+                if x.shape[-1] == 96:
+                    out[:, :, 2, 32, 85] = 0.0
+                return out
+
+        image = torch.zeros(1, 1, 64, 96, device=device, dtype=torch.float32)
+        detector = ScaleSpaceDetector(
+            1,
+            resp_module=Float64Peak(),
+            scale_space_response=True,
+            mr_size=1.0,
+            subpix_module=ConvQuadInterp3d(),
+        ).to(device)
+        scale = detector(image)[0][0, 0, 0, 0].item()
+        # The final float64 frame reaches 90 + 5e-8, beyond the allowed x <= 90.
+        # Narrowing its scale to float32 rounds that extent back onto the boundary.
+        for extent, kept in ((10.0 - 1e-7, True), (10.0 + 1e-7, False)):
+            detector.mr_size = extent / scale
+            frames, _ = detector(image)
+            assert frames.dtype == torch.float64
+            assert kornia.feature.laf_is_filled(frames).tolist() == [[kept]]
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scale_space_detector_init_preserves_global_config_4095(self):
         torch._dynamo.reset()
@@ -1798,6 +1859,17 @@ class _TwoMaxima(torch.nn.Module):
         return out
 
 
+class _AsMinima(torch.nn.Module):
+    """``-inner - 1``: each maximum of ``inner`` becomes a minimum whose score, ``inner + 1``, is positive."""
+
+    def __init__(self, inner: torch.nn.Module) -> None:
+        super().__init__()
+        self.inner = inner
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        return -self.inner(x, sigmas) - 1.0
+
+
 class _Extrema(torch.nn.Module):
     """A scale-space response on a constant background with single-voxel extrema at level 2 of the 64 x 96 octave.
 
@@ -1946,16 +2018,19 @@ class TestConventionsScaleSpaceDetector(BaseTester):
             assert resps[0, 0] > 0
 
     @pytest.mark.parametrize("rejection", ["border", "mask"])
-    def test_wart_scale_space_detector_tests_border_and_mask_after_the_octave_top_k_5741(
-        self, device, dtype, rejection
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize(
+        "subpix", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d, ConvSoftArgmax3d]
+    )
+    @pytest.mark.parametrize("extremum", ["maximum", "minimum"])
+    def test_convention_scale_space_detector_validates_before_the_octave_top_k(
+        self, device, dtype, rejection, batch_size, subpix, extremum
     ):
-        # An octave hands only its `num_features` strongest candidates to the border and mask test, so a rejected
-        # candidate's slot stays empty while a weaker valid one exists (#5741). A is rejected -- its half frame of
-        # radius 10.3 overhangs the border y = 63 - 5, or its refined centre x = 40.17 touches the masked pixel
-        # (41, 50) -- and B at (30, 20) is valid: num_features=1 returns an empty slot, num_features=2 returns B.
+        # The stronger A overhangs the border or its refined centre touches a masked pixel.
+        # The weaker, negative B must fill the budget even when only one feature was requested.
         _skip_without_half_padding(device, dtype)
         sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
-        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        img = torch.zeros(batch_size, 1, 64, 96, device=device, dtype=dtype)
         mask = None
         if rejection == "border":
             response, radius = _TwoMaxima(), 10.3
@@ -1963,15 +2038,56 @@ class TestConventionsScaleSpaceDetector(BaseTester):
             response, radius = _TwoMaxima(pull=-0.5), 5.0
             mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
             mask[..., 50, 41] = False
+        # As minima (minima_are_also_good), the candidates are validated at their refined minimum, not at the
+        # coordinate the maxima refiner left at that voxel; the scores move up by one.
+        offset = 0.0
+        if extremum == "minimum":
+            response, offset = _AsMinima(response), 1.0
         filled = {}
         for n in (1, 2):
-            det = ScaleSpaceDetector(n, resp_module=response, scale_space_response=True, mr_size=2 * radius / sigma)
+            det = ScaleSpaceDetector(
+                n,
+                resp_module=response,
+                scale_space_response=True,
+                mr_size=2 * radius / sigma,
+                subpix_module=subpix(),
+                minima_are_also_good=extremum == "minimum",
+            )
             lafs, resps = det.to(device, dtype)(img, mask)
-            filled[n] = kornia.feature.laf_is_filled(lafs)[0].tolist()
-        assert filled[1] == [False]
+            valid = kornia.feature.laf_is_filled(lafs)
+            self.assert_close(valid, valid[:1].expand_as(valid))
+            filled[n] = valid[0].tolist()
+        assert filled[1] == [True]
         assert filled[2] == [True, False]
         self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=lafs.dtype))
-        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+        assert bool((resps[:, 0] < offset).all())
+        if subpix is not ConvSoftArgmax3d:
+            self.assert_close(resps[:, 0], torch.full((batch_size,), offset - 0.5, device=device, dtype=dtype))
+        if batch_size == 2 and mask is not None:
+            # Each batch member has its own validity; an empty image must not borrow
+            # candidates from the other image or expose a top-k sentinel.
+            mask = mask.expand(batch_size, -1, -1, -1).clone()
+            mask[1] = False
+            lafs, resps = det(img, mask)
+            assert kornia.feature.laf_is_filled(lafs).tolist() == [[True, False], [False, False]]
+            self.assert_close(lafs[1], torch.zeros_like(lafs[1]))
+            self.assert_close(resps[1], torch.zeros_like(resps[1]))
+            # The refined centre is checked against each image's own mask: only the second image masks (41, 50),
+            # so the first keeps A and the second falls back to B.
+            mask = torch.ones(batch_size, 1, 64, 96, device=device, dtype=torch.bool)
+            mask[1, :, 50, 41] = False
+            det1 = ScaleSpaceDetector(
+                1,
+                resp_module=response,
+                scale_space_response=True,
+                mr_size=2 * radius / sigma,
+                subpix_module=subpix(),
+                minima_are_also_good=extremum == "minimum",
+            ).to(device, dtype)
+            lafs, _ = det1(img, mask)
+            assert kornia.feature.laf_is_filled(lafs).tolist() == [[True], [True]]
+            assert float(lafs[0, 0, 0, 2]) > 40.0
+            self.assert_close(lafs[1, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=lafs.dtype))
 
     @pytest.mark.parametrize(
         "sign, minima_are_also_good, centres, values",
@@ -2032,8 +2148,8 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         self.assert_close(resps[0, 0], torch.tensor(0.3, device=device, dtype=dtype))
 
     def test_convention_scale_space_detector_masks_candidates_before_the_top_k(self, device, dtype):
-        # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre
-        # comes after it (#5741). A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
+        # A mask drops a candidate at its integer site before the octave's top-k.
+        # A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
         # of num_features=1 goes to the weaker B at (30, 20); without the mask it goes to A.
         _skip_without_half_padding(device, dtype)
         img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
