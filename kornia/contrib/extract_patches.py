@@ -68,20 +68,27 @@ def compute_padding(
     window_size: Union[int, Tuple[int, int]],
     stride: Optional[Union[int, Tuple[int, int]]] = None,
 ) -> FullPadType:
-    r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
-    :func:`combine_tensor_patches` produces expected result.
+    """Compute the ``(top, bottom, left, right)`` padding that makes sliding windows fit.
+
+    ``padding = compute_padding(original_size, window_size, stride)`` returns four ints that, passed as ``padding`` to
+    :func:`extract_tensor_patches` and as ``unpadding`` to :func:`combine_tensor_patches`, make windows of
+    ``window_size`` at ``stride`` cover the padded image with none left over. Each padding is split evenly, with the odd
+    pixel at the bottom or right, and an image smaller than one window is padded to one window.
 
     Args:
-        original_size: the size of the original torch.Tensor.
+        original_size: the image size ``(H, W)``, or one int for both.
         window_size: the size of the sliding window used while extracting patches.
-        stride: The stride of the sliding window. Optional: if not specified, window_size will be used.
+        stride: the stride of the sliding window. Default: ``window_size``.
 
     Return:
-        The required padding as a tuple of four ints: (top, bottom, left, right)
+        The required padding as a tuple of four ints ``(top, bottom, left, right)``.
 
-    Convention:
-        See the Convention block of :class:`~kornia.contrib.ExtractTensorPatches`, which states where the padding
-        goes.
+    Raises:
+        ValueCheckError: if a ``window_size`` or ``stride`` component is below 1.
+
+    See Also:
+        - :func:`extract_tensor_patches`: takes this as ``padding``.
+        - :func:`combine_tensor_patches`: takes this as ``unpadding``.
 
     Example:
         >>> image = torch.arange(12).view(1, 1, 4, 3)
@@ -93,11 +100,7 @@ def compute_padding(
                   [ 6,  7,  8],
                   [ 9, 10, 11]]]])
 
-    .. note::
-        This function will be implicitly used in :func:`extract_tensor_patches` and :func:`combine_tensor_patches` if
-        `allow_auto_(un)padding` is set to True and no non-zero `(un)padding` is given.
-
-    """  # noqa: D205
+    """
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     if stride is None:
@@ -133,76 +136,35 @@ def compute_padding(
 
 
 class ExtractTensorPatches(nn.Module):
-    r"""nn.Module that extracts patches from tensors and stacks them.
+    """Cut an image into sliding-window patches with stored settings (module form).
 
-    In the simplest case, the output value of the operator with input size
-    ``(B, C, H, W)`` is :math:`(B, N, C, H_{out}, W_{out})`.
-
-    where
-      - :math:`B` is the batch size.
-      - :math:`N` denotes the total number of extracted patches.
-      - :math:`C` denotes the number of input channels.
-      - :math:`H`, :math:`W` the input height and width of the input in pixels.
-      - :math:`H_{out}`, :math:`W_{out}` denote the patch size
-        defined in the function signature.
-
-    An empty batch (:math:`B = 0`) gives an empty output with the same :math:`N`, :math:`C`, :math:`H_{out}` and
-    :math:`W_{out}` as a non-empty one. :math:`C` must be non-zero and the window sizes and strides positive.
-
-    * :attr:`window_size` is the size of the sliding window and controls the
-      shape of the output torch.Tensor and defines the shape of the output patch.
-    * :attr:`stride` controls the stride to apply to the sliding window and
-      regulates the overlapping between the extracted patches.
-    * :attr:`padding` controls the amount of implicit zero padding on each side
-      of each dimension.
-    * :attr:`allow_auto_padding` allows automatic calculation of the padding required
-      to fit the window and stride into the image.
-
-    The parameters :attr:`window_size`, :attr:`stride` and :attr:`padding` can
-    be either:
-
-        - a single ``int`` -- in which case the same value is used for the
-          height and width dimension.
-        - a ``tuple`` of two ints -- in which case, the first `int` is used for
-          the height dimension, and the second `int` for the width dimension.
-
-    :attr:`padding` can also be a ``tuple`` of four ints -- in which case, the
-    first two ints are for the height dimension while the last two ints are for
-    the width dimension.
+    ``extract = ExtractTensorPatches(window_size, stride, padding)`` stores its arguments, and
+    ``patches = extract(image)`` is :func:`extract_tensor_patches` on a ``(B, C, H, W)`` image, returning
+    ``(B, N, C, h, w)`` patches.
 
     Convention:
-        - Patches are stacked row-major over the grid of window positions, left to right and then top to bottom, the
-          order of :func:`torch.nn.functional.unfold`.
-        - A positive ``padding`` adds zeros and a negative one crops. A 4-tuple is ``(top, bottom, left, right)``,
-          not the ``(left, right, top, bottom)`` of :func:`torch.nn.functional.pad`; a 2-tuple ``(ph, pw)`` adds
-          ``ph`` rows above and below and ``pw`` columns left and right.
-        - A window that does not fit warns and drops the last rows or columns; an image smaller than the window warns
-          and then raises. ``allow_auto_padding=True`` pads instead, as :func:`compute_padding` computes: split evenly
-          with the odd pixel at the bottom or right, and an image smaller than the window padded to one window.
-        - A non-zero ``padding`` switches off both the fit warning and ``allow_auto_padding``, so a padding too small
-          for the window drops the last rows or columns silently. An all-zero ``padding`` counts as none.
-        - A ``window_size`` or ``stride`` component below 1 raises ``ValueCheckError``, a ``ValueError``, up front
-          (at construction for the module classes), here and in :func:`combine_tensor_patches`,
-          :func:`compute_padding` and :class:`CombineTensorPatches`, also under ``python -O`` and
-          ``disable_checks()``.
+        See the Convention block on :func:`extract_tensor_patches`.
 
     Args:
-        input: torch.Tensor image where to extract the patches with shape ``(B, C, H, W)``.
-        window_size: the size of the sliding window and the output patch size.
-        stride: stride of the sliding window.
+        window_size: the size ``(h, w)`` of the sliding window and of each patch, or one int for both.
+        stride: stride of the sliding window, an int or ``(sh, sw)``.
         padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
-        allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
+        allow_auto_padding: whether to pad the image as :func:`compute_padding` computes when the windows do not fit.
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output: :math:`(B, N, C, H_{out}, W_{out})`
+        - Output: ``(B, N, C, h, w)``
 
-    Returns:
-        the torch.Tensor with the extracted patches.
+    Raises:
+        ValueCheckError: if a ``window_size`` or ``stride`` component is below 1; raised from the constructor.
+
+    See Also:
+        - :func:`extract_tensor_patches`: the one-call form.
+        - :class:`CombineTensorPatches`: puts the patches back into an image.
 
     Examples:
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
-        >>> patches = extract_tensor_patches(input, (2, 3))
+        >>> patches = ExtractTensorPatches((2, 3))(input)
         >>> input
         tensor([[[[0., 1., 2.],
                   [3., 4., 5.],
@@ -228,20 +190,14 @@ class ExtractTensorPatches(nn.Module):
         self.allow_auto_padding: bool = allow_auto_padding
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        """Extract sliding-window patches from a batched image tensor.
+        """Extract the sliding-window patches of a ``(B, C, H, W)`` image.
 
         Args:
-            input: Input tensor with shape ``(B, C, H, W)``, where:
-                - ``B`` is the batch size (number of images),
-                - ``C`` is the number of channels,
-                - ``H`` is height,
-                - ``W`` is width.
+            input: the image, ``(B, C, H, W)``.
 
         Returns:
-            A tensor containing stacked patches with shape
-            :math:`(B, N, C, H_{out}, W_{out})`, where:
-            - ``N`` is the number of extracted windows per image,
-            - ``H_{out}`` and ``W_{out}`` are patch height and patch width.
+            The patches, ``(B, N, C, h, w)``, with ``N`` window positions and ``(h, w)`` the window size.
+
         """
         return extract_tensor_patches(
             input,
@@ -253,83 +209,41 @@ class ExtractTensorPatches(nn.Module):
 
 
 class CombineTensorPatches(nn.Module):
-    r"""nn.Module that combines patches back into full tensors.
+    """Reassemble sliding-window patches into an image with stored settings (module form).
 
-    In the simplest case, the output value of the operator with input size
-    :math:`(B, N, C, H_{out}, W_{out})` is ``(B, C, H, W)``.
-
-    where
-      - :math:`B` is the batch size.
-      - :math:`N` denotes the total number of extracted patches.
-      - :math:`C` denotes the number of input channels.
-      - :math:`H`, :math:`W` the height and width of the output image in pixels.
-      - :math:`H_{out}`, :math:`W_{out}` denote the patch size
-        defined in the function signature.
-
-    An empty batch (:math:`B = 0`) is reconstructed with the same spatial size and unpadding as a non-empty one.
-
-    * :attr:`original_size` is the size of the original image prior to
-      extracting torch.Tensor patches, which is the size of the output image.
-    * :attr:`window_size` is the size of the sliding window used while
-      extracting torch.Tensor patches.
-    * :attr:`stride` controls the stride to apply to the sliding window and
-      regulates the overlapping between the extracted patches.
-    * :attr:`unpadding` is the amount of padding to be removed. If specified,
-      this value must be the same as padding used while extracting torch.Tensor patches.
-    * :attr:`allow_auto_unpadding` allows automatic calculation of the padding required
-      to fit the window and stride into the image. This must be used if the
-      `allow_auto_padding` flag was used for extracting the patches.
-
-
-    The parameters :attr:`original_size`, :attr:`window_size`, :attr:`stride`, and :attr:`unpadding` can
-    be either:
-
-        - a single ``int`` -- in which case the same value is used for the
-          height and width dimension.
-        - a ``tuple`` of two ints -- in which case, the first `int` is used for
-          the height dimension, and the second `int` for the width dimension.
-
-    :attr:`unpadding` can also be a ``tuple`` of four ints -- in which case, the
-    first two ints are for the height dimension while the last two ints are for
-    the width dimension.
+    ``combine = CombineTensorPatches(original_size, window_size, stride, unpadding)`` stores its arguments, and
+    ``image = combine(patches)`` is :func:`combine_tensor_patches` on ``(B, N, C, h, w)`` patches, returning a
+    ``(B, C, H, W)`` image. Unlike the function, ``stride`` defaults to ``window_size``.
 
     Convention:
-        - Overlapping patches are averaged: each pixel is divided by the number of patches that cover it, where
-          :func:`torch.nn.functional.fold` sums them. A pixel that no patch covers (patches that do not fit) is 0.
-        - The output keeps the dtype of the patches. Integer patches are averaged exactly in ``int64``, with the mean
-          truncated toward zero (on MPS before torch 2.9 they go through ``float32``, exact up to :math:`2^{24}`);
-          ``bool`` patches are True where any covering patch is True; ``float16`` and ``bfloat16`` patches are summed
-          in ``float32``.
-        - A ``stride`` larger than ``window_size`` raises, because the patches leave pixels uncovered.
-        - ``unpadding`` and ``allow_auto_unpadding`` follow the ``padding`` and ``allow_auto_padding`` rules of
-          :class:`ExtractTensorPatches`; pass the values used to extract the patches.
-        - ``stride`` defaults to ``window_size`` here and in :func:`compute_padding`, to 1 in
-          :class:`ExtractTensorPatches` and :func:`extract_tensor_patches`, and has no default in
-          :func:`combine_tensor_patches`, which also takes ``allow_auto_unpadding`` before ``unpadding``.
+        See the Convention block on :func:`combine_tensor_patches`.
 
     Args:
-        patches: patched torch.Tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        original_size: the size of the original torch.Tensor and the output size.
+        original_size: the size ``(H, W)`` of the image the patches were extracted from, and of the output.
         window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window. Default: ``window_size``.
         unpadding: the padding used while extracting the patches, removed from the output.
-        allow_auto_unpadding: whether to allow automatic unpadding of the input
-            if the window and stride do not fit into the original_size.
+        allow_auto_unpadding: whether to remove the padding :func:`compute_padding` computes when the windows do not
+            fit ``original_size``; pass it when the patches were extracted with ``allow_auto_padding=True``.
 
     Shape:
-        - Input: :math:`(B, N, C, H_{out}, W_{out})`
+        - Input: ``(B, N, C, h, w)``
         - Output: ``(B, C, H, W)``
+
+    Raises:
+        ValueCheckError: if a ``window_size`` or ``stride`` component is below 1; raised from the constructor.
+
+    See Also:
+        - :func:`combine_tensor_patches`: the one-call form.
+        - :class:`ExtractTensorPatches`: cuts the patches this module puts back.
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
+        >>> CombineTensorPatches(original_size=(4, 4), window_size=(2, 2))(out)
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
-
-    .. note::
-        This function is supposed to be used in conjunction with :class:`ExtractTensorPatches`.
 
     """
 
@@ -350,18 +264,14 @@ class CombineTensorPatches(nn.Module):
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        """Reconstruct full images from extracted patches.
+        """Reassemble ``(B, N, C, h, w)`` patches into a ``(B, C, H, W)`` image.
 
         Args:
-            input: Patch tensor with shape :math:`(B, N, C, H_{out}, W_{out})`, where:
-                - ``B`` is the batch size,
-                - ``N`` is the number of patches,
-                - ``C`` is the number of channels,
-                - ``H_{out}`` and ``W_{out}`` are patch height and width.
+            input: the patches, ``(B, N, C, h, w)``.
 
         Returns:
-            A reconstructed tensor with shape ``(B, C, H, W)``, where ``H``
-            and ``W`` correspond to ``original_size`` after optional unpadding.
+            The image, ``(B, C, H, W)`` with ``(H, W)`` equal to ``original_size``.
+
         """
         return combine_tensor_patches(
             input,
@@ -397,24 +307,52 @@ def combine_tensor_patches(
     unpadding: PadType = 0,
     eps: Optional[float] = None,
 ) -> torch.Tensor:
-    r"""Restore input from patches.
+    """Reassemble sliding-window patches into an image, averaging where they overlap.
+
+    ``image = combine_tensor_patches(patches, original_size, window_size, stride)`` takes ``(B, N, C, h, w)``
+    patches and returns the ``(B, C, H, W)`` image of size ``original_size``. Pass the ``stride`` used for the
+    extraction and its ``padding`` as ``unpadding``. When the extraction padding is non-negative and makes the windows
+    fit, or both auto flags are set, a round trip returns the input: exactly for integer and ``bool`` patches, up to
+    rounding where floating patches overlap.
 
     Convention:
-        See the Convention block of :class:`~kornia.contrib.CombineTensorPatches`.
+        - Overlapping patches are averaged: each pixel is divided by the number of patches that cover it, where
+          :func:`torch.nn.functional.fold` sums them. A pixel that no patch covers (patches that do not fit) is 0.
+        - The output keeps the dtype of the patches. Integer patches are averaged exactly in ``int64``, with the mean
+          truncated toward zero (on MPS before torch 2.9 they go through ``float32``, exact up to :math:`2^{24}`);
+          ``bool`` patches are True where any covering patch is True; ``float16`` and ``bfloat16`` patches are summed
+          in ``float32``.
+        - ``unpadding`` and ``allow_auto_unpadding`` follow the ``padding`` and ``allow_auto_padding`` rules of
+          :func:`extract_tensor_patches`; without either, patches that do not fit ``original_size`` give a warning.
+        - This function takes ``allow_auto_unpadding`` before ``unpadding``.
+        - An empty batch is reconstructed with the same spatial size and unpadding as a non-empty one.
 
     Args:
-        patches: patched torch.Tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        original_size: the size of the original torch.Tensor and the output size.
+        patches: the patches, ``(B, N, C, h, w)``.
+        original_size: the size ``(H, W)`` of the image the patches were extracted from, and of the output.
         window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window. Required.
+        allow_auto_unpadding: whether to remove the padding :func:`compute_padding` computes when the windows do not
+            fit ``original_size``.
         unpadding: the padding used while extracting the patches, removed from the output.
-        allow_auto_unpadding: whether to allow automatic unpadding of the input
-            if the window and stride do not fit into the original_size.
         eps: deprecated, has no effect. Each covered pixel is divided by its exact overlap count and a pixel no patch
             covers is 0.
 
     Return:
-        The combined patches in an image torch.Tensor with shape ``(B, C, H, W)``.
+        The combined patches in an image tensor with shape ``(B, C, H, W)``.
+
+    Raises:
+        ValueError: if ``patches`` is not 5-D.
+        ValueCheckError: if a ``window_size`` or ``stride`` component is below 1.
+        AssertionError: if ``stride`` is larger than ``window_size``, which leaves pixels uncovered.
+        AssertionError: if ``unpadding`` is a tuple of other than two or four ints.
+        RuntimeError: if the number or size of the patches does not match ``original_size``, ``window_size``, ``stride``
+            and ``unpadding``.
+
+    See Also:
+        - :func:`extract_tensor_patches`: cuts the patches this function puts back.
+        - :class:`CombineTensorPatches`: the module form.
+        - :func:`compute_padding`: the ``unpadding`` that makes the windows fit.
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
@@ -423,9 +361,6 @@ def combine_tensor_patches(
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
-
-    .. note::
-        This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
 
     """
     if patches.ndim != 5:
@@ -590,20 +525,49 @@ def extract_tensor_patches(
     padding: PadType = 0,
     allow_auto_padding: bool = False,
 ) -> torch.Tensor:
-    r"""Extract patches from tensors and stacks them.
+    """Cut an image into sliding-window patches stacked along a new patch dimension.
+
+    ``patches = extract_tensor_patches(image, window_size, stride)`` takes a ``(B, C, H, W)`` image and returns its
+    ``(B, N, C, h, w)`` patches, where ``(h, w)`` is ``window_size`` and ``N`` is the number of window positions.
 
     Convention:
-        See the Convention block of :class:`~kornia.contrib.ExtractTensorPatches`.
+        - Patches are stacked row-major over the grid of window positions, left to right and then top to bottom, the
+          order of :func:`torch.nn.functional.unfold`.
+        - ``window_size``, ``stride`` and a 2-tuple ``padding`` are ``(height, width)``, or one int for both. A positive
+          ``padding`` adds zeros and a negative one crops. A 4-tuple is ``(top, bottom, left, right)``, not the
+          ``(left, right, top, bottom)`` of :func:`torch.nn.functional.pad`; a 2-tuple ``(ph, pw)`` adds ``ph`` rows
+          above and below and ``pw`` columns left and right.
+        - A window that does not fit warns and drops the last rows or columns; an image smaller than the window warns
+          and then raises. ``allow_auto_padding=True`` pads instead, as :func:`compute_padding` computes.
+        - A non-zero ``padding`` switches off both the fit warning and ``allow_auto_padding``, so a padding too small
+          for the window drops the last rows or columns silently. An all-zero ``padding`` counts as none.
+        - A ``window_size`` or ``stride`` component below 1 raises ``ValueCheckError``, a ``ValueError``, up front
+          (at construction for the module classes), here and in :func:`combine_tensor_patches`,
+          :func:`compute_padding`, :class:`ExtractTensorPatches` and :class:`CombineTensorPatches`, also under
+          ``python -O`` and ``disable_checks()``.
+        - An empty batch gives an empty output with the same ``N``, ``C``, ``h`` and ``w`` as a non-empty one.
 
     Args:
-        input: torch.Tensor image where to extract the patches with shape ``(B, C, H, W)``.
-        window_size: the size of the sliding window and the output patch size.
-        stride: stride of the sliding window.
+        input: the image to extract the patches from, ``(B, C, H, W)`` with ``C`` at least 1.
+        window_size: the size ``(h, w)`` of the sliding window and of each patch, or one int for both.
+        stride: stride of the sliding window, an int or ``(sh, sw)``.
         padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
-        allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
+        allow_auto_padding: whether to pad the image as :func:`compute_padding` computes when the windows do not fit.
 
     Returns:
-        the torch.Tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.
+        The extracted patches, ``(B, N, C, h, w)``.
+
+    Raises:
+        TypeError: if ``input`` is not a tensor.
+        ValueError: if ``input`` is not 4-D or has no channel.
+        ValueCheckError: if a ``window_size`` or ``stride`` component is below 1.
+        AssertionError: if ``padding`` is a tuple of other than two or four ints.
+        RuntimeError: if the image, after any padding, is smaller than the window.
+
+    See Also:
+        - :class:`ExtractTensorPatches`: the module form.
+        - :func:`combine_tensor_patches`: puts the patches back into an image.
+        - :func:`compute_padding`: the ``padding`` that makes the windows fit.
 
     Examples:
         >>> input = torch.arange(9.).view(1, 1, 3, 3)

@@ -2,9 +2,23 @@ kornia.contrib
 ==============
 
 .. meta::
-   :description: The Kornia.contrib module provides models and utilities for deep learning applications, including base models and the EfficientViT architecture. The module offers configurable, efficient Vision Transformer (ViT) models and tools to load and utilize pre-trained checkpoints, designed to be integrated into deep learning pipelines with PyTorch.
+   :description: The kornia.contrib module provides contributed image operations, such as sliding-window patches, connected-component labelling, distance transforms, histogram matching, plasma-fractal noise, k-means clustering and augmentation audits, and task-level wrappers of edge, face and object detection, super-resolution, image stitching and prompted segmentation models.
 
 .. currentmodule:: kornia.contrib
+
+Contributed image operations, and task-level wrappers that pair a kornia model with its pre- and post-processing.
+The image operations:
+
+- Sliding-window patches: :func:`extract_tensor_patches` cuts them, :func:`combine_tensor_patches` puts them back
+  and averages overlaps, and :func:`compute_padding` gives the padding that makes the windows fit.
+- Connected components: :func:`connected_components` labels them with a fixed number of pooling steps and
+  :func:`connected_components_union_find` exactly; :ref:`labeling-method` compares the two.
+- Distances to the nearest positive pixel: :func:`distance_transform`.
+- Histogram matching to a template: :func:`histogram_matching`, built on the 1-D interpolation :func:`interp`.
+- Plasma-fractal noise maps: :func:`diamond_square`.
+- K-means clustering: :class:`KMeans`.
+- A Python callable as a module: :class:`Lambda`.
+- The geometry of one augmentation pipeline call: :func:`audit`, described in :ref:`augmentation-audit`.
 
 .. _augmentation-audit:
 
@@ -88,11 +102,12 @@ Interpreting the report
   ``RandAugment``, ``AutoAugment``, ``TrivialAugment``, and custom sequential
   subclasses are currently opaque and therefore unsupported when selected.
 
-Diagnostics use float32 for half-precision inputs and disable autocast for matrix
-composition and inverse mapping. The pipeline forward itself inherits the caller's
-autocast context, so returned labels remain identical to an ordinary forward call.
-Autocast can quantize spatial-label propagation and produce real round-trip errors;
-the report does not suppress those differences.
+Diagnostics are computed in float64 for a float64 image and in float32 otherwise,
+and disable autocast for matrix composition and inverse mapping. The pipeline
+forward itself inherits the caller's autocast context, so returned labels remain
+identical to an ordinary forward call. Autocast can quantize spatial-label
+propagation and produce real round-trip errors; the report does not suppress
+those differences.
 
 The API accepts one nonempty BCHW image first, followed by optional batched masks,
 keypoints, or boxes in the usual positional ``data_keys`` forms. Dictionaries,
@@ -263,18 +278,19 @@ connectivity=8)`` (OpenCV's default connectivity) and
 functions: compare foreground partitions, not label values.
 
 ``connected_components_union_find`` computes the exact 8-connected partition
-without an iteration budget. It accepts boolean masks and returns ``int64``
-labels, so half-precision inputs do not cause distinct component IDs to collide.
-It is useful for segmentation masks containing long structures such as vessels,
-roads and text strokes. Its convergence checks synchronize the accelerator with
-the host, and the result is not differentiable.
+with no iteration budget, so long structures such as vessels, roads and text
+strokes come out whole. Its convergence checks synchronize the device with the
+host, so it does not compile with ``torch.compile(fullgraph=True)`` and cannot
+be captured in a CUDA graph.
 
-``connected_components`` retains its fixed-count pooling implementation; it
-returns ``int64`` labels like ``connected_components_union_find`` but keeps its
-own label convention. When using it, choose enough iterations for the largest
-component's graph diameter: the default 100 steps can leave a long or large
-component split into multiple labels. A small fixed budget may be faster than
-union-find for small or fragmented masks, but does not guarantee convergence.
+``connected_components`` runs a fixed ``num_iterations`` of 3x3 max-pooling
+steps, with no host synchronization, and compiles with ``fullgraph=True``. On
+CUDA, 10 steps run several times faster than union-find, and the default 100
+steps take about as long as union-find. On the CPU, union-find is faster than
+10 steps.
+
+Both return ``int64`` labels, 0 on the background, and neither is
+differentiable.
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -330,13 +346,6 @@ Lambda
 
 Distance Transform
 ------------------
-
-Binary masks produce Euclidean distances to the nearest positive pixel or voxel.
-Fractional masks remain piecewise differentiable: each positive source contributes
-``-h * log(v)`` to the squared distance before minimization and the square root.
-``kernel_size`` is accepted for compatibility and does not affect the result;
-``h`` controls the fractional-source cost. See the function's gradient conventions
-before using it in a loss.
 
 .. autofunction:: distance_transform
 

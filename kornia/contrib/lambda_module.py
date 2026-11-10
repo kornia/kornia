@@ -22,16 +22,24 @@ from torch import nn
 
 
 class Lambda(nn.Module):
-    """Applies user-defined lambda as a transform.
+    """Wrap a Python callable as an ``nn.Module`` that applies it to its input.
 
-    Convention:
-        :meth:`forward` calls ``func(img, *args, **kwargs)`` and returns its result unchecked; it need not be a tensor.
+    ``f = Lambda(func)`` stores ``func``, and ``out = f(img, *args, **kwargs)`` returns ``func(img, *args, **kwargs)``
+    unchecked; it need not be a tensor. Use it to put a plain function into an ``nn.Sequential`` or an augmentation
+    container.
 
     Args:
         func: Callable function.
 
     Returns:
         The output of the user-defined lambda.
+
+    Raises:
+        TypeError: if ``func`` is not callable; raised from the constructor.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains augmentations; a ``Lambda`` runs in it as one
+          step.
 
     Example:
         >>> import kornia
@@ -50,21 +58,15 @@ class Lambda(nn.Module):
         self.func = func
 
     def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
-        """Run the user-provided transform function.
-
-        This method simply forwards all arguments to ``self.func``.
-        It is useful when you want to insert a custom Python callable inside a
-        ``torch.nn.Module`` pipeline.
+        """Return ``func(img, *args, **kwargs)``.
 
         Args:
-            img: Primary input tensor passed as the first positional argument.
-                For image tasks this is commonly shaped ``(B, C, H, W)``, where
-                ``B`` = batch size, ``C`` = number of channels,
-                ``H`` = height, and ``W`` = width.
-            *args: Additional positional arguments forwarded to ``self.func``.
-            **kwargs: Additional keyword arguments forwarded to ``self.func``.
+            img: the first positional argument of ``func``.
+            *args: Additional positional arguments forwarded to ``func``.
+            **kwargs: Additional keyword arguments forwarded to ``func``.
 
         Returns:
-            Whatever ``self.func`` returns.
+            Whatever ``func`` returns.
+
         """
         return self.func(img, *args, **kwargs)

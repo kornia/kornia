@@ -143,12 +143,12 @@ def _squared_distance_transform(cost: torch.Tensor) -> torch.Tensor:
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
-    r"""Compute Euclidean distances with differentiable source costs in 2D or 3D.
+    r"""Compute per channel the Euclidean distance to the nearest positive pixel, in 2D or 3D.
 
-    ``distance_transform(image)`` maps each channel of ``(B, C, H, W)`` images or
-    ``(B, C, D, H, W)`` volumes independently to distances in pixels. For binary masks,
-    this is the Euclidean distance to the nearest positive pixel, up to floating-point
-    rounding. Fractional masks use the generalized squared distance transform:
+    ``dist = distance_transform(image)`` takes a floating ``(B, C, H, W)`` image or ``(B, C, D, H, W)`` volume and
+    returns the distance in pixels to the nearest positive pixel of the same channel. A binary mask gets the exact
+    distance up to floating-point rounding. A value :math:`0 < v < 1` is a soft source that adds :math:`-h \log v` to
+    the squared distance, and the result is differentiable in the image:
 
     .. math::
         D(p) = \sqrt{\min_{q: v(q)>0} \left(\|p-q\|_2^2 - h\log v(q)\right)},
@@ -177,21 +177,25 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         - For dense fractional masks, a pixel with ``-h * log(v) < 1`` selects itself: every
           other pixel is at least one squared pixel away. Increase ``h`` to let stronger
           neighbours compete over longer distances.
+        - ``float16`` and ``bfloat16`` inputs are computed in ``float32`` and cast back.
 
     Args:
         image: Floating-point image or volume of shape ``(B, C, H, W)`` or ``(B, C, D, H, W)``.
         kernel_size: Odd integer of at least 3, retained for call compatibility. It does not
             change the result: the transform considers the entire spatial domain.
         h: Positive finite weight of the fractional-source cost in squared pixel units.
-            It does not affect binary distances. Half-precision inputs are computed in float32
-            and cast back.
-            ``h``, source costs and gradients must remain representable in the working dtype.
+            It does not affect binary distances. ``h``, source costs and gradients must remain
+            representable in the working dtype.
 
     Returns:
         Distances with the input's shape, dtype and device.
 
+    Raises:
+        BaseError: if ``image`` is not a floating tensor of 4 or 5 dimensions with nonempty spatial sizes,
+            ``kernel_size`` is not an odd int of at least 3, or ``h`` is not positive and finite.
+
     See Also:
-        - :class:`DistanceTransform`: Module form of this operation.
+        - :class:`DistanceTransform`: the module form.
 
     Example:
         >>> image = torch.zeros(1, 1, 5, 5)
@@ -231,18 +235,20 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
 
 
 class DistanceTransform(nn.Module):
-    r"""Compute Euclidean distances with differentiable source costs in 2D or 3D.
+    """Compute the distance to the nearest positive pixel per channel (module form).
 
-    ``DistanceTransform(h=0.35)(image)`` applies :func:`distance_transform` independently
-    to each channel of an image or volume, preserving its shape, dtype and device.
-    Binary masks give Euclidean distances; fractional masks use differentiable source costs.
+    ``dt = DistanceTransform(h=0.35)`` stores its arguments, and ``dist = dt(image)`` is :func:`distance_transform` on a
+    ``(B, C, H, W)`` image or ``(B, C, D, H, W)`` volume, returning distances of the same shape, dtype and device.
+
+    Convention:
+        See the Convention block on :func:`distance_transform`.
 
     Args:
         kernel_size: Odd integer of at least 3, retained for compatibility; does not affect distances.
         h: Positive finite weight of the squared-distance source cost. See :func:`distance_transform`.
 
     See Also:
-        - :func:`distance_transform`: Functional form and gradient conventions.
+        - :func:`distance_transform`: the one-call form, with the gradient conventions.
 
     """
 

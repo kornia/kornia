@@ -19,18 +19,19 @@ import torch
 
 
 def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Tensor:
-    """Adjust the pixel values of an image to match its histogram towards a target image.
+    """Remap the values of an image so that its histogram matches the histogram of a template.
 
-    `Histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_ is the transformation
-    of an image so that its histogram matches a specified histogram. Code referred to
-    `here <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_.
+    ``out = histogram_matching(source, template)`` maps each value of ``source`` to the ``template`` value at the same
+    quantile and returns a tensor with the shape of ``source``. One histogram covers all of ``source``, batch and
+    channels together: to match each image or channel on its own, call the function on each slice. The result is not
+    differentiable.
+
+    `Histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_ follows
+    `this answer <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_.
 
     Convention:
-        - One histogram of every element of ``source``, all batch items and channels together, is matched to one
-          histogram of every element of ``template``, which can have any shape. This is
-          ``skimage.exposure.match_histograms(source, template, channel_axis=None)``, which needs both inputs to have
-          the same number of dimensions (flatten them otherwise); to match each sample or channel on its own, call the
-          function on each slice.
+        - This is ``skimage.exposure.match_histograms(source, template, channel_axis=None)``, which needs both inputs to
+          have the same number of dimensions (flatten them otherwise).
         - A source value maps to the template value at its quantile, interpolated linearly between template values
           with :func:`interp`. The result stays inside the template's range once that range is rounded to the output
           dtype, so with a ``float64`` template and a ``float32`` source it can pass the unrounded ends by that
@@ -38,17 +39,23 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
           skimage.
         - A floating source keeps its dtype; an integer or ``bool`` source returns ``float32``. The quantiles are
           computed in ``float32`` (``float64`` for a ``float64`` source).
-        - It is not differentiable: with a non-empty ``source``, no gradient reaches it and a backward pass into
-          ``template`` raises.
+        - With a non-empty ``source``, no gradient reaches it and a backward pass into ``template`` raises.
         - An empty ``source`` with a non-empty ``template`` returns an empty tensor, still attached to its autograd
-          graph; an empty ``template`` raises ``ValueError``, even when ``source`` is empty too.
+          graph.
 
     Args:
-        source: Image to transform.
-        template: Template image. It can have different dimensions to source.
+        source: Image to transform, of any shape.
+        template: Template image, of any shape.
 
     Returns:
         The transformed output image, with the shape of the source image.
+
+    Raises:
+        ValueError: if ``template`` is empty, even when ``source`` is empty too.
+
+    See Also:
+        - :func:`interp`: the linear interpolation that maps the quantiles.
+        - :func:`~kornia.enhance.equalize`: flattens the histogram of each channel, with no template.
 
     """
     oldshape = source.shape
@@ -89,18 +96,18 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
 
 def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
-    """One-dimensional linear interpolation for monotonically increasing sample points.
+    """Interpolate samples ``(xp, fp)`` linearly at query points, extrapolating the end segments.
 
-    Returns the one-dimensional piecewise linear interpolant to a function with
-    given discrete data points :math:`(xp, fp)`, evaluated at :math:`x`.
+    ``y = interp(x, xp, fp)`` evaluates the piecewise-linear function through the 1-D samples ``xp`` (increasing) and
+    ``fp`` at every element of ``x`` and returns a tensor with the shape of ``x``. Outside ``[xp[0], xp[-1]]`` it
+    extends the first and last segments, where :func:`numpy.interp` clamps to ``fp[0]`` and ``fp[-1]``. It is
+    differentiable in ``x``, ``xp`` and ``fp``.
 
     Convention:
-        - Outside ``[xp[0], xp[-1]]`` the end segments are extrapolated linearly, where :func:`numpy.interp` clamps to
-          ``fp[0]`` and ``fp[-1]``; SciPy's ``interp1d(xp, fp, fill_value="extrapolate")`` makes the same choice. At a
-          knot the result is that knot's ``fp``.
-        - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
-          is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
-          dtype when all three are integer.
+        - SciPy's ``interp1d(xp, fp, fill_value="extrapolate")`` makes the same extrapolation choice. At a knot the
+          result is that knot's ``fp``. ``xp`` must be increasing, which is not checked.
+        - The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float dtype when all three
+          are integer. A complex ``fp`` interpolates its real and imaginary parts separately.
         - A ``float16`` or ``bfloat16`` result is computed in ``float32`` and cast to the output dtype once, so
           coordinate differences above 65504 do not overflow the weight and a segment whose ``fp`` difference overflows
           the output dtype stays finite. Inside a segment the result is within about half an ulp of the segment's
@@ -110,13 +117,15 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
           larger integer queries are rounded.
 
     Args:
-        x: the :math:`x`-coordinates at which to evaluate the interpolated
-            values.
-        xp: the :math:`x`-coordinates of the data points, must be increasing.
-        fp: the :math:`y`-coordinates of the data points, same length as `xp`.
+        x: the :math:`x`-coordinates at which to evaluate the interpolated values, of any shape.
+        xp: the :math:`x`-coordinates of the data points, 1-D and increasing.
+        fp: the :math:`y`-coordinates of the data points, 1-D with the length of ``xp``.
 
     Returns:
-        the interpolated values, same size as `x`.
+        the interpolated values, with the shape of ``x``.
+
+    See Also:
+        - :func:`histogram_matching`: maps image values through this interpolation of template quantiles.
 
     """
     if fp.is_complex():

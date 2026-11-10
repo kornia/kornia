@@ -29,16 +29,21 @@ from kornia.geometry.linalg import euclidean_distance
 
 
 class KMeans:
-    r"""Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
+    r"""Cluster ``(N, D)`` points into ``num_clusters`` groups by k-means with Euclidean distance.
+
+    ``kmeans = KMeans(num_clusters, cluster_centers)`` stores the settings, ``kmeans.fit(X)`` alternates nearest-centre
+    assignment and centre means on the ``(N, D)`` points ``X``, and ``labels = kmeans.predict(x)`` returns the ``int64``
+    index of the nearest fitted centre for each row of ``(M, D)`` points. After :meth:`fit`, :attr:`cluster_centers` is
+    ``(num_clusters, D)`` and :attr:`cluster_assignments` holds the ``(N,)`` labels of ``X``.
 
     Convention:
         - :meth:`fit` stops after the first update whose squared total centre shift,
           :math:`(\sum_k \lVert c_k^{\text{new}} - c_k \rVert)^2`, is at most ``tolerance``, or after ``max_iterations``
           updates. ``max_iterations=0`` sets no limit, so ``tolerance`` must not be ``None`` then.
-        - ``seed`` calls ``torch.manual_seed(seed)``, which reseeds the global generator. The initial centres, sampled
-          from the data of each :meth:`fit` when ``cluster_centers`` is ``None``, and the points that empty clusters
-          move to are drawn from it; there is no ``generator`` argument. A second :meth:`fit` on the same data
-          therefore starts from other centres unless the global generator is reseeded first.
+        - ``seed`` calls ``torch.manual_seed(seed)``, which reseeds the global generator. The initial centres and the
+          points that empty clusters move to are drawn from it; there is no ``generator`` argument. A second
+          :meth:`fit` on the same data therefore starts from other centres unless the global generator is reseeded
+          first.
         - A point at the same distance from two centres goes to the one with the lower index. A cluster that gets no
           point moves to a random data point.
         - Distances and means are computed in the promoted dtype of the data and the centres, at least ``float32``
@@ -49,11 +54,15 @@ class KMeans:
         num_clusters: number of clusters the data has to be assigned to, a positive integer. Required, also with
             ``cluster_centers``; without them, :meth:`fit` needs at least ``num_clusters`` samples.
         cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
-            each :meth:`fit`.
+            each :meth:`fit`. Required, with no default.
         tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
             ``max_iterations`` updates.
         max_iterations: the maximum number of updates; 0 sets no limit.
         seed: if given, passed to ``torch.manual_seed`` when the object is created.
+
+    Raises:
+        BaseError: if ``num_clusters`` is not a positive integer, ``max_iterations`` or ``tolerance`` is negative,
+            ``tolerance=None`` comes with ``max_iterations=0``, or ``cluster_centers`` is not ``(num_clusters, D)``.
 
     Example:
         >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
@@ -205,13 +214,12 @@ class KMeans:
         return euclidean_distance(A, B)
 
     def fit(self, X: torch.Tensor) -> None:
-        """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
-        have reached.
+        """Cluster the rows of ``X`` and store the final centres and assignments.
 
         Args:
-            X: 2D input torch.Tensor to be clustered
+            X: the ``(N, D)`` points to cluster, with the ``D`` of ``cluster_centers`` when those are given.
 
-        """  # noqa: D205
+        """
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
@@ -299,13 +307,13 @@ class KMeans:
         self._final_cluster_assignments = self.predict(X)
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
-        """Find the cluster center closest to each point in x.
+        """Return the index of the nearest cluster centre for each row of ``x``.
 
         Args:
-            x: 2D torch.Tensor
+            x: the ``(M, D)`` points, with the ``D`` of :attr:`cluster_centers`.
 
         Returns:
-            1D torch.Tensor containing cluster id assigned to each data point in x
+            The ``(M,)`` ``int64`` cluster indices.
 
         """
         KORNIA_CHECK_SHAPE(x, ["N", "D"])

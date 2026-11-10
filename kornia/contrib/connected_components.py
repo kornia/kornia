@@ -20,13 +20,16 @@ import torch.nn.functional as F
 
 
 def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torch.Tensor:
-    r"""Compute the Connected-component labelling (CCL) algorithm.
+    r"""Label 8-connected foreground components by a fixed number of max-pooling steps.
+
+    ``labels = connected_components(image, num_iterations)`` takes a ``(*, 1, H, W)`` mask whose pixels equal to 1 are
+    foreground and returns ``int64`` labels of the same shape, 0 on the background. A component comes out whole only
+    when every pixel is within ``num_iterations`` steps of its largest-id pixel; otherwise it is split. For the exact
+    partition at any size, use :func:`connected_components_union_find`.
 
     .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
 
-    The implementation is an adaptation of the following repository:
-
-    https://gist.github.com/efirdc/5d8bd66859e574c683a504a4690ae8bc
+    The implementation adapts https://gist.github.com/efirdc/5d8bd66859e574c683a504a4690ae8bc.
 
     .. warning::
         This is an experimental API subject to changes and optimization improvements.
@@ -40,12 +43,11 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         - Foreground is a value exactly equal to 1: 0.5 and 2 are background. Other values and dtypes are accepted.
         - The label of a component is 1 plus the largest raster index of its pixels in the batch flattened to
           ``(N, H, W)``; background is 0. Labels are therefore not contiguous, and an image gets other labels at
-          another batch position or transposed. On MPS an image of more than :math:`2^{24}` pixels raises
-          ``ValueError``.
-        - ``num_iterations`` is a fixed number of max-pooling steps, not a convergence test, and a label travels one
-          pixel per step: the default 100 already splits a 1 x 102 line, and a filled 120 x 150 rectangle comes out
-          with 1000 labels. :ref:`labeling-method` compares this with :func:`connected_components_union_find`.
-        - The labels carry no gradient.
+          another batch position or transposed.
+        - The default 100 already splits a 1 x 102 line, and a filled
+          120 x 150 rectangle comes out with 1000 labels.
+        - The labels carry no gradient. The function has no host synchronization and compiles with
+          ``torch.compile(fullgraph=True)``.
 
     Args:
         image: the binary input image with shape ``(*, 1, H, W)``.
@@ -53,6 +55,14 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     Return:
         int64 labels with the shape of the input.
+
+    Raises:
+        TypeError: if ``image`` is not a tensor or ``num_iterations`` is not a positive integer.
+        ValueError: if ``image`` is not ``(*, 1, H, W)``, or, on MPS, has more than :math:`2^{24}` pixels per image.
+
+    See Also:
+        - :func:`connected_components_union_find`: the exact partition with no iteration budget, at the cost of host
+          synchronizations and other label values.
 
     Example:
         >>> img = torch.rand(2, 1, 4, 5)
@@ -103,16 +113,16 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
 
 def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
-    r"""Label 8-connected foreground components exactly using block union-find.
+    r"""Label 8-connected foreground components exactly, by block union-find.
 
-    This pure PyTorch implementation contracts each 2x2 block, following the
-    block-based approach of Allegretti, Bolelli and Grana, *Optimized Block-Based
-    Algorithms to Label Connected Components on GPUs*, TPDS 2020,
-    https://doi.org/10.1109/TPDS.2019.2934683. Root hooking with ``scatter_reduce_``
-    and pointer jumping replace the paper's custom CUDA union kernels.
+    ``labels = connected_components_union_find(image)`` takes a ``(*, 1, H, W)`` mask whose pixels equal to 1 are
+    foreground and returns ``int64`` labels of the same shape and device, 0 on the background. It iterates until the
+    partition converges, so components of any size and shape come out whole.
 
-    Unlike :func:`connected_components`, this function runs until convergence.
-    There is no iteration budget to choose based on component diameter.
+    The pure PyTorch implementation contracts each 2x2 block, following Allegretti, Bolelli and Grana, *Optimized
+    Block-Based Algorithms to Label Connected Components on GPUs*, TPDS 2020,
+    https://doi.org/10.1109/TPDS.2019.2934683. Root hooking with ``scatter_reduce_`` and pointer jumping replace the
+    paper's custom CUDA union kernels.
 
     Convention:
         :ref:`labeling-method` maps its 8-connectivity onto SciPy, OpenCV and scikit-image, and compares it with
@@ -136,7 +146,15 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
         in the number of pixels. Convergence checks synchronize the device with
         the host; CUDA graph capture and ``torch.compile(fullgraph=True)`` are
         not supported. All mask, edge and label computation stays on the input
-        device. The existing pooling API remains useful for fixed-work graphs.
+        device.
+
+    Raises:
+        TypeError: if ``image`` is not a tensor.
+        ValueError: if ``image`` is not ``(*, 1, H, W)``.
+
+    See Also:
+        - :func:`connected_components`: a fixed number of pooling steps, which compiles with ``fullgraph=True`` and
+          splits components longer than its budget.
 
     Example:
         >>> mask = torch.tensor([[[1, 0, 0], [0, 0, 1]]], dtype=torch.bool)
