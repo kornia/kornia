@@ -15,6 +15,18 @@
 # limitations under the License.
 #
 
+"""Detect faces and five facial landmarks in RGB images with the pretrained YuNet network.
+
+A detection is a row of 15 values in the input image's pixels: the box ``xmin, ymin, xmax, ymax``, five ``(x, y)``
+landmarks and the score.
+
+Which class to use:
+
+- Detect the faces of a batch of RGB images in :math:`[0, 255]`: :class:`FaceDetector`.
+- Read the box, the landmarks and the score of its detections by name: :class:`FaceDetectorResult`, with
+  :class:`FaceKeypoint` naming the landmarks.
+"""
+
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -31,9 +43,16 @@ __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
 
 
 class FaceKeypoint(Enum):
-    r"""Define the keypoints detected in a face.
+    r"""Name the five facial landmarks of a FaceDetector detection, left and right as the viewer sees them.
 
-    The left/right convention is based on the screen viewer.
+    ``FaceDetectorResult(dets).get_keypoint(FaceKeypoint.NOSE)`` returns the ``(x, y)`` pixel of that landmark for
+    each detection. ``EYE_LEFT`` and ``MOUTH_LEFT`` are the ones on the left of the image, the subject's right side
+    for a face that looks at the camera.
+
+    See Also:
+        - :class:`FaceDetectorResult`: reads these landmarks, the box and the score of a detection.
+        - :class:`FaceDetector`: returns the detections.
+
     """
 
     EYE_LEFT = 0
@@ -44,12 +63,24 @@ class FaceKeypoint(Enum):
 
 
 class FaceDetectorResult:
-    r"""Encapsulate the results obtained by the :py:class:`kornia.contrib.FaceDetector`.
+    r"""Read the box, the five landmarks and the score of FaceDetector detections by name.
+
+    ``result = FaceDetectorResult(dets)`` wraps the ``(N, 15)`` detections of one image from :class:`FaceDetector`,
+    or one ``(15,)`` row. Its properties (``xmin``, ``width``, ``top_left``, ``score``, ...) and
+    ``result.get_keypoint(FaceKeypoint.NOSE)`` return ``(N,)`` values and ``(N, 2)`` points, in the pixels of the
+    image the detector saw.
 
     Args:
-        data: the detections returned by :py:class:`kornia.contrib.FaceDetector`, one row of 15 values per face with
+        data: the detections returned by :class:`FaceDetector`, one row of 15 values per face with
             shape ``(15,)`` or ``(N, 15)``: the box ``xmin, ymin, xmax, ymax``, five ``(x, y)`` landmarks
-            (see :py:class:`kornia.contrib.FaceKeypoint`) and the score.
+            (see :class:`FaceKeypoint`) and the score.
+
+    Raises:
+        ValueError: If the last dimension of ``data`` is shorter than 15.
+
+    See Also:
+        - :class:`FaceDetector`: returns the detections this reads.
+        - :class:`FaceKeypoint`: names the landmarks for :meth:`get_keypoint`.
 
     """
 
@@ -59,7 +90,7 @@ class FaceDetectorResult:
         self._data = data
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResult":
-        """Like :func:`torch.nn.Module.to()` method."""
+        """Move the detections to ``device`` and cast them to ``dtype`` in place, and return this result."""
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
@@ -126,7 +157,7 @@ class FaceDetectorResult:
 
     @property
     def top_right(self) -> torch.Tensor:
-        """The [x y] position of the top-left coordinate of the bounding box."""
+        """The [x y] position of the top-right coordinate of the bounding box."""
         out = self.top_left
         out[..., 0] += self.width
         return out
@@ -138,20 +169,25 @@ class FaceDetectorResult:
 
     @property
     def bottom_left(self) -> torch.Tensor:
-        """The [x y] position of the top-left coordinate of the bounding box."""
+        """The [x y] position of the bottom-left coordinate of the bounding box."""
         out = self.top_left
         out[..., 1] += self.height
         return out
 
 
 class FaceDetector(nn.Module):
-    r"""Detect faces in a given image using YuNet model.
+    r"""Detect faces and five facial landmarks in RGB images in [0, 255] with the pretrained YuNet network.
 
-    This is a high-level API that wraps the :py:class:`kornia.models.YuNet` model for face detection.
-    By default, it uses the method described in :cite:`facedetect-yu`.
+    ``detect = FaceDetector()`` downloads the pretrained YuNet weights on first use. ``dets = detect(images)`` takes
+    floating-point RGB images ``(B, 3, H, W)`` with values in :math:`[0, 255]`, ``H`` and ``W`` at least 63, and
+    returns a list of ``B`` tensors ``(N, 15)``, one row per face in the input's pixels, to read with
+    :class:`FaceDetectorResult`. Scale a :math:`[0, 1]` image by 255 first. See :cite:`facedetect-yu`.
 
-    The input is an RGB image with pixel values in :math:`[0, 255]`, not :math:`[0, 1]`. The detector flips it to BGR
-    before YuNet, whose pretrained weights were trained on BGR images in :math:`[0, 255]`.
+    Convention:
+        - The score is ``sqrt(class_score * iou_score.clamp(0, 1))``. The detections scoring strictly above
+          ``confidence_threshold`` are kept, the ``top_k`` best of them go through non-maximum suppression at the IoU
+          ``nms_threshold``, and the ``keep_top_k`` best survivors are returned, highest score first.
+        - Boxes and landmarks are not clipped: they can extend past the image border.
 
     Args:
         top_k: the maximum number of detections to return before the nms.
@@ -159,8 +195,9 @@ class FaceDetector(nn.Module):
         nms_threshold: the threshold used by the nms for iou.
         keep_top_k: the maximum number of detections to return after the nms.
 
-    Return:
-        A list of B tensors with shape ``(N,15)`` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
+    See Also:
+        - :class:`FaceDetectorResult`: named access to the box, landmarks and score of the rows.
+        - :class:`FaceKeypoint`: the names and order of the five landmarks.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320) * 255  # RGB in [0, 255]
@@ -273,7 +310,7 @@ class FaceDetector(nn.Module):
             image: batch of RGB images with pixel values in :math:`[0, 255]` and shape ``(B,3,H,W)``.
 
         Return:
-            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
+            A list of ``B`` tensors ``(N, 15)``, the detections of each image.
 
         """
         img = self.preprocess(image)

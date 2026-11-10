@@ -15,6 +15,20 @@
 # limitations under the License.
 #
 
+"""Detect objects in RGB images with a network, then filter the detections or convert them to Python objects.
+
+A detection is a row ``(class_id, score, x, y, w, h)``: the box's top-left corner, width and height in the pixels of
+the input image.
+
+Which class to use:
+
+- Objects of the 80 COCO classes, from a pretrained RT-DETR network: :class:`RTDETRDetectorBuilder`.
+- Your own detection network with its own pre- and post-processing: :class:`ObjectDetector`.
+- Keep the detections above a score and in given classes: :class:`BoxFiltering`.
+- The detections of one image as Python objects: :func:`results_from_detections`, which returns
+  :class:`ObjectDetectorResult` items holding a :class:`BoundingBox` tagged with a :class:`BoundingBoxDataFormat`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,7 +59,18 @@ __all__ = [
 
 
 class BoundingBoxDataFormat(Enum):
-    """Enum class that maps bounding box data format."""
+    """Name the layout of the four values of a BoundingBox: xywh, xyxy or center xywh.
+
+    ``BoundingBoxDataFormat.XYWH`` tags a :class:`BoundingBox` whose values are the top-left ``x, y``, the width and
+    the height; ``XYXY`` the top-left and bottom-right corners; ``CXCYWH`` the center, the width and the height.
+    ``CENTER_XYWH`` is another name of ``CXCYWH``, the same member.
+
+    See Also:
+        - :class:`BoundingBox`: the box whose values this names.
+        - :class:`~kornia.geometry.boxes.Boxes`: a batch of boxes as tensors, converted between the ``xyxy``,
+          ``xywh`` and corner layouts.
+
+    """
 
     XYWH = 0
     XYXY = 1
@@ -61,13 +86,20 @@ class BoundingBoxDataFormat(Enum):
 
 @dataclass(frozen=True)
 class BoundingBox:
-    """Bounding box data class.
+    """Hold one box as four Python floats tagged with their BoundingBoxDataFormat.
 
-    Useful for representing bounding boxes in different formats for object detection.
+    ``box = BoundingBox(data=(x, y, w, h), data_format=BoundingBoxDataFormat.XYWH)`` is a frozen dataclass: ``data``
+    holds the four values and ``data_format`` says how to read them; nothing converts or checks them.
+    :func:`results_from_detections` builds one per detection.
 
     Args:
         data: tuple of bounding box data. The length of the tuple depends on the data format.
         data_format: bounding box data format.
+
+    See Also:
+        - :class:`BoundingBoxDataFormat`: the layouts that ``data_format`` names.
+        - :class:`ObjectDetectorResult`: one detection, holding this box with its class and confidence.
+        - :class:`~kornia.geometry.boxes.Boxes`: a batch of boxes as tensors, with layout conversions.
 
     """
 
@@ -77,12 +109,19 @@ class BoundingBox:
 
 @dataclass(frozen=True)
 class ObjectDetectorResult:
-    """Object detection result.
+    """Hold one detection as a class id, a confidence and a BoundingBox.
+
+    ``result = ObjectDetectorResult(class_id, confidence, bbox)`` is a frozen dataclass of Python values.
+    :func:`results_from_detections` builds one per row of the ``(D, 6)`` detections of an image.
 
     Args:
         class_id: class id of the detected object.
         confidence: confidence score of the detected object.
-        bbox: bounding box of the detected object in xywh format.
+        bbox: bounding box of the detected object, whose ``data_format`` says the layout of its values.
+
+    See Also:
+        - :func:`results_from_detections`: builds these from a detection tensor.
+        - :class:`BoundingBox`: the box it holds.
 
     """
 
@@ -94,16 +133,28 @@ class ObjectDetectorResult:
 def results_from_detections(
     detections: torch.Tensor, format: str | BoundingBoxDataFormat
 ) -> list[ObjectDetectorResult]:
-    """Convert a detection torch.Tensor to a list of :py:class:`ObjectDetectorResult`.
+    """Convert the ``(D, 6)`` detections of one image to a list of ObjectDetectorResult.
+
+    ``results = results_from_detections(dets, "xywh")`` takes ``D`` rows ``(class_id, score, b0, b1, b2, b3)`` and
+    returns ``D`` :class:`ObjectDetectorResult` items. ``format`` only tags each
+    :class:`BoundingBox`: the four box values are copied, not converted, so pass the layout the detections are in,
+    ``"xywh"`` for those of :class:`ObjectDetector`.
 
     Args:
         detections: torch.Tensor with shape ``(D, 6)``, where :math:`D` is the number of
-            detections in the given image,
-            :math:`6` represents class id, score, and `xywh` bounding box.
-        format: detection format.
+            detections in the given image: the class id, the score and the four box values.
+        format: the layout of the box values, a :class:`BoundingBoxDataFormat` or its name in any case.
 
     Returns:
-        list of :py:class:`ObjectDetectorResult`.
+        list of :class:`ObjectDetectorResult`, one per row, in the order of the rows.
+
+    Raises:
+        ShapeError: If ``detections`` is not ``(D, 6)``.
+        ValueError: If ``format`` names no :class:`BoundingBoxDataFormat`.
+
+    See Also:
+        - :class:`BoxFiltering`: keeps the rows above a score and in given classes, before the conversion.
+        - :class:`ObjectDetector`: returns one detection tensor per image in this layout.
 
     """
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
@@ -127,7 +178,19 @@ def results_from_detections(
 
 
 class ObjectDetector(ModelBase, ONNXExportMixin):
-    """Wrap an object detection model and perform pre-processing and post-processing."""
+    """Run a detection network on RGB images and return per-image (class, score, xywh box) rows.
+
+    ``detector = ObjectDetector(model, pre_processor, post_processor)`` wraps a detection network.
+    ``dets = detector(images)`` takes a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images, runs
+    ``pre_processor``, ``model`` and ``post_processor`` in turn, and returns what the post-processor returns.
+
+    See Also:
+        - :class:`RTDETRDetectorBuilder`: builds this wrapper around a pretrained RT-DETR network.
+        - :class:`BoxFiltering`: keeps the detections above a score and in given classes.
+        - :func:`results_from_detections`: converts the detections of one image to Python objects.
+        - :class:`~kornia.contrib.FaceDetector`: faces with five landmarks, from images in :math:`[0, 255]`.
+
+    """
 
     name: str = "detection"
 
@@ -146,16 +209,13 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 
     @staticmethod
     def from_config(config: Any) -> ObjectDetector:
-        """Build ObjectDetector from config.
-
-        This is a placeholder to satisfy the abstract method requirement.
-        Use kornia.contrib.object_detection.RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly.
+        """Raise ``NotImplementedError``: build with :meth:`RTDETRDetectorBuilder.build` or the constructor.
 
         Args:
             config: Configuration object (not used, kept for interface compatibility).
 
-        Returns:
-            ObjectDetector instance.
+        Raises:
+            NotImplementedError: Always.
 
         """
         raise NotImplementedError(
@@ -172,9 +232,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
 
         Returns:
-            list of detections found in each image. For item in a batch, shape is ``(D, 6)``,
-            where :math:`D` is the
-            number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
+            What the post-processor returns. For a detector from :meth:`RTDETRDetectorBuilder.build`, a list with
+            one ``(D, 6)`` tensor per image, where :math:`D` is the number of detections in that image, each row the
+            class id, the score and the ``x, y, w, h`` box in that image's pixels; with
+            ``confidence_filtering=False``, one ``(B, Q, 6)`` tensor of the ``Q`` best detections of each image.
 
         """
         images, images_sizes = self.pre_processor(images)
@@ -187,9 +248,17 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         detections: Optional[torch.Tensor] = None,
         output_type: str = "torch",
     ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
-        """Very simple drawing.
+        """Draw the boxes of the detections on copies of the images.
 
-        Needs to be more fancy later.
+        Args:
+            images: input images, a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images.
+            detections: the detections of each image, rows ending with the ``x, y, w, h`` box; computed with
+                :meth:`forward` when None.
+            output_type: ``"torch"`` or ``"pil"``.
+
+        Returns:
+            A list with one ``(3, H, W)`` image per input image, or a list of PIL images for ``output_type="pil"``.
+
         """
         dets = self.forward(images) if detections is None else detections
         output = []
@@ -211,7 +280,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         detections: Optional[torch.Tensor] = None,
         directory: Optional[str] = None,
     ) -> None:
-        """Save the output image(s) to a directory.
+        """Save the images with their boxes drawn by :meth:`visualize` as PNG files.
 
         Args:
             images: input torch.Tensor.
@@ -340,21 +409,23 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 
 
 class BoxFiltering(nn.Module, ONNXExportMixin):
-    """Filter boxes according to the desired threshold.
+    """Keep the detections above a confidence threshold and in given classes, per image.
+
+    ``filt = BoxFiltering(confidence_threshold=0.3, classes_to_keep=[0, 2])`` builds the filter.
+    ``kept = filt(dets)`` takes ``(B, D, 6)`` detections, rows ``(class_id, score, x, y, w, h)``, keeps the rows whose
+    score is strictly above the threshold and whose class is in ``classes_to_keep``, and returns a list of ``B``
+    tensors ``(D_b, 6)``; with ``filter_as_zero=True`` it returns the ``(B, D, 6)`` input with the other rows set to
+    zero.
 
     Args:
-        confidence_threshold: an 0-d scalar that represents the desired threshold.
-        classes_to_keep: a 1-d list of classes to keep. If None, keep all classes.
-        filter_as_zero: whether to filter boxes as zero.
+        confidence_threshold: a float or 0-d tensor; the rows scoring strictly above it are kept. If None, 0.
+        classes_to_keep: a list or 1-d tensor of the class ids to keep. If None, keep all classes.
+        filter_as_zero: whether to set the other rows to zero in one ``(B, D, 6)`` tensor instead of dropping them.
 
-    Note:
-        The exported graph has one input, ``input``, the boxes. It filters at ``confidence_threshold``, held as a
-        constant, and at the eager default of ``0.0`` (keep boxes with a positive confidence) when none was given.
-
-    Note:
-        Without ``filter_as_zero``, ONNX export produces one output tensor per image, so the batch must be fixed.
-        :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
-        as one ``(B, D, 6)`` tensor.
+    See Also:
+        - :class:`~kornia.models.rt_detr.DETRPostProcessor`: RT-DETR's post-processor, which filters its detections
+          by score with this class.
+        - :func:`results_from_detections`: converts the kept rows of one image to Python objects.
 
     """
 
@@ -384,17 +455,16 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
 
         Args:
-            boxes: [B, D, 6], where B is the batchsize,  D is the number of detections in the image,
+            boxes: ``(B, D, 6)``, where B is the batch size, D is the number of detections in each image,
                 6 represent (class_id, confidence_score, x, y, w, h).
-            confidence_threshold: an 0-d scalar that represents the desired threshold.
-            classes_to_keep: a 1-d torch.Tensor of classes to keep. If None, keep all classes.
+            confidence_threshold: a 0-d tensor that replaces the constructor's threshold for this call. If None,
+                the constructor's.
+            classes_to_keep: a 1-d torch.Tensor of classes to keep, replacing the constructor's for this call. If
+                None, the constructor's.
 
         Returns:
-            Union[torch.Tensor, List[torch.Tensor]]
-                If `filter_as_zero` is True, return a torch.Tensor of shape [D, 6], where D is the total number of
-                detections as input.
-                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], where D is the number of
-                valid detections for each element in the batch.
+            If ``filter_as_zero`` is True, the ``(B, D, 6)`` input with the filtered-out rows set to zero.
+            If ``filter_as_zero`` is False, a list of ``B`` tensors ``(D_b, 6)``, the rows kept in each image.
 
         """
         # Apply confidence filtering
@@ -505,14 +575,22 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
 
 
 class RTDETRDetectorBuilder:
-    """A builder class for constructing RT-DETR object detection models.
+    """Build an ObjectDetector around a pretrained RT-DETR network for the 80 COCO classes.
 
-    This class provides static methods to:
-        - Build an object detection model from a model name or configuration.
-        - Export the model to ONNX format for inference.
+    ``detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")`` downloads the released weights on first use and
+    returns an :class:`ObjectDetector`. ``dets = detector(images)`` takes RGB images in :math:`[0, 1]` and returns a
+    list with one ``(D, 6)`` tensor per image, rows ``(class_id, score, x, y, w, h)`` scoring above 0.3: the box in
+    that image's pixels and ``class_id`` the COCO class index, from 0 to 79. ``confidence_filtering=False`` returns
+    the ``Q`` best detections of each image as one ``(B, Q, 6)`` tensor instead.
 
     Note:
         To use this model, load image tensors and call ``model.save(images)``.
+
+    See Also:
+        - :class:`ObjectDetector`: the wrapper it returns, for your own detection network.
+        - :class:`~kornia.models.rt_detr.RTDETR`: the network, to build from a configuration or to fine-tune.
+        - :class:`~kornia.contrib.FaceDetector`: faces with five landmarks, from images in :math:`[0, 255]`.
+
     """
 
     @staticmethod
@@ -524,10 +602,10 @@ class RTDETRDetectorBuilder:
         confidence_threshold: Optional[float] = None,
         confidence_filtering: Optional[bool] = None,
     ) -> ObjectDetector:
-        """Build and returns an RT-DETR object detector model.
+        """Build an RT-DETR object detector.
 
-        Either `model_name` or `config` must be provided. If neither is provided,
-        a default pretrained model (`rtdetr_r18vd`) will be built.
+        Pass at most one of ``model_name`` and ``config``; both raise ``ValueError``. Without either, it warns and
+        builds the pretrained ``rtdetr_r18vd``.
 
         Args:
             model_name:
@@ -542,8 +620,11 @@ class RTDETRDetectorBuilder:
                 None, `config.input_size` is used. With `model_name`, or without either, it is ignored: the input is
                 resized to the 640 px the published weights were trained for. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
-            confidence_threshold: Threshold to filter results based on confidence scores.
-            confidence_filtering: Whether to filter results based on confidence scores. None filters.
+            confidence_threshold: The detections scoring strictly above it are kept. If None,
+                ``config.confidence_threshold`` with ``config``, else 0.3.
+            confidence_filtering: Whether to filter results based on confidence scores. None filters. Without
+                filtering, or with a threshold of 0, the detector returns one ``(B, Q, 6)`` tensor, ``Q`` the
+                decoder's number of queries (300 for the released models).
 
 
         Returns:

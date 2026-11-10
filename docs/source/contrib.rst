@@ -233,6 +233,9 @@ Object Detection
     :members:
     :undoc-members:
 
+.. autoclass:: kornia.contrib.object_detection.BoxFiltering
+    :members: forward, to_onnx
+
 .. autofunction:: kornia.contrib.object_detection.results_from_detections
 
 Real-Time Detection Transformer (RT-DETR)

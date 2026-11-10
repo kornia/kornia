@@ -15,6 +15,15 @@
 # limitations under the License.
 #
 
+"""Detect edges in RGB images with a network, resized back to each image's size.
+
+Which class to use:
+
+- Edge probabilities from the pretrained DexiNed network, with the input conversion it was trained on:
+  :class:`EdgeDetectorBuilder`.
+- Your own edge network with its own pre- and post-processing: :class:`EdgeDetector`.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional, Union
@@ -37,17 +46,25 @@ __all__ = ["EdgeDetector", "EdgeDetectorBuilder"]
 
 
 class EdgeDetector(ModelBase, ONNXExportMixin):
-    """EdgeDetector is a module that wraps an edge detection model.
+    """Run an edge network on RGB images and resize its maps back to each image's size.
 
-    This is a high-level API that wraps edge detection models like :py:class:`kornia.models.DexiNed`.
-    :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder` builds one with the input conversion, the network
-    and the sigmoid in ``model``.
+    ``detector = EdgeDetector(model, pre_processor, post_processor)`` wraps an edge network.
+    ``edges = detector(images)`` takes a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images, runs
+    ``pre_processor``, ``model`` and ``post_processor`` in turn, and returns what the post-processor returns: with a
+    ``ResizePostProcessor``, a list with one ``(1, C, H, W)`` map per image at that image's size (``C = 1`` for
+    DexiNed).
 
     Args:
         model: The edge detection model.
         pre_processor: Pre-processing module (e.g., ResizePreProcessor).
         post_processor: Post-processing module (e.g., ResizePostProcessor).
-        name: Optional name for the detector.
+        name: Optional name for the detector, used in the file names of ``save`` and ``to_onnx``.
+
+    See Also:
+        - :class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`: builds this wrapper around the pretrained
+          DexiNed network.
+        - :func:`~kornia.filters.canny`: edges from image gradients with hysteresis thresholds, without a network or
+          a download.
 
     Example:
         >>> detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)
@@ -85,16 +102,13 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
 
     @staticmethod
     def from_config(config: Any) -> EdgeDetector:
-        """Build EdgeDetector from config.
-
-        This is a placeholder to satisfy the abstract method requirement.
-        Use EdgeDetectorBuilder.build() or instantiate EdgeDetector directly.
+        """Raise ``NotImplementedError``: build with :meth:`EdgeDetectorBuilder.build` or the constructor.
 
         Args:
             config: Configuration object (not used, kept for interface compatibility).
 
-        Returns:
-            EdgeDetector instance.
+        Raises:
+            NotImplementedError: Always.
 
         """
         raise NotImplementedError(
@@ -188,15 +202,16 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
     ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
-        """Draw the edge detection results.
+        """Turn the edge maps into grey RGB images.
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
-            output_type: type of the output.
+            edge_maps: detected edges; computed with :meth:`forward` when None.
+            output_type: ``"torch"`` or ``"pil"``.
 
         Returns:
-            output torch.Tensor.
+            A list with one ``(3, H, W)`` image per edge map, its one channel repeated, or a list of PIL images for
+            ``output_type="pil"``.
 
         """
         if edge_maps is None:
@@ -214,16 +229,13 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
-        """Save the edge detection results.
+        """Save the input images and their edge maps as PNG files.
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
-            output_type: type of the output.
+            edge_maps: detected edges; computed with :meth:`forward` when None.
             directory: where to save outputs.
-
-        Returns:
-            output torch.Tensor.
+            output_type: ``"torch"`` or ``"pil"``, passed to :meth:`visualize`.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
@@ -343,13 +355,20 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
 
 
 class EdgeDetectorBuilder:
-    """EdgeDetectorBuilder is a class that builds an edge detection model.
+    """Build an EdgeDetector around the pretrained DexiNed edge network.
 
-    This is a high-level API that builds edge detection models like :py:class:`kornia.models.DexiNed`
-    and wraps them with :py:class:`EdgeDetector`.
+    ``detector = EdgeDetectorBuilder.build()`` returns a :class:`~kornia.contrib.EdgeDetector`, downloading the
+    DexiNed weights on first use. ``edges = detector(images)`` takes RGB images in :math:`[0, 1]` and returns a list
+    with one ``(1, 1, H, W)`` map of edge probabilities in :math:`[0, 1]` per image, at that image's size.
 
     Note:
         To use this model, load image tensors and call ``model.save(images)``.
+
+    See Also:
+        - :class:`~kornia.contrib.EdgeDetector`: the wrapper it returns, for your own edge network.
+        - :func:`~kornia.filters.canny`: edges from image gradients with hysteresis thresholds, without a network or
+          a download.
+
     """
 
     @staticmethod
@@ -361,8 +380,9 @@ class EdgeDetectorBuilder:
         was trained on (xavysp/DexiNed@d944b70), then applies a sigmoid to the network's logits.
 
         Args:
-            model_name: Name of the model to build. Currently only "dexined" is supported.
-            pretrained: If True, loads pretrained weights.
+            model_name: Name of the model to build. Only ``"dexined"`` (any case) is supported; another name raises
+                ``ValueError``.
+            pretrained: If True, loads pretrained weights; otherwise the network is randomly initialised.
             image_size: Size to which input images will be resized during preprocessing.
 
         Returns:
