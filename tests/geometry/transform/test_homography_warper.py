@@ -19,11 +19,57 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ShapeError
 from kornia.core.ops import eye_like
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
 
 from testing.base import BaseTester
 from testing.error import compute_patch_abs_error
+
+
+class TestBaseWarper(BaseTester):
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseWarper(4, 4)
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseWarper.__abstractmethods__ == {"forward", "precompute_warp_grid"}
+
+    def test_subclass_without_forward_is_rejected(self):
+        class NoForward(kornia.geometry.transform.BaseWarper):
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        with pytest.raises(TypeError, match="forward"):
+            NoForward(4, 4)
+
+    def test_subclass_without_precompute_is_rejected(self):
+        class NoPrecompute(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+        with pytest.raises(TypeError, match="precompute_warp_grid"):
+            NoPrecompute(4, 4)
+
+    def test_complete_subclass_works(self, device, dtype):
+        class Identity(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        warper = Identity(4, 4).to(device, dtype)
+        assert isinstance(warper, torch.nn.Module)
+        assert (warper.height, warper.width) == (4, 4)
+        patch = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        assert warper(patch) is patch
+
+    def test_homography_warper_stays_concrete(self):
+        warper = kornia.geometry.transform.HomographyWarper(4, 4)
+        assert isinstance(warper, kornia.geometry.transform.BaseWarper)
+        assert not getattr(type(warper), "__abstractmethods__", None)
 
 
 class TestHomographyWarper(BaseTester):
@@ -264,7 +310,11 @@ class TestHomographyWarper(BaseTester):
             # same transform precomputing the grid
             warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
-            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=1e-4, rtol=1e-4)
+            # The two float32 grids differ by rounding on CUDA, up to 3e-5 in the samples, which can round a half
+            # result to the neighbouring half value: half of eps is one step just below 1.
+            half = dtype in (torch.float16, torch.bfloat16)
+            cached_atol = torch.finfo(dtype).eps / 2 if half else 1e-4
+            self.assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=cached_atol, rtol=1e-4)
 
             # projected should be equal as initial
             error = compute_patch_abs_error(patch_src, patch_dst_to_src, height, width)
@@ -530,6 +580,70 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(cached, direct, rtol=0, atol=0)
         self.assert_close(cached[..., 1:-1], image[..., 1:-1])
 
+    @pytest.mark.parametrize("entry", ["homography_warp", "module", "precomputed", "warp_grid"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+        # warp_grid's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp of a 256 px
+        # [0, 1] image was 0.73 off. A grid cached inside the region kept the error outside it.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 256, 256, generator=torch.Generator().manual_seed(0)).to(device)
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.01], [0.42, 0.9, -0.02], [1e-3, 0.0, 1.0]]], device=device, dtype=torch.float32
+        )
+        transform = kornia.geometry.transform
+
+        def warp():
+            if entry == "homography_warp":
+                return transform.homography_warp(image, homography, (256, 256), align_corners=True)
+            warper = transform.HomographyWarper(256, 256, align_corners=True)
+            if entry == "module":
+                return warper(image, homography)
+            if entry == "warp_grid":
+                return transform.warp_grid(warper.grid.to(image), homography)
+            warper.precompute_warp_grid(homography)
+            return warper
+
+        expected = warp()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp()
+        if entry == "precomputed":
+            # the grid was built in the region; the sampling happens outside it
+            expected, actual = expected(image), actual(image)
+        assert actual.dtype == torch.float32
+        # Exact: in and out of the region run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize(
+        "patch_dtype,matrix_dtype",
+        [(torch.float32, "bfloat16"), (torch.float32, "float16"), (torch.bfloat16, "float32")],
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, normalized_coordinates, patch_dtype, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        image = torch.rand(1, 3, 96, 96, generator=torch.Generator().manual_seed(0)).to(device)
+        values = [[0.9, -0.42, 0.01], [0.42, 0.9, -0.02], [1e-3, 0.0, 1.0]]
+        if not normalized_coordinates:
+            values = [[0.9, -0.42, 30.0], [0.42, 0.9, -20.0], [1e-4, 0.0, 1.0]]
+        homography = torch.tensor([values], device=device, dtype=torch.float32).to(getattr(torch, matrix_dtype))
+        image = image.to(patch_dtype)
+        warp = kornia.geometry.transform.homography_warp
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(image.float(), homography.float(), (96, 96), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(image, homography, (96, 96), **options)
+        assert actual.dtype == torch.float32
+        # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
     def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
         # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
@@ -574,7 +688,10 @@ class TestHomographyWarper(BaseTester):
             image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
         )
 
-        with torch.autocast(device.type, dtype=autocast_dtype):
+        # The parametrizations share one scripted function. Once TorchScript has profiled it, its CUDA fuser fuses the
+        # float32 grid arithmetic and rounds it a few ulps from eager; the comparison is about autocast, so it runs
+        # unfused.
+        with torch.jit.fuser("none"), torch.autocast(device.type, dtype=autocast_dtype):
             actual = scripted(
                 image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
             )
@@ -613,16 +730,17 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
         # The default normalized path is grid_sample over warp_grid of a normalized meshgrid, bit for bit; the
-        # pixel-mode normalization must not reach it (#6170).
+        # pixel-mode normalization must not reach it (#6170). A half warp does all of it in float32.
+        wide = torch.promote_types(dtype, torch.float32)
         image = (torch.arange(2 * 5 * 6, device=device, dtype=dtype).view(1, 2, 5, 6) % 7) / 7
         src_homo_dst = torch.tensor(
             [[[0.95, 0.05, 0.1], [-0.03, 1.05, -0.08], [0.02, -0.01, 1.0]]], device=device, dtype=dtype
         )
         grid = kornia.geometry.create_meshgrid(
-            4, 3, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
+            4, 3, normalized_coordinates=True, device=device, dtype=wide, align_corners=align_corners
         )
-        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst)
-        expected = _torch_grid_sample(image, warped_grid, align_corners=align_corners)
+        warped_grid = kornia.geometry.transform.warp_grid(grid, src_homo_dst.to(wide))
+        expected = _torch_grid_sample(image.to(wide), warped_grid, align_corners=align_corners).to(dtype)
 
         actual = kornia.geometry.transform.homography_warp(image, src_homo_dst, (4, 3), align_corners=align_corners)
         warper = kornia.geometry.transform.HomographyWarper(4, 3, align_corners=align_corners)
@@ -631,8 +749,10 @@ class TestHomographyWarper(BaseTester):
         precomputed = warper(image)
         # the cached path warps the module's own base grid, built once in the default dtype
         expected_precomputed = _torch_grid_sample(
-            image, kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst), align_corners=align_corners
-        )
+            image.to(wide),
+            kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst.to(wide)),
+            align_corners=align_corners,
+        ).to(dtype)
 
         self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(direct, expected, rtol=0, atol=0)
@@ -997,3 +1117,264 @@ class TestHomographyWarper3D(BaseTester):
         self.assert_close(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)
+
+
+class TestHomographyWarp3dAutocast(BaseTester):
+    """A caller's autocast region does not reach the normalized grid of homography_warp3d and warp_grid3d (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @pytest.mark.parametrize("entry", ["homography_warp3d", "warp_grid3d"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_reach_the_normalized_grid_6573(self, entry, autocast_dtype, device):
+        # warp_grid3d's matrix product ran in the autocast dtype: in bfloat16 a float32 homography_warp3d of a 32 voxel
+        # [0, 1] volume was 0.11 off.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        generator = torch.Generator().manual_seed(0)
+        volume = torch.rand(1, 1, 32, 32, 32, generator=generator).to(device)
+        grid = (torch.rand(1, 32, 32, 32, 3, generator=generator).to(device) * 2.0) - 1.0
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.0, 0.01], [0.42, 0.9, 0.0, -0.02], [0.0, 0.0, 1.0, 0.03], [1e-3, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=torch.float32,
+        )
+        transform = kornia.geometry.transform
+
+        def warp():
+            if entry == "warp_grid3d":
+                return transform.warp_grid3d(grid, homography)
+            return transform.homography_warp3d(volume, homography, (32, 32, 32), align_corners=True)
+
+        expected = warp()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp()
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
+class TestHomographyWarp3dMixedDtypesAutocast(BaseTester):
+    """A half homography with a float32 volume runs in float32 in a caller's autocast region (#6573)."""
+
+    # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    @pytest.mark.parametrize("matrix_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_run_in_float32_in_a_region_6573(
+        self, normalized_coordinates, matrix_dtype, autocast_dtype, device
+    ):
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        volume = torch.rand(1, 1, 16, 16, 16, generator=torch.Generator().manual_seed(0)).to(device)
+        homography = torch.tensor(
+            [[[0.9, -0.42, 0.0, 0.01], [0.42, 0.9, 0.0, -0.02], [0.0, 0.0, 1.0, 0.03], [1e-3, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=torch.float32,
+        ).to(getattr(torch, matrix_dtype))
+        warp = kornia.geometry.transform.homography_warp3d
+        options = {"align_corners": True, "normalized_coordinates": normalized_coordinates}
+        expected = warp(volume, homography.float(), (16, 16, 16), **options)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warp(volume, homography, (16, 16, 16), **options)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
+class TestHomographyShapeChecks(BaseTester):
+    """A homography of an unsupported rank raises instead of having its first dimension read as the batch."""
+
+    @pytest.mark.parametrize("shape", [(3, 3), (2, 2, 3, 3), (1, 2, 3, 3, 1), (3,), (4, 4)])
+    def test_warp_grid_rejects_unsupported_homography_shape(self, shape, device, dtype):
+        grid = kornia.geometry.create_meshgrid(4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid(grid, torch.ones(shape, device=device, dtype=dtype))
+
+    def test_warp_grid_unbatched_identity_is_not_read_as_a_batch_of_three(self, device, dtype):
+        # The case from the issue: the 3x3 identity used to give a grid of shape (3, 4, 5, 2).
+        grid = kornia.geometry.create_meshgrid(4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="leading batch dimension"):
+            kornia.geometry.transform.warp_grid(grid, torch.eye(3, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(3, 4, 5), (4, 5, 2), (1, 4, 5, 3), (1, 1, 4, 5, 2)])
+    def test_warp_grid_rejects_unsupported_grid_shape(self, shape, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid(
+                torch.zeros(shape, device=device, dtype=dtype), eye_like(3, torch.zeros(1, device=device, dtype=dtype))
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_warp_grid_keeps_the_documented_shapes(self, batch, device, dtype):
+        grid = kornia.geometry.create_meshgrid(4, 5, normalized_coordinates=False, device=device, dtype=dtype)
+        homography = eye_like(3, torch.zeros(batch, device=device, dtype=dtype))
+        homography[:, 0, 2] = torch.arange(batch, device=device, dtype=dtype)  # a different x offset per sample
+
+        flow = kornia.geometry.transform.warp_grid(grid, homography)  # (1, H, W, 2) grid, (N, 3, 3)
+        assert flow.shape == (batch, 4, 5, 2)
+        for i in range(batch):
+            self.assert_close(flow[i, ..., 0], grid[0, ..., 0] + i)
+            self.assert_close(flow[i, ..., 1], grid[0, ..., 1])
+
+        # (N, 1, 3, 3) is the same warp as (N, 3, 3)
+        self.assert_close(kornia.geometry.transform.warp_grid(grid, homography[:, None]), flow)
+        # a batched grid with a matching batch of homographies
+        self.assert_close(kornia.geometry.transform.warp_grid(grid.expand(batch, -1, -1, -1), homography), flow)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3])
+    def test_homography_warp_pixel_homography_path_rejects_unbatched_homography(self, batch, device, dtype):
+        # normalized_homography=False is handed to warp_perspective, which raises its own ValueError for an unbatched
+        # matrix. Only "still an error for every batch" is pinned. The exception type is left open on purpose: a
+        # ShapeError there would be an improvement and is a ValueError anyway.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.geometry.transform.homography_warp(
+                image, torch.eye(3, device=device, dtype=dtype), (4, 5), normalized_homography=False
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_homography_warp_shares_one_homography_with_expand(self, batch, device, dtype):
+        # The migration for an unbatched (3, 3) is one homography per image. expand shares one matrix without a copy
+        # and is what the old (3, 3) call amounted to at a batch of 3.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(3, device=device, dtype=dtype)
+        homography[0, 2], homography[1, 2] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp(image, homography.expand(batch, -1, -1), (4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp(image[i : i + 1], homography[None], (4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_homography_warp_rejects_unbatched_homography_for_any_batch(
+        self, batch, normalized_coordinates, device, dtype
+    ):
+        # (3, 3) used to work only for a batch of 3 images, where it was read as 3 homographies.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.homography_warp(
+                image,
+                torch.eye(3, device=device, dtype=dtype),
+                (4, 5),
+                normalized_coordinates=normalized_coordinates,
+            )
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_homography_warper_rejects_unbatched_homography(self, normalized_coordinates, device, dtype):
+        warper = kornia.geometry.transform.HomographyWarper(4, 5, normalized_coordinates=normalized_coordinates)
+        with pytest.raises(ShapeError):
+            warper(torch.rand(3, 1, 4, 5, device=device, dtype=dtype), torch.eye(3, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(4, 4), (2, 2, 4, 4), (1, 2, 4, 4, 1), (4,), (3, 3)])
+    def test_warp_grid3d_rejects_unsupported_homography_shape(self, shape, device, dtype):
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid3d(grid, torch.ones(shape, device=device, dtype=dtype))
+
+    def test_warp_grid3d_unbatched_identity_is_not_read_as_a_batch_of_four(self, device, dtype):
+        # The case from the issue: the 4x4 identity used to give a grid of shape (4, 2, 4, 5, 3).
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="leading batch dimension"):
+            kornia.geometry.transform.warp_grid3d(grid, torch.eye(4, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(4, 5, 3), (2, 4, 5, 3), (1, 2, 4, 5, 2), (1, 1, 2, 4, 5, 3)])
+    def test_warp_grid3d_rejects_unsupported_grid_shape(self, shape, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid3d(
+                torch.zeros(shape, device=device, dtype=dtype), eye_like(4, torch.zeros(1, device=device, dtype=dtype))
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 4, 5])
+    def test_warp_grid3d_keeps_the_documented_shapes(self, batch, device, dtype):
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, normalized_coordinates=False, device=device, dtype=dtype)
+        homography = eye_like(4, torch.zeros(batch, device=device, dtype=dtype))
+        homography[:, 0, 3] = torch.arange(batch, device=device, dtype=dtype)
+
+        flow = kornia.geometry.transform.warp_grid3d(grid, homography)  # (1, D, H, W, 3) grid, (N, 4, 4)
+        assert flow.shape == (batch, 2, 4, 5, 3)
+        for i in range(batch):
+            self.assert_close(flow[i, ..., 0], grid[0, ..., 0] + i)
+            self.assert_close(flow[i, ..., 1:], grid[0, ..., 1:])
+
+        self.assert_close(kornia.geometry.transform.warp_grid3d(grid, homography[:, None]), flow)
+        self.assert_close(kornia.geometry.transform.warp_grid3d(grid.expand(batch, -1, -1, -1, -1), homography), flow)
+
+    @pytest.mark.parametrize("batch", [1, 2, 4, 5])
+    def test_homography_warp3d_shares_one_homography_with_expand(self, batch, device, dtype):
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("MPS grid_sampler_3d requires PyTorch 2.9 or newer")
+        # The 3D counterpart of the migration for an unbatched (4, 4): one homography per volume, shared with expand.
+        volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(4, device=device, dtype=dtype)
+        homography[0, 3], homography[1, 3] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp3d(volume, homography.expand(batch, -1, -1), (2, 4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp3d(volume[i : i + 1], homography[None], (2, 4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_homography_warp3d_rejects_unbatched_homography_for_any_batch(self, batch, device, dtype):
+        volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
+        for normalized_coordinates in (True, False):
+            with pytest.raises(ShapeError):
+                kornia.geometry.transform.homography_warp3d(
+                    volume,
+                    torch.eye(4, device=device, dtype=dtype),
+                    (2, 4, 5),
+                    normalized_coordinates=normalized_coordinates,
+                )
+
+
+class TestHomographyWarpOnePixelSourceAxis6433(BaseTester):
+    """A pixel homography places a one-pixel source axis under ``align_corners=True`` too (#6433)."""
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_pixel_homography(self, padding_mode, shift, weight, device, dtype):
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        # Destination to source: a destination row samples the source row below it.
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)[None]
+        dst_homo_src[0, 1, 2] = shift
+        expected = row if padding_mode != "zeros" else weight * row
+        out = kornia.geometry.transform.homography_warp(
+            row, dst_homo_src, (1, 4), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+        warper = kornia.geometry.transform.HomographyWarper(
+            1, 4, padding_mode=padding_mode, normalized_coordinates=False, align_corners=True
+        )
+        self.assert_close(warper(row, dst_homo_src), expected)
+        warper.precompute_warp_grid(dst_homo_src)
+        self.assert_close(warper(row), expected)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize(("shift", "weight"), [(1.0, 0.0), (0.5, 0.5), (0.0, 1.0)])
+    def test_convention_voxel_homography(self, padding_mode, shift, weight, device, dtype):
+        volume = (torch.arange(4, device=device, dtype=dtype) + 1).reshape(1, 1, 1, 2, 2)
+        src_homo_dst = torch.eye(4, device=device, dtype=dtype)[None]
+        src_homo_dst[0, 2, 3] = shift
+        expected = volume if padding_mode != "zeros" else weight * volume
+        out = kornia.geometry.transform.homography_warp3d(
+            volume, src_homo_dst, (1, 2, 2), padding_mode=padding_mode, align_corners=True, normalized_coordinates=False
+        )
+        self.assert_close(out, expected)
+
+    def test_normalized_homography_still_spans_the_axis(self, device, dtype):
+        # In normalized coordinates the whole range is the source, so the only row fills every output row.
+        row = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        out = kornia.geometry.transform.homography_warp(row, identity, (3, 4), align_corners=True)
+        self.assert_close(out, row.expand(1, 1, 3, 4))

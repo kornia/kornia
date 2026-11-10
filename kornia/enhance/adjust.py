@@ -35,16 +35,25 @@ from kornia.core.check import (
 )
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
+from kornia.core.utils import (
+    _clamp_unit_range,
+    _is_tracing_or_exporting,
+    _needs_derivatives,
+    _normalize_to_float32_or_float64,
+    _to_device_nonblocking,
+    is_compiling,
+)
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
 def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
-    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no derivative can be asked for.
 
-    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
-    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
-    the heap on every call. Only call it on a tensor no caller can see.
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient or a forward-mode tangent the clamp reuses the
+    fresh buffer instead of allocating another image-sized one: at batch 32 that third 25 MB temporary per call made
+    glibc trim and re-fault the heap on every call. With one it is ``_clamp_unit_range``, whose derivative at a bound
+    does not depend on the torch version. A captured graph takes the same path whatever the grad mode, so that
+    ``torch.jit.trace``'s check under ``no_grad`` records the same clamp. Only call it on a tensor no caller can see.
 
     An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
     promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
@@ -54,11 +63,12 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if (
             image.is_floating_point()
-            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not _is_tracing_or_exporting()
+            and not _needs_derivatives(image)
             and not torch._C._are_functorch_transforms_active()
         ):
             return image.clamp_(min=0.0, max=1.0)
-    return image.clamp(min=0.0, max=1.0)
+    return _clamp_unit_range(image)
 
 
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
@@ -87,6 +97,26 @@ def _check_floating_image(image: torch.Tensor, op: str) -> None:
         actual_type=image.dtype,
         expected_type=(torch.float16, torch.bfloat16, torch.float32, torch.float64),
     )
+
+
+def _level_scale(dtype: torch.dtype, top: float = 255.0) -> float:
+    """Return the factor that turns a value in ``[0, 1]`` into the level in ``0 .. top`` its truncation reads.
+
+    ``(x * _level_scale(x.dtype)).long()`` is the 8-bit level ``(x * 255).long()``, except that ``k / 255`` reads
+    level ``k`` even when it was rounded a few units in the last place below ``k / 255``. CUDA divides by a Python
+    number by multiplying with its rounded reciprocal, as ``x * (1 / 255)`` does on any device, which leaves 24 of the
+    256 float64 levels one unit below ``k / 255``; truncating ``x * 255`` read those as ``k - 1``. For float32 and
+    float64 the factor is ``top`` raised by four float32 epsilons, relative (``2**-21``, eight units in the last place
+    of 255 in float32), so the margin grows with the level as that roundoff does, and a continuous value moves up a
+    level only within that margin below a level boundary, about 7 in 100000 values of a uniform image. float64 takes
+    the float32 margin rather than its own, so the same values read the same levels in both dtypes, and float32
+    roundoff carried into a float64 image is covered too. Half precision gets ``top`` itself, so the levels it reads
+    are unchanged: ``x * 255`` is rounded to the half-precision grid, which already gives ``k`` back for ``k / 255``
+    rounded to half precision.
+    """
+    if dtype in (torch.float32, torch.float64):
+        return top * (1.0 + 2.0**-21)
+    return top
 
 
 def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
@@ -134,7 +164,9 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
     h, s, v = torch.chunk(image, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    s_out: torch.Tensor = torch.clamp(s * factor, min=0, max=1)
+    s_out: torch.Tensor = s * factor
+    # Integer bounds keep the dtype of an integer image, which this HSV primitive does not reject.
+    s_out = _clamp_unit_range(s_out) if s_out.is_floating_point() else s_out.clamp(min=0, max=1)
 
     # pack back back the corrected hue
     out: torch.Tensor = torch.cat([h, s_out, v], dim=-3)
@@ -197,7 +229,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     x_adjusted: torch.Tensor = (1 - factor) * x_other + factor * image
 
     # clamp the output
-    out: torch.Tensor = torch.clamp(x_adjusted, 0.0, 1.0)
+    out: torch.Tensor = _clamp_unit_range(x_adjusted)
 
     return out
 
@@ -267,7 +299,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     delta = max_rgb - min_rgb
     value_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + 1e-8)
     saturation = delta / value_divisor
-    saturation = torch.clamp(saturation * factor, min=0, max=1)
+    saturation = _clamp_unit_range(saturation * factor)
 
     adjusted_delta = max_rgb * saturation
     delta_divisor = torch.where(delta == 0, torch.ones_like(delta), delta)
@@ -285,11 +317,11 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
-        isinstance(factor, (float, torch.Tensor)),
-        f"The factor should be a float number or torch.Tensor in the range between [-PI, PI]. Got {type(factor)}",
+        isinstance(factor, (int, float, torch.Tensor)) and not isinstance(factor, bool),
+        f"The factor should be an int, a float or a torch.Tensor. Got {type(factor)}",
     )
 
-    if isinstance(factor, float):
+    if isinstance(factor, (int, float)):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
     factor = _to_device_nonblocking(factor, image.device, image.dtype)
@@ -434,7 +466,7 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                if 0.0 < gamma < 1.0 and _needs_derivatives(input):
                     # As in the tensor path below.
                     black = input == 0
                     power = torch.where(
@@ -442,7 +474,7 @@ def adjust_gamma(
                     )
                 else:
                     power = input.pow(gamma)
-                return (power * gain).clamp(0.0, 1.0)
+                return _clamp_unit_range(power * gain)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -466,10 +498,10 @@ def adjust_gamma(
     gain = _make_factor_broadcastable(gain, input)
 
     # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
-    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
-    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
-    # masking only runs when autograd records a gradient for the input.
-    if torch.is_grad_enabled() and input.requires_grad:
+    # below would pass on. Black pixels then take the power of a safe base, keep their value 0 ** gamma = 0 and get a
+    # zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the masking only runs when
+    # autograd can ask for a derivative through the input. The mask costs 5 times or more without a derivative.
+    if _needs_derivatives(input):
         black = (input == 0) & (gamma > 0) & (gamma < 1)
         power = torch.where(
             black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
@@ -479,7 +511,7 @@ def adjust_gamma(
     x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
-    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
+    out: torch.Tensor = _clamp_unit_range(x_adjust)
 
     return out
 
@@ -608,12 +640,18 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
-    img_mean = rgb_to_grayscale(image).mean((-2, -1), True) if image.shape[-3] == 3 else image.mean((-3, -2, -1), True)
+    # A 2-D image is one gray plane (#6645); only three or more dimensions have a channel axis.
+    if image.ndim < 3:
+        img_mean = image.mean((-2, -1), True)
+    elif image.shape[-3] == 3:
+        img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
+    else:
+        img_mean = image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
 
-    return img_adjust.clamp(min=0.0, max=1.0)
+    return _clamp_unit_range(img_adjust)
 
 
 def adjust_brightness(
@@ -741,7 +779,7 @@ def adjust_brightness_accumulative(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clamp_unit_range(img_adjust)
 
     return img_adjust
 
@@ -777,7 +815,21 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
     _check_floating_image(image, "adjust_sigmoid")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    return 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
+    # Half exp can overflow even for ordinary image values. Tensor parameters keep their own promotion.
+    promote = image.dtype == torch.float16 and isinstance(gain, (int, float)) and isinstance(cutoff, (int, float))
+    if promote:
+        image = image.float()
+        bound = abs(gain) * max(abs(cutoff), abs(1.0 - cutoff))
+        # On [0, 1], a bound of 16 keeps exp and the reciprocal cube in double backward normal in float32.
+        # At larger bounds, evaluate sigmoid on its nonpositive side to avoid positive-side saturation in backward.
+        if bound > 16.0:
+            logits = gain * (image - cutoff)
+            positive = logits >= 0
+            tail = torch.where(positive, -logits, logits).sigmoid()
+            result = torch.where(positive, tail, 1 - tail) if inv else torch.where(positive, 1 - tail, tail)
+            return result.half()
+    result = 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
+    return result.half() if promote else result
 
 
 def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> torch.Tensor:
@@ -815,7 +867,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clamp_unit_range(img_adjust)
 
     return img_adjust
 
@@ -828,7 +880,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     Args:
         input: image or batched images to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
@@ -841,6 +893,12 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(thresholds, (float, torch.Tensor)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
+    if isinstance(thresholds, torch.Tensor) and thresholds.numel() == 1:
+        # One threshold serves the whole batch, as documented, whatever its shape (#6547). It is
+        # moved and cast as the per-sample path below does, which a (1,) tensor with a batch of 1 took before.
+        if len(thresholds.shape) != 0:
+            thresholds = _to_device_nonblocking(thresholds, input.device).to(input.dtype)
+        thresholds = thresholds.reshape(())
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
@@ -874,11 +932,11 @@ def solarize(
     Args:
         input: image torch.Tensor with shapes like ``(*, C, H, W)`` to solarize.
         thresholds: solarize thresholds.
-            If int or one element torch.Tensor, input will be solarized across the whole batch.
+            If a float or one-element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
         additions: in the closed range [-0.5, 0.5], endpoints included.
             If None, no addition will be performed.
-            If int or one element torch.Tensor, same addition will be added across the whole batch.
+            If a float or one-element torch.Tensor, same addition will be added across the whole batch.
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
@@ -931,6 +989,12 @@ def solarize(
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )
 
+        if isinstance(additions, torch.Tensor) and additions.numel() == 1:
+            # One addition serves the whole batch, as documented, whatever its shape (#6547). It is
+            # moved and cast as the per-sample path below does, which a (1,) tensor with a batch of 1 took before.
+            if len(additions.shape) != 0:
+                additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
+            additions = additions.reshape(())
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
@@ -938,8 +1002,7 @@ def solarize(
             # tensor (`for x in additions` breaks the graph); numerically identical.
             additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
             additions = additions.view([-1] + [1] * (input.ndim - 1))
-        input = input + additions
-        input = input.clamp(0.0, 1.0)
+        input = _clamp_unit_range(input + additions)
 
     return _solarize(input, thresholds)
 
@@ -964,7 +1027,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     .. image:: _static/img/posterize.png
 
-    Non-differentiable function, ``torch.uint8`` involved.
+    Non-differentiable function, ``torch.uint8`` involved. Each value is read at its 8-bit level
+    ``(x * 255).long()``, with the 255 raised by four float32 epsilons, relative, in float32 and float64, so
+    ``k / 255`` reads level ``k`` even when its division was rounded a unit low, as dividing by 255 on CUDA does.
 
     Args:
         input: image torch.Tensor with shape ``(*, C, H, W)`` to posterize.
@@ -1002,16 +1067,16 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
+        in_range = torch.tensor(0 <= bits <= 8, device="cpu")
         bits = torch.as_tensor(bits, device=input.device)
+    else:
+        in_range = ((bits >= 0) & (bits <= 8)).all()
+    _check_async(in_range, "bits must be in the closed range [0, 8].")
 
     # A user-supplied CPU bits tensor mixes with any device only when 0-dim (PyTorch's "wrapped
     # number" rule); multi-element CPU tensors hit a device mismatch on MPS/CUDA, so move bits
     # onto input's device explicitly (no-op when already there).
     bits = bits.to(device=input.device)
-
-    # TODO: find a better way to check boundaries on tensors
-    # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
-    #     raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
 
     # TODO: Make a differentiable version
     # Current version:
@@ -1019,11 +1084,14 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
+    # Both shifts read an 8-bit level by truncation; ``_level_scale`` keeps ``k / 255`` rounded a unit low at ``k``.
+    scale = _level_scale(input.dtype)
+
     def _left_shift(input: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
-        return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
+        return ((input * scale).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
 
     def _right_shift(input: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
-        return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
+        return (input * scale).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor) -> torch.Tensor:
         # Branchless for torch.compile: the bits==0 / bits==8 special cases guard a uint8
@@ -1078,8 +1146,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
             negative factors are accepted and extrapolate past the smoothed image.
             A scalar or 0-d tensor applies the same factor across the whole batch.
             A 1-d tensor specifies one factor per sample; its length must equal the normalized batch
-            size ``B`` after flattening leading dimensions. A length-one vector does not broadcast
-            when ``B`` is greater than one.
+            size ``B`` after flattening leading dimensions, or be one to apply to every sample.
 
     Returns:
         Sharpened image or images with shape ``(*, C, H, W)``.
@@ -1106,7 +1173,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         # generators may sample the factor on a different device (e.g. CPU) than the image.
         factor = _to_device_nonblocking(factor, input.device, input.dtype)
 
-    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
+    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]) and factor.shape != torch.Size([1]):
         raise AssertionError(
             "Input batch size shall match with factor size if factor is not a 0-dim torch.Tensor. "
             f"Got {input.size(0)} and {factor.shape}"
@@ -1122,7 +1189,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
     degenerate = torch.nn.functional.conv2d(input, kernel, bias=None, stride=1, groups=input.size(1))
-    degenerate = torch.clamp(degenerate, 0.0, 1.0)
+    degenerate = _clamp_unit_range(degenerate)
 
     # For the borders of the resulting image, fill in the values of the original image.
     mask = torch.ones_like(degenerate)
@@ -1137,7 +1204,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # bites for extrapolation, matching the previous behavior.
     if len(factor.size()) != 0:
         factor = factor.view(-1, *([1] * (result.dim() - 1)))
-    return torch.clamp(result + (input - result) * factor, 0.0, 1.0).reshape(input_shape)
+    return _clamp_unit_range(result + (input - result) * factor).reshape(input_shape)
 
 
 def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
@@ -1145,9 +1212,9 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
 
     Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
     ``B * C`` serial calls. Each pixel is counted in the LUT entry it reads, its 8-bit level
-    ``(x * 255).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes out as
-    ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane of
-    up to ``2**24`` pixels in float32); a plane whose step is 0 is returned unchanged.
+    ``(x * _level_scale(x.dtype)).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes
+    out as ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane
+    of up to ``2**24`` pixels in float32); a plane whose step is 0 is returned as it is.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1157,16 +1224,20 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     """
     shape = input.shape
     n = shape[0] * shape[1]
-    scaled = input.flatten(0, 1).flatten(1) * 255.0  # (N, P)
+    flat = input.flatten(0, 1).flatten(1)  # (N, P)
+    # The level each pixel reads, before truncation. The factor is 255 raised by four float32 epsilons, relative, in
+    # float32 and float64, so k / 255 rounded a unit low, as dividing by 255 on CUDA leaves 24 float64 levels,
+    # still reads level k (see ``_level_scale``); half precision keeps 255.
+    levels = flat * _level_scale(flat.dtype)
 
-    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
-    # which is out of bounds unless ``scaled`` is in (-1, 256).
+    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``levels.long()``,
+    # which is out of bounds unless ``levels`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
     # on MPS before torch 2.13 it costs one host sync instead (see ``_check_async``). Inputs the
     # lookup can index keep working exactly as before. The check keeps the index in bounds, so it runs
     # with checks disabled too: a compiled CPU scatter with an index out of range terminates the process.
     _check_async(
-        ((scaled > -1.0) & (scaled < 256.0)).all(),
+        ((levels > -1.0) & (levels < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
         guard=True,
@@ -1175,13 +1246,13 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
     # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
     # bfloat16 rounds counts above 256.
-    count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
+    count_dtype = _normalize_to_float32_or_float64(flat.dtype)
     # Per-plane 256-bin histogram on the index the lookup below reads, so every pixel is counted in its own
     # entry, as PIL counts and reads one 8-bit level. ``torch.histc(x, 256, 0, 255)`` bins in ``floor(256 x)``,
     # which puts every value in ``[k/256, k/255)``, about half of a continuous image, one bin above that entry.
-    index = scaled.long()
+    index = levels.long()
     histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
-    histo.scatter_add_(1, index, torch.ones_like(scaled, dtype=count_dtype))
+    histo.scatter_add_(1, index, torch.ones_like(levels, dtype=count_dtype))
 
     # step = (sum(nonzero) - last_nonzero) // 255, per plane.
     total = histo.sum(1)
@@ -1197,11 +1268,12 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     lut = torch.div(histo.cumsum(1) + step_trunc, step_col.clamp(min=1), rounding_mode="trunc")
     lut = torch.cat([torch.zeros(n, 1, device=input.device, dtype=lut.dtype), lut[:, :-1]], 1)
     # The LUT holds integers in [0, 255], which every floating dtype represents exactly.
-    lut = torch.clamp(lut, 0, 255).to(scaled.dtype)
+    lut = torch.clamp(lut, 0, 255).to(flat.dtype)
 
-    result = lut.gather(1, index)
-    result = torch.where(step_col == 0, scaled, result)
-    return (result / 255.0).reshape(shape)
+    # A plane whose step is 0 comes back as it is, not as (x * 255) / 255, which can be a unit off; it also keeps
+    # ``x * 255`` from being one more image-sized temporary next to ``levels``.
+    result = lut.gather(1, index) / 255.0
+    return torch.where(step_col == 0, flat, result).reshape(shape)
 
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
@@ -1227,7 +1299,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
        a 256-bin histogram. Each pixel is counted in the lookup-table entry it reads, its 8-bit level
        ``(x * 255).long()`` in the input dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize``
-       of those levels. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
+       of those levels. In float32 and float64 the 255 is raised by four float32 epsilons, relative (``2**-21``),
+       so ``k / 255`` reads level ``k`` even when its division was rounded a unit low, as dividing by 255 on CUDA
+       leaves 24 of the 256 float64 levels; a continuous value moves up a level only that close below a level
+       boundary. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
        float32, which is exact while a channel holds at most ``2**24`` pixels (4096 x 4096). An integer or
        boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
@@ -1267,9 +1342,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
     .. note::
        The input is expected as a floating-point volume in :math:`[0, 1]`, and each channel's whole
-       ``(D, H, W)`` volume is equalized from one 256-bin histogram. The lookup step is an integer
-       division by 255, so a volume with no more than 255 voxels per channel is returned unchanged up to
-       floating-point roundoff; just above that, whether it changes depends on the values. An integer or
+       ``(D, H, W)`` volume is equalized from one 256-bin histogram, reading each voxel at its 8-bit level as
+       :func:`equalize` reads a pixel. The lookup step is an integer
+       division by 255, so a volume with no more than 255 voxels per channel is returned unchanged; just above
+       that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
        the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
        range, during the call for a CPU volume, even when checks are disabled, as for :func:`equalize`. On CUDA,
@@ -1312,9 +1388,9 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
     """
     if not isinstance(image, torch.Tensor):
-        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
+        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(image)}")
 
-    _max_val = torch.tensor([1.0]) if max_val is None else max_val
+    _max_val = torch.tensor(1.0) if max_val is None else max_val
     if not isinstance(_max_val, torch.Tensor):
         raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(_max_val)}")
 

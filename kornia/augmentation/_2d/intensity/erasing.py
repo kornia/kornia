@@ -28,6 +28,9 @@ from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 class RandomErasing(IntensityAugmentationBase2D):
     r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomErasing(scale, ratio, value, ...)(input)`` replaces one sampled rectangle in each selected
+    image ``(B, C, H, W)``.
+
     .. image:: _static/img/RandomErasing.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -73,6 +76,10 @@ class RandomErasing(IntensityAugmentationBase2D):
     Note:
         This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    See Also:
+        - :class:`RandomChannelDropout`: fills selected complete channels instead of one rectangle.
+        - :class:`RandomDissolving`: creates semantic image-to-image occlusion with a diffusion model.
 
     Examples:
         >>> rng = torch.manual_seed(0)

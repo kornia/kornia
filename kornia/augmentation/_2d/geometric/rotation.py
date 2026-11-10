@@ -31,6 +31,9 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 class RandomRotation(GeometricAugmentationBase2D):
     r"""Rotate images by a random angle in degrees, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomRotation(degrees, ...)(input)`` rotates selected images of shape ``(B, C, H, W)``
+    about their centers. Use :class:`RandomRotation90` when only quarter turns are wanted.
+
     .. image:: _static/img/RandomRotation.png
 
     .. note::
@@ -60,6 +63,10 @@ class RandomRotation(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`.
+
+    See Also:
+        - :class:`RandomRotation90`: samples only multiples of 90 degrees.
+        - :class:`RandomRotation3D`: rotates volumes by a sampled 3D axis-angle vector.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -149,8 +156,21 @@ class RandomRotation(GeometricAugmentationBase2D):
         )
 
 
+def _range_allows_odd_turns(low: float, high: float) -> bool:
+    """Whether a ``times`` draw from ``[low, high]`` can round to an odd number of quarter turns.
+
+    The bounds are rounded the way ``compute_transformation`` rounds a draw. Two different whole numbers always include
+    an odd one, and a single whole number is either odd or even.
+    """
+    low, high = round(low), round(high)
+    return high > low or low % 2 != 0
+
+
 class RandomRotation90(GeometricAugmentationBase2D):
     r"""Rotate images by a random multiple of 90 degrees, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomRotation90(times, ...)(input)`` rotates selected images of shape ``(B, C, H, W)``
+    by quarter turns. Use :class:`RandomRotation` to sample arbitrary angles.
 
     Args:
         times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:
@@ -172,11 +192,19 @@ class RandomRotation90(GeometricAugmentationBase2D):
         - a range of whole numbers for ``times`` is closed and uniform: ``times=(-1, 1)`` gives a clockwise quarter
           turn, no turn and a counter-clockwise quarter turn with the same probability. A range with a fractional
           bound is still drawn continuously and rounded.
-        - a non-square image keeps its ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
+        - an odd number of quarter turns swaps the height and the width, but the output keeps the ``(H, W)`` of the
+          input, so part of a non-square image would be cut off. A non-square input therefore raises ``ValueError``
+          when the ``times`` range allows an odd number of quarter turns, even if a given call would draw an even one.
+          Square images, and ranges of even numbers only such as ``times=(2, 2)``, are unaffected. Use
+          :class:`~kornia.augmentation.RandomRotation` with a fixed angle of 90 degrees to rotate and crop, or
+          :func:`torch.rot90` to turn a whole batch exactly.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
         slow as it operates based on affine transformations.
+
+    See Also:
+        - :class:`RandomRotation`: samples an arbitrary angle in degrees.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -216,8 +244,37 @@ class RandomRotation90(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.Rotation90Generator(times)
+        low, high = self._param_generator.times.tolist()
+        self._allows_odd_turns = _range_allows_odd_turns(low, high)
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_allows_odd_turns" not in self.__dict__ or self._param_generator.times.requires_grad:
+            # A RandomRotation90 pickled before the non-square check existed has no cached answer, and the copy of a
+            # learnable range draws from the range as it is now, which an in-place update may have changed. A buffer
+            # written in place keeps the copied samplers, and with them the copied answer.
+            low, high = self._param_generator.times.tolist()
+            self._allows_odd_turns = _range_allows_odd_turns(low, high)
+
+    def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+        times = state_dict.get(f"{prefix}_param_generator.times")
+        if isinstance(times, torch.Tensor) and times.shape == (2,):
+            low, high = times.tolist()
+            self._allows_odd_turns = _range_allows_odd_turns(low, high)
+
+    def validate_tensor(self, input: torch.Tensor) -> None:
+        super().validate_tensor(input)
+        height, width = input.shape[-2:]
+        if self._allows_odd_turns and height != width:
+            raise ValueError(
+                f"`RandomRotation90` keeps the (H, W) shape, so an odd number of quarter turns of a non-square "
+                f"{height}x{width} image would cut off part of it, and `times` allows one. Use a square image, "
+                "`RandomRotation` with a fixed angle of 90 degrees to rotate and crop, or `torch.rot90` to turn "
+                "the whole batch exactly."
+            )
 
     def compute_transformation(
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]

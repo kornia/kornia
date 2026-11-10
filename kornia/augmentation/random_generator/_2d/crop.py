@@ -84,6 +84,9 @@ class CropGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([crop_size if isinstance(crop_size, torch.Tensor) else None])
+        # Checked before the empty-batch return so an empty batch rejects a negative size too.
+        if isinstance(crop_size, (tuple, list)) and any(s < 0 for s in crop_size):
+            raise ValueError(f"`size` must be non-negative. Got {crop_size!r}.")
 
         if batch_size == 0:
             return {
@@ -210,6 +213,9 @@ class ResizedCropGenerator(CropGenerator):
         tensor([[30, 30]])
 
     """
+
+    # Its ``make_samplers`` reads the values of a range, and its draws carry no gradient back to the range.
+    _follows_ranges_in_forward = False
 
     def __init__(
         self,
@@ -355,6 +361,8 @@ def center_crop_generator(
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
+    if size[0] < 0 or size[1] < 0:
+        raise ValueError(f"Crop size must be non-negative. Got {size}.")
     _check_positive_int_or_traced(height, "height")
     _check_positive_int_or_traced(width, "width")
     if isinstance(height, int) and isinstance(width, int) and not (height >= size[0] and width >= size[1]):

@@ -52,13 +52,116 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 }
 """Top-level packages left out of the rollout, with the reason."""
 
-CATALOG_NAMESPACES: tuple[str, ...] = ("kornia.geometry.depth",)
+CATALOG_EXCEPTIONS: dict[str, str] = {
+    "kornia.augmentation.utils": (
+        "internal augmentation helpers; __all__ supports implementation imports, not a public API catalog"
+    ),
+}
+"""Namespaces intentionally omitted from public catalogs, with a reason; exports remain unchanged."""
+
+CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.augmentation",
+    "kornia.augmentation.auto",
+    "kornia.augmentation.auto.operations.ops",
+    "kornia.augmentation.container.base",
+    "kornia.augmentation.container.params",
+    "kornia.color",
+    "kornia.feature",
+    "kornia.feature.dedode.transformer",
+    "kornia.filters",
+    "kornia.filters.blur_pool",
+    "kornia.geometry.bbox",
+    "kornia.geometry.boxes",
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
+    "kornia.geometry.camera.stereo",
+    "kornia.geometry.conversions",
+    "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.grid",
+    "kornia.geometry.homography",
+    "kornia.geometry.keypoints",
+    "kornia.geometry.liegroup",
+    "kornia.geometry.linalg",
+    "kornia.geometry.line",
+    "kornia.geometry.plane",
+    "kornia.geometry.pointcloud",
+    "kornia.geometry.pose",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
+    "kornia.geometry.subpix",
+    "kornia.geometry.transform.affwarp",
+    "kornia.geometry.transform.crop2d",
+    "kornia.geometry.transform.crop3d",
+    "kornia.geometry.transform.elastic_transform",
+    "kornia.geometry.transform.flips",
+    "kornia.geometry.transform.homography_warper",
+    "kornia.geometry.transform.image_registrator",
+    "kornia.geometry.transform.imgwarp",
+    "kornia.geometry.transform.pyramid",
+    "kornia.geometry.transform.thin_plate_spline",
+    "kornia.geometry.vector",
+)
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
-DOCSTRING_MODULES: tuple[str, ...] = ("kornia.geometry.depth",)
+DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.augmentation",
+    "kornia.color",
+    "kornia.feature.adalam",
+    "kornia.feature.affine_shape",
+    "kornia.feature.aliked",
+    "kornia.feature.dedode",
+    "kornia.feature.defmo",
+    "kornia.feature.disk",
+    "kornia.feature.hardnet",
+    "kornia.feature.hynet",
+    "kornia.feature.integrated",
+    "kornia.feature.keynet",
+    "kornia.feature.laf",
+    "kornia.feature.lightglue",
+    "kornia.feature.lightglue_onnx",
+    "kornia.feature.loftr",
+    "kornia.feature.matching",
+    "kornia.feature.mkd",
+    "kornia.feature.orientation",
+    "kornia.feature.responses",
+    "kornia.feature.scale_space_detector",
+    "kornia.feature.sift",
+    "kornia.feature.siftdesc",
+    "kornia.feature.sold2.sold2",
+    "kornia.feature.sold2.sold2_detector",
+    "kornia.feature.sosnet",
+    "kornia.feature.tfeat",
+    "kornia.feature.xfeat",
+    "kornia.filters",
+    "kornia.geometry.bbox",
+    "kornia.geometry.boxes",
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
+    "kornia.geometry.conversions",
+    "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.grid",
+    "kornia.geometry.homography",
+    "kornia.geometry.keypoints",
+    "kornia.geometry.liegroup",
+    "kornia.geometry.linalg",
+    "kornia.geometry.line",
+    "kornia.geometry.plane",
+    "kornia.geometry.pointcloud",
+    "kornia.geometry.pose",
+    "kornia.geometry.quaternion",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
+    "kornia.geometry.subpix",
+    "kornia.geometry.transform",
+    "kornia.geometry.vector",
+)
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
-SEE_ALSO_EXCEPTIONS: dict[str, str] = {}
+SEE_ALSO_EXCEPTIONS: dict[str, str] = {
+    "kornia.feature.defmo.DeFMO": "the only deblurring model in kornia; no other object serves a nearby task",
+}
 """Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
 
 MATH_NON_SHAPES: dict[str, dict[str, str]] = {

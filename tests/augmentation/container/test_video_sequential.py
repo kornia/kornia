@@ -578,3 +578,55 @@ class TestVideoSequential:
 
         assert aug(video).shape == video.shape
         assert aug(video, params=aug._params).shape == video.shape
+
+    @pytest.mark.parametrize("same_on_frame", [False, True])
+    def test_partial_gate_keypoints_round_trip_6375(self, same_on_frame, device, dtype):
+        # Keypoints reach VideoSequential as VideoKeypoints, which index whole videos (#6375), while a partially
+        # applied child gates frames. VideoSequential hands its children frame-level Keypoints, as it does for boxes
+        # (#6173), so the inverse of a partial gate restores every frame's points.
+        affine = K.RandomAffine(30.0, translate=(0.1, 0.1), p=0.5)
+        aug = K.AugmentationSequential(
+            K.VideoSequential(affine, same_on_frame=same_on_frame), data_keys=["input", "keypoints"]
+        )
+        video = torch.rand(3, 4, 3, 16, 16, device=device, dtype=dtype)
+        points = torch.rand(3, 4, 5, 2, device=device, dtype=dtype) * 15
+        # A forward and inverse warp rounds 15 px coordinates to about the dtype's spacing there (0.125 in bfloat16).
+        tol = {torch.float16: 1e-2, torch.bfloat16: 0.125}.get(dtype, 1e-4)
+        partial = False
+        for seed in range(4):
+            torch.manual_seed(seed)
+            out_video, out_points = aug(video, points)
+            applied = aug._params[0].data[0].data["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            # The gate is per frame: a skipped frame's points are unchanged and an applied frame's points move.
+            moved = (out_points - points).abs().flatten(0, 1).amax((-1, -2)) > tol
+            assert_close(moved, applied.to(moved.device))  # the gate is drawn on the CPU
+            _, restored = aug.inverse(out_video, out_points)
+            assert out_points.shape == points.shape
+            assert_close(restored, points, atol=tol, rtol=0.0)
+        assert partial
+
+    def test_video_keypoints_object_input_6375(self, device, dtype):
+        # A VideoKeypoints object goes through a VideoSequential pipeline and comes back as VideoKeypoints, equal to
+        # the output for the same points as a (B, T, N, 2) tensor. It used to raise a TypeError in is_floating_point.
+        # Plain Keypoints carry no frame count, so they are rejected with a message that says so.
+        from kornia.geometry.keypoints import Keypoints, VideoKeypoints
+
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomAffine(30.0, p=0.5), K.RandomHorizontalFlip(p=0.5)),
+            data_keys=["input", "keypoints"],
+        )
+        video = torch.rand(3, 4, 3, 16, 16, device=device, dtype=dtype)
+        points = torch.rand(3, 4, 5, 2, device=device, dtype=dtype) * 15
+        torch.manual_seed(0)
+        out_video, dense = aug(video, points)
+        torch.manual_seed(0)
+        _, wrapped = aug(video, VideoKeypoints.from_tensor(points.clone()))
+        assert isinstance(wrapped, VideoKeypoints)
+        assert_close(wrapped.to_tensor(), dense)
+        _, restored = aug.inverse(out_video, wrapped)
+        assert isinstance(restored, VideoKeypoints)
+        assert_close(restored.to_tensor(), aug.inverse(out_video, dense)[1])
+
+        with pytest.raises(TypeError, match="VideoKeypoints or a"):
+            aug(video, Keypoints(points.flatten(0, 1)))

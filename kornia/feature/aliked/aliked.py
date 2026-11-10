@@ -65,6 +65,7 @@ from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import is_compiling
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -76,10 +77,13 @@ from .deform_conv2d import deform_conv2d
 
 @dataclass
 class ALIKEDFeatures:
-    r"""Keypoints, descriptors and scores detected by ALIKED for a single image.
+    r"""Hold the sub-pixel keypoints, descriptors and scores that ALIKED detects in one image.
 
-    Since ALIKED detects a varying number of keypoints per image,
-    ``ALIKEDFeatures`` is not batched.
+    ``features = aliked(images)[b]`` is what :class:`ALIKED` returns for image ``b``: ``features.keypoints``
+    ``(N, 2)``, sub-pixel ``(x, y)`` pixels, ``features.descriptors`` ``(N, D)``, L2-normalised, and
+    ``features.keypoint_scores`` ``(N,)``, with ``N = features.n``. It is not batched, because ALIKED detects a
+    different number of keypoints in each image; ``features.to(device)`` moves the three tensors. For the keypoints
+    of a whole batch as padded LAF tensors, use :meth:`ALIKED.forward_laf` instead.
 
     Convention:
         The keypoints, descriptors and scores that :class:`~kornia.feature.ALIKED` returns for one image; its
@@ -89,6 +93,11 @@ class ALIKEDFeatures:
         keypoints: pixel coordinates ``(N, 2)`` as ``[x, y]``.
         descriptors: L2-normalised descriptors ``(N, D)``.
         keypoint_scores: detection confidence scores ``(N,)``.
+
+    See Also:
+        - :class:`ALIKED`: the detector, which returns one of these per image.
+        - :class:`DISKFeatures`: the same container for :class:`DISK`, whose keypoints are integer pixels.
+
     """
 
     keypoints: torch.Tensor
@@ -145,6 +154,16 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
     sampled = tensor.permute(1, 2, 0)[tuple(pts.T)[::-1]]
     sampled = sampled.reshape(ps, ps, -1, c)
     return sampled.permute(2, 3, 0, 1)
+
+
+def _reads_channels_last(image: torch.Tensor) -> bool:
+    """Whether :meth:`ALIKED.forward` asks for the ``channels_last`` feature map; see ``extract_dense_map``.
+
+    It does for a float32 or float64 CPU image in eager only. Under ``torch.compile`` or ``torch.export`` capture the
+    default layout is faster: inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel
+    at a time across the sample points, and on the channels_last map each of those reads lands on another cache line.
+    """
+    return image.device.type == "cpu" and image.dtype in (torch.float32, torch.float64) and not is_compiling()
 
 
 # ---------------------------------------------------------------------------
@@ -422,12 +441,14 @@ class InputPadder:
     def __init__(self, h: int, w: int, divis_by: int = 8) -> None:
         self.ht = h
         self.wd = w
-        pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
-        pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
+        # The distance to the next multiple, written without `%`: under dynamic-shape torch.compile a modulo of the
+        # image size reached the float offset bound of DeformableConv2d, which inductor (torch 2.14) cannot lower.
+        pad_ht = (h + divis_by - 1) // divis_by * divis_by - h
+        pad_wd = (w + divis_by - 1) // divis_by * divis_by - w
         self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
-        """Pad *x* (BCHW)."""
+        """Replicate-pad ``x`` ``(B, C, H, W)`` around its centre to multiples of ``divis_by``."""
         return F.pad(x, self._pad, mode="replicate")
 
     def unpad(self, x: torch.Tensor) -> torch.Tensor:
@@ -498,10 +519,10 @@ class DeformableConv2d(nn.Module):
         r"""Run the module forward pass.
 
         Args:
-            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+            x: Input feature map with shape ``(B, C_in, H, W)``.
 
         Returns:
-            Deformable convolution output with shape :math:`(B, C_{\text{out}}, H', W')`.
+            Deformable convolution output with shape ``(B, C_out, H', W')``.
         """
         h, w = x.shape[2:]
         max_offset = max(h, w) / 4.0
@@ -577,10 +598,10 @@ class ConvBlock(nn.Module):
         r"""Run the module forward pass.
 
         Args:
-            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+            x: Input feature map with shape ``(B, C_in, H, W)``.
 
         Returns:
-            Feature map with shape :math:`(B, C_{\text{out}}, H, W)` after two gated conv-BN layers.
+            Feature map with shape ``(B, C_out, H, W)`` after two gated conv-BN layers.
         """
         x = self.gate(self.bn1(self.conv1(x)))
         return self.gate(self.bn2(self.conv2(x)))
@@ -627,10 +648,10 @@ class ResBlock(nn.Module):
         r"""Run the module forward pass.
 
         Args:
-            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
+            x: Input feature map with shape ``(B, C_in, H, W)``.
 
         Returns:
-            Feature map with shape :math:`(B, C_{\text{out}}, H', W')` after the residual block,
+            Feature map with shape ``(B, C_out, H', W')`` after the residual block,
             where ``H'`` and ``W'`` may differ from the input if ``stride > 1``.
         """
         identity = x
@@ -788,13 +809,27 @@ _CHECKPOINT_URLS = [
 
 
 class ALIKED(nn.Module):
-    r"""ALIKED local feature detector and descriptor.
+    r"""Detect sub-pixel keypoints in images of any size, described by deformable sampling (ALIKED).
 
-    ALIKED (Adaptive Local Image KEypoint Detection) combines a multi-scale
-    ResNet backbone with deformable descriptor sampling (SDDH) and a
-    differentiable keypoint detector (DKD).
+    ``aliked = ALIKED.from_pretrained("aliked-n16")`` loads the trained weights in evaluation mode, and
+    ``features = aliked(images)`` takes RGB images ``(B, 3, H, W)`` in :math:`[0, 1]`, or grayscale ``(B, 1, H, W)``,
+    of any height and width, and returns a list of ``B`` :class:`ALIKEDFeatures`, one per image. Each holds sub-pixel
+    keypoints ``(N, 2)`` as ``(x, y)`` pixels, their scores ``(N,)`` and L2-normalised descriptors ``(N, D)``, with
+    ``D`` 128, or 64 for ``"aliked-t16"``, and ``N`` set by the image's score map. With
+    ``lafs, responses, descs = aliked.forward_laf(images)``, the same keypoints, scores and descriptors come as
+    tensors ``(B, N, 2, 3)``, ``(B, N, 1)`` and ``(B, N, D)``, padded to the largest ``N`` of the batch. To match two
+    images, pass the 128-D descriptors with ``laf_from_center_scale_ori(keypoints[None])`` to
+    :class:`LightGlueMatcher` in ``"aliked"`` mode; for the same number of keypoints in every image, use
+    :class:`DeDoDe` instead.
 
-    See :cite:`zhao2023aliked` for details.
+    ALIKED (Adaptive Local Image KEypoint Detection) combines a multi-scale ResNet backbone with deformable
+    descriptor sampling (SDDH) and a differentiable keypoint detector (DKD); see :cite:`zhao2023aliked` for details.
+
+    Speed against the authors' Python code (640 px, 2,048 keypoints): on CUDA, compile the model for repeated
+    inference. Eager, it runs at 0.8x the authors' speed on an RTX 4090, because its PyTorch deformable convolution
+    launches many small kernels; ``torch.compile(model)`` runs at 1.6x (1.2x with ``dynamic=True``). On CPUs keep it
+    eager: it runs at 1.7-2.0x the authors' speed, and compiling it made it slower on an x86 CPU. See the `image
+    matching guide <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     .. image:: _static/img/ALIKED.png
 
@@ -802,12 +837,13 @@ class ALIKED(nn.Module):
         - ``ALIKED()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
           running statistics on every call, and a single small image raises; call ``.eval()`` for inference.
           :meth:`from_pretrained` returns the trained model in evaluation mode.
-        - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
-          normalisation; a ``(B, 1, H, W)`` image is repeated to three channels. Any ``H`` and ``W`` work: the
-          image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
-          does not move the keypoints.
-        - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
-          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+        - The network applies no normalisation, so pass images in :math:`[0, 1]`, the range of the pretrained
+          weights; a ``(B, 1, H, W)`` image is repeated to three channels, and other channel counts raise. Any ``H``
+          and ``W`` work: the image is replicate-padded around its centre to multiples of 32 and the maps are cropped
+          back, so the padding does not move the keypoints. The image must have the model's dtype: a float16,
+          bfloat16 or float64 image raises on a float32 model, so cast the model first, ``aliked.to(images.dtype)``.
+        - The keypoints of :meth:`forward` are sub-pixel ``(x, y)`` in the pixel convention of
+          :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`): a strict maximum of the score map in its
           ``2 * nms_radius + 1`` window (see the note), at least ``nms_radius`` pixels from the border, moved by a
           soft-argmax over that window. Its score is the score map read bilinearly there, and the descriptors are
@@ -822,8 +858,9 @@ class ALIKED(nn.Module):
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
-          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Its ``mask`` multiplies the
-          score map, and it takes no ``image_size``.
+          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Padded slots hold zero LAFs,
+          responses and descriptors; ``laf_is_filled(lafs)`` is true for detections, so index every output with it to
+          discard the padding. Its ``mask`` multiplies the score map, and it takes no ``image_size``.
         - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
           an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
           call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
@@ -853,6 +890,17 @@ class ALIKED(nn.Module):
         score map has fewer maxima, and when the budget cuts the count in threshold mode. The reference falls back to
         the mean score only when no image of the batch has a maximum above the threshold; kornia returns maxima only
         and decides the fallback for each image, so an image's keypoints do not depend on the rest of the batch.
+
+    See Also:
+        - :class:`ALIKEDFeatures`: the per-image result of :meth:`forward`.
+        - :class:`DISK`: learned integer-pixel keypoints with 128-D descriptors, for RGB images whose sides are
+          multiples of 16.
+        - :class:`XFeat`: learned keypoints with 64-D descriptors, and its own mutual-nearest-neighbour and refined
+          matching of image pairs.
+        - :class:`DeDoDe`: separate learned detector and descriptor networks, with ``n`` keypoints in every image.
+        - :class:`LocalFeature`: a classical detector and LAF descriptor in one call; :meth:`forward_laf` returns
+          padded LAF tensors like it, with ``(B, N, 1)`` responses.
+        - :class:`LightGlueMatcher`: matches ALIKED's descriptors and keypoints with the ``"aliked"`` weights.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
@@ -933,12 +981,29 @@ class ALIKED(nn.Module):
             mask=mask,
         )
 
-    def extract_dense_map(self, image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_dense_map(
+        self, image: torch.Tensor, *, channels_last: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the backbone and return ``(feature_map, score_map)``.
 
         Args:
             image: ``(B, 3, H, W)`` float image. Inputs are internally padded to
                 a multiple of 32 and the padding is removed before returning.
+            channels_last: if ``True``, ``feature_map`` has the strides of the ``torch.channels_last`` memory
+                format (it is a crop of such a tensor when the image was padded): the ``dim`` channels of each pixel
+                lie next to each other. Its values equal those of the default
+                layout up to the rounding of the normalisation, and ``score_map`` is the same either way. On CPU,
+                normalising the map and the sampling of the descriptor head are then several times faster, so
+                :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image in eager. They keep
+                the default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
+                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU torch's float16
+                and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
+                M1, and on x86 it crashes the process for a 640 x 480 image in both
+                (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
+                map, as before. Under ``torch.compile`` they keep the default too. On an x86 CPU (torch 2.14),
+                inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel at a time
+                across the sample points, and on this layout each of those reads lands on another cache line. The
+                compiled forward of a 416 x 640 image took 254 ms with this map and 199 ms without (4 threads).
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.
@@ -964,7 +1029,16 @@ class ALIKED(nn.Module):
         x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
 
         score_map = torch.sigmoid(self.score_head(x1234))
-        feature_map = F.normalize(x1234, p=2, dim=1)
+        if channels_last:
+            # Each pixel's channels are normalised in an explicit (B, H, W, C) tensor, whose permutation back has the
+            # strides of a channels_last map. Eager computes the same bits as normalising
+            # ``x1234.contiguous(memory_format=torch.channels_last)`` over dim 1. Inductor (torch 2.14, x86) differs:
+            # for that form it kept the channel-major loop of the map's producer and transposed every 8 x 8 tile into
+            # the channels_last store. For this form it writes pixel by pixel, which made the compiled forward of a
+            # 416 x 640 image 1.11x faster while it still asked for this map.
+            feature_map = F.normalize(x1234.permute(0, 2, 3, 1).contiguous(), p=2, dim=-1).permute(0, 3, 1, 2)
+        else:
+            feature_map = F.normalize(x1234, p=2, dim=1)
 
         feature_map = padder.unpad(feature_map)
         score_map = padder.unpad(score_map)
@@ -991,7 +1065,7 @@ class ALIKED(nn.Module):
         if images.shape[1] == 1:
             images = grayscale_to_rgb(images)
 
-        feature_map, score_map = self.extract_dense_map(images)
+        feature_map, score_map = self.extract_dense_map(images, channels_last=_reads_channels_last(images))
         keypoints, kptscores, _scoredispersitys = self.dkd(score_map, image_size=image_size)
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 
@@ -1016,8 +1090,8 @@ class ALIKED(nn.Module):
 
         With ``compute_affine=True`` the 2x2 block ``A`` of each LAF comes from
         the covariance of the soft-argmax weights in the keypoint's
-        ``2 * nms_radius + 1`` detection window, computed inside :class:`DKD`
-        without any additional network parameters: ``A @ A.T`` is that
+        ``2 * nms_radius + 1`` detection window, computed by the keypoint detection
+        step (``DKD``) without any additional network parameters: ``A @ A.T`` is that
         covariance, so the axes of the frame are its principal axes, and
         ``det A > 0`` (the frame is never mirrored). The frame describes how
         sharply the score map peaks, not an image structure. Its scale
@@ -1031,7 +1105,8 @@ class ALIKED(nn.Module):
         batched tensors.
 
         Args:
-            img: image to extract features with shape ``(B,C,H,W)``.
+            img: image to extract features with shape ``(B, 3, H, W)``, or ``(B, 1, H, W)``, repeated to three
+                channels.
             mask: optional spatial mask ``(B, 1, H, W)`` with values in
                 ``[0, 1]``; the score map is multiplied by this mask before
                 keypoint detection so that features are suppressed in masked
@@ -1039,19 +1114,19 @@ class ALIKED(nn.Module):
             compute_affine: if ``True`` (default), estimate the 2x2 affine shape
                 of each LAF using ``torch.linalg.eigh`` on the soft-argmax
                 covariance.  Set to ``False`` to skip the eigendecomposition and
-                return identity affines, which is faster and avoids the linalg
-                call entirely (useful when only keypoint positions are needed).
+                return identity affines, which avoids the linalg call entirely
+                (useful when only keypoint positions are needed).
 
         Returns:
-            - Detected local affine frames with shape ``(B,N,2,3)``.
-            - Response function values for corresponding LAFs with shape ``(B,N,1)``.
-            - Local descriptors of shape ``(B,N,D)``.
+            - Detected local affine frames with shape ``(B, N, 2, 3)``.
+            - Response function values for corresponding LAFs with shape ``(B, N, 1)``.
+            - Local descriptors of shape ``(B, N, D)``.
 
         """
         if img.shape[1] == 1:
             img = grayscale_to_rgb(img)
 
-        feature_map, score_map = self.extract_dense_map(img)
+        feature_map, score_map = self.extract_dense_map(img, channels_last=_reads_channels_last(img))
 
         if mask is not None:
             # Resize mask to score map resolution and apply.
@@ -1071,6 +1146,17 @@ class ALIKED(nn.Module):
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
+        if B == 0:
+            # torch.stack rejects an empty list. Derive the empty outputs from the dense maps instead of allocating
+            # them, so they stay in the autograd graph, and sample the responses as DKD does, so they keep the
+            # dtype a non-empty batch gets (float32 under autocast).
+            responses = F.grid_sample(score_map, score_map.new_zeros(0, 1, 0, 2), mode="bilinear", align_corners=True)
+            return (
+                score_map.flatten()[:0].to(wh.dtype).view(0, 0, 2, 3),
+                responses.view(0, 0, 1),
+                feature_map.flatten()[:0].view(0, 0, feature_map.shape[1]),
+            )
+
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
@@ -1084,7 +1170,7 @@ class ALIKED(nn.Module):
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
-        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+        n_max = max(laf.shape[0] for laf in lafs_list)
 
         def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
             pad_n = n - t.shape[0]
@@ -1108,7 +1194,7 @@ class ALIKED(nn.Module):
         nms_radius: int = 2,
         device: Optional[torch.device] = None,
     ) -> ALIKED:
-        """Load a pretrained ALIKED model from the official checkpoint repository.
+        """Build an ALIKED model and load the pretrained checkpoint of ``model_name``, in evaluation mode.
 
         Args:
             model_name: one of ``'aliked-t16'``, ``'aliked-n16'``,

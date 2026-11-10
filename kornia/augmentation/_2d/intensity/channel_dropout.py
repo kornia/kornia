@@ -28,6 +28,9 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomChannelDropout(IntensityAugmentationBase2D):
     r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomChannelDropout(num_drop_channels, fill_value, ...)(input)`` replaces selected channels of each
+    selected image ``(B, C, H, W)`` with a constant.
+
     .. image:: _static/img/RandomChannelDropout.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -60,6 +63,10 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             we will randomly choose two channels to drop.
         If num_drop_channels is set to 3, it means that for each image in the batch,
             we will randomly choose three channels to drop (all image).
+
+    See Also:
+        - :class:`RandomChannelShuffle`: permutes channels instead of replacing them.
+        - :class:`RandomGrayscale`: computes grayscale instead of removing channels.
 
     Examples:
         >>> rng = torch.manual_seed(1)

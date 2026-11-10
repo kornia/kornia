@@ -35,6 +35,7 @@ def _clahe_interpolation_reference(img, luts, tile_size):
     # these centres pixel by pixel, independently of production's half-tile indexing.
     values = img.detach().cpu().double()
     tables = luts.detach().cpu().double()
+    scale = 255 * (1 + 2**-21) if img.dtype in (torch.float32, torch.float64) else 255
     expected = torch.zeros_like(values)
     gh, gw = tables.shape[1:3]
     for y in range(values.shape[-2]):
@@ -45,8 +46,9 @@ def _clahe_interpolation_reference(img, luts, tile_size):
             fx = (x + 0.5) / tile_size[1] - 0.5
             x0 = math.floor(fx)
             ax = fx - x0
-            # Preserve the input dtype's lookup quantization; this reference tests only interpolation.
-            index = (img[..., y, x] * 255).long().cpu().unsqueeze(-1)
+            # Preserve the input dtype's lookup quantization, the 8-bit level with 255 raised by four float32
+            # epsilons in float32 and float64; this reference tests only interpolation.
+            index = (img[..., y, x] * scale).long().cpu().unsqueeze(-1)
             for row, wy in [(y0, 1 - ay), (y0 + 1, ay)]:
                 for col, wx in [(x0, 1 - ax), (x0 + 1, ax)]:
                     lut = tables[:, min(max(row, 0), gh - 1), min(max(col, 0), gw - 1)]
@@ -575,9 +577,11 @@ class TestEqualization(BaseTester):
         clip = torch.tensor([40.0], device=device) if clip_as_tensor else 40.0
         luts = enhance.equalization._compute_luts(tiles, clip=clip)
         count_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype; float16 can round 255 x to
-        # another level than float32 does, so the reference tiles hold those levels.
-        levels = (tiles * 255).long().to(count_dtype) / 255
+        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype, with the 255 raised by four
+        # float32 epsilons, relative, in float32 and float64; float16 can round 255 x to another level than float32
+        # does, so the reference tiles hold those levels.
+        scale = 255 * (1 + 2**-21) if dtype in (torch.float32, torch.float64) else 255
+        levels = (tiles * scale).long().to(count_dtype) / 255
         expected = enhance.equalization._compute_luts(levels, clip=clip)
         assert luts.dtype == dtype
         assert torch.equal(luts.to(count_dtype), expected)
@@ -587,8 +591,10 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("clip_limit", [40.0, 300.0])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     def test_clahe_half_precision_tile_of_65536_pixels(self, slow_and_differentiable, clip_limit, device, dtype):
-        torch.manual_seed(5374)
-        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        # Drawn on the CPU, so every device equalizes the same values. The level a pixel reads is computed in its own
+        # dtype: a float32 value just outside the 2**-21 margin below a level boundary can round into it and read the
+        # level above the one float64 reads. About 3 in 10 uniform images this size hold such a value; this one none.
+        img = torch.rand(1, 1, 256, 256, dtype=dtype, generator=torch.Generator().manual_seed(5374)).to(device)
         out = enhance.equalize_clahe(img, clip_limit, (1, 1), slow_and_differentiable)
         assert out.dtype == dtype
         assert torch.isfinite(out).all()
@@ -676,6 +682,43 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(img, 2.0, (3, 3), slow_and_differentiable)
         flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
         self.assert_close(flipped, out.flip(dim))
+
+    def test_clahe_slow_path_does_not_depend_on_the_default_dtype_6366(self, device, dtype):
+        # Differentiable CLAHE takes its bin centres and 0.001 bandwidth from the tile dtype, so
+        # torch.set_default_dtype(torch.float64) must not change the output (#6366). The image is the
+        # 2x3x32x40 seed-10 case from that report, cast to the parametrized dtype.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        x = torch.rand(2, 3, 32, 40, generator=torch.Generator().manual_seed(10), dtype=torch.float64).to(device, dtype)
+        out = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            expected = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        finally:
+            torch.set_default_dtype(previous)
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    def test_clahe_slow_path_centres_in_promoted_tile_dtype_6366(self, device, dtype, monkeypatch):
+        # Float64 tiles get float64 centres and bandwidth; every other dtype keeps the float32 ones it had, so its
+        # output is unchanged (#6366). The test above cannot see a dtype that ignores the default dtype but is wrong.
+        from kornia.enhance import equalization
+
+        calls = []
+        histogram = equalization.histogram
+
+        def spy(x, bins, bandwidth, *args, **kwargs):
+            calls.append((bins, bandwidth))
+            return histogram(x, bins, bandwidth, *args, **kwargs)
+
+        monkeypatch.setattr(equalization, "histogram", spy)
+        img = torch.linspace(0, 1, 256, device=device, dtype=dtype).view(1, 1, 16, 16)
+        enhance.equalize_clahe(img, slow_and_differentiable=True)
+        expected = torch.promote_types(dtype, torch.float32)
+        ((bins, bandwidth),) = calls
+        assert bins.dtype == expected
+        assert bandwidth.dtype == expected
+        self.assert_close(bins, torch.linspace(0, 1, 256, device=device, dtype=expected), rtol=0, atol=0)
 
     def test_clahe_odd_tiles_gradcheck_5812(self, device):
         torch.manual_seed(4)

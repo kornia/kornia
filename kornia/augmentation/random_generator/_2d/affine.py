@@ -48,7 +48,7 @@ class AffineGenerator(RandomGeneratorBase):
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
             If torch.Tensor, shear is a 2x2 torch.Tensor, a x-axis shear in (shear[0][0], shear[0][1]) and

@@ -24,6 +24,7 @@ from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
+from kornia.augmentation.utils.helpers import _IMAGE_SHAPES, _raise_input_rank_error
 from kornia.core.ops import eye_like
 from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
@@ -58,11 +59,13 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 
 
 class AugmentationBase2D(_AugmentationBase):
-    r"""Base class for custom 2D augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a custom 2D augmentation, applied per sample with probability ``p`` (default 0.5).
 
-    AugmentationBase2D aims at offering a generic base class for a greater level of customization.
-    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
-    might be a better fit.
+    ``output = MyAugmentation(...)(input)`` processes images of shape ``(B, C, H, W)`` once a subclass
+    implements ``apply_transform`` and supplies any parameter generation it needs. This generic base supports
+    custom operations, including matrix-free warps such as :class:`RandomElasticTransform` and
+    :class:`RandomThinPlateSpline`. Use :class:`IntensityAugmentationBase2D` for value-only operations or
+    :class:`GeometricAugmentationBase2D` for matrix-based coordinate transforms.
 
     This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit.
     Mix and 3D augmentations have their own bases and contracts.
@@ -81,8 +84,11 @@ class AugmentationBase2D(_AugmentationBase):
           and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
           and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
           and ``float64`` and raises ``TypeError`` on an integer tensor. The output keeps the input's device.
-        - a wrong input rank raises different exception types depending on the entry point that sees it
-          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+        - a wrong input rank raises :class:`~kornia.core.exceptions.InputRankError` with the same message from
+          every entry point, the class, ``validate_tensor()`` and the containers. It is a ``ValueError`` and also a
+          ``RuntimeError`` and an ``AssertionError``, the types those entry points raised before
+          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_). ``validate_tensor()`` accepts the ranks
+          ``forward`` accepts.
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
           it can be set as an attribute on any augmentation. A sample the gate skips comes back
@@ -105,8 +111,9 @@ class AugmentationBase2D(_AugmentationBase):
           consulted by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs
           alike (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand,
           which every one of those paths honors.
-        - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
-          (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+        - a ``_param_generator.*`` range buffer in ``state_dict()`` updates the samplers when loading changes it, and
+          a learnable range is read before each draw; see :doc:`/get-started/conventions` for the classes this leaves
+          out (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
           (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
@@ -115,13 +122,16 @@ class AugmentationBase2D(_AugmentationBase):
         - ``torch.jit.script`` is not supported; ``torch.compile(fullgraph=True)`` works for some augmentations
           and flags only.
 
+    See Also:
+        - :class:`GeometricAugmentationBase2D`: adds coordinate-aware geometric transform hooks.
+
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.Tensor is formatted as expected."""
+        """Check that the input has a float dtype and one of the ranks ``forward`` accepts: 2, 3 or 4."""
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
-        if len(input.shape) != 4:
-            raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
+        if len(input.shape) not in (2, 3, 4):
+            _raise_input_rank_error(input.shape, _IMAGE_SHAPES)
 
     @_input_metadata_only
     def transform_tensor(
@@ -137,12 +147,14 @@ class AugmentationBase2D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""Base class for 2D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Record a matrix for a custom 2D transform, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = MyAugmentation(...)(input)`` records a ``(B, 3, 3)`` matrix once a subclass implements
+    ``compute_transformation`` and ``apply_transform``. This base manages matrix sampling and storage;
+    use :class:`GeometricAugmentationBase2D` for coordinate transforms or :class:`IntensityAugmentationBase2D`
+    for value-only operations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
-
-    RigidAffineAugmentationBase2D manages transformation matrices. Further subclasses supply the
-    handlers for different data types like masks, boxes, and keypoints.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -165,6 +177,9 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           subclass overrides ``transform_tensor``, ``generate_transformation_matrix``, ``compute_transformation``
           or ``identity_matrix``, in which case the input is kept until the matrix is read or replaced.
         - this base does not implement an inverse operation.
+
+    See Also:
+        - :class:`GeometricAugmentationBase2D`: applies and records 2D geometric transformations.
 
     """
 

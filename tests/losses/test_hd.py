@@ -230,17 +230,75 @@ class TestHausdorffLoss(BaseTester):
         self.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (16, 16)), (kornia.losses.HausdorffERLoss3D, (8, 8, 8))]
+    )
+    def test_float64_prediction_matches_a_float64_built_loss(self, hd, shape, device):
+        # The kernel buffer holds 0.2 (2D) or 1/7 (3D) rounded to float32, also after ``.double()``; a float64
+        # prediction is eroded with the kernel built in float64, as in a loss constructed under a float64 default dtype.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        generator = torch.Generator().manual_seed(0)
+        pred = torch.rand(2, 2, *shape, generator=generator, dtype=torch.float64).to(device)
+        target = torch.randint(0, 2, (2, 1, *shape), generator=generator).to(device)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            reference = hd(k=4)
+        finally:
+            torch.set_default_dtype(previous)
+        for loss in (hd(k=4), hd(k=4).double()):
+            self.assert_close(loss(pred, target), reference(pred, target), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize(
+        "hd,shape,expected",
+        [
+            (kornia.losses.HausdorffERLoss, (8, 8), 0.025056869881710575),
+            (kornia.losses.HausdorffERLoss3D, (6, 6, 6), 0.013313133331113156),
+        ],
+    )
+    def test_float64_matches_the_numpy_reference(self, hd, shape, expected, device):
+        # The expected values come from plain NumPy with the weights 0.2 and 1 / 7 as Python floats (snippet in the PR).
+        # Weights rounded to float32 are off by 3.0e-8 (2D) and 3.5e-7 (3D). 1e-12 allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        n = torch.tensor(shape).prod().item()
+        channel = ((torch.arange(n, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(shape)
+        pred = torch.stack([channel, 1 - channel])[None].to(device)
+        target = (torch.arange(n).reshape(shape) % 3 == 0).long()[None, None].to(device)
+        expected = torch.tensor(expected, device=device, dtype=torch.float64)
+        for loss in (hd(k=4), hd(k=4).double()):
+            self.assert_close(loss(pred, target), expected, rtol=1e-12, atol=0.0)
+
+    def test_float64_keeps_an_override_of_get_kernel_without_dtype(self, device):
+        # A subclass written before ``get_kernel`` took ``dtype`` keeps eroding a float64 prediction with its float32
+        # buffer. The expected value comes from plain NumPy with the weight float32(1 / 9) (snippet in the PR); an
+        # exact 1 / 9 is off by 3.6e-7. 1e-12 allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
+        class Square(kornia.losses.HausdorffERLoss):
+            def get_kernel(self):
+                return torch.ones(1, 1, 3, 3) / 9
+
+        channel = ((torch.arange(100, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(10, 10)
+        pred = torch.stack([channel, 1 - channel])[None].to(device)
+        target = (torch.arange(100).reshape(10, 10) % 3 == 0).long()[None, None].to(device)
+        expected = torch.tensor(0.02389163423991297, device=device, dtype=torch.float64)
+        self.assert_close(Square(k=4)(pred, target), expected, rtol=1e-12, atol=0.0)
+
+    @pytest.mark.parametrize(
         "hd,shape", [(kornia.losses.HausdorffERLoss, (8, 8)), (kornia.losses.HausdorffERLoss3D, (6, 6, 6))]
     )
     def test_gradient_at_the_threshold_tie(self, hd, shape, device, dtype, monkeypatch):
         # Quantized predictions land the dilation exactly on the 0.5 threshold, where the derivative of
         # the soft threshold is version-dependent for clamp (#4229). Pin it against the reference: zero
         # the negatives through a boolean index, whose gradient at the tie is 1.
-        if dtype != torch.float32:
-            pytest.skip("the 0.2 and 1/7 kernels sum to exactly 0.5 in float32 only, so no other dtype reaches the tie")
-        # The tie needs real float32 convolutions. With cuDNN's TF32 default, CUDA's conv3d rounds the 1/7 weight to
-        # 0.142822265625, so every sum that is exactly 0.5 in float32 lands on 0.4998779296875 and nothing reaches the
-        # tie. TF32 is switched off rather than following --tf32, since a TF32 run would have no tie to check.
+        if dtype == torch.float64 and hd is kornia.losses.HausdorffERLoss3D:
+            pytest.skip("float64 sums of 1/7 hit 0.5 only in some summation orders, which differ between backends")
+        # In float32 the tie needs real float32 convolutions. With cuDNN's TF32 default, CUDA's conv3d rounds the 1/7
+        # weight to 0.142822265625, so every sum that is exactly 0.5 in float32 lands on 0.4998779296875 and nothing
+        # reaches the tie. TF32 is switched off rather than following --tf32, since a TF32 run would have no tie to
+        # check.
         monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", False)
         generator = torch.Generator().manual_seed(0)
         pred = (torch.randint(0, 3, (1, 2, *shape), generator=generator) * 0.5).to(device, dtype)
@@ -249,7 +307,7 @@ class TestHausdorffLoss(BaseTester):
 
         def reference_erosion(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
             bound = (pred - target) ** 2
-            kernel = torch.as_tensor(loss.kernel, device=pred.device, dtype=pred.dtype)
+            kernel = loss.get_kernel(pred.dtype).to(pred.device)
             padding = (kernel.size(-1) - 1) // 2
             eroded = torch.zeros_like(bound)
             ties = 0

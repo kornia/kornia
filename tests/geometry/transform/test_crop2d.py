@@ -15,11 +15,14 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
 
@@ -416,6 +419,31 @@ class TestCenterCrop(BaseTester):
 
 
 class TestCropByBoxes(BaseTester):
+    def test_crop_by_boxes_empty_batch_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype, requires_grad=True)
+
+        patches = kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes)
+
+        assert patches.shape == (0, 3, 0, 0)
+        assert patches.dtype == inp.dtype
+        assert patches.device == inp.device
+        patches.sum().backward()
+        assert inp.grad.shape == inp.shape
+        assert boxes.grad.shape == boxes.shape
+
+    def test_crop_by_boxes_empty_batch_keeps_checks_6266(self, device, dtype):
+        inp = torch.empty(0, 3, 5, 4, device=device, dtype=dtype)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=dtype)
+        one_box = torch.zeros(1, 4, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.transform.crop_by_boxes(inp, boxes, boxes, padding_mode="invalid")
+        with pytest.raises(BaseError, match="Source data shape"):
+            kornia.geometry.transform.crop_by_boxes(inp, one_box, boxes)
+
     def test_crop_by_boxes_no_resizing(self, device, dtype):
         inp = torch.tensor(
             [[[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0], [13.0, 14.0, 15.0, 16.0]]]],
@@ -447,6 +475,83 @@ class TestCropByBoxes(BaseTester):
 
         patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("validate_boxes", [True, False])
+    def test_validate_boxes_is_deprecated_and_ignored_6401(self, validate_boxes, device, dtype):
+        # `validate_boxes` is read nowhere: the boxes are not validated, whatever its value. It now warns when
+        # passed, and the result stays what the call without it returns.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes") as record:
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, validate_boxes=validate_boxes)
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "validate_boxes" in str(w.message)] == [__file__]
+        self.assert_close(out, expected)
+
+    def test_validate_boxes_positional_is_deprecated_6401(self, device, dtype):
+        # It is the seventh parameter, so a caller can also pass it by position.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes"):
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, "bilinear", "zeros", True, True)
+
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6401(self, kwargs, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            kornia.geometry.transform.crop_by_boxes(inp, src, dst, **kwargs)
+
+    def test_scriptable_with_the_validate_boxes_deprecation_6401(self, device, dtype):
+        # The deprecation warning must not take `crop_by_boxes` out of TorchScript: it scripted before #6401, and
+        # the scripted call matches eager.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+
+        scripted = torch.jit.script(kornia.geometry.transform.crop_by_boxes)
+
+        self.assert_close(scripted(inp, src, dst), kornia.geometry.transform.crop_by_boxes(inp, src, dst))
+
+    @pytest.mark.parametrize("validate_boxes", [None, True, False])
+    def test_convention_boxes_are_not_validated_6401(self, validate_boxes, device, dtype):
+        # A trapezoid is not a rectangle, and `crop_by_boxes` does not require one: it maps `src_box` onto
+        # `dst_box` by a perspective transform. No value of `validate_boxes` makes it reject this box, so
+        # validating by default would change a result that works today.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(36.0, device=device, dtype=dtype).view(1, 1, 6, 6)
+        src = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [5.0, 4.0], [0.0, 4.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, validate_boxes=validate_boxes)
+
+        assert out.shape == (1, 1, 4, 4)
+        assert out.isfinite().all()
+        self.assert_close(out, expected)
 
     @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
     def test_convention_size_one_axis_4747(self, size, device, dtype):
@@ -484,6 +589,75 @@ class TestCropByBoxes(BaseTester):
         expected = torch.tensor([6.0, 8.5, 11.0, 13.5, 16.0], device=device, dtype=dtype).view(1, 1, 5, 1)
 
         self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
+
+    @pytest.mark.parametrize(
+        "src_box_coords, out_size, expected_out, expected_grad",
+        [
+            # inp[y, x] = x + 16 y, so the box gradient is the image slope at the sampled pixels:
+            # point: out = I(x0, y0); row: out.sum() = 3 x0 + 1.5 (x2 - x0) + 48 y0
+            (
+                [[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]],
+                (1, 1),
+                [[34.0]],
+                [[1.0, 16.0], [0, 0], [0, 0], [0, 0]],
+            ),
+            (
+                [[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]],
+                (1, 3),
+                [[17.0, 18.0, 19.0]],
+                [[1.5, 48.0], [0, 0], [1.5, 0], [0, 0]],
+            ),
+        ],
+    )
+    def test_supported_size_one_crop_box_gradient_6642(
+        self, src_box_coords, out_size, expected_out, expected_grad, device, dtype
+    ):
+        """Test a crop with one pixel on an axis of both the box and ``size`` has the translation gradient (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16).requires_grad_()
+        src_box = torch.tensor(src_box_coords, device=device, dtype=dtype, requires_grad=True)
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
+        self.assert_close(out, torch.tensor(expected_out, device=device, dtype=dtype)[None, None])
+
+        out.sum().backward()
+        assert torch.isfinite(inp.grad).all()
+        self.assert_close(src_box.grad, torch.tensor([expected_grad], device=device, dtype=dtype))
+
+    def test_degenerate_triangle_onto_same_triangle_is_a_translation_6642(self, device, dtype):
+        """Test a triangle mapped onto a translated copy of itself keeps the translation crop (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
+        src_box = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [1.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
+        dst_box = src_box - 1
+        out = kornia.geometry.transform.crop_by_boxes(inp, src_box, dst_box)
+        self.assert_close(out, inp[..., 1:5, 1:5])
+
+    def test_size_one_box_batch_does_not_corrupt_valid_box_6642(self, device, dtype):
+        """Test a size-1 box in a batch does not poison gradients of valid boxes (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 8, 8).repeat(2, 1, 1, 1)
+        inp.requires_grad = True
+        # Item 0 is valid 2x2 box, Item 1 is size-1 box resized to (2, 2) (documented one-sided NaN)
+        src_box = torch.tensor(
+            [
+                [[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]],
+                [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, (2, 2))
+        # Item 0 is finite, Item 1 is NaN per #4747 contract
+        assert torch.isfinite(out[0]).all()
+        assert torch.isnan(out[1]).all()
+
+        out[0].sum().backward()
+        assert torch.isfinite(src_box.grad[0]).all()
+        assert torch.isfinite(inp.grad[0]).all()
 
     @pytest.mark.parametrize(
         "src, size",
@@ -610,6 +784,41 @@ class TestCropByTransform(BaseTester):
             (inp, transform, (2, 2)),
             requires_grad=(True, False, False),
         )
+
+
+class TestCropOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_center_crop_pads_above_and_below(self, device, dtype):
+        row = self._row(device, dtype)
+        zero = torch.zeros_like(row)
+        out = kornia.geometry.transform.center_crop(row, (3, 4))
+        self.assert_close(out, torch.cat((zero, row, zero), dim=-2))
+
+    def test_convention_center_crop_keeps_the_axis_at_its_size(self, device, dtype):
+        row = self._row(device, dtype)
+        self.assert_close(kornia.geometry.transform.center_crop(row, (1, 2)), row[..., 1:3])
+
+    def test_convention_center_crop_of_a_column_pads_left_and_right(self, device, dtype):
+        column = self._row(device, dtype).transpose(-1, -2)
+        zero = torch.zeros_like(column)
+        out = kornia.geometry.transform.center_crop(column, (4, 3))
+        self.assert_close(out, torch.cat((zero, column, zero), dim=-1))
+
+    def test_convention_center_crop_resample_matches_slice(self, device, dtype):
+        # The default slicing mode of CenterCrop2D already zero-pads this input.
+        row = self._row(device, dtype)
+        resample = kornia.geometry.transform.CenterCrop2D((3, 4), cropping_mode="resample")(row)
+        self.assert_close(resample, kornia.geometry.transform.CenterCrop2D((3, 4))(row))
+
+    @pytest.mark.parametrize("matrix_rows", [2, 3])
+    def test_convention_crop_by_transform_mat(self, matrix_rows, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        matrix[0, 1, 2] = 1.0
+        out = kornia.geometry.transform.crop_by_transform_mat(row, matrix[:, :matrix_rows], (2, 4))
+        self.assert_close(out, torch.cat((torch.zeros_like(row), row), dim=-2))
 
 
 class TestCropByIndices(BaseTester):
@@ -833,6 +1042,22 @@ class TestCropByIndices(BaseTester):
 
         with pytest.raises(ValueError, match="All boxes in the batch must have the same height and width"):
             kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
+
+    @pytest.mark.parametrize("shape_compensation", ["resise", "unknown"])
+    def test_crop_by_indices_rejects_invalid_shape_compensation_6402(self, shape_compensation, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        src_box = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64)
+
+        with pytest.raises(ValueError, match=r"shape_compensation.*resize.*pad.*F\.pad"):
+            kornia.geometry.transform.crop_by_indices(inp, src_box, size=(2, 2), shape_compensation=shape_compensation)
+
+    def test_crop_by_indices_accepts_legacy_f_pad_shape_compensation_6402(self, device, dtype):
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src_box = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64)
+
+        actual = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(4, 4), shape_compensation="F.pad")
+        expected = torch.nn.functional.pad(inp[..., :3, :3], [0, 1, 0, 1])
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
     def test_convention_shape_compensation_pad_vs_resize(self, device, dtype):
         # shape_compensation is pinned per the crop_by_indices Convention block: it applies

@@ -31,6 +31,9 @@ from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Blur images with a Gaussian kernel of random sigma, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomGaussianBlur(kernel_size, sigma, ...)(input)`` convolves each selected ``(B, C, H, W)`` image
+    with separable Gaussian weights.
+
     The standard deviation is sampled for each instance.
 
     .. image:: _static/img/RandomGaussianBlur.png
@@ -77,6 +80,11 @@ class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
+
+    See Also:
+        - :class:`RandomBoxBlur`: uses uniform box-filter weights.
+        - :class:`RandomMedianBlur`: uses the median rather than a weighted average.
+        - :class:`RandomMotionBlur`: uses a directional motion kernel.
 
     Examples:
         >>> rng = torch.manual_seed(0)

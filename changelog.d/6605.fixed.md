@@ -1,0 +1,1 @@
+On Apple M1 and M2, `mutual_information_loss`, `normalized_mutual_information_loss`, their `_2d` and `_3d` forms and the `MILossFromRef` and `NMILossFromRef` modules no longer return wrong values on MPS from 32767 samples up (a 184 x 184 image, for example): the MPS joint histogram now contracts at most 16384 samples at a time.

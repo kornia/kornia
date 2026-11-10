@@ -15,6 +15,27 @@
 # limitations under the License.
 #
 
+"""Box containers: 2D, 3D and video boxes stored as inclusive corners, with conversions.
+
+:class:`Boxes` stores 2D boxes as four ``(x, y)`` corners each, ``(N, 4, 2)`` for one image or ``(B, N, 4, 2)`` for a
+batch; :class:`Boxes3D` stores 3D boxes as eight ``(x, y, z)`` corners each; :class:`VideoBoxes` stores the 2D boxes of
+``(B, T)`` video frames. :meth:`~kornia.geometry.boxes.Boxes.from_tensor` and
+:meth:`~kornia.geometry.boxes.Boxes3D.from_tensor` import boxes in one of several formats, ``'xyxy'`` and ``'xyzxyz'``
+by default, and ``to_tensor`` exports them in any format, always as the axis-aligned bounds of the stored corners. The
+stored corners are inclusive pixel centres, ``x_max - x_min + 1`` wide, as in :mod:`kornia.geometry.bbox`
+(`#3934 <https://github.com/kornia/kornia/issues/3934>`_): the formats ending in ``_plus`` are inclusive, the others
+exclusive. The ``Convention`` block of each class gives its formats, padded batches and validation.
+
+Which class to use:
+
+- 2D boxes of images, several per image, with padding, clamping, area filtering and masks: :class:`Boxes`.
+- 2D boxes of video frames, exported with the temporal axis, ``(B, T, N, 4)`` in ``'xyxy'``: :class:`VideoBoxes`.
+- 3D boxes in volumes: :class:`Boxes3D`.
+- One box per image as a plain ``(B, 4, 2)`` corner tensor, without a container: the functions of
+  :mod:`kornia.geometry.bbox`, such as :func:`~kornia.geometry.bbox.bbox_to_mask`.
+- Points instead of boxes: :class:`~kornia.geometry.keypoints.Keypoints`.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional, Tuple, cast
@@ -25,7 +46,7 @@ from torch import Size
 from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import _check_async
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.geometry._coordinate import _cast_to_floating_point
 from kornia.geometry.linalg import transform_points
 
@@ -49,6 +70,21 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
         raise NotImplementedError(f"`{method}` is not implemented.")
 
     return output, stats
+
+
+def _padding_mask(counts: list[int], num_boxes: int) -> torch.Tensor:
+    """Mark the last ``counts[i]`` of the ``num_boxes`` rows of each sample ``i`` in a ``(B, num_boxes)`` host mask."""
+    real = torch.as_tensor([num_boxes - n for n in counts], device="cpu", dtype=torch.long)
+    return torch.arange(num_boxes, device="cpu")[None] >= real[:, None]
+
+
+def _key_on_host(key: Any) -> Any:
+    """Move the tensors of an index key to the CPU, where the padding mask of a list-built :class:`Boxes` lives."""
+    if isinstance(key, torch.Tensor):
+        return key.cpu()
+    if isinstance(key, (tuple, list)):
+        return type(key)(_key_on_host(item) for item in key)
+    return key
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -207,7 +243,18 @@ def _boxes3d_to_polygons3d(
 
 
 class Boxes:
-    r"""2D boxes containing N or BxN boxes.
+    r"""Store 2D boxes as inclusive corners, converting to and from xyxy, xywh and vertices.
+
+    ``boxes = Boxes.from_tensor(xyxy, mode='xyxy')`` takes the ``(N, 4)`` boxes of one image or the ``(B, N, 4)`` boxes
+    of a batch (``(N, 4, 2)`` or ``(B, N, 4, 2)`` corners in the vertex modes, or a list of per-image tensors) and
+    stores them as inclusive corners; ``boxes.to_tensor('xywh')`` exports them in any mode, with the same batch layout.
+    In between, :meth:`transform_boxes` applies ``3 x 3`` matrices to all four corners, :meth:`to_mask` draws
+    ``(N, H, W)`` or ``(B, N, H, W)`` masks, :meth:`pad` shifts the corners by image padding, :meth:`clamp` limits
+    them to per-image bounds, :meth:`filter_boxes_by_area` removes boxes and :meth:`merge` appends others.
+    ``Boxes(corners)`` wraps inclusive ``'vertices_plus'`` corners as they are.
+    :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`Boxes` and transforms it with the
+    images. For one box per image as a plain ``(B, 4, 2)`` tensor, use the :mod:`kornia.geometry.bbox` functions; for
+    3D boxes, :class:`Boxes3D`; for the boxes of video frames, :class:`VideoBoxes`.
 
     Args:
         boxes: 2D boxes, shape of ``(N, 4, 2)``, ``(B, N, 4, 2)`` or a list of ``(N, 4, 2)``.
@@ -233,6 +280,13 @@ class Boxes:
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
+        - The modes of :meth:`from_tensor` and :meth:`to_tensor`, case-insensitive: ``'xyxy'`` is
+          ``(xmin, ymin, xmax, ymax)`` with ``xmax`` and ``ymax`` one past the last pixel, ``'xyxy_plus'`` the same
+          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'vertices'`` the corners with ``xmax``
+          and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the stored corners.
+          ``from_tensor(torch.tensor([[[0., 0., 10., 20.]]]))`` stores ``[[0, 0], [9, 0], [9, 19], [0, 19]]``,
+          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'`` and ``[0, 0, 9, 19]`` in
+          ``'xyxy_plus'``.
         - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
           ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
           ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
@@ -241,7 +295,27 @@ class Boxes:
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
-        - :meth:`merge` and :meth:`index_put` are non-mutating by default.
+        - A list of per-image tensors, ``(N_i, 4)`` or ``(N_i, 4, 2)`` in :meth:`from_tensor` and ``(N_i, 4, 2)``
+          in the constructor, is zero-padded to one ``(B, max N_i, 4, 2)`` batch; :meth:`to_tensor` then returns a
+          list trimmed back to each image's boxes, or the padded tensor with ``as_padded_sequence=True``.
+        - Which rows are padding is recorded per box and follows the coordinates through indexing, item assignment,
+          :meth:`index_put` and :meth:`merge`: a padding row written elsewhere stays padding, and a :class:`Boxes`
+          that does not come from a list writes real boxes. A raw tensor passed to :meth:`index_put` changes only
+          coordinates. Writing padding to a :class:`Boxes` that does not come from a list marks those rows invalid,
+          since that object has no trimmed export.
+        - A selection by integer or slice shares its coordinates, validity and padding with the object it came from,
+          as tensor indexing does, and any other key copies all three. :meth:`to` and :meth:`type` to another device or
+          dtype, and an in-place :meth:`transform_boxes`, :meth:`translate` or :meth:`merge`, end the sharing of all
+          three, for the object they are called on, whether it is the selection or the original.
+        - :meth:`filter_boxes_by_area` removes boxes without changing the shape: it zeroes their corners and marks
+          them invalid, and every export of an invalid box is exact zeros, after later transforms too.
+        - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area`, :meth:`merge`
+          and :meth:`index_put` are non-mutating by default and return a new object; with ``inplace=True`` they
+          update and return ``self``. :meth:`pad` and :meth:`unpad` always shift ``self``. The constructor wraps a
+          floating-point tensor without copying it, so item assignment and the in-place updates of :meth:`pad`,
+          :meth:`unpad`, :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`index_put` reach the caller's tensor.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 4, 2)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` differs from torchvision, COCO and albumentations:
@@ -260,6 +334,18 @@ class Boxes:
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
+    See Also:
+        - :class:`Boxes3D`: 3D boxes as eight corners, from ``(N, 6)`` boxes, with no list input, padding or
+          filtering.
+        - :class:`VideoBoxes`: the 2D boxes of ``(B, T)`` video frames, exported with the temporal axis.
+        - :func:`~kornia.geometry.bbox.bbox_to_mask`: the mask of one box per image of a plain ``(B, 4, 2)`` tensor,
+          with unrounded inclusive bounds.
+        - :func:`~kornia.geometry.bbox.transform_bbox`: transforms plain ``xyxy`` or ``xywh`` tensors through their two
+          endpoints only.
+        - :func:`~kornia.geometry.bbox.nms`: suppresses overlapping boxes of one image, given the ``'xyxy'`` export.
+        - :class:`~kornia.geometry.keypoints.Keypoints`: ``(x, y)`` points in the same pixel frame, with matching pad,
+          unpad and transform methods.
+
     """
 
     def __init__(
@@ -268,10 +354,10 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
-        self._N: Optional[list[int]] = None
+        padding_counts: Optional[list[int]] = None
 
         if isinstance(boxes, list):
-            boxes, self._N = _merge_box_list(boxes)
+            boxes, padding_counts = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
@@ -292,27 +378,86 @@ class Boxes:
 
         self._data = boxes
         self._mode = mode
-        # Filtering can leave holes; _N only describes trailing list padding.
+        # ``_valid`` marks rows that stay in every export as exact zeros, such as the holes filtering leaves.
+        # ``_padding`` marks the rows a list input added, which the trimmed export drops and the padded export keeps as
+        # stored; it is ``None`` unless the object comes from a list. Every indexed read and write carries it with the
+        # coordinates, as it does ``_valid``, so it cannot go stale. It stays on the CPU, whatever the device of the
+        # boxes: the trimmed export needs its values to size the list it returns, and reading them there costs no
+        # device synchronization. Two objects share all of ``_data``, ``_valid`` and ``_padding`` or none of them, or a
+        # write through one would flag rows whose coordinates it cannot reach. Replacing the ``_data`` of an existing
+        # object therefore goes through ``_rebind_data``.
         self._valid = torch.ones(boxes.shape[:-2], device=boxes.device, dtype=torch.bool)
+        self._padding: Optional[torch.Tensor] = None
+        if padding_counts is not None:
+            self._set_padding(_padding_mask(padding_counts, boxes.shape[1]))
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        self.__dict__.update(state)
+        self.__dict__.update({name: value for name, value in state.items() if name != "_N"})
         if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
+        if "_padding" not in state:  # pickled when the padding was a list of trailing counts
+            self._padding = None
+            if state.get("_N") is not None:
+                self._set_padding(_padding_mask(state["_N"], self._data.shape[1]))
+        elif self._padding is not None:  # ``torch.load(map_location=...)`` moves every tensor it finds
+            self._padding = self._padding.cpu()
+
+    def _set_padding(self, padding: Optional[torch.Tensor]) -> None:
+        """Record the host mask of the rows a list input added, or ``None`` for an object without any."""
+        self._padding = padding
+
+    def _detach_masks(self) -> None:
+        """Give ``_valid`` and ``_padding`` storage of their own, ``_valid`` on the device of the coordinates."""
+        self._valid = self._valid.to(device=self._data.device, copy=True)
+        if self._padding is not None:
+            self._padding = self._padding.clone()
+
+    def _rebind_data(self, data: torch.Tensor) -> None:
+        """Replace the coordinates of this object, and stop sharing its masks if ``data`` is another tensor.
+
+        Whatever shared the old coordinates, a selection or the object it came from, keeps them and the old masks.
+        """
+        if data is not self._data:
+            self._data = data
+            self._detach_masks()
+
+    def _valid_without_padding(self) -> torch.Tensor:
+        """Return ``_valid`` with the padding rows marked invalid, for a destination that has no trimmed export."""
+        if self._padding is None:
+            return self._valid
+        return self._valid & ~_to_device_nonblocking(self._padding, self._valid.device)
+
+    @property
+    def _N(self) -> Optional[list[int]]:
+        """Return the number of padding rows of each sample, or ``None`` for an object with no trimmed export."""
+        if self._padding is None or not self._is_batched:
+            return None
+        return self._padding.sum(dim=-1).tolist()
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
-        new_box = type(self)(self._data[key], False)
+        selected = self._data[key]
+        # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
+        one_box = selected.ndim == 2 and not isinstance(key, tuple)
+        if one_box:
+            selected = selected.unsqueeze(0)
+        new_box = type(self)(selected, False)
         new_box._mode = self._mode
-        new_box._valid = self._valid[key]
-        # Select padding metadata with the same key as the box batch, including boolean masks.
-        if self._N is not None:
-            selected = torch.as_tensor(self._N, device=self._data.device)[key]
-            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
+        valid = self._valid[key]
+        new_box._valid = valid.unsqueeze(0) if one_box else valid
+        if self._padding is not None:
+            padding = self._padding[_key_on_host(key)]
+            new_box._padding = padding.unsqueeze(0) if one_box else padding
+        if new_box._data is not selected:  # the constructor cast integer coordinates, into a copy
+            new_box._detach_masks()
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
-        self._valid[key] = value._valid
+        if self._padding is None:
+            self._valid[key] = value._valid_without_padding()
+        else:
+            self._valid[key] = value._valid
+            self._padding[_key_on_host(key)] = False if value._padding is None else value._padding
         return self
 
     @property
@@ -367,61 +512,39 @@ class Boxes:
 
         Note:
             When either input was created from a list, each batch row is repacked
-            so that its real boxes precede all trailing padding. The merged object
-            keeps the combined per-image padding counts in ``_N``.
+            so that its real boxes precede all of its padding, and the merged
+            object exports a list trimmed back to them.
 
         """
-        padding: Optional[list[int]] = None
-        if self._N is not None or boxes._N is not None:
-            if self._data.shape[0] != boxes.data.shape[0]:
+        padding: Optional[torch.Tensor] = None
+        if self._padding is not None or boxes._padding is not None:
+            if (self._is_batched or boxes._is_batched) and self._data.shape[0] != boxes.data.shape[0]:
                 raise ValueError(
                     f"Batch size mismatch. Got {self._data.shape[0]} for self and {boxes.data.shape[0]} for boxes."
                 )
+            padding = torch.cat([operand._padding_or_real() for operand in (self, boxes)], dim=-1)
 
-            self_padding = self._N if self._N is not None else [0] * self._data.shape[0]
-            boxes_padding = boxes._N if boxes._N is not None else [0] * boxes.data.shape[0]
-            data = torch.stack(
-                [
-                    torch.cat(
-                        [
-                            self._data[i, : self._data.shape[-3] - self_pad],
-                            boxes.data[i, : boxes.data.shape[-3] - boxes_pad],
-                            self._data[i, self._data.shape[-3] - self_pad :],
-                            boxes.data[i, boxes.data.shape[-3] - boxes_pad :],
-                        ]
-                    )
-                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
-                ]
-            )
-            valid = torch.stack(
-                [
-                    torch.cat(
-                        [
-                            self._valid[i, : self._valid.shape[-1] - self_pad],
-                            boxes._valid[i, : boxes._valid.shape[-1] - boxes_pad],
-                            self._valid[i, self._valid.shape[-1] - self_pad :],
-                            boxes._valid[i, boxes._valid.shape[-1] - boxes_pad :],
-                        ]
-                    )
-                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
-                ]
-            )
-            padding = [self_pad + boxes_pad for self_pad, boxes_pad in zip(self_padding, boxes_padding)]
-        else:
-            data = torch.cat([self._data, boxes.data], dim=-3)
-            valid = torch.cat([self._valid, boxes._valid], dim=-1)
+        data = torch.cat([self._data, boxes.data], dim=-3)
+        valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
-        if inplace:
-            self._data = data
-            self._N = padding
-            self._valid = valid
-            return self
+        if padding is not None and self._is_batched:
+            order = padding.long().argsort(dim=-1, stable=True)
+            padding = padding.gather(-1, order)
+            order = _to_device_nonblocking(order, data.device)
+            data = data.take_along_dim(order[..., None, None], dim=-3)
+            valid = valid.gather(-1, order)
 
-        obj = self.clone()
+        obj = self if inplace else self.clone()
         obj._data = data
-        obj._N = padding
         obj._valid = valid
+        obj._set_padding(padding)
         return obj
+
+    def _padding_or_real(self) -> torch.Tensor:
+        """Return the host padding mask, all ``False`` for an object that does not come from a list."""
+        if self._padding is not None:
+            return self._padding
+        return torch.zeros(self._valid.shape, device="cpu", dtype=torch.bool)
 
     def index_put(
         self,
@@ -442,8 +565,8 @@ class Boxes:
                 The indices address entries in the stored tensor, commonly
                 shaped ``(B, N, 4, 2)`` or ``(N, 4, 2)``.
             values: Replacement coordinates. If a :class:`Boxes` object is
-                passed, its coordinates and filtering validity are copied. Raw tensor writes
-                change only coordinates and preserve the existing filtering validity.
+                passed, its coordinates, filtering validity and list padding are copied. Raw tensor writes
+                change only coordinates and preserve the existing filtering validity and list padding.
             inplace: If ``True``, update this object and return ``self``. If
                 ``False``, clone the current data first and return a new
                 :class:`Boxes` instance.
@@ -454,7 +577,11 @@ class Boxes:
         obj = self if inplace else self.clone()
         if isinstance(values, Boxes):
             obj._data.index_put_(indices, values.data)
-            obj._valid.index_put_(indices, values._valid)
+            if obj._padding is None:
+                obj._valid.index_put_(indices, values._valid_without_padding())
+            else:
+                obj._valid.index_put_(indices, values._valid)
+                obj._padding.index_put_(_key_on_host(indices), values._padding_or_real())
         else:
             obj._data.index_put_(indices, values)
         return obj
@@ -629,11 +756,12 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         area = self.compute_area()
-        keep = torch.ones_like(area, dtype=torch.bool)
+        area_flat = area.reshape(self._valid.shape)
+        keep = torch.ones_like(area_flat, dtype=torch.bool)
         if min_area is not None:
-            keep &= ~(area < min_area)
+            keep &= ~(area_flat < min_area)
         if max_area is not None:
-            keep &= ~(area > max_area)
+            keep &= ~(area_flat > max_area)
         obj = self if inplace else self.clone()
         obj._valid &= keep
         if min_area is not None or max_area is not None:
@@ -748,6 +876,14 @@ class Boxes:
         axis-aligned and still yields an export that differs from :attr:`data`, because the reduction
         re-canonicalizes the vertex order.
 
+        .. warning::
+            Before torch 2.10, ``torch.compile(..., fullgraph=True)`` around the trimmed export of boxes built from a
+            list raises, because that export reads its rows with ``nonzero``, whose output size depends on the data.
+            Setting ``torch._dynamo.config.capture_dynamic_output_shape_ops``, as the error suggests, still raises.
+            Setting ``capture_scalar_outputs`` as well makes it compile, and on torch 2.5 and 2.6 it then returns wrong
+            rows with no error, from a miscompile of ``nonzero`` in torch. ``as_padded_sequence=True`` and default
+            ``torch.compile`` return the right rows on every one of these versions.
+
         Args:
             mode: the output box format, or ``None`` to reuse :attr:`mode`. That attribute depends on the
                 construction path: the constructor defaults to ``'vertices_plus'``, while :meth:`from_tensor`
@@ -762,8 +898,9 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
-                Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
-                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
+                Batch slicing, index tensors, and boolean masks keep the list export. A selection that returns an
+                unbatched object, such as an integer or scalar tensor index, exports all its rows, padding included,
+                as one tensor.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
@@ -812,11 +949,12 @@ class Boxes:
         valid = valid.reshape(valid.shape + (1,) * (boxes.ndim - valid.ndim))
         boxes = boxes.masked_fill(~valid, 0.0)
 
-        if self._N is not None and not as_padded_sequence:
-            boxes = [torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)]
-        else:
-            boxes = boxes if self._is_batched else boxes.squeeze(0)
-        return boxes
+        if self._padding is not None and self._is_batched and not as_padded_sequence:
+            keep = ~self._padding
+            samples, rows = keep.nonzero(as_tuple=True)
+            kept = boxes[_to_device_nonblocking(samples, boxes.device), _to_device_nonblocking(rows, boxes.device)]
+            return list(kept.split(keep.sum(dim=-1).tolist()))
+        return boxes if self._is_batched else boxes.squeeze(0)
 
     def to_mask(self, height: int, width: int) -> torch.Tensor:
         """Convert 2D boxes to masks. Covered area is 1 and the remaining is 0.
@@ -824,8 +962,8 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Convention:
-            The size is ``(height, width)`` and the mask :math:`(N, height, width)` or
-            :math:`(B, N, height, width)` in the box dtype. The exclusive ``'xyxy'`` export is clamped to the
+            The size is ``(height, width)`` and the mask ``(N, height, width)`` or
+            ``(B, N, height, width)`` in the box dtype. The exclusive ``'xyxy'`` export is clamped to the
             image, rounded to the nearest integer and filled over ``[xmin, xmax)``, ``[ymin, ymax)``. Padding
             entries of a list-backed object give empty masks. A box tensor that requires grad raises
             ``RuntimeError``.
@@ -841,7 +979,7 @@ class Boxes:
             width: width of the masked image/images.
 
         Returns:
-            the output mask tensor, shape of :math:`(N, height, width)` or :math:`(B, N, height, width)` and dtype of
+            the output mask tensor, shape of ``(N, height, width)`` or ``(B, N, height, width)`` and dtype of
             :func:`Boxes.dtype` (it can be any floating point dtype).
 
         Note:
@@ -875,10 +1013,9 @@ class Boxes:
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
-        if self._N is not None:
+        if self._padding is not None:
             # Padding is not a box, even when its coordinates have been changed by a transform.
-            for i, n in enumerate(self._N):
-                clipped_boxes_xyxy[i, clipped_boxes_xyxy.shape[1] - n :] = 0
+            clipped_boxes_xyxy.masked_fill_(_to_device_nonblocking(self._padding, device)[..., None], 0)
 
         # -----------------
         # CPU Hotpath (loop)
@@ -945,7 +1082,7 @@ class Boxes:
 
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
-            self._data = transformed_boxes
+            self._rebind_data(transformed_boxes)
             return self
 
         obj = self.clone()
@@ -1009,8 +1146,8 @@ class Boxes:
 
         Returns:
             Mode string used as the default by :meth:`to_tensor`, such as
-            ``"xyxy"``, ``"xywh"``, ``"vertices"``, or their ``"_plus"``
-            variants.
+            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"vertices"`` or
+            ``"vertices_plus"``.
         """
         return self._mode
 
@@ -1025,12 +1162,15 @@ class Boxes:
         return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Boxes:
-        """Like :func:`torch.nn.Module.to()` method."""
+        """Move or cast the stored tensor and return ``self``, as :meth:`torch.nn.Module.to` does.
+
+        The tensor is rebound, not converted in place: one obtained from :attr:`data` before the call keeps its device
+        and dtype. A ``dtype`` that is not floating point raises ``ValueError``.
+        """
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
-        self._data = self._data.to(device=device, dtype=dtype)
-        self._valid = self._valid.to(device=self._data.device)
+        self._rebind_data(self._data.to(device=device, dtype=dtype))
         return self
 
     def clone(self) -> Boxes:
@@ -1038,12 +1178,12 @@ class Boxes:
 
         Returns:
             New :class:`Boxes` object with cloned tensor storage. Metadata such
-            as the current mode, original list lengths, and batched flag is
+            as the current mode, list padding, and batched flag is
             preserved.
         """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
-        obj._N = self._N
+        obj._padding = None if self._padding is None else self._padding.clone()
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         return obj
@@ -1052,51 +1192,70 @@ class Boxes:
         """Cast the stored box coordinates to a new dtype.
 
         Args:
-            dtype: Target floating-point dtype for the coordinate tensor.
+            dtype: Target dtype for the coordinate tensor. Unlike :meth:`to`, an integer dtype is not rejected.
 
         Returns:
-            ``self`` after converting :attr:`data` in place.
+            ``self``, rebound to the converted tensor; the tensor it wrapped before is not modified.
         """
-        self._data = self._data.type(dtype)
-        self._valid = self._valid.to(device=self._data.device)
+        self._rebind_data(self._data.type(dtype))
         return self
 
 
 class VideoBoxes(Boxes):
-    r"""2D boxes with an explicit temporal channel for video sequences.
+    r"""Store the 2D boxes of (B, T) video frames, restoring the temporal axis on export.
 
-    Accepts and returns box corners for a batch of videos as
-    ``(B, T, N, 4, 2)`` in ``vertices_plus`` mode. Internally the corners
-    are stored flattened as :math:`(B \cdot T, N, 4, 2)`.
-    :class:`~kornia.augmentation.AugmentationSequential` uses this wrapper when
-    the pipeline contains a video sequential so that ``to_tensor`` restores the
-    temporal axis after geometric transforms.
+    ``boxes = VideoBoxes.from_tensor(corners)`` takes inclusive ``'vertices_plus'`` corners ``(B, T, N, 4, 2)``, with
+    no mode or conversion, and stores them flattened as ``(B * T, N, 4, 2)``, so the methods it inherits from
+    :class:`Boxes` act on every frame; ``boxes.to_tensor('xyxy')`` exports ``(B, T, N, 4)``, with the temporal axis
+    restored, and ``boxes.to_tensor()`` the ``(B, T, N, 4, 2)`` corners.
+    :class:`~kornia.augmentation.container.AugmentationSequential` stores the boxes of a pipeline that contains a
+    :class:`~kornia.augmentation.container.VideoSequential` in this class. Convert boxes in another format to corners
+    first: ``Boxes.from_tensor(xyxy.flatten(0, 1)).data.unflatten(0, (B, T))`` converts ``(B, T, N, 4)`` ``xyxy``
+    boxes. For the boxes of single images, use :class:`Boxes`.
 
     See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
     Convention:
-        - :meth:`from_tensor` stores ``(B, T, N, 4, 2)`` input unchanged as :math:`(B \cdot T, N, 4, 2)`
+        - :meth:`from_tensor` stores ``(B, T, N, 4, 2)`` input unchanged as ``(B * T, N, 4, 2)``
           ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to ``float32``,
           or ``float64`` when that is the default dtype. Another shape or a list raises ``ValueError``.
           ``validate_boxes=True`` rejects a non-finite coordinate as
           :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is ``(B, T, N, 4)``).
+        - :meth:`compute_area` returns ``(B, T, N)`` areas, and :meth:`to_mask` returns
+          ``(B, T, N, height, width)`` masks. :attr:`~Boxes.shape` and :attr:`~Boxes.data` stay the flattened
+          storage ``(B * T, N, 4, 2)``.
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
-          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape ``(1, T, ...)``. Index
           assignment, ``video_boxes[key] = other``, writes the same whole videos.
-        - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a ``(3, 3)`` matrix raises ``ValueError``
+        - A transformation matrix is ``(B * T, 3, 3)``; a ``(3, 3)`` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
-        - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
-          :meth:`merge` return a new :class:`VideoBoxes`; :meth:`pad`, :meth:`unpad`, :meth:`to` and
-          :meth:`type` update ``self`` in place.
+        - :meth:`Boxes.transform_boxes`, :meth:`Boxes.translate`, :meth:`Boxes.clamp`,
+          :meth:`Boxes.filter_boxes_by_area` and :meth:`Boxes.merge` return a new :class:`VideoBoxes`;
+          :meth:`Boxes.pad`, :meth:`Boxes.unpad`, :meth:`Boxes.to` and :meth:`Boxes.type` update and return ``self``.
+        - Every frame holds the same number of rows, with no trimmed export. The padding of list-built :class:`Boxes`
+          merged or written into a :class:`VideoBoxes` is marked invalid, so it exports as exact zeros in every mode
+          and draws no mask.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
 
+    See Also:
+        - :class:`Boxes`: the 2D boxes of single images, imported from any mode, with no temporal axis.
+        - :class:`Boxes3D`: boxes in a ``(D, H, W)`` volume, eight corners each, rather than boxes per frame.
+        - :class:`~kornia.augmentation.container.VideoSequential`: the video augmentation whose boxes
+          :class:`~kornia.augmentation.container.AugmentationSequential` keeps in this class.
+
     """
 
     temporal_channel_size: int
+
+    def _set_padding(self, padding: Optional[torch.Tensor]) -> None:
+        """Mark the padding rows invalid: a video exports every row of every frame, with no trimmed export."""
+        self._padding = padding
+        self._valid = self._valid_without_padding()
+        self._padding = None
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True) -> VideoBoxes:
@@ -1114,7 +1273,7 @@ class VideoBoxes(Boxes):
                 :meth:`~kornia.geometry.boxes.Boxes.from_tensor`.
 
         Returns:
-            :class:`VideoBoxes` with :attr:`temporal_channel_size` set to
+            :class:`VideoBoxes` with ``temporal_channel_size`` set to
             ``boxes.size(1)``.
 
         Raises:
@@ -1147,20 +1306,32 @@ class VideoBoxes(Boxes):
         if selected.ndim == self._data.ndim:
             selected = selected.unsqueeze(0)
 
-        out = type(self)(selected.flatten(0, 1), False)
+        frames = selected.flatten(0, 1)
+        out = type(self)(frames, False)
         out._mode = self._mode
         selected_valid = self._valid.view(batch_size, self.temporal_channel_size, self._valid.shape[-1])[key]
         out._valid = selected_valid.reshape(out._data.shape[:-2])
+        if out._data is not frames:  # the constructor cast integer coordinates, into a copy
+            out._detach_masks()
         out.temporal_channel_size = self.temporal_channel_size
         return out
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
-        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`.
+
+        A :class:`VideoBoxes` value must have the same ``temporal_channel_size``: otherwise its frames would be
+        regrouped into videos of another length. A plain :class:`Boxes` value is read as frames of this length.
+        """
         size = self.temporal_channel_size
+        if isinstance(value, VideoBoxes) and value.temporal_channel_size != size:
+            raise ValueError(
+                f"Cannot assign videos of {value.temporal_channel_size} frames to videos of {size} frames."
+            )
         # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
         n, m = self._data.shape[0] // size, value.data.shape[0] // size
         self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
-        self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
+        value_valid = value._valid_without_padding()
+        self._valid.view(n, size, self._valid.shape[-1])[key] = value_valid.view(m, size, value_valid.shape[-1])
         return self
 
     def to_tensor(
@@ -1173,40 +1344,72 @@ class VideoBoxes(Boxes):
                 ``None``, uses the stored mode (``vertices_plus`` by default).
             as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
                 changes the result of a list-backed container; a
-                :class:`VideoBoxes` built from a ``(B, T, N, 4, 2)`` tensor
-                is not list-backed, so the value makes no difference there. The
-                keyword is accepted because the inherited :meth:`get_boxes_shape`
-                and :meth:`to_mask` pass it.
+                :class:`VideoBoxes` is never list-backed, so the value makes no
+                difference there. The keyword is accepted because the inherited
+                :meth:`Boxes.get_boxes_shape` and :meth:`Boxes.to_mask` pass it.
 
         Returns:
-            Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
-            :attr:`temporal_channel_size`.
+            Tensor shaped ``(B, T, ...)`` where :math:`T` is
+            ``temporal_channel_size``.
         """
-        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        out = cast(torch.Tensor, super().to_tensor(mode, as_padded_sequence=as_padded_sequence))
         batch_size = self._data.shape[0] // self.temporal_channel_size
-        if isinstance(out, torch.Tensor):
-            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
-        # If returns a list of boxes.
-        return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
+        return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
 
     def clone(self) -> VideoBoxes:
         """Create an independent copy of the video box container.
 
         Returns:
             New :class:`VideoBoxes` with cloned tensor storage and the same
-            :attr:`temporal_channel_size`, mode, and batch metadata.
+            ``temporal_channel_size``, mode, and batch metadata.
         """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
-        obj._N = self._N
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         obj.temporal_channel_size = self.temporal_channel_size
         return obj
 
+    def compute_area(self) -> torch.Tensor:
+        r"""Compute polygon area with the shoelace formula with the temporal axis restored.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.VideoBoxes`.
+
+        Returns:
+            Area for each box, shaped ``(B, T, N)``.
+        """
+        area = super().compute_area()
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        return area.reshape(batch_size, self.temporal_channel_size, *area.shape[1:])
+
+    def to_mask(self, height: int, width: int) -> torch.Tensor:
+        r"""Convert 2D video boxes to masks with the temporal axis restored.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.VideoBoxes`.
+
+        Args:
+            height: height of the masked image/images.
+            width: width of the masked image/images.
+
+        Returns:
+            The output mask tensor, shaped ``(B, T, N, height, width)`` and dtype of
+            :func:`Boxes.dtype`.
+        """
+        mask = super().to_mask(height, width)
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        return mask.reshape(batch_size, self.temporal_channel_size, *mask.shape[1:])
+
 
 class Boxes3D:
-    r"""3D boxes containing N or BxN boxes.
+    r"""Store 3D boxes as eight inclusive corners, converting to and from xyzxyz and xyzwhd.
+
+    ``boxes = Boxes3D.from_tensor(xyzxyz)`` takes ``(N, 6)`` or ``(B, N, 6)`` boxes in ``'xyzxyz'`` (the default),
+    ``'xyzxyz_plus'`` or ``'xyzwhd'`` mode and stores them as ``(N, 8, 3)`` or ``(B, N, 8, 3)`` inclusive corners;
+    ``boxes.to_tensor('xyzwhd')`` exports them in any of these modes or as corners. In between,
+    :meth:`transform_boxes` applies ``4 x 4`` matrices to all eight corners and :meth:`to_mask` draws
+    ``(N, D, H, W)`` or ``(B, N, D, H, W)`` masks. Unlike :class:`Boxes` it takes no list input and has no padding,
+    clamping, merging or area filtering. For one box per volume as a plain ``(B, 8, 3)`` tensor, use
+    :func:`~kornia.geometry.bbox.bbox_to_mask3d` and :func:`~kornia.geometry.bbox.infer_bbox_shape3d`.
 
     Args:
         boxes: 3D boxes, shape of ``(N,8,3)`` or ``(B,N,8,3)``. See below for more details.
@@ -1235,6 +1438,8 @@ class Boxes3D:
           or ``float64`` when that is the default dtype.
         - :meth:`transform_boxes` returns a new object labelled ``'xyzxyz_plus'``; :meth:`transform_boxes_`
           rebinds the internal tensor of ``self`` and keeps the label.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 8, 3)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` is `#3934 <https://github.com/kornia/kornia/issues/3934>`_ and the ``'vertices'``
@@ -1243,6 +1448,15 @@ class Boxes3D:
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
         The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
+
+    See Also:
+        - :class:`Boxes`: 2D boxes as four corners, with list input, padding, clamping and area filtering.
+        - :class:`VideoBoxes`: the 2D boxes of ``(B, T)`` video frames, rather than boxes in a volume.
+        - :func:`~kornia.geometry.bbox.bbox_to_mask3d`: the ``(B, 1, D, H, W)`` mask of one box per volume of a plain
+          ``(B, 8, 3)`` tensor, with truncated bounds.
+        - :func:`~kornia.geometry.bbox.infer_bbox_shape3d`: the inclusive sizes of a plain ``(B, 8, 3)`` tensor.
+        - :class:`~kornia.geometry.keypoints.Keypoints3D`: ``(x, y, z)`` points, transformed by the same ``4 x 4``
+          matrices.
 
     """
 
@@ -1270,7 +1484,11 @@ class Boxes3D:
         self._mode = mode
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes3D:
-        new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
+        data = self._data[key]
+        if data.ndim == 2 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one box of unbatched boxes: keep the box axis
+            data = data.unsqueeze(0)
+        new_box = Boxes3D(data, False, mode="xyzxyz_plus")
         new_box._mode = self._mode
         return new_box
 
@@ -1414,7 +1632,7 @@ class Boxes3D:
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
                 * 'xyzxyz_plus': similar to 'xyzxyz' mode but where box width, length and depth are defined as
-                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
+                  ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
@@ -1435,7 +1653,8 @@ class Boxes3D:
         Note:
             The ``amin``/``amax`` reduction ties on every face of an axis-aligned box (4 vertices share each
             extremum), so the gradient there is a subgradient shared among the tied vertices; it sums to one
-            over them but need not match a finite-difference estimate such as :func:`torch.autograd.gradcheck`.
+            over them but need not match a finite-difference estimate such as
+            :func:`~torch.autograd.gradcheck.gradcheck`.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
@@ -1481,8 +1700,8 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Convention:
-            The size is ``(depth, height, width)`` and the mask :math:`(N, depth, height, width)` or
-            :math:`(B, N, depth, height, width)` in the box dtype, with no channel axis. The exclusive
+            The size is ``(depth, height, width)`` and the mask ``(N, depth, height, width)`` or
+            ``(B, N, depth, height, width)`` in the box dtype, with no channel axis. The exclusive
             ``'xyzxyz'`` export is clamped to the volume, rounded to the nearest integer and filled over
             half-open ranges. A box tensor that requires grad raises ``RuntimeError``.
 
@@ -1496,7 +1715,7 @@ class Boxes3D:
             width: width of the masked image/images.
 
         Returns:
-            the output mask tensor, shape of :math:`(N, depth, height, width)` or :math:`(B, N, depth, height, width)`
+            the output mask tensor, shape of ``(N, depth, height, width)`` or ``(B, N, depth, height, width)``
             and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
 
         Note:
@@ -1643,8 +1862,9 @@ class Boxes3D:
         """Return the 3D box format remembered by this container.
 
         Returns:
-            Mode string describing how this container should be interpreted
-            during tensor conversion.
+            The mode label given to :meth:`from_tensor` or the constructor; the new object that
+            :meth:`transform_boxes` returns is labelled ``'xyzxyz_plus'``. :meth:`to_tensor` does not read it
+            (`#4251 <https://github.com/kornia/kornia/issues/4251>`_).
         """
         return self._mode
 
@@ -1659,7 +1879,11 @@ class Boxes3D:
         return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Boxes3D:
-        """Like :func:`torch.nn.Module.to()` method."""
+        """Move or cast the stored tensor and return ``self``, as :meth:`torch.nn.Module.to` does.
+
+        The tensor is rebound, not converted in place: one obtained from :attr:`data` before the call keeps its device
+        and dtype. A ``dtype`` that is not floating point raises ``ValueError``.
+        """
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")

@@ -27,7 +27,7 @@ from kornia.core.check import _check_async
 from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _check_floating_image
+from .adjust import _check_floating_image, _level_scale
 from .histogram import histogram
 
 
@@ -157,10 +157,10 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     r"""Histogram every tile over ``[0, 1]`` in one pass, on the index its lookup table is read with.
 
-    A value ``x`` is counted in bin ``(x * (bins - 1)).long()``, computed in the dtype of ``tiles`` as the
-    tile lookups compute ``(x * 255).long()``, so every pixel is counted in the entry it reads, as OpenCV
-    counts and reads one 8-bit level; ``torch.histc``'s ``floor(x * bins)`` would put every value in
-    ``[k/256, k/255)`` one bin above that entry. One ``scatter_add_`` counts all
+    A value ``x`` is counted in bin ``(x * _level_scale(x.dtype, bins - 1)).long()``, computed in the dtype of
+    ``tiles`` as the tile lookups compute ``(x * _level_scale(x.dtype)).long()``, so every pixel is counted in the
+    entry it reads, as OpenCV counts and reads one 8-bit level; ``torch.histc``'s ``floor(x * bins)`` would put
+    every value in ``[k/256, k/255)`` one bin above that entry. One ``scatter_add_`` counts all
     tiles, instead of one ``histc`` launch per tile, and keeps a static output shape so the function stays
     a single dynamo graph. Values outside ``[0, 1]`` and NaN are not counted, which the CPU ``histc`` also
     skips; they go to one extra overflow column per tile that is dropped.
@@ -175,7 +175,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     """
     num_tiles = tiles.shape[0]
     # The index is computed in the dtype of ``tiles``, as the lookups compute theirs; only the counts are wider.
-    idx = (tiles * (bins - 1)).long().clamp_(0, bins - 1)
+    idx = (tiles * _level_scale(tiles.dtype, bins - 1)).long().clamp_(0, bins - 1)
     x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
     # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
     in_range = x.clamp(0, 1) == x
@@ -239,9 +239,12 @@ def _compute_luts(
         # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
-        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
+        # The centres and bandwidth follow float64 tiles; every other dtype stays float32 because histogram
+        # evaluates half-precision kernels in float32.
+        centre_dtype = torch.promote_types(tiles.dtype, torch.float32)
+        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device, dtype=centre_dtype)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
-        histos = histogram(tiles, bins, torch.tensor(0.001))
+        histos = histogram(tiles, bins, torch.tensor(0.001, dtype=centre_dtype))
         histos *= pixels
 
     if isinstance(clip, torch.Tensor):
@@ -370,7 +373,9 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
     # equalize tiles
-    flatten_interp_tiles: torch.Tensor = (interp_tiles * 255).long().flatten(-2, -1)  # B x GH x GW x 4 x C x (THxTW)
+    # The 8-bit level each pixel reads; ``_level_scale`` keeps ``k / 255`` rounded a unit low at level ``k``.
+    # B x GH x GW x 4 x C x (THxTW)
+    flatten_interp_tiles: torch.Tensor = (interp_tiles * _level_scale(interp_tiles.dtype)).long().flatten(-2, -1)
     flatten_interp_tiles = flatten_interp_tiles.unsqueeze(-3).expand(num_imgs, gh, gw, 4, c, th * tw)
     preinterp_tiles_equalized = (
         torch.gather(mapped_luts, 5, flatten_interp_tiles)  # B x GH x GW x 4 x C x TH x TW
@@ -453,7 +458,7 @@ def _equalize_clahe_odd_tiles(imgs: torch.Tensor, luts: torch.Tensor, tile_size:
     wx = torch.where((x < 0) | (x > grid_w - 1), 0, wx).to(imgs.dtype)
 
     luts = luts.to(imgs.dtype)
-    pixel_bins = (imgs * 255).long()
+    pixel_bins = (imgs * _level_scale(imgs.dtype)).long()
     batch_idx = torch.arange(batch_size, device=imgs.device).view(batch_size, 1, 1, 1)
     channel_idx = torch.arange(channels, device=imgs.device).view(1, channels, 1, 1)
     rows0, rows1 = y0.view(1, 1, height, 1), y1.view(1, 1, height, 1)
@@ -523,7 +528,10 @@ def equalize_clahe(
     .. note::
        The input is expected as a floating-point image in :math:`[0, 1]`; each tile is equalized from a
        256-bin lookup table. On the default path each pixel is counted in the entry it reads, its 8-bit
-       level ``(x * 255).long()`` in the input dtype, as OpenCV counts and reads one level;
+       level ``(x * 255).long()`` in the input dtype, as OpenCV counts and reads one level; both paths read
+       the lookup at that level. In float32 and float64 the 255 is raised by four float32 epsilons, relative, as in
+       :func:`kornia.enhance.equalize`, so ``k / 255`` reads level ``k`` even when its division was rounded a
+       unit low, as dividing by 255 on CUDA leaves it.
        ``slow_and_differentiable=True`` keeps its soft histogram centred on the levels ``k / 255``. An integer
        or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
        8-bit data with ``image.float() / 255`` first, as for :func:`kornia.enhance.equalize`. Values the lookup
@@ -558,13 +566,14 @@ def _equalize_clahe(
     if grid_size[0] <= 0 or grid_size[1] <= 0:
         raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
 
-    # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
-    # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
+    # The tile LUTs are gathered below with ``(x * _level_scale(x.dtype)).long()``, which is in bounds
+    # only while that product is in (-1, 256). Check that domain without ``.item()``, so there is no
     # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
     # (see ``_check_async``). Inputs the lookup can index are unchanged. The check keeps the index in
     # bounds, so it runs with checks disabled too: a compiled CPU gather out of range terminates the process.
+    levels = input * _level_scale(input.dtype)
     _check_async(
-        ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
+        ((levels > -1.0) & (levels < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
         guard=True,

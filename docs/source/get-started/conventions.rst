@@ -460,6 +460,13 @@ transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output un
 :func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
 clips its final RGB output to the unit range.
 
+A result of these clips, of :func:`kornia.color.rgb_to_rgb255` and :func:`kornia.color.normals_to_rgb255`, and of the
+clamps inside :func:`kornia.color.hls_to_rgb` and :func:`kornia.color.lab_to_rgb` (of a negative ``Z``) exactly on a
+bound has no unique derivative. They use the one-sided derivative from inside the range on every torch version, as the
+intensity ops do (see :ref:`enhancement-conventions`); plain ``torch.clamp`` gives 0 there from torch 2.14. A result
+outside the range gets the bound and a zero gradient. A graph captured by ``torch.jit.trace`` or ``torch.export`` keeps
+the plain clamp.
+
 See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
 chroma subsampling, and known defects.
 
@@ -474,6 +481,10 @@ Enhancement
   adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
   correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
   variants.
+- A result of these intensity ops exactly on ``0`` or ``1`` has no unique derivative. These ops use the
+  one-sided derivative from inside the range on every torch version; plain ``torch.clamp`` gives 0 there
+  from torch 2.14. A result outside the range gets the bound and a zero gradient. A graph captured by
+  ``torch.jit.trace`` or ``torch.export`` keeps the plain clamp.
 - :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
   (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
   operate on HSV data.
@@ -557,9 +568,10 @@ Augmentations
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
 - Nested ``AugmentationSequential`` children contribute matrices from the
-  current call. A plain ``ImageSequential`` child is still omitted from an
-  outer ``AugmentationSequential`` matrix
-  (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+  current call under their own matrix mode. Plain ``ImageSequential`` children
+  contribute their geometric operations in ``silent`` mode, including repeated
+  members of a sampled sequence. ``rigid`` still rejects a plain image sequence,
+  and ``skip`` records no matrix.
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
   as metadata, and the caller's dictionary is not modified.
@@ -653,14 +665,49 @@ Serializing an augmentation
   3D and mix augmentations have an empty ``state_dict()``. ``nn.Parameter``
   ranges (``RandomRotation`` and ``RandomAffine`` among others) are registered
   and receive gradients. Some numeric ranges are copied into
-  ``_param_generator.*`` buffers that loading does not feed back into the
-  samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+  ``_param_generator.*`` buffers, and loading one that differs builds the
+  samplers again from the loaded range. The constructor's domain check applies
+  to it where the class passes one to its generator; a range it refuses raises
+  the constructor's ``ValueError`` and leaves the buffer and the samplers as
+  they were. A checkpoint that holds the same range changes nothing. The auto
+  policies' ``_probability`` entries are still not read back
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- A learnable range is read again before each draw, so an optimizer step, an
+  in-place update, ``load_state_dict`` and
+  ``AveragedModel.update_parameters`` all reach the next draw, for a ``(2,)``
+  range and for a 0-d half-width alike. Its value is checked when the
+  augmentation is built, and otherwise only by the classes named below: to
+  read it on every call would wait for the GPU and break a ``torch.compile``
+  graph, so a range that training takes out of its
+  domain (a negative half-width, say) is drawn from as it is. Keep it inside by
+  clamping it after the optimizer step, or with
+  ``torch.nn.utils.parametrize.register_parametrization`` on
+  ``aug._param_generator``; PyTorch then serializes that generator through
+  ``state_dict()`` only, and ``copy.deepcopy`` and ``pickle`` of it raise. There
+  are two limits. ``RandomErasing``, ``RandomResizedCrop``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` decide things from the values of
+  their range when they build their samplers and pass it no gradient, so an
+  update reaches them through ``load_state_dict`` and copies only. Those
+  builds check the range, so ``RandomErasing``, ``RandomPosterize``,
+  ``RandomRotation90`` and ``RandomCutMixV2`` raise the constructor's
+  ``ValueError`` when a range outside their domain is loaded, or when the
+  module is moved (``.to(torch.float64)``, say) after an in-place update took
+  it out. A range on an accelerator in an augmentation left on the CPU (or the
+  reverse) is copied to
+  the generator's device only after an in-place update or a change of grad
+  mode (a forward under ``torch.no_grad()`` after a training one, or the
+  reverse), and each copy waits for the GPU once.
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
   ``_params``, which replay on the same input. This includes the
   ``kornia.augmentation.auto`` policies: a policy pickles when every operation
   wrapper in it does, and a wrapper does when its magnitude mapping is
   picklable (the built-in mappings are). What lazily computed matrices retain
   is described in :doc:`/augmentation.base`.
+- A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
+  augmentation or container with an ``nn.Parameter`` range owns a copy of
+  that parameter, and its gradients reach that copy rather than the
+  original. It draws from the current value of its own parameter. The
+  ``_params`` it inherits from the last call keep their values, detached.
 
 Morphology
 ----------
@@ -1268,16 +1315,18 @@ x axis and its second column that of the patch's y axis. The Convention blocks o
 :func:`~kornia.feature.laf_from_center_scale_ori` and :func:`~kornia.feature.extract_patches_from_pyramid` give the
 full rules.
 
-- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. A positive orientation
-  turns the patch's x axis counter-clockwise on screen, with image y pointing down: with an orientation of ``90``, the
-  ``+x`` side of the patch shows what lies above the centre.
+- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. For a LAF of positive
+  determinant, a positive orientation turns the patch's x axis counter-clockwise on screen, with image y pointing
+  down: with an orientation of ``90``, the ``+x`` side of the patch shows what lies above the centre. For a mirrored
+  LAF, of negative determinant, it turns clockwise, and ``90`` puts the ``+x`` side below the centre.
 - The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
   square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
   run along the patch's x axis.
 - :func:`~kornia.feature.normalize_laf` divides the centre by ``max(W - 1, 1)`` and ``max(H - 1, 1)`` and ``A`` by
   the smaller of the two; its Convention block covers moving a LAF to an image of another size.
-- kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
-  batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+- kornia's LAF detectors pad unused slots with an all-zero LAF and a zero response, so that a
+  batch is one tensor. :func:`~kornia.feature.laf_is_filled` is true for detections; index LAFs, responses and
+  descriptors with it to drop padding before matching.
 - The ``match_*`` functions return ``(dists, idxs)``, one row per match; a lower ``dists`` is a better match.
   See the Convention block of :func:`~kornia.feature.match_nn` for each matcher's distance definition.
 - ``idxs`` holds ``(index in desc1, index in desc2)`` for unbatched matchers. :func:`~kornia.feature.match_smnn_batched`
@@ -1297,9 +1346,10 @@ OpenCV keypoints and SIFT descriptors convert as follows:
      - ``KeyPoint.pt``, in the same pixel frame: copy it unchanged. The default upscaling of ``cv2.SIFT`` biases
        ``pt`` by a fraction of a pixel; ``enable_precise_upscale=True`` removes the bias
    * - orientation
-     - degrees, counter-clockwise on screen, read by :func:`~kornia.feature.get_laf_orientation`
-     - ``KeyPoint.angle``, degrees clockwise on screen: ``angle = (-orientation) mod 360`` and
-       ``orientation = -angle``
+     - degrees, counter-clockwise on screen for a LAF of positive determinant (clockwise for a mirrored one), read by
+       :func:`~kornia.feature.get_laf_orientation`
+     - For a circular similarity frame ``A = s R``, ``KeyPoint.angle`` is ``(-orientation) mod 360``. For a general
+       affine frame, use ``atan2(a21, a11)`` in degrees modulo 360. A keypoint cannot retain affine shape or reflection.
    * - scale
      - :math:`\sqrt{|\det A|}`, read by :func:`~kornia.feature.get_laf_scale`; the frames of
        :class:`~kornia.feature.SIFTFeatureScaleSpace` have the scale :math:`6 \sigma` for the detection scale

@@ -22,10 +22,11 @@ from torch.utils._python_dispatch import TorchDispatchMode
 import kornia
 from kornia.core.check import ShapeError
 from kornia.core.exceptions import BaseError
-from kornia.feature import BlobDoG, KeyNetDetector
+from kornia.feature import BlobDoG, BlobHessian, CornerGFTT, CornerHarris, KeyNetDetector
 from kornia.feature.scale_space_detector import (
     MultiResolutionDetector,
     ScaleSpaceDetector,
+    _detects_float16_in_float32,
     _resize_mask,
     get_default_detector_config,
 )
@@ -43,6 +44,12 @@ from testing.base import (
     supports_topk,
 )
 from testing.default_device import default_device
+
+
+class _RefinerWithState(ConvQuadInterp3d):
+    def __init__(self) -> None:
+        super().__init__()
+        self.register_buffer("state", torch.ones(1))
 
 
 def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
@@ -600,6 +607,167 @@ class TestScaleSpaceDetector(BaseTester):
         assert bool(kornia.feature.laf_is_filled(det(img)[0]).any())
         lafs, _ = det(img, torch.full((1, 1, 96, 128), 1e-8, device=device))
         assert bool(kornia.feature.laf_is_filled(lafs).any()) == (dtype != torch.float16)
+
+    @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d])
+    @pytest.mark.parametrize("convert_module", [False, True])
+    def test_float16_image_gradient_matches_float32_6143(self, device, subpix, convert_module):
+        # The true gradient of about 10 fits float16, but its way through the response does not: 4e4 * sigma ** 4.
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0))
+        gradients = {}
+        for image_dtype in (torch.float32, torch.float16):
+            det = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)
+            if convert_module:
+                det = det.to(image_dtype)
+            x = image.to(device, image_dtype).clone().requires_grad_()
+            lafs, responses = det(x)
+            assert lafs.dtype == torch.float32
+            assert responses.dtype == image_dtype
+            gradients[image_dtype] = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
+        assert gradients[torch.float16].isfinite().all()
+        # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
+        self.assert_close(gradients[torch.float16].float(), gradients[torch.float32], rtol=0, atol=0.05)
+
+    def test_float16_image_fills_as_many_slots_as_float32_at_low_contrast(self, device):
+        # Rounding the response to float16 before NMS merges maxima closer than one float16 step: 4 slots here, not 7.
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0))
+        image = (0.5 + (image - 0.5) * 0.01).to(device)
+        filled = {}
+        for image_dtype in (torch.float32, torch.float16):
+            x = image.to(image_dtype).clone().requires_grad_()
+            lafs, responses = ScaleSpaceDetector(10, subpix_module=ConvQuadInterp3d()).to(device)(x)
+            filled[image_dtype] = int(kornia.feature.laf_is_filled(lafs).sum())
+            gradient = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
+            assert gradient.isfinite().all()
+        assert filled[torch.float16] == filled[torch.float32]
+
+    def test_float16_custom_response_keeps_its_dtype_and_nms_precision(self, device):
+        # A custom response is not rounded to float16: an isolated peak of 1.0001 on a floor of 1.0 stays a maximum.
+        class WideResponse(torch.nn.Module):
+            def forward(self, x, sigmas=None):
+                out = torch.ones_like(x, dtype=torch.float32)
+                out[out.shape[0] // 2, :, out.shape[-2] // 2, out.shape[-1] // 2] = 1.0001
+                return out
+
+        _skip_without_half_padding(device, torch.float16)
+        det = ScaleSpaceDetector(3, resp_module=WideResponse()).to(device)
+        lafs, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert responses.dtype == torch.float32
+        assert kornia.feature.laf_is_filled(lafs).any()
+
+    def test_float16_response_with_weights_gets_float16_input(self, device):
+        _skip_without_half_padding(device, torch.float16)
+
+        class LearnedResponse(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(1, 1, 3, padding=1)
+
+            def forward(self, x, sigmas=None):
+                return self.conv(x)
+
+        resp = LearnedResponse().to(device, torch.float16)
+        det = ScaleSpaceDetector(5, resp_module=resp).to(device)
+        _, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert responses.dtype == torch.float16
+
+    @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d])
+    @pytest.mark.parametrize("region_dtype", [torch.float16, torch.bfloat16])
+    def test_float16_image_gradient_in_a_region_6143(self, device, subpix, region_dtype):
+        if device.type == "cuda" and region_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("bfloat16 autocast is not supported on this CUDA device")
+        # Autocast would turn the float32 copy's convolutions back to its own dtype, and float16 overflows there too.
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0)).to(device)
+        reference = image.clone().requires_grad_()
+        lafs, responses = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)(reference)
+        expected = torch.autograd.grad(lafs.sum() + responses.sum(), reference)[0]
+
+        x = image.to(torch.float16).clone().requires_grad_()
+        with torch.autocast(device.type, dtype=region_dtype):
+            lafs, responses = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)(x)
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == torch.float16
+        gradient = torch.autograd.grad(lafs.sum() + responses.sum(), x)[0]
+        assert gradient.isfinite().all()
+        # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
+        self.assert_close(gradient.float(), expected, rtol=0, atol=0.05)
+
+    @pytest.mark.parametrize("response_dtype", [torch.float32, torch.float64])
+    def test_float16_image_keeps_a_wider_custom_response(self, device, response_dtype):
+        if response_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS has no float64")
+        _skip_without_half_padding(device, torch.float16)
+        seen = []
+
+        class IsolatedPeak(torch.nn.Module):
+            def forward(self, x, sigmas=None):
+                seen.append(x.dtype)
+                response = torch.ones(x.shape[0], 1, *x.shape[-2:], device=x.device, dtype=response_dtype)
+                response[2, 0, x.shape[-2] // 2, x.shape[-1] // 2] = 1.0001  # one level; float16 rounds it to 1
+                return response
+
+        det = ScaleSpaceDetector(5, resp_module=IsolatedPeak(), subpix_module=ConvQuadInterp3d()).to(device)
+        _, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert set(seen) == {torch.float16}
+        assert responses.dtype == response_dtype
+        assert responses[0, 0] > 1.0
+
+    def test_float16_image_reaches_a_custom_pyramid_with_float16_weights(self, device):
+        _skip_without_half_padding(device, torch.float16)
+
+        class LearnedPyramid(torch.nn.Module):
+            n_levels = 3
+
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(1, 1, 3, padding=1)
+                self.pyramid = ScalePyramid(3, 1.6, 15, extra_levels=2)
+
+            def forward(self, x):
+                return self.pyramid(self.conv(x))
+
+        det = ScaleSpaceDetector(5, scale_pyr_module=LearnedPyramid().to(device, torch.float16)).to(device)
+        lafs, responses = det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == torch.float16
+
+    @pytest.mark.parametrize(
+        "modules, scale_pyramid_input",
+        [
+            ({}, torch.float32),
+            ({"subpix_module": ConvSoftArgmax3d()}, torch.float32),
+            ({"subpix_module": type("Subclass", (ConvQuadInterp3d,), {})()}, torch.float32),
+            ({"resp_module": CornerHarris(0.04)}, torch.float32),
+            ({"resp_module": CornerGFTT()}, torch.float32),
+            (
+                {
+                    "resp_module": BlobDoG(),
+                    "scale_space_response": True,
+                    "scale_pyr_module": ScalePyramid(3, 1.6, 15, extra_levels=3),
+                },
+                torch.float32,
+            ),
+            ({"resp_module": type("Subclass", (BlobHessian,), {})()}, torch.float16),
+            ({"resp_module": CornerHarris(torch.full((1, 1, 1, 1), 0.04))}, torch.float16),
+            ({"subpix_module": _RefinerWithState()}, torch.float16),
+            ({"scale_pyr_module": type("Subclass", (ScalePyramid,), {})(3, 1.6, 15, extra_levels=2)}, torch.float16),
+        ],
+    )
+    def test_float16_image_goes_through_float32_only_when_modules_allow(self, device, modules, scale_pyramid_input):
+        if scale_pyramid_input == torch.float16:
+            _skip_without_half_padding(device, torch.float16)
+        seen = []
+        det = ScaleSpaceDetector(5, **modules).to(device)
+        hook = det.scale_pyr.register_forward_pre_hook(lambda _, args: seen.append(args[0].dtype))
+        try:
+            det(torch.rand(1, 1, 64, 80, device=device, dtype=torch.float16))
+        finally:
+            hook.remove()
+        assert seen == [scale_pyramid_input]
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_float16_detection_dtype_reads_through_a_wrapped_module(self):
+        pyramid, response, subpix = ScalePyramid(), BlobHessian(), ConvQuadInterp3d()
+        assert _detects_float16_in_float32(torch.compile(pyramid), torch.compile(response), torch.compile(subpix))
 
     def test_float_weights_above_one_are_clamped(self, device, dtype):
         # A float 0/255 mask -- an OpenCV mask after `.astype(np.float32)` -- is weights, and a weight
@@ -1882,14 +2050,13 @@ class TestConventionsScaleSpaceDetector(BaseTester):
 
 class TestConventionsMultiResolutionDetector(BaseTester):
     @pytest.mark.parametrize("detector", ["MultiResolutionDetector", "KeyNetDetector"])
-    def test_convention_multi_resolution_detector_reports_the_level_pixel_times_the_level_factor(
-        self, device, dtype, detector
-    ):
-        # A detection is an integer level pixel (u, v), reported at (u * W / W_l, v * H / H_l) with scale
-        # s_mult * mean(W / W_l, H / H_l), s_mult = 22 by default; there is no sub-pixel step, and (u, v) is not mapped
-        # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
-        # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
-        # Each peak's lower neighbour on its +x side (+y when transposed) would pull a sub-pixel step off the pixel.
+    def test_convention_multi_resolution_detector_reports_the_level_pixel_centre(self, device, dtype, detector):
+        # A detection is an integer level pixel (u, v), reported at the centre of that pixel in the input,
+        # ((u + 0.5) * W / W_l - 0.5, (v + 0.5) * H / H_l - 0.5), with scale s_mult * mean(W / W_l, H / H_l),
+        # s_mult = 22 by default; there is no sub-pixel step. Level 1 of 69 x 128 at factor 2 is 34 x 64: pixel
+        # (20, 17) -> (20.5 * 2 - 0.5 = 40.5, 17.5 * 69 / 34 - 0.5 = 35.0147059), scale 22 * (2 + 69 / 34) / 2. The
+        # input's own level reports the pixel itself. Each peak's lower neighbour on its +x side (+y when transposed)
+        # would pull a sub-pixel step off the pixel.
         _skip_without_half_padding(device, dtype)
         cfg = get_default_detector_config()
         cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
@@ -1897,10 +2064,10 @@ class TestConventionsMultiResolutionDetector(BaseTester):
         for transposed in (False, True):
             if transposed:  # relabelling: the transposed image reports swapped coordinates
                 size, peaks = (128, 69), {(128, 69): ((31, 45), 1.0), (64, 34): ((17, 20), 0.5)}
-                centres, neighbour = [[31.0, 45.0], [34.5, 40.0]], (0, 1)
+                centres, neighbour = [[31.0, 45.0], [35.0147059, 40.5]], (0, 1)
             else:
                 size, peaks = (69, 128), {(69, 128): ((45, 31), 1.0), (34, 64): ((20, 17), 0.5)}
-                centres, neighbour = [[45.0, 31.0], [40.0, 34.5]], (1, 0)
+                centres, neighbour = [[45.0, 31.0], [40.5, 35.0147059]], (1, 0)
             response = _LevelPeaks(peaks, neighbour)
             if detector == "MultiResolutionDetector":
                 det = MultiResolutionDetector(response, num_features=4, config=cfg)
@@ -1916,3 +2083,47 @@ class TestConventionsMultiResolutionDetector(BaseTester):
             )
             self.assert_close(lafs[:, :2], expected, rtol=0.0, atol=tol)
             assert bool((lafs[0, 2:] == 0).all())
+
+    def test_convention_multi_resolution_detector_centre_is_what_the_level_pixel_sampled(self, device, dtype):
+        # No mapping is written here: the image's two channels hold its own x and y coordinates, the pyramid carries
+        # those ramps through the real `resize` and `pyrdown`, and the response reads them at its peak. Away from the
+        # padded border, what a level pixel holds is the input position it looks at, and that is what must be reported
+        # on each of the six default levels, whose W / W_l run from 0.71 to 4.03.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision ramp cannot hold a coordinate to a fraction of a pixel")
+        h, w = 240, 320
+        yy, xx = torch.meshgrid(
+            torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+        )
+        sampled = []
+
+        def response(level):
+            _, _, h_l, w_l = level.shape
+            v, u = 2 * h_l // 5, 3 * w_l // 5
+            sampled.append(level[0, :, v, u])
+            out = torch.zeros_like(level[:, :1])
+            out[0, 0, v, u] = 1.0 / len(sampled)  # the level order is the response order
+            return out
+
+        lafs, resps = MultiResolutionDetector(response, num_features=6)(torch.stack([xx, yy])[None])
+        assert len(sampled) == 6
+        assert bool((resps > 0).all())
+        self.assert_close(kornia.feature.get_laf_center(lafs)[0], torch.stack(sampled), rtol=0.0, atol=2e-3)
+
+    @pytest.mark.parametrize("backend", ["patch", "pyramid"])
+    def test_convention_sift_feature_detection_lands_on_a_blob_of_a_coarse_level(self, device, dtype, backend):
+        # A blob at (44.5, 30.5) of 64 x 96 is centred on pixel (22, 15) of the factor-2 level, and on no pixel of the
+        # input: only the pixel's centre can lie on it, and the old map u * W / W_l reports (44, 30), 0.71 px off.
+        _skip_without_half_padding(device, dtype)
+        yy, xx = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype), torch.arange(96, device=device, dtype=dtype), indexing="ij"
+        )
+        img = torch.exp(-((xx - 44.5) ** 2 + (yy - 30.5) ** 2) / (2 * 3.0**2))[None, None]
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
+        sift = kornia.feature.SIFTFeature(4, upright=True, config=cfg, descriptor_backend=backend).to(device, dtype)
+        lafs, _, _ = sift(img)
+        centres = kornia.feature.get_laf_center(lafs)[0, kornia.feature.laf_is_filled(lafs)[0]]
+        target = torch.tensor([44.5, 30.5], device=device, dtype=lafs.dtype)
+        nearest = (centres - target).norm(dim=-1).min()
+        self.assert_close(nearest, torch.zeros_like(nearest), rtol=0.0, atol=1e-4)

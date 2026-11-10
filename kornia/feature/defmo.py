@@ -345,7 +345,7 @@ class RenderingDeFMO(nn.Module):
                 ``(B, C, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(B, T, 4, H_{out}, W_{out})`, where ``T`` is the
+            Tensor with shape ``(B, T, 4, H_out, W_out)``, where ``T`` is the
             number of rendered time steps and 4 represents RGBA channels.
         """
         # cast into a local rather than relying on the caller having matched dtype --
@@ -370,10 +370,14 @@ class RenderingDeFMO(nn.Module):
 
 
 class DeFMO(nn.Module):
-    """nn.Module that disentangle a fast-moving object from the background and performs deblurring.
+    """Deblur a fast-moving object into 24 RGBA sub-frames of the object alone (DeFMO).
 
-    This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
-        of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
+    ``defmo = DeFMO()`` builds the network with its pretrained weights, in eval mode, and ``frames = defmo(x)`` takes
+    ``(B, 6, H, W)`` inputs, each a blurred RGB image followed by an RGB estimate of its background, and returns
+    ``(B, 24, 4, H, W)``, with ``H`` and ``W`` rounded up to multiples of 16: the object at 24 instants in time order,
+    each an RGBA image whose alpha channel separates it from the background, which is not rendered. It is an image
+    model, not a local feature: it detects and describes nothing. This is based on the original code from paper
+    "DeFMO: Deblurring and Shape Recovery of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
 
     Convention:
         - The input is ``(B, 6, H, W)``: the RGB channels of the blurred image, then those of the background
@@ -383,13 +387,15 @@ class DeFMO(nn.Module):
           ``k / 23``, each with red, green, blue and alpha channels in :math:`[0, 1]` after a sigmoid.
 
     Args:
-        pretrained: Download and set pretrained weights to the model. Default: True.
+        pretrained: Download and set pretrained weights to the model, and return it in eval mode. Default: True.
+            With ``False`` the weights are random and the model is in training mode.
 
     Returns:
         Temporal super-resolution without background.
+
     Shape:
-        - Input: (B, 6, H, W)
-        - Output: (B, S, 4, H, W), with H and W rounded up to multiples of 16
+        - Input: ``(B, 6, H, W)``
+        - Output: ``(B, 24, 4, H, W)``, with ``H`` and ``W`` rounded up to multiples of 16
 
     Examples:
         >>> import kornia
@@ -421,7 +427,7 @@ class DeFMO(nn.Module):
 
         Returns:
             Tensor with shape ``(B, T, 4, H, W)``, where ``T`` is the number of
-            temporal sub-frames and 4 stores red, green, blue, and alpha channels.
+            temporal sub-frames, 24, and 4 stores red, green, blue, and alpha channels.
         """
         latent = self.encoder(input_data)
         return self.rendering(latent)

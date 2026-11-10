@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Remove OpenCV's Brown-Conrady lens distortion from pixel coordinates and from images."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -34,7 +36,17 @@ from .distort import distort_points, tilt_projection
 def undistort_points(
     points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None, num_iters: int = 5
 ) -> torch.Tensor:
-    r"""Compensate for lens distortion a set of 2D image points.
+    r"""Remove Brown-Conrady lens distortion from pixel coordinates by fixed-point iteration.
+
+    ``points = undistort_points(distorted, K, dist)`` takes measured pixels ``(*, N, 2)``, the intrinsics
+    ``(*, 3, 3)`` and OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the
+    ideal pinhole pixels ``(*, N, 2)`` after ``num_iters`` fixed-point steps; within the convergence region, with
+    the default 5 steps, the result matches ``cv2.undistortPoints(points, K, dist, P=P)`` with
+    ``P = K if new_K is None else new_K`` and no skew in ``P``: OpenCV applies ``P[0, 1]``, which this function
+    ignores, and without ``P`` it returns normalized coordinates. For normalized
+    coordinates, as :func:`~kornia.geometry.epipolar.find_essential` takes, pass the result to
+    :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`; for a whole image, use
+    :func:`~kornia.geometry.calibration.undistort_image`.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
@@ -49,7 +61,11 @@ def undistort_points(
         - the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
           :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
           within its convergence region more steps improve it down to the dtype's rounding.
-        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved, and the leading dimensions
+          broadcast as in :func:`~kornia.geometry.calibration.distort_points`, the sensor-tilt step of 14
+          coefficients included.
+        - the skew entries ``K[0, 1]`` and ``new_K[0, 1]`` are ignored, as in
+          :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
@@ -61,7 +77,7 @@ def undistort_points(
         K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+            a vector with 4, 5, 8, 12 or 14 elements with shape ``(*, n)``.
         new_K: Intrinsic camera matrix used to map the undistorted normalized point back to pixels, while ``K``
             is the one that maps the incoming distorted ``points`` from pixels onto the normalized
             :math:`z = 1` plane -- the mirror image of the two roles in
@@ -72,6 +88,18 @@ def undistort_points(
 
     Returns:
         Undistorted 2D points with shape ``(*, N, 2)``.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.distort_points`: the forward map, in closed form, with ``K`` and
+          ``new_K`` in mirrored roles.
+        - :func:`~kornia.geometry.calibration.undistort_image`: undistorts every pixel of an image instead of a
+          point list.
+        - :func:`~kornia.geometry.calibration.tilt_projection`: the inverse sensor-tilt matrix applied first with
+          14 coefficients.
+        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: the fisheye inverse, from pixels to
+          normalized points.
+        - :func:`~kornia.geometry.camera.undistort_points_affine`: the intrinsics alone, from pixels to normalized
+          points, in closed form.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -118,11 +146,16 @@ def undistort_points(
     # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
     if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
-        if inv_tilt.dim() == 2:
-            inv_tilt = inv_tilt.unsqueeze(0)
+        xy = torch.stack([x, y], dim=-1)
+        # transform_points pairs a batch of transforms with the leading axis of the points, so give it one transform
+        # per point set: the tilt then broadcasts against the points like the other coefficients.
+        # (TorchScript has no torch.broadcast_shapes, so broadcast 1 x 1 corners for the batch shape.)
+        batch_shape = list(torch.broadcast_tensors(xy[..., :1, :1], inv_tilt[..., :1, :1])[0].shape[:-2])
+        inv_tilt = inv_tilt.expand(batch_shape + [3, 3])
+        xy = xy.expand(batch_shape + list(xy.shape[-2:]))
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
+        x, y = transform_points(inv_tilt, xy).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y
@@ -160,7 +193,14 @@ def undistort_points(
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
 def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
-    r"""Compensate an image for lens distortion.
+    r"""Undistort an image with OpenCV's Brown-Conrady coefficients, keeping its camera matrix K.
+
+    ``out = undistort_image(image, K, dist)`` takes images ``(*, C, H, W)``, the intrinsics ``(*, 3, 3)`` and
+    OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the image a camera with the
+    same ``K`` and no distortion would take, ``(*, C, H, W)``: each output pixel samples the input bilinearly at its
+    :func:`~kornia.geometry.calibration.distort_points` position, with zeros outside the input. There is no
+    ``new_K``, so the result keeps the input's size and ``K``, as ``cv2.undistort`` does by default. For point
+    coordinates, use :func:`~kornia.geometry.calibration.undistort_points`.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
@@ -168,22 +208,32 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     Convention:
         - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
-          and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
-          legacy unbatched call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an :math:`(n,)`
-          ``dist``.
+          and ``dist`` (in front of its ``n`` coefficients) must match exactly, so an unbatched ``(C, H, W)``
+          image takes a ``(3, 3)`` ``K`` and an ``(n,)`` ``dist``; the one exception is the legacy unbatched
+          call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an ``(n,)`` ``dist``.
+        - an image that is not floating point raises :class:`ValueError`.
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
+        - a float16 or bfloat16 image builds the map, distorts it and samples in float32, with ``K`` and ``dist``
+          cast to float32, and returns the image dtype; in half precision the pixel coordinates themselves round to
+          half pixels (float16, from 512) or whole pixels (bfloat16, from 128).
 
     Args:
         image: Input image with shape ``(*, C, H, W)``.
         K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+            a vector with 4, 5, 8, 12 or 14 elements with shape ``(*, n)``.
 
     Returns:
         Undistorted image with shape ``(*, C, H, W)``.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.undistort_points`: undistorts a list of pixel coordinates instead of
+          an image.
+        - :func:`~kornia.geometry.calibration.distort_points`: the map whose positions the image is sampled at.
+        - :func:`~kornia.geometry.transform.remap`: the sampling step, to resample with other maps or options.
 
     Example:
         >>> img = torch.rand(1, 3, 5, 5)
@@ -219,8 +269,14 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)
 
+    # Pixel coordinates reach the image size, where float16 rounds them to half pixels from 512 and bfloat16 to whole
+    # pixels from 128, so a half image builds and distorts its map and samples in float32, as the warps do.
+    work_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    if work_dtype != image.dtype:
+        K, dist = K.to(work_dtype), dist.to(work_dtype)
+
     # Create point coordinates for each pixel of the image
-    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
+    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, work_dtype)
     pts = xy_grid.reshape(-1, 2)  # (rows*cols)x2 matrix of pixel coordinates
 
     # Distort points and define maps
@@ -229,6 +285,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image.reshape(B, channels, rows, cols), mapx, mapy, align_corners=True)
+    out = remap(image.reshape(B, channels, rows, cols).to(work_dtype), mapx, mapy, align_corners=True)
 
-    return out.view_as(image)
+    return out.to(image.dtype).view_as(image)

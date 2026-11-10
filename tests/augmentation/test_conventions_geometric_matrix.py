@@ -17,13 +17,142 @@
 
 from __future__ import annotations
 
+import pickle
+
 import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.geometric.rotation import _range_allows_odd_turns
 from kornia.constants import Resample, SamplePadding
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
+
+
+class TestGeometricAugmentationAutocast(BaseTester):
+    """A caller's autocast region does not reach the matrix or the sampling grid of these augmentations (#6573)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @pytest.mark.parametrize(
+        "name,make",
+        [
+            ("RandomAffine", lambda: K.RandomAffine(25.0, (0.1, 0.1), (0.9, 1.1), 10.0, p=1.0)),
+            ("RandomRotation", lambda: K.RandomRotation(25.0, p=1.0)),
+            ("RandomPerspective", lambda: K.RandomPerspective(0.3, p=1.0)),
+            ("RandomShear", lambda: K.RandomShear(10.0, p=1.0)),
+            ("RandomAffine3D", lambda: K.RandomAffine3D(25.0, p=1.0)),
+            ("RandomRotation3D", lambda: K.RandomRotation3D(25.0, p=1.0)),
+            ("RandomPerspective3D", lambda: K.RandomPerspective3D(0.3, p=1.0)),
+        ],
+        ids=lambda case: case if isinstance(case, str) else "",
+    )
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
+        # In bfloat16 a seeded float32 RandomRotation of a 256 px [0, 1] image was up to 0.83 off, RandomAffine 0.41
+        # and RandomPerspective 0.94, from the half-precision products of the matrix builders and the warps.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        generator = torch.Generator().manual_seed(0)
+        shape = (1, 1, 32, 32, 32) if name.endswith("3D") else (1, 3, 256, 256)
+        image = torch.rand(shape, generator=generator).to(device)
+
+        def run():
+            torch.manual_seed(3)
+            augmentation = make()
+            return augmentation(image), augmentation.transform_matrix
+
+        expected, expected_matrix = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, actual_matrix = run()
+        assert actual.dtype == actual_matrix.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_matrix, expected_matrix, rtol=0, atol=0)
+
+
+class TestContainerAutocast(BaseTester):
+    """A caller's autocast region does not reach a container's chained matrix or its points (#6601)."""
+
+    # Exact: in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device):
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(1, 1, 64, 64, generator=generator).to(device)
+        return image, (torch.rand(1, 20, 2, generator=generator) * 64).to(device)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("data_key", ["keypoints", "bbox_xyxy"])
+    def test_region_does_not_change_the_container_6601(self, data_key, autocast_dtype, device):
+        # The chained matrix was 0.34 off in bfloat16, returned in bfloat16, and the keypoints 1.24 off in float32.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, points = self._inputs(device)
+        if data_key == "bbox_xyxy":
+            points = torch.cat([points, points + 3.0], dim=-1)
+
+        def run():
+            torch.manual_seed(5)
+            sequence = K.AugmentationSequential(
+                K.RandomAffine(25.0, (0.1, 0.1), (0.9, 1.1), p=1.0),
+                K.RandomRotation(15.0, p=1.0),
+                data_keys=["input", data_key],
+            )
+            _, moved = sequence(image, points)
+            return moved, sequence.transform_matrix
+
+        expected, expected_matrix = run()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, actual_matrix = run()
+        assert actual_matrix.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual_matrix, expected_matrix, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_get_transformation_matrix_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, _ = self._inputs(device)
+        torch.manual_seed(5)
+        sequence = K.ImageSequential(K.RandomAffine(25.0, p=1.0), K.RandomRotation(15.0, p=1.0))
+        sequence(image)
+        expected = sequence.get_transformation_matrix(image, sequence._params)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = sequence.get_transformation_matrix(image, sequence._params)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_a_nested_matrix_6601(self, autocast_dtype, device):
+        # A nested sequence is the other product of get_transformation_matrix.
+        skip_unsupported_autocast(device, autocast_dtype)
+        image, _ = self._inputs(device)
+        torch.manual_seed(5)
+        sequence = K.ImageSequential(
+            K.ImageSequential(K.RandomAffine(25.0, p=1.0)), K.ImageSequential(K.RandomRotation(15.0, p=1.0))
+        )
+        sequence(image)
+        expected = sequence.get_transformation_matrix(image, sequence._params)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = sequence.get_transformation_matrix(image, sequence._params)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("matrix_half", [True, False], ids=["half-new", "half-chained"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_mixed_dtypes_chain_in_float32_in_a_region_6601(self, matrix_half, autocast_dtype, device):
+        # Autocast reconciled a half matrix with a float32 one, so leaving the region must too; the mix raises outside.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        new = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [0.0, 0.0, 1.0]]], device=device)
+        chained = torch.tensor([[[1.1, 0.2, -3.0], [-0.2, 1.1, 7.0], [0.0, 0.0, 1.0]]], device=device)
+        new_input, chained_input = (new.to(half), chained) if matrix_half else (new, chained.to(half))
+        sequence = K.AugmentationSequential(K.RandomAffine(25.0, p=1.0), K.RandomRotation(15.0, p=1.0))
+        sequence._transform_matrix = chained_input
+        with torch.autocast(device.type, dtype=half):
+            sequence._update_transform_matrix(new_input)
+        assert sequence._transform_matrix.dtype == torch.float32
+        self.assert_close(sequence._transform_matrix, new_input.float() @ chained_input.float(), rtol=0, atol=0)
 
 
 class TestConventionGeometricMatrices(BaseTester):
@@ -350,10 +479,111 @@ class TestConventionGeometricMatrices(BaseTester):
         assert output[0, 0].argmax().item() == 2 * 7 + 1
         assert output[1, 0].argmax().item() == 1 * 7 + 4
 
+    # A quarter turn swaps the height and the width, but the class keeps the input's `(H, W)`, so on a non-square image
+    # the turned picture did not fit: part of it was cut off and a strip of zeros appeared, with no warning (#4409).
+    # A `times` range that allows an odd number of turns now raises on a non-square input, whatever a given call
+    # would draw. A range with a fractional bound is judged by the whole numbers its draws round to.
+    # Snippet used to generate expected:
+    #   x = torch.arange(48.0).reshape(1, 1, 6, 8)
+    #   K.RandomRotation90((1, 1), p=1.0)(x)
+    # executed 2026-10-24 (torch 2.14.0, cpu) -> before: shape `(1, 1, 6, 8)` with columns 0 and 7 of `x` missing
+    # and an all-zero first and last column; now: `ValueError`.
     @pytest.mark.device_agnostic
-    def test_wart_random_rotation90_keeps_non_square_shape_4409(self):
-        x = torch.zeros(1, 1, 5, 7)
-        assert K.RandomRotation90((1, 1), p=1.0)(x).shape == x.shape
+    @pytest.mark.parametrize("shape", [(6, 8), (8, 6), (1, 5)])
+    @pytest.mark.parametrize("times", [(1, 1), (-1, 1), (0, 2), (2, 3), (0, 3), 1, (0.5, 2.5), (1.4, 1.6)])
+    def test_convention_random_rotation90_raises_on_a_non_square_image_that_may_turn_oddly_4409(self, times, shape):
+        x = torch.zeros(1, 1, *shape)
+        with pytest.raises(ValueError, match=r"`RandomRotation` with a fixed angle of 90 degrees.*`torch\.rot90`"):
+            K.RandomRotation90(times, p=1.0)(x)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(2, 2), (0, 0), (-2, -2), 0, (0.2, 0.4), (2.2, 2.4), (-0.4, 0.4)])
+    def test_convention_random_rotation90_keeps_a_non_square_image_when_every_turn_is_even_4409(self, times):
+        x = torch.rand(2, 1, 6, 8)
+        assert K.RandomRotation90(times, p=1.0)(x).shape == x.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (-1, 1), (0, 3), 1])
+    def test_convention_random_rotation90_keeps_working_on_a_square_image_4409(self, times):
+        x = torch.rand(2, 1, 6, 6)
+        assert K.RandomRotation90(times, p=1.0)(x).shape == x.shape
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_square_quarter_turn_matches_rot90_4409(self):
+        x = torch.arange(36.0).reshape(1, 1, 6, 6)
+        output = K.RandomRotation90((1, 1), p=1.0)(x)
+        # The warp leaves float32 noise around 1e-5, so the integer-valued result is rounded before it is compared.
+        assert torch.equal(output.round(), torch.rot90(x, 1, (-2, -1)))
+
+    # The check runs in `validate_tensor`, so it depends on the input shape and the range only: not on `p` (a call
+    # with `p=0.5` may select no image), not on how the input is batched, not on a `params` argument and not on the
+    # container that calls the augmentation.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    def test_convention_random_rotation90_raise_does_not_depend_on_p_4409(self, p):
+        for _ in range(5):
+            with pytest.raises(ValueError, match="non-square"):
+                K.RandomRotation90((1, 1), p=p)(torch.zeros(4, 1, 6, 8))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("shape", [(1, 6, 8), (6, 8)])
+    def test_convention_random_rotation90_raises_on_an_unbatched_non_square_input_4409(self, shape):
+        with pytest.raises(ValueError, match="non-square"):
+            K.RandomRotation90((1, 1), p=1.0)(torch.zeros(*shape))
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_raises_when_params_are_passed_4409(self):
+        x = torch.zeros(1, 1, 6, 8)
+        augmentation = K.RandomRotation90((1, 1), p=1.0)
+        with pytest.raises(ValueError, match="non-square"):
+            augmentation(x, params=augmentation.forward_parameters(x.shape))
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_raises_inside_a_container_4409(self):
+        sequential = K.AugmentationSequential(K.RandomRotation90((1, 1), p=1.0), data_keys=["input", "mask"])
+        with pytest.raises(ValueError, match="non-square"):
+            sequential(torch.zeros(1, 1, 6, 8), torch.zeros(1, 1, 6, 8))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (2, 2)])
+    def test_convention_random_rotation90_unpickled_from_before_the_check_4409(self, times):
+        # A RandomRotation90 pickled before the check existed has no cached `_allows_odd_turns`; it still runs.
+        augmentation = K.RandomRotation90(times, p=1.0)
+        del augmentation._allows_odd_turns
+        restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
+        assert restored(torch.rand(1, 1, 6, 6)).shape == (1, 1, 6, 6)
+        if times == (1, 1):
+            with pytest.raises(ValueError, match="non-square"):
+                restored(torch.zeros(1, 1, 6, 8))
+        else:
+            assert restored(torch.rand(1, 1, 6, 8)).shape == (1, 1, 6, 8)
+
+    # The bounds are rounded the way `compute_transformation` rounds a draw, so the rule is about the whole numbers
+    # a draw can become: `(0.2, 0.4)` only ever becomes 0, while `(0.5, 2.5)` can become 1.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "low,high,expected",
+        [
+            (2, 2, False),
+            (0, 0, False),
+            (-2, -2, False),
+            (1, 1, True),
+            (-1, -1, True),
+            (-3, -3, True),
+            (0, 2, True),
+            (2, 4, True),
+            (-1, 1, True),
+            (0, 3, True),
+            (0.2, 0.4, False),
+            (2.2, 2.4, False),
+            (-0.4, 0.4, False),
+            (0.5, 2.5, True),
+            (1.4, 1.6, True),
+            (2.4, 2.6, True),
+        ],
+    )
+    def test_convention_random_rotation90_range_allows_odd_turns_4409(self, low, high, expected):
+        assert _range_allows_odd_turns(low, high) is expected
 
     @pytest.mark.device_agnostic
     def test_wart_align_corners_defaults_split_geometric_augmentations_4412(self):
@@ -388,6 +618,5 @@ class TestConventionGeometricMatrices(BaseTester):
         }
         perspective_output = K.RandomPerspective(0.5, p=1.0)(x, params=perspective_params)
         rotation_output = K.RandomRotation((45.0, 45.0), p=1.0)(x)
-        rotation90_output = K.RandomRotation90((1, 1), p=1.0)(x)
-        for border in (perspective_output[..., 0, :], rotation_output[..., 0, 0], rotation90_output[..., :, 0]):
+        for border in (perspective_output[..., 0, :], rotation_output[..., 0, 0]):
             self.assert_close(border, torch.zeros_like(border))

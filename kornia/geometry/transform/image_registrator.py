@@ -15,7 +15,26 @@
 # limitations under the License.
 #
 
-from abc import abstractmethod
+"""Register two images by optimizing a homography or a similarity by gradient descent, coarse to fine.
+
+:class:`ImageRegistrator` takes a pair of ``(1, C, H, W)`` images, builds a Gaussian pyramid of each with
+:func:`~kornia.geometry.transform.build_pyramid` and, from the coarsest level to the finest, optimizes a transform
+model on the loss of each image warped onto the other. The built-in models return a ``(1, 3, 3)`` destination→source
+matrix in normalized :math:`[-1, 1]` coordinates (``align_corners=False``): the ``src_homo_dst`` of
+:func:`~kornia.geometry.transform.homography_warp` and :class:`~kornia.geometry.transform.HomographyWarper`.
+
+Which class to use:
+
+- Register two images: :class:`ImageRegistrator`, with ``model_type`` ``'homography'``, ``'similarity'``,
+  ``'translation'``, ``'rotation'`` or ``'scale'``.
+- The models it optimizes: :class:`Homography` (a full homography) and :class:`Similarity` (a rotation, a scale and a
+  shift, each one optional). A custom model subclasses :class:`BaseModel` and comes with a warper class, such as a
+  subclass of :class:`~kornia.geometry.transform.BaseWarper`.
+- To estimate a homography from matched keypoints rather than from pixel values, use
+  :class:`~kornia.geometry.ransac.RANSAC` or :func:`~kornia.geometry.homography.find_homography_dlt`.
+"""
+
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
@@ -31,9 +50,31 @@ from .pyramid import build_pyramid
 
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
+_HALF_DTYPES = (torch.float16, torch.bfloat16)
 
-class BaseModel(nn.Module):
-    """Provide an abstract base class for image registration models."""
+
+def _float32_if_half(tensor: torch.Tensor) -> torch.Tensor:
+    """Return a ``float16``/``bfloat16`` tensor as ``float32``, and any other tensor unchanged."""
+    return tensor.float() if tensor.dtype in _HALF_DTYPES else tensor
+
+
+class BaseModel(ABC, nn.Module):
+    """Declare the interface of a transform model that ImageRegistrator optimizes.
+
+    A subclass holds its transform parameters as :class:`~torch.nn.parameter.Parameter` and implements
+    ``reset_model()``, which returns them to the identity, ``forward()``, the matrix with which its warper warps the
+    source image into the destination, and ``forward_inverse()``, the matrix of the reverse warp.
+    :class:`ImageRegistrator` takes an instance as ``model_type``, together with a ``warper`` class. The three methods
+    are abstract: constructing ``BaseModel`` itself, or a subclass that does not implement all three, raises
+    ``TypeError``, as for :class:`~kornia.geometry.transform.BaseWarper`. For the built-in models, use
+    :class:`Homography` or :class:`Similarity`.
+
+    See Also:
+        - :class:`Homography`: the built-in model of a full homography.
+        - :class:`Similarity`: the built-in model of a rotation, a scale and a shift.
+        - :class:`ImageRegistrator`: optimizes a model of this interface.
+
+    """
 
     @abstractmethod
     def reset_model(self) -> None:
@@ -63,7 +104,19 @@ class BaseModel(nn.Module):
 
 
 class Homography(BaseModel):
-    r"""Homography geometric model to be used with ImageRegistrator for the optimization-based image registration."""
+    r"""Hold a learnable 3x3 homography for ImageRegistrator, starting from the identity.
+
+    ``model = Homography()`` holds one ``(3, 3)`` :class:`~torch.nn.parameter.Parameter`, initialized to the
+    identity. ``model()`` returns it as a ``(1, 3, 3)`` matrix scaled so that its ``[2, 2]`` entry is 1, and
+    ``model.forward_inverse()`` its inverse, up to scale. ``ImageRegistrator('homography')`` optimizes it as the
+    destination→source homography in normalized coordinates. For a rotation, a scale and a shift only, use
+    :class:`Similarity`.
+
+    See Also:
+        - :class:`Similarity`: four degrees of freedom instead of eight, each of rotation, scale and shift optional.
+        - :class:`ImageRegistrator`: optimizes this model with ``model_type='homography'``.
+
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -97,7 +150,13 @@ class Homography(BaseModel):
 
 
 class Similarity(BaseModel):
-    """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
+    """Hold a learnable rotation, scale and shift for ImageRegistrator, each one optional.
+
+    ``model = Similarity(rotation, scale, shift)`` holds an angle ``rot`` in degrees, a ``scale`` and a ``(1, 2, 1)``
+    ``shift`` in normalized units, each a :class:`~torch.nn.parameter.Parameter` when its flag is ``True`` and
+    otherwise a constant buffer (0, 1 and 0). ``model()`` returns the ``(1, 3, 3)`` matrix described below and
+    ``model.forward_inverse()`` its inverse. :class:`ImageRegistrator` uses it for ``'similarity'`` (all three),
+    ``'translation'`` (the shift), ``'rotation'`` and ``'scale'``. For a full homography, use :class:`Homography`.
 
     Convention:
         - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized :math:`[-1, 1]` coordinates of
@@ -116,6 +175,10 @@ class Similarity(BaseModel):
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant one.
         shift: if True, the shift is optimizable, else constant zero.
+
+    See Also:
+        - :class:`Homography`: a full homography, eight degrees of freedom.
+        - :class:`ImageRegistrator`: optimizes this model for every ``model_type`` but ``'homography'``.
 
     """
 
@@ -138,9 +201,7 @@ class Similarity(BaseModel):
         self.reset_model()
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}(angle = {self.rot},               \n shift={self.shift}, \n scale={self.scale})"
-        )
+        return f"{self.__class__.__name__}(angle = {self.rot},\n shift={self.shift}, \n scale={self.scale})"
 
     def reset_model(self) -> None:
         """Initialize the model with identity transform."""
@@ -185,7 +246,16 @@ class Similarity(BaseModel):
 
 
 class ImageRegistrator(nn.Module):
-    r"""nn.Module, which performs optimization-based image registration.
+    r"""Register two images by optimizing a transform model on their Gaussian pyramids, coarse to fine.
+
+    Build ``registrator = ImageRegistrator(model_type)``, then ``M = registrator.register(src_img, dst_img)`` takes two
+    ``(1, C, H, W)`` images (the built-in models hold one transform, and a larger batch raises). From the coarsest of
+    ``pyramid_levels`` Gaussian levels to the finest, it runs up to ``num_iterations`` steps of ``optimizer`` on the
+    masked loss of ``src_img`` warped onto ``dst_img`` plus ``dst_img`` warped back onto ``src_img``, and returns the
+    model's matrix, ``(1, 3, 3)`` for the built-in models (with the matrix after each level as well, when
+    ``output_intermediate_models=True``); :meth:`warp_src_into_dst` then warps an image by it. With
+    more than one level, both sides need at least ``3 * 2 ** (pyramid_levels - 2)`` pixels, 24 for the default 5. To
+    align images from matched keypoints instead, use :class:`~kornia.geometry.ransac.RANSAC`.
 
     Convention:
         - :meth:`register` returns ``self.model()`` unchanged. For the built-in string ``model_type`` values, this
@@ -199,6 +269,18 @@ class ImageRegistrator(nn.Module):
           gives a shift of :math:`(-t_x, -t_y)`.
         - :meth:`register` always starts from the identity, so a loaded ``state_dict`` drives the warps but is not a
           warm start.
+        - A ``float16``/``bfloat16`` model or image is optimized in ``float32``: during :meth:`register` both images,
+          also when ``allow_shape_mismatch`` resizes ``src_img``, and the model's half parameters and buffers are
+          ``float32``, and afterwards those tensors and their gradients return to their own dtype, also when
+          :meth:`register` raises. Adam's second-moment estimate ``0.001 * g**2`` and its ``eps`` of ``1e-8`` are
+          both 0 in ``float16`` once ``|g| < 0.0055``, so a ``float16`` optimization divides by zero and ends in NaN,
+          and ``bfloat16`` steps round to the dtype's coarse spacing. For a half model the intermediate models of
+          ``output_intermediate_models`` are computed in ``float32`` and rounded to the model's dtype, so the last
+          one can differ by an ulp from the returned ``self.model()``, which is computed in the model's dtype.
+        - A ``float16``, ``bfloat16`` or ``float32`` model therefore registers images of any of these dtypes.
+          :meth:`warp_src_into_dst` and :meth:`warp_dst_into_src` sample a model and an image of two different ones
+          of them in ``float32`` too and return the image's dtype; a model and an image of the same dtype go to the
+          warper unchanged, as before.
 
     Args:
         model_type: Geometrical model for registration: ``'homography'``, ``'similarity'``, or ``'translation'``,
@@ -216,6 +298,12 @@ class ImageRegistrator(nn.Module):
         allow_shape_mismatch: if True, :meth:`register` resizes ``src_img`` bilinearly to the height and width of
             ``dst_img``, and a different batch or channel size still raises ``ValueError``; if False, images of
             different shapes raise ``ValueError``.
+
+    See Also:
+        - :class:`Homography`: the model of ``model_type='homography'``.
+        - :class:`Similarity`: the model of the other string ``model_type`` values.
+        - :class:`~kornia.geometry.transform.HomographyWarper`: the warper of the built-in models.
+        - :class:`~kornia.geometry.ransac.RANSAC`: a homography from matched keypoints, robust to outliers.
 
     Example:
         >>> from kornia.geometry import ImageRegistrator
@@ -279,10 +367,7 @@ class ImageRegistrator(nn.Module):
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
-            raise ValueError(
-                "Cannot register images of different shapes                             "
-                f" {img_src.shape} {img_dst.shape:} "
-            )
+            raise ValueError(f"Cannot register images of different shapes {img_src.shape} {img_dst.shape}")
         _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)
@@ -316,18 +401,36 @@ class ImageRegistrator(nn.Module):
 
         """
         self.reset_model()
-        if src_img.shape != dst_img.shape:
-            if not self.allow_shape_mismatch:
-                raise ValueError(
-                    f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
-                    "Consider setting `allow_shape_mismatch = True`"
-                )
-            src_img = F.interpolate(
-                src_img,
-                size=dst_img.shape[-2:],
-                mode="bilinear",
-                align_corners=False,
+        if src_img.shape != dst_img.shape and not self.allow_shape_mismatch:
+            raise ValueError(
+                f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
+                "Consider setting `allow_shape_mismatch = True`"
             )
+        # Half precision is optimized in float32 (see the class Convention), the resize of src_img included. Every
+        # promotion runs inside the region that gives the model's tensors their dtype back; restoring a tensor that an
+        # error left unpromoted is a no-op.
+        restore = [(t, t.dtype) for t in (*self.model.parameters(), *self.model.buffers()) if t.dtype in _HALF_DTYPES]
+        try:
+            for tensor, _ in restore:
+                tensor.data = tensor.data.float()
+            src_img, dst_img = _float32_if_half(src_img), _float32_if_half(dst_img)
+            if src_img.shape != dst_img.shape:
+                src_img = F.interpolate(src_img, size=dst_img.shape[-2:], mode="bilinear", align_corners=False)
+            aux_models = self._optimize(src_img, dst_img, verbose, output_intermediate_models)
+        finally:
+            for tensor, dtype in restore:
+                tensor.data = tensor.data.to(dtype)
+                if tensor.grad is not None:
+                    tensor.grad = tensor.grad.to(dtype)
+        model = self.model()
+        if output_intermediate_models:
+            return model, [aux.to(model.dtype) for aux in aux_models]
+        return model
+
+    def _optimize(
+        self, src_img: torch.Tensor, dst_img: torch.Tensor, verbose: bool, output_intermediate_models: bool
+    ) -> List[torch.Tensor]:
+        """Run the coarse-to-fine optimization of :meth:`register` and return the model after each level, if asked."""
         # ToDo: better parameter passing to optimizer
         _opt_args: Dict[str, Any] = {}
         _opt_args["lr"] = self.lr
@@ -362,21 +465,25 @@ class ImageRegistrator(nn.Module):
                 opt.step()
             if output_intermediate_models:
                 aux_models.append(self.model().clone().detach())
-        if output_intermediate_models:
-            return self.model(), aux_models
-        return self.model()
+        return aux_models
+
+    def _warp(self, img: torch.Tensor, model: torch.Tensor) -> torch.Tensor:
+        """Warp ``img`` by ``model`` at the image's size, in the image's dtype (see the class Convention)."""
+        _height, _width = img.shape[-2:]
+        warper = self.warper(_height, _width)
+        if model.dtype == img.dtype:
+            return warper(img, model)
+        # register() optimizes a half model or image in float32, so the two can differ in dtype; such a pair is
+        # sampled in float32 as well
+        return warper(_float32_if_half(img), _float32_if_half(model)).to(img.dtype)
 
     def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
         r"""Warp src_img with estimated model."""
-        _height, _width = src_img.shape[-2:]
-        warper = self.warper(_height, _width)
-        return warper(src_img, self.model())
+        return self._warp(src_img, self.model())
 
     def warp_dst_into_src(self, dst_img: torch.Tensor) -> torch.Tensor:
         r"""Warp dst_img with inverted estimated model."""
-        _height, _width = dst_img.shape[-2:]
-        warper = self.warper(_height, _width)
-        return warper(dst_img, self.model.forward_inverse())
+        return self._warp(dst_img, self.model.forward_inverse())
 
     @deprecated(replace_with="ImageRegistrator.warp_dst_into_src", version="0.9.0")
     def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:

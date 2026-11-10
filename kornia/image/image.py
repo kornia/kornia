@@ -64,7 +64,8 @@ class Image:
           data: ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color space must fit the
           channel count, 1 for ``GRAY``, 3 for ``RGB`` and ``BGR``, any for ``UNKNOWN``.
         - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
-          array or capsule of a CPU image. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an
+          array or capsule of a CPU image, except that :meth:`to_numpy` copies bfloat16 data to float32 because
+          NumPy has no bfloat16 dtype. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an
           image from :meth:`from_file` gives ``(C, H, W)``. Neither the array nor the capsule carries the layout
           or the color space: :meth:`from_numpy` reads ``(H, W, C)`` and :meth:`from_dlpack` reads
           ``(C, H, W)`` unless ``channels_order`` says otherwise, and both label the color space by channel count
@@ -376,8 +377,15 @@ class Image:
         return cls(torch.from_numpy(data), pixel_format, layout)
 
     def to_numpy(self) -> np_ndarray:
-        """Return the image data as a numpy array on the CPU, in the stored layout."""
-        return self.data.cpu().detach().numpy()
+        """Return the image data as a numpy array on the CPU, in the stored layout.
+
+        The array shares memory with CPU data whose dtype NumPy supports. Bfloat16 data is copied to float32,
+        preserving its values, because NumPy has no bfloat16 dtype.
+        """
+        data = self.data.cpu().detach()
+        if data.dtype == torch.bfloat16:
+            data = data.float()
+        return data.numpy()
 
     @classmethod
     def from_dlpack(

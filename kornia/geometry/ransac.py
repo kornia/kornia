@@ -15,7 +15,24 @@
 # limitations under the License.
 #
 
-"""Module containing RANSAC modules."""
+r"""Estimate geometric models robustly from correspondences that contain outliers, with RANSAC.
+
+:class:`RANSAC` fits one model to one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
+``"homography_from_linesegments"``), with the first image's points first: a homography or an affine map from the first
+image to the second, a fundamental matrix with :math:`x_2^\top F x_1 = 0` from pixels (a general one, or the affine
+fundamental matrix of two affine cameras), or an essential matrix from normalized camera coordinates. Its threshold
+``inl_th`` is a distance in the units of the correspondences.
+:ref:`Two-view geometry <two-view-conventions>` compares this with OpenCV.
+
+Which class to use:
+
+- One model from correspondences with outliers: :class:`RANSAC`, with ``model_type`` one of ``"homography"``,
+  ``"homography_from_linesegments"``, ``"affine"``, ``"fundamental"`` (seven-point samples),
+  ``"fundamental_7pt"``, ``"fundamental_8pt"``, ``"fundamental_affine"`` or ``"essential"``.
+- A model from correspondences known to be inliers, without sampling: the estimators it wraps,
+  :func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`,
+  :func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential`.
+"""
 
 from __future__ import annotations
 
@@ -49,6 +66,7 @@ from kornia.geometry.epipolar.fundamental import (
     _seven_point_candidates,
     normalize_points,
     normalize_transformation,
+    run_affine,
 )
 from kornia.geometry.homography import (
     _four_point_homography,
@@ -80,6 +98,112 @@ _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 # At most this many residuals are materialized by one compiled CPU scoring batch.  Small/default inputs retain their
 # tuned batch sizes; large explicit batches are split without changing the minimal-sample budget.
 _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
+
+# An affine fundamental matrix must tie the two images together: as a correspondence's point in one image moves over
+# the keypoints, the geometric distance must vary by at least this many inlier thresholds (a standard deviation). The
+# tests bound it on both sides: at 1, twenty mismatches along a line outvote twelve true correspondences, and at 4, a
+# true geometry whose keypoints spread 3.7 thresholds across its epipolar lines is rejected.
+_AFFINE_FUNDAMENTAL_MIN_SPREAD = 2.0
+
+# The models whose rank-at-most-two solvers allow the rank-one matrices that mismatches along a line fit. Such a matrix
+# counts no inliers (_fundamental_near_rank_one) while its compared value, about s2 / s1 in the Hartley-normalized
+# frame, is below this many inlier thresholds of that frame, up to the limit. On the putatives RANSAC sees, the ground
+# truth has a compared value of 0.31 or more on the 170 PhotoTourism benchmark pairs (18 thresholds or more), and of
+# 0.17 or more on all 4950 St Peters Square pairs of the RANSAC tutorial data; the line scene's winners are below 2e-3.
+_RANK_TESTED_MODELS = ("fundamental", "fundamental_7pt", "fundamental_8pt")
+_FUNDAMENTAL_MIN_RANK_SPREAD = 5.0
+_FUNDAMENTAL_RANK_FLOOR_LIMIT = 0.1
+
+
+def _affine_fundamental_ties_both_images(
+    kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
+) -> torch.Tensor:
+    """Return which affine fundamental matrices ``(B, 3, 3)`` depend on both images' points, ``(B,)``.
+
+    ``F = [[0, 0, a], [0, 0, b], [c, d, e]]`` puts a correspondence at the geometric distance
+    ``(a x2 + b y2 + c x1 + d y1 + e) / |(a, b, c, d)|``. With ``(c, d) = 0`` that is the distance of ``x2`` to one
+    line, whatever ``x1`` is, so mismatches whose second points lie along a line all fit it and can outvote the true
+    geometry; with ``(a, b) = 0`` the same holds in the first image. Points near a line give small terms rather than
+    zero ones, and what counts as small depends on the images' extent and the threshold. So each image's term,
+    ``(c x1 + d y1)`` over ``kp1`` and ``(a x2 + b y2)`` over ``kp2``, divided by ``|(a, b, c, d)|``, must have a
+    standard deviation of at least ``_AFFINE_FUNDAMENTAL_MIN_SPREAD`` times the inlier threshold ``inl_th`` (not
+    squared). For the true geometry the first image's term is the spread of the matched points across the epipolar
+    lines, seen in the second image. Correspondences with a non-finite point, which no model fits, are left out.
+    """
+    with _autocast_disabled(kp1.device.type):
+        work = torch.promote_types(torch.promote_types(kp1.dtype, models.dtype), torch.float32)
+        normal = models[:, [0, 1, 2, 2], [2, 2, 0, 1]].to(work)  # (a, b, c, d)
+        # The correspondences as (x2, y2, x1, y1), the order of (a, b, c, d); a row whose sum is not finite is left out.
+        points = torch.cat([kp2.reshape(-1, 2), kp1.reshape(-1, 2)], -1).to(work)
+        finite = points.sum(-1, keepdim=True).isfinite()
+        count = finite.sum().clamp_min(1)
+        points = torch.where(finite, points, 0.0)
+        centred = torch.where(finite, points - points.sum(0) / count, 0.0)
+        covariance = centred.mT @ centred / count
+        # Each image's term has the variance n^T C n over its own 2 x 2 block of the covariance; compared squared.
+        floor = (_AFFINE_FUNDAMENTAL_MIN_SPREAD * inl_th) ** 2 * normal.square().sum(-1)
+        n2, n1 = normal[:, :2], normal[:, 2:]
+        return (((n2 @ covariance[:2, :2]) * n2).sum(-1) >= floor) & (((n1 @ covariance[2:, 2:]) * n1).sum(-1) >= floor)
+
+
+def _fundamental_near_rank_one(models: torch.Tensor, threshold: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Return which fundamental matrices ``(M, 3, 3)`` of Hartley-normalized points are nearly of rank one, ``(M,)``.
+
+    ``F = l m^T`` gives ``x2^T F x1 = (l^T x2) (m^T x1) = 0`` for every ``x2`` on the line ``l`` whatever ``x1`` is, and
+    for every ``x1`` on ``m`` whatever ``x2`` is, so mismatches along a line in either image all fit it and can outvote
+    the true geometry. With singular values ``s1 >= s2`` and ``s3 = 0``, what ties the two images together moves a
+    correspondence's distance by about ``s2 / s1`` over keypoints of about unit radius. The test compares
+    ``|cof F|_F / (|F|_F^2 - F_33^2)`` with ``_FUNDAMENTAL_MIN_RANK_SPREAD`` inlier thresholds of the frame
+    (``threshold`` is the squared one), or with ``_FUNDAMENTAL_RANK_FLOOR_LIMIT`` if that is smaller: a threshold as
+    wide as the keypoints fits nearly everything, and without the limit it would reject every model. Pixel coordinates
+    would not do, as the true geometry can have ``s2 / s1 < 0.01`` there.
+
+    No SVD is needed: at rank two ``|cof F|_F = s1 s2`` and ``|F|_F^2 = s1^2 + s2^2``, whose ratio is ``r / (1 + r^2)``
+    for ``r = s2 / s1``. ``F_33`` is left out of the denominator because it is the epipolar residual of the frame's two
+    origins, the keypoints' centroids, and not a sign of rank: mismatches that pull the centroids away from the true
+    matches would otherwise lower the value of the true geometry. The compared value is then at least
+    ``r / (1 + r^2)``, and a rank-one matrix still has zero cofactors. The one rank-one matrix it does not flag, with
+    only ``F_33`` non-zero, compares ``0 < 0`` but fits no point. Both sides are compared squared. A NaN model compares
+    False, and has no inliers anyway.
+    """
+    floor = _FUNDAMENTAL_MIN_RANK_SPREAD**2 * threshold
+    limit = _FUNDAMENTAL_RANK_FLOOR_LIMIT**2
+    # A tensor threshold is the compiled program's, whose graph does not depend on its value.
+    floor = floor.clamp_max(limit) if isinstance(floor, torch.Tensor) else min(floor, limit)
+    # roll would guard on the size of an unbacked batch in the compiled program.
+    cofactors = torch.linalg.cross(models, torch.cat([models[:, :, 1:], models[:, :, :1]], -1), dim=-2)
+    norm = models.square().sum((-2, -1)) - models[:, 2, 2].square()
+    return cofactors.square().sum((-2, -1)) < floor * norm.square()
+
+
+def _unnormalizer(transform: torch.Tensor) -> torch.Tensor:
+    """The inverse of a Hartley normalization ``[[a, 0, b], [0, a, c], [0, 0, 1]]``, without a solver."""
+    inverse = transform.clone()
+    inverse[:2, :2] = transform[:2, :2] / transform[0, 0].square()
+    inverse[:2, 2] = -transform[:2, 2] / transform[0, 0]
+    return inverse
+
+
+def _rank_test_frame(kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """The inverse normalizations and the scale of :func:`_pixel_fundamental_near_rank_one`, for ``(N, 2)`` keypoints.
+
+    The frame is the shared-scale one of ``local_optimization="lm"``, whose models the test sees directly.
+    """
+    with _autocast_disabled(kp1.device.type):
+        work = torch.promote_types(kp1.dtype, torch.float32)
+        _, _, t1, t2, scales = _normalize_correspondences_core(kp1.to(work), kp2.to(work), True)
+        return _unnormalizer(t1), _unnormalizer(t2), scales[0]
+
+
+def _pixel_fundamental_near_rank_one(
+    frame: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], models: torch.Tensor, inl_th: float
+) -> torch.Tensor:
+    """:func:`_fundamental_near_rank_one` of pixel models, in a :func:`_rank_test_frame`, for a squared ``inl_th``."""
+    unnormalizer1, unnormalizer2, scale = frame
+    with _autocast_disabled(models.device.type):
+        work = torch.promote_types(torch.promote_types(scale.dtype, models.dtype), torch.float32)
+        normalized = unnormalizer2.to(work).mT @ models.to(work) @ unnormalizer1.to(work)
+        return _fundamental_near_rank_one(normalized, inl_th / scale.to(work).square())
 
 
 def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
@@ -178,22 +302,35 @@ def _check_compile_config(local_optimization: str, prosac_sampling: bool, degens
 
 
 class RANSAC(nn.Module):
-    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
+    r"""Estimate a homography, affine, fundamental or essential matrix robustly despite outliers.
+
+    ``estimator = RANSAC(model_type, inl_th=2.0)`` builds the estimator, and ``model, inliers = estimator(kp1, kp2)``
+    takes one set of correspondences ``(N, 2)`` of the first and the second image, or segments ``(N, 2, 2)`` for
+    ``"homography_from_linesegments"``, and returns the best-scoring ``(3, 3)`` model and its ``(N,)`` bool inlier
+    mask, or an all-zero model and an all-False mask when no model has enough support. A correspondence is an inlier
+    when its error under the model is at most ``inl_th``, in the units of the keypoints. The model follows the
+    estimator of its type: a homography or affine map from ``kp1`` to ``kp2``
+    (:func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`), a
+    fundamental matrix with :math:`x_2^\top F x_1 = 0` (:func:`~kornia.geometry.epipolar.find_fundamental`; for
+    ``"fundamental_affine"`` its ``method="AFFINE"``, the matrix of two affine cameras), or an
+    essential matrix for camera-normalized keypoints (:func:`~kornia.geometry.epipolar.find_essential`). Each call
+    estimates one model, since ``batch_size`` batches hypotheses rather than problems; for correspondences known to be
+    inliers, call those estimators directly (see also https://en.wikipedia.org/wiki/Random_sample_consensus).
 
     Convention:
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
-          ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
-          ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
-          its minimal sample (three correspondences for affine transforms, four for homographies,
-          five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
+          ``model_type``. ``forward`` returns an all-zero model and no inliers when no candidate has more inliers
+          than its minimal sample (three correspondences for affine transforms, four for homographies and
+          ``"fundamental_affine"``, five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
           eight for ``"fundamental_8pt"``).
         - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
           eight-point ones.
         - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
           correspondence is an inlier when its one-way transfer error for ``"homography"`` or ``"affine"``,
-          its Sampson distance for the fundamental models and ``"essential"``, or the mean distance
-          of its transferred endpoints from the image-2 segment's line for ``"homography_from_linesegments"``
-          is at most ``inl_th``.
+          its Sampson distance for the fundamental models and ``"essential"`` (for ``"fundamental_affine"`` the
+          exact geometric distance: the smallest total displacement of the two points that makes them correspond),
+          or the mean distance of its transferred endpoints from the image-2 segment's line for
+          ``"homography_from_linesegments"`` is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
@@ -209,12 +346,25 @@ class RANSAC(nn.Module):
           fundamental matrices are estimated on Hartley-normalized correspondences; essential matrices in the
           caller's calibrated coordinates, which a normalization would take off the essential manifold, refined on
           that manifold and returned with unit Frobenius norm.
-        - ``local_optimization="dlt"``, the only choice for ``"affine"`` and line segments, refits each new best
-          model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
-          32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
-          iteratively. Affine models use a linear least-squares refit with free translation and return
-          a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal samples need three
-          non-collinear source points.
+        - ``local_optimization="dlt"``, the only choice for ``"affine"``, ``"fundamental_affine"`` and line
+          segments, refits each new best model from its inliers: with the default ``lo_sample_size=32``,
+          ``max_lo_iters`` randomized refits on 32-inlier subsets followed by one full-inlier refit;
+          ``lo_sample_size=None`` refits all inliers iteratively. Affine models use a linear least-squares refit
+          with free translation and return a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal
+          samples need three non-collinear source points. ``"fundamental_affine"`` solves its four-point samples
+          and refits its inliers by orthogonal regression, the Gold Standard estimate (Hartley and Zisserman,
+          algorithm 14.1). It counts no inliers for a matrix that (nearly) ignores one image, ``(a, b)`` or
+          ``(c, d)`` near 0: that matrix is a line in the other image, which mismatches along a line fit. Each
+          image's term of the distance must vary over the keypoints by at least two inlier thresholds (a standard
+          deviation). A true geometry whose keypoints spread less across its epipolar lines, such as a 15 px patch
+          at ``inl_th=2``, is rejected too, and RANSAC returns zeros.
+        - ``"fundamental"``, ``"fundamental_7pt"`` and ``"fundamental_8pt"`` count no inliers for a matrix of nearly
+          rank one. ``F = l m^T`` is the pair of lines ``l`` and ``m``, and fits every mismatch along either of them
+          whatever its point in the other image. With both images' points Hartley-normalized at a shared scale,
+          ``|cof F| / (|F|^2 - F_33^2)``, about the ratio of ``F``'s singular values, must reach five inlier
+          thresholds of that frame, at most ``0.1``; ``F_33``, the epipolar residual of the keypoint centroids, says
+          nothing about rank. A true geometry whose keypoints differ in scale between the views by five times or more
+          can fall below it, and RANSAC then keeps another model.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -250,8 +400,8 @@ class RANSAC(nn.Module):
         - A caller's autocast region does not change the estimate.
 
     Args:
-        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
-            "homography_from_linesegments".
+        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt",
+            "fundamental_affine", "essential", or "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
         batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batches per call from
             the device and the number of correspondences (see :meth:`resolve_batch_size`).
@@ -283,6 +433,15 @@ class RANSAC(nn.Module):
             it off. True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
             the only supported combinations; True with any other raises ``ValueError``.
 
+    See Also:
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: the homography of correspondences known to be
+          inliers.
+        - :func:`~kornia.geometry.epipolar.find_fundamental`: the fundamental matrix of inlier correspondences.
+        - :func:`~kornia.geometry.epipolar.find_essential`: the essential matrix candidates of inlier
+          correspondences in normalized camera coordinates.
+        - :func:`~kornia.geometry.solvers.find_affine`: the affine map of inlier correspondences.
+        - :func:`~kornia.geometry.homography.find_homography_lines_dlt`: the homography of inlier line segments.
+
     """
 
     def __init__(
@@ -307,7 +466,7 @@ class RANSAC(nn.Module):
 
         Args:
             model_type: type of model to estimate: "affine", "homography", "fundamental", "fundamental_7pt",
-                "fundamental_8pt", "essential", "homography_from_linesegments".
+                "fundamental_8pt", "fundamental_affine", "essential", "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once, or ``"auto"`` (see :meth:`resolve_batch_size`).
             max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
@@ -342,6 +501,7 @@ class RANSAC(nn.Module):
             "fundamental",
             "fundamental_7pt",
             "fundamental_8pt",
+            "fundamental_affine",
             "homography_from_linesegments",
             "essential",
         ]
@@ -436,6 +596,12 @@ class RANSAC(nn.Module):
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
             self.polisher_sample_size = 8
+        elif model_type == "fundamental_affine":
+            self.error_fn = sampson_epipolar_distance
+            self.minimal_solver = run_affine
+            self.minimal_sample_size = 4
+            self.polisher_solver = run_affine
+            self.polisher_sample_size = 4
         elif model_type == "essential":
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_essential
@@ -469,7 +635,7 @@ class RANSAC(nn.Module):
                 size; None assumes ``iteration`` batches of ``batch_size``.
 
         Returns:
-            Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
+            Tensor of sampled indices with shape ``(batch_size, sample_size)``.
 
         """
         device = torch.device("cpu") if device is None else torch.device(device)
@@ -536,10 +702,10 @@ class RANSAC(nn.Module):
         return _DEFAULT_BATCH * self.max_iter
 
     def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
-        """Return the batch size of a ``local_optimization="dlt"`` call: the configured one, or the ``"auto"`` choice.
+        """Return the batch size of a ``local_optimization="dlt"`` call: configured or ``"auto"``.
 
         On CUDA and MPS a homography or affine batch costs about the same from a few hundred up to 8192 hypotheses
-        (the four- and three-point solves are launch-bound), so the whole :attr:`sample_budget` is drawn in batches
+        (the four- and three-point solves are launch-bound), so the whole ``sample_budget`` is drawn in batches
         of up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
         and early stopping is checked in between. The verification holds a ``batch x N`` residual matrix and a
         few temporaries of that size, so past ``2**27`` entries (about 1 GiB at peak in float32) the batch
@@ -692,8 +858,8 @@ class RANSAC(nn.Module):
         """Estimate models from minimal samples.
 
         Args:
-            kp1: source keypoints with shape :math:`(batch_size, sample_size, 2)`.
-            kp2: target keypoints with shape :math:`(batch_size, sample_size, 2)`.
+            kp1: source keypoints with shape ``(batch_size, sample_size, 2)``.
+            kp2: target keypoints with shape ``(batch_size, sample_size, 2)``.
 
         Returns:
             Estimated models tensor.
@@ -701,6 +867,9 @@ class RANSAC(nn.Module):
         """
         batch_size, sample_size = kp1.shape[:2]
         return self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
+
+    # (kp1, kp2, frame) during a call of _forward_dlt on a rank-tested model; see forward.
+    _dlt_rank_frame: Optional[Tuple[torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None
 
     def verify(
         self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
@@ -723,6 +892,7 @@ class RANSAC(nn.Module):
         """
         if not math.isfinite(inl_th) or inl_th <= 0:
             raise ValueError("The squared inlier threshold must be positive and finite")
+        kp1_input, kp2_input = kp1, kp2
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -739,6 +909,15 @@ class RANSAC(nn.Module):
         inf = float("inf")
         errors = errors.nan_to_num(nan=inf, posinf=inf, neginf=inf)
         inl_mask = errors <= inl_th
+        if self.model_type == "fundamental_affine":
+            # A matrix that (nearly) ignores one image is a line in the other, which a line of mismatches fits.
+            inl_mask = inl_mask & _affine_fundamental_ties_both_images(kp1, kp2, models, math.sqrt(inl_th))[:, None]
+        elif self.model_type in _RANK_TESTED_MODELS:
+            # A matrix of (nearly) rank one is a line in each image, which a line of mismatches fits.
+            held = self._dlt_rank_frame
+            frame = held[2] if held is not None and held[0] is kp1_input and held[1] is kp2_input else None
+            frame = _rank_test_frame(kp1[0], kp2[0]) if frame is None else frame
+            inl_mask = inl_mask & ~_pixel_fundamental_near_rank_one(frame, models, inl_th)[:, None]
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             # Equivalent to minimizing the truncated squared loss (MSAC), normalized
@@ -920,17 +1099,16 @@ class RANSAC(nn.Module):
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2],                                  got {kp1.shape}, {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
         if self.model_type == "homography_from_linesegments":
             KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2, 2],                                  got {kp1.shape},"
-                    f" {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
 
     def forward(
@@ -961,7 +1139,16 @@ class RANSAC(nn.Module):
                         with torch.inference_mode(False), torch.no_grad():
                             return self._forward_compiled(kp1, kp2)
                     return self._forward_lm(kp1, kp2)
-            return self._forward_dlt(kp1, kp2)
+            if self.model_type not in _RANK_TESTED_MODELS:
+                return self._forward_dlt(kp1, kp2)
+            # Normalizing the keypoints for every scored batch took a further 10 to 20 % of a call. The frame is held
+            # with the keypoints it belongs to, so that a module shared between threads recomputes rather than reads
+            # another call's frame.
+            self._dlt_rank_frame = (kp1, kp2, _rank_test_frame(kp1, kp2))
+            try:
+                return self._forward_dlt(kp1, kp2)
+            finally:
+                self._dlt_rank_frame = None
 
     def _forward_dlt(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """:meth:`forward` with ``local_optimization="dlt"``."""
@@ -1175,6 +1362,7 @@ class RANSAC(nn.Module):
         masks: its stopping rule must use the same inlier decisions as the score, including at rounding boundaries.
         """
         planar = self.model_type == "homography"
+        rank_tested = self.model_type in _RANK_TESTED_MODELS
         n = basis.shape[1] // (3 if planar else 2)
         tile = max(1, max_residuals // max(n, 1)) if models.device.type == "cpu" else max(len(models), 1)
         scores, counts, masks = [], [], []
@@ -1183,6 +1371,8 @@ class RANSAC(nn.Module):
         for start in range(0, len(models), tile):
             errors = residual_fn(models[start : start + tile], basis)
             inliers = errors <= threshold
+            if rank_tested:
+                inliers = inliers & ~_fundamental_near_rank_one(models[start : start + tile], threshold)[:, None]
             support = inliers.sum(1, dtype=count_dtype)
             counts.append(support)
             scores.append(self._lm_score(errors, threshold) if self.score_type == "msac" else support.to(models.dtype))
@@ -1491,6 +1681,10 @@ class RANSAC(nn.Module):
             candidates = torch.cat([refits, candidates])
         errors = self._lm_errors(candidates, x1_host, x2_host)
         inliers = errors <= threshold
+        # A refit can collapse a model that the sampling loop let through.
+        rank_tested = self.model_type in _RANK_TESTED_MODELS
+        if rank_tested:
+            inliers = inliers & ~_fundamental_near_rank_one(candidates, threshold)[:, None]
         scores = self._lm_score(errors, threshold).masked_fill(inliers.sum(1) <= m, -1.0)
         best = int(scores.argmax())
         if scores[best] < 0:
@@ -1501,6 +1695,8 @@ class RANSAC(nn.Module):
             mask = inliers[None]
             refined = self._lm_refine(model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, self.refine_iters)
             refined_inliers = self._lm_errors(refined, x1_host, x2_host)[0] <= threshold
+            if rank_tested:
+                refined_inliers = refined_inliers & ~_fundamental_near_rank_one(refined, threshold)[0]
             if self._is_supported(int(refined_inliers.sum())):
                 model, inliers = refined[0], refined_inliers
         if essential:

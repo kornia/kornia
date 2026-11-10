@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
-from kornia.filters import get_gaussian_kernel2d, spatial_gradient
+from kornia.filters import get_gaussian_kernel2d
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
@@ -70,6 +70,31 @@ def _gradient_magnitude_orientation(
     return mag.to(dtype), ori.to(dtype)
 
 
+def _exact_first_order_gradient(input: torch.Tensor, mode: str) -> torch.Tensor:
+    """Return ``spatial_gradient(input, mode)`` for ``"sobel"`` or ``"diff"``, exact on flat pixels.
+
+    A guard such as ``sq > 0`` in :func:`_gradient_magnitude_orientation` reads exactness from this result: a nonzero
+    pixel votes with its direction and gets a derivative of ``1 / |g|``. A convolution result cannot supply that, as it
+    rounds: a pixel whose exact response is zero can come out nonzero, such as 9.31e-10 on half the Sobel entries of a
+    constant 0.1 patch on x86 CPU and CUDA. This was found on macOS arm64 CPU, where the ``F.conv2d`` backend for a
+    tracked float32 batch of 16 or more leaves about 1e-7 on low-contrast patches. All input therefore takes the
+    differences directly, so that the result does not depend on ``requires_grad``.
+    """
+    # Half precision runs in float32: the convolution scales before it adds, so these differences would overflow first.
+    padded = F.pad(input.to(torch.promote_types(input.dtype, torch.float32)), (1, 1, 1, 1), "replicate")
+    dx = padded[..., 2:] - padded[..., :-2]
+    dy = padded[..., 2:, :] - padded[..., :-2, :]
+    if mode == "sobel":
+        gx = (dx[..., :-2, :] + 2.0 * dx[..., 1:-1, :] + dx[..., 2:, :]) / 8.0
+        gy = (dy[..., :-2] + 2.0 * dy[..., 1:-1] + dy[..., 2:]) / 8.0
+    else:
+        gx = dx[..., 1:-1, :] / 2.0
+        gy = dy[..., 1:-1] / 2.0
+    # Not `torch.stack`: on torch 2.15.0, on CUDA only, compiling a stack of differences of one padded tensor raises
+    # InductorError (RecursionError), without any kornia code involved. Reassess when torch moves on.
+    return torch.cat((gx.unsqueeze(2), gy.unsqueeze(2)), 2).to(input.dtype)
+
+
 def _dense_sift_histograms_from_gradients(
     gx: torch.Tensor, gy: torch.Tensor, num_ang_bins: int, eps: float
 ) -> torch.Tensor:
@@ -97,7 +122,7 @@ def _dense_sift_histograms_from_gradients(
 
 
 def _dense_sift_histograms(input: torch.Tensor, num_ang_bins: int, eps: float) -> torch.Tensor:
-    grads = spatial_gradient(input, "diff")
+    grads = _exact_first_order_gradient(input, "diff")
     return _dense_sift_histograms_from_gradients(grads[:, :, 0], grads[:, :, 1], num_ang_bins, eps)
 
 
@@ -108,7 +133,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
         ksize: kernel_size.
 
     Returns:
-        the pooling kernel with shape :math:`(ksize, ksize)`.
+        the pooling kernel with shape ``(ksize, ksize)``.
 
     """
     ks_2: float = float(ksize) / 2.0
@@ -154,7 +179,15 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 
 
 class SIFTDescriptor(nn.Module):
-    r"""nn.Module which computes SIFT descriptors of given patches.
+    r"""Describe square grayscale patches with SIFT histograms of gradient orientation.
+
+    ``sift = SIFTDescriptor(patch_size)``, then ``descs = sift(patches)`` takes grayscale patches
+    ``(B, 1, patch_size, patch_size)``, 41 pixels square by default, and returns one descriptor per patch,
+    ``(B, num_ang_bins * num_spatial_bins ** 2)``: ``(B, 128)`` with the default 8 angle bins and 4 x 4 spatial
+    cells, RootSIFT by default, in kornia's angle-major layout. The patches must already be sampled, scaled and
+    oriented; to describe LAFs on an image, wrap it in :class:`LAFDescriptor` with the same ``patch_size``. For a
+    descriptor at every position of an image, use :class:`DenseSIFTDescriptor` instead, and to describe or orient
+    LAFs without extracting patches, :class:`SIFTDescriptorFromPyramid`.
 
     Convention:
         - The input is a stack of grayscale patches, ``patch_size`` pixels square (41 by default; another size
@@ -179,9 +212,10 @@ class SIFTDescriptor(nn.Module):
           nearly flat, so a patch in ``[0, 1]`` and the same patch in ``[0, 255]`` give one descriptor.
 
     Args:
-        patch_size: Input patch size in pixels.
+        patch_size: Input patch size in pixels. Some sizes cannot hold a centred grid of ``num_spatial_bins`` cells,
+            such as 7 with 4 bins, and raise ``ValueError`` when the module is built.
         num_ang_bins: Number of angular bins.
-        num_spatial_bins: Number of spatial bins.
+        num_spatial_bins: Number of spatial bins per side.
         clipval: clipping value to reduce single-bin dominance
         rootsift: if ``True``, RootSIFT (Arandjelović et. al, 2012) is computed.
 
@@ -189,8 +223,19 @@ class SIFTDescriptor(nn.Module):
         SIFT descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, \text{patch_size}, \text{patch_size})`
-        - Output: :math:`(B, \text{num_ang_bins * num_spatial_bins ** 2})`
+        - Input: ``(B, 1, patch_size, patch_size)``
+        - Output: ``(B, num_ang_bins * num_spatial_bins ** 2)``
+
+    See Also:
+        - :class:`DenseSIFTDescriptor`: a descriptor at every position of an image, as a map, with no Gaussian
+          weighting of the cells.
+        - :class:`SIFTDescriptorFromPyramid`: describes, and can orient, LAFs on an image without extracting patches.
+        - :func:`convert_sift_descriptor_layout`: reorders the descriptors into OpenCV's layout.
+        - :class:`LAFDescriptor`: runs this module on a patch per LAF of an image.
+        - :class:`SIFTFeature`: detects DoG keypoints and, with the default ``"patch"`` backend, describes them with
+          this module.
+        - :class:`MKDDescriptor`: another handcrafted patch descriptor, from kernel embeddings of the gradients.
+        - :class:`HardNet`: a learned descriptor of 32 x 32 patches.
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)
@@ -291,12 +336,10 @@ class SIFTDescriptor(nn.Module):
         r"""Compute SIFT descriptors for square grayscale patches.
 
         Args:
-            input: Patch tensor shaped
-                :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
+            input: Patch tensor shaped ``(B, 1, patch_size, patch_size)``.
 
         Returns:
-            Descriptor tensor of size
-            :math:`(B, \text{num\_ang\_bins} \times \text{num\_spatial\_bins}^2)`.
+            Descriptor tensor of size ``(B, num_ang_bins * num_spatial_bins ** 2)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         pk_weight = self.pk.weight.to(input.dtype).to(input.device)
@@ -304,7 +347,7 @@ class SIFTDescriptor(nn.Module):
         if pk_bias is not None:
             pk_bias = pk_bias.to(input.dtype).to(input.device)
 
-        grads = spatial_gradient(input, "diff")
+        grads = _exact_first_order_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]
@@ -384,6 +427,13 @@ def convert_sift_descriptor_layout(
 ) -> torch.Tensor:
     r"""Reorder SIFT descriptors between kornia's layout and OpenCV's.
 
+    ``opencv_descs = convert_sift_descriptor_layout(descs, "kornia", "opencv")`` takes SIFT descriptors with the
+    descriptor dimension last, ``(*, A * S ** 2)``, and returns the same values reordered into the ``target``
+    layout, with the input's shape, dtype and device. For the ``(B, A * S ** 2, H_out, W_out)`` map of
+    :class:`DenseSIFTDescriptor`, move the channels last first and back afterwards:
+    ``convert_sift_descriptor_layout(dense.movedim(1, -1), "kornia", "opencv").movedim(-1, 1)``. A reordering does
+    not make descriptors sampled by different methods equal.
+
     Both layouts hold the same histogram values, one per angle bin :math:`a` and spatial cell :math:`(y, x)`
     of the frame, with :math:`A` = ``num_ang_bins`` and :math:`S` = ``num_spatial_bins``:
 
@@ -403,7 +453,7 @@ def convert_sift_descriptor_layout(
     equally to SIFT and RootSIFT descriptors and keeps their scale; converting back restores the input exactly.
 
     Args:
-        descriptors: SIFT descriptors of shape :math:`(*, A S^2)`.
+        descriptors: SIFT descriptors of shape ``(*, A * S ** 2)``.
         source: layout of ``descriptors``, ``"kornia"`` or ``"opencv"``.
         target: layout to return, ``"kornia"`` or ``"opencv"``.
         num_ang_bins: number of angle bins :math:`A`.
@@ -411,6 +461,16 @@ def convert_sift_descriptor_layout(
 
     Returns:
         The descriptors in the ``target`` layout, with the input's shape, dtype and device.
+
+    Raises:
+        ValueError: for a layout other than ``"kornia"`` and ``"opencv"``, or a bin count below 1.
+        BaseError: if the last dimension of ``descriptors`` is not ``A * S ** 2``.
+
+    See Also:
+        - :class:`SIFTDescriptor`: SIFT descriptors of patches, in the ``"kornia"`` layout.
+        - :class:`DenseSIFTDescriptor`: a map of SIFT descriptors, with the ``"kornia"`` layout along its channels.
+        - :class:`SIFTDescriptorFromPyramid`: SIFT descriptors of LAFs, in the ``"kornia"`` layout.
+        - :class:`LightGlueMatcher`: its ``"sift"`` weights expect the ``"opencv"`` layout.
 
     Example:
         >>> descs = SIFTDescriptor(32)(torch.rand(4, 1, 32, 32))
@@ -455,14 +515,21 @@ def sift_describe(
 ) -> torch.Tensor:
     r"""Compute the sift descriptor.
 
-    See
-    :class: `~kornia.feature.SIFTDescriptor` for details.
+    See :class:`~kornia.feature.SIFTDescriptor` for details.
     """
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
 
 
 class DenseSIFTDescriptor(nn.Module):
-    """nn.Module, which computes SIFT descriptor densely over the image.
+    """Compute a SIFT descriptor at every position of a grayscale image, as a dense map.
+
+    ``dsift = DenseSIFTDescriptor()``, then ``descs = dsift(image)`` takes grayscale images ``(B, 1, H, W)`` and
+    returns a descriptor map ``(B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out)``, ``(B, 128, H_out, W_out)``
+    with the default bins: ``descs[b, :, i, j]`` is the SIFT descriptor of an upright square of
+    ``num_spatial_bins * spatial_bin_size`` pixels (16 by default) placed as the Convention block gives, so every
+    output describes one fixed scale and orientation, and ``stride`` sets the spacing of the output grid. To describe
+    patches you have already sampled, use :class:`SIFTDescriptor` instead, and to describe LAFs at their own scale and
+    orientation, :class:`SIFTDescriptorFromPyramid`.
 
     Convention:
         - Every output pixel is a SIFT descriptor of the image around the input position given below. Its
@@ -497,12 +564,18 @@ class DenseSIFTDescriptor(nn.Module):
         torch.Tensor: DenseSIFT descriptor of the image
 
     Shape:
-        - Input: (B, 1, H, W)
-        - Output: (B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out), with
+        - Input: ``(B, 1, H, W)``
+        - Output: ``(B, num_ang_bins * num_spatial_bins ** 2, H_out, W_out)``, with
           ``H_out = (H + e + 2 * padding - (num_spatial_bins - 1) * spatial_bin_size - 1) // stride + 1`` and
-          ``W_out`` likewise, where ``e`` is 1 for an even ``spatial_bin_size`` and 0 for an odd one.
+          ``W_out`` likewise, where ``e`` is 1 for an even ``spatial_bin_size`` and 0 for an odd one. An image for
+          which either would be below 1 raises ``RuntimeError``.
 
-    Examples::
+    See Also:
+        - :class:`SIFTDescriptor`: one descriptor per given patch, with the cells weighted by a Gaussian window.
+        - :class:`SIFTDescriptorFromPyramid`: descriptors of given LAFs, each at its own scale and orientation.
+        - :func:`convert_sift_descriptor_layout`: reorders the channels into OpenCV's layout, once moved last.
+
+    Example:
         >>> input =  torch.rand(2, 1, 200, 300)
         >>> SIFT = DenseSIFTDescriptor()
         >>> descs = SIFT(input) # 2x128x191x291

@@ -20,6 +20,7 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
@@ -219,11 +220,18 @@ def test_lightglue_leaves_global_flash_sdp_setting_alone(flash):
 # ---------------------------------------------------------------------------
 
 
+def _simulate_faulty_platform(monkeypatch) -> None:
+    defaults = scaled_dot_product_attention.__defaults__
+    monkeypatch.setattr(scaled_dot_product_attention, "__defaults__", (*defaults[:-1], True))
+
+
 class TestAttention(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("legacy_windows", [False, True])
     @pytest.mark.parametrize("masked", [False, True])
-    def test_cpu_attention_matches_explicit_softmax_5992(self, device, dtype, batch_size, legacy_windows, masked):
+    def test_cpu_attention_matches_explicit_softmax_5992(
+        self, device, dtype, monkeypatch, batch_size, legacy_windows, masked
+    ):
         if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
             pytest.skip("regression for Windows CPU float64, with float32 as a control")
         g = torch.Generator().manual_seed(0)
@@ -251,14 +259,14 @@ class TestAttention(BaseTester):
         attention = Attention(allow_flash=True)
         if legacy_windows:
             # Exercise the real fallback on every host, as well as the native platform selection above.
-            attention._windows_old_torch = True
+            _simulate_faulty_platform(monkeypatch)
         backend_flags = (
             torch.backends.cuda.flash_sdp_enabled(),
             torch.backends.cuda.math_sdp_enabled(),
             torch.backends.cuda.mem_efficient_sdp_enabled(),
             torch.backends.cuda.cudnn_sdp_enabled(),
         )
-        with unittest.mock.patch("kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa):
+        with unittest.mock.patch("kornia.core._compat.F.scaled_dot_product_attention", side_effect=legacy_sdpa):
             actual = attention(q, k, v, mask)
         assert actual.isfinite().all()
         self.assert_close(actual, expected)
@@ -270,33 +278,33 @@ class TestAttention(BaseTester):
         )
 
     @pytest.mark.parametrize("masked", [False, True])
-    def test_windows_float64_fallback_gradcheck(self, device, masked):
+    def test_windows_float64_fallback_gradcheck(self, device, monkeypatch, masked):
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
-        attention._windows_old_torch = True
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
         self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
 
-    def test_dynamo_windows_float64_fallback(self, device, torch_optimizer, optimizer_backend):
+    def test_dynamo_windows_float64_fallback(self, device, monkeypatch, torch_optimizer, optimizer_backend):
         if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
             pytest.skip("the fallback needs CPU torch.compile coverage")
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
-        attention._windows_old_torch = True
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device)
         compiled = torch_optimizer(attention, fullgraph=True)
         self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
 
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
-    def test_eager_backend_traces_windows_float64_fallback(self, device):
+    def test_eager_backend_traces_windows_float64_fallback(self, device, monkeypatch):
         # conftest deselects *dynamo* and *compile* tests unless KORNIA_TEST_OPTIMIZER is set, which CI does only on
         # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
+        _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
-        attention._windows_old_torch = True
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device)
         torch._dynamo.reset()
@@ -588,6 +596,23 @@ class TestLightGlue(BaseTester):
 
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
+
+    def test_mp_keeps_a_float64_model_in_float64(self, device):
+        """Autocast does not cast float64, so ``mp=True`` leaves a float64 model as ``mp=False`` runs it.
+
+        On CUDA the descriptors used to be cast to float16 under autocast, which the float64 weights then met.
+        """
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        torch.manual_seed(0)
+        models = {mp: _make_lightglue(device, torch.float64, mp=mp) for mp in (False, True)}
+        models[True].load_state_dict(models[False].state_dict())
+        data = _make_data(device, torch.float64)
+        with torch.no_grad():
+            out = {mp: model(data) for mp, model in models.items()}
+        assert out[True]["matching_scores0"].dtype == torch.float64
+        assert torch.equal(out[True]["matches0"], out[False]["matches0"])
+        self.assert_close(out[True]["matching_scores0"], out[False]["matching_scores0"])
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
@@ -1345,9 +1370,15 @@ class TestLightGlueBatchedPairs(BaseTester):
         out = self._forward(model, self._stack([data for data, _ in pairs]), pruning_threshold=1000)
         assert out["log_assignment"].shape == (2, self._M + 1, self._M + 1)
         assert out["stop"] == 2
+        # CUDA half matrix products accumulate in an order that depends on the batch size. The matches stay exact,
+        # but in bfloat16 a log-assignment entry of about -90 moves by up to two ulps (1.4 eps relative), about as
+        # far as bfloat16 log assignments are from float32 ones (1.2 eps); on CPU the half values are bitwise equal.
+        low_tolerance = device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
         for k in range(2):
             self._assert_pair(out, k, singles[k], exact=False)
-            self.assert_close(out["log_assignment"][k : k + 1], singles[k]["log_assignment"])
+            self.assert_close(
+                out["log_assignment"][k : k + 1], singles[k]["log_assignment"], low_tolerance=low_tolerance
+            )
         self.assert_close(out["prune0"], torch.ones(2, self._M, device=device, dtype=torch.long))
 
     def test_convention_lightglue_batch_stops_early_when_every_pair_meets_its_criterion_5898(self, device, dtype):

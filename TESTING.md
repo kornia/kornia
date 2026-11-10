@@ -2,9 +2,42 @@
 
 This document explains how to run the Kornia test suite, what the common pytest flags are, and how to handle recurring classes of test failures.
 
+## Environment and validation tasks
+
+Use [the contributor setup](CONTRIBUTING.md#developing-kornia) and Pixi for project
+commands. Tasks call `uv`; Python packages under test live in `.venv` or `.venv-py*`,
+not `.pixi`. The `py312` and `py313` features select `.venv-py312` and `.venv-py313`.
+Dependencies are defined in `pyproject.toml`; after an update run the matching install task.
+
+**CUDA:** Run `pixi run -e cuda install` to install the locked PyTorch as a CUDA build into the project `.venv`,
+which is also used by `pixi run -e cuda test-cuda`. PyPI's Linux wheels are already CUDA builds, so on Linux the
+task only syncs the lock, reinstalling every package so that removing a stale wheel cannot take files a locked
+wheel needs. PyPI's Windows wheels are CPU-only, so on Windows the task then replaces torch with the same version
+from the PyTorch CUDA index; a lock update to a new PyTorch has to update that version and index in `pixi.toml`
+and the index in `pyproject.toml` too. Pixi's `.pixi/envs/cuda` supplies the tools, not the Python dependencies
+under test. Commands run with `-e cuda` do not synchronize `.venv` automatically, so re-run the CUDA install task
+after a dependency or lock change. On Windows this is what preserves the CUDA build, and a default-environment
+command that synchronizes `.venv` replaces it, so re-run the task after one of those too. For focused CUDA tests,
+use `pixi run -e cuda test-module tests/<path> --device=cuda`.
+
+The locked build needs an NVIDIA driver from the R580 branch or newer and a Turing or newer GPU. Check
+`torch.cuda.is_available()` after installing: when it is false, a `--device=cuda` run skips its tests and still
+exits 0.
+
+`pixi run pre-commit-all` runs every hook; `pixi run lint` runs only Ruff. Use
+`pixi run typecheck` for types and `pixi run toml-fmt` for TOML formatting. Install the
+Git hook with `pixi run pre-commit-install`. Task definitions live in [pixi.toml](pixi.toml).
+
+`pixi run doctest` skips examples needing an uncached checkpoint. Use
+`pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to exercise them with downloads
+(about 838 MB on a cold cache). PR CI uses the restored cache and skips misses; scheduled
+runs on `main` at 00:23 and 12:23 UTC download and exercise those examples.
+
 ## Running Tests
 
-Kornia uses [pixi](https://pixi.sh) to manage the test environment.
+`test-module` forwards pytest arguments: a file, node ID, or `-k` expression narrows the
+run. Start focused and expand for the affected callers. `KORNIA_TEST_OPTIMIZER=inductor`
+enables dynamo/compile tests; the conformance options below are separate.
 
 ```bash
 # All tests, default device (cpu) and dtype (float32)
@@ -47,7 +80,8 @@ pixi run test-quick
 
 ## Test Structure
 
-All tests inherit from `testing.base.BaseTester` and implement a standard set of methods:
+Use `testing.base.BaseTester` for operator tests. Include smoke, exception, shape,
+numerical, gradient, and compile tests where applicable; not every change needs every kind:
 
 ```python
 from testing.base import BaseTester
@@ -64,6 +98,85 @@ class TestMyFunction(BaseTester):
 
 The `device` and `dtype` fixtures are injected automatically from the CLI options.  Use `self.assert_close()` for tensor comparisons — it automatically selects tolerances appropriate for the dtype.
 
+Keep numerical expected values self-contained: prefer a hardcoded literal with the
+small generation snippet and source to requiring an optional reference library.
+Optional-dependency integration tests, including ONNX tests, may use `pytest.importorskip`.
+Preserve device/dtype with the injected fixtures. Keep tests deterministic, independent,
+and proportional to the change; test batched behavior and derivatives where applicable.
+Reusable helpers belong in `testing/`, not under `tests/`.
+
+## Comparing a branch against another revision
+
+kornia is installed in editable mode, so `import kornia` resolves through the editable finder to
+the **primary checkout** regardless of the current directory. A measurement script that lives
+outside a worktree therefore imports the primary tree even when you run it from the worktree:
+`python /tmp/probe.py` puts `/tmp` first on `sys.path`, nothing shadows the editable install, and
+an A/B comparison silently measures the same revision twice and reports "no difference".
+
+Run comparison snippets from the worktree root, as stdin or `-c`, never as a file stored
+elsewhere. Only then does the leading empty `sys.path` entry -- the working directory -- shadow
+the editable install:
+
+```bash
+# From the primary checkout; select .venv-py* here if that is the environment under test.
+comparison_python="$PWD/.venv/bin/python"
+git worktree add /tmp/base-wt <base-revision>
+cd /tmp/base-wt && "$comparison_python" - <<'EOF'
+import sys
+import kornia
+print(sys.executable)
+print(kornia.__file__)  # must name the worktree, not the primary checkout
+EOF
+```
+
+On Windows, use the environment's `Scripts/python.exe` instead of `bin/python`.
+Print `kornia.__file__` inside every measurement block and check that it names the tree you
+meant. A `cd` into the worktree is not by itself enough, and neither is putting the worktree on
+`PYTHONPATH` while the script still lives somewhere else. The same applies to `sys.executable`
+when more than one virtualenv is in play: name the interpreter explicitly rather than relying on
+`PATH`.
+
+## Gradient guards across PyTorch versions
+
+`torch.clamp` is not a portable gradient guard: its derivative **at the bound** passes the incoming gradient
+through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever the bound is also the singular
+point -- `clamp(min=0).sqrt()`, `clamp(-1, 1).acos()`, `clamp(-1, 1).asin()` -- the clamp bounds the value only,
+so the unbounded derivative still reaches the backward pass as `inf` or `nan` on the older half of the supported
+range while 2.14 masks it. A floor below the dtype's smallest subnormal is no guard either: `clamp(min=1e-12)`
+underflows to `0` in `float16`. Substitute a safe argument before evaluating the singular expression;
+take any value-only correction from a detached copy. `torch.where` does not protect an
+unselected arm's backward pass: both differentiated arms must have finite derivatives.
+For example, `safe = torch.where(x > 0, x, torch.ones_like(x))` followed by
+`torch.where(x > 0, safe.sqrt(), torch.zeros_like(x))` chooses a zero derivative at zero
+without evaluating `sqrt(0)` in autograd; that convention still needs a contract justification.
+A CPU float32 run on a recent torch does not exercise the version difference -- the
+2.5.1 leg is what discriminates. The measurements and the audit of the pattern are in #4229.
+
+## Repository contract checks
+
+### Public API inventory
+
+`tests/api_surface.json` inventories the public names of stable-core modules; `tests/test_api_surface.py` rejects their removal until the inventory is updated in the same change. Run `tests.test_api_surface.regenerate()` to regenerate it. Keep tracked module keys (use `[]` when removing every name). Every module that declares `__all__` under a recorded package root has its own key; deleting such a module empties its key, and that empty key stays as the record. The `Import Surface` workflow also checks that each inventory removal corresponds to an actual export removal in the same diff. An inventory edit acknowledges an `__all__` removal only for the exact same module and name. For an `__all__` name of a module without its own key, such as a module outside the recorded package roots, add the exact module and name to `tests/api_surface_removals.json`, a JSON object mapping module names to lists of removed names (for example, `{"kornia.feature.dedode": ["DeDoDe"]}`). Only entries newly added relative to the merge base count, and each must match an actual `__all__` removal in that change; an unrelated source edit or a previously recorded acknowledgement does not count. Explicit acknowledgements do not replace updates to existing inventory entries, the deprecation window, or release notes.
+
+### Dynamic-shape check messages
+
+A `KORNIA_CHECK` message that formats a tensor size or an `int` argument specializes it under a dynamic-shape `torch.compile`, which then compiles a graph per value. Compare sizes with `KORNIA_CHECK_SAME_SIZE`, `KORNIA_CHECK_SIZES` or `KORNIA_CHECK_SHAPE`, or pass the message as `lambda: f"..."`. TorchScript rejects a `lambda`, so a function it compiles formats whole shapes instead, such as `{x.shape}`, which do not specialize. `tests/core/test_check_message_call_sites.py` enforces both and lists the functions TorchScript compiles.
+
+### Docstring checks
+
+The authoring rules live in [Docstring style](CONTRIBUTING.md#docstring-style).
+
+What `tests/test_docstring_style.py` checks:
+
+- every package of `kornia` is assigned to in scope or excluded (global);
+- a converted module has no function or class, exported by an `__all__` or documented on a docs page, without a docstring;
+- each public function and class of a converted module has a `See Also:` whose entries carry an explanation and name a kornia object, with no self-link or private target; an exception needs a non-empty reason, and an ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.`` title line replaces the `See Also:`;
+- every Python-domain object role (`:func:`, `:class:`, `:meth:`, `:attr:`, `:data:`, `:const:`, `:exc:`, `:obj:`) in a converted object's docstring, and in those of the methods, properties and attributes autodoc documents under a converted class, resolves as Sphinx resolves it. It must name either an object registered by the `.rst` pages under `docs/source`, or a torch, Python or NumPy object in the cached intersphinx inventories (`docs/source/_intersphinx`). Registered objects include the data attributes autodoc documents: enum members and dataclass fields under `:undoc-members:`, and variables with a `#:` comment or a docstring. An intersphinx object must be of a type the role links to: a function for `:func:`, a method for `:meth:`, an attribute or property for `:attr:`, and nothing for `:const:`. Only `:func:` and `:meth:` drop a trailing `()`. Roles in a catalog module docstring must import;
+- no `kornia/**/*.py` file or `docs/source` page writes a shape tuple as `:math:`, comments included (global); a tuple that reads as a shape but is a value is listed with what it is in `MATH_NON_SHAPES` (`testing/docstring_rollout.py`), and an entry that no longer occurs fails;
+- a catalog namespace's module docstring names every export of its `__all__` inside a role or a double-backtick literal, where a qualified name must be a path to that export (`torch.nn.functional.normalize` does not catalog `kornia.enhance.normalize`); the same word in plain prose or in single backticks does not count.
+
+Read the Docs builds with `fail_on_warning: true` (`readthedocs.yml`) and the docs dependencies pinned in `uv.lock`, the same versions as `pixi run build-docs`, so a Sphinx warning fails the docs check. A module joins these checks when it is added to the lists in `testing/docstring_rollout.py`: `DOCSTRING_MODULES` (defining-module prefixes: `See Also:` and references) and `CATALOG_NAMESPACES` (namespaces whose `__all__` the module docstring must name). An object that needs no `See Also:` goes into `SEE_ALSO_EXCEPTIONS` with a reason. The package inventory is `IN_SCOPE_PACKAGES` and `EXCLUDED_PACKAGES`. The helpers are in `testing/docstring_style.py`; its `sphinx_registry` raises on an autodoc option it does not model, so a docs page that adds one (`:no-index:`, `:exclude-members:`, `:inherited-members:`) needs the registry taught first.
+
 ## Markers
 
 | Marker | Meaning |
@@ -74,7 +187,40 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 | `@pytest.mark.onnx_conformance` | Part of the ONNX conformance test; deselected unless `--onnx-conformance` selects packages |
 | `@pytest.mark.compile_conformance` | Part of the torch.compile conformance test; deselected unless `--compile-conformance` selects packages |
 
+### Selecting conformance packages
+
+From the repository root after fetching the target branch, select changed packages and
+their importers, including committed, staged, unstaged, and untracked files. Use
+`upstream/main` from the contributor setup, or `origin/main` when `origin` is Kornia itself:
+
+```bash
+(
+  set -eu
+  conformance_target=upstream/main
+  # For a direct clone of Kornia, use this instead:
+  # conformance_target=origin/main
+  conformance_base=$(git merge-base "$conformance_target" HEAD)
+  conformance_paths=$(
+    git diff --no-renames --name-only "$conformance_base" &&
+      git ls-files --others --exclude-standard
+  )
+  printf '%s\n' "$conformance_paths" | pixi run python .github/scripts/conformance_packages.py onnx
+  printf '%s\n' "$conformance_paths" | pixi run python .github/scripts/conformance_packages.py compile
+)
+```
+
+The selectors use Pixi's Python so they can parse the repository's Python syntax.
+The subshell stops if the base cannot be resolved; check the selected remote and fetch it
+before retrying. `--no-renames` includes both the old and new paths of a moved file, as CI does.
+Each command prints the corresponding conformance option's package value (`all`, a
+comma-separated list, or empty when no promised operator is affected). Recompute after edits.
+
 ### ONNX conformance (#5819)
+
+Before changing export behavior, inspect `kornia/onnx/`, its mixins in `kornia/core/`,
+and existing ONNX tests. Development uses optional `onnx`, `onnxruntime`, and
+`onnxscript`; verify graph construction/export and runtime behavior when both change.
+Use the [package selection](#selecting-conformance-packages) for changed packages and their importers.
 
 `tests/onnx/test_conformance.py` holds kornia's ONNX promise: every *promised* case -- a record of the survey
 snapshot `docs/source/_data/export_support.json` with ONNX status `ok` in a stable-core package
@@ -116,6 +262,9 @@ promised operator is a regression to fix.
 
 ### torch.compile conformance (#5819)
 
+Run this check for changed packages and their importers using the
+[package selection](#selecting-conformance-packages).
+
 `tests/test_inductor_conformance.py` holds the torch.compile promise the same way: every record of the survey snapshot
 with compile status `ok` in a stable-core package, without anything built from pretrained weights or listed in
 `EXCLUDED`, must compile with `torch.compile(..., fullgraph=True)` and the default inductor backend and match eager
@@ -150,7 +299,7 @@ conformance jobs run with `--timeout=600`.
 
 **Effect on tests.** Numerically sensitive tests that compare float32 outputs of matrix operations against hardcoded expected values (or against a CPU reference) can fail because the accumulated rounding error exceeds the test tolerance.
 
-**In Kornia's test suite.** TF32 is **off by default**. Pass `--tf32` (or set `KORNIA_TEST_TF32=true`) to enable it. Tests that are known to be sensitive to TF32 are marked `@pytest.mark.tf32`; without `--tf32` they are marked `xfail` so the suite stays green.
+**In Kornia's test suite.** TF32 is **off by default** for both matmul and cuDNN convolutions. Pass `--tf32` (or set `KORNIA_TEST_TF32=true`) to enable it. Tests that are known to be sensitive to TF32 are marked `@pytest.mark.tf32`; without `--tf32` they are marked non-strict `xfail`, so a default run reports neither their failure nor their recovery.
 
 **Fixing a TF32-sensitive test.** Prefer fixing the test data over relaxing tolerances:
 
@@ -203,16 +352,11 @@ will fail on CUDA/MPS even though the code is correct.
 
 **Affected operations.** Histogram-based orientation estimators (`LAFOrienter`), ALIKED backbone (scatter/pool ops), and any custom op that uses `torch.scatter_add` or `atomicAdd` on CUDA.
 
-**Fix.** Pass `nondet_tol` to gradcheck:
-```python
-# In a test using self.gradcheck():
-self.gradcheck(fn, inputs, rtol=1e-3, atol=1e-3, nondet_tol=1e-3)
-
-# In a test calling torch.autograd.gradcheck() directly:
-torch.autograd.gradcheck(fn, inputs, eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True, nondet_tol=1e-3)
-```
-
-A value of `1e-3` is usually sufficient; it should not exceed `atol`.
+**Use `self.gradcheck()`.** `BaseTester` supplies `nondet_tol=1e-10` for CUDA inputs
+when the caller does not set it; CPU keeps zero. This covers measured rounding from
+ordinary CUDA kernels without changing which kernels are tested. If an operation needs
+more, measure the discrepancy and justify its tolerance in the test instead of applying
+an arbitrary blanket relaxation. See `CUDA_GRADCHECK_NONDET_TOL` in `testing/base.py`.
 
 ---
 
@@ -399,15 +543,6 @@ process before they can raise.
 - `test_gradcheck[mps*]` — skipped automatically (`gradcheck` requires float64)
 - `*[mps*cdtype1*]` — skipped automatically (parametrized `torch.cdouble` tests)
 - `test_autocast[mps*]` — skipped automatically (MPS autocast changes dtype)
-- any module marked `mps_process_abort` on MPS — skipped automatically; today that is
-  `tests/geometry/test_ransac.py`. RANSAC's batched minimal solvers abort the process (SIGABRT) on
-  the paravirtualized GPU of the hosted macOS runners, at a site that moves between runs, and
-  SIGABRT carries no exception type, so these **cannot be pinned** as strict xfails — the process
-  dies and every test after it is lost ([#4204](https://github.com/kornia/kornia/issues/4204)).
-  The marker lives on the test module, so a rename cannot silently disarm the skip. Real Apple
-  hardware does not abort: `--run-mps-process-abort` (env `KORNIA_TEST_RUN_MPS_PROCESS_ABORT`)
-  runs them anyway for local diagnosis, at the cost of failures the manifest does not pin — on an
-  M1 with torch 2.14.0 that is 3 failed / 10 passed, so the skip costs 9 real-hardware passes.
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to the outermost pixel *centers*, at `±(1 - 1/size)`, and using `padding_mode="zeros"`, which is exactly equivalent. Clamping to `[-1, 1]` is not: with `align_corners=False` that is the outer edge of the border pixel, where bilinear sampling blends it with the zero padding.
 
@@ -436,6 +571,18 @@ When an MPS failure is fixed, remove its line from `mps_float32.txt`. When a tes
 - **Seed the RNG** when the test compares against reference values: `torch.manual_seed(seed)`.
 - **Generate random inputs on CPU** then move to device, to avoid device-specific RNG sequences.
 - **Use realistic inputs**: positive depths, in-bounds pixel coordinates, valid rotation matrices, and sensible intrinsic matrices.
-- **Avoid hardcoding CUDA expected values** computed from CPU runs — they will differ.
-- **Use `nondet_tol`** in `gradcheck` for ops that use CUDA atomics.
-- **Check the error magnitude** before relaxing tolerances: only relax `atol`/`rtol` if the maximum observed error is well below 0.01, and document why.
+- **Use independent expected values** from the mathematical definition or an appropriate reference, often at higher precision; another run of the implementation is not an independent oracle.
+- **Use `self.gradcheck()`**; if CUDA nondeterminism exceeds `BaseTester`'s default, measure it and justify any larger `nondet_tol`.
+- **Justify tolerance overrides** using dtype, scale, conditioning, and the algorithm's accuracy requirements. Measure the discrepancy and keep the test sensitive to regressions.
+
+## Diagnosing reported problems
+
+Start with a minimal reproduction and the narrowest relevant test. Do not claim a failure is pre-existing until you have compared against the relevant base revision safely.
+
+Ask only for environment details that help the diagnosis: kornia, PyTorch, and Python versions; OS family; device backend; CUDA availability/version; and GPU model when relevant. Prefer the same privacy-conscious command used by the bug template:
+
+```bash
+python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; backend=torch.version.cuda or getattr(torch.version, 'hip', None); print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA/ROCm {backend} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
+```
+
+Before asking a user to share broader diagnostic output, tell them to preview and redact it. Do not request usernames, home or project paths, environment variables, tokens, internal hostnames, or names of private data and models.

@@ -283,6 +283,21 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    @pytest.mark.parametrize(
+        "epsilon,expected_value",
+        [(0.0, 0.25), (1e-10, 0.24998611622339154), (1e-6, 0.16073222839317233)],
+    )
+    def test_epsilon(self, device, dtype, epsilon, expected_value):
+        samples = torch.full((2, 4), 0.5, device=device, dtype=dtype)
+        bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.125, device=device, dtype=dtype)
+
+        actual = TestHistogram2d.fcn(samples, samples, bins, bandwidth, epsilon=epsilon)
+        # Each joint bin is 4 * exp(-16): raw / (4 * raw + epsilon), using Python's math.exp.
+        expected = torch.full((2, 2, 2), expected_value, device=device, dtype=dtype)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
     def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):
         # The first case overflows the normalization sum in float16; the second overflows each matrix entry.

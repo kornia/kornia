@@ -50,7 +50,7 @@ gradients. For a single fixed-parameter operation, plain PyTorch or torchvision 
 - [kornia.augmentation](https://kornia.readthedocs.io/en/latest/augmentation.html): batched differentiable augmentations with transform tracking and inversion
 - [kornia.filters](https://kornia.readthedocs.io/en/latest/filters.html): blur, edges (Sobel, Canny), gradients
 - [kornia.color](https://kornia.readthedocs.io/en/latest/color.html): color space conversions
-- [kornia.feature](https://kornia.readthedocs.io/en/latest/feature.html): detectors, descriptors, and matchers (SIFT, HardNet, DISK, LoFTR, LightGlue, ...)
+- [kornia.feature](https://kornia.readthedocs.io/en/latest/feature.html): detectors, descriptors, and matchers (SIFT, HardNet, DISK, LoFTR, LightGlue, ...); which implementation to use on each device: [speed and accuracy against the reference implementations](https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device)
 - [kornia.enhance](https://kornia.readthedocs.io/en/latest/enhance.html): normalization, histogram, contrast/gamma adjustments
 - [kornia.losses](https://kornia.readthedocs.io/en/latest/losses.html): SSIM, PSNR, Dice, focal, Hausdorff losses
 - [kornia.metrics](https://kornia.readthedocs.io/en/latest/metrics.html): accuracy, IoU, PSNR/SSIM metrics

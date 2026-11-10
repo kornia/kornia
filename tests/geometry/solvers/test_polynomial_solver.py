@@ -21,6 +21,7 @@ import torch
 
 import kornia.geometry.solvers as solver
 from kornia.core.exceptions import ShapeError
+from kornia.geometry.solvers import polynomial_solver
 from kornia.geometry.solvers.polynomial_solver import _exact_power_of_two, _solve_cubic_real, _solve_cubic_with_count
 
 from testing.base import BaseTester
@@ -592,6 +593,18 @@ class TestMultiplyDegOnePoly(BaseTester):
         out_poly = solver.multiply_deg_one_poly(a, b)
         assert out_poly.shape == (B, 10)
 
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched polynomial failed in unsqueeze(2) with an IndexError.
+        a = torch.rand(4, device=device, dtype=dtype)
+        b = torch.rand(4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a, b)
+        with pytest.raises(ShapeError, match=r"b must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a[None], b)
+        # An extra batch dimension returned products of the wrong coefficients instead of raising.
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a.expand(1, 4, 4), b.expand(1, 4, 4))
+
     @pytest.mark.parametrize(
         "a_coeffs, b_coeffs, expected_coeffs",
         [
@@ -686,6 +699,26 @@ class TestMultiplyDegTwoOnePoly(BaseTester):
         result = solver.multiply_deg_two_one_poly(a, b)
         self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        "a_shape, b_shape, message",
+        [
+            ((10,), (4,), r"a must have shape \(B, 10\)"),
+            ((1, 10), (4,), r"b must have shape \(B, 4\)"),
+            ((1, 2, 10), (1, 2, 4), r"a must have shape \(B, 10\)"),
+            ((2, 4), (2, 10), r"a must have shape \(B, 10\)"),
+            ((2, 8), (2, 5), r"a must have shape \(B, 10\)"),
+            ((2, 10), (2, 5), r"b must have shape \(B, 4\)"),
+        ],
+        ids=["unbatched_a", "unbatched_b", "extra_dim", "swapped", "other_product_40", "b_width"],
+    )
+    def test_wrong_shape_raises_6454(self, a_shape, b_shape, message, device, dtype):
+        # An unbatched a failed in unsqueeze(2) with an IndexError and an unbatched b with a RuntimeError; sizes whose
+        # product is 40 returned a (B, 20) tensor, as only the product of the last two sizes was used.
+        a = torch.rand(*a_shape, device=device, dtype=dtype)
+        b = torch.rand(*b_shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=message):
+            solver.multiply_deg_two_one_poly(a, b)
+
 
 class TestDeterminantToPolynomial(BaseTester):
     def test_smoke(self, device, dtype):
@@ -771,6 +804,74 @@ class TestDeterminantToPolynomial(BaseTester):
 
         # Compare result with expected values
         self.assert_close(result, expected, rtol=1e-5, atol=1e-5)
+
+    def test_half_products_cancel_in_float32(self, device, dtype):
+        """Two products of ``cs[:, 0]`` that cancel to ``2**-14`` keep the residual in every dtype.
+
+        ``A[0, 0, 3] * A[0, 1, 7] * A[0, 2, 12] = 1.0078125**2 = 1 + 2**-6 + 2**-14`` and
+        ``A[0, 0, 7] * A[0, 1, 3] * A[0, 2, 12] = 1.015625 = 1 + 2**-6`` enter ``cs[:, 0]`` with opposite signs. Rounded
+        to float16 or bfloat16, the first product equals the second and the coefficient is 0. In float32 the
+        difference is exact, and ``2**-14`` is representable in both half dtypes.
+        """
+        A = torch.zeros(1, 3, 13, device=device, dtype=dtype)
+        A[0, 0, 3] = A[0, 1, 7] = 1.0078125
+        A[0, 0, 7] = 1.015625
+        A[0, 1, 3] = A[0, 2, 12] = 1.0
+        expected = torch.zeros(1, 11, device=device, dtype=dtype)
+        expected[0, 0] = 2**-14
+        result = solver.determinant_to_polynomial(A)
+        assert result.dtype == dtype
+        self.assert_close(result, expected, rtol=0, atol=0)
+
+    def test_a_call_leaves_later_cpu_float64_calls_unchanged_6571(self, device, dtype):
+        """A call on any device and dtype does not change the result of a later CPU float64 call."""
+        A = torch.zeros(1, 3, 13).index_put(
+            (torch.tensor([0, 0, 0]), torch.tensor([0, 1, 2]), torch.tensor([0, 4, 8])), torch.tensor([2.0, 3.0, 5.0])
+        )
+        expected = torch.zeros(1, 11, dtype=torch.float64).index_put(
+            (torch.tensor([0]), torch.tensor([10])), torch.tensor([30.0], dtype=torch.float64)
+        )
+        solver.determinant_to_polynomial(A.to(device, dtype))
+        self.assert_close(solver.determinant_to_polynomial(A.double()), expected)
+
+
+@pytest.mark.parametrize(
+    "name, call",
+    [
+        ("multiplication_indices", lambda x: solver.determinant_to_polynomial(x.expand(1, 3, 13))),
+        ("signs", lambda x: solver.determinant_to_polynomial(x.expand(1, 3, 13))),
+        ("coefficient_map", lambda x: solver.determinant_to_polynomial(x.expand(1, 3, 13))),
+        ("T_deg1", lambda x: solver.multiply_deg_one_poly(x.expand(1, 4), x.expand(1, 4))),
+        ("T_deg2", lambda x: solver.multiply_deg_two_one_poly(x.expand(1, 10), x.expand(1, 4))),
+    ],
+)
+def test_module_tables_are_not_rebound_by_a_call_6571(name, call, device, dtype):
+    """A call's result depends only on its input, so a call must leave the module's lookup tables alone."""
+    before = getattr(polynomial_solver, name)
+    # The dtypes differ so that a table following its caller moves in at least one of the two calls.
+    for call_dtype in (dtype, torch.float32 if dtype == torch.float64 else torch.float64):
+        if device.type == "mps" and call_dtype == torch.float64:
+            continue
+        call(torch.ones(1, device=device, dtype=call_dtype))
+    assert getattr(polynomial_solver, name) is before
+
+
+@pytest.mark.parametrize(
+    "call, shapes",
+    [
+        (solver.multiply_deg_one_poly, ((1, 4), (1, 4))),
+        (solver.multiply_deg_two_one_poly, ((1, 10), (1, 4))),
+    ],
+)
+def test_multiply_poly_after_a_call_elsewhere_matches_a_fresh_call_6571(call, shapes, device, dtype):
+    """The polynomial products share the determinant's table handling: an earlier call does not change a later one."""
+    a, b = (torch.arange(1.0, shape[-1] + 1, dtype=torch.float64).view(shape) for shape in shapes)
+    expected = call(a, b).clone()
+    call(a.to(device, dtype), b.to(device, dtype))
+    actual = call(a, b)
+    assert actual.device.type == "cpu"
+    assert actual.dtype == torch.float64
+    assert torch.equal(actual, expected)
 
 
 class TestQuarticSolver(BaseTester):

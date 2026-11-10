@@ -25,11 +25,18 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class OtsuThreshold(torch.nn.Module):
-    """Otsu thresholding module for PyTorch tensors.
+    """Threshold an image at the level Otsu's method picks (module form).
+
+    ``otsu = OtsuThreshold()`` stores no settings, and
+    ``thresholded, threshold = otsu(x, nbins, slow_and_differentiable)`` is :func:`otsu_threshold` without
+    ``return_mask``.
 
     Convention:
-        See the Convention block on :func:`~kornia.filters.otsu_threshold`. ``forward`` has no ``return_mask`` and
-        always returns the thresholded tensor with the thresholds.
+        See the Convention block on :func:`~kornia.filters.otsu_threshold`.
+
+    See Also:
+        - :func:`otsu_threshold`: the one-call form.
+        - :class:`InRange`: thresholds with bounds you give instead of a histogram.
     """
 
     # Standard deviation, in bin widths, of the Gaussian kernel density estimate whose histogram selects the
@@ -80,7 +87,12 @@ class OtsuThreshold(torch.nn.Module):
         min_values, max_values = min_values / scale, max_values / scale
         widths = max_values - min_values
         safe_widths = torch.where(widths > 0, widths, torch.ones_like(widths))
-        indices = ((values - min_values) * bins / safe_widths).to(torch.int64).clamp(0, bins - 1)
+        # A pixel on a bin edge has a coordinate that is an integer only when the division is correctly rounded.
+        # Triton lowers float32 `/` to an approximate division, so under torch.compile on CUDA such a pixel can fall
+        # into the bin below; Inductor lowers addcdiv's division correctly rounded, and adding 0 is exact, so eager
+        # and compiled bin it alike.
+        coordinates = torch.addcdiv(values.new_zeros(()), (values - min_values) * bins, safe_widths)
+        indices = coordinates.to(torch.int64).clamp(0, bins - 1)
         histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
 
         # Match linspace's symmetric interpolation and exact end points with the arithmetic of `_upper_edge`'s
@@ -378,7 +390,11 @@ def otsu_threshold(
     slow_and_differentiable: bool = False,
     return_mask: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
+    r"""Threshold an image at the level Otsu's method picks, one threshold per image plane.
+
+    ``thresholded, threshold = otsu_threshold(x)`` finds the threshold that best splits the histogram of each image
+    plane of ``x`` into two classes and keeps the pixels above it. With ``return_mask=True`` the first output is the
+    boolean mask ``x > threshold`` instead.
 
     Convention:
         - One threshold is returned per plane over the last two axes: a ``(B, C, H, W)`` input gives ``B * C``
@@ -398,24 +414,21 @@ def otsu_threshold(
           every device. A constant plane uses its constant value as the threshold.
         - The foreground is ``x > threshold``, strictly. The first output is ``x * (x > threshold)``, not a
           binary image, and its gradient is that mask.
-        - With ``slow_and_differentiable=True``, every pixel contributes to a Gaussian kernel density estimate and
-          the threshold has a straight-through gradient; see the note below for the estimate and surrogate.
-          The default path's threshold has no gradient. Both paths support ``torch.export`` and full-graph
-          ``torch.compile``.
+        - The threshold of the default path has no gradient. With ``slow_and_differentiable=True`` it has a
+          straight-through gradient with respect to ``x``; see the note. Both paths support ``torch.export`` and
+          full-graph ``torch.compile``.
 
     Args:
-        x (Tensor): Input tensor (image or batch of images) of at most five dimensions.
-        nbins (int): Number of bins for histogram computation, default is 256.
-        slow_and_differentiable (bool): If True, build the histogram from a Gaussian kernel density estimate and give
-            the threshold a gradient with respect to ``x``; see the note below. Default is False.
-        return_mask (bool): If True, return the boolean mask ``x > threshold`` in place of the thresholded image,
-            with each pixel compared against the threshold of its own image and channel. If False, return the
-            thresholded image.
+        x: image or batch of images with at most five dimensions, such as ``(B, C, H, W)``.
+        nbins: number of histogram bins.
+        slow_and_differentiable: if ``True``, build the histogram from a Gaussian kernel density estimate and give
+            the threshold a gradient with respect to ``x``; see the note.
+        return_mask: if ``True``, the first output is the mask, with each pixel compared against the threshold of its
+            own image and channel.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, or the boolean mask ``x > threshold`` when
-        ``return_mask`` is True, each with the shape of ``x``, and the computed threshold values. The thresholded
-        tensor cannot tell a kept pixel of value 0 from a dropped one; use the mask for that.
+        the first output, with the shape of ``x``, and the thresholds. The thresholded tensor cannot tell a kept pixel
+        of value 0 from a dropped one; use the mask for that.
 
     Raises:
         ValueError: If the input tensor has more than five dimensions.
@@ -425,29 +438,15 @@ def otsu_threshold(
         You can find more information about the Otsu algorithm here: https://en.wikipedia.org/wiki/Otsu's_method
 
     .. note::
-        With ``slow_and_differentiable=True``, each pixel is spread into a Gaussian with a standard deviation of 0.1
-        bin, and the histogram holds the mass of these Gaussians in each bin, a pixel's mass beyond the plane's range
-        staying in the first or the last bin, so every pixel contributes its full mass. The threshold is the upper edge
-        of the bin selected by the best split of that histogram, as on the default path, and is usually within one bin
-        of the default threshold. A bin counts as non-empty only above 1 % of one pixel's mass, so of the splits that
-        give the same partition the lowest is taken on every device. Each pixel's class is the side of the selected
-        edge its bin lies on, and a floating threshold is corrected to separate the two classes as on the default
-        path.
+        With ``slow_and_differentiable=True``, the threshold is the upper edge of the bin selected by the best split of
+        the smoothed histogram, as on the default path, and is a hard split. Its first-order gradient is a
+        straight-through surrogate, the gradient of a soft-argmax over the between-class variance of a wider
+        estimate. It does not match finite differences of the hard threshold, and its higher-order derivatives are
+        not those of a soft threshold.
 
-        The threshold uses a hard split, and its first-order gradient is a straight-through surrogate: the
-        gradient of a soft-argmax over the between-class variance curve :math:`\sigma_B^2(k)` of a wider estimate,
-        with a standard deviation of 0.5 bin, so that a pixel's gradient varies smoothly with its value instead of
-        concentrating on pixels near a bin edge. Split :math:`k` is weighted by
-        :math:`\operatorname{softmax}_k\left(\sigma_B^2(k) / (0.01 \max_j \sigma_B^2(j))\right)`. The curve's means
-        are measured in bins and the temperature is relative to the curve, so the weights do not depend on the
-        intensity scale or offset of ``x``. The surrogate is evaluated on the plane shifted by its minimum and
-        divided by its range, or by its largest magnitude when the range overflows, with these factors cancelled
-        from its first-order gradient, so narrow and finite extreme ranges stay safe. Higher-order derivatives through
-        this straight-through normalization do not represent derivatives of the original-unit soft threshold.
-        Finite differences of the hard threshold do not match the surrogate gradient. The wider estimate is computed
-        only when ``x`` requires a gradient. With the default ``slow_and_differentiable=False``
-        the threshold has no gradient. On both paths the thresholded image is ``x * (x > threshold)``, whose gradient
-        with respect to ``x`` is that mask.
+    See Also:
+        - :class:`OtsuThreshold`: the module form, without ``return_mask``.
+        - :func:`in_range`: thresholds with bounds you give instead of a histogram.
 
     Example:
         >>> import torch
