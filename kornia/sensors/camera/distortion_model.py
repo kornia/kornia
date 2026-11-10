@@ -47,7 +47,9 @@ class AffineTransform:
         """Distort one or more Vector2 points using the affine transform.
 
         Convention:
-            - ``points`` is on the **normalized** :math:`z = 1` plane and the result is in **pixels**:
+            - ``points`` is on the image plane (normalized :math:`z = 1` points for
+              :class:`~kornia.sensors.camera.PinholeModel`, camera-frame ``(x, y)`` for
+              :class:`~kornia.sensors.camera.Orthographic`) and the result is in **pixels**:
               ``u = fx * x + cx`` and ``v = fy * y + cy``, with ``params`` laid out as ``[fx, fy, cx, cy]``;
               the ``Vector2`` counterpart of :func:`~kornia.geometry.camera.distort_points_affine`.
             - :meth:`undistort` is the closed-form inverse.
@@ -76,7 +78,7 @@ class AffineTransform:
         """Undistort one or more Vector2 points using the affine transform.
 
         Convention:
-            - ``points`` is in **pixels** and the result is on the normalized :math:`z = 1` plane:
+            - ``points`` is in **pixels** and the result is on the image plane of :meth:`distort`:
               ``x = (u - cx) / fx`` and ``y = (v - cy) / fy``, the closed-form inverse of :meth:`distort`
               with the same ``params`` layout -- see the Convention block there.
 

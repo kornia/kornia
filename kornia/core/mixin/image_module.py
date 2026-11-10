@@ -292,6 +292,8 @@ class ImageModuleMixIn:
 
         Raises:
             TypeError: if ``x`` is none of the supported types.
+            ImportError: if ``x`` is not a ``str``, tensor or NumPy array and Pillow is not installed, since the PIL
+                type check comes first (under the default ``InstallationMode.RAISE``).
             ValueError: if ``x`` is a NumPy array with a negative stride, such as OpenCV's ``img[..., ::-1]``; pass
                 ``img[..., ::-1].copy()``.
 

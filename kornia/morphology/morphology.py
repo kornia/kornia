@@ -830,8 +830,8 @@ def gradient(
     ``out = gradient(tensor, kernel)`` returns ``dilation(tensor, kernel) - erosion(tensor, kernel)`` with the same
     arguments, a ``(B, C, H, W)`` edge-strength map that is large where the image changes. Under a non-``geodesic``
     border, with inputs that keep the image dtype (see :func:`dilation`), it equals
-    ``scipy.ndimage.morphological_gradient`` with the matching mode. For a flat kernel (no ``structuring_element``)
-    symmetric about its origin it is the value range over each neighborhood.
+    ``scipy.ndimage.morphological_gradient`` with the matching mode and ``cval=border_value``. For a flat kernel
+    (no ``structuring_element``) symmetric about its origin it is the value range over each neighborhood.
 
     .. image:: _static/img/gradient.png
 
@@ -906,7 +906,8 @@ def top_hat(
         :func:`dilation`), with the mode mapped as in :doc:`Conventions & Pitfalls </get-started/conventions>` and
         ``cval=border_value``, it equals ``scipy.ndimage.white_tophat``. OpenCV's ``MORPH_TOPHAT``, at its
         default border (kornia's ``geodesic``), ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for
-        a kernel symmetric about its origin, because ``cv2.dilate`` does not reflect the kernel.
+        a flat kernel (no ``structuring_element``) symmetric about its origin: OpenCV takes no structuring element,
+        and ``cv2.dilate`` does not reflect the kernel.
 
     Args:
         tensor: floating-point image ``(B, C, H, W)``; another dtype raises ``TypeError``, another rank ``ValueError``.
@@ -980,7 +981,8 @@ def bottom_hat(
         :func:`dilation`), with the mode mapped as in :doc:`Conventions & Pitfalls </get-started/conventions>` and
         ``cval=border_value``, it equals ``scipy.ndimage.black_tophat``. OpenCV's ``MORPH_BLACKHAT``, at its
         default border (kornia's ``geodesic``), ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for
-        a kernel symmetric about its origin, because ``cv2.dilate`` does not reflect the kernel.
+        a flat kernel (no ``structuring_element``) symmetric about its origin: OpenCV takes no structuring element,
+        and ``cv2.dilate`` does not reflect the kernel.
 
     Args:
         tensor: floating-point image ``(B, C, H, W)``; another dtype raises ``TypeError``, another rank ``ValueError``.
@@ -1077,7 +1079,9 @@ def reconstruction(
     :math:`\min(\delta_B(x), \text{mask})`, until the result stops changing. ``method="erosion"`` is the dual,
     :math:`-\text{reconstruction}(-\text{seed}, -\text{mask})`, which lowers a seed toward the mask from above.
     ``reconstruction(erosion(x, kernel), x)`` is opening by reconstruction: it removes the shapes :func:`opening`
-    removes and restores the whole of each shape that survives the erosion, thin parts included.
+    removes and restores the whole of each shape that survives the erosion, thin parts included. The shapes are
+    connected through ``reconstruction``'s own ``kernel``, a :math:`3 \times 3` square by default; for an erosion
+    ``kernel`` with gaps, such as ``[[1, 0, 1, 0, 1]]``, pass the same ``kernel`` to ``reconstruction``.
 
     Convention:
         - Matches ``skimage.morphology.reconstruction``: the default ``kernel`` is a :math:`3 \times 3` square,

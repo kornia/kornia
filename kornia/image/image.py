@@ -57,7 +57,8 @@ class Image:
     ``img = Image(data, pixel_format, layout)`` wraps one unbatched image tensor, ``(C, H, W)`` or ``(H, W, C)`` as
     ``layout.channels_order`` says, and raises when the shape, the bit depth or the color space does not fit the data.
     :meth:`from_numpy`, :meth:`from_dlpack` and :meth:`from_file` build the layout and the pixel format for you.
-    kornia's other functions take plain channels-first tensors: pass them ``img.data`` of a ``CHANNELS_FIRST`` image.
+    kornia's other functions take plain channels-first tensors: pass them ``img.data`` of a ``CHANNELS_FIRST`` image,
+    or ``img.data[None]`` where they take a batch.
 
     .. warning::
 
