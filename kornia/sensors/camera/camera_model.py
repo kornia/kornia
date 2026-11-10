@@ -30,13 +30,21 @@ from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Pro
 
 
 class CameraModelType(Enum):
-    """Represent the type of camera projection and distortion model.
+    """Name a built-in camera model for :class:`CameraModel`: pinhole, Brown-Conrady, fisheye or orthographic.
 
-    Supported types:
-        - PINHOLE: Standard perspective projection with no distortion.
-        - BROWN_CONRADY: Standard radial and tangential distortion model, often used for wide-angle lenses.
-        - KANNALA_BRANDT_K3: Fisheye distortion model using a 9th-order polynomial for equidistant projection.
-        - ORTHOGRAPHIC: Parallel projection where rays are perpendicular to the image plane, with no perspective effect.
+    ``CameraModel(image_size, CameraModelType.PINHOLE, params)`` builds the model a member names, and the member fixes
+    the length of ``params``:
+
+    - ``PINHOLE``: :class:`PinholeModel`, perspective projection with no lens distortion, ``[fx, fy, cx, cy]``.
+    - ``BROWN_CONRADY``: :class:`BrownConradyModel`, OpenCV's radial and tangential lens distortion, 12 values.
+    - ``KANNALA_BRANDT_K3``: :class:`KannalaBrandtK3`, the fisheye model whose radius is a 9th-order odd polynomial
+      of the ray angle, 8 values.
+    - ``ORTHOGRAPHIC``: :class:`Orthographic`, parallel projection that drops ``z``, ``[fx, fy, cx, cy]``.
+
+    See Also:
+        - :class:`CameraModel`: builds the model a member names.
+        - :class:`CameraModelBase`: composes a custom model from a distortion and a projection.
+
     """
 
     PINHOLE = 0
@@ -100,39 +108,56 @@ def _validate_params(distortion: CameraDistortionType, params: torch.Tensor) -> 
 
 
 class CameraModelBase:
-    r"""Base class to represent camera models based on distortion and projection types.
+    """Compose a camera model from a distortion and a projection, to define a custom model.
 
-    Distortion is of 3 types:
-        - Affine, implemented by :class:`~kornia.sensors.camera.distortion_model.AffineTransform`
-        - Brown Conrady, implemented by :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`
-        - Kannala Brandt K3, implemented by :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform`
-    Projection is of 2 types:
-        - Z1, implemented by :class:`~kornia.sensors.camera.projection_model.Z1Projection`
-        - Orthographic, implemented by :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`
+    ``cam = CameraModelBase(distortion, projection, image_size, params)`` takes a distortion
+    (:class:`~kornia.sensors.camera.distortion_model.AffineTransform`,
+    :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform` or
+    :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform`), a projection
+    (:class:`~kornia.sensors.camera.projection_model.Z1Projection` or
+    :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`) and the flat ``params`` the distortion
+    reads. ``cam.project(points)`` maps a :class:`~kornia.geometry.vector.Vector3` of camera-frame points to a
+    :class:`~kornia.geometry.vector.Vector2` of pixels, and ``cam.unproject(pixels, depth)`` maps pixels at camera-frame
+    depths back to points. For a built-in model, use :class:`CameraModel` or one of the subclasses.
 
     Convention:
-        - the API is ``Vector``-typed: :meth:`project` takes a ``Vector3`` and returns a ``Vector2``, and
-          :meth:`unproject` the reverse; a raw :class:`torch.Tensor` is not accepted. This type system is kept
-          separate from :doc:`kornia.geometry.camera </geometry.camera>` by design
+        - :meth:`project` is ``distortion.distort(params, projection.project(points))`` and :meth:`unproject`
+          ``projection.unproject(distortion.undistort(params, pixels), depth)``. ``depth`` is the camera-frame ``z``,
+          shaped ``(*,)`` where :func:`~kornia.geometry.camera.perspective.unproject_points` takes ``(*, 1)``. Pixel
+          centres are integers (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
+        - points and pixels are ``Vector3`` and ``Vector2``: wrap a tensor as ``Vector3(points)``. This type system is
+          kept separate from :doc:`kornia.geometry.camera </geometry.camera>` by design
           (`#4274 <https://github.com/kornia/kornia/issues/4274>`_).
-        - ``params`` is a flat ``(N,)`` or batched ``(B, N)`` vector whose length is fixed by the model:
-          ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 for ``BROWN_CONRADY`` and 8 for
-          ``KANNALA_BRANDT_K3``; another length or a rank above 2 raises ``ValueError``.
+        - ``params`` is a flat ``(N,)`` or batched ``(B, N)`` vector that starts with ``[fx, fy, cx, cy]``. ``N`` is 4
+          for ``AffineTransform`` (the pinhole and orthographic models), 12 for ``BrownConradyTransform`` and 8 for
+          ``KannalaBrandtK3Transform``; another length or a rank above 2 raises ``ValueError``.
         - :meth:`matrix` and its alias :meth:`K` return the ``(*, 3, 3)`` ``K``, not the ``(B, 4, 4)``
           ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
-        - :meth:`project` is ``distortion.distort(params, projection.project(points))`` and :meth:`unproject`
-          the reverse; ``depth`` is the camera-frame ``z``, shaped ``(*,)`` where
-          :func:`~kornia.geometry.camera.perspective.unproject_points` takes ``(*, 1)``. Pixel centres are
-          integers (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
 
     .. warning::
-        Batched ``(B, 4)`` intrinsics apply along the **last point axis**, not the camera axis: with
+        Batched ``(B, 4)`` and ``(B, 8)`` parameters apply along the **last point axis**, not the camera axis: with
         ``(B, N, 3)`` points and ``B > 1`` they silently pair with the wrong points when ``B == N``,
         :meth:`project` broadcasts to a ``(B, B, 2)`` result when ``N == 1``, and other ``N`` raise, whereas the
         geometry functions apply them per camera:
-        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. :meth:`project` divides by ``z`` with no guard,
-        so ``z = 0`` gives infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns
-        finite pixels: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. Batched ``(B, 12)`` Brown-Conrady parameters pair
+        camera ``b`` with ``points[b]``. :meth:`project` divides by ``z`` with no guard, so ``z = 0`` gives
+        infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns finite pixels:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+
+    Args:
+        distortion: the map from the image-plane points ``projection`` returns to pixels, and back.
+        projection: the map from camera-frame points to the image plane, and back.
+        image_size: :class:`~kornia.image.ImageSize` of the image, returned by :attr:`image_size`, :attr:`height` and
+            :attr:`width`; :meth:`project` and :meth:`unproject` do not read it.
+        params: camera parameters of shape ``(N,)`` or ``(B, N)``, with ``N`` fixed by ``distortion`` as above.
+
+    Raises:
+        ValueError: if ``params`` does not have that shape.
+
+    See Also:
+        - :class:`CameraModel`: a built-in model chosen by a :class:`CameraModelType`.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: plain tensors, ``(B, 4, 4)`` intrinsics next to
+          world-to-camera extrinsics, and batched cameras applied per camera.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -149,22 +174,6 @@ class CameraModelBase:
         image_size: ImageSize,
         params: torch.Tensor,
     ) -> None:
-        """Construct CameraModelBase class.
-
-        Args:
-            distortion: Distortion type
-            projection: Projection type
-            image_size: Image size
-            params: Camera parameters of shape ``(B, N)`` or ``(N,)``, with
-                    :math:`N` fixed by ``distortion``: 4 for
-                    :class:`AffineTransform` (pinhole and orthographic), 12 for
-                    :class:`BrownConradyTransform`, 8 for
-                    :class:`KannalaBrandtK3Transform`.
-
-        Raises:
-            ValueError: if ``params`` does not have that shape.
-
-        """
         _validate_params(distortion, params)
         self.distortion = distortion
         self.projection = projection
@@ -214,9 +223,10 @@ class CameraModelBase:
         return self._params[..., 3]
 
     def matrix(self) -> torch.Tensor:
-        """Return the camera matrix.
+        """Return the ``(*, 3, 3)`` camera matrix ``K`` built from ``fx``, ``fy``, ``cx`` and ``cy``.
 
         See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+
         """
         z = torch.zeros_like(self.fx)
         row1 = torch.stack((self.fx, z, self.cx), -1)
@@ -227,22 +237,23 @@ class CameraModelBase:
         return K
 
     def K(self) -> torch.Tensor:
-        """Return the camera matrix.
+        """Return the ``(*, 3, 3)`` camera matrix ``K``; an alias of :meth:`matrix`.
 
         See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+
         """
         return self.matrix()
 
     def project(self, points: Vector3) -> Vector2:
-        """Projects 3D points to 2D camera plane.
+        """Project camera-frame points to pixels.
 
         See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
         Args:
-            points: Vector3 representing 3D points.
+            points: ``Vector3`` of camera-frame points.
 
         Returns:
-            Vector2 representing the projected 2D points.
+            ``Vector2`` of the pixels.
 
         Example:
             >>> points = Vector3(torch.Tensor([1.0, 1.0, 1.0]))
@@ -255,16 +266,16 @@ class CameraModelBase:
         return self.distortion.distort(self.params, self.projection.project(points))
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
-        """Unprojects 2D points from camera plane to 3D.
+        """Unproject pixels at camera-frame depths to camera-frame points.
 
         See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
         Args:
-            points: Vector2 representing 2D points.
-            depth: Depth of the points.
+            points: ``Vector2`` of pixels.
+            depth: camera-frame ``z`` of each point, ``(*,)``.
 
         Returns:
-            Vector3 representing the unprojected 3D points.
+            ``Vector3`` of the camera-frame points.
 
         Example:
             >>> points = Vector2(torch.Tensor([1.0, 1.0]))
@@ -279,33 +290,39 @@ class CameraModelBase:
 
 
 class PinholeModel(CameraModelBase):
-    r"""Class to represent Pinhole Camera Model.
+    """Model a pinhole camera: perspective projection with ``[fx, fy, cx, cy]`` and no lens distortion.
 
-    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
-    See :doc:`camera and world conventions </get-started/camera-conventions>` for the corresponding camera
-    frame, depth, pixel-centre and intrinsics conventions.
+    ``cam = PinholeModel(image_size, params)`` takes the ``(4,)`` or ``(B, 4)`` intrinsics ``[fx, fy, cx, cy]``.
+    :meth:`~CameraModelBase.project` maps a camera-frame point ``(x, y, z)`` to the pixel
+    ``(fx * x / z + cx, fy * y / z + cy)``, and :meth:`~CameraModelBase.unproject` inverts it in closed form. It is
+    :class:`CameraModelBase` with :class:`~kornia.sensors.camera.distortion_model.AffineTransform` and
+    :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
 
-    The pinhole camera model describes the mathematical relationship between
-    the coordinates of a point in three-dimensional space and its projection
-    onto the image plane of an ideal pinhole camera,
-    where the camera aperture is described as a point and no lenses are used to focus light.
-    See more: https://en.wikipedia.org/wiki/Pinhole_camera_model
+    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`, and
+    :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frame, depth, pixel-centre
+    and intrinsics conventions.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(4,)`` or ``(B, 4)`` intrinsics ``[fx, fy, cx, cy]``; another length, or a rank
+            above 2, raises ``ValueError``.
+
+    See Also:
+        - :class:`BrownConradyModel`: the same projection, with OpenCV's radial and tangential lens distortion.
+        - :class:`KannalaBrandtK3`: a fisheye model, with the radius a polynomial of the ray angle.
+        - :class:`Orthographic`: the same intrinsics after dropping ``z`` instead of dividing by it.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: plain tensors, ``(B, 4, 4)`` intrinsics next to
+          world-to-camera extrinsics, and batched cameras applied per camera.
 
     Example:
-        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
-        >>> cam
-        CameraModel(ImageSize(height=480, width=640), PinholeModel, tensor([328., 328., 320., 240.]))
+        >>> cam = PinholeModel(ImageSize(480, 640), torch.Tensor([328., 328., 320., 240.]))
+        >>> cam.project(Vector3(torch.Tensor([1.0, 1.0, 1.0])))
+        x: 648.0
+        y: 568.0
 
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
-        """Construct PinholeModel class.
-
-        Args:
-            image_size: Image size
-            params: Camera parameters of shape ``(B, 4)`` of the form :math:`(fx, fy, cx, cy)`.
-
-        """
         if params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 4) for PINHOLE Camera")
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
@@ -339,7 +356,7 @@ class PinholeModel(CameraModelBase):
         return K
 
     def scale(self, scale_factor: torch.Tensor) -> PinholeModel:
-        """Scales the camera model by a scale factor.
+        """Return a new pinhole model with the intrinsics and the image size multiplied by a factor.
 
         Convention:
             - returns a **new** model whose focal lengths, principal point and image size are multiplied by
@@ -374,63 +391,97 @@ class PinholeModel(CameraModelBase):
 
 
 class BrownConradyModel(CameraModelBase):
-    """Brown Conrady Camera Model.
+    """Model a camera with OpenCV's Brown-Conrady radial and tangential lens distortion.
+
+    ``cam = BrownConradyModel(image_size, params)`` takes the ``(12,)`` or ``(B, 12)`` vector
+    ``[fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6]``: the intrinsics, then OpenCV's eight distortion coefficients.
+    :meth:`~CameraModelBase.project` divides camera-frame points by ``z`` and distorts them to pixels, and
+    :meth:`~CameraModelBase.unproject` removes the distortion by fixed-point iteration. It is :class:`CameraModelBase`
+    with :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform` and
+    :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
 
     See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
-    pixel-centre and camera-frame conventions.
+    pixel-centre and camera-frame conventions. Unlike the other models, batched ``(B, 12)`` parameters pair camera ``b``
+    with ``points[b]`` of ``(B, N, 3)`` points.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(12,)`` or ``(B, 12)`` parameters in the order above; another length, or a rank
+            above 2, raises ``ValueError``.
+
+    See Also:
+        - :class:`PinholeModel`: the same projection with no lens distortion, in closed form both ways.
+        - :class:`KannalaBrandtK3`: a fisheye model, whose radius is a polynomial of the ray angle instead of the
+          normalized radius.
+        - :func:`~kornia.geometry.calibration.distort_points`: the same distortion on pixel tensors, with a ``3x3``
+          ``K``.
+        - :func:`~kornia.geometry.calibration.undistort_points`: its inverse on pixel tensors, in five fixed-point
+          steps by default, as :meth:`~CameraModelBase.unproject` runs it.
+
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
-        """Construct BrownConradyModel class.
-
-        Args:
-            image_size: Image size
-            params: Camera parameters of shape ``(12,)`` or ``(B, 12)``, ordered as
-                :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`. The first four values
-                are the camera intrinsics and the trailing eight values are the Brown-Conrady
-                distortion coefficients.
-
-        """
         if params.shape[-1] != 12 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 12) for BROWN_CONRADY Camera")
         super().__init__(BrownConradyTransform(), Z1Projection(), image_size, params)
 
 
 class KannalaBrandtK3(CameraModelBase):
-    """Kannala Brandt K3 Camera Model.
+    r"""Model a fisheye camera with the Kannala-Brandt K3 distortion of the ray angle.
+
+    ``cam = KannalaBrandtK3(image_size, params)`` takes the ``(8,)`` or ``(B, 8)`` vector
+    ``[fx, fy, cx, cy, k0, k1, k2, k3]``. :meth:`~CameraModelBase.project` turns the angle :math:`\theta` between a
+    camera-frame point's ray and the optical axis into the radius
+    :math:`\theta (1 + k_0 \theta^2 + k_1 \theta^4 + k_2 \theta^6 + k_3 \theta^8)` on the normalized plane before the
+    intrinsics, and :meth:`~CameraModelBase.unproject` inverts it iteratively. It is :class:`CameraModelBase` with
+    :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform` and
+    :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
 
     See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
     pixel-centre and camera-frame conventions.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(8,)`` or ``(B, 8)`` parameters in the order above; another length, or a rank
+            above 2, raises ``ValueError``.
+
+    See Also:
+        - :class:`BrownConradyModel`: OpenCV's distortion of the normalized radius, with tangential terms.
+        - :class:`PinholeModel`: the same projection with no lens distortion.
+        - :func:`~kornia.geometry.camera.distort_points_kannala_brandt`: the same distortion on plain tensors.
+        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: its inverse on plain tensors.
+
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
-        """Construct KannalaBrandtK3 class.
-
-        Args:
-            image_size: Image size
-            params: Camera parameters of shape ``(B, 8)`` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
-
-        """
         if params.shape[-1] != 8 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera")
         super().__init__(KannalaBrandtK3Transform(), Z1Projection(), image_size, params)
 
 
 class Orthographic(CameraModelBase):
-    """Orthographic Camera Model.
+    """Model an orthographic camera: parallel projection that drops ``z``, then ``[fx, fy, cx, cy]``.
+
+    ``cam = Orthographic(image_size, params)`` takes the ``(4,)`` or ``(B, 4)`` intrinsics ``[fx, fy, cx, cy]``.
+    :meth:`~CameraModelBase.project` maps a camera-frame point ``(x, y, z)`` to the pixel ``(fx * x + cx, fy * y + cy)``
+    whatever its ``z``, and :meth:`~CameraModelBase.unproject` returns ``((u - cx) / fx, (v - cy) / fy, depth)``. It is
+    :class:`CameraModelBase` with :class:`~kornia.sensors.camera.distortion_model.AffineTransform` and
+    :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`.
 
     See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
     pixel-centre and camera-frame conventions.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(4,)`` or ``(B, 4)`` intrinsics ``[fx, fy, cx, cy]``; another length, or a rank
+            above 2, raises ``ValueError``.
+
+    See Also:
+        - :class:`PinholeModel`: the same intrinsics after dividing by ``z``, so distant objects shrink.
+
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
-        """Construct Orthographic class.
-
-        Args:
-            image_size: Image size
-            params: Camera parameters of shape ``(B, 4)`` of the form :math:`(fx, fy, cx, cy)`.
-
-        """
         if params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 4 for ORTHOGRAPHIC Camera")
         super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
@@ -440,11 +491,29 @@ CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Or
 
 
 class CameraModel:
-    r"""Class to represent camera models.
+    """Build a built-in camera model from a :class:`CameraModelType` and a flat parameter vector.
 
-    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
-    See :doc:`camera and world conventions </get-started/camera-conventions>` for the corresponding camera
-    frame, depth, pixel-centre and intrinsics conventions.
+    ``cam = CameraModel(image_size, model_type, params)`` builds the :class:`PinholeModel`, :class:`BrownConradyModel`,
+    :class:`KannalaBrandtK3` or :class:`Orthographic` that ``model_type`` names and forwards every attribute to it:
+    ``cam.project(points)`` maps a :class:`~kornia.geometry.vector.Vector3` of camera-frame points to a
+    :class:`~kornia.geometry.vector.Vector2` of pixels, and ``cam.unproject(pixels, depth)`` maps them back. ``cam`` is
+    a wrapper, not a :class:`CameraModelBase` instance, and ``cam.scale(s)`` of a pinhole model returns a
+    :class:`PinholeModel`.
+
+    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`, and
+    :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frame, depth, pixel-centre
+    and intrinsics conventions.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        model_type: the model to build; a value that is not a :class:`CameraModelType` raises ``ValueError``.
+        params: ``(N,)`` or ``(B, N)`` parameters, with ``N`` fixed by ``model_type`` (see :class:`CameraModelType`).
+
+    See Also:
+        - :class:`CameraModelType`: the models it builds, and the length of ``params`` for each.
+        - :class:`CameraModelBase`: composes a custom model from a distortion and a projection.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: plain tensors, ``(B, 4, 4)`` intrinsics next to
+          world-to-camera extrinsics, and batched cameras applied per camera.
 
     Example:
         >>> # Pinhole Camera Model
@@ -463,14 +532,6 @@ class CameraModel:
     """
 
     def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: torch.Tensor) -> None:
-        """Construct CameraModel class.
-
-        Args:
-            image_size: Image size
-            model_type: Camera model type
-            params: Camera parameters of shape ``(B, N)``.
-
-        """
         self._model = get_model_from_type(model_type, image_size, params)
 
     def __getattr__(self, name: str) -> Any:

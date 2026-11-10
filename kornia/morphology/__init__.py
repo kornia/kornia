@@ -15,9 +15,10 @@
 # limitations under the License.
 #
 
-"""Morphology submodule for Kornia.
+"""Dilate, erode, open and close images by a structuring element, and reconstruct them from a seed.
 
-This package provides morphological operations for image processing tasks.
+The functions are :func:`dilation`, :func:`erosion`, :func:`opening`, :func:`closing`, :func:`gradient`,
+:func:`top_hat`, :func:`bottom_hat` and :func:`reconstruction`.
 """
 
 from .morphology import *

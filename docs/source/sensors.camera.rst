@@ -9,10 +9,18 @@ kornia.sensors.camera
 .. warning::
    :mod:`kornia.sensors.camera` is an experimental API and is subject to change. Once finished, it will subsume :mod:`kornia.geometry.camera`, although the two are kept separate by design -- they share the mathematical Pinhole mapping but differ in input types, camera-axis broadcasting and zero-depth handling (see the Convention block and warning on :class:`CameraModelBase`), which is recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
 
-The objective of :mod:`kornia.sensors.camera` is to express well-known camera models such as Pinhole, Kannala Brandt, and others in terms of distortion and projection types while ensuring differentiability.
-We also aim to equip the user with tools to define custom camera models.
+:mod:`kornia.sensors.camera` expresses a camera model as a projection, from camera-frame points to the image plane,
+followed by a distortion, from the image plane to pixels. Points are
+:class:`~kornia.geometry.vector.Vector3` and pixels :class:`~kornia.geometry.vector.Vector2`, and ``params`` is a flat
+``(N,)`` or batched ``(B, N)`` vector that starts with ``[fx, fy, cx, cy]``.
 
-Defining a `Pinhole` camera model is as simple as:
+- Build a built-in model by name with :class:`CameraModel` and a :class:`CameraModelType`, or with its class:
+  :class:`PinholeModel` (no lens distortion), :class:`BrownConradyModel` (OpenCV's radial and tangential
+  distortion), :class:`KannalaBrandtK3` (fisheye) or :class:`Orthographic` (parallel projection).
+- Compose a custom model with :class:`CameraModelBase` from one of the distortions and one of the projections below.
+- For cameras with extrinsics, on plain tensors, use :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+Defining a pinhole camera model:
 
 .. code:: python
 
@@ -23,7 +31,7 @@ Defining a `Pinhole` camera model is as simple as:
     params = torch.tensor([328., 328., 320., 240.])  # fx, fy, cx, cy
     cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, params)
 
-To define a custom camera model based on distortion and projection types, one can use the :class:`CameraModelBase` API:
+Defining the same model from its distortion and projection with :class:`CameraModelBase`:
 
 .. code:: python
 
@@ -35,9 +43,6 @@ To define a custom camera model based on distortion and projection types, one ca
 
     params = torch.tensor([328., 328., 320., 240.])
     cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
-
-.. note::
-   The built-in camera models are Pinhole, Brown-Conrady, Kannala-Brandt K3, and Orthographic.
 
 .. autoclass:: CameraModelBase
     :members:

@@ -2,9 +2,10 @@ kornia.sensors
 ===============
 
 .. meta::
-   :description: The Kornia.sensors module provides interfaces for sensor data handling, including Camera, IMU, and GNSS sensors. Note that this API is experimental and subject to future changes. Explore sensor-related functionalities within the module.
+   :description: The experimental kornia.sensors module provides camera models: pinhole, Brown-Conrady, Kannala-Brandt K3 and orthographic cameras, and custom models composed from a distortion and a projection.
 
-This package aims to provide interfaces to sensors such as cameras, IMUs and GNSS receivers.
+:mod:`kornia.sensors` models sensors. It holds the camera models of
+:doc:`kornia.sensors.camera <sensors.camera>`.
 
 
 .. currentmodule:: kornia.sensors
