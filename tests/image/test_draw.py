@@ -69,6 +69,25 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match="Color dim must match"):
             draw_point2d(img, points, color)
 
+    @pytest.mark.parametrize("color_shape", [(3,), (5,)], ids=["three-values", "height-as-length"])
+    def test_draw_point2d_rejects_a_wrong_length_color_on_a_2d_image(self, color_shape, dtype, device):
+        """A (H, W) image has one channel: a longer color failed at indexing with a raw RuntimeError (#6689)."""
+        img = torch.zeros(5, 6, dtype=dtype, device=device)
+        points = torch.tensor([[1, 2]], device=device)
+        color = torch.ones(color_shape, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=f"expected 1 or 1 values, got {color_shape[0]}"):
+            draw_point2d(img, points, color)
+        assert img.count_nonzero() == 0
+
+    @pytest.mark.parametrize("shape", [(2, 4, 5), (4, 5)], ids=["third-order", "second-order"])
+    def test_draw_point2d_single_value_color_fills_every_channel_count(self, shape, dtype, device):
+        """A single-value color keeps working for every channel count (#6689)."""
+        img = torch.zeros(shape, dtype=dtype, device=device)
+        out = draw_point2d(img, torch.tensor([[1, 2]], device=device), torch.tensor([7.0], device=device))
+        expected = [7.0] * (shape[0] if len(shape) == 3 else 1)
+        assert out[..., 2, 1].flatten().tolist() == expected
+        assert int(out.count_nonzero()) == len(expected)
+
     def test_draw_point2d_with_mismatched_dtype(self, device):
         """Test that the color is correctly cast to the image dtype when drawing points."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
@@ -825,6 +844,28 @@ class TestDrawRectangle(BaseTester):
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
 
+    @pytest.mark.parametrize("color_shape", [(2,), (1, 1, 2)], ids=["vector", "per-rectangle"])
+    def test_rejects_a_wrong_length_color(self, color_shape, dtype, device):
+        """A color that is neither one value nor one per channel fails the check before any drawing (#6689)."""
+        image = torch.zeros(2, 3, 8, 8, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]], [[2, 2, 5, 5]]], device=device)
+        color = torch.ones(color_shape, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=r"1 or 3 values to match the image channels, got 2"):
+            draw_rectangle(image, rectangle, color=color)
+        assert image.count_nonzero() == 0
+
+    @pytest.mark.parametrize("fill", [False, True])
+    def test_single_value_and_vector_colors_fill_every_channel_count(self, fill, dtype, device):
+        """A one-value color fills any channel count and a length-C one fills channel-wise (#6689)."""
+        image = torch.zeros(2, 2, 8, 8, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]], [[2, 2, 5, 5]]], device=device)
+        single = draw_rectangle(image.clone(), rectangle, color=torch.tensor([7.0], device=device), fill=fill)
+        assert single[0, :, 1, 2].flatten().tolist() == [7.0, 7.0]
+        assert single[1, :, 2, 3].flatten().tolist() == [7.0, 7.0]
+        vector = draw_rectangle(image.clone(), rectangle, color=torch.tensor([1.0, 2.0], device=device), fill=fill)
+        assert vector[0, :, 1, 2].flatten().tolist() == [1.0, 2.0]
+        assert vector[1, :, 2, 3].flatten().tolist() == [1.0, 2.0]
+
     def test_reversed_corners_draw_the_same_rectangle(self, device):
         a = draw_rectangle(
             torch.zeros(1, 1, 5, 6, device=device), torch.tensor([[[1, 1, 3, 2]]], device=device), torch.tensor([1.0])
@@ -1146,6 +1187,28 @@ class TestFillConvexPolygon(BaseTester):
         expected = draw_convex_polygon(im.clone(), square, torch.tensor([9.0], device=device, dtype=dtype))
         self.assert_close(out, expected)
         assert out.count_nonzero() > 0
+
+    @pytest.mark.parametrize("color_shape", [(2,), (1, 2)], ids=["vector", "batched"])
+    def test_rejects_a_wrong_length_color(self, color_shape, device, dtype):
+        """A color that is neither one value nor one per channel fails the check before the fill (#6689)."""
+        im = torch.zeros(1, 3, 8, 8, device=device, dtype=dtype)
+        pts = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 5.0]]], device=device, dtype=dtype)
+        color = torch.ones(color_shape, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"1 or 3 values to match the image channels, got 2"):
+            draw_convex_polygon(im, pts, color)
+        assert im.count_nonzero() == 0
+
+    @pytest.mark.parametrize(
+        "color, expected",
+        [(torch.tensor([7.0]), [7.0, 7.0]), (torch.tensor([1.0, 2.0]), [1.0, 2.0])],
+        ids=["single-value", "per-channel"],
+    )
+    def test_color_of_one_or_c_values_fills_a_two_channel_image(self, color, expected, device, dtype):
+        """A single-value color fills every channel count and a length-C one fills channel-wise (#6689)."""
+        im = torch.zeros(1, 2, 8, 8, device=device, dtype=dtype)
+        pts = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 5.0]]], device=device, dtype=dtype)
+        out = draw_convex_polygon(im, pts, color.to(device))
+        assert out[0, :, 2, 3].flatten().tolist() == expected
 
     def test_uint8_image_takes_a_float_colour(self, device):
         img = torch.full((1, 3, 5, 7), 9, dtype=torch.uint8, device=device)

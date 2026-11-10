@@ -75,6 +75,8 @@ _TORCHSCRIPT_FUNCTIONS = {
     "enhance/shift_rgb.py::shift_rgb",
     "feature/dedode/transformer/layers/patch_embed.py::PatchEmbed.forward",
     "geometry/depth.py::warp_frame_depth",
+    "image/draw.py::draw_point2d",
+    "image/draw.py::draw_rectangle",
     "losses/focal.py::binary_focal_loss_with_logits",
     "losses/focal.py::focal_loss",
     "losses/lovasz_softmax.py::lovasz_softmax_loss",
