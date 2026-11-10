@@ -70,6 +70,14 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ShapeError, match=r"Input image must have shape \(H, W\), \(C, H, W\) or \(B, C, H, W\)"):
             TestImageHistogram2d.fcn(image, n_bins=2)
 
+    @pytest.mark.parametrize("image", [None, "not a tensor", 1.0, [0.0, 1.0]])
+    def test_rejects_non_tensor_image_6683(self, image):
+        # None skipped the tensor check and reached _check_image_rank, so it raised the incidental
+        # AttributeError ("'NoneType' object has no attribute 'dim'") instead of the TypeError the
+        # function documents for a non-tensor input.
+        with pytest.raises(TypeError, match="Input image type is not a torch.Tensor"):
+            TestImageHistogram2d.fcn(image)
+
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
         sample = torch.ones(8, 8, device=device, dtype=torch.float64)
