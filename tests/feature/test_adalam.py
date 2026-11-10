@@ -22,14 +22,19 @@ import torch
 
 from kornia.feature import GeometryAwareDescriptorMatcher, laf_from_center_scale_ori, match_adalam
 from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
-from kornia.feature.adalam.core import _merge_duplicate_matches
+from kornia.feature.adalam.core import _merge_duplicate_matches, select_seeds
 from kornia.feature.adalam.ransac import (
     _select_inliers,
-    confidence_based_inlier_selection,
     ransac,
     stable_sort_residuals,
 )
-from kornia.feature.adalam.utils import draw_first_k_couples
+from kornia.feature.adalam.utils import (
+    batch_2x2_eigenvals,
+    batch_2x2_ellipse,
+    dist_matrix,
+    draw_first_k_couples,
+    piecewise_arange,
+)
 
 from testing.base import BaseTester
 
@@ -127,6 +132,137 @@ class TestAdalamExact(BaseTester):
         accepted = (confidence >= config["min_confidence"]) & (counts * (1 - 1 / confidence) >= config["min_inliers"])
         assert not accepted.any()
 
+    @pytest.mark.parametrize("refit", [False, True])
+    def test_supported_exact_duplicates_are_retained(self, device, dtype, refit):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("filter_matches requires full-precision coordinates")
+        points = torch.rand(12, 2, generator=torch.Generator().manual_seed(17)) - 0.5
+        points[0] = 0
+        xy = (100 + 30 * points.repeat(10, 1)).to(device, dtype)
+        indices = torch.arange(len(xy), device=device)
+        config = get_adalam_default_config()
+        config.update(device=device, refit=refit)
+        matches = AdalamFilter(config).filter_matches(
+            xy, xy, indices, torch.linspace(0.1, 0.6, len(xy), device=device, dtype=dtype), None, (480, 640), (480, 640)
+        )
+        # Identity geometry has 12 distinct supporting locations; every repeated observation is also correct.
+        self.assert_close(matches, torch.stack([indices, indices], dim=-1))
+
+    @pytest.mark.parametrize("radius", [0.0, 0.01])
+    def test_consensus_radius_includes_duplicate_ties(self, device, dtype, radius):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        # Group 0: 12 distinct inliers, ten copies each, and one outlier. Group 1: no support.
+        points = torch.arange(12, device=device, dtype=dtype).unsqueeze(1).repeat(10, 2)
+        points = torch.cat([points, points.new_tensor([[20, 20]]), points])
+        dims = torch.tensor([121, 120], device=device)
+        groups = torch.arange(2, device=device).repeat_interleave(dims)
+        residuals = torch.full((1, 241), 2.0, device=device, dtype=dtype)
+        residuals[:, :120] = radius
+        result = _select_inliers(
+            residuals,
+            points,
+            points,
+            groups,
+            dims,
+            torch.tensor([0, 121], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(1, 2, 2, 2),
+            get_adalam_default_config(),
+        )
+        self.assert_close(result[1], torch.arange(120, device=device))
+        assert result[2].tolist() == [120, 0]
+        self.assert_close(result[0], torch.zeros(120, device=device, dtype=torch.long))
+        # Confidence counts the 12 distinct locations minus three reserved samples, never the copies.
+        expected = 9 / (13 * max(radius**2, 2.0**-24))
+        self.assert_close(result[4], torch.tensor([expected, 0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("refit", [False, True])
+    def test_mixed_exact_and_noisy_consensus(self, device, dtype, refit):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        g = torch.Generator().manual_seed(0)
+        x = torch.rand(60, 2, generator=g).to(device, dtype) - 0.5
+        x[0] = 0
+        y = x @ torch.tensor([[1.1, -0.2], [0.1, 0.9]], device=device, dtype=dtype).T
+        y[20:50] += 0.004 * torch.randn(30, 2, generator=g).to(device, dtype)
+        y[50:] += 10
+        config = get_adalam_default_config()
+        config["device"] = device
+        indices, _, _, counts = ransac(x, y, torch.tensor([60], device=device), config, refit=refit)
+        # The first 50 correspondences follow the specified affine; the others are displaced by 10.
+        self.assert_close(indices.sort().values, torch.arange(50, device=device))
+        assert counts.tolist() == [50]
+
+    def test_dense_core_does_not_subsidize_sparse_outlier_tail(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        points = torch.arange(50, device=device, dtype=dtype).unsqueeze(1).repeat(1, 2)
+        residuals = torch.cat(
+            [
+                torch.zeros(30, device=device, dtype=dtype),
+                torch.linspace(0.001, 0.005, 10, device=device, dtype=dtype),
+                torch.linspace(0.025, 0.06, 10, device=device, dtype=dtype),
+            ]
+        ).unsqueeze(0)
+        result = _select_inliers(
+            residuals,
+            points,
+            points,
+            torch.zeros(50, device=device, dtype=torch.long),
+            torch.tensor([50], device=device),
+            torch.tensor([0], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(1, 1, 2, 2),
+            get_adalam_default_config(),
+        )
+        # Cumulative confidence at r=0.06 is 47 / (50 * 0.06**2) = 261.1 >= 200, but the
+        # marginal density of the sparse outer 10 samples is below min_confidence.
+        assert result[2].tolist() == [40]
+        self.assert_close(result[1], torch.arange(40, device=device))
+
+    @pytest.mark.parametrize("sigma", [0.1, 0.3, 0.5])
+    def test_high_resolution_subpixel_matches(self, device, dtype, sigma):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("filter_matches requires full-precision coordinates")
+        g = torch.Generator().manual_seed(0)
+        n = 2000
+        xy = torch.rand(n, 2, generator=g, dtype=torch.float64) * torch.tensor([3999.0, 2999.0])
+        scores = 0.5 * torch.rand(n, generator=g, dtype=torch.float64)
+        moved = xy + torch.tensor([20.0, 10.0]) + sigma * torch.randn(n, 2, generator=g, dtype=torch.float64)
+        config = get_adalam_default_config()
+        config["device"] = device
+        matches = AdalamFilter(config).filter_matches(
+            xy.to(device, dtype),
+            moved.to(device, dtype),
+            torch.arange(n, device=device),
+            scores.to(device, dtype),
+            None,
+            (3000, 4000),
+            (3000, 4000),
+        )
+        assert len(matches) >= 0.99 * n
+        self.assert_close(matches[:, 0], matches[:, 1])
+
+    @pytest.mark.parametrize("case", ["noisy_duplicates", "random", "minimal_plus_duplicates"])
+    def test_noisy_false_fits_have_no_independent_support(self, device, dtype, case):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        g = torch.Generator().manual_seed(37)
+        x = torch.rand(60, 2, generator=g).to(device, dtype) - 0.5
+        y = torch.rand(60, 2, generator=g).to(device, dtype) - 0.5
+        if case == "noisy_duplicates":
+            x = x[:5].repeat(12, 1)
+            y = x + 0.004 * torch.randn(60, 2, generator=g).to(device, dtype)
+        elif case == "minimal_plus_duplicates":
+            x[:30] = x[:3].repeat(10, 1)
+            y[:30] = x[:30]
+        x[0] = y[0] = 0
+        config = get_adalam_default_config()
+        config["device"] = device
+        for refit in (False, True):
+            indices, _, confidence, counts = ransac(x, y, torch.tensor([60], device=device), config, refit=refit)
+            assert counts.sum().item() == len(indices)
+            assert not (confidence >= config["min_confidence"]).any()
+
     def test_neighbourhood_isolation(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("local RANSAC uses full-precision coordinates")
@@ -140,7 +276,6 @@ class TestAdalamExact(BaseTester):
         dims = torch.full((2,), n, device=device, dtype=torch.long)
         offsets = torch.tensor([0, n], device=device)
         config = get_adalam_default_config()
-        legacy = confidence_based_inlier_selection(residuals, groups, dims, offsets, device, config["min_confidence"])
         result = _select_inliers(
             residuals,
             xy,
@@ -152,9 +287,8 @@ class TestAdalamExact(BaseTester):
             config,
         )
         self.assert_close(result[1][result[0] == 0], torch.arange(n, device=device))
-        self.assert_close(result[1][result[0] == 1], legacy[1][legacy[0] == 1])
-        for actual, expected in zip(result[2:], legacy[2:]):
-            self.assert_close(actual[1:], expected[1:], atol=0, rtol=0)
+        self.assert_close(result[1][result[0] == 1].sort().values, torch.arange(n, 2 * n, device=device))
+        assert result[2].tolist() == [n, n]
         residuals.zero_()
         result = _select_inliers(
             residuals,
@@ -169,6 +303,84 @@ class TestAdalamExact(BaseTester):
         self.assert_close(result[1], torch.arange(2 * n, device=device))
         assert result[2].tolist() == [n, n]
 
+    @pytest.mark.parametrize("preferred_correct", [False, True])
+    def test_conflicting_duplicates_keep_descriptor_preference(self, device, dtype, preferred_correct):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        points = torch.arange(9, device=device, dtype=dtype).unsqueeze(1).repeat(1, 2)
+        x = points.repeat(2, 1)
+        y = torch.cat([points + 20, points])
+        if preferred_correct:
+            y = y.flip(0)
+            x = x.flip(0)
+        residuals = (y - x).norm(dim=-1).unsqueeze(0)
+        result = _select_inliers(
+            residuals,
+            x,
+            y,
+            torch.zeros(18, device=device, dtype=torch.long),
+            torch.tensor([18], device=device),
+            torch.tensor([0], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(1, 1, 2, 2),
+            get_adalam_default_config(),
+        )
+        # Samples arrive in descriptor-score order. A later duplicate cannot replace
+        # the preferred observation merely because a hypothesis fits it better.
+        assert result[2].tolist() == ([9] if preferred_correct else [0])
+        assert len(result[1]) == result[2].sum()
+
+    def test_equal_support_prefers_tighter_consensus(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        points = torch.arange(20, device=device, dtype=dtype).unsqueeze(1).repeat(1, 2)
+        residuals = torch.tensor([[0.02], [0.01]], device=device, dtype=dtype).expand(2, 20)
+        result = _select_inliers(
+            residuals,
+            points,
+            points,
+            torch.zeros(20, device=device, dtype=torch.long),
+            torch.tensor([20], device=device),
+            torch.tensor([0], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(2, 1, 2, 2),
+            get_adalam_default_config(),
+        )
+        assert result[2].tolist() == [20]
+        assert result[3].tolist() == [1]
+        # 20 distinct points minus the 3 reserved samples, over 20 * 0.01**2.
+        self.assert_close(result[4], torch.tensor([8500.0], device=device, dtype=dtype))
+
+    def test_empty_consensus_between_supported_neighbourhoods(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        points = torch.arange(36, device=device, dtype=dtype).unsqueeze(1).repeat(1, 2)
+        residuals = torch.zeros(1, 36, device=device, dtype=dtype)
+        residuals[:, 12:24] = 2
+        groups = torch.arange(3, device=device).repeat_interleave(12)
+        result = _select_inliers(
+            residuals,
+            points,
+            points,
+            groups,
+            torch.tensor([12, 12, 12], device=device),
+            torch.tensor([0, 12, 24], device=device),
+            torch.eye(2, device=device, dtype=dtype).expand(1, 3, 2, 2),
+            get_adalam_default_config(),
+        )
+        assert result[2].tolist() == [12, 0, 12]
+        expected = torch.cat([torch.arange(12, device=device), torch.arange(24, 36, device=device)])
+        self.assert_close(result[1], expected)
+        self.assert_close(result[0], groups[expected])
+        assert result[4][1] == 0
+
+    def test_residual_order_survives_large_group_ids(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("local RANSAC uses full-precision coordinates")
+        groups = torch.full((4,), 5000, device=device, dtype=torch.long)
+        residuals = torch.tensor([[0.0100001, 0.01, 2.0, 0.0]], device=device, dtype=dtype)
+        sorted_residuals, order = stable_sort_residuals(residuals, groups)
+        self.assert_close(order, torch.tensor([[3, 1, 0, 2]], device=device))
+        self.assert_close(sorted_residuals, residuals.sort().values)
+
     def test_equal_residual_sort(self, device, dtype):
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("local RANSAC uses full-precision coordinates")
@@ -177,48 +389,6 @@ class TestAdalamExact(BaseTester):
         sorted_residuals, order = stable_sort_residuals(residuals, groups)
         self.assert_close(groups[order[0]], groups.sort().values)
         self.assert_close(sorted_residuals, residuals)
-
-    def test_noisy_fits_skip_recovery_scan(self, device, dtype, monkeypatch):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("local RANSAC uses full-precision coordinates")
-        dims = torch.tensor([6, 8, 20], device=device)
-        offsets = torch.tensor([0, 6, 14], device=device)
-        groups = torch.arange(3, device=device).repeat_interleave(dims)
-        residuals = torch.full((1, 34), 0.01, device=device, dtype=dtype)
-        residuals[:, offsets[:, None] + torch.arange(3, device=device)] = 0
-        points = torch.zeros(34, 2, device=device, dtype=dtype)
-        config = get_adalam_default_config()
-        expected = confidence_based_inlier_selection(residuals, groups, dims, offsets, device, config["min_confidence"])
-
-        def no_recovery_scan(*args, **kwargs):
-            pytest.fail("Ordinary fits must not scan all residuals again for near-exact support")
-
-        monkeypatch.setattr("kornia.feature.adalam.ransac.group_sum_and_cumsum", no_recovery_scan)
-        monkeypatch.setattr("kornia.feature.adalam.ransac._confidence_from_sorted_residuals", lambda *args: expected)
-        result = _select_inliers(
-            residuals, points, points, groups, dims, offsets, torch.eye(2, device=device, dtype=dtype), config
-        )
-        assert result is expected
-
-    def test_complete_exact_fits_skip_legacy_confidence(self, device, dtype, monkeypatch):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("local RANSAC uses full-precision coordinates")
-
-        def no_legacy_confidence(*args, **kwargs):
-            pytest.fail("Fully supported exact fits must not run the residual-duplicate heuristic")
-
-        monkeypatch.setattr("kornia.feature.adalam.ransac._confidence_from_sorted_residuals", no_legacy_confidence)
-        dims = torch.tensor([9, 20], device=device)
-        offsets = torch.tensor([0, 9], device=device)
-        groups = torch.arange(2, device=device).repeat_interleave(dims)
-        residuals = torch.zeros(1, 29, device=device, dtype=dtype)
-        points = torch.rand(29, 2, generator=torch.Generator().manual_seed(11)).to(device, dtype)
-        affinities = torch.eye(2, device=device, dtype=dtype).expand(1, 2, 2, 2)
-        result = _select_inliers(
-            residuals, points, points, groups, dims, offsets, affinities, get_adalam_default_config()
-        )
-        self.assert_close(result[1], torch.arange(29, device=device))
-        self.assert_close(result[2], dims)
 
 
 class TestDrawFirstKCouples(BaseTester):
@@ -260,3 +430,29 @@ class TestMergeDuplicateMatches(BaseTester):
             expected[(i, j)] = min(d, expected.get((i, j), d))
         assert unique.tolist() == [list(key) for key in sorted(expected)]
         self.assert_close(best, torch.tensor([expected[key] for key in sorted(expected)], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("use_mnn", [False, True])
+    def test_select_seeds_from_k1_matches_precomputed_dist_matrix(self, device, dtype, use_mnn):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("seed selection uses full-precision coordinates")
+        g = torch.Generator().manual_seed(11)
+        k1 = (torch.rand(120, 2, generator=g) * 500.0).to(device, dtype)
+        scores1 = torch.rand(120, generator=g).to(device, dtype)
+        fnn12 = torch.randint(0, 120, (120,), generator=g).to(device)
+        mnn = (torch.rand(120, generator=g) > 0.3).to(device) if use_mnn else None
+        dist1 = dist_matrix(k1, k1)
+        s1_mat, s2_mat = select_seeds(dist1, 40.0, scores1, fnn12, mnn)
+        s1_k1, s2_k1 = select_seeds(None, 40.0, scores1, fnn12, mnn, k1=k1)
+        self.assert_close(s1_k1, s1_mat)
+        self.assert_close(s2_k1, s2_mat)
+
+    def test_batch_2x2_eigenvals_and_piecewise_arange(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("2x2 eigenvalues use full-precision matrices")
+        g = torch.Generator().manual_seed(5)
+        m = torch.randn(16, 2, 2, generator=g).to(device, dtype)
+        evals_only = batch_2x2_eigenvals(m)
+        evals_full, _ = batch_2x2_ellipse(m)
+        self.assert_close(evals_only, evals_full)
+        idx = torch.tensor([0, 0, 0, 3, 3, 3, 3, 1, 1, 2], device=device)
+        self.assert_close(piecewise_arange(idx), torch.tensor([0, 1, 2, 0, 1, 2, 3, 0, 1, 0], device=device))

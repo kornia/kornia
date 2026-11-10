@@ -986,12 +986,13 @@ class TestAdalamInputs(BaseTester):
 
     def test_hw_list_equals_tuple_5724(self, device):
         d1, d2, l1, l2, (H, W) = _adalam_scene(device)
-        # an image much larger than the keypoint spread changes the seed radius, so a list that is ignored differs
-        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(4 * H, 4 * W), hw2=(4 * H, 4 * W))
-        list_out = match_adalam(d1, d2, l1, l2, hw1=[4 * H, 4 * W], hw2=[4 * H, 4 * W])
+        # an image size different from the keypoint spread changes the seed radius, so a list that is ignored differs
+        tuple_out = match_adalam(d1, d2, l1, l2, hw1=(H // 2, W // 2), hw2=(H // 2, W // 2))
+        list_out = match_adalam(d1, d2, l1, l2, hw1=[H // 2, W // 2], hw2=[H // 2, W // 2])
         none_out = match_adalam(d1, d2, l1, l2)
         assert len(tuple_out[1]) != len(none_out[1])
         assert torch.equal(tuple_out[1], list_out[1])
+        self.assert_close(tuple_out[0], list_out[0])
 
     @pytest.mark.parametrize("config", [{"ransac_iters": 128}, {}])
     def test_device_follows_input_with_config_5724(self, device, config):
@@ -2185,11 +2186,11 @@ class TestConventionsMatching(BaseTester):
         assert len(quality400) > 350
         assert quality400.max() <= 1 / 400
         # hw1 and hw2 enter only as the image area (the seed radius): (H, W) and (W, H) agree, and sizes of 64 times
-        # the area agree with each other whatever their aspect ratio, while they change the matches
+        # the area agree with each other whatever their aspect ratio. Accurate matches survive the larger radius.
         assert torch.equal(match_adalam(d1, d2, lafs1, lafs2, hw1=(w, h), hw2=(w, h))[1], idxs)
         sizes = [(8 * h, 8 * w), (8 * w, 8 * h), (64 * h, w), (h, 64 * w)]
         larger = [match_adalam(d1, d2, lafs1, lafs2, hw1=size, hw2=size)[1] for size in sizes]
-        assert len(larger[0]) < 0.6 * len(idxs)
+        assert len(larger[0]) >= 0.95 * len(idxs)
         assert all(torch.equal(other, larger[0]) for other in larger[1:])
 
     def test_convention_local_feature_matcher_returns_laf_centres_and_one_minus_the_matcher_value(self, device, dtype):

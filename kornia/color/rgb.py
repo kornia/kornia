@@ -188,7 +188,10 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     return rgb_to_rgba(x_rgb, alpha_val)
 
 
-def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = None) -> torch.Tensor:
+def rgba_to_rgb(
+    image: torch.Tensor,
+    background_color: Optional[Union[torch.Tensor, tuple[float, float, float], list[float]]] = None,
+) -> torch.Tensor:
     r"""Convert an RGBA image to RGB by compositing it over a background.
 
     ``rgb = rgba_to_rgb(image, background_color)`` returns ``image_rgb * alpha + background * (1 - alpha)`` for a
@@ -197,9 +200,9 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     Convention:
         - Alpha is straight, not premultiplied, and in :math:`[0, 1]`; color channels and ``background_color`` are
           unit range.
-        - ``background_color`` is a tuple or list of three floats, or a tensor with three channels at axis -3 that
-          broadcasts against the image, such as ``(3, 1, 1)``, ``(*, 3, 1, 1)`` or ``(*, 3, H, W)``. A 1D or 2D tensor
-          raises (`#6621 <https://github.com/kornia/kornia/issues/6621>`_); reshape it to ``(3, 1, 1)``.
+        - ``background_color`` is a tuple or list of three floats, a ``(3,)`` tensor used like that tuple, or a
+          tensor with three channels at axis -3 that broadcasts against the image, such as ``(3, 1, 1)``,
+          ``(*, 3, 1, 1)`` or ``(*, 3, H, W)``. Any other 1D or 2D tensor raises ``ValueError``.
 
     Args:
         image: RGBA image with shape ``(*, 4, H, W)``.
@@ -232,19 +235,29 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
 
     if background_color is None:
         background_rgb = torch.ones_like(image_rgb)
-    elif isinstance(background_color, (tuple, list)):
+    elif isinstance(background_color, list):
         if len(background_color) != 3:
             raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
         # A channel-first color broadcasts over any leading dimensions without adding a batch axis.
         background_rgb = torch.as_tensor(background_color, device=image.device, dtype=image.dtype).view(3, 1, 1)
+    elif isinstance(background_color, tuple):
+        if len(background_color) != 3:
+            raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
+        # TorchScript cannot refine a tuple and a list in one branch, nor pass a tuple to `as_tensor`.
+        rgb = [background_color[0], background_color[1], background_color[2]]
+        background_rgb = torch.as_tensor(rgb, device=image.device, dtype=image.dtype).view(3, 1, 1)
 
     elif isinstance(background_color, torch.Tensor):
-        if background_color.shape[-3] != 3:
+        if background_color.dim() == 1 and background_color.shape[0] == 3:
+            # Like the 3-tuple: channel-first, broadcast over any leading dimensions without adding a batch axis.
+            background_rgb = background_color.reshape(3, 1, 1)
+        elif background_color.dim() < 3 or background_color.shape[-3] != 3:
             raise ValueError(
-                f"background_color torch.Tensor must have 3 channels in dimension -3. "
-                f"Got shape {background_color.shape}"
+                f"background_color torch.Tensor must have shape (3,) or 3 channels in dimension -3, "
+                f"e.g. (*, 3, 1, 1) or (*, 3, H, W). Got shape {background_color.shape}"
             )
-        background_rgb = background_color
+        else:
+            background_rgb = background_color
 
     else:
         raise TypeError(f"Unsupported type for background_color: {type(background_color)}")

@@ -96,7 +96,8 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
 
     Convention:
         See the Convention block of :func:`~kornia.image.image_to_tensor`. Unlike it, this function copies the images
-        into a new tensor and takes ``(H, W, C)`` images only.
+        into a new tensor and takes ``(H, W, C)`` images only. NumPy views with negative strides, such as flipped
+        images or ``img[..., ::-1]`` channel reversals, are copied before conversion.
 
     Args:
         images: list of images, each of the form ``(H, W, C)``, all of the same shape.
@@ -116,7 +117,13 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
     images_t = []
     for img in images:
         if not torch.is_tensor(img):
-            img = torch.as_tensor(img)
+            try:
+                img = torch.as_tensor(img)
+            except ValueError:
+                # A negative stride. Checking img.strides up front would fail fullgraph torch.compile on any array.
+                if not isinstance(img, np.ndarray):
+                    raise
+                img = torch.as_tensor(img.copy())
         images_t.append(img)
 
     shape = images_t[0].shape
