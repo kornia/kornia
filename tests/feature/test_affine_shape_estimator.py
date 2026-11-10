@@ -210,6 +210,16 @@ class TestPatchAffineShapeEstimator(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,), nondet_tol=1e-4)
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with the Gaussian weighting built in float64 (snippet in the PR); a
+        # weighting rounded to float32 misses them by far more than 1e-12, which allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        patch = ((torch.arange(361, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 19, 19).to(device)
+        expected = torch.tensor([1.0, 0.6483032711577077, 0.903999437822951], device=device, dtype=torch.float64)
+        for estimator in (PatchAffineShapeEstimator(19), PatchAffineShapeEstimator(19).double()):
+            self.assert_close(estimator.to(device)(patch)[0, 0], expected, rtol=1e-12, atol=0.0)
+
 
 class TestAffineShapeKernelBuffer(BaseTester):
     """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""

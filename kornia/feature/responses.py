@@ -524,7 +524,8 @@ class CornerHarris(nn.Module):
     Convention:
         Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
         Convention block. Unlike the function's, this ``k`` has no default. A ``float``, ``int`` or NumPy scalar
-        ``k`` becomes a 0-dimensional tensor; a tensor is stored as it is.
+        ``k`` becomes a 0-dimensional float32 tensor, and a float64 image uses the number itself while the buffer
+        still holds it; a tensor is stored as it is.
 
     See Also:
         - :func:`harris_response`: the function form, with ``k`` defaulting to ``0.04``.
@@ -538,10 +539,11 @@ class CornerHarris(nn.Module):
 
     def __init__(self, k: Union[float, torch.Tensor], grads_mode: str = "sobel") -> None:
         super().__init__()
-        if isinstance(k, float):
-            self.register_buffer("k", torch.tensor(k))
-        elif isinstance(k, numbers.Real) and not isinstance(k, bool):
-            # An int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+        # The number itself, for a float64 image: the buffer holds it rounded to float32.
+        self._k_number: Optional[float] = None
+        if isinstance(k, numbers.Real) and not isinstance(k, bool):
+            # A float, an int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+            self._k_number = float(k)
             self.register_buffer("k", torch.tensor(float(k)))
         else:
             self.register_buffer("k", k)
@@ -561,7 +563,17 @@ class CornerHarris(nn.Module):
         Returns:
             Harris response map tensor.
         """
-        return harris_response(input, self.k, self.grads_mode, sigmas)
+        k = self.k
+        number = self.__dict__.get("_k_number")  # absent from a module pickled before it existed
+        if number is not None and input.dtype == torch.float64 and k.is_floating_point():
+            # While the buffer still holds the number as built (not loaded or assigned another k), apply it exactly.
+            built = torch.tensor(number).to(device=k.device, dtype=k.dtype)
+            # One-dimensional: the TorchScript ONNX exporter casts a 0-dimensional constant to the buffer's float32.
+            exact = torch.tensor([number], dtype=torch.float64, device=k.device)
+            k64 = k.to(torch.float64)
+            # ``k64 - k64.detach()`` is zero, so the value stays exact while a trainable ``k`` keeps its gradient.
+            k = torch.where(k == built, exact + (k64 - k64.detach()), k64).reshape(k.shape)
+        return harris_response(input, k, self.grads_mode, sigmas)
 
 
 class CornerGFTT(nn.Module):

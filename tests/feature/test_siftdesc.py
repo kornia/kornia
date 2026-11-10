@@ -228,6 +228,18 @@ class TestSIFTDescriptor(BaseTester):
         model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with the Gaussian window built in float64 and the pooling weights,
+        # an nn.Conv2d parameter, rounded to float32 as kornia builds them (snippet in the PR); a window rounded to
+        # float32 misses them by far more than 1e-12, which allows for the summation order.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        patches = ((torch.arange(1024, dtype=torch.float64) * 0.23 + 0.4) % 1.0).reshape(1, 1, 32, 32).to(device)
+        expected = torch.tensor([0.140816954632648, 0.056875575617869586], device=device, dtype=torch.float64)
+        for sift in (SIFTDescriptor(32), SIFTDescriptor(32).double()):
+            desc = sift.to(device)(patches)
+            self.assert_close(torch.stack([desc[0, 22], desc[0, 0]]), expected, rtol=1e-12, atol=0.0)
+
 
 class TestSIFTDescriptorKernelBuffer(BaseTester):
     """`gk` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
