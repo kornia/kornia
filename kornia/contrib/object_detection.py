@@ -422,7 +422,8 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         combined_mask = confidence_mask & class_mask  # [B, D]
 
         if self.filter_as_zero:
-            return boxes * combined_mask[:, :, None]
+            # Select rather than multiply by the mask: NaN * 0 and inf * 0 are NaN, and -5 * 0 is -0.0.
+            return torch.where(combined_mask[:, :, None], boxes, boxes.new_zeros(()))
 
         filtered_boxes_list = []
         for i in range(boxes.shape[0]):
