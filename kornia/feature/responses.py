@@ -547,6 +547,25 @@ class CornerHarris(nn.Module):
             self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        # A tensor assigned to ``k`` becomes a buffer, as every ``k`` was before a number became a plain float.
+        if name == "k" and isinstance(value, torch.Tensor) and "k" not in self._buffers:
+            self.register_buffer("k", value)
+        else:
+            super().__setattr__(name, value)
+
+    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+        """Register a buffer; one named ``k``, such as a subclass registers, replaces a number ``k``.
+
+        Args:
+            name: name of the buffer.
+            tensor: the buffer, or ``None``.
+            persistent: whether the buffer is part of the module's ``state_dict``.
+        """
+        if name == "k":
+            self.__dict__.pop("k", None)
+        super().register_buffer(name, tensor, persistent)
+
     def _load_from_state_dict(
         self,
         state_dict: dict[str, torch.Tensor],
@@ -563,7 +582,7 @@ class CornerHarris(nn.Module):
         key = prefix + "k"
         if not isinstance(self.k, torch.Tensor) and key in state_dict and state_dict[key].dim() == 0:
             saved = state_dict.pop(key)
-            if float(saved) != float(torch.tensor(self.k).to(saved.dtype)):
+            if not saved.is_floating_point() or float(saved) != float(torch.tensor(self.k).to(saved.dtype)):
                 self.k = float(saved)
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs

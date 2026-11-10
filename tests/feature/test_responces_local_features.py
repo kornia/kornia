@@ -205,8 +205,8 @@ class TestCornerHarris(BaseTester):
 
     def test_loads_a_state_dict_that_holds_k_as_a_buffer(self, device):
         # A number k used to be a persistent buffer built in float32, so older state dicts hold "k". That buffer, in
-        # any dtype the module was moved to, loads strictly and keeps the exact number; another value replaces it,
-        # as loading it into the buffer did.
+        # any dtype the module was moved to, loads strictly and keeps the exact number; another value, or an integer
+        # one, replaces it, as loading it into the buffer did.
         img = torch.rand(1, 1, 9, 9, generator=torch.Generator().manual_seed(0)).to(device)
         harris = kornia.feature.CornerHarris(0.04)
         for saved in (torch.tensor(0.04), torch.tensor(0.04).double(), torch.tensor(0.04).half()):
@@ -219,6 +219,24 @@ class TestCornerHarris(BaseTester):
         detector = kornia.feature.ScaleSpaceDetector(5, resp_module=kornia.feature.CornerHarris(0.04))
         detector.load_state_dict({**detector.state_dict(), "resp.k": torch.tensor(0.04)})
         assert detector.resp.k == 0.04
+        harris = kornia.feature.CornerHarris(0.04)
+        harris.load_state_dict({"k": torch.tensor(0)})
+        assert harris.k == 0.0
+
+    def test_a_tensor_k_set_after_construction_is_a_buffer(self, device):
+        # A tensor assigned to k, or registered as k by a subclass, replaces a number k as a buffer, as every k was
+        # before, so it is saved, moved by .to() and seen by ScaleSpaceDetector's float16 routing.
+        harris = kornia.feature.CornerHarris(0.04)
+        harris.k = torch.full((1, 1, 1, 1), 0.05)
+        assert list(harris.state_dict()) == ["k"]
+        assert harris.to(device).k.device.type == device.type
+
+        class Subclass(kornia.feature.CornerHarris):
+            def __init__(self) -> None:
+                super().__init__(0.04)
+                self.register_buffer("k", torch.full((1, 1, 1, 1), 0.06))
+
+        assert list(Subclass().state_dict()) == ["k"]
 
 
 class TestCornerGFTT(BaseTester):
