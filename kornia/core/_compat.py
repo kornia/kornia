@@ -130,7 +130,11 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
     return _TORCH_VERSION >= (major, minor, patch)
 
 
-# The fused CPU kernel of torch 2.5 on Windows can return NaNs or wrong finite values for valid float64 inputs (#5992).
+# The fused CPU SDPA kernel of torch 2.5.1 on Windows returns NaNs or wrong finite values for valid 4-D float64
+# inputs, depending on size and host (#5992). The fault was seen on windows-2022 only; 2.6.0 and 2.9.1 are clean
+# there, and so is 2.15.0 on windows-latest. There is no upstream issue: it is fixed by 2.6.0 and 2.5.1 gets no
+# backport. Cost, on this path only: the math kernel is 2-4x slower and took 279 MiB against 13 MiB at 6 heads x
+# 1370 tokens (Linux, torch 2.5.1). Remove when the torch floor reaches 2.6 (#6614).
 _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY: bool = sys.platform == "win32" and torch_version_lt(2, 6, 0)
 
 
