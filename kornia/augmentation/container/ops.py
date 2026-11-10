@@ -49,7 +49,7 @@ def _parameter_keys(params: Optional[Union[Dict[str, Any], List[ParamItem], List
     keys: set[str] = set()
     if params is not None:
         for param in params:
-            keys.update(_parameter_keys(param.param.data if isinstance(param, PatchParamItem) else param.data))
+            keys = keys | _parameter_keys(param.param.data if isinstance(param, PatchParamItem) else param.data)
     return keys
 
 
@@ -59,8 +59,9 @@ def _supported_options(
     keys = {"save_kwargs", "data_keys"} | _parameter_keys(params)
     for child in module.modules():
         # Only augmentations consume flag overrides; a plain module's own ``flags`` attribute is unrelated.
+        # Rebind with ``|``: Dynamo on torch 2.5 cannot trace set.update() or set.add() with a module's flag keys.
         if isinstance(child, _BasicAugmentationBase):
-            keys.update(child.flags)
+            keys = keys | set(child.flags)
     return keys
 
 
