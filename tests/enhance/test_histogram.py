@@ -70,6 +70,10 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ShapeError, match=r"Input image must have shape \(H, W\), \(C, H, W\) or \(B, C, H, W\)"):
             TestImageHistogram2d.fcn(image, n_bins=2)
 
+    def test_rejects_none_image(self):
+        with pytest.raises(TypeError, match=r"Input image type is not a torch.Tensor"):
+            TestImageHistogram2d.fcn(None)
+
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
         sample = torch.ones(8, 8, device=device, dtype=torch.float64)
