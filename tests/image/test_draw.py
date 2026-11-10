@@ -69,6 +69,17 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match="Color dim must match"):
             draw_point2d(img, points, color)
 
+    def test_draw_point2d_rejects_a_color_of_the_wrong_length_on_an_h_w_image(self, dtype, device):
+        """An (H, W) image is one channel, so a longer colour is refused before the draw.
+
+        The colour used to reach the assignment and fail there with a raw RuntimeError.
+        """
+        points = torch.tensor([(1, 3)], device=device)
+        color = torch.tensor([7, 8, 9], dtype=dtype, device=device)
+        img = torch.zeros(8, 8, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="the color has 3 values and the image has 1 channel"):
+            draw_point2d(img, points, color)
+
     def test_draw_point2d_with_mismatched_dtype(self, device):
         """Test that the color is correctly cast to the image dtype when drawing points."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
@@ -575,6 +586,16 @@ class TestDrawRectangle(BaseTester):
         with pytest.raises(ShapeError):
             draw_rectangle(torch.zeros(3, 6, 5, device=device), torch.tensor([[[0, 0, 2, 2]]], device=device))
 
+    def test_rejects_a_color_of_the_wrong_length(self, dtype, device):
+        """A colour that is neither one value nor one per channel is refused before the draw.
+
+        The colour used to reach the expansion and fail there with a raw RuntimeError.
+        """
+        image = torch.zeros(1, 3, 8, 8, dtype=dtype, device=device)
+        rectangle = torch.tensor([[[1, 1, 4, 4]]], device=device)
+        with pytest.raises(BaseError, match="the color has 2 values and the image has 3 channels"):
+            draw_rectangle(image, rectangle, color=torch.tensor([1.0, 2.0], dtype=dtype, device=device))
+
     @pytest.mark.parametrize("line_width", [1, 2, 4])
     def test_outline_width(self, dtype, device, line_width):
         image = torch.zeros(1, 1, 7, 9, dtype=dtype, device=device)
@@ -942,6 +963,19 @@ class TestDrawRectangle(BaseTester):
 
 
 class TestFillConvexPolygon(BaseTester):
+    @pytest.mark.parametrize("batched_color", [False, True])
+    def test_rejects_a_color_of_the_wrong_length(self, dtype, device, batched_color):
+        """A colour that is neither one value nor one per channel is refused before the draw.
+
+        The colour used to reach the expansion or the fill and fail there with a raw
+        RuntimeError.
+        """
+        image = torch.zeros(1, 3, 8, 8, dtype=dtype, device=device)
+        polygon = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [3.0, 5.0]]], dtype=dtype, device=device)
+        color = torch.tensor([[1.0, 2.0]] if batched_color else [1.0, 2.0], dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="the color has 2 values and the image has 3 channels"):
+            draw_convex_polygon(image, polygon, color)
+
     @pytest.mark.parametrize("as_list", [False, True])
     @pytest.mark.parametrize("reverse", [False, True])
     def test_near_coincident_endpoints_close_independently(self, device, dtype, as_list, reverse):
