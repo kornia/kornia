@@ -43,7 +43,7 @@ def ssim_loss(
 
     Convention:
         - See the Convention block of :func:`~kornia.metrics.ssim` for the window, the border and ``max_val``.
-        - :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the ``1 - SSIM`` loss.
+        - :ref:`Losses and metrics <losses-metrics-conventions>` relates this loss to the ``1 - SSIM`` loss.
           The clamp acts only where roundoff pushes the map outside :math:`[-1, 1]`, as for images with a large
           constant offset.
 

@@ -26,15 +26,13 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) -> torch.Tensor:
     """Sum a tensor cumulatively along chosen axes.
 
-    ``out = integral_tensor(input, dim)`` takes the inclusive cumulative sum of ``input`` along each axis in ``dim``,
-    along the last axis by default. For ``dim=(-2, -1)``, ``out[..., i, j]`` is the sum of
-    ``input[..., :i + 1, :j + 1]``.
+    ``out = integral_tensor(input, dim)`` takes the inclusive cumulative sum of ``input`` along each axis in ``dim``.
+    For ``dim=(-2, -1)``, ``out[..., i, j]`` is the sum of ``input[..., :i + 1, :j + 1]``.
 
     Convention:
-        - ``dim=None`` selects the last axis. Otherwise, ``dim`` is a non-empty tuple of unique axes;
-          an ``int`` raises ``TypeError``.
-        - The output has the shape of the input, with no zero row or column in front, so
-          ``cv2.integral(x)[1:, 1:]`` equals the result for the two spatial axes.
+        - ``dim`` is a non-empty tuple of unique axes; an ``int`` raises ``TypeError``.
+        - There is no zero row or column in front, so ``cv2.integral(x)[1:, 1:]`` equals the result for the two
+          spatial axes.
 
     Args:
         input: tensor with shape ``(*, D)``, one axis or more.
@@ -83,12 +81,12 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
 def integral_image(image: torch.Tensor) -> torch.Tensor:
     """Sum an image cumulatively along its rows and columns.
 
-    ``out = integral_image(image)`` returns the integral image of ``image`` with shape ``(*, H, W)``: ``out[..., i, j]``
-    is the sum of ``image[..., :i + 1, :j + 1]``.
+    ``out = integral_image(image)`` returns the integral image of ``image``: ``out[..., i, j]`` is the sum of
+    ``image[..., :i + 1, :j + 1]``.
 
     Convention:
-        The output has the shape of the input, with no zero row or column in front, unlike ``cv2.integral``, whose
-        result is larger by one row and column.
+        There is no zero row or column in front, unlike ``cv2.integral``, whose result is larger by one row and
+        column.
 
     Args:
         image: image with shape ``(*, H, W)``.

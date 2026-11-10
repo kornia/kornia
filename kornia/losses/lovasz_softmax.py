@@ -46,8 +46,8 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         - ``pred`` holds logits ``(B, C, H, W)`` with ``C >= 2`` and the softmax over dim 1 is taken inside;
           ``target`` holds class labels ``(B, H, W)`` in ``[0, C)`` with the spatial size of ``pred``. The batch
           sizes match, or ``pred`` holds one image, which is scored against every target. There is no
-          ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored, and the result
-          for it is undefined.
+          ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored, and on the CPU in
+          eager mode it raises a ``RuntimeError`` from torch.
         - Each image is scored on its own and the losses are averaged over the batch; there is no ``reduction``. An
           image's loss is the mean over all ``C`` classes: a class absent from the image enters it with that image's
           largest probability for the class.

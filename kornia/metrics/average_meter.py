@@ -27,8 +27,9 @@ class AverageMeter:
     ``stats.avg`` returns their ``n``-weighted mean as a Python float.
 
     Convention:
-        - ``update(val, n)`` adds ``val * n`` to ``sum`` and ``n`` to ``count``: the mean over samples when every
-          ``val`` is a batch mean and ``n`` its batch size. ``val`` keeps the last value passed, unweighted.
+        - ``update(val, n)`` adds ``val * n`` to ``sum`` and ``n`` to ``count``, so ``avg`` is the mean over
+          samples when every ``val`` is a batch mean and ``n`` its batch size. ``val`` keeps the last value passed,
+          unweighted.
         - Values are not rescaled: :func:`~kornia.metrics.accuracy` percentages average to a percentage. A tensor
           ``val`` keeps ``sum`` a tensor that holds its autograd graph; pass a detached tensor or a Python number to
           avoid keeping it.

@@ -30,8 +30,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     r"""Compute the binary Lovász-hinge IoU loss of ``(B, 1, H, W)`` logits against ``(B, H, W)`` labels.
 
     ``loss = lovasz_hinge_loss(pred, target)`` optimises the intersection over union (IoU) of two foregrounds: the
-    one predicted by the single logit channel of ``pred`` (:math:`X`) and the one labelled in ``target`` (:math:`Y`),
-    through the Lovász extension [1] of the Jaccard loss [2].
+    one predicted by the single logit channel of ``pred`` (:math:`X`) and the one labelled in ``target`` (:math:`Y`).
+    It minimises the Lovász extension [1] of the Jaccard loss [2].
 
     .. math::
 

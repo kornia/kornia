@@ -48,7 +48,7 @@ class Normalize(nn.Module):
     checkpoints include.
 
     Convention:
-        - See the convention block of :func:`normalize`. Unlike the function, the module also takes lists and tuples.
+        - See the convention block of :func:`normalize`.
 
     Args:
         mean: mean of each channel, a number, a list, a tuple or a tensor.
@@ -136,7 +136,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     with the channel on dimension 1.
 
     Convention:
-        - ``mean`` and ``std`` are converted to the dtype and device of ``data``; the output keeps its dtype.
+        - ``mean`` and ``std`` are converted to the dtype and device of ``data``; a floating ``data`` keeps its dtype.
         - An integer or bool ``data`` is converted to torch's default floating dtype first, so a fractional statistic is
           not truncated. Pixel values are not rescaled: give ``mean`` and ``std`` in the 0-255 scale for a uint8 image.
 
@@ -226,7 +226,7 @@ class Denormalize(nn.Module):
     checkpoints include.
 
     Convention:
-        - See the convention block of :func:`denormalize`. Unlike the function, the module also takes lists and tuples.
+        - See the convention block of :func:`denormalize`.
 
     Args:
         mean: mean of each channel, a number, a list, a tuple or a tensor.
@@ -311,7 +311,7 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
     Convention:
         - ``mean`` and ``std`` take the forms of :func:`normalize`, are converted to the dtype and device of ``data``,
-          and the output keeps its dtype.
+          and a floating ``data`` keeps its dtype.
         - An integer or bool ``data`` is converted to torch's default floating dtype first, so the result is floating
           and cannot wrap.
 
@@ -410,7 +410,7 @@ def normalize_min_max(
     Args:
         input: image with shape ``(*, C, H, W)``.
         min_val: value of each plane's minimum, a ``float``.
-        max_val: value each plane's maximum maps to, less the ``eps`` offset, a ``float``.
+        max_val: target of each plane's maximum, a ``float``.
         eps: value added to each plane's range ``r = x.max() - x.min()``, so the maximum lands at
             ``max_val - (max_val - min_val) * eps / (r + eps)``.
 

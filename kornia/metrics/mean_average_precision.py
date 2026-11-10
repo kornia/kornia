@@ -42,7 +42,7 @@ def mean_average_precision(
 
     Convention:
         - The call raises when the five lists differ in length, when the boxes, labels and scores of an image differ
-          in their number of rows, or when a label lies outside :math:`[0, n_{classes})` or is not a whole number: a
+          in their number of rows, or when a label lies outside ``[0, n_classes)`` or is not a whole number: a
           floating-point label such as ``1.0`` counts as class 1, and ``1.5`` raises. Boxes are exclusive ``xyxy``,
           the default format of :func:`~kornia.metrics.mean_iou_bbox`, which computes the overlaps.
         - Class 0 is background: its objects and detections are never scored, and ``n_classes`` counts it, so the
@@ -71,7 +71,7 @@ def mean_average_precision(
         threshold: the IoU a detection must exceed to be a true positive.
 
     Returns:
-        the mAP and a dict mapping each scored class id, 1 to ``n_classes - 1``, to its AP.
+        the mAP and a dict mapping each foreground class id, 1 to ``n_classes - 1``, to its AP.
 
     See Also:
         - :func:`~kornia.metrics.mean_iou_bbox`: the pairwise box IoU the matching uses, as a matrix.

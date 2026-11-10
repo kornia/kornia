@@ -38,8 +38,8 @@ Which function to use, with the module form after the function:
 - Threshold at a fixed level: :func:`threshold`, :class:`Threshold`, :class:`ThresholdType`.
 - Equalize each channel's histogram: :func:`equalize`; of a volume: :func:`equalize3d`; tile by tile with a clipped
   histogram: :func:`equalize_clahe`.
-- Histograms: :func:`histogram` of sample rows, :func:`histogram2d` of two rows, and
-  :func:`image_histogram2d` of each image channel.
+- Histograms of sample rows, :func:`histogram`; the joint histogram of two sample rows, :func:`histogram2d`; of each
+  image channel, :func:`image_histogram2d`.
 - Normalize with a mean and standard deviation: :func:`normalize`, :class:`Normalize`; undo it: :func:`denormalize`,
   :class:`Denormalize`; scale each channel plane to a value range: :func:`normalize_min_max`.
 - Whiten data with ZCA: :func:`zca_whiten`, or fit once with :class:`ZCAWhitening`; the pieces are :func:`zca_mean` and

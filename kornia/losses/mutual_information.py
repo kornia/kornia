@@ -95,7 +95,7 @@ def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> to
 
 
 class MIKernel(Enum):
-    """Name the kernel that spreads a sample over the histogram bins of the mutual-information losses.
+    """Choose the kernel that spreads a sample over the histogram bins of the mutual-information losses.
 
     Pass a member as the ``kernel_function`` of a mutual-information loss. The members are not callable: a member's
     ``value`` is the kernel ``f(d, window_radius=1.0)``, the weight that a sample at distance ``d`` from a bin centre,
@@ -983,7 +983,7 @@ def mutual_information_loss(
         - For float16 and bfloat16 inputs, min-max normalisation, kernel evaluation, histogram accumulation and
           entropy arithmetic use float32, including under autocast, and the final loss is cast back to the input
           dtype. The empty-bin floor uses the histogram's computation dtype rather than the input dtype.
-          The constant-signal threshold remains ``torch.finfo(dtype).eps``.
+          The constant-signal threshold remains ``torch.finfo(input dtype).eps``.
 
     Args:
         input: flat signals ``(*, N)``.
@@ -1151,9 +1151,9 @@ def normalized_mutual_information_loss(
     Convention:
         - The loss is the negative of Studholme's normalized mutual information, which lies in :math:`[1, 2]`: the
           loss lies in ``[-2, -1]`` and is ``-1`` when one signal is constant and the other is not. Two constant
-          signals give an arbitrary finite value, since histogram cells are floored at machine epsilon: ``-1.61`` with
-          the float32 defaults and ``-1.78`` in float64. With continuous values and the default ``window_radius``,
-          even an image against itself scores above ``-2``.
+          signals give a finite value below ``-1`` that changes with the dtype, ``num_bins`` and the number of
+          samples, because histogram cells are floored at machine epsilon. With continuous values and the default
+          ``window_radius``, even an image against itself scores above ``-2``.
           :ref:`Registration <mutual-information-porting>` maps this normalisation onto scikit-image and
           scikit-learn.
         - Everything else is as in the Convention block of :func:`~kornia.losses.mutual_information_loss`.

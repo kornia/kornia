@@ -48,11 +48,9 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
     returns one percentage in :math:`[0, 100]`, not a fraction, per entry of ``topk``.
 
     Convention:
-        - Only the order of the scores in a row matters, so logits and probabilities give the same result. A
-          sample counts for ``k`` when its target is among its ``k`` highest scores; a ``k`` above :math:`C`
-          counts as :math:`C`. :ref:`Losses and metrics <losses-metrics-conventions>` lists the scale of every task
-          metric.
-        - ``target`` may also have shape ``(B, 1)``; its batch size must match that of ``pred``.
+        - Only the order of the scores in a row matters. A sample counts for ``k`` when its target is among its
+          ``k`` highest scores; a ``k`` above :math:`C` counts as :math:`C`. :ref:`Losses and metrics
+          <losses-metrics-conventions>` lists the scale of every task metric.
 
     Args:
         pred: class scores with shape ``(B, C)``.

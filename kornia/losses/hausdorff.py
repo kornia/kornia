@@ -211,9 +211,10 @@ class HausdorffERLoss(_HausdorffERLossBase):
           (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
           those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
         - The default ``'mean'`` is the plain mean of the ``'none'`` tensor.
-        - Each erosion keeps only the part of the neighbourhood-averaged squared error above 0.5. If the first
-          neighbourhood average is everywhere below 0.5, the loss and gradient are zero. A near-uniform softmax
-          need not satisfy this condition: with four classes, the true-class squared error is 0.5625.
+        - Each erosion keeps only the part of the neighbourhood-averaged squared error above 0.5. Where every pixel's
+          true-class probability is above :math:`1 - 1/\sqrt{2} \approx 0.29`, the loss and gradient are zero: a
+          uniform softmax over two or three classes gives zero, and so does a two-class prediction that is 70 %
+          confident and wrong.
         - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
           :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
           in pixels.

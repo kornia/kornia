@@ -12,7 +12,8 @@ Adjust, equalize, normalize and whiten images, and simulate JPEG compression.
    :widths: 30 70
 
    * - :doc:`enhance.adjustment`
-     - Brightness, contrast, gamma, logarithmic, sigmoid, hue and saturation adjustments; invert, posterize, solarize, sharpen, RGB shift, weighted sum, rescale and fixed-level threshold.
+     - Brightness, contrast, gamma, logarithmic, sigmoid, hue and saturation adjustments; invert, posterize,
+       solarize, sharpen, RGB shift, weighted sum, rescale and fixed-level threshold.
    * - :doc:`enhance.equalization`
      - Histogram equalization, tile-wise CLAHE and differentiable histograms.
    * - :doc:`enhance.normalization`

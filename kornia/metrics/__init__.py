@@ -36,8 +36,8 @@ Which function to use, with the module form after the function:
   error, :func:`root_mean_squared_disparity_error`; the fraction of pixels above an error threshold,
   :func:`mean_bad_pixel_error`; the KITTI D1 outlier fraction, :func:`kitti_d1_error`.
 - Pose: the angle between two rotations, :func:`angle_error_mat`; between two vectors, :func:`angle_error_vec`; the
-  distance between two translations, :func:`translation_ate`; the rotation and translation errors of two poses,
-  :func:`pose_errors`; the area under the error curve at thresholds, :func:`auc_from_errors`.
+  distance between two translations, :func:`translation_ate`; the rotation angle and translation-direction angle of
+  two poses, :func:`pose_errors`; the area under the error curve at thresholds, :func:`auc_from_errors`.
 - Monitoring: the running average over batches, :class:`AverageMeter`.
 """
 

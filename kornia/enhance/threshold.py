@@ -95,8 +95,8 @@ def threshold(
     """Threshold every element at a fixed level, as ``cv2.threshold`` does.
 
     ``out = threshold(input, thresh, maxval, type)`` compares each element with ``thresh`` and maps it to ``maxval``,
-    ``0``, ``thresh`` or itself, as the :class:`ThresholdType` ``type`` says. It uses OpenCV's mode values, takes
-    tensors for ``thresh`` and ``maxval``, and raises for ``THRESH_OTSU``.
+    ``0``, ``thresh`` or itself, as the :class:`ThresholdType` ``type`` says. It takes tensors for ``thresh`` and
+    ``maxval``.
 
     Convention:
         - The comparison is strict: an element passes when ``input > thresh``.

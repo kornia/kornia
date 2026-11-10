@@ -237,6 +237,7 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
         - :func:`~kornia.metrics.angle_error_mat`: the rotation error alone, from rotation matrices.
         - :func:`~kornia.metrics.angle_error_vec`: the translation error alone, before folding.
         - :func:`~kornia.metrics.auc_from_errors`: summarizes ``"max_err"`` over many pairs.
+        - :func:`~kornia.metrics.translation_ate`: the translation distance, which keeps the magnitude.
 
     Example:
         >>> P = torch.eye(4)
@@ -271,7 +272,6 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
     each threshold to its AUC.
 
     Convention:
-        - See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"max_err"`` is the usual input.
         - All errors are pooled into one curve, whatever their shape. The recall curve rises by :math:`1/n` at each
           of the :math:`n` sorted errors, joined to :math:`(0, 0)` and to each other by straight lines (the trapezoid
           rule), and is held flat from the last error below the threshold out to the threshold. The AUC is its area

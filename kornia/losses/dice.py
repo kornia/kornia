@@ -217,7 +217,7 @@ def dice_loss(
         pred: logits ``(B, C, H, W)``.
         target: int64 class indices ``(B, H, W)`` in ``[0, C)``, or ``ignore_index``.
         average: ``'micro'`` (default) or ``'macro'``.
-        eps: term added to the denominator.
+        eps: term added to the denominator, non-negative.
         weight: class weights ``(C,)``; ``None`` weights every class by 1.
         ignore_index: label whose pixels are left out; ``None`` ignores no label.
 
@@ -355,7 +355,7 @@ class DiceLoss(nn.Module):
 
     Args:
         average: ``'micro'`` (default) or ``'macro'``, as in :func:`~kornia.losses.dice_loss`.
-        eps: term added to the denominator.
+        eps: term added to the denominator, non-negative.
         weight: class weights ``(C,)``; ``None`` weights every class by 1.
         ignore_index: label whose pixels are left out; ``None`` ignores no label.
 

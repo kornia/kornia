@@ -323,7 +323,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     Args:
         image: HSV image with shape ``(*, 3, H, W)``, hue in radians.
-        factor: angle in radians, a float or a tensor with shape ``(B,)`` for one value per image.
+        factor: angle in radians, a number or a tensor with shape ``(B,)`` for one value per image.
 
     Returns:
         HSV image with shape ``(*, 3, H, W)``.
@@ -378,7 +378,7 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
 
     Args:
         image: RGB image with shape ``(*, 3, H, W)``.
-        factor: hue shift in radians, a float or a tensor with shape ``(B,)`` for one value per image.
+        factor: hue shift in radians, a number or a tensor with shape ``(B,)`` for one value per image.
 
     Returns:
         Adjusted image with shape ``(*, 3, H, W)``.
@@ -1053,8 +1053,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Args:
         input: image with shape ``(*, C, H, W)``.
         bits: number of high bits to keep, in ``[0, 8]``. An integer or a one-element tensor applies to the whole batch.
-            A tensor with shape ``(B,)`` gives one value per image and one with shape ``(B, C)`` one per channel, where
-            ``B`` is the product of the leading dimensions of ``input``.
+            A tensor with shape ``(B,)`` gives one value per image, one with shape ``(B, C)`` one per channel, and a
+            longer prefix of ``(B, C, H, W)`` element-wise values, where ``B`` is the product of the leading dimensions
+            of ``input``.
 
     Returns:
         Image with the shape of ``input``.
@@ -1316,8 +1317,8 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         - Each pixel is counted in the lookup-table entry it reads, its 8-bit level ``(x * 255).long()`` in the input
           dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize`` of those levels. In float32 and float64
           the 255 is raised by four float32 epsilons, relative (``2**-21``), so ``k / 255`` reads level ``k`` even when
-          its division was rounded a unit low, as dividing by 255 on CUDA leaves 24 of the 256 float64 levels; a
-          continuous value moves up a level only that close below a level boundary.
+          its division was rounded a unit low. Dividing by 255 on CUDA leaves 24 of the 256 float64 levels a unit low.
+          A continuous value moves up a level only within that margin below a level boundary.
         - The lookup step is the pixel count minus the count at the highest occupied level, integer-divided by 255. A
           channel whose step is 0, which includes every channel of up to 255 pixels, is returned unchanged.
         - A float32 image counts in float32, which is exact while a channel holds at most ``2**24`` pixels (a 4096 by
@@ -1332,11 +1333,12 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
     .. note::
        An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
-       8-bit data with ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly
-       :math:`[0, 1]`) raise a ``RuntimeError`` naming the range, during the call for a CPU image, even when checks are
-       disabled, since the check keeps the lookup in bounds. On CUDA, and on MPS from torch ``2.13``, the check is
-       ``torch._assert_async`` and raises by the next synchronization; on an older MPS release the condition is read on
-       the host instead, one device sync per call, and is skipped there under ``torch.compile``.
+       8-bit data with ``image.float() / 255`` first. Values the 256-bin lookup cannot index, those whose level
+       before truncation lies outside ``(-1, 256)``, raise a ``RuntimeError`` naming the range, during the call for a
+       CPU image, even when checks are disabled, since the check keeps the lookup in bounds. On CUDA, and on MPS from
+       torch ``2.13``, the check is ``torch._assert_async`` and raises by the next synchronization; on an older MPS
+       release the condition is read on the host instead, one device sync per call, and is skipped there under
+       ``torch.compile``.
 
     See Also:
         - :func:`equalize3d`: the volume twin, with one histogram per channel volume.
@@ -1373,8 +1375,9 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         Equalized volume with the shape of ``input``.
 
     .. note::
-       An integer or boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, and a value outside roughly
-       :math:`[0, 1]` raises a ``RuntimeError``, as for :func:`equalize`, with the same device behavior.
+       An integer or boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, and a value whose level
+       before truncation lies outside ``(-1, 256)`` raises a ``RuntimeError``, as for :func:`equalize`, with the same
+       device behavior.
 
     See Also:
         - :func:`equalize`: the image twin, with one histogram per channel plane.
@@ -1560,7 +1563,7 @@ class AdjustHue(nn.Module):
         - See the convention block of :func:`adjust_hue`.
 
     Args:
-        hue_factor: hue shift in radians, a float or a tensor with shape ``(B,)``.
+        hue_factor: hue shift in radians, a number or a tensor with shape ``(B,)``.
 
     Shape:
         - Input: ``(*, 3, H, W)``

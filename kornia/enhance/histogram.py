@@ -112,7 +112,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
     """Estimate the normalized histogram of each sample row with Gaussian kernels.
 
     ``hist = histogram(x, bins, bandwidth)`` spreads every value of a row of ``x`` over the bin centers ``bins`` with a
-    Gaussian kernel and normalizes each row by its weight sum plus ``epsilon``.
+    Gaussian kernel and normalizes each row to sum to 1, with ``epsilon`` added to the divisor.
 
     Convention:
         - Rows are independent samples, and ``bins`` is the one center grid they share.
@@ -129,9 +129,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         epsilon: value added to the normalization sum.
 
     Returns:
-        Histogram with shape ``(B, N_bins)``. Each row sums approximately to 1 when its weight sum dominates
-        ``epsilon``. When all kernel weights underflow to zero, it is zero for a positive ``epsilon`` and NaN for
-        ``epsilon=0``.
+        Histogram with shape ``(B, N_bins)``. When all kernel weights underflow to zero, it is zero for a positive
+        ``epsilon`` and NaN for ``epsilon=0``.
 
     See Also:
         - :func:`histogram2d`: the joint histogram of two sample rows.
@@ -162,16 +161,13 @@ def histogram2d(
 ) -> torch.Tensor:
     """Estimate the normalized joint histogram of two sample rows with Gaussian kernels.
 
-    ``hist = histogram2d(x1, x2, bins, bandwidth)`` pairs the values ``x1[b, n]`` and ``x2[b, n]`` and returns their
-    joint weights over the bin centers: ``hist[b, i, j]`` is the weight of ``x1`` in bin ``i`` and ``x2`` in bin ``j``,
-    normalized by their sum plus ``epsilon`` per batch element. The sum approaches 1 when the joint weight sum
-    dominates ``epsilon``. All-zero kernel weights give an all-zero result for a positive ``epsilon`` and NaN for
-    ``epsilon=0``.
+    ``hist = histogram2d(x1, x2, bins, bandwidth)`` pairs ``x1[b, n]`` with ``x2[b, n]``: ``hist[b, i, j]`` is the
+    kernel weight of ``x1`` in bin ``i`` and ``x2`` in bin ``j``, normalized per batch element to sum to 1.
 
     Convention:
         - ``x1`` and ``x2`` must have the same shape.
-        - For float16 and bfloat16 samples and bins, the kernels, joint counts and normalization are evaluated in
-          float32 and the result is cast back to that dtype.
+        - When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and normalization are
+          evaluated in float32 and the result is cast back to that dtype.
 
     Args:
         x1: first samples with shape ``(B, D)``.
@@ -181,7 +177,8 @@ def histogram2d(
         epsilon: value added to the normalization sum.
 
     Returns:
-        Joint histogram with shape ``(B, N_bins, N_bins)``; the first bin axis belongs to ``x1``.
+        Joint histogram with shape ``(B, N_bins, N_bins)``; the first bin axis belongs to ``x1``. All-zero kernel
+        weights give zeros for a positive ``epsilon`` and NaN for ``epsilon=0``.
 
     See Also:
         - :func:`histogram`: the histogram of one sample row.
@@ -280,13 +277,14 @@ def image_histogram2d(
         image: image with shape ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
         min: lower end of the range, a ``float``. It sets the automatic centers and bandwidth.
         max: upper end of the range, a ``float``. The default ``255.0`` puts a :math:`[0, 1]` image in two bins; pass
-            ``1.0`` for that range. Ignored when ``bandwidth`` is given.
+            ``1.0`` for that range. Unused when ``bandwidth`` is given, but it must still exceed ``min`` while the
+            centers are automatic.
         n_bins: number of automatic bins.
         bandwidth: kernel width, a positive finite ``float``. The default, also ``-1``, is ``(max - min) / n_bins``.
         centers: bin centers with shape ``(K,)``. The default, also an empty tensor, is ``n_bins`` centers at
             ``min + (i + 0.5) * bandwidth``, so an explicit ``bandwidth`` moves them off ``[min, max]``
-            (`#6664 <https://github.com/kornia/kornia/issues/6664>`_). Pass ``bandwidth`` with it: the default
-            bandwidth still comes from ``min``, ``max`` and ``n_bins``
+            (`#6664 <https://github.com/kornia/kornia/issues/6664>`_). With explicit centers, also pass
+            ``bandwidth``: the default bandwidth still comes from ``min``, ``max`` and ``n_bins``
             (`#6662 <https://github.com/kornia/kornia/issues/6662>`_).
         return_pdf: whether to also return the normalized histogram.
         kernel: weight of a pixel at distance ``d`` from a center, with ``u = d / bandwidth``: ``'triangular'``

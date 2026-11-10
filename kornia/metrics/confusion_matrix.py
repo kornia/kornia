@@ -47,7 +47,7 @@ def confusion_matrix(
     r"""Count predicted against target class labels, one confusion matrix per sample.
 
     ``cm = confusion_matrix(pred, target, num_classes)`` takes two integer label tensors of shape ``(B, *)`` and
-    returns float32 counts with shape ``(B, K, K)``, where ``cm[b, target, pred]`` counts the positions of sample
+    returns float32 matrices with shape ``(B, K, K)``, where ``cm[b, target, pred]`` counts the positions of sample
     ``b`` with that target and that prediction.
 
     Convention:
@@ -59,7 +59,7 @@ def confusion_matrix(
         - The first axis is always the batch and the result is never pooled over it, so a flat ``(N,)`` label vector
           gives :math:`N` matrices that count one label each. Sum over the first axis for the matrix of a whole batch
           or dataset.
-        - Swapping the two arguments transposes every matrix.
+        - Swapping the two arguments transposes every count matrix, but not a ``normalized`` one.
           :ref:`Losses and metrics <losses-metrics-conventions>` maps the matrix and ``normalized`` onto
           scikit-learn.
 
@@ -71,7 +71,7 @@ def confusion_matrix(
           approximately one; empty rows stay zero.
 
     Returns:
-        the count matrices with shape ``(B, K, K)``.
+        the matrices with shape ``(B, K, K)``: counts, or row fractions with ``normalized=True``.
 
     See Also:
         - :func:`~kornia.metrics.mean_iou`: the per-class IoU computed from this matrix.

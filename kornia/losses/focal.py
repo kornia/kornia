@@ -424,8 +424,8 @@ def binary_focal_loss_with_logits(
 
     ``loss = binary_focal_loss_with_logits(pred, target)`` scales the binary cross entropy of each logit by
     :math:`\alpha_t (1 - p_t)^{\gamma}` :cite:`lin2018focal`, so that elements the sigmoid already classifies well
-    count less. For a target of 0 or 1, :math:`p_t` is the sigmoid probability of the target value and
-    :math:`\alpha_t` is ``alpha`` or ``1 - alpha``.
+    count less. For a target of 0 or 1, :math:`p_t` is the sigmoid probability of the target value, and
+    :math:`\alpha_t` is ``alpha`` for a target of 1 and ``1 - alpha`` for a target of 0.
 
     .. math::
 

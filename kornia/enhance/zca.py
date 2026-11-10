@@ -29,8 +29,8 @@ class ZCAWhitening(nn.Module):
     r"""Whiten data with a ZCA transform fitted on a data set.
 
     ``zca = ZCAWhitening(dim)`` is fitted with ``zca.fit(x)``, after which ``zca(x)`` returns ``x`` centered and
-    whitened. ``dim`` is the sample axis and all other axes are flattened into
-    one feature vector, so a ``(5, 3, 2, 2)`` tensor has :math:`N = 5` samples of :math:`D = 12` features.
+    whitened. ``dim`` is the sample axis and all other axes are flattened into one feature vector, so a
+    ``(5, 3, 2, 2)`` tensor has :math:`N = 5` samples of :math:`D = 12` features.
 
     Convention:
         - The mean :math:`\mathbf{\mu}` and covariance :math:`\mathbf{\Sigma}` come from the flattened data
@@ -41,7 +41,7 @@ class ZCAWhitening(nn.Module):
 
               \mathbf{X}_{\text{zca}} = (\mathbf{X} - \mathbf{\mu})(U(S + \epsilon I)^{-1/2}U^T)^T
 
-        - The output has the shape of the input. Call ``fit`` or pass ``include_fit=True`` before transforming.
+        - The output has the shape of the input. ``zca(x, include_fit=True)`` fits on ``x`` before transforming it.
         - Float16 and bfloat16 inputs are fitted and transformed in float32, and only the transformed output is rounded
           to the input dtype. The fitted buffers stay float32; casting the module to half precision discards that
           accuracy.
@@ -153,7 +153,7 @@ class ZCAWhitening(nn.Module):
             x: Input data.
 
         Returns:
-            Returns a fitted ZCAWhiten object instance.
+            Returns a fitted ZCAWhitening object instance.
 
         Raises:
             ValueError: If the sample dimension has fewer than two entries with ``unbiased=True``, or none with

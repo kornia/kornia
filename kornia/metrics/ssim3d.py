@@ -57,8 +57,8 @@ def ssim3d(
 
     Convention:
         See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
-        ``max_val``; ``'valid'`` crops every axis. A volume of identical slices reproduces the 2-D map up to
-        floating-point roundoff.
+        ``max_val``; ``'valid'`` crops every axis, and ``'same'`` needs ``D``, ``H`` and ``W`` larger than
+        ``window_size // 2``. A volume of identical slices reproduces the 2-D map up to floating-point roundoff.
 
     Args:
         img1: the first volume with shape ``(B, C, D, H, W)``.
@@ -190,7 +190,7 @@ class SSIM3D(nn.Module):
         window_size: size of the Gaussian window in voxels, a positive odd integer.
         max_val: data range :math:`L` of the volumes, as a Python float.
         eps: term added to the denominator.
-        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim`.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.
 
     Shape:
         - img1: ``(B, C, D, H, W)``.

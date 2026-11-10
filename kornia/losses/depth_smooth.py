@@ -40,8 +40,8 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
     r"""Compute the edge-aware smoothness loss of an inverse depth map.
 
     ``loss = inverse_depth_smoothness_loss(idepth, image)`` penalises the horizontal and vertical gradients of
-    an ``(N, 1, H, W)`` inverse depth, each weighted by the exponential of minus the image gradient, so a depth edge
-    costs little where the ``(N, 3, H, W)`` image has an edge.
+    an ``(N, 1, H, W)`` inverse depth. Each is weighted by the exponential of minus the gradient of the
+    ``(N, 3, H, W)`` image, so a depth edge costs little where the image has an edge.
 
     .. math::
 

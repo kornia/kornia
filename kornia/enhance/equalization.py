@@ -497,9 +497,9 @@ def equalize_clahe(
           divide is reflect-padded at its end. OpenCV uses the same tiles when the grid divides both axes or neither;
           when it divides one, OpenCV also pads that axis by one pixel per tile and Kornia does not.
         - Lookup tables are blended with weights anchored at each tile's centre, ``(p + 0.5) / tile_size - 0.5`` for
-          pixel ``p``, which keeps flip symmetry on unpadded grids. This is half a pixel from the phase of OpenCV and
-          scikit-image, so the output differs from ``cv2.createCLAHE`` even for the same lookup tables, and it is not
-          rounded to 8-bit levels.
+          pixel ``p``, which keeps flip symmetry on unpadded grids. This shifts the phase by half a pixel, at most half
+          an interpolation step per axis, from that of OpenCV and scikit-image, so the output differs from
+          ``cv2.createCLAHE`` even for the same lookup tables. The output is not rounded to 8-bit levels.
         - The default path rounds the lookup tables to nearest like OpenCV; ``slow_and_differentiable=True`` does not.
 
     Args:
@@ -509,15 +509,16 @@ def equalize_clahe(
         grid_size: number of tiles ``(GH, GW)`` along H and W, a tuple of ``int``. Each image axis must be larger than
             its grid size; the ``ValueError`` otherwise names the smallest image the grid admits.
         slow_and_differentiable: count with a soft histogram, so gradients reach ``input``; the default path has none.
-            It is slower and its values differ from the default path's.
+            It is slower and, without the lookup-table rounding, its values differ from the default path's.
 
     Returns:
         Equalized image with the shape of ``input``.
 
     .. note::
        An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`), and values
-       outside roughly :math:`[0, 1]` raise a ``RuntimeError`` naming the range, as for :func:`equalize`. That function
-       also describes the 8-bit level the lookup reads and when the range error surfaces on CUDA and MPS.
+       whose level before truncation lies outside ``(-1, 256)`` raise a ``RuntimeError`` naming the range, as for
+       :func:`equalize`. That function also describes the 8-bit level the lookup reads and when the range error
+       surfaces on CUDA and MPS.
 
     See Also:
         - :func:`equalize`: equalizes the whole channel with one histogram.

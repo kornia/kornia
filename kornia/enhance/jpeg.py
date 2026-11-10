@@ -647,12 +647,12 @@ def jpeg_codec_differentiable(
     Returns:
         JPEG-coded image with the shape of ``input``.
 
+    .. note::
+       The model produces no JPEG byte file and cannot read one. To load JPEG files use ``kornia.io``.
+
     See Also:
         - :class:`JPEGCodecDifferentiable`: the module form, which keeps the tables.
         - :class:`~kornia.augmentation.RandomJPEG`: applies JPEG compression at random quality per image.
-
-    .. note::
-       The model produces no JPEG byte file and cannot read one. To load JPEG files use ``kornia.io``.
 
     Example:
         To perform JPEG coding with the standard quantization tables just provide a JPEG quality

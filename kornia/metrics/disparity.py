@@ -183,7 +183,7 @@ def root_mean_squared_disparity_error(
 
     Convention:
         - See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error` for the pooling, the
-          mask, the empty-mask result and half-precision sums.
+          mask and the empty-mask result.
         - ``'sum'`` gives :math:`\sqrt{\sum e^2}`, not a sum of errors. The squared error is computed in ``float32``
           for half-precision inputs and only the final value is cast back, so an error above 256 px does not
           saturate ``float16``.

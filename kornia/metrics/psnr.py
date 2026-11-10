@@ -41,12 +41,13 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
           maximum of the tensor; pixel values are not rescaled.
         - The shapes must match, without broadcasting, and the value is symmetric in the images. Identical inputs
           give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
-        - Integer and bool images are converted to float32 before computing the MSE. Uint8, int8, int16 and int32
-          tensor data ranges are widened to int64 before squaring to avoid overflow, except when the promoted image
-          dtype is float16 or bfloat16, which uses float32 range arithmetic.
+        - Integer and bool images are converted to float32 before computing the MSE, so an integer image paired with
+          a half-precision image gives a float32 result. Uint8, int8, int16 and int32 tensor data ranges are widened
+          to int64 before squaring to avoid overflow, except when the promoted image dtype is float16 or bfloat16,
+          which uses float32 range arithmetic.
         - Float16 and bfloat16 inputs are evaluated in float32 and the result keeps their promoted dtype, also
           promoted with ``max_val.dtype`` for a tensor range: a float32 tensor range gives a float32 result for
-          half-precision images, and so does an integer image paired with a half-precision image.
+          half-precision images.
 
     Args:
         image: the image with shape ``(*)``.
