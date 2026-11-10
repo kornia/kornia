@@ -381,6 +381,15 @@ class TestAdjustGamma(BaseTester):
         expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]), image.new_tensor([gain]))
         self.assert_close(kornia.enhance.adjust_gamma(image, gamma, gain), expected)
 
+    def test_float64_cpu_parameters(self, device, dtype):
+        # Gamma and gain are cast before they cross to the image's device: a float64 CPU tensor moved first does not
+        # fit on MPS, which has no float64.
+        image = torch.linspace(0, 1, 33, device=device, dtype=dtype).reshape(1, 3, 11).expand(2, 3, 11)
+        gamma = torch.tensor([2.0, 0.5], dtype=torch.float64)
+        gain = torch.tensor([1.0, 0.8], dtype=torch.float64)
+        expected = kornia.enhance.adjust_gamma(image, gamma.to(dtype).to(device), gain.to(dtype).to(device))
+        self.assert_close(kornia.enhance.adjust_gamma(image, gamma, gain), expected, rtol=0, atol=0)
+
     @pytest.mark.applies_to(
         when=lambda p: p["dtype_name"] != "float64", reason="The negative value is representable in float64"
     )
@@ -1672,6 +1681,18 @@ class TestSharpness(BaseTester):
 @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
 class TestSolarize(BaseTester):
     f = kornia.enhance.solarize
+
+    def test_float64_cpu_parameters(self, device, dtype):
+        # Thresholds and additions are cast before they cross to the image's device: a float64 CPU tensor moved first
+        # does not fit on MPS, which has no float64.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        thresholds = torch.tensor([0.8, 0.3], dtype=torch.float64)
+        additions = torch.tensor([0.1, -0.1], dtype=torch.float64)
+        expected = TestSolarize.f(img, thresholds.to(dtype).to(device), additions.to(dtype).to(device))
+        self.assert_close(TestSolarize.f(img, thresholds, additions), expected, rtol=0, atol=0)
+        # One threshold and one addition, as (1,) tensors, take the single-value path.
+        expected = TestSolarize.f(img, thresholds[:1].to(dtype).to(device), additions[:1].to(dtype).to(device))
+        self.assert_close(TestSolarize.f(img, thresholds[:1], additions[:1]), expected, rtol=0, atol=0)
 
     def test_smoke(self, device, dtype):
         B, C, H, W = 2, 3, 4, 5

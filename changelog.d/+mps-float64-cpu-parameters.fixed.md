@@ -1,0 +1,1 @@
+`adjust_gamma` and `solarize` accept float64 CPU parameter tensors with an MPS image, as the other `kornia.enhance` functions do: the parameters are cast on the CPU side before they move, so no float64 tensor reaches MPS. `RandomSolarize` and `RandomErasing`, left on the CPU with a float64 default dtype, now apply to an MPS input instead of raising.
