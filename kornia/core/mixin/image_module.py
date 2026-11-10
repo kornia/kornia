@@ -31,6 +31,14 @@ from kornia.core.external import numpy as np
 from kornia.core.utils import is_exporting
 
 
+def _is_pil_image(arg: Any) -> bool:
+    # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
+    # loader, which on an install without the "image" extra raises, asks or installs Pillow for an input that cannot
+    # be a PIL image.
+    pil_module = sys.modules.get("PIL.Image")
+    return pil_module is not None and isinstance(arg, pil_module.Image)
+
+
 def _image_to_float(image: torch.Tensor) -> torch.Tensor:
     """Convert an image tensor to floating point, scaling an integer image by the maximum of its dtype.
 
@@ -264,10 +272,7 @@ class ImageModuleMixIn:
             return True
         if isinstance(arg, np.ndarray):
             return True
-        # A PIL image exists only once PIL is imported: look the module up instead of importing it through the lazy
-        # loader, which would raise on an install without the "image" extra for every non-image argument.
-        pil_image = sys.modules.get("PIL.Image")
-        return pil_image is not None and isinstance(arg, pil_image.Image)
+        return _is_pil_image(arg)
 
     def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
@@ -312,7 +317,7 @@ class ImageModuleMixIn:
             return x
         elif isinstance(x, np.ndarray):
             image = _array_to_float_image(x)
-        elif isinstance(x, Image.Image):
+        elif _is_pil_image(x):
             if x.mode in ("P", "PA"):  # palette indices are not intensities
                 x = x.convert("RGBA" if x.mode == "PA" or "transparency" in x.info else "RGB")
             image = _array_to_float_image(np.array(x))
@@ -375,7 +380,7 @@ class ImageModuleMixIn:
             return x.contiguous().numpy()
         if isinstance(x, np.ndarray):
             return x
-        if isinstance(x, Image.Image):
+        if _is_pil_image(x):
             return np.array(x)
         raise TypeError("Input type not supported")
 
@@ -403,7 +408,7 @@ class ImageModuleMixIn:
             )
         if isinstance(x, np.ndarray):
             raise NotImplementedError("to_pil does not convert NumPy arrays; convert them with to_tensor first.")
-        if isinstance(x, Image.Image):
+        if _is_pil_image(x):
             return x
         raise TypeError("Input type not supported")
 
