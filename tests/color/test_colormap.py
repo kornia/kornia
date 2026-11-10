@@ -176,8 +176,10 @@ class TestApplyColorMap(BaseTester):
         ],
     )
     def test_dynamo_bin_edges_6656(self, device, dtype, torch_optimizer, num_colors, edges, expected, as_module):
+        """Preserve eager bin selection at edges, neighboring values, and nonfinite inputs."""
         # Expected indices follow float32 divide-then-multiply rounding.
         # Derived using np.searchsorted(np.arange(1, N), np.float32(v / 255) * N, side="right").
+        edges = torch.tensor(edges, dtype=dtype)
         values = torch.stack(
             (
                 torch.nextafter(edges, torch.full_like(edges, -torch.inf)),
@@ -205,6 +207,7 @@ class TestApplyColorMap(BaseTester):
 
     @pytest.mark.parametrize("as_module", [False, True])
     def test_dynamo_independent_ranges_6656(self, device, dtype, torch_optimizer, as_module):
+        """Select ranges independently for each sample and channel under compilation."""
         image = torch.tensor(
             [[[[0.25, 0.5, 1.0]], [[85.0, 170.0, 255.0]]], [[[0.5, 0.0, 0.0]], [[0.0, 300.0, torch.nan]]]],
             device=device,
@@ -222,6 +225,7 @@ class TestApplyColorMap(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_legacy_onnx_bin_edges_6656(self):
+        """Preserve legacy ONNX export and runtime bin selection."""
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=3)
