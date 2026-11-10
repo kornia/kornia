@@ -26,7 +26,7 @@ from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import AsyncCheckError
+from kornia.core.exceptions import AsyncCheckError, BaseError
 from kornia.enhance.adjust import _clip_unit_fresh
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
@@ -67,6 +67,14 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(1.0))
         assert out.shape == shape
 
+    def test_default_max_val_keeps_0d_shape_6663(self, device, dtype):
+        # The default max_val used to be (1,), which turned a 0-d input into shape (1,).
+        img = torch.tensor(0.3, device=device, dtype=dtype)
+        out = kornia.enhance.invert(img)
+        assert out.shape == torch.Size([])
+        self.assert_close(out, 1.0 - img)
+        assert kornia.enhance.Invert()(img).shape == torch.Size([])
+
     def test_max_val_1(self, device, dtype):
         img = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(1.0))
@@ -96,6 +104,10 @@ class TestInvert(BaseTester):
         op = kornia.enhance.invert
         op_mod = kornia.enhance.Invert()
         self.assert_close(op(img), op_mod(img))
+
+    def test_exception_names_the_argument_type(self):
+        with pytest.raises(AssertionError, match="Got: <class 'list'>"):
+            kornia.enhance.invert([1])
 
 
 class TestAdjustSaturation(BaseTester):
@@ -309,6 +321,27 @@ class TestAdjustHue(BaseTester):
         factor = torch.tensor(-torch.finfo(dtype).eps / 16, device=device, dtype=dtype)
         hue = kornia.enhance.adjust_hue_raw(hsv, factor)[0, 0, 0, 0]
         assert hue.item() == 0.0
+
+    @pytest.mark.parametrize(
+        "op",
+        [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw, lambda x, f: kornia.enhance.AdjustHue(f)(x)],
+        ids=["adjust_hue", "adjust_hue_raw", "AdjustHue"],
+    )
+    @pytest.mark.parametrize("factor", [-3, 0, 1, 5])
+    def test_int_factor_matches_float_6663(self, device, dtype, op, factor):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        out = op(img, factor)
+        assert out.dtype == dtype
+        assert out.device.type == img.device.type
+        self.assert_close(out, op(img, float(factor)))
+
+    @pytest.mark.parametrize("op", [kornia.enhance.adjust_hue, kornia.enhance.adjust_hue_raw])
+    @pytest.mark.parametrize("factor", [True, "1"])
+    def test_exception_factor_type_6663(self, device, dtype, op, factor):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"an int, a float or a torch\.Tensor") as errinfo:
+            op(img, factor)
+        assert "PI" not in str(errinfo.value)
 
 
 class TestAdjustGamma(BaseTester):
@@ -1540,8 +1573,12 @@ class TestSharpness(BaseTester):
             assert TestSharpness.f(img, [0.8, 0.9, 0.6])
         with pytest.raises(AssertionError):
             assert TestSharpness.f(img, torch.tensor([0.8, 0.9, 0.6]))
-        with pytest.raises(AssertionError):
-            assert TestSharpness.f(img, torch.tensor([0.8]))
+
+    def test_one_element_factor_broadcasts_6663(self, device, dtype):
+        # A (1,) factor on a batch of more than one image used to raise.
+        img = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        factor = torch.tensor([0.5], device=device, dtype=dtype)
+        self.assert_close(TestSharpness.f(img, factor), TestSharpness.f(img, 0.5), rtol=0, atol=0)
 
     def test_value(self, device, dtype):
         torch.manual_seed(0)
@@ -1819,6 +1856,14 @@ class TestPosterize(BaseTester):
         with pytest.raises(AssertionError):
             TestPosterize.f(img, torch.tensor([1, 2, 3], device=device))
 
+    @pytest.mark.parametrize("bits", [9, -1])
+    def test_bits_outside_closed_range_raise_6663(self, device, dtype, bits):
+        # Used to return a black image. Python and CPU tensor bits are checked on the host, whatever the device.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        for value in (bits, torch.tensor(bits), torch.tensor([4, bits])):
+            with pytest.raises(AsyncCheckError, match=r"closed range \[0, 8\]"):
+                TestPosterize.f(img, value)
+
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
     def test_value(self, device, dtype):
@@ -2082,9 +2127,10 @@ class TestEmptyIntensity(BaseTester):
         for bits in [torch.tensor([4, 8]), torch.empty(0, 2, dtype=torch.long)]:
             with pytest.raises(AssertionError, match="equal between bits and input"):
                 enhance.posterize(image, bits)
-        for factor in [torch.tensor([0.5]), torch.empty(0, 1)]:
-            with pytest.raises(AssertionError, match="batch size shall match"):
-                enhance.sharpness(image, factor)
+        with pytest.raises(AssertionError, match="batch size shall match"):
+            enhance.sharpness(image, torch.empty(0, 1))
+        # A (1,) factor applies to every image, none here (#6663).
+        assert enhance.sharpness(image, torch.tensor([0.5])).shape == image.shape
 
     @pytest.mark.parametrize("spatial", [(2, 8), (6, 2)])
     def test_small_empty_sharpness_is_rejected_4429(self, spatial, device, dtype):

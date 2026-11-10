@@ -336,11 +336,11 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
-        isinstance(factor, (float, torch.Tensor)),
-        f"The factor should be a float number or torch.Tensor in the range between [-PI, PI]. Got {type(factor)}",
+        isinstance(factor, (int, float, torch.Tensor)) and not isinstance(factor, bool),
+        f"The factor should be an int, a float or a torch.Tensor. Got {type(factor)}",
     )
 
-    if isinstance(factor, float):
+    if isinstance(factor, (int, float)):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
     factor = _to_device_nonblocking(factor, image.device, image.dtype)
@@ -1061,6 +1061,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     Raises:
         AssertionError: if a ``bits`` tensor does not match the leading dimensions of ``input``.
+        AsyncCheckError: if ``bits`` is outside ``[0, 8]``; it is a :exc:`ValueError` and a :exc:`RuntimeError`. A
+            ``bits`` tensor on CUDA, or on MPS from torch 2.13, is checked with ``torch._assert_async`` instead and
+            raises ``RuntimeError`` by the next synchronization.
 
     See Also:
         - :class:`~kornia.augmentation.RandomPosterize`: draws ``bits`` at random per image.
@@ -1088,16 +1091,16 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
+        in_range = torch.tensor(0 <= bits <= 8, device="cpu")
         bits = torch.as_tensor(bits, device=input.device)
+    else:
+        in_range = ((bits >= 0) & (bits <= 8)).all()
+    _check_async(in_range, "bits must be in the closed range [0, 8].")
 
     # A user-supplied CPU bits tensor mixes with any device only when 0-dim (PyTorch's "wrapped
     # number" rule); multi-element CPU tensors hit a device mismatch on MPS/CUDA, so move bits
     # onto input's device explicitly (no-op when already there).
     bits = bits.to(device=input.device)
-
-    # TODO: find a better way to check boundaries on tensors
-    # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
-    #     raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
 
     # TODO: Make a differentiable version
     # Current version:
@@ -1165,8 +1168,8 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         input: image with shape ``(*, C, H, W)``.
         factor: blend weight of the input against the smoothed copy. A float or a 0-d tensor applies to the whole batch,
             and a tensor with shape ``(B,)`` gives one value per image, where ``B`` is the product of the leading
-            dimensions of ``input``. Negative factors are accepted and extrapolate past the smoothed image.
-            A ``(1,)`` tensor raises unless ``B`` is 1 (`#6663 <https://github.com/kornia/kornia/issues/6663>`_).
+            dimensions of ``input``. A ``(1,)`` tensor applies to every image. Negative factors are accepted and
+            extrapolate past the smoothed image.
 
     Returns:
         Sharpened image with the shape of ``input``.
@@ -1198,7 +1201,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         # generators may sample the factor on a different device (e.g. CPU) than the image.
         factor = _to_device_nonblocking(factor, input.device, input.dtype)
 
-    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
+    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]) and factor.shape != torch.Size([1]):
         raise AssertionError(
             "Input batch size shall match with factor size if factor is not a 0-dim torch.Tensor. "
             f"Got {input.size(0)} and {factor.shape}"
@@ -1417,9 +1420,9 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
     """
     if not isinstance(image, torch.Tensor):
-        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
+        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(image)}")
 
-    _max_val = torch.tensor([1.0]) if max_val is None else max_val
+    _max_val = torch.tensor(1.0) if max_val is None else max_val
     if not isinstance(_max_val, torch.Tensor):
         raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(_max_val)}")
 

@@ -49,7 +49,7 @@ def ssim3d_loss(
         img1: first volume with shape ``(B, C, D, H, W)``.
         img2: second volume with the same shape.
         window_size: size of the Gaussian window in voxels, a positive odd integer.
-        max_val: data range :math:`L` of the volumes, as a Python float.
+        max_val: data range :math:`L` of the volumes, a Python float or int.
         eps: term added to the denominator of the SSIM.
         reduction: ``'mean'`` (default) averages the loss, ``'sum'`` adds it, ``'none'`` keeps the SSIM map's shape.
         padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.
@@ -68,6 +68,9 @@ def ssim3d_loss(
         >>> loss = ssim3d_loss(input1, input2, 5)
 
     """
+    if isinstance(max_val, int):
+        max_val = float(max_val)
+
     # compute the ssim map
     ssim_map: torch.Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
 
@@ -97,7 +100,7 @@ class SSIM3DLoss(nn.Module):
 
     Args:
         window_size: size of the Gaussian window in voxels, a positive odd integer.
-        max_val: data range :math:`L` of the volumes, as a Python float.
+        max_val: data range :math:`L` of the volumes, a Python float or int.
         eps: term added to the denominator of the SSIM.
         reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``, as in :func:`~kornia.losses.ssim3d_loss`.
         padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.

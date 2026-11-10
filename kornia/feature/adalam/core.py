@@ -79,15 +79,16 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
 
 def select_seeds(
-    dist1: torch.Tensor,
+    dist1: Optional[torch.Tensor],
     R1: Union[float, torch.Tensor],
     scores1: torch.Tensor,
     fnn12: torch.Tensor,
     mnn: Optional[torch.Tensor],
+    k1: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Select seed correspondences among the set of available matches.
 
-    dist1: Precomputed distance matrix between keypoints in image I_1
+    dist1: Precomputed distance matrix between keypoints in image I_1, or None if k1 is provided.
     R1: Base radius of neighborhoods in image I_1
     scores1: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
     fnn12: Matches between keypoints of I_1 and I_2.
@@ -96,6 +97,7 @@ def select_seeds(
     'force_seed_mnn' in the DEFAULT_CONFIG.
          If None, it disables the mutual nearest neighbor filtering on seed point selection.
          Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
+    k1: Keypoint locations in image I_1, used to compute distances among candidate seeds when dist1 is None.
 
     Returns:
         Indices of seed points.
@@ -104,18 +106,28 @@ def select_seeds(
         im2seeds: Keypoint index of chosen seeds in image I_2
 
     """
-    im1neighmap = dist1 < R1**2  # (n1, n1)
-    # find out who scores higher than whom
-    im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)
-    # find out who scores higher than all of its neighbors: seed points
-    if mnn is not None:
-        im1bs = (~torch.any(im1neighmap & im1scorescomp & mnn.unsqueeze(0), dim=1)) & mnn & (scores1 < 0.8**2)  # (n1,)
-    else:
-        im1bs = (~torch.any(im1neighmap & im1scorescomp, dim=1)) & (scores1 < 0.8**2)
+    # Only candidate seeds (scores1 < 0.8**2, and in mnn if enabled) can become seeds, and by
+    # transitivity of `<` only another candidate seed can score strictly better to suppress one.
+    candidates = (scores1 < 0.8**2) if mnn is None else (mnn & (scores1 < 0.8**2))
+    cand_idx = torch.where(candidates)[0]
+    if cand_idx.numel() == 0:
+        return cand_idx, fnn12[cand_idx]
 
-    # collect all seeds in both images and the 1NN of the seeds of the other image
-    im1seeds = torch.where(im1bs)[0]  # (n1bs) index format
-    im2seeds = fnn12[im1bs]  # (n1bs) index format
+    if dist1 is not None:
+        cand_dist = dist1[cand_idx[:, None], cand_idx]
+    elif k1 is not None:
+        cand_k1 = k1[cand_idx]
+        cand_dist = dist_matrix(cand_k1, cand_k1)
+    else:
+        raise ValueError("Either dist1 or k1 must be provided to select_seeds.")
+
+    cand_scores = scores1[cand_idx]
+    im1neighmap = cand_dist < R1**2
+    im1scorescomp = cand_scores.unsqueeze(1) > cand_scores.unsqueeze(0)
+    keep = ~torch.any(im1neighmap & im1scorescomp, dim=1)
+
+    im1seeds = cand_idx[keep]
+    im2seeds = fnn12[im1seeds]
     return im1seeds, im2seeds
 
 
@@ -124,7 +136,7 @@ def extract_neighborhood_sets(
     o2: Optional[torch.Tensor],
     s1: Optional[torch.Tensor],
     s2: Optional[torch.Tensor],
-    dist1: torch.Tensor,
+    dist1: Optional[torch.Tensor],
     im1seeds: torch.Tensor,
     im2seeds: torch.Tensor,
     k1: torch.Tensor,
@@ -146,7 +158,7 @@ def extract_neighborhood_sets(
     o2: Orientations of keypoints in image I_2
     s1: Scales of keypoints in image I_1
     s2: Scales of keypoints in image I_2
-    dist1: Precomputed distance matrix between keypoints in image I_1
+    dist1: Precomputed distance matrix between keypoints in image I_1, or None to compute from k1
     im1seeds: Keypoint index of chosen seeds in image I_1
     im2seeds: Keypoint index of chosen seeds in image I_2
     k1: Keypoint locations in image I_1
@@ -171,8 +183,13 @@ def extract_neighborhood_sets(
         im2seeds: Keypoint index of chosen seeds in image I_2
 
     """
-    dst1 = dist1[im1seeds, :]
-    dst2 = dist_matrix(k2[fnn12[im1seeds]], k2[fnn12])
+    if im1seeds.numel() == 0:
+        empty_mask = torch.zeros((0, k1.shape[0]), device=k1.device, dtype=torch.bool)
+        empty_rdims = torch.zeros((0,), device=k1.device, dtype=torch.long)
+        return empty_mask, empty_rdims, im1seeds, im2seeds
+
+    dst1 = dist_matrix(k1[im1seeds], k1) if dist1 is None else dist1[im1seeds, :]
+    dst2 = dist_matrix(k2[im2seeds], k2[fnn12])
 
     # initial candidates are matches which are close to the same seed in both images
     local_neighs_mask = (dst1 < (SEARCH_EXP * R1) ** 2) & (dst2 < (SEARCH_EXP * R2) ** 2)
@@ -369,11 +386,8 @@ def adalam_core(
     R1 = torch.sqrt(torch.prod(_im1shape[:2]) / AREA_RATIO / math.pi)
     R2 = torch.sqrt(torch.prod(_im2shape[:2]) / AREA_RATIO / math.pi)
 
-    # Precompute the inner distances of keypoints in image I_1
-    dist1 = dist_matrix(k1, k1)
-
     # Select seeds
-    im1seeds, im2seeds = select_seeds(dist1, R1, scores1, fnn12, mnn)
+    im1seeds, im2seeds = select_seeds(None, R1, scores1, fnn12, mnn, k1=k1)
 
     # Find the neighboring and coherent keyopints consistent with each seed
     local_neighs_mask, rdims, im1seeds, im2seeds = extract_neighborhood_sets(
@@ -381,7 +395,7 @@ def adalam_core(
         o2,
         s1,
         s2,
-        dist1,
+        None,
         im1seeds,
         im2seeds,
         k1,

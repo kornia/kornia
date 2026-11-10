@@ -25,7 +25,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core.exceptions import BaseError, TypeCheckError
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from kornia.filters import (
     BlurPool2D,
     EdgeAwareBlurPool2D,
@@ -351,6 +351,42 @@ class TestBlurPool(BaseTester):
             BlurPool2D((3, 5))(data)
         assert "Invalid kernel shape. Expect CxC_(out, None)xNxN" in str(errinfo)
 
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_accepts_unbatched_input(self, op, device, dtype):
+        # Like max_pool2d, a (C, H, W) input is accepted: the result is input[None]
+        # processed with the batch dimension removed.
+        img = torch.rand(2, 16, 16, device=device, dtype=dtype)
+        out = op(img)
+        expected = op(img[None])[0]
+        assert out.shape == expected.shape
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "op",
+        [
+            pytest.param(lambda x: blur_pool2d(x, 3), id="blur_pool2d"),
+            pytest.param(lambda x: max_blur_pool2d(x, 3), id="max_blur_pool2d"),
+            pytest.param(lambda x: edge_aware_blur_pool2d(x, 3), id="edge_aware_blur_pool2d"),
+            pytest.param(BlurPool2D(3), id="BlurPool2D"),
+            pytest.param(MaxBlurPool2D(3), id="MaxBlurPool2D"),
+            pytest.param(EdgeAwareBlurPool2D(3), id="EdgeAwareBlurPool2D"),
+        ],
+    )
+    def test_rejects_other_ranks(self, op, device, dtype):
+        # Ranks other than (C, H, W) and (B, C, H, W) raise ShapeError.
+        with pytest.raises(ShapeError):
+            op(torch.rand(16, 16, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
@@ -445,7 +481,8 @@ class TestEdgeAwareBlurPool(BaseTester):
     def test_exception(self):
         from kornia.core.exceptions import BaseError, ShapeError
 
-        data = torch.rand(1, 3, 3)
+        # A (C, H, W) input is now accepted (follows max_pool2d); only other ranks raise.
+        data = torch.rand(3, 3)
         with pytest.raises(ShapeError) as errinfo:
             edge_aware_blur_pool2d(data, 3)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)

@@ -51,7 +51,7 @@ def ssim_loss(
         img1: first image with shape ``(B, C, H, W)``.
         img2: second image with the same shape.
         window_size: size of the Gaussian window in pixels, a positive odd integer.
-        max_val: data range :math:`L` of the images, as a Python float.
+        max_val: data range :math:`L` of the images, a Python float or int.
         eps: term added to the denominator of the SSIM.
         reduction: ``'mean'`` (default) averages the loss, ``'sum'`` adds it, ``'none'`` keeps the SSIM map's shape.
         padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim`.
@@ -71,6 +71,9 @@ def ssim_loss(
         >>> loss = ssim_loss(input1, input2, 5)
 
     """
+    if isinstance(max_val, int):
+        max_val = float(max_val)
+
     # compute the ssim map
     ssim_map: torch.Tensor = metrics.ssim(img1, img2, window_size, max_val, eps, padding)
 
@@ -100,7 +103,7 @@ class SSIMLoss(nn.Module):
 
     Args:
         window_size: size of the Gaussian window in pixels, a positive odd integer.
-        max_val: data range :math:`L` of the images, as a Python float.
+        max_val: data range :math:`L` of the images, a Python float or int.
         eps: term added to the denominator of the SSIM.
         reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``, as in :func:`~kornia.losses.ssim_loss`.
         padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim`.

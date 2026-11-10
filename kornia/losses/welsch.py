@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -24,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
+def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: Optional[str] = "none") -> torch.Tensor:
     r"""Compute the Welsch (Leclerc) loss between a prediction and a target.
 
     ``loss = welsch_loss(img1, img2)`` penalises each residual :math:`x - y` of ``img1`` (:math:`x`) and ``img2``
@@ -46,10 +48,11 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     Args:
         img1: prediction with shape ``(*)``.
         img2: target with the same shape as ``img1``.
-        reduction: ``'none'`` (default) keeps one loss per element, ``'mean'`` averages them, ``'sum'`` adds them.
+        reduction: ``'none'`` (default) or ``None`` keeps one loss per element, ``'mean'`` averages them, ``'sum'``
+            adds them.
 
     Returns:
-        the loss with the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+        the loss with the shape of the inputs for ``reduction='none'`` or ``None``, a scalar otherwise.
 
     See Also:
         - :class:`~kornia.losses.WelschLoss`: the module form.
@@ -70,7 +73,10 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     KORNIA_CHECK_SAME_DEVICE(img1, img2)
 
-    KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
+    KORNIA_CHECK(
+        reduction is None or reduction in ("mean", "sum", "none"),
+        f"Given type of reduction is not supported. Got: {reduction}",
+    )
 
     # 1 - exp(-s) cancels for small s = r^2 / 2. There it equals 2 t / (1 + t) with t = tanh(s / 2), which does not
     # cancel; torch.expm1 has only the precision of exp(x) - 1 on MPS (pytorch/pytorch#198708) and in ONNX export.
@@ -82,12 +88,13 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     loss = torch.where(squared < 1.0, 2.0 * t / (1.0 + t), 1.0 - (-0.5 * squared).exp())
 
     # perform reduction
-    if reduction == "mean":
+    # None is tested first: TorchScript compares an Optional[str] with a string only once it has been refined to str.
+    if reduction is None or reduction == "none":
+        pass
+    elif reduction == "mean":
         loss = loss.mean()
     elif reduction == "sum":
         loss = loss.sum()
-    elif reduction == "none":
-        pass
     else:
         raise NotImplementedError("Invalid reduction option.")
 
@@ -104,12 +111,12 @@ class WelschLoss(nn.Module):
         See the Convention block of :func:`~kornia.losses.welsch_loss`.
 
     Args:
-        reduction: ``'none'`` (default), ``'mean'`` or ``'sum'``, as in :func:`~kornia.losses.welsch_loss`.
+        reduction: ``'none'`` (default), ``None``, ``'mean'`` or ``'sum'``, as in :func:`~kornia.losses.welsch_loss`.
 
     Shape:
         - img1: prediction ``(*)``.
         - img2: target with the same shape as ``img1``.
-        - Output: the shape of the inputs for ``reduction='none'``, a scalar otherwise.
+        - Output: the shape of the inputs for ``reduction='none'`` or ``None``, a scalar otherwise.
 
     See Also:
         - :func:`~kornia.losses.welsch_loss`: the one-call form.
@@ -124,7 +131,7 @@ class WelschLoss(nn.Module):
 
     """
 
-    def __init__(self, reduction: str = "none") -> None:
+    def __init__(self, reduction: Optional[str] = "none") -> None:
         super().__init__()
         self.reduction = reduction
 
