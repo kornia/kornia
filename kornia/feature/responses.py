@@ -79,8 +79,8 @@ def harris_response(
           multiplies the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in
           ``[0, 1]`` does not carry over to ``[0, 255]``.
         - ``k`` is not validated.
-        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
-          ``RuntimeError`` from the reflect padding of the window.
+        - Each channel is processed independently. The window extends its reflected border across short axes,
+          including singleton pixels.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
@@ -183,8 +183,8 @@ def gftt_response(
           :func:`~kornia.feature.harris_response`. This is the function's scale-weighting convention, not a guarantee
           of scale invariance. The integration window :math:`W` stays fixed as the image blur changes; the response's
           decay with blur depends on the image structure, including the corner geometry.
-        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
-          ``RuntimeError`` from the reflect padding of the window.
+        - Each channel is processed independently. The window extends its reflected border across short axes,
+          including singleton pixels.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
@@ -402,8 +402,7 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
           :func:`~kornia.feature.dog_response`; see its Convention block. Each kernel has the size
           ``int(8 * sigma + 1)``, rounded up to an odd number. The order of ``sigma1`` and ``sigma2`` is not checked:
           swapping them flips the sign.
-        - ``H`` and ``W`` must be larger than half the larger kernel, at least 7 for the default ``sigma2=1.6``: a
-          smaller image raises ``RuntimeError`` from the reflect padding of the blur.
+        - Both blurs extend reflected borders across short axes, including singleton pixels.
 
     Args:
         input: images ``(B, C, H, W)``.

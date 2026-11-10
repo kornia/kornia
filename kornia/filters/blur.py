@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
-from .filter import _to_floating, filter2d, filter2d_separable
+from .filter import _pad, _to_floating, filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
@@ -101,8 +101,8 @@ def _box_blur_pool(
             )
         else:
             # Even windows need asymmetric padding to retain the input size.
-            padding = ((width - 1) // 2, width // 2, (height - 1) // 2, height // 2)
-            input = F.avg_pool2d(F.pad(input, padding, mode=border_type), (height, width), stride=1)
+            padding = [(width - 1) // 2, width // 2, (height - 1) // 2, height // 2]
+            input = F.avg_pool2d(_pad(input, padding, border_type), (height, width), stride=1)
     return input
 
 

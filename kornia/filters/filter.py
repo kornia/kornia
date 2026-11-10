@@ -29,6 +29,49 @@ _VALID_PADDING = {"valid", "same"}
 _VALID_BEHAVIOUR = {"conv", "corr"}
 
 
+def _pad(input: torch.Tensor, padding: list[int], border_type: str) -> torch.Tensor:
+    """Extend reflect101 and wrap borders beyond a spatial axis, retaining native supported padding."""
+    if border_type not in ("reflect", "circular"):
+        return F.pad(input, padding, mode=border_type)
+    # Match the native limits so ordinary calls need no extension or extra export guards.
+    limit = 1 if border_type == "reflect" else 0
+    shape = input.shape
+    if len(padding) > 2 * len(shape):
+        return F.pad(input, padding, mode=border_type)
+    needs_extension = False
+    for i, pad in enumerate(padding):
+        if pad > shape[-(i // 2) - 1] - limit:
+            needs_extension = True
+            break
+    if not needs_extension:
+        return F.pad(input, padding, mode=border_type)
+
+    dimensions = len(padding) // 2
+    # Leave cropping, empty axes and unsupported ranks to the backend's existing contract.
+    if (
+        len(padding) not in (2, 4, 6)
+        or input.ndim not in (dimensions + 1, dimensions + 2)
+        or any(p < 0 for p in padding)
+        or any(input.shape[-axis - 1] == 0 for axis in range(dimensions))
+    ):
+        return F.pad(input, padding, mode=border_type)
+    for axis in range(dimensions):
+        before, after = padding[2 * axis], padding[2 * axis + 1]
+        if before == 0 and after == 0:
+            continue
+        size = input.shape[-axis - 1]
+        indices = torch.arange(-before, size + after, device=input.device)
+        if border_type == "circular":
+            indices = indices.remainder(size)
+        else:
+            # Keep the singleton period symbolic when tracing across image sizes.
+            period = 2 * size - 2 + (size == 1)
+            indices = indices.remainder(period)
+            indices = torch.minimum(indices, period - indices)
+        input = input.index_select(-axis - 1, indices)
+    return input
+
+
 def _compute_padding(kernel_size: list[int]) -> list[int]:
     """Compute padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
@@ -89,9 +132,9 @@ def filter2d(
           the tap before the middle. ``behaviour='conv'`` flips the kernel on both axes and keeps the anchor.
         - ``border_type`` takes the :func:`torch.nn.functional.pad` mode names, and the default ``'reflect'`` mirrors
           about the edge pixel without repeating it. :ref:`Filtering <filtering-conventions>` maps the modes and the
-          anchor onto scipy and OpenCV. With ``padding='same'``, ``'reflect'`` needs each axis longer than
-          ``k // 2`` for a kernel ``k`` taps long along it, and ``'circular'`` at least that long; a shorter axis
-          raises.
+          anchor onto scipy and OpenCV. Reflect and circular borders extend to any positive axis length: reflection
+          repeats with period ``2 * (n - 1)`` on an axis of length ``n > 1`` and repeats the pixel when ``n = 1``;
+          ``'circular'`` wraps with period ``n``. Working backend padding calls retain their native path.
         - A ``(1, kH, kW)`` kernel is shared by the whole batch, and a ``(B, kH, kW)`` kernel gives each
           sample its own, shared by the sample's channels; there are no per-channel kernels. Any other kernel batch
           raises.
@@ -187,7 +230,7 @@ def filter2d(
     # pad the input tensor
     if padding == "same":
         padding_shape: list[int] = _compute_padding([height, width])
-        input = F.pad(input, padding_shape, mode=border_type)
+        input = _pad(input, padding_shape, border_type)
 
     # An empty per-sample kernel needs one structural row for nonzero convolution groups. Reduce after
     # normalization to avoid normalizing a zero kernel, while keeping the original kernel in the autograd graph.
@@ -370,7 +413,7 @@ def filter3d(
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
     padding_shape: list[int] = _compute_padding([depth, height, width])
-    input_pad = F.pad(input, padding_shape, mode=border_type)
+    input_pad = _pad(input, padding_shape, border_type)
 
     # As in filter2d, preserve the empty kernel's gradient connection without using zero convolution groups.
     if tmp_kernel.shape[0] == 0:
@@ -494,7 +537,7 @@ def fft_conv(
     # Padding (spatial domain)
     if padding == "same":
         padding_shape = _compute_padding([kh, kw])
-        input_padded = F.pad(input, padding_shape, mode=border_type)
+        input_padded = _pad(input, padding_shape, border_type)
     else:
         input_padded = input
 

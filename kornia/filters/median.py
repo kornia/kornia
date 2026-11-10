@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
-from .filter import _to_floating
+from .filter import _pad, _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_binary_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
@@ -77,9 +77,9 @@ def _non_finite_windows(input: torch.Tensor, kernel_size: tuple[int, int], borde
     """
     ky, kx = kernel_size
     height, width = input.shape[-2:]
-    pad = (kx // 2, kx // 2, ky // 2, ky // 2)
+    pad = [kx // 2, kx // 2, ky // 2, ky // 2]
     # The padding modes have no bool kernels; pad the mask in the input dtype.
-    padded = F.pad((~torch.isfinite(input)).to(input.dtype), pad, mode=border_type) != 0
+    padded = _pad((~torch.isfinite(input)).to(input.dtype), pad, border_type) != 0
     # A window holds a marked pixel when one of its columns does: OR shifted slices, rows then columns.
     columns = padded[..., :height, :]
     for dy in range(1, ky):
@@ -93,7 +93,7 @@ def _non_finite_windows(input: torch.Tensor, kernel_size: tuple[int, int], borde
 def _median_blur_network(input: torch.Tensor, size: int, border_type: str = "reflect") -> torch.Tensor:
     """Select a small-window median without materializing patches or sorting them."""
     radius = size // 2
-    padded = F.pad(input, (radius, radius, radius, radius), mode=border_type)
+    padded = _pad(input, [radius, radius, radius, radius], border_type)
     height, width = input.shape[-2:]
     values = [padded[..., y : y + height, x : x + width] for y in range(size) for x in range(size)]
     for left, right, low, high in _MEDIAN_NETWORKS[size]:
@@ -206,7 +206,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     if border_type == "constant":
         features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
     else:
-        padded = F.pad(input, (padding[1], padding[1], padding[0], padding[0]), mode=border_type)
+        padded = _pad(input, [padding[1], padding[1], padding[0], padding[0]], border_type)
         features = F.conv2d(
             padded.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
             kernel,

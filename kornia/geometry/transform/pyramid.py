@@ -21,7 +21,7 @@
 blur with the 5x5 binomial kernel (the outer product of ``[1, 4, 6, 4, 1] / 16`` with itself) and resize bilinearly:
 ``pyrdown`` blurs and then resizes to ``floor(side / factor)``, and ``pyrup`` resizes to twice the size and then
 blurs. They default to ``align_corners=False`` and pad the blur by ``border_type``, ``'reflect'`` by default, under
-which the blurred image needs at least 3 pixels per side. :class:`ScalePyramid` blurs with Gaussians of its own sigmas
+which reflection extends across short axes. :class:`ScalePyramid` blurs with Gaussians of its own sigmas
 and resizes with ``align_corners=True``.
 
 Which function to use:
@@ -544,7 +544,8 @@ def pyrdown(
           note OpenCV's ``pyrDown`` rounds up instead)
         - Dynamo ONNX uses float32 reciprocal-scale arithmetic for dynamic sides, which can differ from eager by one
           pixel for some fractional factors (for example, side 33 and factor 1.1)
-        - border_type: ``'reflect'`` by default (blur before downsample), which needs ``H`` and ``W`` of at least 3
+        - border_type: ``'reflect'`` by default (blur before downsample), including short positive axes; the resized
+          output must still have at least one pixel along each axis
         - align_corners: ``False`` by default
 
     Args:
@@ -657,9 +658,10 @@ def build_pyramid(
 
     ``levels = build_pyramid(input, max_level)`` takes images ``(B, C, H, W)`` and returns a list of ``max_level``
     tensors: the input itself, then each previous level through :func:`pyrdown`, ``(B, C, H // 2, W // 2)`` and so on.
-    With ``max_level > 1`` and the default ``'reflect'`` border every level but the last needs 3 pixels per side, so
-    ``H`` and ``W`` must be at least ``3 * 2 ** (max_level - 2)``. For band-pass levels, use
-    :func:`build_laplacian_pyramid`; for octaves of several blurs each, with their sigmas, :class:`ScalePyramid`.
+    Every level must have at least one pixel per side, so ``H`` and ``W`` must be at least
+    ``2 ** (max_level - 1)``. The blur extends its reflected border across the final 2 by 2 level. For band-pass
+    levels, use :func:`build_laplacian_pyramid`; for octaves of several blurs each, with their sigmas,
+    :class:`ScalePyramid`.
 
     .. image:: _static/img/build_pyramid.png
 
@@ -770,27 +772,17 @@ def _pad_end(input: torch.Tensor, pad: int, dim: int, reflect: bool) -> torch.Te
     return torch.cat([input, tail], dim)
 
 
-def _pad_to_stride(input: torch.Tensor, max_level: int, border_type: str) -> torch.Tensor:
+def _pad_to_stride(input: torch.Tensor, max_level: int) -> torch.Tensor:
     """Pad the bottom and right of ``input`` to the next multiple of ``2 ** (max_level - 1)``, the rule of #6319."""
     height = input.size()[2]
     width = input.size()[3]
     stride = 1 << (max_level - 1)
-    # The levels end at a side of padded_side / stride, and the level above it goes through the blur of `pyrdown`, and
-    # comes out of the one of `pyrup`. That blur reflects two pixels, which takes a side of at least three.
-    KORNIA_CHECK(
-        max_level == 1 or border_type != "reflect" or (height > stride and width > stride),
-        lambda: (
-            f"Invalid max_level for this input: border_type='reflect' needs each side above 2 ** (max_level - 1) "
-            f"for the blur of every level. Got: side sizes {height} and {width} with max_level {max_level}. Use a "
-            "smaller max_level or another border_type."
-        ),
-    )
     # The sizes are symbolic under a dynamic-shape `torch.compile`, which shapes two choices here (#6319): floor
     # division, as Inductor cannot lower the `Mod` of `-height % stride` (`python_mod`), and a padding built from a
     # flipped slice, or copies of the last row or column, joined with `cat`, as Inductor spends minutes lowering
     # `F.pad(..., "reflect")` of a symbolic amount followed by the blur and resampling of `pyrdown`. The values are
     # those of `F.pad`, bitwise. A padding at least as large as the side cannot reflect and repeats the last row or
-    # column; the check above leaves that to the border types whose blur takes the small levels that follow from it.
+    # column, whatever `border_type`; the blur of each level then extends its border across the short sides.
     pad_height = (height + stride - 1) // stride * stride - height
     pad_width = (width + stride - 1) // stride * stride - width
     if pad_height != 0:
@@ -843,10 +835,8 @@ def build_laplacian_pyramid(
         - with ``minimal_padding=True``, the input is padded only when a side is not
           divisible by ``2 ** (max_level - 1)``, and only that side, to the next multiple.
           So 480x640 at 3 levels stays 480x640, where the rule above gives 512x1024.
-          A side too small for the padding to reflect, which needs ``border_type`` other than
-          ``'reflect'``, repeats its last row or column instead. With ``'reflect'`` and
-          ``max_level > 1``, a side of at most ``2 ** (max_level - 1)`` raises, as the
-          blur of a level of side 1 or 2 fails under the rule above too
+          A side too small for the padding to reflect repeats its last row or column instead,
+          whatever ``border_type``
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
@@ -888,7 +878,7 @@ def build_laplacian_pyramid(
 
     shape_will_change = False
     if minimal_padding:
-        input = _pad_to_stride(input, max_level, border_type)
+        input = _pad_to_stride(input, max_level)
     else:
         h = input.size()[2]
         w = input.size()[3]

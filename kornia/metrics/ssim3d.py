@@ -57,8 +57,8 @@ def ssim3d(
 
     Convention:
         See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
-        ``max_val``; ``'valid'`` crops every axis, and ``'same'`` needs ``D``, ``H`` and ``W`` larger than
-        ``window_size // 2``. A volume of identical slices reproduces the 2-D map up to floating-point roundoff.
+        ``max_val``; ``'valid'`` crops every axis. A volume of identical slices reproduces the 2-D map up to
+        floating-point roundoff.
 
     Args:
         img1: the first volume with shape ``(B, C, D, H, W)``.
@@ -73,7 +73,9 @@ def ssim3d(
         ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
-        The Gaussian window is built on the device of the inputs, in the dtype they are filtered in.
+        The volume is reflected at its faces for ``padding='same'``, as :func:`kornia.metrics.ssim` does for
+        images, across any positive spatial size, including ``D = 1``. The Gaussian window is built on the device
+        of the inputs, in the dtype they are filtered in.
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.

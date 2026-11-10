@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.utils import is_exporting
 from kornia.filters import filter2d_separable, get_gaussian_kernel1d
-from kornia.filters.filter import _VALID_PADDING, _compute_padding
+from kornia.filters.filter import _VALID_PADDING, _compute_padding, _pad
 
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
 
@@ -83,8 +83,8 @@ def _ssim_cpu(
 
     def blur(img: torch.Tensor) -> torch.Tensor:
         with torch.autocast(device_type="cpu", enabled=False):
-            out = F.conv2d(F.pad(img, [radius, radius, 0, 0], mode="reflect"), weight_x, groups=channels)
-            out = F.conv2d(F.pad(out, [0, 0, radius, radius], mode="reflect"), weight_y, groups=channels)
+            out = F.conv2d(_pad(img, [radius, radius, 0, 0], "reflect"), weight_x, groups=channels)
+            out = F.conv2d(_pad(out, [0, 0, radius, radius], "reflect"), weight_y, groups=channels)
         return _crop(out, cropping_shape) if len(cropping_shape) > 0 else out
 
     # Ordered so that at most four moment maps are alive between filterings.
@@ -125,8 +125,8 @@ def ssim(
           number of taps and must be odd.
         - ``padding='same'`` pads with ``'reflect'``, the torch mode that :ref:`Filtering <filtering-conventions>` maps
           onto OpenCV and scipy, and keeps ``(H, W)``; ``'valid'`` drops ``window_size // 2`` pixels on every side
-          and equals the ``'same'`` map cropped. Sizes are not checked: ``'same'`` needs ``H`` and ``W`` larger than
-          ``window_size // 2``.
+          and equals the ``'same'`` map cropped. Reflected borders extend across any positive spatial axis length,
+          including a singleton axis.
         - ``max_val`` is the data range :math:`L`, a Python ``float``: :math:`c_1 = (0.01 L)^2` and
           :math:`c_2 = (0.03 L)^2`. Pixel values are not rescaled, so images in ``[0, 255]`` need ``max_val=255.0``.
           ``eps`` is added to the denominator: two identical flat images of value :math:`\mu` score

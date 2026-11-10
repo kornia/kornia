@@ -41,8 +41,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled
-from kornia.core.exceptions import TypeCheckError
+from kornia.core.exceptions import ShapeError, TypeCheckError
 
+from .filter import _pad
 from .kernels import _check_kernel_size, get_pascal_kernel_2d
 
 __all__ = [
@@ -360,6 +361,9 @@ def max_blur_pool2d(
         - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
           max pool runs at stride 1 without padding and ``stride`` belongs to the blur. See the Convention block on
           :func:`~kornia.filters.blur_pool2d` for the kernel, the border and integer input, which raises.
+        - With an integer ``max_pool_size``, each spatial axis must contain at least that many pixels (2 by default);
+          otherwise a :class:`~kornia.core.exceptions.ShapeError` names the minimum size. Tuple windows retain
+          PyTorch's validation.
 
     Args:
         input: feature map with shape ``(B, C, H, W)`` or ``(C, H, W)``.
@@ -478,22 +482,12 @@ def _max_blur_pool_by_kernel2d(
         len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],
         f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}",
     )
+    if isinstance(max_pool_size, int) and (input.shape[-2] < max_pool_size or input.shape[-1] < max_pool_size):
+        raise ShapeError(f"Max blur pooling requires at least {max_pool_size} pixels along both spatial axes.")
     # compute local maxima
     input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1)
     # blur and downsample
     return _blur_pool_conv2d(input, kernel, stride)
-
-
-def _reflect_pad2d(input: torch.Tensor, padding_y: int, padding_x: int) -> torch.Tensor:
-    """Reflect-pad by arbitrary amounts, applying chunks accepted by ``F.pad``."""
-    remaining_y, remaining_x = padding_y, padding_x
-    while remaining_y > 0 or remaining_x > 0:
-        pad_y = min(remaining_y, input.shape[-2] - 1)
-        pad_x = min(remaining_x, input.shape[-1] - 1)
-        input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode="reflect")
-        remaining_y -= pad_y
-        remaining_x -= pad_x
-    return input
 
 
 def edge_aware_blur_pool2d(
@@ -551,10 +545,10 @@ def edge_aware_blur_pool2d(
     # Keep the edge comparison's fixed 2-pixel halo separate from the blur halo. The
     # blur_pool2d convolution zero-pads by its kernel radius, so reflect-padding by at
     # least that radius prevents zeros from reaching the retained image boundary.
-    edge_input = F.pad(input, (2, 2, 2, 2), mode="reflect")
+    edge_input = _pad(input, [2, 2, 2, 2], "reflect")
     kernel_size_y, kernel_size_x = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
     blur_pad_y, blur_pad_x = max(2, kernel_size_y // 2), max(2, kernel_size_x // 2)
-    blur_input = _reflect_pad2d(input, blur_pad_y, blur_pad_x)
+    blur_input = _pad(input, [blur_pad_x, blur_pad_x, blur_pad_y, blur_pad_y], "reflect")
     # Half-precision inputs are blurred in float32 and cast back, so the binomial weights and the accumulation keep
     # float32 precision at every kernel size.
     blur_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype

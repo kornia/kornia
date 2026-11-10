@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import (
@@ -32,7 +31,7 @@ from kornia.core.exceptions import AsyncCheckError
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
-from .filter import _to_floating, filter2d, filter2d_separable
+from .filter import _pad, _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 # This build capability is immutable; querying it inside forward breaks Dynamo
@@ -76,8 +75,8 @@ def _gaussian_blur2d_cpu(
     for axis, kernel in ((-1, kernel_x), (-2, kernel_y)):
         size = input.shape[axis]
         radius = kernel.shape[-1] // 2
-        padding = (radius, radius, 0, 0) if axis == -1 else (0, 0, radius, radius)
-        padded = F.pad(input, padding, mode=border_type)
+        padding = [radius, radius, 0, 0] if axis == -1 else [0, 0, radius, radius]
+        padded = _pad(input, padding, border_type)
         output = padded.narrow(axis, 0, size) * kernel[:, 0, None, None, None]
         for tap in range(1, kernel.shape[-1]):
             values = padded.narrow(axis, tap, size)
