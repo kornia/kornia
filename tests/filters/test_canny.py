@@ -441,6 +441,21 @@ class TestCanny(BaseTester):
         self.assert_close(compiled(img)[1], Canny()(img)[1])
         assert counter.frame_count <= 3
 
+    def test_dynamo_hysteresis_keeps_the_suppression_compiled(self, device, dtype, torch_optimizer):
+        # A graph break inside the body of the hysteresis loop makes Dynamo skip canny's frame and run all of canny
+        # eagerly (only its callees compile); a break on the loop condition keeps the suppression in a graph.
+        self._require_padding(device, dtype)
+        targets = []
+
+        def recording_backend(gm, example_inputs):
+            targets.extend(str(node.target) for node in gm.graph.nodes if node.op == "call_function")
+            return gm.forward
+
+        compiled = torch_optimizer(Canny(), backend=recording_backend)
+        img = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        self.assert_close(compiled(img)[1], Canny()(img)[1])
+        assert any("atan2" in target for target in targets)
+
     @staticmethod
     def _require_padding(device, dtype):
         # gaussian_blur2d pads by reflection and spatial_gradient by replication, even with kernel_size=1
@@ -903,6 +918,57 @@ class TestConventionsCanny(BaseTester):
             on = edges[0, 0].nonzero()
             x = 16 - on[:, 1] if mirrored else on[:, 1]
             assert set((on[:, 0] + x).tolist()) == {13, 14}
+
+    def test_convention_canny_gradient_sign_without_multiplication_underflow(self, device, dtype):
+        """Direction selection does not multiply gradients that underflow in float32."""
+        self._require_padding(device, dtype)
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip("This underflow regression requires CPU float32")
+        x = torch.rand((1, 1, 8, 8), generator=torch.Generator().manual_seed(0), device=device) * 2e-23
+        _, edges = canny(x, kernel_size=1, eps=0, low_threshold=1e-24, high_threshold=2e-24, hysteresis=False)
+        assert edges[0, 0, 5, 4].item() == 1.0
+
+    @pytest.mark.parametrize("transpose,flip", [(False, False), (False, True), (True, False), (True, True)])
+    def test_convention_canny_nms_sector_boundary_adjacent_floats(self, transpose, flip, device, dtype):
+        """Exercise Canny itself on both sides of its legacy rounded-angle sector boundaries."""
+        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("Pinned legacy CPU float32/float64 boundary outputs")
+        # Source: Canny at 13c49f6d1, CPU, kernel_size=1, hysteresis=False, on this literal image.
+        # Generate the three inputs with nextafter(0.6035533905932737, -inf), the value itself,
+        # and nextafter(value, +inf). Transposition swaps 67.5/22.5 degrees; flipping changes signs.
+        # These are compatibility expectations, including atan2 rounding, rather than an exact-angle rule.
+        expected_edges = {
+            torch.float32: {
+                (False, False): [1, 1, 1],
+                (False, True): [1, 1, 1],
+                (True, False): [1, 1, 1],
+                (True, True): [0, 0, 1],
+            },
+            torch.float64: {
+                (False, False): [1, 1, 1],
+                (False, True): [0, 1, 1],
+                (True, False): [0, 0, 1],
+                (True, True): [1, 1, 1],
+            },
+        }[dtype][transpose, flip]
+        value = torch.tensor(0.6035533905932737, device=device, dtype=dtype)
+        values = (
+            value.nextafter(torch.full_like(value, -torch.inf)),
+            value,
+            value.nextafter(torch.full_like(value, torch.inf)),
+        )
+        for pixel, expected_edge in zip(values, expected_edges):
+            image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+            image[0, 0, 2, 3] = 0.25
+            image[0, 0, 3, 2] = pixel
+            if transpose:
+                image = image.transpose(-1, -2)
+            if flip:
+                image = image.flip(-1)
+            magnitude, edges = canny(image, kernel_size=1, hysteresis=False)
+            self.assert_close(edges[0, 0, 2, 2], image.new_tensor(expected_edge))
+            # sqrt((2 * .25)**2 + (2 * .6035533905932737)**2 + 1e-6)
+            self.assert_close(magnitude[0, 0, 2, 2], image.new_tensor(1.306563347559753 * expected_edge))
 
     def test_convention_canny_tied_step_keeps_its_left_or_upper_pixel_5170(self, device, dtype):
         """Of the two equal-magnitude pixels across a two-level step, the left (upper) one is the edge."""
