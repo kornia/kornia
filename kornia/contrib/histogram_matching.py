@@ -26,8 +26,9 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     channels together: to match each image or channel on its own, call the function on each slice. The result is not
     differentiable.
 
-    `Histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_ follows
-    `this answer <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_.
+    The implementation follows
+    `this answer <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_; see
+    also `histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_.
 
     Convention:
         - This is ``skimage.exposure.match_histograms(source, template, channel_axis=None)``, which needs both inputs to

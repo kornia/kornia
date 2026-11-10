@@ -170,10 +170,10 @@ class AugmentationAuditReport:
     ``outputs, report = audit(sequence, image, ...)`` returns it. ``report.summary()`` describes it in text,
     ``report.to_dict()`` and ``report.to_json()`` export it, and ``sequence(image, ..., params=report.params)``
     replays the call. ``matrix`` is the ``(B, 3, 3)`` map from input to output pixel coordinates composed over
-    ``steps``, and ``spatial`` holds one :class:`SpatialAudit` per keypoint or box input.
+    ``steps``, or ``None`` when ``geometry_status`` is ``"unsupported"``, and ``spatial`` holds one
+    :class:`SpatialAudit` per keypoint or box input.
 
-    ``params`` is a detached snapshot of native ``ParamItem`` values for replay
-    with the same pipeline configuration. JSON is a diagnostic export, not a
+    ``params`` is a detached snapshot of native ``ParamItem`` values. JSON is a diagnostic export, not a
     parameter deserializer. Reports retain neither image pixels nor autograd
     graphs. Tensor fields are independent snapshots, not read-only tensors.
 
@@ -433,8 +433,8 @@ def audit(
     followed by optional batched masks (``(B, C, H, W)`` or ``(B, H, W)``), keypoints or boxes, in the order of
     ``data_keys``. ``outputs`` has the structure, values and gradients of an ordinary forward call, and ``report`` is
     an :class:`AugmentationAuditReport` of the executed operations, their composed matrix and the round-trip errors
-    of every keypoint and box input. ``params`` and ``data_keys`` have the
-    meaning they have in :meth:`~kornia.augmentation.container.AugmentationSequential.forward`.
+    of every keypoint and box input. ``params`` and ``data_keys`` have the meaning they have in
+    :meth:`~kornia.augmentation.container.AugmentationSequential.forward`.
 
     Unknown or non-rigid operations run normally and make the composed geometry unsupported. Keypoints and boxes through
     ``RandomElasticTransform``, ``RandomThinPlateSpline`` or ``RandomFisheye`` raise ``NotImplementedError``, as in
@@ -459,7 +459,9 @@ def audit(
     Raises:
         ValueError: if a tolerance is out of range, ``data_keys`` do not start with the only image or do not match
             the inputs, a data key is unsupported, the image is not a nonempty ``(B, C, H, W)`` tensor, or a label
-            input is unbatched, ragged or on another device.
+            input is unbatched, ragged or on another device; if the pipeline holds a video, patch or 3D
+            augmentation or a module registered under two names, or an operation changes the batch, the layout or
+            the label cardinality.
 
     See Also:
         - :meth:`~kornia.augmentation.container.AugmentationSequential.forward`: the same call without a report.

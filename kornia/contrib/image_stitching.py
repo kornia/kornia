@@ -30,7 +30,7 @@ from kornia.geometry.transform import warp_perspective
 class ImageStitcher(nn.Module):
     """Stitch overlapping RGB images, ordered left to right, into one panorama by matched homographies.
 
-    ``stitcher = ImageStitcher(KF.LoFTR(pretrained="outdoor"))``;
+    ``stitcher = ImageStitcher(KF.LoFTR(pretrained="outdoor"))`` builds the stitcher.
     ``panorama = stitcher(img_left, img_right, ...)`` takes RGB images ``(B, 3, H, W)`` of one height, ordered left to
     right, and returns one ``(B, 3, H, W_pano)`` panorama in the first image's pixel frame. Each next image is matched
     to the panorama so far, and warped onto it with the homography of those matches.
@@ -46,14 +46,15 @@ class ImageStitcher(nn.Module):
           last column that any sample covers; an uncovered column before it, the first one included, is kept. A batch
           shares one crop, so it is cropped to its widest sample and a narrower sample keeps zero columns on its
           right.
-        - ``estimator="ransac"`` uses :class:`~kornia.geometry.ransac.RANSAC` for ``"homography"``
-          (``inl_th=2.0``); ``"vanilla"`` fits every match with iterated DLT.
+        - ``estimator="ransac"`` fits the inliers that :class:`~kornia.geometry.ransac.RANSAC` finds for
+          ``"homography"`` (``inl_th=2.0``). ``"vanilla"`` fits every match with
+          :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, which down-weights matches by their
+          transfer error after the first fit.
 
     Args:
         matcher: image feature matching module, :class:`~kornia.feature.LoFTR` or
             :class:`~kornia.feature.LocalFeatureMatcher`.
-        estimator: method to compute homography, either "vanilla" or "ransac".
-            "ransac" rejects outlier matches; "vanilla" fits all of them. Another value raises
+        estimator: method to compute homography, ``"ransac"`` or ``"vanilla"``; another value raises
             ``NotImplementedError``.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.

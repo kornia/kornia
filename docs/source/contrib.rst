@@ -2,7 +2,7 @@ kornia.contrib
 ==============
 
 .. meta::
-   :description: The kornia.contrib module provides contributed image operations, such as sliding-window patches, connected-component labelling, distance transforms, histogram matching, plasma-fractal noise, k-means clustering and augmentation audits, and task-level wrappers of edge, face and object detection, super-resolution, image stitching and prompted segmentation models.
+   :description: The kornia.contrib module provides contributed image operations, such as sliding-window patches, connected-component labeling, distance transforms, histogram matching, plasma-fractal noise, k-means clustering and augmentation audits, and task-level wrappers of edge, face and object detection, super-resolution, image stitching and prompted segmentation models.
 
 .. currentmodule:: kornia.contrib
 
@@ -287,7 +287,10 @@ host, so it does not compile with ``torch.compile(fullgraph=True)`` and cannot
 be captured in a CUDA graph.
 
 ``connected_components`` runs a fixed ``num_iterations`` of 3x3 max-pooling
-steps, with no host synchronization, and compiles with ``fullgraph=True``. On
+steps, with no host synchronization, and compiles with ``fullgraph=True``. A
+component comes out whole only if every pixel is within ``num_iterations``
+8-connected steps, inside the component, of its last pixel in raster order: the
+default 100 already splits a 1 x 102 line. On
 CUDA, 10 steps run several times faster than union-find; on the CPU, union-find
 is faster than 10 steps.
 

@@ -68,7 +68,7 @@ class FaceDetectorResult:
     ``result = FaceDetectorResult(dets)`` wraps the ``(N, 15)`` detections of one image from :class:`FaceDetector`,
     or one ``(15,)`` row. Its properties (``xmin``, ``width``, ``top_left``, ``score``, ...) and
     ``result.get_keypoint(FaceKeypoint.NOSE)`` return ``(N,)`` values and ``(N, 2)`` points, or 0-d values and
-    ``(2,)`` points for a single row; the box and the landmarks are in the pixels of the image the detector saw.
+    ``(2,)`` points for a single row. The box and the landmarks are in the pixels of the image the detector saw.
 
     Args:
         data: the detections returned by :class:`FaceDetector`, one row of 15 values per face with
@@ -179,9 +179,9 @@ class FaceDetector(nn.Module):
     r"""Detect faces and five facial landmarks in RGB images in [0, 255] with the pretrained YuNet network.
 
     ``detect = FaceDetector()`` downloads the pretrained YuNet weights on first use. ``dets = detect(images)`` takes
-    floating-point RGB images ``(B, 3, H, W)`` with values in :math:`[0, 255]`, ``H`` and ``W`` at least 63, and
-    returns a list of ``B`` tensors ``(N, 15)``, one row per face in the input's pixels, to read with
-    :class:`FaceDetectorResult`. Scale a :math:`[0, 1]` image by 255 first. See :cite:`facedetect-yu`.
+    floating-point RGB images ``(B, 3, H, W)`` in :math:`[0, 255]`, ``H`` and ``W`` at least 63. It returns a list of
+    ``B`` tensors ``(N, 15)``, one row per face in the input's pixels, to read with :class:`FaceDetectorResult`.
+    Scale a :math:`[0, 1]` image by 255 first. See :cite:`facedetect-yu`.
 
     Convention:
         - The score is ``sqrt(class_score * iou_score.clamp(0, 1))``. The detections scoring strictly above

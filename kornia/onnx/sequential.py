@@ -38,11 +38,12 @@ __all__ = ["ONNXSequential"]
 class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     """Chain several ONNX models into one graph and run it with one ONNX Runtime session.
 
-    ``seq = ONNXSequential(model_a, model_b, ...)`` merges the models into one graph, each joint connecting the output
-    named ``"output"`` to the input named ``"input"`` unless ``io_maps`` says otherwise, and opens one session on it;
-    ``outputs = seq(*inputs)`` takes inputs as :class:`~kornia.onnx.module.ONNXModule` does, one per unconnected
-    input, and returns a list of numpy arrays. The names of model ``i`` get the prefix ``K<i>-`` (``K00-input``,
-    ``K01-output``), and an output that feeds nothing stays a graph output.
+    ``seq = ONNXSequential(model_a, model_b, ...)`` merges the models into one graph and opens one session on it. Each
+    joint connects the output named ``"output"`` to the input named ``"input"`` unless ``io_maps`` says otherwise, and
+    an output that feeds nothing stays a graph output. ``outputs = seq(*inputs)`` takes one input per unconnected
+    graph input, as :class:`~kornia.onnx.module.ONNXModule` does, and returns a list of numpy arrays. The names of
+    model ``i`` get the prefix ``K`` and ``i`` in two digits (``K00-input``, ``K01-output``). The models passed in are
+    not modified.
 
     Args:
         *args: The ONNX models, in the order they run, each as :class:`~kornia.onnx.module.ONNXModule` takes it: an

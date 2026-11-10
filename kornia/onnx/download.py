@@ -20,8 +20,8 @@
 Which class to use:
 
 - Any HTTP(S) file cached under a name the caller gives: :class:`CachedDownloader`.
-- ONNX models and configs, with cache names derived from an ``hf://`` name or the URL:
-  :class:`~kornia.onnx.utils.ONNXLoader`, its subclass.
+- ONNX models, cached under a name derived from their ``hf://`` name or URL, and JSON configs, cached under their
+  URL: :class:`~kornia.onnx.utils.ONNXLoader`, its subclass.
 """
 
 from __future__ import annotations
@@ -64,14 +64,14 @@ def _relative_path_components(name: str, label: str = "name") -> list[str]:
 class CachedDownloader:
     """Download an HTTP(S) file into a cache directory under a caller-given name, once.
 
-    ``path = CachedDownloader.download_to_cache(url, name, suffix=".onnx")`` returns ``<cache_dir>/<name>`` with
-    ``suffix`` appended unless ``name`` already ends with it, and downloads ``url`` there only when that file does not
-    exist; a cached file is returned as it is, without contacting the server, until ``force_download=True`` or its
-    deletion. ``CachedDownloader.download(url, file_path)`` does the same for an explicit file path.
+    ``path = CachedDownloader.download_to_cache(url, name, suffix=".onnx")`` returns ``<cache_dir>/<name>``, with
+    ``suffix`` appended unless ``name`` already ends with it, and downloads ``url`` there if that file does not exist.
+    A cached file is returned as it is, without contacting the server, until ``force_download=True`` or its deletion.
+    ``CachedDownloader.download(url, file_path)`` downloads to an explicit path by the same rule and returns ``None``.
 
     See Also:
-        - :class:`~kornia.onnx.utils.ONNXLoader`: its subclass, which builds the cache name from an ``hf://`` name or
-          the URL and loads the ONNX model or JSON config.
+        - :class:`~kornia.onnx.utils.ONNXLoader`: its subclass, which derives the cache name from the URL or a
+          model's ``hf://`` name, and loads the ONNX model or JSON config.
         - :func:`~kornia.core.download_file_from_url`: caches in torch's hub checkpoint directory, with fallback URLs,
           retries and a ``validate`` hook for a truncated file.
 

@@ -59,10 +59,10 @@ def _resize_like_sam(image: torch.Tensor, size: tuple[int, int]) -> torch.Tensor
 class VisualPrompter:
     r"""Segment one image from point, box and mask prompts with SAM, encoding the image once.
 
-    ``prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True))`` builds the SAM model;
+    ``prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True))`` builds the SAM model.
     ``prompter.set_image(image)`` encodes one RGB image ``(3, H, W)`` or ``(1, 3, H, W)``, floating point in
-    :math:`[0, 1]`; then each ``result = prompter.predict(keypoints, keypoints_labels)`` or
-    ``prompter.predict(boxes=boxes)`` answers ``K`` prompts given in that image's pixels. It returns a
+    :math:`[0, 1]`. Each ``result = prompter.predict(keypoints, keypoints_labels)`` or
+    ``prompter.predict(boxes=boxes)`` then answers ``K`` prompts given in that image's pixels. It returns a
     :class:`~kornia.models.structures.SegmentationResults` with ``(K, M, 256, 256)`` low-resolution ``logits``,
     ``(K, M)`` ``scores`` and ``(K, M, H, W)`` ``binary_masks``, with ``M = 3`` masks per prompt, or 1 for
     ``multimask_output=False``.
@@ -70,7 +70,7 @@ class VisualPrompter:
     Convention:
         - :meth:`set_image` resizes the image so that its long side equals ``image_encoder.img_size``, with the
           antialiased bilinear filter of SAM's reference (``ResizeLongestSide.apply_image_torch``), computed in float32
-          (float64 for a float64 image) and cast back. It then normalises it with SAM's mean and standard deviation,
+          (float64 for a float64 image) and cast back. It then normalizes it with SAM's mean and standard deviation,
           or the ``mean`` and ``std`` it is given, and zero-pads it at the bottom and right to the square encoder
           input (:meth:`preprocess_image`). The resized size comes from ``transforms``, an
           :class:`~kornia.augmentation.container.AugmentationSequential` that must hold exactly one stage,
@@ -89,8 +89,8 @@ class VisualPrompter:
           ``apply_coords`` uses :math:`x \mapsto x\,s` for points too: at :math:`s = 8`, the keypoint (40, 30) goes
           to (323.5, 243.5) here and to (320, 240) in the reference.
         - The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights
-          gives a model in evaluation mode, and a randomly initialised one stays in training mode, where MobileSAM's
-          BatchNorm normalises with the statistics of the batch. Call ``prompter.model.eval()`` before inference on
+          gives a model in evaluation mode, and a randomly initialized one stays in training mode, where MobileSAM's
+          BatchNorm normalizes with the statistics of the batch. Call ``prompter.model.eval()`` before inference on
           random weights.
 
     Args:
@@ -381,19 +381,18 @@ class VisualPrompter:
 
         Args:
             keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape ``(K, N, 2)``. Where
-                       `N` is the number of points and `K` the number of prompts.
+                       ``N`` is the number of points and ``K`` the number of prompts.
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
-                             point. Shape ``(K, N)``. Where `N` is the number of points, and `K` the number of
-                             prompts. Required with `keypoints`.
+                             point. Shape ``(K, N)``. Where ``N`` is the number of points, and ``K`` the number of
+                             prompts. Required with ``keypoints``.
             boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape ``(K, 4)`` or
                    ``(1, K, 4)``, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
-                   shape ``(K, 4, 2)`` or ``(1, K, 4, 2)``, read through ``to_tensor(mode="xyxy")``. `K` is
+                   shape ``(K, 4, 2)`` or ``(1, K, 4, 2)``, read through ``to_tensor(mode="xyxy")``. ``K`` is
                    the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
                    iteration. Has shape ``(K, 1, H, W)``, where for SAM, H=W=256.
             multimask_output: If True, three masks per prompt, each with its score in ``scores``; if False, one.
-            output_original_size: If True, ``binary_masks`` is resized to the size of the image set; ``logits``
-                                  stay ``(K, M, 256, 256)``.
+            output_original_size: If True, ``binary_masks`` is resized to the size of the image set.
 
         Returns:
             The ``(K, M, 256, 256)`` low-resolution ``logits`` and the ``(K, M)`` ``scores`` (the predicted IoU of

@@ -24,8 +24,8 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     ``labels = connected_components(image, num_iterations)`` takes a ``(*, 1, H, W)`` mask whose pixels equal to 1 are
     foreground and returns ``int64`` labels of the same shape, 0 on the background. A component comes out whole only
-    when every pixel is within ``num_iterations`` steps of its largest-id pixel; otherwise it is split. For the exact
-    partition at any size, use :func:`connected_components_union_find`.
+    when every pixel is within ``num_iterations`` 8-connected steps, inside the component, of its last pixel in raster
+    order; otherwise it is split. For the exact partition at any size, use :func:`connected_components_union_find`.
 
     .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
 
@@ -133,8 +133,7 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
             foreground, as in :func:`connected_components`.
 
     Returns:
-        A ``torch.int64`` tensor on the input device with the same shape.
-        Background is zero. Foreground labels are the minimum 1-based block
+        Foreground labels are the minimum 1-based block
         index in each component, in raster order over flattened batches and
         the :math:`\lceil H/2\rceil \times \lceil W/2\rceil` block grid.
         Labels are deterministic and distinct across images, but not contiguous

@@ -19,8 +19,8 @@
 
 Which function or class to use:
 
-- An ``onnx.ModelProto`` or a JSON config from a local file, a URL or an ``hf://`` name, or the file paths of the
-  Hugging Face repository: :class:`ONNXLoader`.
+- An ``onnx.ModelProto`` from a local file, a URL or an ``hf://`` name, a JSON config from a local file or an
+  HTTP(S) URL, or the file paths of the Hugging Face repository: :class:`ONNXLoader`.
 - The ``source``, ``version`` and other metadata entries of a model: :func:`add_metadata`.
 - The input and output names of a model, such as the ``"input"`` and ``"output"`` that
   :class:`~kornia.onnx.sequential.ONNXSequential` connects: :func:`io_name_conversion`.
@@ -253,11 +253,9 @@ class ONNXLoader(CachedDownloader):
         time: pass ``force_download=True`` to fetch it again, or delete the file.
 
         Args:
-            model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
-                an ``hf://<folder>/<name>`` name. Valid `model_name` can be found on
-                https://huggingface.co/kornia/ONNX_models.
-                Or a URL to the ONNX model, or the path of a local file. A ``str`` can be any of those; an
-                :class:`os.PathLike` always names a local file. A local path may start with ``~``.
+            model_name: A local file path, an HTTP(S) URL, or an ``hf://<folder>/<name>`` name of the
+                `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ repository. A ``str`` can be any
+                of those; an :class:`os.PathLike` always names a local file. A local path may start with ``~``.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
             cache_dir: The root of the cache. An ``hf://`` model is stored under it at the path of its name after
                 the folder (``<cache_dir>/a/b.onnx`` for ``hf://models/a/b``): the kornia/ONNX_models names are fully
@@ -354,7 +352,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def list_operators(cls) -> None:
-        """Print the file paths in the ``operators`` folder of the Hugging Face repository; returns None."""
+        """Print, without returning them, the file paths in the ``operators`` folder of the Hugging Face repository."""
         repo_contents = cls._fetch_repo_contents("operators")
 
         # Filter for operators in the 'operators' directory
@@ -364,7 +362,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def list_models(cls) -> None:
-        """Print the file paths in the ``models`` folder of the Hugging Face repository; returns None."""
+        """Print, without returning them, the file paths in the ``models`` folder of the Hugging Face repository."""
         repo_contents = cls._fetch_repo_contents("models")
 
         # Filter for models in the 'models' directory
@@ -379,14 +377,14 @@ def io_name_conversion(
 ) -> onnx.ModelProto:
     """Rename the inputs and outputs of an ONNX model in place, as ``io_name_mapping`` maps them.
 
-    ``model = io_name_conversion(model, {"pixel_values": "input", "predicted_depth": "output"})`` renames, in place,
-    the graph inputs and outputs and the node inputs and outputs named in the mapping, and returns the same object; the
-    mapping above gives the names :class:`~kornia.onnx.sequential.ONNXSequential` connects without ``io_maps``.
+    ``model = io_name_conversion(model, {"pixel_values": "input", "predicted_depth": "output"})`` renames the graph
+    inputs and outputs and the node inputs and outputs named in the mapping. The mapping above gives the names
+    :class:`~kornia.onnx.sequential.ONNXSequential` connects without ``io_maps``.
     Initializers, ``value_info`` and subgraphs (``If`` branches, ``Loop`` bodies) are not renamed, so do not map an
     initializer's name.
 
     Args:
-        onnx_model: The ONNX model to rename, modified in place.
+        onnx_model: The ONNX model to rename.
         io_name_mapping: A dictionary mapping the original input and output names to the new ones.
 
     Returns:
@@ -429,12 +427,12 @@ def add_metadata(
     """Write ``source``, ``version`` and other metadata entries into an ONNX model, in place.
 
     ``model = add_metadata(model, [("key", "value")])`` sets ``source`` to ``"kornia"``, ``version`` to
-    ``kornia.__version__``, then each given pair, and returns the same object. A key that is already present in the
-    model (or earlier in the list) is overwritten rather than repeated, so a given ``("source", ...)`` replaces
-    ``"kornia"``. Duplicate keys already in the model are merged into one entry with the last value.
+    ``kornia.__version__``, then each given pair. A key that is already present in the model (or earlier in the
+    list) is overwritten rather than repeated, so a given ``("source", ...)`` replaces ``"kornia"``. Duplicate keys
+    already in the model are merged into one entry with the last value.
 
     Args:
-        onnx_model: The ONNX model to add metadata to, modified in place.
+        onnx_model: The ONNX model to add metadata to.
         additional_metadata: A list of ``(key, value)`` tuples to add. Values are stored as strings, ``str(value)``.
 
     Returns:

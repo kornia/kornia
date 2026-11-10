@@ -21,8 +21,8 @@ The builders' models return RGB images clamped to :math:`[0, 1]`.
 
 Which class to use:
 
-- Upscale by 4 or 2 at the input's own size and aspect ratio, with Real-ESRGAN weights: :class:`RRDBNetBuilder`.
-- Upscale a 224 x 224 resize of every input by 3 with a small, fast network: :class:`SmallSRBuilder`.
+- Upscale by 4 or 2 without resizing the input first, with Real-ESRGAN weights: :class:`RRDBNetBuilder`.
+- Upscale a 224 x 224 resize of every input by 3 with a small network: :class:`SmallSRBuilder`.
 - Pick either builder from one dataclass: :class:`SuperResolutionConfig`, passed to
   ``SuperResolution.from_config``.
 - Your own super-resolution network with its own pre- and post-processing: :class:`SuperResolution`.
@@ -98,7 +98,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
     pretrained models, use :class:`RRDBNetBuilder`, :class:`SmallSRBuilder` or :meth:`from_config`.
 
     See Also:
-        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, at the input's own size.
+        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, without resizing the input first.
         - :class:`SmallSRBuilder`: a small network that upscales a 224 x 224 resize by 3.
         - :class:`SuperResolutionConfig`: picks either builder by name, for :meth:`from_config`.
         - :func:`~kornia.geometry.transform.resize`: interpolation to any size, without a network.
@@ -351,12 +351,12 @@ class RRDBNetBuilder:
     """Build a SuperResolution model around a Real-ESRGAN RRDB generator that upscales by 4 or 2.
 
     ``sr = RRDBNetBuilder.build("RealESRNet_x4plus")`` downloads the released Real-ESRGAN weights on first use and
-    returns a :class:`SuperResolution`. ``out = sr(images)`` upscales RGB images at their own size: a
+    returns a :class:`SuperResolution`. ``out = sr(images)`` upscales RGB images without resizing them first: a
     ``(B, 3, H, W)`` tensor becomes ``(B, 3, 4 H, 4 W)``, or ``(B, 3, 2 H, 2 W)`` for ``"RealESRGAN_x2plus"``,
     clamped to :math:`[0, 1]`. A list of ``(3, H, W)`` images, of any sizes, returns a list.
 
     See Also:
-        - :class:`SmallSRBuilder`: a small, fast network that upscales a 224 x 224 resize by 3.
+        - :class:`SmallSRBuilder`: a small network that upscales a 224 x 224 resize by 3.
         - :class:`~kornia.models.RRDBNet`: the generator itself, to train or to load other weights.
         - :class:`SuperResolutionConfig`: picks this builder or the other by name.
 
@@ -371,7 +371,7 @@ class RRDBNetBuilder:
                 ``"RealESRNet_x4plus"`` (23 blocks, x4), ``"RealESRGAN_x4plus_anime_6B"`` (6 blocks, x4) and
                 ``"RealESRGAN_x2plus"`` (23 blocks, x2), which needs even ``H`` and ``W``.
             pretrained: If ``True``, download and load pretrained weights for the
-                selected model variant; otherwise the network is randomly initialised.
+                selected model variant; otherwise the network is randomly initialized.
 
         Returns:
             A :class:`SuperResolution` wrapper ready for inference.
@@ -410,13 +410,11 @@ class SmallSRBuilder:
     """Build a SuperResolution model around a small sub-pixel network that upscales a 224 x 224 resize.
 
     ``sr = SmallSRBuilder.build()`` downloads the weights on first use and returns a :class:`SuperResolution`.
-    ``out = sr(images)`` takes RGB images in :math:`[0, 1]`, a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)``
-    images, resizes each to 224 x 224, discarding its aspect ratio, and returns one ``(B, 3, 224 r, 224 r)`` tensor
-    in :math:`[0, 1]` with ``r = upscale_factor``. For an output at the input's aspect ratio, use
-    :class:`RRDBNetBuilder`.
+    ``out = sr(images)`` resizes each RGB image in :math:`[0, 1]` to 224 x 224, discarding its aspect ratio, and
+    returns one ``(B, 3, 224 r, 224 r)`` tensor in :math:`[0, 1]`, ``r = upscale_factor``.
 
     See Also:
-        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, at the input's own size and aspect ratio.
+        - :class:`RRDBNetBuilder`: Real-ESRGAN weights, x4 or x2, keeping the aspect ratio.
         - :class:`SuperResolutionConfig`: picks this builder or the other by name.
 
     """

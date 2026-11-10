@@ -31,10 +31,10 @@ from kornia.geometry.linalg import euclidean_distance
 class KMeans:
     r"""Cluster ``(N, D)`` points into ``num_clusters`` groups by k-means with Euclidean distance.
 
-    ``kmeans = KMeans(num_clusters, cluster_centers)`` stores the settings, ``kmeans.fit(X)`` alternates nearest-centre
-    assignment and centre means on the ``(N, D)`` points ``X``, and ``labels = kmeans.predict(x)`` returns the ``int64``
-    index of the nearest fitted centre for each row of ``(M, D)`` points. After :meth:`fit`, :attr:`cluster_centers` is
-    ``(num_clusters, D)`` and :attr:`cluster_assignments` holds the ``(N,)`` labels of ``X``.
+    ``kmeans = KMeans(num_clusters, cluster_centers)`` stores the settings, and ``kmeans.fit(X)`` alternates
+    nearest-centre assignment and centre means on the ``(N, D)`` points ``X``. ``labels = kmeans.predict(x)`` returns
+    the ``int64`` index of the nearest centre for each row of ``(M, D)`` points. After :meth:`fit`,
+    :attr:`cluster_centers` is ``(num_clusters, D)`` and :attr:`cluster_assignments` holds the ``(N,)`` labels of ``X``.
 
     Convention:
         - :meth:`fit` stops after the first update whose squared total centre shift,
@@ -54,7 +54,7 @@ class KMeans:
         num_clusters: number of clusters the data has to be assigned to, a positive integer. Required, also with
             ``cluster_centers``; without them, :meth:`fit` needs at least ``num_clusters`` samples.
         cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
-            each :meth:`fit`. Required, with no default.
+            each :meth:`fit`. Pass ``None`` explicitly; the argument has no default.
         tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
             ``max_iterations`` updates.
         max_iterations: the maximum number of updates; 0 sets no limit.

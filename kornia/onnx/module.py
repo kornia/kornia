@@ -40,11 +40,10 @@ __all__ = ["ONNXModule", "load"]
 class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     """Run one ONNX model with ONNX Runtime and return its outputs as numpy arrays.
 
-    ``module = ONNXModule(op)`` loads ``op`` and opens an ONNX Runtime session on it; ``outputs = module(*inputs)``
-    takes one numpy array or CPU torch tensor of a dtype numpy has (not bfloat16 or float8) per graph input, in the
-    order of ``get_session().get_inputs()``, and returns a list of numpy arrays. The session runs on the CPU unless
-    ``providers`` or an ``as_*()`` method such as ``as_cuda()`` select another provider; inputs stay in host memory
-    either way, and a CUDA tensor raises ``ValueError``.
+    ``module = ONNXModule(op)`` loads ``op`` and opens an ONNX Runtime session on it. ``outputs = module(*inputs)``
+    takes one numpy array or CPU torch tensor per graph input, in the order of ``get_session().get_inputs()``, and
+    returns a list of numpy arrays. The session runs on the CPU unless ``providers`` or an ``as_*()`` method such as
+    ``as_cuda()`` selects another provider; the inputs stay in host memory either way.
 
     Args:
         op: One ONNX model: an ONNX ModelProto object, or a file path as ``str`` or :class:`os.PathLike` (a path
@@ -69,8 +68,10 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     Raises:
-        TypeError: If ``op`` is not a ModelProto, a ``str`` or an :class:`os.PathLike`; ``bytes`` raise it too.
-        ValueError: If ``op`` names a local file that does not exist.
+        TypeError: If ``op`` is not a ModelProto, a ``str`` or an :class:`os.PathLike`; ``bytes`` raise it too. On a
+            call, if an input is a torch tensor of a dtype numpy has not, such as bfloat16 or float8.
+        ValueError: If ``op`` names a local file that does not exist. On a call, if an input is a torch tensor on
+            another device than the CPU.
 
     Note:
         Given an ``onnx.ModelProto``, the module holds that object itself, not a copy, unless a target version
@@ -165,7 +166,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
 
 def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download: bool = False) -> ONNXModule:
-    """Load one ONNX model into an :class:`~kornia.onnx.module.ONNXModule` on the CPU, in one call.
+    """Load one ONNX model into an :class:`~kornia.onnx.module.ONNXModule` on a CPU session.
 
     ``load(name, force_download=f)`` is ``ONNXModule(name, force_download=f)``: one model on a CPU session with the
     default cache.
@@ -176,7 +177,7 @@ def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download
         force_download: If True, download the model again and replace the cached file, even when it is cached.
 
     Returns:
-        The :class:`~kornia.onnx.module.ONNXModule` on a CPU session.
+        The :class:`~kornia.onnx.module.ONNXModule`.
 
     Raises:
         TypeError: If ``model_name`` is not a ModelProto, a ``str`` or an :class:`os.PathLike`.

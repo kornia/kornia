@@ -71,9 +71,10 @@ def compute_padding(
     """Compute the ``(top, bottom, left, right)`` padding that makes sliding windows fit.
 
     ``padding = compute_padding(original_size, window_size, stride)`` returns four ints that, passed as ``padding`` to
-    :func:`extract_tensor_patches` and as ``unpadding`` to :func:`combine_tensor_patches`, make windows of
-    ``window_size`` at ``stride`` cover the padded image with none left over. Each padding is split evenly, with the odd
-    pixel at the bottom or right, and an image smaller than one window is padded to one window.
+    :func:`extract_tensor_patches` and as ``unpadding`` to :func:`combine_tensor_patches`, make the last window of
+    ``window_size`` at ``stride`` end on the padded border, so no row or column is dropped. With ``stride`` at most
+    ``window_size`` the windows then cover every pixel. Each padding is split evenly, with the odd pixel at the bottom
+    or right, and an image smaller than one window is padded to one window.
 
     Args:
         original_size: the image size ``(H, W)``, or one int for both.
@@ -147,7 +148,7 @@ class ExtractTensorPatches(nn.Module):
 
     Args:
         window_size: the size ``(h, w)`` of the sliding window and of each patch, or one int for both.
-        stride: stride of the sliding window, an int or ``(sh, sw)``.
+        stride: stride of the sliding window, an int or ``(sh, sw)``. Default: 1.
         padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
         allow_auto_padding: whether to pad the image as :func:`compute_padding` computes when the windows do not fit.
 
@@ -213,7 +214,8 @@ class CombineTensorPatches(nn.Module):
 
     ``combine = CombineTensorPatches(original_size, window_size, stride, unpadding)`` stores its arguments, and
     ``image = combine(patches)`` is :func:`combine_tensor_patches` on ``(B, N, C, h, w)`` patches, returning a
-    ``(B, C, H, W)`` image. Unlike the function, ``stride`` defaults to ``window_size``.
+    ``(B, C, H, W)`` image. Unlike :func:`combine_tensor_patches`, ``stride`` defaults to ``window_size``;
+    :class:`ExtractTensorPatches` defaults it to 1, so pass the same ``stride`` to both.
 
     Convention:
         See the Convention block on :func:`combine_tensor_patches`.
@@ -311,9 +313,9 @@ def combine_tensor_patches(
 
     ``image = combine_tensor_patches(patches, original_size, window_size, stride)`` takes ``(B, N, C, h, w)``
     patches and returns the ``(B, C, H, W)`` image of size ``original_size``. Pass the ``stride`` used for the
-    extraction and its ``padding`` as ``unpadding``. When ``stride`` is at most ``window_size`` and the extraction
-    padding is non-negative and makes the windows fit, or both auto flags are set, a round trip returns the input:
-    exactly for integer and ``bool`` patches, up to rounding where floating patches overlap.
+    extraction and its ``padding`` as ``unpadding``. With ``stride`` at most ``window_size``, a round trip returns
+    the input when the extraction padding is non-negative and makes the windows fit, or when both auto flags are set.
+    It is exact for integer and ``bool`` patches, and exact up to rounding where floating patches overlap.
 
     Convention:
         - Overlapping patches are averaged: each pixel is divided by the number of patches that cover it, where
@@ -344,8 +346,8 @@ def combine_tensor_patches(
     Raises:
         ValueError: if ``patches`` is not 5-D.
         ValueCheckError: if a ``window_size`` or ``stride`` component is below 1.
-        AssertionError: if ``stride`` is larger than ``window_size``, which leaves pixels uncovered.
-        AssertionError: if ``unpadding`` is a tuple of other than two or four ints.
+        AssertionError: if ``stride`` is larger than ``window_size``, which leaves pixels uncovered, or if
+            ``unpadding`` is a tuple of other than two or four ints.
         RuntimeError: if the number or size of the patches does not match ``original_size``, ``window_size``, ``stride``
             and ``unpadding``.
 
@@ -541,10 +543,10 @@ def extract_tensor_patches(
           and then raises. ``allow_auto_padding=True`` pads instead, as :func:`compute_padding` computes.
         - A non-zero ``padding`` switches off both the fit warning and ``allow_auto_padding``, so a padding too small
           for the window drops the last rows or columns silently. An all-zero ``padding`` counts as none.
-        - A ``window_size`` or ``stride`` component below 1 raises ``ValueCheckError``, a ``ValueError``, up front
-          (at construction for the module classes), here and in :func:`combine_tensor_patches`,
-          :func:`compute_padding`, :class:`ExtractTensorPatches` and :class:`CombineTensorPatches`, also under
-          ``python -O`` and ``disable_checks()``.
+        - The ``ValueCheckError`` (a ``ValueError``) for a ``window_size`` or ``stride`` component below 1 is raised
+          up front, also under ``python -O`` and ``disable_checks()``, here, in :func:`combine_tensor_patches` and
+          :func:`compute_padding`, and at construction of :class:`ExtractTensorPatches` and
+          :class:`CombineTensorPatches`.
         - An empty batch gives an empty output with the same ``N``, ``C``, ``h`` and ``w`` as a non-empty one.
 
     Args:

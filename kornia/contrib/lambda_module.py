@@ -31,9 +31,6 @@ class Lambda(nn.Module):
     Args:
         func: Callable function.
 
-    Returns:
-        The output of the user-defined lambda.
-
     Raises:
         TypeError: if ``func`` is not callable; raised from the constructor.
 

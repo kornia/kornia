@@ -234,7 +234,8 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             What the post-processor returns. For a detector from :meth:`RTDETRDetectorBuilder.build`, a list with
             one ``(D, 6)`` tensor per image, where :math:`D` is the number of detections in that image, each row the
             class id, the score and the ``x, y, w, h`` box in that image's pixels; with
-            ``confidence_filtering=False``, one ``(B, Q, 6)`` tensor of the ``Q`` best detections of each image.
+            ``confidence_filtering=False`` or a threshold of 0, one ``(B, Q, 6)`` tensor of the ``Q`` best detections
+            of each image.
 
         """
         images, images_sizes = self.pre_processor(images)
@@ -410,11 +411,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 class BoxFiltering(nn.Module, ONNXExportMixin):
     """Keep the detections above a confidence threshold and in given classes, per image.
 
-    ``filt = BoxFiltering(confidence_threshold=0.3, classes_to_keep=[0, 2])`` builds the filter.
-    ``kept = filt(dets)`` takes ``(B, D, 6)`` detections, rows ``(class_id, score, x, y, w, h)``, keeps the rows whose
-    score is strictly above the threshold and whose class is in ``classes_to_keep``, and returns a list of ``B``
-    tensors ``(D_b, 6)``; with ``filter_as_zero=True`` it returns the ``(B, D, 6)`` input with the other rows set to
-    zero.
+    ``kept = BoxFiltering(confidence_threshold=0.3, classes_to_keep=[0, 2])(dets)`` keeps the rows
+    ``(class_id, score, x, y, w, h)`` of ``(B, D, 6)`` detections that score strictly above the threshold and are in
+    ``classes_to_keep``. It returns a list of ``B`` tensors ``(D_b, 6)``, or, with ``filter_as_zero=True``, the
+    ``(B, D, 6)`` input with the other rows zeroed.
 
     Args:
         confidence_threshold: a float or 0-d tensor; the rows scoring strictly above it are kept. If None, 0.
@@ -578,8 +578,8 @@ class RTDETRDetectorBuilder:
 
     ``detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")`` downloads the released weights on first use and
     returns an :class:`ObjectDetector`. ``dets = detector(images)`` takes RGB images in :math:`[0, 1]` and returns a
-    list with one ``(D, 6)`` tensor per image, rows ``(class_id, score, x, y, w, h)`` scoring above 0.3: the box in
-    that image's pixels and ``class_id`` the COCO class index, from 0 to 79.
+    list with one ``(D, 6)`` tensor per image, rows ``(class_id, score, x, y, w, h)`` scoring above 0.3. The box is in
+    that image's pixels, and ``class_id`` is the COCO class index, from 0 to 79.
 
     See Also:
         - :class:`ObjectDetector`: the wrapper it returns, for your own detection network.
@@ -608,10 +608,10 @@ class RTDETRDetectorBuilder:
             config:
                 A custom configuration object for building the RT-DETR model.
             pretrained:
-                Whether to load a pretrained version of the model (applies when `model_name` is provided).
+                Whether to load a pretrained version of the model (applies when ``model_name`` is provided).
             image_size:
-                The size to which input images will be resized during preprocessing, used only with `config`. If
-                None, `config.input_size` is used. With `model_name`, or without either, it is ignored: the input is
+                The size to which input images will be resized during preprocessing, used only with ``config``. If
+                None, ``config.input_size`` is used. With ``model_name``, or without either, it is ignored: the input is
                 resized to the 640 px the published weights were trained for. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             confidence_threshold: The detections scoring strictly above it are kept. If None,
@@ -619,7 +619,6 @@ class RTDETRDetectorBuilder:
             confidence_filtering: Whether to filter results based on confidence scores. None filters. Without
                 filtering, or with a threshold of 0, the detector returns one ``(B, Q, 6)`` tensor, ``Q`` the
                 decoder's number of queries (300 for the released models).
-
 
         Returns:
             ObjectDetector

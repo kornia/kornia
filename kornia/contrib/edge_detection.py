@@ -48,11 +48,10 @@ __all__ = ["EdgeDetector", "EdgeDetectorBuilder"]
 class EdgeDetector(ModelBase, ONNXExportMixin):
     """Run an edge network on RGB images and resize its maps back to each image's size.
 
-    ``detector = EdgeDetector(model, pre_processor, post_processor)`` wraps an edge network.
-    ``edges = detector(images)`` takes a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images, runs
-    ``pre_processor``, ``model`` and ``post_processor`` in turn, and returns what the post-processor returns: with a
-    ``ResizePostProcessor``, a list with one ``(1, C, H, W)`` map per image at that image's size (``C = 1`` for
-    DexiNed).
+    ``edges = EdgeDetector(model, pre_processor, post_processor)(images)`` runs ``pre_processor``, ``model`` and
+    ``post_processor`` on a ``(B, 3, H, W)`` tensor or a list of ``(3, H, W)`` images and returns what the
+    post-processor returns. With a ``ResizePostProcessor``, that is a list with one ``(1, C, H, W)`` map per image, at
+    that image's size (``C = 1`` for DexiNed).
 
     Args:
         model: The edge detection model.
@@ -102,7 +101,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
 
     @staticmethod
     def from_config(config: Any) -> EdgeDetector:
-        """Raise ``NotImplementedError``: build with :meth:`EdgeDetectorBuilder.build` or the constructor.
+        """Raise ``NotImplementedError``: build with :meth:`~kornia.contrib.edge_detection.EdgeDetectorBuilder.build`.
 
         Args:
             config: Configuration object (not used, kept for interface compatibility).
@@ -127,9 +126,10 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
                 :math:`[0, 1]`.
 
         Returns:
-            A list with one output of shape ``(1, C, H, W)`` per input image, resized back to that image's size.
-            For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
-            probabilities in :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
+            With a ``ResizePostProcessor``, a list with one output of shape ``(1, C, H, W)`` per input image,
+            resized back to that image's size. For a detector from
+            :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge probabilities in
+            :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
             ``(B, C, H, W)`` tensor at the input's size instead, see :meth:`to_onnx`.
 
         Raises:
@@ -202,7 +202,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
     ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
-        """Turn the edge maps into grey RGB images.
+        """Turn one-channel edge maps into grey RGB images; an edge map with another ``C`` raises ``ValueError``.
 
         Args:
             images: input torch.Tensor.
@@ -379,7 +379,7 @@ class EdgeDetectorBuilder:
         Args:
             model_name: Name of the model to build. Only ``"dexined"`` (any case) is supported; another name raises
                 ``ValueError``.
-            pretrained: If True, loads pretrained weights; otherwise the network is randomly initialised.
+            pretrained: If True, loads pretrained weights; otherwise the network is randomly initialized.
             image_size: Size to which input images will be resized during preprocessing.
 
         Returns:

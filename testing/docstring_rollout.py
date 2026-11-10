@@ -47,7 +47,7 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
 
 EXCLUDED_PACKAGES: dict[str, str] = {
     "utils": "deprecated shims that keep their 'Deprecated: use X' first lines",
-    "models": "left out of the rollout for now by maintainer decision (2026-11-10)",
+    "models": "not converted; its docstrings keep the pre-rollout style",
     "transpiler": "a removal stub",
 }
 """Top-level packages left out of the rollout, with the reason."""
