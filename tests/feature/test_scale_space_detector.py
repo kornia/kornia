@@ -1061,6 +1061,9 @@ class TestScaleSpaceDetector(BaseTester):
             assert bool(kornia.feature.laf_is_inside_image(half_frame, img, 5)[0, 0]) == kept
 
     def test_border_check_runs_in_the_frame_dtype_for_a_narrower_response(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 images")
+
         # A response may return float32 for a float64 image. The frames are then float64, and a frame whose half
         # extent is 5 + 1 float32 ulp at x = 85 reaches 90 + 2**-21 > 96 - 1 - 5 there, but exactly 90 in float32.
         class Float32Peak(torch.nn.Module):
