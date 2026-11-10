@@ -117,8 +117,7 @@ issues own live status and acceptance decisions.
   [#6404](https://github.com/kornia/kornia/issues/6404) and fundamental-matrix RANSAC
   degeneracy [#6574](https://github.com/kornia/kornia/issues/6574), including downstream
   effects and release treatment.
-- **Supported execution paths:** compiled RANSAC cache safety
-  [#6278](https://github.com/kornia/kornia/issues/6278) and failures established by current
+- **Supported execution paths:** failures established by current
   [precision evidence](https://kornia.readthedocs.io/en/latest/get-started/precision.html).
   CUDA-half support is not a blanket patch-release guarantee.
 - **Usable guidance and maintenance:** runnable workflows, version-correct documentation,
