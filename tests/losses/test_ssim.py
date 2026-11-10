@@ -17,6 +17,7 @@
 
 import pickle
 import re
+import warnings
 
 import pytest
 import torch
@@ -78,6 +79,14 @@ class TestSSIMLoss(BaseTester):
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
         self.gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), nondet_tol=1e-8)
 
+    def test_int_max_val_6663(self, device, dtype):
+        # An int max_val used to raise a TypeError.
+        img1 = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        expected = kornia.losses.ssim_loss(img1, img2, 3, max_val=2.0)
+        self.assert_close(kornia.losses.ssim_loss(img1, img2, 3, max_val=2), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.SSIMLoss(3, max_val=2)(img1, img2), expected, rtol=0, atol=0)
+
 
 # The variances are differences of Gaussian-filtered moments, which cancel badly in half precision.
 _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
@@ -109,6 +118,16 @@ class TestMS_SSIMLoss(BaseTester):
         repeated = single.expand_as(img)
         self.assert_close(criterion(img, single), criterion(img, repeated), rtol=0, atol=0)
         self.assert_close(criterion(single, img), criterion(repeated, img), rtol=0, atol=0)
+
+    def test_batch_of_one_does_not_warn_6663(self, device, dtype):
+        # The L1 term used to warn that the target size differs from the input size.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        single = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        criterion = kornia.losses.MS_SSIMLoss().to(device, dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            criterion(single, img)
+            criterion(img, single)
 
     def test_shape_mismatch_raises_when_checks_disabled(self, device, dtype):
         # GH#6157 the shape guard must hold even with Kornia checks disabled
@@ -603,6 +622,14 @@ class TestSSIM3DLoss(BaseTester):
     @pytest.mark.skip("loss have no exception case")
     def test_exception(self):
         pass
+
+    def test_int_max_val_6663(self, device, dtype):
+        # An int max_val used to raise a TypeError.
+        img1 = torch.rand(1, 2, 6, 6, 6, device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 6, 6, 6, device=device, dtype=dtype)
+        expected = kornia.losses.ssim3d_loss(img1, img2, 3, max_val=2.0)
+        self.assert_close(kornia.losses.ssim3d_loss(img1, img2, 3, max_val=2), expected, rtol=0, atol=0)
+        self.assert_close(kornia.losses.SSIM3DLoss(3, max_val=2)(img1, img2), expected, rtol=0, atol=0)
 
 
 class TestConventionsSSIMLoss(BaseTester):

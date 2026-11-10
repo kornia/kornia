@@ -2,23 +2,25 @@ kornia.losses
 =============
 
 .. meta::
-   :description: The kornia.losses module offers a comprehensive collection of loss functions for computer vision tasks, including image reconstruction, semantic segmentation, distribution-based losses, and morphological losses. With a wide range of loss types such as SSIM, PSNR, focal loss, and dice loss, this module enables efficient optimization for deep learning models across various domains, enhancing training for tasks like image restoration, segmentation, and object detection.
+   :description: The kornia.losses module offers differentiable losses for image reconstruction, robust regression, semantic segmentation, probability heatmaps, morphology and image registration, such as SSIM, PSNR, focal, dice, Hausdorff and mutual-information losses.
 
 .. currentmodule:: kornia.losses
 
-Loss functions for training vision models. Each functional loss has an ``nn.Module`` counterpart.
+Score images, segmentations and distributions, or register images by mutual information. A loss with a target takes the
+prediction first; :ref:`Losses and metrics <losses-metrics-conventions>` tabulates the ``reduction``
+defaults. Each loss function except :func:`kl_div_loss_2d` and :func:`js_div_loss_2d` has a module form.
 
 .. list-table::
    :widths: 30 70
 
    * - :doc:`losses.reconstruction`
-     - SSIM, MS-SSIM, PSNR, total variation, inverse-depth smoothness and robust losses (Charbonnier, Welsch, Cauchy, Geman-McClure).
+     - SSIM, MS-SSIM and PSNR losses, total variation, inverse-depth smoothness and the robust losses (Charbonnier, Cauchy, Geman-McClure, Welsch).
    * - :doc:`losses.segmentation`
-     - Focal, dice, Tversky and Lovasz losses.
+     - Dice, Tversky, Lovász and focal losses on class logits, and :func:`one_hot`.
    * - :doc:`losses.distributions`
-     - Jensen-Shannon and Kullback-Leibler divergences between 2D distributions.
+     - Jensen-Shannon and Kullback-Leibler divergences between probability heatmaps.
    * - :doc:`losses.morphology`
-     - Hausdorff distance losses in 2D and 3D.
+     - Erosion-based Hausdorff losses for images and volumes.
    * - :doc:`losses.registration`
      - Mutual information and normalized mutual information losses (flat signals, 2D and 3D) for image registration.
 
