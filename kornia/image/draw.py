@@ -22,6 +22,7 @@ import torch
 from torch import Tensor
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
 
 # TODO: implement width of the line
 
@@ -71,19 +72,27 @@ def _rectangle_bands(
     return torch.stack([r0.clamp(0, h), r1.clamp(-1, h - 1) + 1, c0.clamp(0, w), c1.clamp(-1, w - 1) + 1], -1)
 
 
-def _check_color_channels(values: int, channels: int) -> None:
+def _check_color_channels(color: torch.Tensor, channels: int, dim: int = -1) -> None:
     """Reject a colour whose length is neither one nor the channel count.
 
     A single value is written to every channel, so one value always works; any
     other length must match the number of channels of the image. The message
     names both numbers, so the caller can see which one is wrong.
+
+    ``dim`` is the dimension of the colour that holds the channels: the first
+    for a ``(C)`` or ``(C, 1)`` colour, the last for a ``(B, N, C)`` one.
+
+    The message is built only when the check fails. A size formatted on every
+    call would specialize a symbolic shape under ``torch.compile``, which
+    ``tests/core/test_check_message_call_sites.py`` guards against.
     """
-    word = "channel" if channels == 1 else "channels"
-    KORNIA_CHECK(
-        values in (1, channels),
-        f"Color dim must match the channel dims of the provided image: the color has {values} values "
-        f"and the image has {channels} {word}.",
-    )
+    values = color.size(dim) if color.ndim > 0 else 1
+    if values not in (1, channels):
+        word = "channel" if channels == 1 else "channels"
+        raise ShapeError(
+            f"Color dim must match the channel dims of the provided image: the color has {values} values "
+            f"and the image has {channels} {word}."
+        )
 
 
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
@@ -130,8 +139,9 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
         color = color.unsqueeze(0)
     # A single value is written to every channel (see the docstring); any other
     # length must match the channels of the image. An (H, W) image is one
-    # channel, so its colour is a single value.
-    _check_color_channels(color.shape[0], image.shape[0] if image.dim() == 3 else 1)
+    # channel, so its colour is a single value. The colour is (C) or (C, 1), so
+    # its channels are the first dimension.
+    _check_color_channels(color, image.shape[0] if image.dim() == 3 else 1, dim=0)
     # round on the points' own device: MPS has no float64, and float64 points from NumPy are common
     points = _round_to_pixel(points).to(image.device)
     # A single [x, y] vector is a common call shape; zip(*points) iterated 0-d
@@ -378,7 +388,7 @@ def draw_rectangle(
     # The colour is (C), (B, N, C) or a single value; its channels are its last
     # dimension, and a single value is written to every channel.
     if color is not None:
-        _check_color_channels(color.shape[-1] if color.ndim > 0 else 1, c)
+        _check_color_channels(color, c)
 
     if len(color.shape) <= 1:
         color = color.expand(batch, num_rectangle, c)
@@ -541,7 +551,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     b_p, _, xy, device_p = *polygons.shape, polygons.device
     # The colour is (B, C), (C) or a single value; its channels are its last
     # dimension, and a single value is written to every channel.
-    _check_color_channels(colors.shape[-1] if colors.ndim > 0 else 1, c_i)
+    _check_color_channels(colors, c_i)
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device
