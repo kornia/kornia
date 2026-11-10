@@ -431,6 +431,9 @@ class ONNXExportMixin:
             **kwargs:
                 Additional keyword arguments to pass to the `torch.onnx.export` function.
 
+        Returns:
+            The exported ``onnx.ModelProto``, also when ``save`` is False.
+
         Raises:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
