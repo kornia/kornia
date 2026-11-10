@@ -109,32 +109,37 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Estimate the histogram of the input torch.Tensor.
+    """Estimate the normalized histogram of each sample row with Gaussian kernels.
+
+    ``hist = histogram(x, bins, bandwidth)`` spreads every value of a row of ``x`` over the bin centers ``bins`` with a
+    Gaussian kernel and normalizes each row to sum to 1, with ``epsilon`` added to the divisor.
 
     Convention:
-        Rows are independent samples: x has shape (B, D), bins is the shared
-        one-dimensional center grid, and the result has shape (B, N_bins).
-        histogram2d uses the same batch convention for a joint density. bandwidth must be
-        finite and positive; the check raises a ``RuntimeError`` during the call for a CPU bandwidth, and by
-        the next synchronization for one on CUDA, or on MPS from torch 2.13, where it is ``torch._assert_async``.
-        For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result
-        is cast back to that dtype.
-
-    The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
+        - Rows are independent samples, and ``bins`` is the one center grid they share.
+        - A ``bandwidth`` that is not finite and positive raises ``RuntimeError``; on CUDA, and on MPS from torch 2.13,
+          it raises by the next synchronization.
+        - For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result is cast back to
+          that dtype.
 
     Args:
-        x: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
-        bins: The bin centers, with shape :math:`(N_{bins})`.
-        bandwidth: Gaussian smoothing factor with shape shape [1].
-        epsilon: A scalar, for numerical stability.
+        x: samples with shape ``(B, D)``.
+        bins: bin centers with shape ``(N_bins,)``, in the units of ``x``.
+        bandwidth: 0-d tensor, the standard deviation of the Gaussian kernel in the units of ``x``. A Python float or a
+            ``(1,)`` tensor raises.
+        epsilon: value added to the normalization sum.
 
     Returns:
-        Computed histogram of shape :math:`(B, N_{bins})`.
+        Histogram with shape ``(B, N_bins)``. When all kernel weights underflow to zero, it is zero for a positive
+        ``epsilon`` and NaN for ``epsilon=0``.
+
+    See Also:
+        - :func:`histogram2d`: the joint histogram of two sample rows.
+        - :func:`image_histogram2d`: counts the pixels of each image channel, with a choice of kernel.
 
     Examples:
         >>> x = torch.rand(1, 10)
-        >>> bins = torch.torch.linspace(0, 255, 128)
-        >>> hist = histogram(x, bins, bandwidth=torch.tensor(0.9))
+        >>> bins = torch.linspace(0, 1, 128)
+        >>> hist = histogram(x, bins, bandwidth=torch.tensor(0.01))
         >>> hist.shape
         torch.Size([1, 128])
 
@@ -154,31 +159,36 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 def histogram2d(
     x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
-    """Estimate the 2d histogram of the input torch.Tensor.
+    """Estimate the normalized joint histogram of two sample rows with Gaussian kernels.
+
+    ``hist = histogram2d(x1, x2, bins, bandwidth)`` pairs ``x1[b, n]`` with ``x2[b, n]``: ``hist[b, i, j]`` is the
+    kernel weight of ``x1`` in bin ``i`` and ``x2`` in bin ``j``, normalized per batch element to sum to 1.
 
     Convention:
-        x1 and x2 supply one sample row per batch element and return
-        (B, N_bins, N_bins), where the first bin axis belongs to x1.
-        When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and
-        normalization are evaluated in float32 and the result is cast back to that promoted dtype.
-
-    The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
+        - ``x1`` and ``x2`` must have the same shape.
+        - When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and normalization are
+          evaluated in float32 and the result is cast back to that dtype.
 
     Args:
-        x1: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
-        x2: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
-        bins: The bin centers, with shape :math:`(N_{bins})`.
-        bandwidth: Gaussian smoothing factor with shape shape [1].
-        epsilon: A scalar, for numerical stability. Default: 1e-10.
+        x1: first samples with shape ``(B, D)``.
+        x2: second samples with shape ``(B, D)``.
+        bins: bin centers with shape ``(N_bins,)``, in the units of the samples.
+        bandwidth: 0-d tensor, the standard deviation of the Gaussian kernel in the units of the samples.
+        epsilon: value added to the normalization sum.
 
     Returns:
-        Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
+        Joint histogram with shape ``(B, N_bins, N_bins)``; the first bin axis belongs to ``x1``. All-zero kernel
+        weights give zeros for a positive ``epsilon`` and NaN for ``epsilon=0``.
+
+    See Also:
+        - :func:`histogram`: the histogram of one sample row.
+        - :func:`image_histogram2d`: one histogram per image channel, not a joint one.
 
     Examples:
         >>> x1 = torch.rand(2, 32)
         >>> x2 = torch.rand(2, 32)
-        >>> bins = torch.torch.linspace(0, 255, 128)
-        >>> hist = histogram2d(x1, x2, bins, bandwidth=torch.tensor(0.9))
+        >>> bins = torch.linspace(0, 1, 128)
+        >>> hist = histogram2d(x1, x2, bins, bandwidth=torch.tensor(0.01))
         >>> hist.shape
         torch.Size([2, 128, 128])
 
@@ -248,43 +258,56 @@ def image_histogram2d(
     kernel: str = "triangular",
     eps: float = 1e-10,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Estimate the histogram of the input image(s).
+    r"""Estimate the intensity histogram of each channel of an image.
+
+    ``hist, pdf = image_histogram2d(image, min, max, n_bins)`` weights every pixel over ``n_bins`` bin centers with a
+    kernel and returns the summed weights per channel as ``hist``, and their normalization as ``pdf`` if
+    ``return_pdf=True``. Despite its name it is a one-dimensional histogram per channel; for the joint histogram of two
+    signals use :func:`histogram2d`.
 
     Convention:
-        Spatial axes are the final two axes; input (H, W), (C, H, W), and
-        (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
-        centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
-        according to the selected kernel rather than being clipped into an endpoint bin. Float16 and
-        bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
-        ``centers``: the bin counts of ordinary images exceed float16's range (65504) and bfloat16's precision.
-
-    The calculation uses triangular kernel density estimation.
+        - The spatial axes are the final two. An image ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)`` gives ``hist`` with
+          the same leading axes followed by the bins; another rank raises.
+        - A pixel outside the range still adds the kernel's weight to the centers within reach; it is not clipped
+          into an end bin.
+        - Float16 and bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
+          ``centers``: ordinary bin counts exceed float16's range (65504) and bfloat16's precision.
 
     Args:
-        image: Input torch.Tensor to compute the histogram with shape
-          ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
-        min: Lower end of the interval (inclusive).
-        max: Upper end of the interval (inclusive). Ignored when
-          :attr:`centers` is specified.
-        n_bins: The number of histogram bins. Ignored when
-          :attr:`centers` is specified.
-        bandwidth: Positive finite smoothing factor. If not specified or equal to -1,
-          it is calculated as :math:`(max - min) / n_bins`.
-        centers: Centers of the bins with shape :math:`(n_bins,)`.
-          If not specified or empty, it is calculated as centers of equal-width bins
-          over the non-empty finite [min, max] range.
-        return_pdf: If True, also return probability densities for
-          each bin.
-        kernel: kernel to perform kernel density estimation
-          ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
-        eps: epsilon for numerical stability.
+        image: image with shape ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
+        min: lower end of the range, a ``float``. It sets the automatic centers and bandwidth.
+        max: upper end of the range, a ``float``. The default ``255.0`` puts a :math:`[0, 1]` image in two bins; pass
+            ``1.0`` for that range. Unused when ``bandwidth`` is given, but it must still exceed ``min`` while the
+            centers are automatic.
+        n_bins: number of automatic bins.
+        bandwidth: kernel width, a positive finite ``float``. The default, also ``-1``, is ``(max - min) / n_bins``.
+        centers: bin centers with shape ``(K,)``. The default, also an empty tensor, is ``n_bins`` centers at
+            ``min + (i + 0.5) * bandwidth``, so an explicit ``bandwidth`` moves them off ``[min, max]``
+            (`#6664 <https://github.com/kornia/kornia/issues/6664>`_). With explicit centers, also pass
+            ``bandwidth``: the default bandwidth still comes from ``min``, ``max`` and ``n_bins``
+            (`#6662 <https://github.com/kornia/kornia/issues/6662>`_).
+        return_pdf: whether to also return the normalized histogram.
+        kernel: weight of a pixel at distance ``d`` from a center, with ``u = d / bandwidth``: ``'triangular'``
+            (:math:`1 - u` for :math:`u \leq 1`), ``'gaussian'`` (:math:`e^{-u^2 / 2}`), ``'uniform'`` (1 for
+            :math:`u \leq 1`) or ``'epanechnikov'`` (:math:`1 - u^2` for :math:`u \leq 1`). Gradients reach ``image``
+            except with ``'uniform'``.
+        eps: value added to the normalization sum.
 
     Returns:
-        Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
-          :math:`(B, C, bins)`.
-        Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
-          :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise.
+        Tuple ``(hist, pdf)``. ``hist`` has shape ``(K,)``, ``(C, K)`` or ``(B, C, K)``, where the bin axis ``K`` has
+        ``n_bins`` entries, or one per center. ``pdf`` has the same shape and divides the histogram by its bin sum
+        plus ``eps``. Its sum approaches 1 when the bin sum dominates ``eps``; it is zeros when no pixels contribute
+        or ``return_pdf`` is ``False``.
+
+    See Also:
+        - :func:`histogram`: the Gaussian histogram of sample rows, normalized.
+        - :func:`histogram2d`: the joint histogram of two sample rows.
+
+    Example:
+        >>> image = torch.rand(2, 3, 8, 8)
+        >>> hist, pdf = image_histogram2d(image, 0.0, 1.0, n_bins=16, return_pdf=True)
+        >>> hist.shape
+        torch.Size([2, 3, 16])
 
     """
     if image is not None and not isinstance(image, torch.Tensor):

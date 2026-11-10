@@ -15,9 +15,39 @@
 # limitations under the License.
 #
 
-"""Kornia Enhance — Image enhancement operations for Kornia.
+"""Adjust, equalize, normalize and whiten images, simulate JPEG compression, and sum them cumulatively.
 
-This subpackage provides modules for brightness, contrast, and other image enhancements.
+Which function to use, with the module form after the function:
+
+- Brightness: add a factor with :func:`adjust_brightness`, :class:`AdjustBrightness`; multiply by it, as PIL does,
+  with :func:`adjust_brightness_accumulative`, :class:`AdjustBrightnessAccumulative`.
+- Contrast: multiply by a factor with :func:`adjust_contrast`, :class:`AdjustContrast`; blend with the mean gray level,
+  as PIL does, with :func:`adjust_contrast_with_mean_subtraction`, :class:`AdjustContrastWithMeanSubtraction`.
+- Gamma, logarithmic and sigmoid curves: :func:`adjust_gamma`, :class:`AdjustGamma`; :func:`adjust_log`,
+  :class:`AdjustLog`; :func:`adjust_sigmoid`, :class:`AdjustSigmoid`.
+- Hue of an RGB image: :func:`adjust_hue`, :class:`AdjustHue`; of an HSV image: :func:`adjust_hue_raw`.
+- Saturation of an RGB image: scale the HSV saturation with :func:`adjust_saturation`, :class:`AdjustSaturation`; blend
+  with the gray image, as PIL does, with :func:`adjust_saturation_with_gray_subtraction`,
+  :class:`AdjustSaturationWithGraySubtraction`; of an HSV image: :func:`adjust_saturation_raw`.
+- Shift the RGB channels by different amounts: :func:`shift_rgb`.
+- Invert: :func:`invert`, :class:`Invert`; invert the bright pixels: :func:`solarize`; keep the top bits:
+  :func:`posterize`.
+- Sharpen or blur: :func:`sharpness`.
+- Blend two images: :func:`add_weighted`, :class:`AddWeighted`.
+- Multiply by a constant: :class:`Rescale`.
+- Threshold at a fixed level: :func:`threshold`, :class:`Threshold`, :class:`ThresholdType`.
+- Equalize each channel's histogram: :func:`equalize`; of a volume: :func:`equalize3d`; tile by tile with a clipped
+  histogram: :func:`equalize_clahe`.
+- Histograms of sample rows, :func:`histogram`; the joint histogram of two sample rows, :func:`histogram2d`; of each
+  image channel, :func:`image_histogram2d`.
+- Normalize with a mean and standard deviation: :func:`normalize`, :class:`Normalize`; undo it: :func:`denormalize`,
+  :class:`Denormalize`; scale each channel plane to a value range: :func:`normalize_min_max`.
+- Whiten data with ZCA: :func:`zca_whiten`, or fit once with :class:`ZCAWhitening`; the pieces are :func:`zca_mean` and
+  :func:`linear_transform`.
+- Compress and decompress with a differentiable JPEG model: :func:`jpeg_codec_differentiable`,
+  :class:`JPEGCodecDifferentiable`.
+- Cumulative sums: the integral image of the last two axes with :func:`integral_image`, :class:`IntegralImage`; along
+  any axes with :func:`integral_tensor`, :class:`IntegralTensor`.
 """
 
 from .adjust import (

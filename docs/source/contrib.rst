@@ -331,6 +331,13 @@ Lambda
 Distance Transform
 ------------------
 
+Binary masks produce Euclidean distances to the nearest positive pixel or voxel.
+Fractional masks remain piecewise differentiable: each positive source contributes
+``-h * log(v)`` to the squared distance before minimization and the square root.
+``kernel_size`` is accepted for compatibility and does not affect the result;
+``h`` controls the fractional-source cost. See the function's gradient conventions
+before using it in a loss.
+
 .. autofunction:: distance_transform
 
 .. autoclass:: DistanceTransform

@@ -49,47 +49,33 @@ def ssim3d(
     eps: float = 1e-12,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
+    r"""Compute the per-voxel structural similarity (SSIM) map between two volumes.
 
-    Measures the (SSIM) index between each element in the input `x` and target `y`.
-
-    The index can be described as:
-
-    .. math::
-
-      \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
-      {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
-
-    where:
-      - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
-        stabilize the division with weak denominator.
-      - :math:`L` is the dynamic range of the pixel-values (typically this is
-        :math:`2^{\#\text{bits per pixel}}-1`).
+    ``ssim_map = ssim3d(img1, img2, window_size)`` takes two ``(B, C, D, H, W)`` volumes and returns the SSIM index at
+    every voxel, channel and sample; average the map for a score. The formula is that of
+    :func:`~kornia.metrics.ssim`, with an isotropic Gaussian window over ``(D, H, W)``.
 
     Convention:
-        - See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
-          ``max_val``. ``ssim3d`` applies them to ``(D, H, W)`` with an isotropic Gaussian window, and ``'valid'``
-          crops every axis. A volume of identical slices reproduces the 2-D map up to floating-point roundoff.
-        - The Gaussian window uses the computation dtype of the inputs; integer and half-precision inputs are
-          evaluated in float32.
+        See the Convention block of :func:`~kornia.metrics.ssim` for the window, reflected border, ``padding`` and
+        ``max_val``; ``'valid'`` crops every axis. A volume of identical slices reproduces the 2-D map up to
+        floating-point roundoff.
 
     Args:
-        img1: the first input image with shape ``(B, C, D, H, W)``.
-        img2: the second input image with shape ``(B, C, D, H, W)``.
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        img1: the first volume with shape ``(B, C, D, H, W)``.
+        img2: the second volume with the shape of ``img1``.
+        window_size: size of the Gaussian window in voxels, a positive odd integer.
+        max_val: data range :math:`L` of the volumes, as a Python float.
+        eps: term added to the denominator.
+        padding: ``'same'`` keeps the spatial size; ``'valid'`` keeps only the area where the window fits.
 
     Returns:
-       The ssim index map with shape ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with
-       ``p = window_size // 2`` under ``padding='valid'``.
+        the SSIM map with shape ``(B, C, D, H, W)``, or ``(B, C, D - 2p, H - 2p, W - 2p)`` with
+        ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
         The volume is reflected at its faces for ``padding='same'``, as :func:`kornia.metrics.ssim` does for
-        images, across any positive spatial size, including ``D = 1``. The Gaussian window is built in
-        the device and dtype of the inputs.
+        images, across any positive spatial size, including ``D = 1``. The Gaussian window is built on the device
+        of the inputs, in the dtype they are filtered in.
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
@@ -97,6 +83,12 @@ def ssim3d(
         cuDNN can then filter a single-channel volume with a TF32 kernel, which rounds the inputs of the local
         moments to 10 mantissa bits. The variances are differences of those moments, so in flat regions the map can
         be off by more than ``1e-2``. Set ``torch.backends.cudnn.allow_tf32 = False`` when float32 accuracy matters.
+
+    See Also:
+        - :class:`~kornia.metrics.SSIM3D`: the module form.
+        - :func:`~kornia.metrics.ssim`: the same map for images.
+        - :func:`~kornia.losses.ssim3d_loss`: the dissimilarity :math:`(1 - \text{SSIM}) / 2`, clamped to
+          :math:`[0, 1]`.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
@@ -188,38 +180,30 @@ def ssim3d(
 
 
 class SSIM3D(nn.Module):
-    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
+    """Compute the per-voxel structural similarity (SSIM) map between two volumes (module form).
 
-    Measures the (SSIM) index between each element in the input `x` and target `y`.
-
-    The index can be described as:
-
-    .. math::
-
-      \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
-      {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
-
-    where:
-      - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
-        stabilize the division with weak denominator.
-      - :math:`L` is the dynamic range of the pixel-values (typically this is
-        :math:`2^{\#\text{bits per pixel}}-1`).
+    ``criterion = SSIM3D(window_size, ...)`` stores its arguments, and ``ssim_map = criterion(img1, img2)`` is
+    :func:`~kornia.metrics.ssim3d` on two ``(B, C, D, H, W)`` volumes.
 
     Convention:
         See the Convention block of :func:`~kornia.metrics.ssim3d`.
 
     Args:
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        window_size: size of the Gaussian window in voxels, a positive odd integer.
+        max_val: data range :math:`L` of the volumes, as a Python float.
+        eps: term added to the denominator.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim3d`.
 
     Shape:
-        - Input: ``(B, C, D, H, W)``.
-        - Target ``(B, C, D, H, W)``.
-        - Output: ``(B, C, D, H, W)``, or :math:`(B, C, D - 2p, H - 2p, W - 2p)` with ``p = window_size // 2``
+        - img1: ``(B, C, D, H, W)``.
+        - img2: ``(B, C, D, H, W)``.
+        - Output: ``(B, C, D, H, W)``, or ``(B, C, D - 2p, H - 2p, W - 2p)`` with ``p = window_size // 2``
           under ``padding='valid'``.
+
+    See Also:
+        - :func:`~kornia.metrics.ssim3d`: the one-call form.
+        - :class:`~kornia.metrics.SSIM`: the same map for images.
+        - :class:`~kornia.losses.SSIM3DLoss`: the dissimilarity loss built on this map.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
