@@ -26,6 +26,41 @@ from testing.base import BaseTester
 
 
 class TestTokenMixPublicAPI(BaseTester):
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_convention_token_pixels_and_replay(self, device, dtype, same_on_batch):
+        aug = TokenMix(num_tokens=2, same_on_batch=same_on_batch)
+        image = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4) / 32
+        original = image.clone()
+        # Each token is 2x2. Copy the top-right token from image 1 into image 0.
+        # Image 1 copies image 0's bottom-left token, or top-right for a shared mask.
+        masks = [[[False, True], [False, False]], [[False, False], [True, False]]]
+        if same_on_batch:
+            masks[1] = masks[0]
+        params = {
+            "batch_prob": torch.ones(2, device=device, dtype=dtype),
+            "forward_input_shape": torch.tensor(image.shape, device=device),
+            "lam": torch.full((2,), 0.25, device=device, dtype=dtype),
+            "num_mix_tokens": torch.ones(2, device=device, dtype=torch.long),
+            "batch_perm": torch.tensor([1, 0], device=device),
+            "token_mask": torch.tensor(masks, device=device),
+        }
+        # Hand-derived from arange(32).reshape(2, 1, 4, 4): replace only the
+        # specified 2x2 rectangles with the partner's values, then divide by 32.
+        first = [[0, 1, 18, 19], [4, 5, 22, 23], [8, 9, 10, 11], [12, 13, 14, 15]]
+        second = (
+            [[16, 17, 2, 3], [20, 21, 6, 7], [24, 25, 26, 27], [28, 29, 30, 31]]
+            if same_on_batch
+            else [[16, 17, 18, 19], [20, 21, 22, 23], [8, 9, 26, 27], [12, 13, 30, 31]]
+        )
+        expected = torch.tensor([[first], [second]], device=device, dtype=dtype) / 32
+
+        output = aug(image, params=params)
+        self.assert_close(output, expected)
+        self.assert_close(image, original)
+        assert output.device == image.device
+        assert output.dtype == image.dtype
+        self.assert_close(aug(image / 2, params=aug._params), expected / 2)
+
     def test_batch_probability(self, device, dtype):
         x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
 
