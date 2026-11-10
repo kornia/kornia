@@ -23,51 +23,44 @@ _PSNRMaxVal = float | int | torch.Tensor
 
 
 def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> torch.Tensor:
-    r"""Create a function that calculates the PSNR between 2 images.
+    r"""Compute the peak signal-to-noise ratio (PSNR), in dB, between two images.
 
-    PSNR is the Peak Signal to Noise Ratio. For one m x n image, the PSNR is:
-
-    .. math::
-
-        \text{PSNR} = 10 \log_{10} \bigg(\frac{\text{MAX}_I^2}{MSE(I,T)}\bigg)
-
-    where
+    ``score = psnr(image, target, max_val)`` takes two images of the same shape ``(*)`` and their data range
+    :math:`\text{MAX}_I`, and returns the PSNR for the mean squared error over all :math:`N` elements:
 
     .. math::
 
-        \text{MSE}(I,T) = \frac{1}{mn}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1} [I(i,j) - T(i,j)]^2
-
-    and :math:`\text{MAX}_I` is the maximum possible input value
-    (e.g for floating point images :math:`\text{MAX}_I=1`).
+        \text{PSNR} = 10 \log_{10} \bigg(\frac{\text{MAX}_I^2}{\text{MSE}}\bigg), \quad
+        \text{MSE} = \frac{1}{N}\sum_{k=1}^{N} (I_k - T_k)^2
 
     Convention:
-        - One MSE is pooled over every element, batch and channels included. A scalar range gives one PSNR: for a
-          batch it is the PSNR of the pooled MSE, not the mean of per-image PSNRs, so compute per-image values one
-          image at a time. :ref:`Losses and metrics <losses-metrics-conventions>` maps both onto scikit-image and
-          torchmetrics.
-        - ``max_val`` is :math:`\text{MAX}_I`, the data range of the images (``1.0`` for ``[0, 1]``, ``255.0`` for
-          ``[0, 255]``), not the maximum of the tensor; pixel values are not rescaled.
-        - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
-          Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
-        - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
-          Uint8, int8, int16 and int32 tensor data ranges are widened to int64 before squaring to avoid overflow,
-          except when the promoted image dtype is float16 or bfloat16, which uses float32 range arithmetic.
-        - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype,
-          also promoted with ``max_val.dtype`` when the data range is a tensor. A float32 tensor data range therefore
-          gives a float32 result for half-precision images.
+        - One MSE is pooled over every element, batch and channels included, so for a batch the score is the PSNR of
+          the pooled MSE, not the mean of per-image PSNRs: compute per-image values one image at a time.
+          :ref:`Losses and metrics <losses-metrics-conventions>` maps both onto scikit-image and torchmetrics.
+        - ``max_val`` is the data range of the images (``1.0`` for ``[0, 1]``, ``255.0`` for ``[0, 255]``), not the
+          maximum of the tensor; pixel values are not rescaled.
+        - The shapes must match, without broadcasting, and the value is symmetric in the images. Identical inputs
+          give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
+        - Integer and bool images are converted to float32 before computing the MSE, so an integer image paired with
+          a half-precision image gives a float32 result. Uint8, int8, int16 and int32 tensor data ranges are widened
+          to int64 before squaring to avoid overflow, except when the promoted image dtype is float16 or bfloat16,
+          which uses float32 range arithmetic.
+        - Float16 and bfloat16 inputs are evaluated in float32 and the result keeps their promoted dtype, also
+          promoted with ``max_val.dtype`` for a tensor range: a float32 tensor range gives a float32 result for
+          half-precision images.
 
     Args:
-        image: the input image with arbitrary shape ``(*)``.
-        target: the labels image with arbitrary shape ``(*)``.
-        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
+        image: the image with shape ``(*)``.
+        target: the reference image with the shape of ``image``.
+        max_val: the data range :math:`\text{MAX}_I` of the images, as a float, integer or tensor.
 
-    Return:
-        the PSNR as a scalar for a scalar range, or with the shape of a tensor range.
+    Returns:
+        the PSNR in dB, a 0-d tensor for a scalar range or with the shape of a tensor range.
 
-    .. note::
-        Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are
-        compared in their promoted dtype. An integer image paired with a float16 or bfloat16 image therefore gives a
-        float32 result. Pixel values are not rescaled.
+    See Also:
+        - :func:`~kornia.losses.psnr_loss`: the negative PSNR, to minimise.
+        - :class:`~kornia.losses.PSNRLoss`: the module form of that loss.
+        - :func:`~kornia.metrics.ssim`: a structural measure of the same pair, per pixel and bounded.
 
     Examples:
         >>> ones = torch.ones(1)

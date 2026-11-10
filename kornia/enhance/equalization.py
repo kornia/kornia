@@ -484,35 +484,45 @@ def equalize_clahe(
     grid_size: Tuple[int, int] = (8, 8),
     slow_and_differentiable: bool = False,
 ) -> torch.Tensor:
-    r"""Apply clahe equalization on the input tensor.
+    """Equalize an image tile by tile with a clipped histogram (CLAHE).
 
-    Convention:
-        Expects values in [0, 1], splits the final two axes into grid_size[0] tiles along H and
-        grid_size[1] tiles along W, and returns the input shape.
-        See :func:`equalize` for global equalization.
+    ``out = equalize_clahe(input, clip_limit, grid_size)`` equalizes each channel of an image in :math:`[0, 1]` in every
+    tile of a ``grid_size`` grid and blends the tiles' lookup tables where they meet. Clipping the histogram at
+    ``clip_limit`` limits the local contrast gain.
 
     .. image:: _static/img/equalize_clahe.png
 
-    NOTE: The fast path uses OpenCV-style LUT calculation and round-to-nearest quantization.
-    Tiles are ``ceil(H / grid_size[0])`` by ``ceil(W / grid_size[1])`` pixels, odd or even, and the image is
-    reflect-padded at its end only along an axis the grid does not divide. OpenCV uses the same tiles when the
-    grid divides both axes or neither. When it divides only one, OpenCV pads that axis too, by one pixel per
-    tile; Kornia tiles each axis on its own and does not. Both paths blend LUTs with weight steps of
-    ``1 / tile_size``, anchored at each tile's actual centre, with border LUTs clamped. This is half a pixel
-    before OpenCV/scikit-image's historical phase: Kornia intentionally uses ``(p + 0.5) / tile_size - 0.5``
-    to preserve flip symmetry on unpadded grids. For the same tiles and LUTs, the phase difference is at most
-    half an interpolation step per axis; exact ``cv2.createCLAHE`` parity is not the contract, and output
-    values are not rounded to 8-bit integers.
+    Convention:
+        - The tiles are ``ceil(H / grid_size[0])`` by ``ceil(W / grid_size[1])`` pixels, and an axis the grid does not
+          divide is reflect-padded at its end. OpenCV uses the same tiles when the grid divides both axes or neither;
+          when it divides one, OpenCV also pads that axis by one pixel per tile and Kornia does not.
+        - Lookup tables are blended with weights anchored at each tile's centre, ``(p + 0.5) / tile_size - 0.5`` for
+          pixel ``p``, which keeps flip symmetry on unpadded grids. This is half a pixel from the phase of OpenCV and
+          scikit-image, a blending-weight difference of at most ``0.5 / tile_size`` per axis, so the output differs
+          from ``cv2.createCLAHE`` even for the same lookup tables. The output is not rounded to 8-bit levels.
+        - The default path rounds the lookup tables to nearest like OpenCV; ``slow_and_differentiable=True`` does not.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shape ``(*, C, H, W)``.
-        clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
-        grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
-            than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
-        slow_and_differentiable: flag to select implementation
+        input: image with values in :math:`[0, 1]` and shape ``(*, C, H, W)``.
+        clip_limit: caps each bin at ``max(clip_limit * tile_pixels // 256, 1)`` counts and spreads the excess over all
+            bins. ``0.0`` disables clipping. A ``float``; an ``int`` raises ``TypeError``.
+        grid_size: number of tiles ``(GH, GW)`` along H and W, a tuple of ``int``. Each image axis must be larger than
+            its grid size; the ``ValueError`` otherwise names the smallest image the grid admits.
+        slow_and_differentiable: count with a soft histogram, so gradients reach ``input``; the default path has none.
+            It is slower and, without the lookup-table rounding, its values differ from the default path's.
 
     Returns:
-        Equalized image or images with shape as the input.
+        Equalized image with the shape of ``input``.
+
+    .. note::
+       An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`), and values
+       whose level before truncation lies outside ``(-1, 256)`` raise a ``RuntimeError`` naming the range, as for
+       :func:`equalize`. That function also describes the 8-bit level the lookup reads and when the range error
+       surfaces on CUDA and MPS.
+
+    See Also:
+        - :func:`equalize`: equalizes the whole channel with one histogram.
+        - :class:`~kornia.augmentation.RandomClahe`: applies it with random parameters per image.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)
@@ -524,20 +534,6 @@ def equalize_clahe(
         >>> res = equalize_clahe(img)
         >>> res.shape
         torch.Size([2, 3, 10, 20])
-
-    .. note::
-       The input is expected as a floating-point image in :math:`[0, 1]`; each tile is equalized from a
-       256-bin lookup table. On the default path each pixel is counted in the entry it reads, its 8-bit
-       level ``(x * 255).long()`` in the input dtype, as OpenCV counts and reads one level; both paths read
-       the lookup at that level. In float32 and float64 the 255 is raised by four float32 epsilons, relative, as in
-       :func:`kornia.enhance.equalize`, so ``k / 255`` reads level ``k`` even when its division was rounded a
-       unit low, as dividing by 255 on CUDA leaves it.
-       ``slow_and_differentiable=True`` keeps its soft histogram centred on the levels ``k / 255``. An integer
-       or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
-       8-bit data with ``image.float() / 255`` first, as for :func:`kornia.enhance.equalize`. Values the lookup
-       cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range, at the same
-       point as for :func:`kornia.enhance.equalize`: during the call for a CPU image, and by the next
-       synchronization on CUDA and on MPS from torch ``2.13``, even when checks are disabled.
 
     """
     _check_floating_image(input, "equalize_clahe")
