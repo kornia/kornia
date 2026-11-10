@@ -38,7 +38,6 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
     "io",
     "losses",
     "metrics",
-    "models",
     "morphology",
     "onnx",
     "sensors",
@@ -48,6 +47,7 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
 
 EXCLUDED_PACKAGES: dict[str, str] = {
     "utils": "deprecated shims that keep their 'Deprecated: use X' first lines",
+    "models": "deferred: left out of the rollout for now by maintainer decision (2026-11-10)",
     "transpiler": "a removal stub",
 }
 """Top-level packages left out of the rollout, with the reason."""
@@ -66,6 +66,12 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.augmentation.container.base",
     "kornia.augmentation.container.params",
     "kornia.color",
+    "kornia.contrib",
+    "kornia.contrib.augmentation_audit",
+    "kornia.contrib.edge_detection",
+    "kornia.contrib.face_detection",
+    "kornia.contrib.object_detection",
+    "kornia.contrib.super_resolution",
     "kornia.enhance",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
@@ -104,12 +110,17 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.vector",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.onnx.download",
+    "kornia.onnx.module",
+    "kornia.onnx.sequential",
+    "kornia.onnx.utils",
 )
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.augmentation",
     "kornia.color",
+    "kornia.contrib",
     "kornia.enhance",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
@@ -162,6 +173,7 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.vector",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.onnx",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
