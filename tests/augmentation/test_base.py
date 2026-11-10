@@ -20,6 +20,7 @@ import copy
 import io
 import pickle
 import threading
+import warnings
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -808,25 +809,205 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert set(first) == set(second)
         assert all(torch.equal(first[k], second[k]) for k in first)
 
-    def test_wart_generator_is_rejected_at_construction_and_swallowed_by_forward_4427(self, device, dtype):
-        # Wart pin (#4427): there is no per-instance RNG. `generator=` raises `TypeError` on a class and on a
-        # container, and `forward` silently accepts and drops it - together with any other unknown keyword -
-        # because `forward` funnels its `**kwargs` into `override_parameters`. The passed generator is never
-        # consumed, so the output still follows the global seed.
-        with pytest.raises(TypeError):
-            K.RandomAffine(degrees=45.0, generator=torch.Generator())
-        with pytest.raises(TypeError):
-            K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), generator=torch.Generator())
+    @pytest.mark.parametrize("keyword", ["generator", "nonsense", "resampl"])
+    @pytest.mark.parametrize("save_kwargs", [False, True])
+    def test_unknown_override_warns(self, device, dtype, keyword, save_kwargs):
+        aug = K.RandomAffine(degrees=45.0, p=1.0)
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
-        gen = torch.Generator()
-        gen.manual_seed(2718)
+        aug(x)
+        params = aug._params
+        with pytest.warns(FutureWarning, match=keyword):
+            aug(x, params=params, save_kwargs=save_kwargs, **{keyword: 1})
+        assert keyword not in params
+        with pytest.warns(FutureWarning, match=keyword):
+            aug.inverse(x, params=params, **{keyword: 1})
+
+    def test_parameter_override_saved_without_flags_or_controls(self, device, dtype):
+        aug = K.RandomAffine(degrees=45.0, p=1.0)
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        params = aug.forward_parameters(x.shape)
+        angle = torch.zeros_like(params["angle"])
+        with warnings.catch_warnings():
+            # Parameter and flag overrides and the save_kwargs control are all known names.
+            warnings.simplefilter("error", FutureWarning)
+            output = aug(x, params=params, angle=angle, align_corners=False, save_kwargs=True)
+        assert torch.equal(aug._params["angle"], angle)
+        assert "save_kwargs" not in aug._params
+        assert "align_corners" not in aug._params
+        self.assert_close(aug(x, params=aug._params, align_corners=False), output)
+
+    def test_flag_override_is_applied_without_polluting_parameters(self, device, dtype):
+        from kornia.constants import Resample
+
+        x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
+        aug = K.RandomAffine((17.0, 17.0), p=1.0)
+        params = aug.forward_parameters(x.shape)
+        expected = K.RandomAffine((17.0, 17.0), resample="nearest", p=1.0)(x, params=params)
+        actual = aug(x, params=params, resample=Resample.NEAREST)
+        self.assert_close(actual, expected)
+        assert "resample" not in aug._params
+        assert aug.flags["resample"] == Resample.BILINEAR
+
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_container_parameter_override_on_first_call(self, device, dtype, nested):
+        from kornia.constants import DataKey
+
+        x = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 8, 8) / 64
+        child = K.RandomAffine((17.0, 17.0), p=1.0)
+        if nested:
+            child = K.ImageSequential(child)
+        aug = K.AugmentationSequential(
+            child,
+            data_keys=["input"],
+            extra_args={DataKey.INPUT: {"angle": torch.zeros(1, device=device, dtype=dtype)}},
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            self.assert_close(aug(x), x)
+            params = aug.forward_parameters(x.shape)
+            self.assert_close(aug(x, params=params), x)
+
+    @pytest.mark.parametrize("policy", [False, True])
+    def test_nested_matrix_shared_options_are_filtered(self, device, dtype, policy):
+        from kornia.augmentation.auto import AutoAugment
+        from kornia.augmentation.container.params import ParamItem
+
+        x = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        if policy:
+            aug = AutoAugment(policy=[[("rotate", 1.0, 3)], [("invert", 1.0, None)]])
+            # Include both heterogeneous sub-policies rather than drawing only one.
+            params = [ParamItem(name, child.forward_parameters(x.shape)) for name, child in aug.named_children()]
+            key = "degrees"
+        else:
+            aug = K.ImageSequential(
+                K.RandomAffine((17.0, 17.0), p=1.0), K.ImageSequential(K.RandomHorizontalFlip(p=1.0))
+            )
+            params = aug.forward_parameters(x.shape)
+            key = "angle"
+        expected = aug.get_transformation_matrix(x, params=params, recompute=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            actual = aug.get_transformation_matrix(
+                x, params=params, recompute=True, extra_args={key: torch.zeros(1, device=device, dtype=dtype)}
+            )
+        # Matrix recompute historically consumes flag overrides only; validating shared parameter names must
+        # neither change that numerical contract nor warn when the next nested child lacks that parameter.
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("policy", [False, True])
+    def test_policy_direct_transform_inputs_warns_on_unknown_option(self, device, dtype, policy):
+        from kornia.augmentation.auto import AutoAugment
+        from kornia.augmentation.auto.operations import PolicySequential, ops
+
+        aug = AutoAugment(policy=[[("invert", 1.0, None)]]) if policy else PolicySequential(ops.Invert(1.0))
+        x = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        params = aug.forward_parameters(x.shape)
+        expected = aug.transform_inputs(x, params)
+        with pytest.warns(FutureWarning, match="misspelled"):
+            actual = aug.transform_inputs(x, params, extra_args={"misspelled": True})
+        self.assert_close(actual, expected)
+
+    def test_container_options_ignore_plain_module_flags(self, device, dtype):
+        class PlainWithFlags(torch.nn.Module):
+            def __init__(self, flags):
+                super().__init__()
+                self.flags = flags
+
+            def forward(self, x):
+                return x
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), PlainWithFlags(0), data_keys=["input", "mask"])
+        aug(x, x)
+        seq = K.ImageSequential(K.RandomHorizontalFlip(p=1.0), PlainWithFlags({"typo": 1}))
+        with pytest.warns(FutureWarning, match="typo"):
+            seq(x, extra_args={"typo": 1})
+
+    def test_container_validates_only_the_options_of_present_data_keys(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(15.0, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None, "resampl": 1}},
+        )
+        # Mask options are not read by an image-only call or its inverse, so they are neither checked nor warned about.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            out = aug(x, data_keys=["input"])
+            aug.inverse(out, data_keys=["input"])
+        with pytest.warns(FutureWarning, match="resampl"):
+            aug(x, x)
+        # The default mask options stay accepted for a pipeline whose children read none of them.
+        flips = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None, "antialias": False}},
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            flips(x, x)
+
+    def test_container_inverse_applies_the_mask_options(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
         torch.manual_seed(0)
-        with_generator = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x, generator=gen)
-        torch.manual_seed(0)
-        without = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x)
-        assert torch.equal(with_generator, without)
-        # any other unknown keyword is swallowed just as silently
-        assert K.RandomAffine(degrees=(10.0, 90.0), p=1.0)(x, nonsense=1).shape == (2, 3, 6, 8)
+        x = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        mask = (torch.rand(1, 1, 16, 16, device=device) > 0.5).to(dtype)
+        aug = K.AugmentationSequential(
+            K.RandomAffine(30.0, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args={DataKey.MASK: {"resample": Resample.BILINEAR, "align_corners": True}},
+        )
+        out, _ = aug(x, mask)
+        # Invert a binary mask: bilinear mask options blend its labels, the default nearest would keep them binary.
+        _, inverted = aug.inverse(out, mask)
+        assert not ((inverted == 0) | (inverted == 1)).all()
+
+    def test_container_mask_only_call_keeps_input_options_for_matrices(self, device, dtype):
+        from kornia.constants import DataKey, Resample
+
+        x = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        extra_args = {
+            DataKey.INPUT: {"align_corners": False},
+            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None},
+        }
+        first = K.AugmentationSequential(
+            K.ImageSequential(K.Resize((4, 5))), data_keys=["input", "mask"], extra_args=extra_args
+        )
+        first(x, x)
+        # A fresh pipeline recomputes the nested matrix for a mask-only call; the INPUT flags still apply to it.
+        second = K.AugmentationSequential(
+            K.ImageSequential(K.Resize((4, 5))), data_keys=["input", "mask"], extra_args=extra_args
+        )
+        second(x, params=first._params, data_keys=["mask"])
+        # The mask-only matrix comes back in float32 whatever the dtype (also before #6659), so compare values.
+        self.assert_close(second.transform_matrix.to(dtype), first.transform_matrix)
+
+    def test_container_shared_options_and_unknown_override(self, device, dtype):
+        from kornia.constants import DataKey
+
+        x = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0), K.RandomAffine(15.0, p=1.0), data_keys=["input", "mask"]
+        )
+        output = aug(x, x)
+        params = aug._params
+        replay = aug(x, x, params=params)
+        for first, second in zip(output, replay):
+            self.assert_close(first, second)
+        aug.inverse(*output, params=params)
+        # Non-interpolation flags also work across nested heterogeneous children.
+        aug.extra_args[DataKey.MASK]["fill_value"] = torch.tensor(0.0, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            aug(x, x, params=params)
+            nested = K.AugmentationSequential(aug, data_keys=["input", "mask"], extra_args=aug.extra_args)
+            nested(x, x)
+        aug.extra_args[DataKey.MASK]["resampl"] = 1
+        with pytest.warns(FutureWarning, match="resampl"):
+            aug(x, x, params=params)
 
     def test_convention_params_replay_is_bitwise_and_the_dict_is_stored_by_reference(self, device, dtype):
         # Convention pin for a complete generated dictionary: `params=` replaces the previous draw,

@@ -20,7 +20,7 @@ import re
 import pytest
 import torch
 
-from kornia.augmentation.utils.helpers import _validate_shape
+from kornia.augmentation.utils.helpers import _validate_shape, override_parameters
 
 
 class TestValidateShape:
@@ -33,3 +33,25 @@ class TestValidateShape:
         message = f"Expected input shape in ('BCHW', 'BCDHW'). Got {shape}."
         with pytest.raises(TypeError, match=re.escape(message)):
             _validate_shape(shape, required_shapes=("BCHW", "BCDHW"))
+
+
+class TestOverrideParameters:
+    @pytest.mark.parametrize("in_place", [False, True])
+    def test_missing_key_is_ignored(self, in_place):
+        params = {"angle": 1}
+        result = override_parameters(params, {"angle": 2, "typo": 3}, in_place=in_place)
+        assert result == {"angle": 2}
+        assert params == {"angle": 2 if in_place else 1}
+
+    def test_missing_key_raises(self):
+        with pytest.raises(RuntimeError, match="typo"):
+            override_parameters({"angle": 1}, {"typo": 2}, if_none_exist="raise")
+
+    @pytest.mark.parametrize("overrides", [None, {}])
+    def test_no_override_preserves_identity(self, overrides):
+        params = {"angle": 1}
+        assert override_parameters(params, overrides) is params
+
+    def test_invalid_missing_key_policy(self):
+        with pytest.raises(ValueError, match="not a valid option"):
+            override_parameters({"angle": 1}, {"typo": 2}, if_none_exist="invalid")

@@ -481,6 +481,20 @@ class TestContainerCompile(BaseTester):
         assert counter.frame_count == 1
 
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_mask_container_with_child_flags_in_one_graph(self, device, dtype):
+        # The default mask options are filtered against each child's flags; Normalize has flags, a flip has none.
+        torch._dynamo.reset()
+        aug = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0), K.Normalize(mean=0.0, std=1.0), data_keys=["input", "mask"]
+        )
+        input = torch.rand(1, 3, 4, 6, device=device, dtype=dtype)
+        counter = CompileCounter()
+        out_input, out_mask = torch.compile(aug, backend=counter, fullgraph=True)(input, input)
+        self.assert_close(out_input, input.flip(-1))
+        self.assert_close(out_mask, input.flip(-1))
+        assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
     @pytest.mark.parametrize("mask_batch", [1, 2])
     def test_eager_backend_traces_video_container_with_mask_in_one_graph(self, device, dtype, mask_batch):
         # The video mask checks (#5624) run on every call; Dynamo on torch 2.5.1 cannot trace next() with a default.

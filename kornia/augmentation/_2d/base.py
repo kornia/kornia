@@ -100,7 +100,8 @@ class AugmentationBase2D(_AugmentationBase):
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
         - reproducibility goes through torch's global generators; there is no per-instance generator.
-          ``generator=`` raises at construction, and ``forward`` silently drops it like any other unknown keyword
+          ``generator=`` raises at construction; in ``forward`` it emits ``FutureWarning`` and is ignored,
+          like other unknown keyword overrides
           (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). :doc:`/get-started/conventions` states the
           seeding, ``DataLoader``-worker, parameter-placement and serialization rules.
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale, stores the

@@ -614,7 +614,7 @@ Randomness in augmentations
 - Parameters are drawn from torch's global generator, on the CPU by default
   whatever the image device, so ``torch.manual_seed`` reproduces a run for the
   same configuration, inputs, device and dtype. There is no per-instance
-  ``generator=``: the standard 2D forward silently accepts and ignores unknown
+  ``generator=``: standard augmentation forwards warn and ignore unknown
   keywords, ``generator=`` included, while mix forwards reject them
   (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). Under a
   :class:`torch.utils.data.DataLoader`, a ``worker_init_fn`` that reseeds
