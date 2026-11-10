@@ -398,7 +398,7 @@ def normalize_min_max(
     """Rescale each channel plane of an image linearly to a value range.
 
     ``out = normalize_min_max(input, min_val, max_val)`` maps the minimum of each ``H x W`` plane of ``input`` to
-    ``min_val`` and its maximum toward ``max_val``, using that plane's own range:
+    ``min_val`` and its maximum to just below ``max_val``, using that plane's own range:
     ``(max_val - min_val) * (x - x.min()) / (x.max() - x.min() + eps) + min_val``. A constant plane maps to ``min_val``.
 
     Convention:
@@ -410,8 +410,9 @@ def normalize_min_max(
     Args:
         input: image with shape ``(*, C, H, W)``.
         min_val: value of each plane's minimum, a ``float``.
-        max_val: upper endpoint approached by each plane's maximum, a ``float``.
-        eps: value added to each plane's range, so the maximum lands slightly below ``max_val``.
+        max_val: value each plane's maximum maps to, less the ``eps`` offset, a ``float``.
+        eps: value added to each plane's range ``r = x.max() - x.min()``, so the maximum lands at
+            ``max_val - (max_val - min_val) * eps / (r + eps)``.
 
     Returns:
         Rescaled image with the shape of ``input``.

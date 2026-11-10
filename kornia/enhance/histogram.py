@@ -130,7 +130,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 
     Returns:
         Histogram with shape ``(B, N_bins)``. Each row sums approximately to 1 when its weight sum dominates
-        ``epsilon``; it is zero when all kernel weights underflow to zero.
+        ``epsilon``. When all kernel weights underflow to zero, it is zero for a positive ``epsilon`` and NaN for
+        ``epsilon=0``.
 
     See Also:
         - :func:`histogram2d`: the joint histogram of two sample rows.
@@ -164,7 +165,8 @@ def histogram2d(
     ``hist = histogram2d(x1, x2, bins, bandwidth)`` pairs the values ``x1[b, n]`` and ``x2[b, n]`` and returns their
     joint weights over the bin centers: ``hist[b, i, j]`` is the weight of ``x1`` in bin ``i`` and ``x2`` in bin ``j``,
     normalized by their sum plus ``epsilon`` per batch element. The sum approaches 1 when the joint weight sum
-    dominates ``epsilon``; all-zero kernel weights give an all-zero result.
+    dominates ``epsilon``. All-zero kernel weights give an all-zero result for a positive ``epsilon`` and NaN for
+    ``epsilon=0``.
 
     Convention:
         - ``x1`` and ``x2`` must have the same shape.

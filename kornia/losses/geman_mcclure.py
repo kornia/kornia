@@ -35,9 +35,7 @@ def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = 
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
-
-        [2] Geman and McClure, 1985: Bayesian image analysis:
-        An application to single photon emission tomography.
+        [2] Geman-McClure: Geman and McClure, 1985, Bayesian image analysis, an application to SPECT.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with

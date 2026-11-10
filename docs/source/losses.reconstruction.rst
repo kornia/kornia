@@ -5,9 +5,9 @@ Reconstruction
 
 Compare an image with a reference using :func:`ssim_loss`, :class:`MS_SSIMLoss` or :func:`psnr_loss`. A robust loss
 compares any two tensors: :func:`charbonnier_loss` grows linearly for large residuals, :func:`cauchy_loss` only
-logarithmically, and :func:`geman_mcclure_loss` and :func:`welsch_loss` saturate. :func:`total_variation` penalises one image
-without a reference. :func:`inverse_depth_smoothness_loss` needs an inverse-depth map and an image to weight its
-gradients, but no reference depth map.
+logarithmically, and :func:`geman_mcclure_loss` and :func:`welsch_loss` saturate. :func:`total_variation` penalises
+one image without a reference. :func:`inverse_depth_smoothness_loss` needs an inverse-depth map and an image to weight
+its gradients, but no reference depth map.
 
 Functions
 ---------
