@@ -137,15 +137,9 @@ class SpatialAudit:
     """Hold the per-sample out-of-frame counts and round-trip errors of one keypoint or box input.
 
     ``report.spatial`` of an :class:`AugmentationAuditReport` has one entry per keypoint or box input, and each of its
-    tensor fields is ``(B,)``, one value per sample. A box is outside if any corner is
-    outside the inclusive pixel-centre rectangle ``[0, width-1] x [0, height-1]``. Nonfinite items are counted
-    separately, not as outside. Fractions use the total item count; empty inputs have a NaN fraction.
-
-    Round trips inverse-map the *actual returned coordinates* with the recorded composed matrix. Errors are Euclidean
-    point distances or symmetric Hausdorff distances between the four box corners (independent of corner ordering).
-    Tensor box exports can lose orientation by taking an axis-aligned envelope; this loss is included in the
-    measurement. ``Boxes`` objects retain corners. Statistics cover only finite errors, in pixels; a sample with no
-    valid errors has NaN statistics and zero ``roundtrip_valid_count``.
+    tensor fields is ``(B,)``, one value per sample. ``out_of_frame_fraction`` divides by the total item count, so an
+    empty input has a NaN fraction. The round-trip statistics cover only finite errors, in pixels; a sample with no
+    finite error has NaN statistics and a zero ``roundtrip_valid_count``.
 
     Convention:
         See :ref:`augmentation-audit`.

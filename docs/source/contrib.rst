@@ -288,9 +288,8 @@ be captured in a CUDA graph.
 
 ``connected_components`` runs a fixed ``num_iterations`` of 3x3 max-pooling
 steps, with no host synchronization, and compiles with ``fullgraph=True``. On
-CUDA, 10 steps run several times faster than union-find, and the default 100
-steps take about as long as union-find. On the CPU, union-find is faster than
-10 steps.
+CUDA, 10 steps run several times faster than union-find; on the CPU, union-find
+is faster than 10 steps.
 
 Both return ``int64`` labels, 0 on the background, and neither is
 differentiable.

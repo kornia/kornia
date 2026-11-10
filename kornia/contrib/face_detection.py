@@ -17,8 +17,8 @@
 
 """Detect faces and five facial landmarks in RGB images with the pretrained YuNet network.
 
-A detection is a row of 15 values in the input image's pixels: the box ``xmin, ymin, xmax, ymax``, five ``(x, y)``
-landmarks and the score.
+A detection is a row of 15 values: the box ``xmin, ymin, xmax, ymax`` and five ``(x, y)`` landmarks in the input
+image's pixels, and the score.
 
 Which class to use:
 
@@ -67,8 +67,8 @@ class FaceDetectorResult:
 
     ``result = FaceDetectorResult(dets)`` wraps the ``(N, 15)`` detections of one image from :class:`FaceDetector`,
     or one ``(15,)`` row. Its properties (``xmin``, ``width``, ``top_left``, ``score``, ...) and
-    ``result.get_keypoint(FaceKeypoint.NOSE)`` return ``(N,)`` values and ``(N, 2)`` points, in the pixels of the
-    image the detector saw.
+    ``result.get_keypoint(FaceKeypoint.NOSE)`` return ``(N,)`` values and ``(N, 2)`` points, or 0-d values and
+    ``(2,)`` points for a single row; the box and the landmarks are in the pixels of the image the detector saw.
 
     Args:
         data: the detections returned by :class:`FaceDetector`, one row of 15 values per face with

@@ -44,8 +44,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         - The label of a component is 1 plus the largest raster index of its pixels in the batch flattened to
           ``(N, H, W)``; background is 0. Labels are therefore not contiguous, and an image gets other labels at
           another batch position or transposed.
-        - The default 100 already splits a 1 x 102 line, and a filled
-          120 x 150 rectangle comes out with 1000 labels.
+        - The default 100 already splits a 1 x 102 line, and a filled 120 x 150 rectangle comes out with 1000 labels.
         - The labels carry no gradient. The function has no host synchronization and compiles with
           ``torch.compile(fullgraph=True)``.
 

@@ -188,7 +188,6 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         - :class:`RTDETRDetectorBuilder`: builds this wrapper around a pretrained RT-DETR network.
         - :class:`BoxFiltering`: keeps the detections above a score and in given classes.
         - :func:`results_from_detections`: converts the detections of one image to Python objects.
-        - :class:`~kornia.contrib.FaceDetector`: faces with five landmarks, from images in :math:`[0, 255]`.
 
     """
 
@@ -580,16 +579,11 @@ class RTDETRDetectorBuilder:
     ``detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")`` downloads the released weights on first use and
     returns an :class:`ObjectDetector`. ``dets = detector(images)`` takes RGB images in :math:`[0, 1]` and returns a
     list with one ``(D, 6)`` tensor per image, rows ``(class_id, score, x, y, w, h)`` scoring above 0.3: the box in
-    that image's pixels and ``class_id`` the COCO class index, from 0 to 79. ``confidence_filtering=False`` returns
-    the ``Q`` best detections of each image as one ``(B, Q, 6)`` tensor instead.
-
-    Note:
-        To use this model, load image tensors and call ``model.save(images)``.
+    that image's pixels and ``class_id`` the COCO class index, from 0 to 79.
 
     See Also:
         - :class:`ObjectDetector`: the wrapper it returns, for your own detection network.
         - :class:`~kornia.models.rt_detr.RTDETR`: the network, to build from a configuration or to fine-tune.
-        - :class:`~kornia.contrib.FaceDetector`: faces with five landmarks, from images in :math:`[0, 255]`.
 
     """
 

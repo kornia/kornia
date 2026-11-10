@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Download an HTTP(S) file once into a cache directory and reuse it on later calls.
+"""Download an HTTP(S) file into a cache directory and reuse it on later calls.
 
 Which class to use:
 

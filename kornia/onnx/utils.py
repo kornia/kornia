@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Load ONNX models and configs into the cache without a session, and edit a ``ModelProto`` in place.
+"""Load ONNX models and configs without a session, and edit a ``ModelProto`` in place.
 
 Which function or class to use:
 
@@ -165,8 +165,9 @@ class ONNXLoader(CachedDownloader):
     ``model = ONNXLoader.load_model(name)`` takes a local file path, an HTTP(S) URL, or an ``hf://<folder>/<name>``
     name of the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ repository and returns the
     ``onnx.ModelProto``; ``config = ONNXLoader.load_config(url)`` returns a JSON file as a ``dict``. A download is
-    cached, and a cached file is used as it is on every later call. :meth:`list_operators` and :meth:`list_models`
-    print the repository's file paths; an ``hf://`` name is ``hf://`` and the path without ``.onnx``.
+    cached, and later calls use the cached file as it is unless ``force_download=True``. :meth:`list_operators` and
+    :meth:`list_models` print the repository's file paths; an ``hf://`` name is ``hf://`` and the path without
+    ``.onnx``.
 
     See Also:
         - :class:`~kornia.onnx.download.CachedDownloader`: the parent class, which caches any HTTP(S) file under a
@@ -253,7 +254,7 @@ class ONNXLoader(CachedDownloader):
 
         Args:
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
-                use the format 'hf://model_name'. Valid `model_name` can be found on
+                an ``hf://<folder>/<name>`` name. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models.
                 Or a URL to the ONNX model, or the path of a local file. A ``str`` can be any of those; an
                 :class:`os.PathLike` always names a local file. A local path may start with ``~``.
@@ -378,12 +379,11 @@ def io_name_conversion(
 ) -> onnx.ModelProto:
     """Rename the inputs and outputs of an ONNX model in place, as ``io_name_mapping`` maps them.
 
-    ``model = io_name_conversion(model, {"pixel_values": "input", "predicted_depth": "output"})`` renames the graph's
-    inputs and outputs and every node input and output with a mapped name, and returns the same object; names absent
-    from the model are ignored. The mapping above gives the default names that
-    :class:`~kornia.onnx.sequential.ONNXSequential` connects without ``io_maps``. The initializers, the ``value_info``
-    entries and the nodes of subgraphs (the branches of an ``If``, the body of a ``Loop``) are not renamed, so a
-    mapped name that is also an initializer leaves its consumers reading a name that no longer exists.
+    ``model = io_name_conversion(model, {"pixel_values": "input", "predicted_depth": "output"})`` renames, in place,
+    the graph inputs and outputs and the node inputs and outputs named in the mapping, and returns the same object; the
+    mapping above gives the names :class:`~kornia.onnx.sequential.ONNXSequential` connects without ``io_maps``.
+    Initializers, ``value_info`` and subgraphs (``If`` branches, ``Loop`` bodies) are not renamed, so do not map an
+    initializer's name.
 
     Args:
         onnx_model: The ONNX model to rename, modified in place.

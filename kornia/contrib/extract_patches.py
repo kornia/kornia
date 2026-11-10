@@ -311,9 +311,9 @@ def combine_tensor_patches(
 
     ``image = combine_tensor_patches(patches, original_size, window_size, stride)`` takes ``(B, N, C, h, w)``
     patches and returns the ``(B, C, H, W)`` image of size ``original_size``. Pass the ``stride`` used for the
-    extraction and its ``padding`` as ``unpadding``. When the extraction padding is non-negative and makes the windows
-    fit, or both auto flags are set, a round trip returns the input: exactly for integer and ``bool`` patches, up to
-    rounding where floating patches overlap.
+    extraction and its ``padding`` as ``unpadding``. When ``stride`` is at most ``window_size`` and the extraction
+    padding is non-negative and makes the windows fit, or both auto flags are set, a round trip returns the input:
+    exactly for integer and ``bool`` patches, up to rounding where floating patches overlap.
 
     Convention:
         - Overlapping patches are averaged: each pixel is divided by the number of patches that cover it, where

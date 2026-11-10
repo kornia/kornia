@@ -190,7 +190,8 @@ def diamond_square(
           ``dtype`` (the default dtype for ``None``), ``roughness`` and ``random_scale`` promote to, at every map
           size. A ``random_fn`` that returns another dtype also promotes the levels' arithmetic to its dtype, but not
           a map with a side of 3 px or less, which is the seed alone and stores the draws in the requested dtype.
-        - The result is not always contiguous; a 3 x 3 map, which is never cropped, is not.
+        - Without ``normalize_range`` the result can be a non-contiguous view; call ``.contiguous()`` before an
+          operation that needs one.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
           :func:`~kornia.enhance.normalize_min_max`, whose ``eps`` keeps the maximum just below ``max``.
 

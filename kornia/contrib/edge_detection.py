@@ -127,10 +127,10 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
                 :math:`[0, 1]`.
 
         Returns:
-            A list with one output of shape ``(1, 1, H, W)`` per input image, resized back to that image's size.
+            A list with one output of shape ``(1, C, H, W)`` per input image, resized back to that image's size.
             For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
             probabilities in :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
-            ``(B, 1, H, W)`` tensor at the input's size instead, see :meth:`to_onnx`.
+            ``(B, C, H, W)`` tensor at the input's size instead, see :meth:`to_onnx`.
 
         Raises:
             ValueError: Under an ONNX export through :meth:`to_onnx`, or a direct one on the TorchScript exporter or,
@@ -360,9 +360,6 @@ class EdgeDetectorBuilder:
     ``detector = EdgeDetectorBuilder.build()`` returns a :class:`~kornia.contrib.EdgeDetector`, downloading the
     DexiNed weights on first use. ``edges = detector(images)`` takes RGB images in :math:`[0, 1]` and returns a list
     with one ``(1, 1, H, W)`` map of edge probabilities in :math:`[0, 1]` per image, at that image's size.
-
-    Note:
-        To use this model, load image tensors and call ``model.save(images)``.
 
     See Also:
         - :class:`~kornia.contrib.EdgeDetector`: the wrapper it returns, for your own edge network.

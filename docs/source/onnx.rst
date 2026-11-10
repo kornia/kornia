@@ -9,8 +9,9 @@ kornia.onnx
 Run ONNX models with ONNX Runtime: :class:`~kornia.onnx.module.ONNXModule` (or :func:`load`) runs one model, and
 :class:`~kornia.onnx.sequential.ONNXSequential` chains several into one graph. Both take ``onnx.ModelProto`` objects,
 local files, URLs, or ``hf://`` names of pre-exported Kornia operators and models in the ``kornia/ONNX_models``
-Hugging Face repository, which :class:`~kornia.onnx.utils.ONNXLoader` downloads into the cache once. They are called on
-numpy arrays or CPU torch tensors and return a list of numpy arrays. The :doc:`ONNX support guide </get-started/onnx>`
+Hugging Face repository, which :class:`~kornia.onnx.utils.ONNXLoader` downloads into the cache; later calls use the
+cached file unless ``force_download=True``. They are called on numpy arrays or CPU torch tensors and return a list of
+numpy arrays. The :doc:`ONNX support guide </get-started/onnx>`
 walks through installation, chaining, export and running on CUDA.
 
 .. autoclass:: kornia.onnx.module.ONNXModule

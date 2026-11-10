@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Several ONNX models chained into one merged graph and run by one ONNX Runtime session.
+"""Chain several ONNX models into one merged graph and run it with one ONNX Runtime session.
 
 Which class to use:
 
@@ -38,12 +38,11 @@ __all__ = ["ONNXSequential"]
 class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     """Chain several ONNX models into one graph and run it with one ONNX Runtime session.
 
-    ``seq = ONNXSequential(model_a, model_b, ...)`` merges the models into one ``onnx.ModelProto``, the outputs of each
-    feeding the inputs of the next, and opens an ONNX Runtime session on it; ``outputs = seq(*inputs)`` takes one numpy
-    array or CPU torch tensor of a dtype numpy has (not bfloat16 or float8) per unconnected input and returns a list of
-    numpy arrays. Without ``io_maps``, each joint connects the output named ``"output"`` to the input named
-    ``"input"``. The names of model ``i`` get a prefix zero-padded to two digits (``K00-input``, ``K01-output``), and
-    an output that feeds nothing stays an output of the merged graph. The models passed in are not modified.
+    ``seq = ONNXSequential(model_a, model_b, ...)`` merges the models into one graph, each joint connecting the output
+    named ``"output"`` to the input named ``"input"`` unless ``io_maps`` says otherwise, and opens one session on it;
+    ``outputs = seq(*inputs)`` takes inputs as :class:`~kornia.onnx.module.ONNXModule` does, one per unconnected
+    input, and returns a list of numpy arrays. The names of model ``i`` get the prefix ``K<i>-`` (``K00-input``,
+    ``K01-output``), and an output that feeds nothing stays a graph output.
 
     Args:
         *args: The ONNX models, in the order they run, each as :class:`~kornia.onnx.module.ONNXModule` takes it: an
@@ -60,34 +59,33 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             second to the third, and so on, as in ``[[("out_a", "in_b")], [("out_b", "in_c")]]`` for three models.
             Each entry may be any iterable of pairs (a ``zip``, ``dict.items()``, ...), and ``io_maps`` anything
             indexed by the joint; entries past the last joint are not read.
-            The merged graph does not check a later model's declared input types: a ``UserWarning`` says so when the
-            tensor element types of an output and the input it feeds differ. Declared dimensions are not compared.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached, as
             :meth:`~kornia.onnx.utils.ONNXLoader.load_model` lays it out. If None,
             ``kornia.config.kornia_config.hub_onnx_dir`` (``.kornia_hub/onnx_models`` under the working directory).
         auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
             combining them: IR version 9, and the highest OPSET version among the models, to which the others are
-            converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+            converted up.
         target_ir_version: The IR version to convert every model to before combining them, whether or not
             `auto_ir_version_conversion` is set. If None, the models keep their IR versions, unless
             `auto_ir_version_conversion` converts them to 9.
         target_opset_version: The OPSET version to convert every model to before combining them, whether or not
             `auto_ir_version_conversion` is set. If None, the models keep their OPSET versions, unless
-            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises its
-            error: the ONNX version converter's where it has no adapter for an operator (for example ``Resize`` or
-            ``Pad`` from opset 18 to 17), ``onnx.checker``'s where the converted graph is invalid (for example a
-            ``ReduceMean`` from opset 18 to 17), or ONNX Runtime's where it does not support the target IR version.
+            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises the
+            error of the ONNX version converter, of ``onnx.checker`` or of ONNX Runtime.
         force_download: If True, every ``hf://`` name and URL is downloaded again, and replaces the cached file, even
             when it is cached. By default a cached file is used as it is, however old, and one that does not load
             fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     Raises:
-        ValueError: If no model is given, if a joint, set by ``io_maps`` or by default, names an output or input a
-            model does not have, if ``io_maps`` has no entry for a joint, or if the models differ in IR version or
-            opset and no conversion makes them agree.
+        TypeError: If a model is not a ModelProto, a ``str`` or an :class:`os.PathLike`.
+        ValueError: If no model is given, if a local file does not exist, if a joint, set by ``io_maps`` or by
+            default, names an output or input a model does not have, if ``io_maps`` has no entry for a joint or an
+            ``io_maps`` entry is not name pairs, or if the models differ in IR version or opset and no conversion makes
+            them agree.
 
     Warns:
-        UserWarning: If an output and the input it feeds have different tensor element types.
+        UserWarning: If an output and the input it feeds have different tensor element types; declared dimensions are
+            not compared.
 
     See Also:
         - :class:`~kornia.onnx.module.ONNXModule`: one model, with its own input and output names.
@@ -193,6 +191,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         Raises:
             ValueCheckError: If ``io_maps`` has no entry for a joint, or an entry is not an iterable of name pairs.
                 It is a :exc:`ValueError` too.
+            ValueError: From ``onnx.compose.merge_models``, if a joint names an output or input that an operator does
+                not have, or the operators differ in IR version or opset.
 
         Warns:
             UserWarning: If an output and the input it feeds have different tensor element types: the merged graph

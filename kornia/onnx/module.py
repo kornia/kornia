@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""One ONNX model run by an ONNX Runtime session: built from a ``ModelProto``, a file, a URL or an ``hf://`` name.
+"""Run one ONNX model with ONNX Runtime, given as a ``ModelProto``, a file, a URL or an ``hf://`` name.
 
 Which function or class to use:
 
@@ -167,9 +167,8 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download: bool = False) -> ONNXModule:
     """Load one ONNX model into an :class:`~kornia.onnx.module.ONNXModule` on the CPU, in one call.
 
-    ``module = load(model_name)`` is ``ONNXModule(model_name, force_download=force_download)``: one model on a CPU
-    session with the default cache. For execution providers, session options, another cache directory or an IR/opset
-    conversion, use :class:`~kornia.onnx.module.ONNXModule`.
+    ``load(name, force_download=f)`` is ``ONNXModule(name, force_download=f)``: one model on a CPU session with the
+    default cache.
 
     Args:
         model_name: The model to load, as the ``op`` argument of :class:`~kornia.onnx.module.ONNXModule` takes it: an
