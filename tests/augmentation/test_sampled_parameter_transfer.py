@@ -99,6 +99,38 @@ CASES = [
         {"brightness_factor": 0.9, "contrast_factor": 0.9, "saturation_factor": 0.9, "hue_factor": -0.05},
         id="color-jiggle",
     ),
+    pytest.param(
+        lambda: K.RandomAffine3D(30.0, translate=(0.1, 0.1, 0.1), scale=(0.8, 1.2), shears=10.0, p=1.0),
+        (2, 1, 5, 8, 9),
+        # Translations (0.25 - 0.5) * 2 * 0.1 of the 9 x 8 x 5 volume, scale 0.8 + 0.25 * 0.4, angles -30 + 0.25 * 60
+        # and shears -10 + 0.25 * 20 degrees.
+        {
+            "translations": [-0.45, -0.4, -0.25],
+            "scale": [0.9, 0.9, 0.9],
+            "angles": [-15.0, -15.0, -15.0],
+            "sxy": -5.0,
+            "sxz": -5.0,
+            "syx": -5.0,
+            "syz": -5.0,
+            "szx": -5.0,
+            "szy": -5.0,
+        },
+        id="affine3d",
+    ),
+    pytest.param(
+        lambda: K.RandomRotation3D(30.0, p=1.0),
+        (2, 1, 5, 8, 9),
+        # -30 + 0.25 * 60 degrees about each axis.
+        {"yaw": -15.0, "pitch": -15.0, "roll": -15.0},
+        id="rotation3d",
+    ),
+    pytest.param(
+        lambda: K.RandomMotionBlur3D(3, 35.0, 0.5, p=1.0),
+        (2, 1, 5, 8, 9),
+        # Angles -35 + 0.25 * 70 degrees and direction -0.5 + 0.25 * 1.
+        {"angle_factor": [-17.5, -17.5, -17.5], "direction_factor": -0.25},
+        id="motion-blur3d",
+    ),
 ]
 
 
