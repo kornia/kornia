@@ -695,10 +695,12 @@ class TestConventionsXFeat(BaseTester):
         d = {"keypoints": points, "descriptors": torch.zeros(1, 2, 64, device=device, dtype=dtype), "cell_scales": cell}
         ids = torch.arange(2, device=device)
         actual = model._refine_matches(d, d, [(ids, ids)], 0, fine_conf=-1)
-        offset = model._subpix_softmax2d(Ramp()(d["descriptors"][0]).view(-1, 8, 8)).double()
-        anchor = 3.0 * cell[0].double()
+        # The float64 reference is built on the CPU: MPS has no float64.
+        offset = model._subpix_softmax2d(Ramp()(d["descriptors"][0]).view(-1, 8, 8)).cpu().double()
+        points, cell = points.cpu().double(), cell.cpu().double()
+        anchor = 3.0 * cell[0]
         expected = torch.cat([points[0] + offset * cell[0] + anchor, points[0] + anchor], dim=-1)
-        self.assert_close(actual.double(), expected, rtol=0, atol=1e-4)
+        self.assert_close(actual.cpu().double(), expected, rtol=0, atol=1e-4)
 
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):

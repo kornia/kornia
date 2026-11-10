@@ -32,37 +32,38 @@ def ssim_loss(
     reduction: str = "mean",
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, H, W) images.
+    r"""Compute the DSSIM loss between two images from their SSIM map.
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
+    ``loss = ssim_loss(img1, img2, window_size)`` maps the SSIM of two ``(B, C, H, W)`` images to a dissimilarity in
+    :math:`[0, 1]`.
 
     .. math::
 
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+      \text{loss}(x, y) = \operatorname{clamp}\left(\frac{1 - \text{SSIM}(x, y)}{2}, 0, 1\right)
 
     Convention:
         - See the Convention block of :func:`~kornia.metrics.ssim` for the window, the border and ``max_val``.
-        - The per-pixel loss is the structural dissimilarity clamped to :math:`[0, 1]`,
-          ``clamp((1 - SSIM) / 2, 0, 1)``; :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the
-          ``1 - SSIM`` loss. The clamp acts only where roundoff pushes the map outside :math:`[-1, 1]`, as for images
-          with a large constant offset.
-        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
+        - :ref:`Losses and metrics <losses-metrics-conventions>` relates this loss to the ``1 - SSIM`` loss.
+          The clamp acts only where roundoff pushes the map outside :math:`[-1, 1]`, as for images with a large
+          constant offset.
 
     Args:
-        img1: the first input image with shape ``(B, C, H, W)``.
-        img2: the second input image with shape ``(B, C, H, W)``.
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        img1: first image with shape ``(B, C, H, W)``.
+        img2: second image with the same shape.
+        window_size: size of the Gaussian window in pixels, a positive odd integer.
+        max_val: data range :math:`L` of the images, a Python float or int.
+        eps: term added to the denominator of the SSIM.
+        reduction: ``'mean'`` (default) averages the loss, ``'sum'`` adds it, ``'none'`` keeps the SSIM map's shape.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim`.
 
     Returns:
-        The loss based on the ssim index.
+        the loss, a scalar or, for ``reduction='none'``, with the shape of the SSIM map.
+
+    See Also:
+        - :class:`~kornia.losses.SSIMLoss`: the module form.
+        - :func:`~kornia.metrics.ssim`: the SSIM map itself, not the dissimilarity.
+        - :func:`~kornia.losses.ssim3d_loss`: the same loss for volumes.
+        - :class:`~kornia.losses.MS_SSIMLoss`: several scales, plus an L1 term.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -92,30 +93,31 @@ def ssim_loss(
 
 
 class SSIMLoss(nn.Module):
-    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, H, W) images.
+    r"""Compute the DSSIM loss between two images from their SSIM map (module form).
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
-
-    .. math::
-
-      \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
+    ``criterion = SSIMLoss(window_size, ...)`` stores its arguments, and ``loss = criterion(img1, img2)`` is
+    :func:`~kornia.losses.ssim_loss` on two ``(B, C, H, W)`` images.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.ssim_loss`.
 
     Args:
-        window_size: the size of the gaussian kernel to smooth the images.
-        max_val: the dynamic range of the images.
-        eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
-        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+        window_size: size of the Gaussian window in pixels, a positive odd integer.
+        max_val: data range :math:`L` of the images, a Python float or int.
+        eps: term added to the denominator of the SSIM.
+        reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``, as in :func:`~kornia.losses.ssim_loss`.
+        padding: ``'same'`` or ``'valid'``, as in :func:`~kornia.metrics.ssim`.
 
-    Returns:
-        The loss based on the ssim index.
+    Shape:
+        - img1: ``(B, C, H, W)``.
+        - img2: ``(B, C, H, W)``.
+        - Output: a scalar or, for ``reduction='none'``, the shape of the SSIM map.
+
+    See Also:
+        - :func:`~kornia.losses.ssim_loss`: the one-call form.
+        - :class:`~kornia.metrics.SSIM`: the SSIM map itself, not the dissimilarity.
+        - :class:`~kornia.losses.SSIM3DLoss`: the same loss for volumes.
+        - :class:`~kornia.losses.MS_SSIMLoss`: several scales, plus an L1 term.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
