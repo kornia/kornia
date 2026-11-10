@@ -198,8 +198,6 @@ class TestFitPlane(BaseTester):
 
 
 # TODO: implement the rest of methods
-
-
 class TestHyperplane(BaseTester):
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_smoke(self, device, dtype, shape):

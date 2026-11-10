@@ -471,6 +471,11 @@ class TestExportHelpers:
         # One deep copy keeps shared objects shared, also a reference from the module back to itself.
         first, second = copy.deepcopy([m, m])
         assert first is second
+        # Two modules sharing one tensor with history still share its copy.
+        shared = _DeepcopyState()
+        shared.__dict__["traced"] = m.y
+        copied_m, copied_shared = copy.deepcopy([m, shared])
+        assert copied_shared.traced is copied_m.y
         m.cycle = [m]
         assert copy.deepcopy(m).cycle[0].cycle is not m.cycle
         cyclic = copy.deepcopy(m)

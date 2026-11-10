@@ -1060,12 +1060,12 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
 
 
 def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> torch.nn.Module:
-    """``copy.deepcopy`` for a module whose state :func:`register_module_state` registered.
+    """``copy.deepcopy`` for a module whose state ``register_module_state`` registered.
 
     torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
     raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
-    which is what a ``torch.save`` / ``torch.load`` round trip gives; the copy has no history, so no gradient flows
-    back through it. The same applies to a plain tensor attribute, which is where :func:`register_module_state`
+    like a ``torch.save`` / ``torch.load`` round trip; the copy has no history, so no gradient flows
+    back through it. The same applies to a plain tensor attribute, which is where ``register_module_state``
     stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
     ``__deepcopy__``.
     """
@@ -1075,7 +1075,8 @@ def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> tor
             memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
     copied = module.__class__.__new__(module.__class__)
     memo[id(module)] = copied
-    copied.__dict__.update(copy.deepcopy(module.__dict__, memo))
+    # __setstate__, as the default deepcopy path calls it, so a class that normalizes its state there stays correct.
+    copied.__setstate__(copy.deepcopy(module.__dict__, memo))
     return copied
 
 

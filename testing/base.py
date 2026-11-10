@@ -152,7 +152,7 @@ def assert_close(
 
 
 def assert_deepcopy_copies_state_as_leaves(module: torch.nn.Module) -> torch.nn.Module:
-    """Check that ``copy.deepcopy(module)`` copies its state the way ``torch.save`` / ``torch.load`` does.
+    """Check that ``copy.deepcopy(module)`` copies its state like ``torch.save`` / ``torch.load``.
 
     The copy holds the same keys, each as a parameter or a buffer like the original and with the same values, dtype,
     device and ``requires_grad``, but as leaves in storage of their own, so no gradient flows back through it. The
