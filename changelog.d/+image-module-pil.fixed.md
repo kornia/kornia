@@ -1,0 +1,1 @@
+`ImageModuleMixIn.to_tensor`, `to_numpy` and `to_pil` raise `TypeError` for an unsupported input without importing Pillow. Before, an install without the `image` extra raised `ImportError` instead, and `InstallationMode.AUTO` installed Pillow before rejecting the input.
