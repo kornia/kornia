@@ -27,7 +27,7 @@ from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
-    """Project camera-frame points onto the normalized ``z = 1`` plane by dividing by ``z``, and back.
+    """Project ``Vector3`` camera-frame points onto the normalized ``z = 1`` plane by dividing by ``z``, and back.
 
     ``xy = Z1Projection().project(points)`` takes a :class:`~kornia.geometry.vector.Vector3` of camera-frame points and
     returns the :class:`~kornia.geometry.vector.Vector2` ``(x / z, y / z)``, not pixels; ``unproject(xy, depth)``
@@ -101,7 +101,7 @@ class Z1Projection:
 
 
 class OrthographicProjection:
-    """Project camera-frame points orthographically by dropping ``z``, and back by appending a depth.
+    """Project ``Vector3`` camera-frame points orthographically by dropping ``z``, and back by appending a depth.
 
     ``xy = OrthographicProjection().project(points)`` takes a :class:`~kornia.geometry.vector.Vector3` of camera-frame
     points and returns the :class:`~kornia.geometry.vector.Vector2` ``(x, y)``; ``unproject(xy, depth)`` returns
@@ -131,8 +131,7 @@ class OrthographicProjection:
 
         Args:
             points: ``Vector2`` of image-plane points ``(x, y)``.
-            depth: tensor of the ``z`` coordinate of each point, ``(*,)`` or ``(*, 1)``; a python number raises
-                ``AttributeError``.
+            depth: tensor of the ``z`` coordinate of each point, ``(*,)`` or ``(*, 1)``.
 
         Returns:
             ``Vector3`` with ``x`` and ``y`` copied from ``points`` and ``z`` from ``depth``.

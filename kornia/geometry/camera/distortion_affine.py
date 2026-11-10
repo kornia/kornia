@@ -122,6 +122,7 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
         - :func:`distort_points_affine`: the forward map, normalized points to pixels.
         - :func:`dx_distort_points_affine`: the Jacobian of the forward map.
         - :func:`undistort_points_kannala_brandt`: the inverse of the fisheye model, found iteratively.
+        - :class:`~kornia.sensors.camera.distortion_model.AffineTransform`: the same inverse on ``Vector2`` points.
         - :func:`~kornia.geometry.calibration.undistort_points`: removes OpenCV's Brown-Conrady distortion, from
           pixels to pixels.
         - :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`: the same map from a

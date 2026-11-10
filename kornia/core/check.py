@@ -17,10 +17,11 @@
 
 """Validate inputs: check conditions, shapes, sizes, types, devices and image layouts.
 
-Every ``KORNIA_CHECK*`` function returns ``True`` when its check passes, and also without checking while the checks
-are disabled. On failure it raises an error from ``kornia.core.exceptions``, or returns ``False`` with
-``raises=False``. A ``msg`` argument, where a check takes one, is a string or a function without arguments that
-returns it, called only on failure; see :func:`KORNIA_CHECK`. To turn the checks off, see :func:`disable_checks`.
+Every ``KORNIA_CHECK*`` function returns ``True`` when its check passes, and, outside TorchScript, also without
+checking while the checks are disabled. On failure it raises an error from ``kornia.core.exceptions``, or returns
+``False`` with ``raises=False``. A ``msg`` argument, where a check takes one, is a string or a function without
+arguments that returns it, called only on failure; see :func:`KORNIA_CHECK`. To turn the checks off, see
+:func:`disable_checks`.
 
 Which function to use:
 
@@ -434,8 +435,7 @@ def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
         ``maybe_obj``, unchanged.
 
     See Also:
-        - :func:`KORNIA_CHECK_TYPE`: checks the type at run time and raises
-          :exc:`~kornia.core.exceptions.TypeCheckError`.
+        - :func:`KORNIA_CHECK_TYPE`: raises :exc:`~kornia.core.exceptions.TypeCheckError`.
 
     """
     # TODO: this function will change after kornia/pr#1987
@@ -867,6 +867,7 @@ def KORNIA_CHECK_SIZES(
 
     ``KORNIA_CHECK_SIZES(x, [n, None])`` returns ``True`` when ``x`` has ``len(sizes)`` dimensions and every size that
     is not ``None`` equals the size of its dimension. On failure it raises :exc:`~kornia.core.exceptions.ShapeError`.
+    Under a dynamic-shape ``torch.compile`` it compares the sizes without specializing them.
 
     Args:
         x: the tensor to evaluate.

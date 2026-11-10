@@ -103,14 +103,14 @@ class ImageModuleMixIn:
         - Non-tensor inputs convert as :meth:`to_tensor` describes; a tensor passes through unchanged.
         - ``output_type="numpy"`` returns channels-last arrays with the values of the output tensor, so a floating
           output fed back in converts to a tensor with the same values and layout. The array is detached and on the
-          CPU, and a ``bfloat16`` output becomes ``float32``, so the round trip keeps neither the gradient history nor,
-          outside a module that moves its inputs to its own device and dtype, the device and dtype.
+          CPU, and a ``bfloat16`` output becomes ``float32``. The round trip therefore drops the gradient history and,
+          outside a module that moves its inputs to its own device and dtype, an accelerator device or ``bfloat16``.
         - ``output_type="pil"``, :meth:`show` and :meth:`save` clamp a floating image to :math:`[0, 1]` and round it
           to 8 bits on the CPU, and pass a ``uint8`` image through with its values.
 
     See Also:
-        - :class:`ImageModule`: an ``nn.Module`` base class whose call applies these conversions.
-        - :class:`ImageSequential`: an ``nn.Sequential`` whose call applies these conversions.
+        - :class:`ImageModule`: the ``nn.Module`` base class built on this mixin.
+        - :class:`ImageSequential`: the ``nn.Sequential`` built on this mixin.
 
     """
 
@@ -289,6 +289,11 @@ class ImageModuleMixIn:
 
         Returns:
             Tensor: The converted tensor.
+
+        Raises:
+            TypeError: if ``x`` is none of the supported types.
+            ValueError: if ``x`` is a NumPy array with a negative stride, such as OpenCV's ``img[..., ::-1]``; pass
+                ``img[..., ::-1].copy()``.
 
         """
         if isinstance(x, str):

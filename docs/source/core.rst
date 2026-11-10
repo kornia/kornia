@@ -148,7 +148,9 @@ Exceptions
 .. currentmodule:: kornia.core.exceptions
 
 The errors raised by the ``KORNIA_CHECK*`` helpers above and by functions that raise them directly. ``except BaseError``
-catches every one, and each subclass also derives from the built-in exception that matches its failure. In a call
+catches every one, and each subclass also derives from the built-in exception that matches its failure. Many
+functions raise the built-in ``ValueError`` or ``TypeError`` themselves, which ``except BaseError`` does not catch;
+``except ValueError`` or ``except TypeError`` catches those and the matching kornia errors alike. In a call
 compiled with ``torch.jit.script``, a failed check raises ``torch.jit.Error`` instead, which none of these clauses
 catches.
 

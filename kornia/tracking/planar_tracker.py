@@ -30,8 +30,8 @@ from kornia.geometry.transform import warp_perspective
 class HomographyTracker(nn.Module):
     """Track a planar target through video frames by matching local features and fitting a homography.
 
-    ``tracker = HomographyTracker()`` builds the tracker, ``tracker.set_target(target)`` registers a grayscale
-    ``(1, 1, H, W)`` image of the target, and ``H, ok = tracker(frame)`` returns the ``(3, 3)`` homography from target
+    ``tracker = HomographyTracker()`` builds the tracker and ``tracker.set_target(target)`` registers a grayscale
+    ``(1, 1, H, W)`` target image. ``H, ok = tracker(frame)`` then returns the ``(3, 3)`` homography from target
     pixels to the pixels of a ``(1, 1, H', W')`` frame and whether it was found. The first frame, and the next frame
     after a failure, are matched from scratch with ``initial_matcher``; every other frame is first warped by the inverse
     of the previous homography and matched with ``fast_matcher``.
@@ -66,8 +66,8 @@ class HomographyTracker(nn.Module):
             Default: ``30``.
 
     See Also:
-        - :class:`~kornia.contrib.ImageStitcher`: matches and warps image pairs into a panorama, with no state between
-          calls.
+        - :class:`~kornia.contrib.ImageStitcher`: stitches a left-to-right sequence of images into one panorama, with no
+          state between calls.
 
     """
 
@@ -235,7 +235,7 @@ class HomographyTracker(nn.Module):
 
         Returns:
             A tuple ``(H, is_valid)``: the ``(3, 3)`` homography from target pixels to frame pixels, and whether at
-            least ``minimum_inliers_num`` inliers were found.
+            least ``minimum_inliers_num`` inliers were found among at least ``max(minimum_inliers_num, 4)`` matches.
 
         """
         match_dict: Dict[str, torch.Tensor] = self.initial_matcher(
@@ -280,7 +280,8 @@ class HomographyTracker(nn.Module):
 
         Returns:
             A tuple ``(H, is_valid)``: the updated ``(3, 3)`` homography from target pixels to frame pixels, and whether
-            at least ``minimum_inliers_num`` inliers were found.
+            at least ``minimum_inliers_num`` inliers were found among at least ``max(minimum_inliers_num, 4)``
+            matches.
 
         """
         self._drop_prior_of_another_target()

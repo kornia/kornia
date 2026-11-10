@@ -17,9 +17,9 @@
 
 """Hold, draw on, convert and print images, and tile batches into grids.
 
-Tensors are channels first, ``(C, H, W)`` or ``(B, C, H, W)``, and NumPy arrays channels last, ``(H, W, C)`` or
-``(B, H, W, C)``. Points are :math:`(x, y)`, x the column, and sizes are ``(height, width)``. The conversions and
-:func:`make_grid` do not rescale: a ``uint8`` image stays in :math:`[0, 255]`.
+kornia's image tensors are channels first, ``(C, H, W)`` or ``(B, C, H, W)``, and NumPy arrays channels last,
+``(H, W, C)`` or ``(B, H, W, C)``. Points are :math:`(x, y)`, x the column, and sizes are ``(height, width)``. The
+conversions and :func:`make_grid` do not rescale: a ``uint8`` image stays in :math:`[0, 255]`.
 
 Which class to use:
 

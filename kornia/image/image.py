@@ -57,14 +57,14 @@ class Image:
     ``img = Image(data, pixel_format, layout)`` wraps one unbatched image tensor, ``(C, H, W)`` or ``(H, W, C)`` as
     ``layout.channels_order`` says, and raises when the shape, the bit depth or the color space does not fit the data.
     :meth:`from_numpy`, :meth:`from_dlpack` and :meth:`from_file` build the layout and the pixel format for you.
-    kornia's other functions take plain tensors: pass them ``img.data``.
+    kornia's other functions take plain channels-first tensors: pass them ``img.data`` of a ``CHANNELS_FIRST`` image.
 
     .. warning::
 
         This API is experimental and might suffer changes in the future.
 
     Convention:
-        - A 4-D tensor raises ``ShapeError``.
+        - A batch or an ``(H, W)`` tensor raises ``ShapeError``.
         - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
           array or capsule of a CPU image, except that :meth:`to_numpy` copies bfloat16 data to float32 because
           NumPy has no bfloat16 dtype. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an
@@ -119,7 +119,8 @@ class Image:
     def __init__(self, data: torch.Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
         """Image constructor.
 
-        Like the other kornia checks, the pixel-format checks are skipped after ``kornia.core.check.disable_checks()``.
+        Like the other kornia checks, the layout and pixel-format checks are skipped after
+        ``kornia.core.check.disable_checks()``.
 
         Args:
             data: a torch.Tensor containing the image data.

@@ -1025,9 +1025,9 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
           are retried after a doubling wait from 1 s, or after the delay the server names in ``Retry-After`` or
           ``X-RateLimit-Reset``; the waits of one call add up to at most 60 s. A warning names each retry and each
           source given up for the next.
-        - A cached file that fails to load is moved aside, the remaining sources are fetched into the emptied path,
-          and, when none of them transferred a file, the source that failed is fetched once more; if nothing loads,
-          the file is put back. A file this call downloaded and could not load is deleted when another source remains,
+        - A cached file that fails to load is moved aside and the remaining sources are fetched into its path. When
+          none of them transfers a file, the source that failed is fetched once more. If nothing loads, the file is
+          put back. A file this call downloaded and could not load is deleted when another source remains,
           and left in place after the last one. A cache path is refetched this way at most once per process.
         - The ``Downloading: "<url>" to <path>`` line goes to stderr; the torch function writes it to stdout.
 
@@ -1043,9 +1043,8 @@ def load_state_dict_from_url(url: str | list[str], *, timeout: float | None = No
             bound for callers that take no ``timeout``, such as ``pretrained=True``
             model constructors.
         **kwargs: forwarded to :func:`torch.hub.load_state_dict_from_url`
-            (``map_location``, ``check_hash``, ``file_name``, ``model_dir``, ``progress``), with
-            ``weights_only`` set to ``True`` unless it is passed as ``False``. ``file_name`` must be a bare file name,
-            and a leading ``~`` in ``model_dir`` is expanded.
+            (``map_location``, ``check_hash``, ``file_name``, ``model_dir``, ``progress``, ``weights_only``).
+            ``file_name`` must be a bare file name, and a leading ``~`` in ``model_dir`` is expanded.
 
     Returns:
         The loaded state dict.
@@ -1205,9 +1204,9 @@ def download_file_from_url(
 
     Convention:
         - ``validate(path)`` runs after each attempt, on a cache hit too, and raising from it rejects the file.
-        - A rejected file that was already cached is moved aside, the remaining sources are fetched into the emptied
-          path, and, when none of them transferred a file, the source that handed it back is fetched once more; if
-          nothing passes, the file is put back.
+        - A rejected file that was already cached is moved aside and the remaining sources are fetched into its path.
+          When none of them transfers a file, the source that handed it back is fetched once more. If nothing passes,
+          the file is put back.
         - A rejected file that this call downloaded is deleted and the next source, if any, is tried, so a one-URL call
           on an empty cache raises with the cache still empty.
         - Without ``validate``, a truncated cached file is returned on every call until it is deleted.
@@ -1229,10 +1228,8 @@ def download_file_from_url(
             ``<hub dir>/checkpoints``, which is the cache CI restores. A leading
             ``~`` is expanded.
         progress: whether to display a progress bar during a transfer.
-        validate: called with the cache path after each attempt, to decide
-            whether what is there is usable. Raising rejects the entry. Keep it
-            cheap, a header parse such as :func:`check_safetensors` rather than a full read, since it runs on cache
-            hits too.
+        validate: the check of the cached file. Keep it cheap, a header parse such as :func:`check_safetensors` rather
+            than a full read.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails, which then counts as transient; it bounds each wait, not
             the whole transfer. ``None`` uses the ``KORNIA_DOWNLOAD_TIMEOUT``
@@ -1395,9 +1392,7 @@ def download_hf_file(
             ``<hub dir>/checkpoints``, which is the cache CI restores.
         progress: whether to display a progress bar during a transfer.
         validate: forwarded to :func:`download_file_from_url`, which documents
-            it. Pass :func:`check_safetensors` for a checkpoint, so
-            that a truncated cache entry is fetched again rather than handed back
-            on every later call.
+            it.
         timeout: seconds a connection attempt or a single read may stall before the
             attempt fails; it bounds each wait, not the whole transfer. ``None``
             uses the ``KORNIA_DOWNLOAD_TIMEOUT`` environment variable, read at

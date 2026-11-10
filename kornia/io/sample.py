@@ -130,9 +130,10 @@ def get_sample_images(
     """Load kornia's sample images, or given paths and URLs, as a list or one batch.
 
     ``images = get_sample_images()`` downloads kornia's sample images from the ``kornia/data`` GitHub repository
-    unless they are already cached, and returns a list of ``(3, H, W)`` ``float32`` tensors in :math:`[0, 1]`, each in
-    its own size. ``paths`` replaces the samples with local files or ``http(s)`` URLs. With ``resize=(height, width)``
-    the result is one ``(B, 3, H, W)`` tensor, unless ``as_list=True``.
+    unless they are already cached, and returns a list of ``(3, H, W)`` tensors, each in its own size. Each image is
+    loaded as ``RGB32`` by :func:`load_image`, ``float32`` in :math:`[0, 1]`. ``paths`` replaces the samples with local
+    files or ``http(s)`` URLs. With ``resize=(height, width)`` the result is one ``(B, 3, H, W)`` tensor, unless
+    ``as_list=True``.
 
     Convention:
         - A path is a URL only when its scheme is ``http`` or ``https``. A URL is cached under ``cache_dir`` with the
@@ -159,7 +160,7 @@ def get_sample_images(
         as_list: ``True`` to return a list even when ``resize`` is given.
         divisible_factor:
             If not None, each side of every image is resized to a multiple of ``divisible_factor``.
-        **kwargs: Additional keyword arguments for both resizes.
+        **kwargs: Additional keyword arguments for the resizes; see the Convention.
 
     Returns:
         torch.Tensor | list[torch.Tensor]: the images, stacked or as a list.

@@ -84,8 +84,8 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
 
     Convention:
         - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
-        - ``shared_memory=True`` returns one identity expanded along the batch, a view with stride 0 there: writing
-          into one sample, such as ``eye[0, 0, 0] = 5``, writes every sample, and in-place arithmetic such as
+        - ``shared_memory=True`` returns one identity expanded along the batch: writing into one sample, such as
+          ``eye[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
           ``add_`` raises ``RuntimeError``.
 
     Args:
@@ -126,9 +126,9 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
 
     Convention:
         - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
-        - ``shared_memory=True`` returns one vector expanded along the batch, a view with stride 0 there: writing into
-          one sample, such as ``vec[0, 0, 0] = 5``, writes every sample, and in-place arithmetic such as ``add_``
-          raises ``RuntimeError``.
+        - ``shared_memory=True`` returns one vector expanded along the batch: writing into one sample, such as
+          ``vec[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
+          ``add_`` raises ``RuntimeError``.
 
     Args:
         n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.

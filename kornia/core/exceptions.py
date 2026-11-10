@@ -60,7 +60,7 @@ class BaseError(Exception):
 
 
 class ShapeError(BaseError, ValueError):
-    """Catch a failed shape or size check; also a ValueError, carrying both shapes.
+    """Catch a failed shape or size check; also a ValueError.
 
     :func:`~kornia.core.check.KORNIA_CHECK_SHAPE`, :func:`~kornia.core.check.KORNIA_CHECK_SIZES`,
     :func:`~kornia.core.check.KORNIA_CHECK_SAME_SIZE`, :func:`~kornia.core.check.KORNIA_CHECK_SAME_SHAPE`,
@@ -102,7 +102,7 @@ class InputRankError(ShapeError, RuntimeError, AssertionError):
 
 
 class TypeCheckError(BaseError, TypeError):
-    """Catch a failed type or dtype check; also a TypeError, carrying both types.
+    """Catch a failed type or dtype check; also a TypeError.
 
     :func:`~kornia.core.check.KORNIA_CHECK_TYPE`, :func:`~kornia.core.check.KORNIA_CHECK_IS_TENSOR` and
     :func:`~kornia.core.check.KORNIA_CHECK_IS_LIST_OF_TENSOR` raise it, as does
@@ -130,7 +130,7 @@ class TypeCheckError(BaseError, TypeError):
 
 
 class ValueCheckError(BaseError, ValueError):
-    """Catch a failed value or range check; also a ValueError, carrying the value and range.
+    """Catch a failed value or range check; also a ValueError.
 
     :func:`~kornia.core.check.KORNIA_CHECK_IS_IMAGE` raises it for values out of its range, with the ``(min, max)`` of
     the image as ``actual_value``, and functions that check values themselves raise it as well.
@@ -172,7 +172,7 @@ class AsyncCheckError(ValueCheckError, RuntimeError):
 
 
 class DeviceError(BaseError, ValueError):
-    """Catch a device mismatch between tensors; also a ValueError, carrying the devices.
+    """Catch a device mismatch between tensors; also a ValueError.
 
     :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICE` and :func:`~kornia.core.check.KORNIA_CHECK_SAME_DEVICES` raise
     it, and so do functions that check devices themselves.

@@ -76,6 +76,8 @@ class ImageStitcher(nn.Module):
     See Also:
         - :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: aligns one image to another by
           optimising a homography on the pixels, without matches and without a panorama.
+        - :class:`~kornia.tracking.HomographyTracker`: returns a planar target's homography in each video frame,
+          starting from the previous frame's, and builds no panorama.
         - :func:`~kornia.geometry.transform.warp_perspective`: warps one image by a homography you already have.
         - :class:`~kornia.geometry.ransac.RANSAC`: the robust homography estimator of ``estimator="ransac"``.
 

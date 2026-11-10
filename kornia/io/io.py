@@ -349,8 +349,7 @@ def load_image(
         - :ref:`Files and arrays <image-io-conventions>` maps OpenCV's and Pillow's loaders onto the load types.
 
     Args:
-        path_file: Path to an image file in a format kornia-rs decodes, such as JPEG, PNG, TIFF or WebP; the
-            extension may be in any letter case.
+        path_file: Path to an image file in a format kornia-rs decodes.
         desired_type: the desired image type, defined by color space and dtype.
         device: the device where you want to get your image placed.
 
@@ -424,10 +423,10 @@ def _write_float32_image(path_file: Path, img_np: Any) -> None:
 def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -> None:
     """Write a ``(C, H, W)`` or ``(H, W)`` tensor to a JPEG, PNG or TIFF file, unscaled.
 
-    ``write_image(path_file, image)`` encodes the tensor with kornia-rs in the format the extension names and returns
-    ``None``. JPEG takes ``uint8``, PNG ``uint8`` and ``uint16``, and TIFF ``uint8``, ``uint16`` and ``float32``; each
-    takes 1 or 3 channels, and PNG also 4. For a ``float32`` image in :math:`[0, 1]`, write
-    ``(image * 255).round().to(torch.uint8)`` to JPEG or PNG.
+    ``write_image(path_file, image)`` encodes the tensor with kornia-rs in the format the extension names. JPEG takes
+    ``uint8``, PNG ``uint8`` and ``uint16``, and TIFF ``uint8``, ``uint16`` and ``float32``; each takes 1 or 3
+    channels, and PNG also 4. For a ``float32`` image in :math:`[0, 1]`, write ``(image * 255).round().to(torch.uint8)``
+    to JPEG or PNG.
 
     Convention:
         - The tensor is written in RGB order with alpha last, without conversion, scaling or clamping: a ``float32``

@@ -29,7 +29,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
     """Convert a channels-last NumPy image or batch to a channels-first tensor view.
 
     ``tensor = image_to_tensor(array)`` takes an ``(H, W, C)``, ``(H, W)`` or ``(B, H, W, C)`` NumPy array and returns
-    a ``(C, H, W)`` or ``(B, C, H, W)`` tensor that shares the array's memory and keeps its dtype and values, so
+    a ``(C, H, W)`` or ``(B, C, H, W)`` tensor that shares the array's memory. The dtype and values are kept, so
     ``uint8`` stays in :math:`[0, 255]`.
 
     Convention:
@@ -116,6 +116,7 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
 
     Raises:
         ValueError: if the list is empty, an image is not three dimensional, or the shapes differ.
+        RuntimeError: if the images are on different devices.
 
     See Also:
         - :func:`image_to_tensor`: converts one array, or an already stacked ``(B, H, W, C)`` array, as a view.
@@ -211,15 +212,16 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
     """Convert a channels-first image tensor to a channels-last NumPy array for display.
 
     ``array = tensor_to_image(tensor)`` takes an ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)`` tensor and returns an
-    ``(H, W, C)`` or ``(B, H, W, C)`` NumPy array with the same values, detached from autograd and on the CPU. A single
-    channel is dropped, and so is a batch of one unless ``keepdim=True``, so one 1-, 3- or 4-channel image goes
-    straight to ``matplotlib``'s ``imshow``.
+    ``(H, W, C)`` or ``(B, H, W, C)`` NumPy array, detached from autograd and on the CPU. A single channel is dropped,
+    and so is a batch of one unless ``keepdim=True``, so one 1-, 3- or 4-channel image goes straight to
+    ``matplotlib``'s ``imshow``.
 
     Convention:
-        - The array shares memory with a CPU tensor whose dtype NumPy supports, and keeps its dtype. A ``bfloat16``
-          tensor is returned as a ``float32`` copy, a dtype NumPy cannot represent, such as ``float8_e4m3fn``, raises
-          ``TypeError``, a tensor on another device is copied, and ``force_contiguous=True`` copies a result that is
-          not contiguous, such as the channels-last view of a contiguous tensor with more than one channel.
+        - The array shares memory with a CPU tensor whose dtype NumPy supports, and keeps its dtype.
+        - A tensor on another device is copied, ``bfloat16`` becomes a ``float32`` copy, and a dtype NumPy cannot
+          represent, such as ``float8_e4m3fn``, raises ``TypeError``.
+        - ``force_contiguous=True`` copies a result that is not contiguous, such as the channels-last view of a
+          contiguous tensor with more than one channel.
 
     Args:
         tensor: image of the form ``(H, W)``, ``(C, H, W)`` or
@@ -297,7 +299,7 @@ class ImageToTensor(nn.Module):
             always ``(B, C, H, W)``.
 
     See Also:
-        - :func:`image_to_tensor`: the one-call form, with ``keepdim=True`` by default.
+        - :func:`image_to_tensor`: the function form.
 
     Example:
         >>> ImageToTensor()(np.ones((4, 5, 3))).shape
@@ -332,9 +334,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     border. It does not rescale or convert the images.
 
     Convention:
-        - ``n_row`` is the number of images in each row, that is the number of columns, as torchvision's ``nrow``.
-          Zero images complete the last row, and ``n_row > B`` still
-          gives ``n_row`` columns.
+        - ``n_row`` is the number of columns, as torchvision's ``nrow``. Zero images complete the last row, and
+          ``n_row > B`` still gives ``n_row`` columns.
         - The channels are kept, and ``R`` rows of ``n_row`` images with ``p = padding`` give
           ``(C, R * (H + p) - p, n_row * (W + p) - p)``.
         - The grid is a new tensor in the input's dtype and on its device; :math:`B = 0` gives a zero-height grid.
@@ -353,8 +354,8 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
         ValueError: if ``tensor`` is not four dimensional, ``n_row`` is not positive or ``padding`` is negative.
 
     See Also:
-        - :func:`tensor_to_image`: converts the grid to a NumPy array for display.
-        - :func:`print_image`: shows the grid in a terminal.
+        - :func:`~kornia.contrib.combine_tensor_patches`: reassembles one image from its own sliding-window patches,
+          averaging where they overlap.
 
     Example:
         >>> make_grid(torch.rand(5, 3, 4, 6), n_row=2).shape

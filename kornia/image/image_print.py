@@ -376,7 +376,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     """Render one image tensor as an xterm-256 ANSI text string, without printing it.
 
     ``text = image_to_string(image)`` takes a ``(3, H, W)`` RGB or ``(1, H, W)`` gray image and returns the text that
-    shows it in a terminal: each pixel is two spaces on the nearest xterm-256 background color, one line per image
+    shows it in a terminal. Each pixel is two spaces on the nearest xterm-256 background color, one line per image
     row. An image wider than ``max_width`` pixels is first resized to that width.
 
     Convention:
@@ -447,7 +447,7 @@ def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 9
     """Print an image tensor or an image file to the terminal in xterm-256 colors.
 
     ``print_image(image)`` prints :func:`image_to_string` of a ``(3, H, W)`` or ``(1, H, W)`` tensor, or of a file
-    loaded with :func:`~kornia.io.load_image` as ``ImageLoadType.RGB8``, and returns ``None``.
+    loaded with :func:`~kornia.io.load_image` as ``ImageLoadType.RGB8``.
 
     .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 

@@ -18,8 +18,7 @@
 """Dilate, erode, open and close images by a structuring element, and reconstruct them from a seed.
 
 The functions are :func:`dilation`, :func:`erosion`, :func:`opening`, :func:`closing`, :func:`gradient`,
-:func:`top_hat`, :func:`bottom_hat` and :func:`reconstruction`; the ``kornia.morphology`` docstring says which
-to use.
+:func:`top_hat`, :func:`bottom_hat` and :func:`reconstruction`.
 """
 
 from typing import Final, List, Optional
@@ -292,7 +291,7 @@ def dilation(
     r"""Dilate an image: the maximum over each pixel's neighborhood, with the kernel reflected.
 
     ``out = dilation(tensor, kernel)`` takes a floating-point image ``(B, C, H, W)`` and a ``(k_h, k_w)`` kernel whose
-    non-zero cells mark the neighborhood, and returns the ``(B, C, H, W)`` image whose every pixel is the maximum of
+    non-zero cells mark the neighborhood. It returns the ``(B, C, H, W)`` image whose every pixel is the maximum of
     ``tensor`` over the neighborhood placed at it.
 
     .. image:: _static/img/dilation.png
@@ -312,8 +311,7 @@ def dilation(
             and their values are ignored; a floating-point kernel sets the dtype of the result (see Returns). For a
             full window pass ``torch.ones(k_h, k_w)``. Another rank raises ``ValueError``.
         structuring_element: non-flat structuring element of ``kernel``'s shape, added to the neighbor values before
-            the maximum in :func:`dilation` and subtracted before the minimum in :func:`erosion`. Another shape raises
-            ``ValueError``. Default: ``None``, a flat element.
+            the maximum. Another shape raises ``ValueError``. Default: ``None``, a flat element.
         origin: ``[row, col]`` cell of ``kernel`` placed on the output pixel. Default: ``None``, which uses
             ``[k_h // 2, k_w // 2]`` for odd and even sizes alike (``[1, 1]`` for a :math:`2 \times 2` kernel).
         border_type: ``"geodesic"`` (default) leaves the pixels outside the image out of the window; ``"constant"``,
@@ -329,7 +327,9 @@ def dilation(
             ``"shift"`` elsewhere, except that a CPU call which computes in float32 or float64 (the image dtype widened
             as described under Returns) and records a backward graph takes ``"unfold"``, where ``"shift"`` is slower.
             ``"convolution"`` runs through the backend's ``conv2d`` and inherits its precision: a ``conv2d`` that
-            computes float32 in reduced precision, as on macOS CPU, rounds the output.
+            computes float32 in reduced precision, as on macOS CPU, rounds the output. Forward-only, ``"shift"`` needs
+            no ``k_h k_w``-sized intermediate. Under autograd it saves ``2 (k_h k_w - 1)`` output-sized tensors
+            for backward, more memory than ``"unfold"``.
 
     Returns:
         Dilated image ``(B, C, H, W)``. Its dtype is the image dtype promoted with that of ``structuring_element``,
@@ -491,9 +491,8 @@ def erosion(
     .. image:: _static/img/erosion.png
 
     Convention:
-        As :func:`dilation`, except that ``erosion`` does **not** reflect the structuring element: it is the
-        Minkowski erosion :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, as in ``scipy.ndimage`` and
-        OpenCV.
+        As :func:`dilation`, except that ``erosion`` does **not** reflect the kernel: it is the Minkowski
+        erosion :math:`\varepsilon_B f(x) = \min_{b \in B} f(x + b)`, as in ``scipy.ndimage`` and OpenCV.
 
     Args:
         tensor: floating-point image ``(B, C, H, W)``; another dtype raises ``TypeError``, another rank ``ValueError``.
@@ -830,8 +829,9 @@ def gradient(
 
     ``out = gradient(tensor, kernel)`` returns ``dilation(tensor, kernel) - erosion(tensor, kernel)`` with the same
     arguments, a ``(B, C, H, W)`` edge-strength map that is large where the image changes. Under a non-``geodesic``
-    border it equals ``scipy.ndimage.morphological_gradient`` with the matching mode, and for a flat kernel (no
-    ``structuring_element``) symmetric about its origin it is the value range over each neighborhood.
+    border, with inputs that keep the image dtype (see :func:`dilation`), it equals
+    ``scipy.ndimage.morphological_gradient`` with the matching mode. For a flat kernel (no ``structuring_element``)
+    symmetric about its origin it is the value range over each neighborhood.
 
     .. image:: _static/img/gradient.png
 
@@ -851,7 +851,8 @@ def gradient(
     See Also:
         - :func:`dilation`: the maximum over the neighborhood, the first term.
         - :func:`erosion`: the minimum over the neighborhood, the second term.
-        - :func:`~kornia.filters.sobel`: a linear edge strength from the image's first derivatives.
+        - :func:`~kornia.filters.sobel`: the magnitude of the Sobel derivatives, from linear filters instead of a
+          maximum and a minimum.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
@@ -901,11 +902,11 @@ def top_hat(
     .. image:: _static/img/top_hat.png
 
     Convention:
-        Under every ``border_type`` except ``geodesic``, with the mode mapped as in
-        :doc:`Conventions & Pitfalls </get-started/conventions>` and ``cval=border_value``, it equals
-        ``scipy.ndimage.white_tophat``. OpenCV's ``MORPH_TOPHAT``, at its default border (``geodesic``),
-        ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for a kernel symmetric about its origin,
-        because ``cv2.dilate`` does not reflect the kernel.
+        Under every ``border_type`` except ``geodesic``, for inputs that keep the image dtype (see
+        :func:`dilation`), with the mode mapped as in :doc:`Conventions & Pitfalls </get-started/conventions>` and
+        ``cval=border_value``, it equals ``scipy.ndimage.white_tophat``. OpenCV's ``MORPH_TOPHAT``, at its
+        default border (kornia's ``geodesic``), ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for
+        a kernel symmetric about its origin, because ``cv2.dilate`` does not reflect the kernel.
 
     Args:
         tensor: floating-point image ``(B, C, H, W)``; another dtype raises ``TypeError``, another rank ``ValueError``.
@@ -975,11 +976,11 @@ def bottom_hat(
     .. image:: _static/img/bottom_hat.png
 
     Convention:
-        Under every ``border_type`` except ``geodesic``, with the mode mapped as in
-        :doc:`Conventions & Pitfalls </get-started/conventions>` and ``cval=border_value``, it equals
-        ``scipy.ndimage.black_tophat``. OpenCV's ``MORPH_BLACKHAT``, at its default border (``geodesic``),
-        ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for a kernel symmetric about its origin,
-        because ``cv2.dilate`` does not reflect the kernel.
+        Under every ``border_type`` except ``geodesic``, for inputs that keep the image dtype (see
+        :func:`dilation`), with the mode mapped as in :doc:`Conventions & Pitfalls </get-started/conventions>` and
+        ``cval=border_value``, it equals ``scipy.ndimage.black_tophat``. OpenCV's ``MORPH_BLACKHAT``, at its
+        default border (kornia's ``geodesic``), ``BORDER_REPLICATE`` or ``BORDER_REFLECT_101``, equals it only for
+        a kernel symmetric about its origin, because ``cv2.dilate`` does not reflect the kernel.
 
     Args:
         tensor: floating-point image ``(B, C, H, W)``; another dtype raises ``TypeError``, another rank ``ValueError``.
@@ -1075,9 +1076,8 @@ def reconstruction(
     ``(B, C, H, W)`` image grown from :math:`\min(\text{seed}, \text{mask})` by repeated geodesic dilations
     :math:`\min(\delta_B(x), \text{mask})`, until the result stops changing. ``method="erosion"`` is the dual,
     :math:`-\text{reconstruction}(-\text{seed}, -\text{mask})`, which lowers a seed toward the mask from above.
-    ``reconstruction(erosion(x, kernel), x)`` is opening by reconstruction: it removes every shape the kernel does not
-    fit in, as :func:`opening` does, and restores the whole of each shape that survives the erosion, thin parts
-    included.
+    ``reconstruction(erosion(x, kernel), x)`` is opening by reconstruction: it removes the shapes :func:`opening`
+    removes and restores the whole of each shape that survives the erosion, thin parts included.
 
     Convention:
         - Matches ``skimage.morphology.reconstruction``: the default ``kernel`` is a :math:`3 \times 3` square,
@@ -1122,9 +1122,8 @@ def reconstruction(
 
     See Also:
         - :func:`dilation`: one step without the mask; ``reconstruction`` repeats it, clipped to ``mask``.
-        - :func:`erosion`: builds the seed of opening by reconstruction.
-        - :func:`opening`: removes the same shapes as opening by reconstruction, but also the thin parts of the
-          shapes it keeps.
+        - :func:`erosion`: the seed of opening by reconstruction.
+        - :func:`opening`: also removes the thin parts of the shapes it keeps.
 
     Example:
         >>> mask = torch.rand(1, 3, 5, 5)

@@ -94,10 +94,10 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Raises:
         ValueError: if the image is not ``(C, H, W)`` or ``(H, W)``, or a point lies outside the image after rounding.
-        BaseError: if ``color`` has neither 1 nor ``C`` values for a ``(C, H, W)`` image, a ``color`` of two or more
-            dimensions for an ``(H, W)`` image has a first dimension above 1, or ``points`` is not ``(2,)`` or
-            ``(N, 2)``.
-        RuntimeError: if another ``color`` has more than one value for an ``(H, W)`` image.
+        BaseError: if ``color`` has neither 1 nor ``C`` values for a ``(C, H, W)`` image, or ``points`` is not
+            ``(2,)`` or ``(N, 2)``.
+        RuntimeError: if ``color`` has more than one value for an ``(H, W)`` image
+            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     See Also:
         - :func:`draw_line`: draws the pixels between two points, and states the rules both functions follow.
@@ -288,7 +288,7 @@ def draw_rectangle(
 ) -> torch.Tensor:
     r"""Draw or fill axis-aligned rectangles on a batch of images, in place.
 
-    ``images = draw_rectangle(images, rectangles, color)`` draws ``N`` rectangles per image, ``(B, N, 4)`` as
+    ``image = draw_rectangle(image, rectangle, color)`` draws ``N`` rectangles per image, ``(B, N, 4)`` as
     ``[x1, y1, x2, y2]``, on ``(B, C, H, W)`` images and returns the same tensor: outlines ``line_width`` pixels thick,
     or filled boxes with ``fill=True``. A rectangle that leaves the image is clipped instead of raising.
 
@@ -316,6 +316,8 @@ def draw_rectangle(
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
         ValueError: if ``line_width`` is not a positive ``int``.
+        RuntimeError: if ``color`` has neither 1 nor ``C`` values per rectangle
+            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -323,7 +325,7 @@ def draw_rectangle(
 
     See Also:
         - :func:`draw_convex_polygon`: fills any convex shape, one per image, with unrounded vertices.
-        - :func:`draw_line`: draws single one-pixel segments, whose endpoints must lie in the image.
+        - :func:`draw_line`: draws one-pixel segments, whose endpoints must lie in the image.
 
     Note:
         The rectangle coordinates are read back to the host once, and ``torch.compile`` breaks the graph there: a
@@ -465,9 +467,9 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
 def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
     r"""Fill one convex polygon per image on a batch of images, in place.
 
-    ``images = draw_convex_polygon(images, polygons, colors)`` fills polygon ``b``, its :math:`(x, y)` vertices given as
-    a ``(B, N, 2)`` tensor or as a list of ``B`` tensors of shape ``(N_b, 2)``, on image ``b`` of a ``(B, C, H, W)``
-    batch, and returns the same tensor.
+    ``images = draw_convex_polygon(images, polygons, colors)`` fills polygon ``b`` on image ``b`` of a
+    ``(B, C, H, W)`` batch and returns the same tensor. The :math:`(x, y)` vertices are a ``(B, N, 2)`` tensor or a list
+    of ``B`` tensors of shape ``(N_b, 2)``.
 
     Convention:
         - Vertices are :math:`(x, y)` in the pixel frame of :func:`~kornia.image.draw_line`, used as given, without
@@ -495,6 +497,8 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         ValueError: if ``polygons`` is a tensor that is not three dimensional.
         BaseError: if the vertices are not ``(x, y)`` points.
         BaseError: if the images, polygons and colors differ in batch size or device.
+        RuntimeError: if ``colors`` has neither 1 nor ``C`` values per polygon
+            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     See Also:
         - :func:`draw_rectangle`: draws outlines as well as fills, and several rectangles per image.

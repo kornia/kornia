@@ -100,8 +100,8 @@ def undistort_points(
           normalized points.
         - :func:`~kornia.geometry.camera.undistort_points_affine`: the intrinsics alone, from pixels to normalized
           points, in closed form.
-        - :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`: runs this inverse to normalized
-          ``Vector2`` points.
+        - :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`: the same inverse on ``Vector2``
+          pixels, to normalized points.
 
     Example:
         >>> _ = torch.manual_seed(0)

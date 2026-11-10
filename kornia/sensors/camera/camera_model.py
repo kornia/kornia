@@ -419,10 +419,10 @@ class KannalaBrandtK3(CameraModelBase):
     r"""Model a fisheye camera with the Kannala-Brandt K3 distortion of the ray angle.
 
     ``cam = KannalaBrandtK3(image_size, params)`` takes the ``(8,)`` or ``(B, 8)`` vector
-    ``[fx, fy, cx, cy, k0, k1, k2, k3]``. :meth:`~CameraModelBase.project` turns the angle :math:`\theta` between a
-    camera-frame point's ray and the optical axis into the radius
-    :math:`\theta (1 + k_0 \theta^2 + k_1 \theta^4 + k_2 \theta^6 + k_3 \theta^8)` on the normalized plane before the
-    intrinsics, and :meth:`~CameraModelBase.unproject` inverts it iteratively. It is :class:`CameraModelBase` with
+    ``[fx, fy, cx, cy, k0, k1, k2, k3]``. :meth:`~CameraModelBase.project` maps the angle :math:`\theta` between a
+    point's ray and the optical axis to the normalized radius
+    :math:`\theta (1 + k_0 \theta^2 + k_1 \theta^4 + k_2 \theta^6 + k_3 \theta^8)`, and
+    :meth:`~CameraModelBase.unproject` inverts it iteratively. It is :class:`CameraModelBase` with
     :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform` and
     :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
 

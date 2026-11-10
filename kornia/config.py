@@ -19,11 +19,11 @@
 
 ``kornia_config`` holds the process-wide settings. ``kornia_config.lazyloader.installation_mode`` takes an
 :class:`InstallationMode` or its name in any case, and starts from the ``KORNIA_INSTALLATION_MODE`` environment
-variable, or ``"raise"`` when it is unset. ``kornia_config.hub_cache_dir`` (``.kornia_hub``) and
-``kornia_config.hub_onnx_dir`` (default ``.kornia_hub/onnx_models``, set separately) are where the sample images and the
-ONNX models are downloaded to, relative to the working directory.
+variable, or ``"raise"`` when it is unset. ``kornia_config.hub_cache_dir`` (``.kornia_hub``) holds the downloaded
+sample images and ONNX configs, and ``kornia_config.hub_onnx_dir`` (default ``.kornia_hub/onnx_models``, set
+separately) the ONNX models, both relative to the working directory.
 
-Which class to use:
+Which object to use:
 
 - What a missing optional dependency does (raise, ask, install): :class:`InstallationMode`.
 - The settings object to change: ``kornia_config``.
@@ -44,8 +44,9 @@ class InstallationMode(StrEnum):
     """Choose whether a missing optional dependency raises, asks to install its kornia extra, or installs it.
 
     ``kornia_config.lazyloader.installation_mode = InstallationMode.AUTO``, or ``"auto"`` in any case, sets the mode for
-    the process, and the mode applies when a lazily imported dependency of ``kornia.core.external``, such as ``onnx`` or
-    Pillow, is first used and found missing. An invalid ``KORNIA_INSTALLATION_MODE`` value raises a ``ValueError`` at
+    the process, and the ``KORNIA_INSTALLATION_MODE`` environment variable sets it before kornia is imported. The mode
+    applies when a lazily imported dependency of ``kornia.core.external``, such as ``onnx`` or Pillow, is first used and
+    found missing. An invalid ``KORNIA_INSTALLATION_MODE`` value raises a ``ValueError`` at
     that point. Members compare equal to their upper-case values (``InstallationMode.RAISE == "RAISE"``).
 
     - ``RAISE`` (the default): raise an ``ImportError`` that names the kornia extra to install, for example

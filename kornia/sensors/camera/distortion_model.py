@@ -27,18 +27,19 @@ from kornia.geometry.vector import Vector2
 
 
 class AffineTransform:
-    """Map image-plane points to pixels with ``[fx, fy, cx, cy]`` alone, with no lens distortion.
+    """Map image-plane ``Vector2`` points to pixels with ``[fx, fy, cx, cy]`` alone, with no lens distortion.
 
     ``uv = AffineTransform().distort(params, points)`` takes ``params`` that start with ``[fx, fy, cx, cy]`` and a
     :class:`~kornia.geometry.vector.Vector2` of image-plane points, and returns the ``Vector2`` of pixels
-    ``(fx * x + cx, fy * y + cy)``; :meth:`undistort` is the closed-form inverse. It is the distortion of
-    :class:`~kornia.sensors.camera.PinholeModel`, which feeds it normalized ``z = 1`` points, and of
-    :class:`~kornia.sensors.camera.Orthographic`, which feeds it the camera-frame ``(x, y)``.
+    ``(fx * x + cx, fy * y + cy)``. :meth:`undistort` inverts it in closed form.
+    :class:`~kornia.sensors.camera.PinholeModel` feeds it normalized ``z = 1`` points and
+    :class:`~kornia.sensors.camera.Orthographic` the camera-frame ``(x, y)``.
 
     See Also:
         - :class:`BrownConradyTransform`: adds OpenCV's radial and tangential lens distortion before the intrinsics.
         - :class:`KannalaBrandtK3Transform`: adds a fisheye distortion of the ray angle before the intrinsics.
         - :func:`~kornia.geometry.camera.distort_points_affine`: the same map on plain tensors.
+        - :func:`~kornia.geometry.camera.undistort_points_affine`: the same inverse on plain tensors.
 
     """
 
@@ -101,11 +102,11 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    """Map normalized ``z = 1`` points to pixels with OpenCV's Brown-Conrady lens distortion, and back.
+    """Map normalized ``z = 1`` ``Vector2`` points to pixels with OpenCV's Brown-Conrady lens distortion, and back.
 
     ``uv = BrownConradyTransform().distort(params, points)`` takes the 12-value vector
     ``[fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6]`` and a :class:`~kornia.geometry.vector.Vector2` of normalized
-    points, and returns the ``Vector2`` of distorted pixels; :meth:`undistort` maps distorted pixels back to normalized
+    points, and returns the ``Vector2`` of distorted pixels. :meth:`undistort` maps distorted pixels back to normalized
     points by fixed-point iteration. It is the distortion of :class:`~kornia.sensors.camera.BrownConradyModel`.
 
     See Also:
@@ -225,7 +226,7 @@ class BrownConradyTransform:
 
 
 class KannalaBrandtK3Transform:
-    """Map normalized ``z = 1`` points to fisheye pixels with the Kannala-Brandt K3 model, and back.
+    """Map normalized ``z = 1`` ``Vector2`` points to fisheye pixels with the Kannala-Brandt K3 model, and back.
 
     ``uv = KannalaBrandtK3Transform().distort(params, points)`` takes the ``(..., 8)`` vector
     ``[fx, fy, cx, cy, k0, k1, k2, k3]`` and a :class:`~kornia.geometry.vector.Vector2` of normalized points, and

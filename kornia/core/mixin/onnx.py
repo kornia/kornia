@@ -658,14 +658,15 @@ class ONNXExportMixin:
 class ONNXRuntimeMixin:
     """Run an ONNX Runtime session on NumPy arrays or CPU tensors, and switch its execution provider.
 
-    ``outputs = obj(*inputs)`` runs the object's ``onnxruntime.InferenceSession``, the one :meth:`get_session` returns
-    and :meth:`set_session` replaces, on one NumPy array or CPU tensor per session input, and returns ONNX Runtime's
-    list of outputs unchanged: a NumPy array for each tensor output, and a list or dict for a sequence or map output. A
-    tensor on another device raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
+    ``outputs = obj(*inputs)`` runs the object's ``onnxruntime.InferenceSession`` on one NumPy array or CPU tensor per
+    session input, or a list of NumPy arrays for a sequence input. It returns ONNX Runtime's list of outputs unchanged:
+    a NumPy array for each tensor output, and a list or dict for a sequence or map output. A tensor on another device
+    raises ``ValueError``. :meth:`as_cpu`, :meth:`as_cuda`, :meth:`as_tensorrt` and
     :meth:`as_openvino` switch the execution provider; a provider the installed onnxruntime build does not offer leaves
     the session on the CPU with an onnxruntime warning, without raising.
 
     See Also:
+        - :class:`~kornia.onnx.module.ONNXModule`: runs one ONNX model with this mixin.
         - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models into one session and runs it with this
           mixin.
         - :class:`ONNXExportMixin`: exports a torch module to the ``ModelProto`` a session is built from.
@@ -792,7 +793,8 @@ class ONNXRuntimeMixin:
             *inputs: Inputs to the ONNX model, in the order of ``get_session().get_inputs()``: numpy arrays, or
                 strided torch tensors on the CPU of a dtype numpy has (not bfloat16 or float8). A tensor is passed as
                 ``tensor.detach().numpy()``, which shares its memory (a conjugate or negative view is materialized
-                first). The number of inputs must match the expected inputs of the session.
+                first). A sequence input takes a list of numpy arrays; the list's elements are not converted from
+                tensors. The number of inputs must match the expected inputs of the session.
 
         Returns:
             list: The outputs of ONNX Runtime, unchanged and in the order of ``get_session().get_outputs()``, for
@@ -821,8 +823,8 @@ class ONNXMixin:
     """Load ONNX graphs and chain them into one, for the classes that run ONNX models.
 
     It has no public methods. :class:`~kornia.onnx.module.ONNXModule` uses it to load an ``onnx.ModelProto``, a file, an
-    ``hf://`` name or a URL, and :class:`~kornia.onnx.sequential.ONNXSequential` also to chain several into one graph
-    and save it.
+    ``hf://`` name or a URL, and save it, and :class:`~kornia.onnx.sequential.ONNXSequential` also to chain several
+    into one graph.
 
     See Also:
         - :class:`~kornia.onnx.sequential.ONNXSequential`: chains ONNX models with this mixin and runs them.

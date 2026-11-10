@@ -136,8 +136,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
     See Also:
         - :class:`ImageModule`: the same conversions around one module with its own ``forward``.
-        - :class:`~kornia.augmentation.container.ImageSequential`: the augmentation container of the same name, which
-          records and replays the random parameters of its augmentations.
+        - :class:`~kornia.augmentation.container.ImageSequential`: records and replays its random parameters.
 
     """
 
