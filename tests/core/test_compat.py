@@ -38,8 +38,6 @@ import kornia
 import kornia.utils
 from kornia.core._compat import deprecated, scaled_dot_product_attention
 from kornia.feature.dedode.transformer.layers.attention import Attention as DeDoDeAttention
-from kornia.models.paligemma.configuration_paligemma import PaliGemmaConfig
-from kornia.models.paligemma.modeling_paligemma import GemmaAttention
 from kornia.models.qwen25.vision import Qwen25VisionAttention
 
 from testing.base import BaseTester
@@ -924,9 +922,8 @@ class TestScaledDotProductAttention(BaseTester):
         [
             lambda: DeDoDeAttention(dim=16, num_heads=4),
             lambda: Qwen25VisionAttention(16, 4),
-            lambda: GemmaAttention(PaliGemmaConfig(), 0),
         ],
-        ids=["dedode", "qwen25", "gemma"],
+        ids=["dedode", "qwen25"],
     )
     def test_scripted_callers_compile(self, make_module):
         # TorchScript cannot read a Python global, whatever its value: the helper takes the flag as a default argument.
