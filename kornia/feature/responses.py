@@ -16,7 +16,7 @@
 #
 
 import numbers
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -516,8 +516,8 @@ class CornerHarris(nn.Module):
     r"""Compute the Harris corner response with a fixed k; the module form of harris_response.
 
     ``R = CornerHarris(k)(img, sigmas)`` returns ``harris_response(img, k, grads_mode, sigmas)``, the ``(B, C, H, W)``
-    Harris response of ``(B, C, H, W)`` images, positive at a corner. ``k`` is stored as a buffer, so it moves with
-    :meth:`torch.nn.Module.to`. Pass it to :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over
+    Harris response of ``(B, C, H, W)`` images, positive at a corner. A tensor ``k`` is stored as a buffer, so it moves
+    with :meth:`torch.nn.Module.to`. Pass it to :class:`ScaleSpaceDetector` as ``resp_module`` to detect corners over
     scale; for a response with no ``k`` to choose, use :class:`CornerGFTT` instead.
 
     .. image:: _static/img/harris_response.png
@@ -525,7 +525,8 @@ class CornerHarris(nn.Module):
     Convention:
         Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
         Convention block. Unlike the function's, this ``k`` has no default. A ``float``, ``int`` or NumPy scalar
-        ``k`` becomes a 0-dimensional tensor; a tensor is stored as it is.
+        ``k`` is kept as a Python float and built at each call in the image's dtype, float32 for a half-precision image
+        and the default dtype for an integer one, so a float64 image uses it exactly; a tensor is stored as it is.
 
     See Also:
         - :func:`harris_response`: the function form, with ``k`` defaulting to ``0.04``.
@@ -535,18 +536,38 @@ class CornerHarris(nn.Module):
 
     """
 
-    k: torch.Tensor
+    k: Union[float, torch.Tensor]
 
     def __init__(self, k: Union[float, torch.Tensor], grads_mode: str = "sobel") -> None:
         super().__init__()
-        if isinstance(k, float):
-            self.register_buffer("k", torch.tensor(k))
-        elif isinstance(k, numbers.Real) and not isinstance(k, bool):
-            # An int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
-            self.register_buffer("k", torch.tensor(float(k)))
+        if isinstance(k, numbers.Real) and not isinstance(k, bool):
+            # A number, including an int or a NumPy scalar, stays a Python float; forward builds it per call.
+            self.k = float(k)
         else:
             self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # A number ``k`` used to be a persistent buffer built in the default dtype. A saved ``k`` equal to this one
+        # built that way, in whatever dtype the module was moved to, leaves the exact number; another value replaces
+        # it, as loading it into the buffer did.
+        key = prefix + "k"
+        if not isinstance(self.k, torch.Tensor) and key in state_dict and state_dict[key].dim() == 0:
+            saved = state_dict.pop(key)
+            if float(saved) != float(torch.tensor(self.k).to(saved.dtype)):
+                self.k = float(saved)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
@@ -562,7 +583,13 @@ class CornerHarris(nn.Module):
         Returns:
             Harris response map tensor.
         """
-        return harris_response(input, self.k, self.grads_mode, sigmas)
+        k = self.k
+        if not isinstance(k, torch.Tensor):
+            # In at least float32, as the buffer it replaced, so float32 and half-precision images keep their results
+            # on every device and a float64 image uses k exactly; an integer image is scored in the default dtype.
+            dtype = torch.promote_types(input.dtype, torch.float32) if input.is_floating_point() else None
+            k = torch.as_tensor(k, device=input.device, dtype=dtype)
+        return harris_response(input, k, self.grads_mode, sigmas)
 
 
 class CornerGFTT(nn.Module):
