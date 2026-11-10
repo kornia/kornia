@@ -1276,9 +1276,11 @@ class TestConventionsLoFTR(BaseTester):
         self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
         assert out["batch_indexes"].tolist() == batches
 
+    @pytest.mark.parametrize("wide", [0, 1])
     @pytest.mark.parametrize("side", [0, 1])
-    def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, monkeypatch):
+    def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, wide, monkeypatch):
         # Integer counting gives 257 columns; a bfloat16 sum rounds it to 256 and wrongly rejects column 254.
+        # The 257-column image is either the masked one or the unmasked one, whose all-valid mask LoFTR builds.
         # Cached features avoid a wide backbone pass, but the real coarse/fine matcher still chooses the match.
         if dtype == torch.float16:
             # The attention multiplies features by the mask, and float16 * bfloat16 promotes to float32, which the
@@ -1286,19 +1288,19 @@ class TestConventionsLoFTR(BaseTester):
             pytest.skip("a bfloat16 mask needs a model dtype it promotes into")
         monkeypatch.setattr(self, "_PAIRS", {0: [((3, 254), (3, 3), 16.0, (2, 2))]})
         sample = {}
-        for current in (0, 1):
-            width = 257 if current == side else 8
+        widths = [257 if current == wide else 8 for current in (0, 1)]
+        for current, width in enumerate(widths):
             sample[f"features{current}"] = {
                 "coarse": torch.zeros(1, 256, 8, width, device=device, dtype=dtype),
                 "fine": torch.zeros(1, 128, 32, 4 * width, device=device, dtype=dtype),
             }
-        sample[f"mask{side}"] = torch.ones(1, 64, 2056, device=device, dtype=torch.bfloat16)
-        model = self._hooked_loftr(device, dtype, swap=bool(side))
+        sample[f"mask{side}"] = torch.ones(1, 64, 8 * widths[side], device=device, dtype=torch.bfloat16)
+        model = self._hooked_loftr(device, dtype, swap=bool(wide))
         with torch.no_grad():
             actual = model(sample)
             unmasked = model({key: value for key, value in sample.items() if not key.startswith("mask")})
         coord_dtype = torch.promote_types(dtype, torch.float32)
-        for current, expected in ((side, [[2032.0, 24.0]]), (1 - side, [[24.0, 24.0]])):
+        for current, expected in ((wide, [[2032.0, 24.0]]), (1 - wide, [[24.0, 24.0]])):
             self.assert_close(actual[f"keypoints{current}"], torch.tensor(expected, device=device, dtype=coord_dtype))
             self.assert_close(actual[f"keypoints{current}"], unmasked[f"keypoints{current}"])
         assert actual["batch_indexes"].tolist() == [0]
