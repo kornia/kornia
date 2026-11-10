@@ -6,10 +6,12 @@ kornia.onnx
 
 .. currentmodule:: kornia.onnx
 
-Run and compose ONNX models with ONNX Runtime: :class:`~kornia.onnx.sequential.ONNXSequential` chains several
-ONNX graphs (local files, ``onnx.ModelProto`` objects, or pre-exported Kornia operators and models from the
-``kornia/ONNX_models`` Hugging Face repository) into one model with a PyTorch-like call interface. The
-:doc:`ONNX support guide </get-started/onnx>` walks through installation, chaining, export and running on CUDA.
+Run ONNX models with ONNX Runtime: :class:`~kornia.onnx.module.ONNXModule` (or :func:`load`) runs one model, and
+:class:`~kornia.onnx.sequential.ONNXSequential` chains several into one graph. Both take ``onnx.ModelProto`` objects,
+local files, URLs, or ``hf://`` names of pre-exported Kornia operators and models in the ``kornia/ONNX_models``
+Hugging Face repository, which :class:`~kornia.onnx.utils.ONNXLoader` downloads into the cache once. They are called on
+numpy arrays or CPU torch tensors and return a list of numpy arrays. The :doc:`ONNX support guide </get-started/onnx>`
+walks through installation, chaining, export and running on CUDA.
 
 .. autoclass:: kornia.onnx.module.ONNXModule
     :members:
@@ -21,18 +23,6 @@ ONNX graphs (local files, ``onnx.ModelProto`` objects, or pre-exported Kornia op
 
 .. autoclass:: kornia.onnx.utils.ONNXLoader
     :members:
-
-    .. code-block:: python
-
-        from kornia.onnx.utils import ONNXLoader
-
-        # Load a Hugging Face operator
-        ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
-        # Load a downloaded operator from the cache: the same name, served from the cache directory
-        # (".kornia_hub/onnx_models" by default) without a download
-        ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb", download=False)
-        # Load a local file by its path
-        ONNXLoader.load_model(".kornia_hub/onnx_models/operators/kornia.color.gray.GrayscaleToRgb.onnx")
 
 .. autofunction:: kornia.onnx.utils.add_metadata
 

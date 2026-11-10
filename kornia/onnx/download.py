@@ -15,6 +15,15 @@
 # limitations under the License.
 #
 
+"""Download an HTTP(S) file once into a cache directory and reuse it on later calls.
+
+Which class to use:
+
+- Any HTTP(S) file cached under a name the caller gives: :class:`CachedDownloader`.
+- ONNX models and configs, with cache names derived from an ``hf://`` name or the URL:
+  :class:`~kornia.onnx.utils.ONNXLoader`, its subclass.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -53,7 +62,20 @@ def _relative_path_components(name: str, label: str = "name") -> list[str]:
 
 
 class CachedDownloader:
-    """Downloads files from URLs to the local cache or .kornia_hub directory."""
+    """Download an HTTP(S) file into a cache directory under a caller-given name, once.
+
+    ``path = CachedDownloader.download_to_cache(url, name, suffix=".onnx")`` returns ``<cache_dir>/<name>`` with
+    ``suffix`` appended unless ``name`` already ends with it, and downloads ``url`` there only when that file does not
+    exist; a cached file is returned as it is, without contacting the server, until ``force_download=True`` or its
+    deletion. ``CachedDownloader.download(url, file_path)`` does the same for an explicit file path.
+
+    See Also:
+        - :class:`~kornia.onnx.utils.ONNXLoader`: its subclass, which builds the cache name from an ``hf://`` name or
+          the URL and loads the ONNX model or JSON config.
+        - :func:`~kornia.core.download_file_from_url`: caches in torch's hub checkpoint directory, with fallback URLs,
+          retries and a ``validate`` hook for a truncated file.
+
+    """
 
     @classmethod
     def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: Optional[str] = None) -> str:
@@ -156,11 +178,12 @@ class CachedDownloader:
         *,
         force_download: bool = False,
     ) -> None:
-        """Download an ONNX model from the specified URL and save it to the specified file path.
+        """Download an HTTP(S) file to ``file_path``, unless that file already exists.
 
         Args:
-            url: The URL of the ONNX model to download.
-            file_path: The local path where the downloaded model should be saved.
+            url: The HTTP(S) URL of the file to download.
+            file_path: The local path where the downloaded file is saved; its directories are created. A path may
+                start with ``~``.
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
             force_download: If True, download the file even when ``file_path`` exists, and replace it. The old file
                 is replaced only once the new one is complete, so a download that fails leaves it as it was. Needs
