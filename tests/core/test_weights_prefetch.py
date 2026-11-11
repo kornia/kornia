@@ -237,10 +237,9 @@ NOT_PREFETCHED: dict[str, str] = {
     "rtdetr_r50vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r50vd_m_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r101vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
-    # DeDoDe: ``TestDeDoDe`` is class-level ``@pytest.mark.skip`` ("DeDoDe is
-    # ummaintained"), so the scheduled slow run does not reach it either. The only
-    # DeDoDe construction CI performs is the ``DeDoDe.from_pretrained`` doctest,
-    # which selects the ``L-C4-v2`` detector and the ``B-upright`` descriptor --
+    # DeDoDe: ``TestDeDoDe`` builds only the L detector and B descriptor, with random
+    # weights. The only pretrained DeDoDe CI builds is the ``DeDoDe.from_pretrained``
+    # doctest, which selects the ``L-C4-v2`` detector and the ``B-upright`` descriptor --
     # those two are prefetched and every other variant is dead weight in the
     # cache. ``dedode_descriptor_G`` and the DINOv2 backbone it pulls are 2.2 GB
     # of it.
@@ -251,7 +250,7 @@ NOT_PREFETCHED: dict[str, str] = {
     "B_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
     "G_C4_Perm_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
     "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
-    "dedode_descriptor_G.pth": "only TestDeDoDe builds the G descriptor, and it is skipped",
+    "dedode_descriptor_G.pth": "no test or doctest builds the G descriptor",
     "dinov2_vitl14_pretrain.pth": "reachable only through the G descriptor, which nothing in CI builds",
     # Whole-model checkpoints whose only pretrained test carries
     # ``@pytest.mark.slow``, and which nothing in the docs build constructs. The

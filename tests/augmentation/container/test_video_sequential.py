@@ -143,18 +143,8 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.skip(reason="turn off due to Union Type")
-    def test_jit(self, device, dtype):
-        B, C, D, H, W = 2, 3, 5, 4, 4
-        img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
-        op = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
-
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_autocast(self, data_format, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.VideoSequential(*tfs, data_format=data_format, random_apply=True)

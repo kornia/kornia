@@ -155,18 +155,6 @@ class TestNormalize(BaseTester):
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
 
-    @pytest.mark.skip(reason="union type not supported")
-    def test_jit(self, device, dtype):
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        inputs = (data, mean, std)
-
-        op = kornia.enhance.normalize
-        op_script = torch.jit.script(op)
-
-        self.assert_close(op(*inputs), op_script(*inputs))
-
     def test_gradcheck(self, device):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
@@ -215,14 +203,6 @@ class TestNormalize(BaseTester):
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
         with pytest.raises((ValueError, RuntimeError)):
             f(inputs)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
 
 
 class TestNormalizeConstantsAreBuffers(BaseTester):
@@ -465,18 +445,6 @@ class TestDenormalize(BaseTester):
         f = kornia.enhance.Denormalize(mean, std)
         self.assert_close(f(data), expected)
 
-    @pytest.mark.skip(reason="union type not supported")
-    def test_jit(self, device, dtype):
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        inputs = (data, mean, std)
-
-        op = kornia.enhance.denormalize
-        op_script = torch.jit.script(op)
-
-        self.assert_close(op(*inputs), op_script(*inputs))
-
     def test_gradcheck(self, device):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
@@ -507,14 +475,6 @@ class TestDenormalize(BaseTester):
         op_module = kornia.enhance.Denormalize(mean, std)
 
         self.assert_close(op(*inputs), op_module(data))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
 
 
 class TestNormalizeIntegerStatistics(BaseTester):

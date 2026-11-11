@@ -27,7 +27,6 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core._compat import torch_version
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.filters import GuidedBlur, box_blur, guided_blur
 from kornia.filters.guided import _preprocess_fast_guided_blur, _subsample_indices
@@ -482,13 +481,6 @@ class TestGuidedBlur(BaseTester):
         tolerance = 8 * torch.finfo(dtype).eps
         self.assert_close(actual.float(), expected, rtol=tolerance, atol=tolerance)
 
-    @pytest.mark.skipif(
-        torch_version() in {"1.9.1", "2.1.0", "2.1.1", "2.1.2"},
-        reason=(
-            "https://github.com/pytorch/pytorch/issues/110696 "
-            "- Failing with: Argument of Integer should be of numeric type, got s3 + 3."
-        ),
-    )
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
     @pytest.mark.parametrize("separable", [False, True])

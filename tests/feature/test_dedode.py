@@ -446,17 +446,11 @@ class TestDeDoDeNoGrad(BaseTester):
         self.assert_close(descs_c, model.describe(x, kpts), rtol=1e-3, atol=1e-4)
 
 
-@pytest.mark.skip(reason="DeDoDe is ummaintained")
 class TestDeDoDe:
+    # Only the B descriptor: the G descriptor builds a DINOv2 backbone, whose 2.2 GB of weights CI does not cache.
     @pytest.mark.slow
-    @pytest.mark.parametrize("descriptor_model", ["B", "G"])
-    @pytest.mark.parametrize("detector_model", ["L"])
-    def test_smoke(self, dtype, device, descriptor_model, detector_model):
-        if "G" in descriptor_model and device.type != "cuda" and dtype == torch.float16:
-            pytest.skip('G descriptors do not support no cuda device. "LayerNormKernelImpl" not implemented for `Half`')
-        dedode = DeDoDe(descriptor_model=descriptor_model, detector_model=detector_model, amp_dtype=dtype).to(
-            device, dtype
-        )
+    def test_smoke(self, dtype, device):
+        dedode = DeDoDe(descriptor_model="B", detector_model="L", amp_dtype=dtype).to(device, dtype)
         shape = (2, 3, 128, 128)
         n = 1000
         inp = torch.randn(*shape, device=device, dtype=dtype)

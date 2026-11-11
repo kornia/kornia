@@ -598,8 +598,6 @@ class TestWarpImage(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("gradcheck is unstable for warp_image_tps on CUDA")
         if dtype != torch.float64:
             pytest.skip("gradcheck requires float64")
 

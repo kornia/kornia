@@ -119,22 +119,6 @@ class TestVector3(BaseTester):
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
 
 class TestVector2(BaseTester):
     def test_smoke(self, device, dtype):
@@ -209,22 +193,6 @@ class TestVector2(BaseTester):
         assert torch.isfinite(zero.grad).all()
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")

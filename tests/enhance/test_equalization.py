@@ -287,14 +287,6 @@ class TestEqualization(BaseTester):
 
         self.gradcheck(grad_rot, (inputs, 40.0, grid_size, True), nondet_tol=1e-4)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
-    def test_jit(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 10, 20
-        inp = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        op = enhance.equalize_clahe
-        op_script = torch.jit.script(op)
-        self.assert_close(op(inp), op_script(inp))
-
     def test_module(self):
         # equalize_clahe is only a function
         pass

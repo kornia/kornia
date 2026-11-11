@@ -85,12 +85,6 @@ class TestHardNet8(BaseTester):
         out = hardnet(inp)
         assert out.shape == (4, 128)
 
-    @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
-        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float32)
-        hardnet = HardNet8(pretrained=False).to(patches.device, patches.dtype).eval()
-        self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
-
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

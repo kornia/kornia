@@ -82,9 +82,6 @@ class TestDexiNed(BaseTester):
         img = torch.rand(1, 3, 8, 12, device=device, dtype=torch.float64)
         self.gradcheck(net, (img,), fast_mode=False)
 
-    @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
-    def test_dynamo(self, device, dtype, torch_optimizer): ...
-
     def test_the_filters_path_is_the_same_class(self):
         # kornia.filters.dexined re-exports the network instead of keeping a second copy of it.
         assert FilterDexiNed is DexiNed

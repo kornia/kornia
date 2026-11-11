@@ -15,13 +15,12 @@
 # limitations under the License.
 #
 
-import sys
 
 import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version, torch_version_lt
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 
@@ -1200,8 +1199,6 @@ class TestWarpPerspective(BaseTester):
         self.assert_close(patch_warped, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        if dtype == torch.float64 and torch_version() in {"2.0.0", "2.0.1"} and sys.platform == "linux":
-            pytest.xfail("Failing on CI on ubuntu with torch 2.0.0 for float64")
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         H_ab = kornia.core.ops.eye_like(3, img)
         args = (img, H_ab, (4, 5))
@@ -1544,9 +1541,7 @@ class TestRemap(BaseTester):
             requires_grad=(True, False, False, False, False, False),
         )
 
-    @pytest.mark.skip(reason="Not fully support dynamo")
     def test_dynamo(self, device, dtype, torch_optimizer):
-        # TODO: add dynamo support to create_meshgrid
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 

@@ -21,7 +21,6 @@ import warnings
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_le
 from kornia.feature import matching
 from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
 from kornia.feature.integrated import LightGlueMatcher, LocalFeatureMatcher
@@ -776,19 +775,6 @@ class TestMatchFGINN(BaseTester):
         lafs2 = laf_from_center_scale_ori(center2)
         self.gradcheck(match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), nondet_tol=1e-4)
 
-    @pytest.mark.skip("keyword-arg expansion is not supported")
-    def test_jit(self, device, dtype):
-        desc1 = torch.rand(5, 8, device=device, dtype=dtype)
-        desc2 = torch.rand(7, 8, device=device, dtype=dtype)
-        center1 = torch.rand(1, 5, 2, device=device)
-        center2 = torch.rand(1, 7, 2, device=device)
-        lafs1 = laf_from_center_scale_ori(center1)
-        lafs2 = laf_from_center_scale_ori(center2)
-        matcher = GeometryAwareDescriptorMatcher("fginn", 0.8).to(device)
-        matcher_jit = torch.jit.script(GeometryAwareDescriptorMatcher("fginn", 0.8).to(device))
-        self.assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2, lafs1, lafs2)[0])
-        self.assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2, lafs1, lafs2)[1])
-
 
 class TestAdalam(BaseTester):
     @pytest.mark.slow
@@ -1015,7 +1001,6 @@ class TestAdalamInputs(BaseTester):
 
 class TestLightGlueDISK(BaseTester):
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs autocast")
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_real(self, device, dtype, data):
         torch.random.manual_seed(0)

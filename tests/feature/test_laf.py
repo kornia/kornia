@@ -48,14 +48,6 @@ class TestAngleToRotationMatrix(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.imgwarp.angle_to_rotation_matrix, (img,))
 
-    @pytest.mark.skip("Problems with kornia.pi")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 1, 32, 32
-        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix
-        model_jit = torch.jit.script(kornia.geometry.transform.imgwarp.angle_to_rotation_matrix)
-        self.assert_close(model(patches), model_jit(patches))
-
 
 class TestGetLAFScale(BaseTester):
     def test_shape(self, device):
@@ -134,7 +126,6 @@ class TestGetLAFOri(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.get_laf_orientation, (img,))
 
-    @pytest.mark.skip("Union")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
@@ -168,15 +159,6 @@ class TestScaleLAF(BaseTester):
         scale = torch.rand(batch_size, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.scale_laf, (laf, scale), atol=1e-4)
 
-    @pytest.mark.skip("Union")
-    def test_jit(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 2, 3
-        laf = torch.rand(batch_size, channels, height, width, device=device)
-        scale = torch.rand(batch_size, device=device)
-        model = kornia.feature.scale_laf
-        model_jit = torch.jit.script(kornia.feature.scale_laf)
-        self.assert_close(model(laf, scale), model_jit(laf, scale))
-
 
 class TestSetLAFOri(BaseTester):
     def test_shape_tensor(self, device):
@@ -197,15 +179,6 @@ class TestSetLAFOri(BaseTester):
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         ori = torch.rand(batch_size, channels, 1, 1, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.set_laf_orientation, (laf, ori), atol=1e-4)
-
-    @pytest.mark.skip("Union")
-    def test_jit(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 2, 3
-        laf = torch.rand(batch_size, channels, height, width, device=device)
-        ori = torch.rand(batch_size, channels, 1, 1, device=device)
-        model = kornia.feature.set_laf_orientation
-        model_jit = torch.jit.script(kornia.feature.set_laf_orientation)
-        self.assert_close(model(laf, ori), model_jit(laf, ori))
 
 
 class TestMakeUpright(BaseTester):
@@ -254,14 +227,6 @@ class TestMakeUpright(BaseTester):
         laf.requires_grad_(True)
         kornia.feature.make_upright(laf).sum().backward()
         assert torch.isfinite(laf.grad).all()
-
-    @pytest.mark.skip("Union")
-    def test_jit(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 2, 3
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        model = kornia.feature.make_upright
-        model_jit = torch.jit.script(kornia.feature.make_upright)
-        self.assert_close(model(img), model_jit(img))
 
     def test_large_laf_does_not_overflow(self, device, dtype):
         # Squares and products of these LAFs' entries overflow float16 (max 65504); the LAFs and their upright forms
@@ -1831,16 +1796,6 @@ class TestGetCreateLAF(BaseTester):
         ori = torch.rand(batch_size, channels, 1, device=device, dtype=torch.float64)
         scale = torch.abs(torch.rand(batch_size, channels, 1, 1, device=device, dtype=torch.float64))
         self.gradcheck(kornia.feature.laf_from_center_scale_ori, (xy, scale, ori))
-
-    @pytest.mark.skip("Depends on angle-to-rotation-matric")
-    def test_jit(self, device, dtype):
-        batch_size, channels = 3, 2
-        xy = torch.rand(batch_size, channels, 2, device=device)
-        ori = torch.rand(batch_size, channels, 1, device=device)
-        scale = torch.abs(torch.rand(batch_size, channels, 1, 1, device=device))
-        model = kornia.feature.laf_from_center_scale_ori
-        model_jit = torch.jit.script(kornia.feature.laf_from_center_scale_ori)
-        self.assert_close(model(xy, scale, ori), model_jit(xy, scale, ori))
 
 
 class TestGetLAF3pts(BaseTester):

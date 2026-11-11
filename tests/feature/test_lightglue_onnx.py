@@ -25,7 +25,6 @@ import torch
 
 from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
-from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
 
@@ -103,7 +102,6 @@ def _write_local_model(tmp_path):
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
-@pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
     @pytest.mark.device_agnostic
     def test_local_model_inference(self, tmp_path):

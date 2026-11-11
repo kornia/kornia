@@ -54,11 +54,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.core._compat import torch_version_ge, torch_version_lt
-
-pytestmark = pytest.mark.skipif(
-    torch_version_lt(2, 4, 0), reason="augmentation ONNX regression tests require opset 20 support from PyTorch 2.4"
-)
+from kornia.core._compat import torch_version_ge
 
 
 def _hflip() -> torch.nn.Module:

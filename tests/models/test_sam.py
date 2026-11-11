@@ -98,13 +98,7 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
         assert next(model.parameters()).device == device
 
-    @pytest.mark.skip(reason="Unsupported at moment -- the code is not tested for training and had `torch.no_grad`")
-    def test_gradcheck(self, device): ...
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self): ...
-
-    @pytest.mark.skip(reason="Needs to be reviewed.")
+    @pytest.mark.slow
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         img = torch.rand(1, 3, 128, 75, device=device, dtype=dtype)

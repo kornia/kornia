@@ -782,12 +782,6 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     def test_dynamo(self, batch_size, align_corners, normalized_coordinates, device, dtype, torch_optimizer):
-        if (
-            device == torch.device("cpu")
-            and batch_size != 1
-            and kornia.core._compat.torch_version() in {"2.3.0", "2.3.1"}
-        ):
-            pytest.skip("Failing to compile batched inputs see pytorch/pytorch#126617")
 
         # generate input data
         height, width = 128, 64

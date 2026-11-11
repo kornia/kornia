@@ -62,10 +62,6 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(image_size.height, cam.height)
         self.assert_close(image_size.width, cam.width)
 
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_cardinality(self, device, dtype):
-        pass
-
     def test_exception(self, device, dtype):
         # test for invalid params for different camera models
         params = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0])
@@ -78,18 +74,6 @@ class TestPinholeCamera(BaseTester):
             CameraModel(image_size, CameraModelType.KANNALA_BRANDT_K3, params)
         with pytest.raises(ValueError):
             CameraModel(image_size, CameraModelType.ORTHOGRAPHIC, params)
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_gradcheck(self, device):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self, device, dtype):
-        pass
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_project_unproject(self, device, dtype, batch_size):

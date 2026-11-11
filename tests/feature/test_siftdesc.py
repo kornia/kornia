@@ -220,14 +220,6 @@ class TestSIFTDescriptor(BaseTester):
             torch.autograd.grad(actual.sum(), patches)[0], torch.autograd.grad(expected.sum(), patches)[0]
         )
 
-    @pytest.mark.skip("Compiled functions can't take variable number")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 1, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
-        self.assert_close(model(patches), model_jit(patches))
-
     def test_float64_matches_the_numpy_reference(self, device):
         # The expected values come from plain NumPy with the Gaussian window built in float64 and the pooling weights,
         # an nn.Conv2d parameter, rounded to float32 as kornia builds them (snippet in the PR); a window rounded to
