@@ -39,6 +39,8 @@ from testing.base import (
 
 
 class TestXFeatModel(BaseTester):
+    # No gradcheck: InstanceNorm2d runs under torch.no_grad(), which breaks an end-to-end gradcheck.
+
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch keeps every non-batch dimension of the three maps."""
         model = XFeatModel().to(device, dtype).eval()
@@ -63,12 +65,6 @@ class TestXFeatModel(BaseTester):
         assert feats.shape == (B, 64, 12, 16)
         assert kpts.shape == (B, 65, 12, 16)
         assert heatmap.shape == (B, 1, 12, 16)
-
-    def test_exception(self, device, dtype):
-        pass  # XFeatModel has no checked exceptions on forward
-
-    def test_gradcheck(self, device):
-        pass  # InstanceNorm2d inside torch.no_grad() breaks end-to-end gradcheck
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = XFeatModel().to(device, dtype)
@@ -129,9 +125,6 @@ class TestInterpolateSparse2d(BaseTester):
         out = interp(x, pos, H, W)
         assert out.shape == (B, N, C)
 
-    def test_exception(self, device, dtype):
-        pass
-
     def test_gradcheck(self, device):
         interp = InterpolateSparse2d("bilinear")
         x = torch.rand(1, 4, 8, 8, device=device, dtype=torch.float64, requires_grad=True)
@@ -190,6 +183,9 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
 
 
 class TestXFeat(BaseTester):
+    # No gradcheck or torch.compile test: detectAndCompute runs under inference_mode, and its NMS is data-dependent
+    # control flow.
+
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
         model = XFeat().to(device).eval()
@@ -310,12 +306,6 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].shape[0] > 0
         assert out["descriptors"].dtype == torch.float16
         assert (out["descriptors"] == 0).all()
-
-    def test_gradcheck(self, device):
-        pass  # inference_mode on detectAndCompute; gradcheck not applicable
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # inference_mode and dynamic NMS control flow; not torch.compile compatible
 
     def test_descriptors_normalized(self, device, dtype):
         model = XFeat().to(device).eval()

@@ -350,12 +350,6 @@ class TestKeypoints(BaseTester):
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
 
-    def test_smoke_jit(self, device, dtype):
-        pass  # Keypoints is not a nn.Module, jit test not applicable
-
-    def test_module(self, device, dtype):
-        pass  # Keypoints is not a nn.Module
-
 
 class TestVideoKeypoints(BaseTester):
     @pytest.mark.parametrize("layout", ["transposed", "expanded", "strided"])
@@ -473,15 +467,6 @@ class TestVideoKeypoints(BaseTester):
             return VideoKeypoints.from_tensor(x.transpose(0, 1)).to_tensor()
 
         self.assert_close(torch_optimizer(roundtrip, fullgraph=True)(data), data.transpose(0, 1))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_exception_in_base(self, device, dtype):
-        pass
 
 
 class TestKeypoints3D(BaseTester):
@@ -629,12 +614,6 @@ class TestKeypoints3D(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")

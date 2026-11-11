@@ -371,9 +371,6 @@ class TestLearnableFourierPositionalEncoding(BaseTester):
         op = torch_optimizer(enc)
         self.assert_close(op(x), enc(x))
 
-    def test_exception(self, device, dtype):
-        pass
-
     def test_module(self, device, dtype):
         enc = LearnableFourierPositionalEncoding(2, 32).to(device, dtype)
         x = torch.rand(1, 1, 5, 2, device=device, dtype=dtype)
@@ -381,6 +378,8 @@ class TestLearnableFourierPositionalEncoding(BaseTester):
 
 
 class TestTokenConfidence(BaseTester):
+    # No gradcheck: TokenConfidence detaches its inputs, so it is not differentiable with respect to them.
+
     def test_smoke(self, device, dtype):
         tc = TokenConfidence(64).to(device, dtype)
         d0 = torch.rand(1, 10, 64, device=device, dtype=dtype)
@@ -408,9 +407,6 @@ class TestTokenConfidence(BaseTester):
         assert (s1 >= 0).all()
         assert (s1 <= 1).all()
 
-    def test_gradcheck(self, device):
-        pass  # TokenConfidence uses detach() on inputs; not differentiable w.r.t. inputs
-
     def test_dynamo(self, device, dtype, torch_optimizer):
         tc = TokenConfidence(32).to(device, dtype)
         d0 = torch.rand(1, 10, 32, device=device, dtype=dtype)
@@ -420,9 +416,6 @@ class TestTokenConfidence(BaseTester):
         s0, s1 = tc(d0, d1)
         self.assert_close(s0_jit, s0)
         self.assert_close(s1_jit, s1)
-
-    def test_exception(self, device, dtype):
-        pass
 
     def test_module(self, device, dtype):
         tc = TokenConfidence(32).to(device, dtype)
@@ -475,6 +468,9 @@ def _make_data(device, dtype, B=1, M=20, N=15, H=64, W=64, D=64):
 
 
 class TestLightGlue(BaseTester):
+    # No gradcheck: LightGlue detaches the descriptors, so it is not differentiable end to end. No torch.compile
+    # test: its pruning and early stopping are data-dependent control flow.
+
     def test_smoke(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("LightGlue requires float32 or float64")
@@ -552,12 +548,6 @@ class TestLightGlue(BaseTester):
     def test_exception_wrong_features(self, device, dtype):
         with pytest.raises(Exception):
             LightGlue(features="nonexistent_feature_type")
-
-    def test_gradcheck(self, device):
-        pass  # LightGlue uses detach() on descriptors; not differentiable end-to-end
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # LightGlue uses dynamic control flow; not torch.compile compatible
 
     def test_module(self, device, dtype):
         if dtype == torch.float16:

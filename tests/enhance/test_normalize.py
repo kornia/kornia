@@ -308,24 +308,6 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
         )
         self.assert_close(kornia.enhance.Rescale(2.0)(x), x * 2.0)
 
-    def test_smoke(self, device, dtype):
-        pass
-
-    def test_cardinality(self, device, dtype):
-        pass
-
-    def test_exception(self, device, dtype):
-        pass
-
-    def test_gradcheck(self, device):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass
-
 
 @pytest.mark.parametrize(
     "module_name,parameter_name",

@@ -287,10 +287,6 @@ class TestEqualization(BaseTester):
 
         self.gradcheck(grad_rot, (inputs, 40.0, grid_size, True), nondet_tol=1e-4)
 
-    def test_module(self):
-        # equalize_clahe is only a function
-        pass
-
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
     def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
         # kornia#4564: the tile-LUT gather used to fail with a raw
