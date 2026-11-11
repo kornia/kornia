@@ -15,10 +15,10 @@
 # limitations under the License.
 #
 
-"""Converted kornia modules keep the docstring style the rollout set out to give them.
+"""In-scope kornia packages keep the choose-then-use docstring style that a reader, an IDE or a coding agent relies on.
 
-``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
-an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
+``testing/docstring_rollout.py`` names the packages in scope and the exceptions. For every public object of those
+packages, this file enforces what a refactor silently breaks; the shape rule applies everywhere:
 
 * every public function and class, exported by an ``__all__`` or documented on a docs page, has a docstring, so none
   escapes the checks below;
@@ -34,10 +34,10 @@ an IDE or a coding agent relies on and what a refactor silently breaks; the shap
   and attributes autodoc documents under a converted class; See Also entries name kornia objects only;
 * every ``kornia/**/*.py`` file and every page Sphinx builds from ``docs/source`` writes a tensor shape as a literal
   such as ``(B, 1, H, W)``, not as ``:math:``, except for the values listed in ``MATH_NON_SHAPES``;
-* the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
+* the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal,
+  when the namespace needs a catalog of its own or its docstring has one (``catalog_namespaces`` selects them).
 
-The test ids are qualified names, or repository paths for the shape check, so a failure names what to fix. Run with
-``-s`` to see the progress table.
+The test ids are qualified names, or repository paths for the shape check, so a failure names what to fix.
 """
 
 from __future__ import annotations
@@ -52,8 +52,6 @@ import kornia
 
 from testing.docstring_rollout import (
     CATALOG_EXCEPTIONS,
-    CATALOG_NAMESPACES,
-    DOCSTRING_MODULES,
     EXCLUDED_PACKAGES,
     IN_SCOPE_PACKAGES,
     MATH_NON_SHAPES,
@@ -61,8 +59,10 @@ from testing.docstring_rollout import (
 )
 from testing.docstring_style import (
     catalog_missing,
+    catalog_namespaces,
     catalog_required,
     catalog_unimportable,
+    checked_objects,
     covered,
     docstring_roles,
     documented_members,
@@ -72,11 +72,9 @@ from testing.docstring_style import (
     is_documented,
     is_private_target,
     math_shape_roles,
-    modules_declaring_all,
     own_docstring,
     reference_resolves,
     resolve_reference,
-    rollout_objects,
     rst_pages,
     see_also_entries,
     sphinx_registry,
@@ -88,22 +86,18 @@ REPO_ROOT = KORNIA_ROOT.parent
 DOCS = REPO_ROOT / "docs" / "source"
 REGISTRY = sphinx_registry(DOCS)
 INTERSPHINX = intersphinx_names(DOCS)
+PACKAGES = tuple(f"kornia.{package}" for package in IN_SCOPE_PACKAGES)
 
 CONVERTED = sorted(
-    (
-        (qualified, obj)
-        for obj, qualified in rollout_objects(REGISTRY).values()
-        if covered(obj.__module__, DOCSTRING_MODULES)
-    ),
+    ((qualified, obj) for obj, qualified in checked_objects(REGISTRY).values() if covered(obj.__module__, PACKAGES)),
     key=lambda pair: pair[0],
 )
 UNDOCUMENTED = sorted(
-    (
-        qualified
-        for obj, qualified in rollout_objects(REGISTRY, with_docstring=False).values()
-        if covered(obj.__module__, DOCSTRING_MODULES)
-    ),
+    qualified
+    for obj, qualified in checked_objects(REGISTRY, with_docstring=False).values()
+    if covered(obj.__module__, PACKAGES)
 )
+CATALOGS = catalog_namespaces(PACKAGES, CATALOG_EXCEPTIONS)
 MEMBERS = sorted(
     (qualified, member, doc)
     for qualified, (member, doc) in documented_members(REGISTRY, [obj for _, obj in CONVERTED]).items()
@@ -125,16 +119,15 @@ def _wrong_role(role: str, target: str) -> str:
     return f" (an intersphinx {', '.join(sorted(types))}, which :{role}: does not link)" if types else ""
 
 
-def test_rollout_selects_something() -> None:
-    """The parametrized checks below are not vacuous: the rollout lists select objects and files."""
-    assert CONVERTED, f"DOCSTRING_MODULES {DOCSTRING_MODULES} select no public object"
+def test_checks_select_something() -> None:
+    """The parametrized checks below are not vacuous: every in-scope package selects objects, and catalogs exist."""
     assert SHAPE_CHECK_FILES, f"no source file or docs page found under {KORNIA_ROOT} and {DOCS}"
-    assert CATALOG_NAMESPACES, "CATALOG_NAMESPACES is empty, so no module catalog is checked"
+    assert CATALOGS, f"catalog_namespaces({PACKAGES}) selects no namespace, so no module catalog is checked"
     assert REGISTRY, f"sphinx_registry({DOCS}) registered nothing"
     assert INTERSPHINX, f"intersphinx_names({DOCS}) found no inventory names"
-    for prefix in DOCSTRING_MODULES:
+    for prefix in PACKAGES:
         assert any(covered(obj.__module__, [prefix]) for _, obj in CONVERTED), (
-            f"DOCSTRING_MODULES entry {prefix!r} selects no public object with a docstring"
+            f"IN_SCOPE_PACKAGES entry {prefix!r} selects no public object with a docstring"
         )
 
 
@@ -148,26 +141,12 @@ def test_every_package_is_assigned() -> None:
     )
 
 
-def test_rollout_lists_are_real() -> None:
-    lists = {
-        "DOCSTRING_MODULES": DOCSTRING_MODULES,
-        "CATALOG_NAMESPACES": CATALOG_NAMESPACES,
-        "CATALOG_EXCEPTIONS": CATALOG_EXCEPTIONS,
-    }
-    for list_name, entries in lists.items():
-        for entry in entries:
-            parts = entry.split(".")
-            package = parts[1] if parts[0] == "kornia" and len(parts) > 1 else None
-            assert package in IN_SCOPE_PACKAGES, (
-                f"{list_name} entry {entry!r} is not under kornia.<pkg> for an in-scope package"
-            )
-            importlib.import_module(entry)
-    for entry in CATALOG_NAMESPACES:
-        assert hasattr(importlib.import_module(entry), "__all__"), f"CATALOG_NAMESPACES entry {entry!r} has no __all__"
+def test_exceptions_are_real() -> None:
     for entry, reason in CATALOG_EXCEPTIONS.items():
-        assert entry not in CATALOG_NAMESPACES, f"{entry!r} is both catalogued and excepted"
+        assert covered(entry, PACKAGES), f"CATALOG_EXCEPTIONS entry {entry!r} is not under an in-scope package"
+        assert hasattr(importlib.import_module(entry), "__all__"), f"CATALOG_EXCEPTIONS entry {entry!r} has no __all__"
         assert reason.strip(), f"CATALOG_EXCEPTIONS entry {entry!r} needs a reason"
-        assert catalog_required(entry, CATALOG_NAMESPACES), f"{entry!r} no longer needs a catalog exception"
+        assert catalog_required(entry, CATALOGS), f"{entry!r} no longer needs a catalog exception"
     converted = {qualified for qualified, _ in CONVERTED}
     for key, reason in SEE_ALSO_EXCEPTIONS.items():
         assert key in converted, f"SEE_ALSO_EXCEPTIONS key {key!r} is not a converted object"
@@ -291,7 +270,7 @@ def test_math_non_shapes_are_current() -> None:
             assert reason.strip(), f"MATH_NON_SHAPES entry {content!r} in {relative} needs a reason"
 
 
-@pytest.mark.parametrize("namespace", CATALOG_NAMESPACES)
+@pytest.mark.parametrize("namespace", CATALOGS)
 def test_catalog_names_every_export(namespace: str) -> None:
     module = importlib.import_module(namespace)
     doc = inspect.getdoc(module) or ""
@@ -302,25 +281,3 @@ def test_catalog_names_every_export(namespace: str) -> None:
     )
     broken = catalog_unimportable(module, doc)
     assert not broken, f"the module docstring of {namespace} has references that do not import: {broken}"
-
-
-def test_rollout_progress() -> None:
-    """Print, per in-scope package, the converted objects and catalogued namespaces (read it with ``-s``)."""
-    objects = [obj for obj, _ in rollout_objects(REGISTRY).values()]
-    namespaces = modules_declaring_all()
-    print("\npackage        converted objects   catalogued namespaces   excepted namespaces")
-    for package in IN_SCOPE_PACKAGES:
-        prefix = f"kornia.{package}"
-        in_package = [obj for obj in objects if covered(obj.__module__, [prefix])]
-        done = [obj for obj in in_package if covered(obj.__module__, DOCSTRING_MODULES)]
-        excepted = [ns for ns in CATALOG_EXCEPTIONS if covered(ns, [prefix])]
-        required = [
-            ns
-            for ns in namespaces
-            if ns not in CATALOG_EXCEPTIONS and covered(ns, [prefix]) and catalog_required(ns, CATALOG_NAMESPACES)
-        ]
-        catalogued = [ns for ns in required if ns in CATALOG_NAMESPACES]
-        print(
-            f"{package:<14} {len(done):>4} / {len(in_package):<12} "
-            f"{len(catalogued):>4} / {len(required):<18} {len(excepted)}"
-        )
