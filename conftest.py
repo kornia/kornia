@@ -382,6 +382,35 @@ def _apply_device_skips(items) -> None:
             item.add_marker(skip_mps_autocast)
 
 
+def _deselect_cuda_device_assert_dtypes(config, items) -> None:
+    """Collect a CUDA test marked cuda_device_assert for one dtype of the matrix only."""
+    # A CUDA test marked cuda_device_assert costs a fresh process (about 4 seconds), and whether a value check fires
+    # does not depend on the dtype, so on CUDA it runs for one dtype of the matrix: float32 when selected, else the
+    # first one. Items without a dtype_name parameter, and other devices, keep every case.
+    selected_dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+    kept_dtype = "float32" if "float32" in selected_dtypes else selected_dtypes[0]
+    device_assert_items = []
+    for item in items:
+        params = getattr(getattr(item, "callspec", None), "params", {})
+        if (
+            params.get("device_name") == "cuda"
+            and params.get("dtype_name", kept_dtype) != kept_dtype
+            and item.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None
+        ):
+            device_assert_items.append(item)
+    if device_assert_items:
+        config.hook.pytest_deselected(items=device_assert_items)
+        device_assert_ids = {id(item) for item in device_assert_items}
+        items[:] = [item for item in items if id(item) not in device_assert_ids]
+        reporter = config.pluginmanager.get_plugin("terminalreporter")
+        if reporter is not None:
+            reporter.write_line(
+                f"deselected {len(device_assert_items)} cuda_device_assert test(s) on CUDA: each runs in a fresh "
+                f"process, so CUDA runs them for {kept_dtype} only.",
+                yellow=True,
+            )
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
@@ -406,6 +435,8 @@ def pytest_collection_modifyitems(config, items):
                     "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
                     yellow=True,
                 )
+
+    _deselect_cuda_device_assert_dtypes(config, items)
 
     # ONNX tests depend on the torch release (its exporters) and the onnx packages, not on the Python version or the
     # test dtype, so CI runs them on one CPU leg per torch release and passes --skip-onnx to the others. They are

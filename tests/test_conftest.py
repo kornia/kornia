@@ -425,6 +425,51 @@ class TestCudaDeviceAssertMarker:
         result.assert_outcomes(passed=passed)
         result.stdout.no_fnmatch_line("*INTERNALERROR*")
 
+    @pytest.mark.parametrize(
+        "dtypes, kept",
+        [
+            ("float32,float64", "float32"),
+            ("float64,float32", "float32"),
+            ("float64", "float64"),
+            ("bfloat16,float16", "bfloat16"),
+        ],
+    )
+    def test_cuda_runs_a_marked_test_for_one_dtype(self, pytester, monkeypatch, dtypes, kept):
+        """On CUDA a marked item is collected for float32, or the first selected dtype, only; CPU keeps every dtype."""
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        pytester.makepyfile(
+            test_dtypes="""
+            import pytest
+
+            @pytest.mark.cuda_device_assert
+            def test_marked(device_name, dtype_name):
+                pass
+
+            @pytest.mark.cuda_device_assert
+            def test_marked_without_dtype(device_name):
+                pass
+
+            def test_unmarked(device_name, dtype_name):
+                pass
+            """
+        )
+        result = pytester.runpytest_subprocess("--device=cpu,cuda", f"--dtype={dtypes}", "--collect-only", "-q")
+        selected = dtypes.split(",")
+        expected = {
+            *(f"test_dtypes.py::test_marked[{device}-{dtype}]" for device in ("cpu", "cuda") for dtype in selected),
+            *(f"test_dtypes.py::test_unmarked[{device}-{dtype}]" for device in ("cpu", "cuda") for dtype in selected),
+            "test_dtypes.py::test_marked_without_dtype[cpu]",
+            "test_dtypes.py::test_marked_without_dtype[cuda]",
+        } - {f"test_dtypes.py::test_marked[cuda-{dtype}]" for dtype in selected if dtype != kept}
+        collected = {line for line in result.stdout.lines if line.startswith("test_dtypes.py::")}
+        assert collected == expected
+        if len(selected) > 1:
+            result.stdout.fnmatch_lines(
+                [f"deselected {len(selected) - 1} cuda_device_assert test(s) on CUDA*for {kept} only*"]
+            )
+        else:
+            result.stdout.no_fnmatch_line("*cuda_device_assert test(s) on CUDA*")
+
     def test_marked_cpu_item_keeps_its_known_failure_profile_entry(self, pytester, monkeypatch):
         """A CPU-half profile run, which is CPU only, xfails a marked test in place as its manifest records."""
         from testing.half_precision_ci import ManifestEntry, current_environment, get_profile, serialize_manifest

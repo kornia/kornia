@@ -462,7 +462,10 @@ has it) naming a device-side assert, not the check's message, and the kernel pri
 with `testing.base.raises_cuda_device_assert(match, capfd)`, which synchronizes, requires the device-side assert, and
 matches the printed message, so the test fails unless that check fired; `raises_value_check(device, match, capfd)`
 picks it on CUDA and `pytest.raises` elsewhere. Each item costs a fresh Python process (about 4 seconds), so mark only
-tests that fail a device-side assert.
+tests that fail a device-side assert. Whether a check fires does not depend on the dtype, so CUDA collects a marked
+test for one dtype of the matrix only: float32 when it is selected (`--dtype=float32,float64` runs float32), else
+the first selected dtype (`--dtype=float64` runs float64). The run reports the deselection; a marked test without a
+`dtype` parameter, and every other device, keep all cases.
 
 **Linux CPU half-precision CI baseline.** Pull requests and scheduled CI run the complete `cpu-float16` and
 `cpu-bfloat16` profiles on Linux, Python 3.11, and the workflow-pinned PyTorch release. Selecting a profile sets
