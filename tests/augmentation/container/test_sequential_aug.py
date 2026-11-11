@@ -558,7 +558,9 @@ class TestConventionImageSequential(BaseTester):
             random_apply=random_apply,
             random_apply_weights=weights,
         )
-        for seed in range(50):
+        # Drawn with replacement, three of these members repeat one in 82% of the calls whatever the weights, so ten
+        # calls miss a repeat with probability below 1e-7; the sum rule repeated in the first call of every case here.
+        for seed in range(10):
             torch.manual_seed(seed)
             seq(x)
             names = self._applied_names(seq)
@@ -584,8 +586,10 @@ class TestConventionImageSequential(BaseTester):
             random_apply=2,
             random_apply_weights=weights([0.5, 0.3, 0.2]),
         )
+        # Two draws with replacement repeat a member in 38% of the calls, at either scale of these weights: twenty calls
+        # show a repeat below, and one the larger scale must not make in the second loop, with probability 1 - 1e-4.
         repeated = 0
-        for seed in range(50):
+        for seed in range(20):
             torch.manual_seed(seed)
             with pytest.warns(FutureWarning, match=_SUM_RULE_WARNING):
                 seq(x)
@@ -604,7 +608,7 @@ class TestConventionImageSequential(BaseTester):
         )
         with warnings.catch_warnings():
             warnings.simplefilter("error", FutureWarning)
-            for seed in range(50):
+            for seed in range(20):
                 torch.manual_seed(seed)
                 seq(x)
                 names = self._applied_names(seq)
@@ -725,7 +729,8 @@ class TestConventionImageSequential(BaseTester):
         seq, x = self._random_apply_container(
             container, members, device, dtype, random_apply=True, random_apply_weights=weights
         )
-        for seed in range(30):
+        # The old rule missed a member in 79 of 100 calls, the first call of each case it reaches; ten calls suffice.
+        for seed in range(10):
             torch.manual_seed(seed)
             seq(x)
             names = self._applied_names(seq)

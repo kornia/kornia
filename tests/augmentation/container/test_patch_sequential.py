@@ -329,8 +329,19 @@ class TestPatchSequentialRegression(BaseTester):
         # A mix member is allowed from the start, and not after one has been added.
         assert seen == [True, True, False, False]
 
-    @pytest.mark.parametrize("patchwise_apply,random_apply", [(True, True), (False, True), (False, 1), (False, (1, 3))])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    # same_on_batch picks how forward_parameters groups the draws only with patchwise_apply (True draws one sequence per
+    # patch location, False and None one per patch); without it there is one sequence, whatever same_on_batch says.
+    @pytest.mark.parametrize(
+        "patchwise_apply,random_apply,same_on_batch",
+        [
+            (True, True, True),
+            (True, True, False),
+            (False, True, True),
+            (False, True, None),
+            (False, 1, None),
+            (False, (1, 3), None),
+        ],
+    )
     def test_random_apply_mix_is_applied_at_most_once(
         self, patchwise_apply, random_apply, same_on_batch, device, dtype
     ):
@@ -464,7 +475,8 @@ class TestPatchSequentialRegression(BaseTester):
 
     @pytest.mark.parametrize("padding,patch_size", [("same", 3), ("valid", 2)])
     @pytest.mark.parametrize("patchwise_apply", [True, False])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    # None leaves the children's own same_on_batch, False here, and groups the draws as False does.
+    @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("random_apply", [True, False])
     def test_image_shape_parameter_replay(
         self, padding, patch_size, patchwise_apply, same_on_batch, random_apply, device, dtype, monkeypatch

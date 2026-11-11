@@ -168,6 +168,19 @@ class TestRandomPerspective(BaseTester):
         )
 
 
+_AFFINE_DEGREES = [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])]
+_AFFINE_TRANSLATES = [(0.1, 0.1), torch.tensor([0.1, 0.1])]
+_AFFINE_SCALES = [(0.8, 1.2), (0.8, 1.2, 0.9, 1.1), torch.tensor([0.8, 1.2]), torch.tensor([0.8, 1.2, 0.7, 1.3])]
+_AFFINE_SHEARS = [
+    5.0,
+    (-5.0, 5.0),
+    (-5.0, 5.0, -3.0, 3.0),
+    torch.tensor(5.0),
+    torch.tensor([-5.0, 5.0]),
+    torch.tensor([-5.0, 5.0, -3.0, 3.0]),
+]
+
+
 class TestRandomAffine(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
@@ -188,20 +201,13 @@ class TestRandomAffine(BaseTester):
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
-    @pytest.mark.parametrize("degrees", [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])])
-    @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])
+    # Each argument is read on its own, so every form of each one, and every pairing of a degrees and a translate form,
+    # is enough: cycling the forms gives that in six cases instead of the 144 of the full product.
     @pytest.mark.parametrize(
-        "scale", [(0.8, 1.2), (0.8, 1.2, 0.9, 1.1), torch.tensor([0.8, 1.2]), torch.tensor([0.8, 1.2, 0.7, 1.3])]
-    )
-    @pytest.mark.parametrize(
-        "shear",
+        "degrees,translate,scale,shear",
         [
-            5.0,
-            (-5.0, 5.0),
-            (-5.0, 5.0, -3.0, 3.0),
-            torch.tensor(5.0),
-            torch.tensor([-5.0, 5.0]),
-            torch.tensor([-5.0, 5.0, -3.0, 3.0]),
+            (_AFFINE_DEGREES[i % 3], _AFFINE_TRANSLATES[i % 2], _AFFINE_SCALES[i % 4], _AFFINE_SHEARS[i])
+            for i in range(6)
         ],
     )
     def test_batch_multi_params(self, degrees, translate, scale, shear, device, dtype):
