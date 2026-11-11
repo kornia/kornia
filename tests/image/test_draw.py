@@ -994,6 +994,18 @@ class TestDrawRectangle(BaseTester):
             self.assert_close(got, model(image, rectangle, color), rtol=0, atol=0)
 
 
+def _vertex_rounding_band(dtype, radius, area):
+    """Bound the fraction of pixels that rounding the vertices of a polygon inscribed in a circle can flip.
+
+    Rounding a vertex below 512 to a half-precision dtype moves it, and so the edges, by at most ``eps / 2 * 512``;
+    only the pixel centres within that distance of the boundary, of length at most ``2 * pi * radius``, can change.
+    The float32 and float64 vertices are not rounded, so the bound is 0 there.
+    """
+    if dtype not in (torch.float16, torch.bfloat16):
+        return 0.0
+    return 2 * math.pi * radius * torch.finfo(dtype).eps * 256 / area
+
+
 class TestFillConvexPolygon(BaseTester):
     @pytest.mark.parametrize("as_list", [False, True])
     @pytest.mark.parametrize("reverse", [False, True])
@@ -1046,39 +1058,45 @@ class TestFillConvexPolygon(BaseTester):
     def test_circle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000
+        # The vertices and the reference disc are built in at least float32 and the vertices rounded once to the
+        # image dtype, so in half precision only that rounding separates the polygon from the disc.
+        work = torch.promote_types(dtype, torch.float32)
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=work)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         x = (2 * math.pi * t).cos()
         y = (2 * math.pi * t).sin()
         ctr = 200
         radius = 200
-        pts = ctr + radius * torch.stack((x, y), dim=-1)
+        pts = (ctr + radius * torch.stack((x, y), dim=-1)).to(dtype)
         poly_im = draw_convex_polygon(im, pts, color)
-        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
+        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=work)
         inside = (((XY[..., 1] - ctr) ** 2 + (XY[..., 0] - ctr) ** 2).sqrt() <= radius)[:, None].expand(b, c, h, w)
         circ_im = inside * color[..., None, None]
-        assert (circ_im - poly_im).abs().mean() <= 1e-4
+        assert (circ_im - poly_im).abs().mean() <= 1e-4 + _vertex_rounding_band(dtype, radius, h * w)
 
     def test_ellipse(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000
+        # As in test_circle, only the rounding of the vertices to a half-precision dtype is in that dtype.
+        work = torch.promote_types(dtype, torch.float32)
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=work)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         lam = 2
         x = lam * (2 * math.pi * t).cos()
         y = (2 * math.pi * t).sin()
         ctr = 200
         radius = 100
-        pts = ctr + radius * torch.stack((x, y), dim=-1)
+        pts = (ctr + radius * torch.stack((x, y), dim=-1)).to(dtype)
         poly_im = draw_convex_polygon(im, pts, color)
-        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
+        XY = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=work)
         inside = (((XY[..., 1] - ctr) ** 2 + ((XY[..., 0] - ctr) / lam) ** 2).sqrt() <= radius)[:, None].expand(
             b, c, h, w
         )
         ellipse_im = inside * color[..., None, None]
-        assert (ellipse_im - poly_im).abs().mean() <= 1e-4
+        # The perimeter is below that of the circle of radius lam * radius.
+        assert (ellipse_im - poly_im).abs().mean() <= 1e-4 + _vertex_rounding_band(dtype, lam * radius, h * w)
 
     def test_rectangle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500

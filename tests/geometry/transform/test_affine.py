@@ -405,8 +405,6 @@ class TestResize(BaseTester):
     def test_convention_align_corners_default_none(self, device, dtype):
         # resize's bare default align_corners=None behaves like align_corners=False (no test in the
         # suite exercises the bare default; every other call here passes align_corners=False explicitly).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
         # Snippet used to generate expected:
         # inp_x = torch.arange(20, dtype=torch.float32) / 20.0
         # inp = inp_x[None].T @ inp_x[None]
@@ -416,6 +414,8 @@ class TestResize(BaseTester):
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
         out = kornia.geometry.transform.resize(inp, (5, 5), antialias=False)
+        # as in TestRescale.test_downscale_values: bfloat16 holds values near 0.6 to one ULP of 3.9e-3
+        tol = max(1e-3, torch.finfo(dtype).eps)
         expected = torch.tensor(
             [
                 [
@@ -431,7 +431,7 @@ class TestResize(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
         # the output above cannot distinguish None from False (they interpolate identically), so
         # the documented default is additionally pinned on the signature itself
         import inspect
@@ -544,7 +544,10 @@ class TestRescale(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # The input ramp rounds to the dtype before it is resampled, and bfloat16 holds values near 0.6 to 3.9e-3 (one
+        # ULP); the literals carry 4 decimals. One eps or 1e-3, whichever is larger, covers both.
+        tol = max(1e-3, torch.finfo(dtype).eps)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
 
     def test_downscale_values_AA(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
@@ -566,7 +569,10 @@ class TestRescale(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # The input ramp rounds to the dtype before it is resampled, and bfloat16 holds values near 0.6 to 3.9e-3 (one
+        # ULP); the literals carry 4 decimals. One eps or 1e-3, whichever is larger, covers both.
+        tol = max(1e-3, torch.finfo(dtype).eps)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -780,9 +786,8 @@ class TestRotate(BaseTester):
 
     def test_convention_align_corners_default_true(self, device, dtype):
         # rotate/Rotate's bare default align_corners=True (every other test in this class passes
-        # align_corners=True explicitly to Rotate; this exercises the bare default).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # align_corners=True explicitly to Rotate; this exercises the bare default). A half-precision 90 degree
+        # rotation matrix is exact, as its entries are computed in float32 and rounded once.
         # Snippet used to generate expected:
         # inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]])
         # angle = torch.tensor([90.0])

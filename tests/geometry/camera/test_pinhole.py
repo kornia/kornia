@@ -202,7 +202,15 @@ class TestCam2Pixel(BaseTester):
             depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_concat
         )
 
-        self.assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Rounding a pixel (|u| < W = fx) to half precision moves its unprojection by up to eps / 2 * z, and the
+            # unprojection rounds once more; the error therefore scales with each point's depth (up to 500).
+            relative_error = (cam_coords_output - cam_coords_input) / cam_coords_input[..., 2:]
+            self.assert_close(
+                relative_error, torch.zeros_like(relative_error), rtol=0.0, atol=2 * torch.finfo(dtype).eps
+            )
+        else:
+            self.assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1])
     def test_gradcheck(self, batch_size, device):
@@ -354,7 +362,12 @@ class TestPixel2Cam(BaseTester):
         )
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
-        self.assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The camera point rounds by eps / 2 relative, which moves the pixel by up to eps / 2 * |u - cx|
+            # <= eps / 2 * W / 2, and the pixel itself rounds by up to eps / 2 * W.
+            self.assert_close(pixel_coords_concat, pixel_coords_input, atol=torch.finfo(dtype).eps * W, rtol=0.0)
+        else:
+            self.assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1])
     @pytest.mark.slow
@@ -728,7 +741,12 @@ class TestPinholeCamera(BaseTester):
 
         point_2d = pinhole.project(point_3d)
         point_3d_hat = pinhole.unproject(point_2d, depth)
-        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The pixels (|u| <= 4) round by up to eps / 2 * 4, and unprojecting scales that by depth / fx <= 4 / 1:
+            # 8 eps, plus the roundings of the camera matrices and the depth.
+            self.assert_close(point_3d, point_3d_hat, atol=16 * torch.finfo(dtype).eps, rtol=0.0)
+        else:
+            self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_device(self, device, dtype):
         batch_size = 5

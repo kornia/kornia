@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -26,17 +28,22 @@ from testing.base import BaseTester
 
 @pytest.fixture
 def atol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, whose rounding alone moves the O(1) values of these tests that far; 1e-4 otherwise.
+
+    The rotation conversions compute float16 and bfloat16 in float32 and round once, so a half-precision result is
+    within rounding of the exact one for its rounded input; the input, the expected literal and each intermediate
+    conversion of a round trip round once more. A wrong sign or a factor of 2 misses by a sizeable fraction of 1.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
 @pytest.fixture
 def rtol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, relative, as for ``atol``; 1e-4 otherwise."""
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
@@ -256,23 +263,26 @@ class TestAngleOfRotations(BaseTester):
     def test_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         angle = torch.tensor((angle_deg * kornia.pi / 180.0,), device=device, dtype=dtype).repeat(2, 1)
-        pi = torch.ones_like(angle) * kornia.pi
         assert 2 <= len(angle.shape)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m, eps=eps)
+        # The angle is read off the quaternion in float64: in bfloat16, -179.9 degrees rounds to a turn 9.7e-4 short of
+        # pi, which the quaternion holds (w = -4.8e-4), but a bfloat16 atan2 and pi (3.140625) cannot tell from pi.
+        quaternion = quaternion.double()
+        pi = torch.full_like(angle, math.pi, dtype=torch.float64)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
         angle_hat = 2.0 * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True), quaternion[..., 0:1])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):
-            angle_hat = torch.where(mask, angle_hat - 2.0 * kornia.pi, angle_hat)
+            angle_hat = torch.where(mask, angle_hat - 2.0 * math.pi, angle_hat)
             mask = pi < angle_hat
         # invert angle, if quaternion axis points in the opposite direction of the original axis
-        dots = (quaternion[..., 1:4] * axis).sum(dim=-1, keepdim=True)
-        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat)
+        dots = (quaternion[..., 1:4] * axis.double()).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat).to(dtype)
         # quaternion angle should match input angle
         self.assert_close(angle_hat, angle, atol=atol, rtol=rtol)
         # magnitude of angle should match matrix rotation angle

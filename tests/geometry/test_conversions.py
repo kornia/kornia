@@ -73,17 +73,22 @@ def seed_rng() -> None:
 
 @pytest.fixture
 def atol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, whose rounding alone moves the O(1) values of these tests that far; 1e-4 otherwise.
+
+    The rotation conversions compute float16 and bfloat16 in float32 and round once, so a half-precision result is
+    within rounding of the exact one for its rounded input; the input, the expected literal and each intermediate
+    conversion of a round trip round once more. A wrong sign or a factor of 2 misses by a sizeable fraction of 1.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
 @pytest.fixture
 def rtol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, relative, as for ``atol``; 1e-4 otherwise."""
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
@@ -527,29 +532,31 @@ class TestAngleAxisToQuaternion(BaseTester):
         # fixed 1e-9 would underflow to 0 in float16. The zero rotation itself is pinned by
         # test_convention_gradients_at_the_identity_are_finite_3949.
         eps = torch.finfo(dtype).eps
+        # float16 and bfloat16 run in float32 and round once, so the unguarded formula does too
+        work = torch.promote_types(dtype, torch.float32)
         if op_name == "axis_angle_to_quaternion":
             x = torch.tensor(
                 ((0.1, 0.2, 0.3), (1.0, 0.0, 0.0), (3.0, -2.0, 0.5), (eps, 0.0, 0.0)), device=device, dtype=dtype
             )
-            a0, a1, a2 = x[..., 0:1], x[..., 1:2], x[..., 2:3]
+            a0, a1, a2 = x[..., 0:1].to(work), x[..., 1:2].to(work), x[..., 2:3].to(work)
             theta = torch.sqrt(a0 * a0 + a1 * a1 + a2 * a2)
             half_theta = theta * 0.5
             k = torch.sin(half_theta) / theta
-            expected = torch.cat((torch.cos(half_theta), a0 * k, a1 * k, a2 * k), dim=-1)
+            expected = torch.cat((torch.cos(half_theta), a0 * k, a1 * k, a2 * k), dim=-1).to(dtype)
         else:
             x = torch.tensor(
                 ((0.9, 0.1, 0.2, 0.3), (0.0, 1.0, 0.0, 0.0), (0.5, 3.0, -2.0, 0.5), (1.0, eps, 0.0, 0.0)),
                 device=device,
                 dtype=dtype,
             )
-            cos_theta = x[..., 0]
-            q1, q2, q3 = x[..., 1], x[..., 2], x[..., 3]
+            cos_theta = x[..., 0].to(work)
+            q1, q2, q3 = x[..., 1].to(work), x[..., 2].to(work), x[..., 3].to(work)
             sin_theta = torch.sqrt(q1 * q1 + q2 * q2 + q3 * q3)
             two_theta = 2.0 * torch.where(
                 cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
             )
             k = two_theta / sin_theta
-            expected = torch.stack((q1 * k, q2 * k, q3 * k), dim=-1)
+            expected = torch.stack((q1 * k, q2 * k, q3 * k), dim=-1).to(dtype)
 
         assert torch.equal(getattr(kornia.geometry.conversions, op_name)(x), expected)
 
@@ -4455,7 +4462,12 @@ class TestProjectPoints(BaseTester):
         )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # A ~1900 px pixel rounds by up to 0.5 px in float16, 0.0055 after unprojecting by depth / f = 30 / 2746:
+            # within the default half-precision tolerances.
+            self.assert_close(point_3d, point_3d_hat)
+        else:
+            self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # TODO: point [0, 0, 0] crashes
@@ -4963,6 +4975,9 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # generate input data
         t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        # pi / 2 rounds to 1.5703125 in float16 and bfloat16, 4.8e-4 short, so the zero entries of R are 4.8e-4: one eps
+        # of either dtype holds that and the rounding of the unit entries
+        rtol, atol = (torch.finfo(dtype).eps,) * 2 if dtype in (torch.float16, torch.bfloat16) else (1e-4, 1e-5)
         R_vis = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = Rt_to_matrix4x4(R_vis, t_vis)
         K_graf = camtoworld_vision_to_graphics_4x4(K_vis)
@@ -4971,22 +4986,22 @@ class TestCamtoworldGraphicsToVision(BaseTester):
             [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
         )[None].repeat(batch_size, 1, 1)
 
-        self.assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
+        self.assert_close(K_graf, expected, rtol=rtol, atol=atol)
         R_graf, t_graf = camtoworld_vision_to_graphics_Rt(R_vis, t_vis)
         expected_R = torch.tensor([[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype)[None].repeat(
             batch_size, 1, 1
         )
         expected_t = torch.tensor([2, 3, 4], device=device, dtype=dtype).reshape(1, 3, 1).repeat(batch_size, 1, 1)
 
-        self.assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)
-        self.assert_close(R_graf, expected_R, rtol=1e-4, atol=1e-5)
+        self.assert_close(t_graf, expected_t, rtol=rtol, atol=atol)
+        self.assert_close(R_graf, expected_R, rtol=rtol, atol=atol)
 
         Kvis_back = camtoworld_graphics_to_vision_4x4(K_graf)
-        self.assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
+        self.assert_close(Kvis_back, K_vis, rtol=rtol, atol=atol)
 
         R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
-        self.assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
-        self.assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
+        self.assert_close(R_vis_back, R_vis, rtol=rtol, atol=atol)
+        self.assert_close(t_vis_back, t_vis, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [4])
     def test_gradcheck(self, batch_size, device):
@@ -5155,6 +5170,9 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # generate input data
         t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        # pi / 2 rounds to 1.5703125 in float16 and bfloat16, 4.8e-4 short, so the zero entries of R are 4.8e-4: one eps
+        # of either dtype holds that and the rounding of the unit entries
+        rtol, atol = (torch.finfo(dtype).eps,) * 2 if dtype in (torch.float16, torch.bfloat16) else (1e-4, 1e-5)
         R = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
 
         Rp, tp = camtoworld_to_worldtocam_Rt(R, t)
@@ -5163,12 +5181,12 @@ class TestCamtoworldRtToPoseRt(BaseTester):
             batch_size, 1, 1
         )
         expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        self.assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
-        self.assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
+        self.assert_close(Rp, expected_Rp, rtol=rtol, atol=atol)
+        self.assert_close(tp, expected_tp, rtol=rtol, atol=atol)
 
         Rback, tback = worldtocam_to_camtoworld_Rt(Rp, tp)
-        self.assert_close(Rback, R, rtol=1e-4, atol=1e-5)
-        self.assert_close(tback, t, rtol=1e-4, atol=1e-5)
+        self.assert_close(Rback, R, rtol=rtol, atol=atol)
+        self.assert_close(tback, t, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [4])
     def test_gradcheck(self, batch_size, device):
@@ -5477,8 +5495,15 @@ class TestCARKitToColmap(BaseTester):
         expected_angles = torch.tensor([[116.8870620728, 0.0, -71.7524719238]], device=device, dtype=dtype)
         expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)
 
-        self.assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
-        self.assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Four conversions each round once: the quaternions carry eps / 2 into the angles, and the 117 degree angle
+            # rounds by up to half an ULP of 64-128 on top, 0.03 in float16 and 0.25 in bfloat16: 2 eps relative.
+            eps = torch.finfo(dtype).eps
+            self.assert_close(angles_colmap, expected_angles, rtol=2 * eps, atol=eps)
+            self.assert_close(t_colmap, expected_t, rtol=eps, atol=eps)
+        else:
+            self.assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
+            self.assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)
 
     def test_convention_quaternion_order_is_w_x_y_z_on_both_sides(self, device, dtype):
         # Convention pin: the real part comes FIRST on both sides of this function -- the input
@@ -6390,7 +6415,21 @@ class TestQuaternionFromEuler(BaseTester):
         euler = euler_from_quaternion(qw, qx, qy, qz)
         euler = torch.stack(euler, -1)
 
-        self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Once the angles and the quaternion round to the dtype, each row is within about eps of its triple, except
+            # that roll and yaw of the third row, at cos(pitch) = 0.17, amplify the eps / 2 rounding of the quaternion
+            # about 6x. In bfloat16 that row is inside the gimbal-lock snap of euler_from_quaternion,
+            # cos(pitch) < 2 * sqrt(eps) = 0.177, which returns roll 0 and pitch -pi / 2 instead of the triple.
+            eps = torch.finfo(dtype).eps
+            near_pole = 2
+            if dtype == torch.bfloat16:
+                snapped = torch.tensor([0.0, -math.pi / 2], device=device, dtype=dtype)
+                self.assert_close(euler[near_pole, :2], snapped, rtol=0.0, atol=0.0)
+                keep = [i for i in range(euler.shape[0]) if i != near_pole]
+                euler, euler_expected = euler[keep], euler_expected[keep]
+            self.assert_close(euler, euler_expected, rtol=0.0, atol=3 * eps)
+        else:
+            self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
         # this test is passing: pip install transforms3d
         # import transforms3d as tf3

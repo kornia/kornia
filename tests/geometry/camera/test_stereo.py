@@ -375,7 +375,7 @@ class TestStereoCamera(BaseTester):
         _assert_all(stereo_camera.tx, -tx_fx / _TestParams.fx)
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
-        assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
+        assert stereo_camera.Q.dtype == dtype
 
     def test_empty_batch_4281(self, device, dtype):
         # Regression for kornia#4281: an empty stereo rig is vacuously valid.
@@ -420,7 +420,7 @@ class TestStereoCamera(BaseTester):
         self.assert_close(stereo_camera.cy, left_rectified_camera[..., 1, 2])
         self.assert_close(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
-        assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
+        assert stereo_camera.Q.dtype == dtype
 
     def test_reproject_disparity_to_3D_smoke(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for smoke data."""
@@ -435,7 +435,7 @@ class TestStereoCamera(BaseTester):
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
         assert xyz.shape == (batch_size, _TestParams.height, _TestParams.width, 3)
-        assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
+        assert xyz.dtype == dtype
         assert xyz.device == device
 
     def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
@@ -448,7 +448,13 @@ class TestStereoCamera(BaseTester):
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        self.assert_close(xyz, xyz_gt)
+        if dtype == torch.bfloat16:
+            # The cameras, the disparity, Q and the result each round by eps / 2 relative, with no cancellation in
+            # X / W, Y / W or Z / W for this rig: within 2 eps relative, observed 1.1 eps. In float16 this rig's
+            # Q[2, 3] = fx * fy * tx = -5.4e6 is past the float16 range, so float16 stays a known failure.
+            self.assert_close(xyz, xyz_gt, rtol=2 * torch.finfo(dtype).eps, atol=0.0)
+        else:
+            self.assert_close(xyz, xyz_gt)
 
     def test_reproject_disparity_to_3D_uses_the_column_for_x(self, batch_size, device, dtype):
         """X must come from the column and Y from the row, as in cv2.reprojectImageTo3D.
@@ -503,7 +509,6 @@ class TestStereoCamera(BaseTester):
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
         assert xyz.shape == (batch_size, height, width, 3)
-        assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.dtype == dtype
 
     @staticmethod
@@ -632,8 +637,6 @@ class TestStereoCamera(BaseTester):
         # _, _, P1, P2, Q, _, _ = cv2.stereoRectify(K1, zeros(5), K2, zeros(5), (640, 480), eye(3),
         # [-0.12, 0, 0], flags=0, alpha=0)
         # point = cv2.reprojectImageTo3D(full((4, 5), 30, float32), Q)[2, 3]
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("float16 overflows fx * fy in Q at this focal length; bfloat16 rounds Q beyond this comparison")
         p1 = torch.tensor(
             [
                 [
@@ -670,9 +673,13 @@ class TestStereoCamera(BaseTester):
             [-0.7608000040054321, -0.5771999955177307, 1.697948694229126], device=device, dtype=dtype
         )
         cam = StereoCamera(p1, p2)
-        self.assert_close(cam.Q[0] / cam.Q[0, 3, 2], q_opencv / q_opencv[3, 2])
+        # In half precision the cameras, Q, the ratios and the expected literals each round by eps / 2 relative, so
+        # Q / Q[3, 2] and the point land within 2 eps relative of OpenCV, and a wrong Q is off by O(1).
+        half = dtype in (torch.float16, torch.bfloat16)
+        tolerances = {"rtol": 2 * torch.finfo(dtype).eps, "atol": 0.0} if half else {}
+        self.assert_close(cam.Q[0] / cam.Q[0, 3, 2], q_opencv / q_opencv[3, 2], **tolerances)
         disparity = torch.full((1, 4, 5, 1), 30.0, device=device, dtype=dtype)
-        self.assert_close(reproject_disparity_to_3D(disparity, cam.Q)[0, 2, 3], point_opencv)
+        self.assert_close(reproject_disparity_to_3D(disparity, cam.Q)[0, 2, 3], point_opencv, **tolerances)
 
     @pytest.mark.parametrize("bad_index", [0, 1])
     def test_convention_stereo_rejects_a_batch_with_one_positive_tx_fx_4270(self, bad_index, device, dtype):

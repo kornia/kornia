@@ -279,6 +279,13 @@ class TestDistortionKannalaBrandt(BaseTester):
         )
         points_distorted = distort_points_kannala_brandt(points, params)
         self.assert_close(points_distorted, expected)
+        if dtype in (torch.float16, torch.bfloat16):
+            # These rays are 89.8 to 89.9 degrees off axis, where the normalized radius is about 1 / cos^2(theta)
+            # = 1e5 times as sensitive to the ray angle as the distorted pixel is: one half-precision ulp of the
+            # ~2000 px pixel (2 px in float16, 16 px in bfloat16) moves the recovered point by 1 to 200 normalized
+            # units, even with the inverse run in float32. The half-precision round trip is pinned
+            # on well-conditioned points by test_convention_undistort_points_kannala_brandt_round_trip_closes_4308.
+            return
         self.assert_close(points, undistort_points_kannala_brandt(points_distorted, params))
 
     def test_dx_distort_points_kannala_brandt(self, device, dtype) -> None:

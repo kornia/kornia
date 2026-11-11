@@ -34,6 +34,18 @@ from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
+
+def _coordinate_tolerances(dtype, scale):
+    """Return the float32/float64 tolerance of the box-transform pins, or a half-precision one at coordinate ``scale``.
+
+    In half precision each coordinate goes through up to four roundings of at most ``eps / 2 * scale``: the width and
+    the corner of the conversion to corners, the transform, and the expected literal's own conversion.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"atol": 2 * torch.finfo(dtype).eps * scale, "rtol": 0.0}
+    return {"atol": 1e-4, "rtol": 1e-4}
+
+
 # Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
 # one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
 _A = [1.0, 1.0, 3.0, 3.0]
@@ -2156,7 +2168,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 512))
         # inplace check
         assert transformed_boxes is not boxes
 
@@ -2171,7 +2183,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         transformed_boxes = boxes.transform_boxes_(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 512))
         # inplace check
         assert transformed_boxes is boxes
 
@@ -2220,7 +2232,7 @@ class TestTransformBoxes2D(BaseTester):
         expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
-        self.assert_close(out.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(out.data, expected_boxes.data, **_coordinate_tolerances(dtype, 513))
 
     def test_gradcheck(self, device):
         # Define boxes in XYXY format for simplicity.
@@ -2990,7 +3002,7 @@ class TestTransformBoxes3D(BaseTester):
         )
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 909))
         # inplace check
         assert transformed_boxes is not boxes
 
@@ -3009,7 +3021,7 @@ class TestTransformBoxes3D(BaseTester):
         )
 
         transformed_boxes = boxes.transform_boxes_(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 909))
         # inplace check
         assert transformed_boxes is boxes
 
@@ -3058,7 +3070,7 @@ class TestTransformBoxes3D(BaseTester):
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
-        self.assert_close(out.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(out.data, expected_boxes.data, **_coordinate_tolerances(dtype, 1573))
 
     def test_gradcheck(self, device):
         # Define boxes in XYZXYZ format for simplicity.

@@ -535,6 +535,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           gradient is the analytic limit of the surrounding map rather than
           ``nan``. The guard is elementwise, and away from the identity it
           moves no forward bit
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape ``(*, 3)``.
@@ -569,6 +570,13 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
 
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
+
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every entry within rounding of the
+    # exact value for the given input; the half-precision arithmetic was up to 4 eps off. Other dtypes run unchanged.
+    orig_dtype = axis_angle.dtype
+    half = orig_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        axis_angle = axis_angle.float()
 
     def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
         theta = torch.sqrt(theta2)
@@ -644,7 +652,8 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     rot_normal = _compute_rotation_matrix(axis_angle, safe_theta2)  # (*,3,3)
     rot_taylor = _compute_rotation_matrix_taylor(axis_angle, theta2)  # (*,3,3)
 
-    return torch.where(mask[..., None, None], rot_normal, rot_taylor)
+    rotation = torch.where(mask[..., None, None], rot_normal, rot_taylor)
+    return rotation.to(orig_dtype) if half else rotation
 
 
 @deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")
@@ -684,6 +693,8 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation:
           such an input instead
         - ``rotation_matrix_to_angle_axis`` is the deprecated alias of this
           function since 0.7.0
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype, the
+          intermediate quaternion included
 
     .. warning::
         By default a reflection (``det = -1``) is returned as a rotation:
@@ -728,8 +739,11 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation:
     if check_rotation:
         _check_is_rotation(rotation_matrix, "rotation_matrix_to_axis_angle")
 
-    quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
-    return quaternion_to_axis_angle(quaternion)
+    # float16 and bfloat16 are computed in float32, the intermediate quaternion included, and rounded once
+    half = rotation_matrix.dtype in (torch.float16, torch.bfloat16)
+    quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix.float() if half else rotation_matrix)
+    axis_angle = quaternion_to_axis_angle(quaternion)
+    return axis_angle.to(rotation_matrix.dtype) if half else axis_angle
 
 
 @deprecated(replace_with="rotation_matrix_to_axis_angle", version="0.7.0")
@@ -766,6 +780,7 @@ def rotation_matrix_to_quaternion(
           see the degenerate inputs listed on
           :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`.
           Pass ``check_rotation=True`` to reject such an input instead
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         rotation_matrix: the rotation matrix to convert with shape ``(*, 3, 3)``.
@@ -807,6 +822,14 @@ def rotation_matrix_to_quaternion(
 
     if check_rotation:
         _check_is_rotation(rotation_matrix, "rotation_matrix_to_quaternion")
+
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every entry within rounding of the
+    # exact value for the given input; the half-precision arithmetic was up to 177 eps off in bfloat16. Other dtypes
+    # run unchanged.
+    orig_dtype = rotation_matrix.dtype
+    half = orig_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        rotation_matrix = rotation_matrix.float()
 
     def safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor) -> torch.Tensor:
         eps: float = torch.finfo(numerator.dtype).tiny
@@ -867,7 +890,7 @@ def rotation_matrix_to_quaternion(
     where_1 = torch.where((m00 > m11) & (m00 > m22), cond_1(), where_2)
 
     quaternion: torch.Tensor = torch.where(trace > 0.0, trace_positive_cond(), where_1)
-    return quaternion
+    return quaternion.to(orig_dtype) if half else quaternion
 
 
 def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
@@ -989,6 +1012,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
         - the zero quaternion, which is not a rotation, returns the identity
           matrix rather than raising: it stays zero through the normalisation,
           and the matrix formula gives the identity for it
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -1018,6 +1042,13 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
+
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every entry within rounding of the
+    # exact value for the given input; the half-precision arithmetic was up to 2.6 eps off. Other dtypes run unchanged.
+    orig_dtype = quaternion.dtype
+    half = orig_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        quaternion = quaternion.float()
 
     # normalize the input quaternion
     quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
@@ -1060,7 +1091,8 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     # this slightly awkward construction of the output shape is to satisfy torchscript
     output_shape = [*list(quaternion.shape[:-1]), 3, 3]
-    return matrix_flat.reshape(output_shape)
+    matrix = matrix_flat.reshape(output_shape)
+    return matrix.to(orig_dtype) if half else matrix
 
 
 def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
@@ -1095,6 +1127,7 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
           gradient is the analytic limit of the surrounding map rather than
           ``nan``. The guard is elementwise, and away from the identity it
           moves no forward bit
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         quaternion: tensor with quaternions.
@@ -1126,6 +1159,13 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
+
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every entry within rounding of the
+    # exact value for the given input; the half-precision arithmetic was up to 3.4 eps off. Other dtypes run unchanged.
+    orig_dtype = quaternion.dtype
+    half = orig_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        quaternion = quaternion.float()
 
     # unpack input and compute conversion
     cos_theta = quaternion[..., 0]
@@ -1191,7 +1231,7 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k
     axis_angle[..., 2] += q3 * k
-    return axis_angle
+    return axis_angle.to(orig_dtype) if half else axis_angle
 
 
 @deprecated(replace_with="quaternion_to_axis_angle", version="0.7.0")
@@ -1409,6 +1449,7 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
           unbounded there never sees its zero radicand, so the gradient is the
           analytic limit of the surrounding map rather than ``nan``. The guard
           is elementwise, and away from zero it moves no forward bit
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         axis_angle: tensor with axis angle in radians.
@@ -1440,6 +1481,13 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {axis_angle.shape}")
 
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every entry within rounding of the
+    # exact value for the given input; the half-precision arithmetic was up to 1.1 eps off. Other dtypes run unchanged.
+    orig_dtype = axis_angle.dtype
+    half = orig_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        axis_angle = axis_angle.float()
+
     # unpack input and compute conversion
     a0: torch.Tensor = axis_angle[..., 0:1]
     a1: torch.Tensor = axis_angle[..., 1:2]
@@ -1469,7 +1517,7 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k
     quaternion[..., 0:1] = w
-    return quaternion
+    return quaternion.to(orig_dtype) if half else quaternion
 
 
 @deprecated(replace_with="axis_angle_to_quaternion", version="0.7.0")
@@ -1525,6 +1573,8 @@ def euler_from_quaternion(
         - the input is normalised with
           :func:`~kornia.geometry.conversions.normalize_quaternion` first, so a
           rescaled quaternion returns the same triple
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype;
+          the gimbal-lock threshold stays that of the input dtype
 
     .. note::
         The gradient is finite everywhere, including exactly at gimbal lock. There ``roll`` and ``pitch``
@@ -1553,6 +1603,13 @@ def euler_from_quaternion(
     KORNIA_CHECK(y.shape == z.shape)
 
     quaternion = torch.stack((w, x, y, z), dim=-1)
+    # float16 and bfloat16 are computed in float32 and rounded once; the half-precision arithmetic was up to 5 eps
+    # off away from the poles. The gimbal-lock threshold below stays that of the input dtype, whose rounding of the
+    # quaternion is what makes roll and yaw indeterminate near a pole. Other dtypes run unchanged.
+    out_dtype = quaternion.dtype
+    half = out_dtype in (torch.float16, torch.bfloat16)
+    if half:
+        quaternion = quaternion.float()
     quaternion = normalize_quaternion(quaternion)
     w, x, y, z = quaternion.unbind(-1)
 
@@ -1585,7 +1642,7 @@ def euler_from_quaternion(
     # formulas still resolve better than the snap does (float32 pitch = pi/2 - 1e-3 is 3x worse at 4.0), and
     # smaller ones leave pitches near the pole unsnapped.
     cos_pitch_sq = sinr_cosp * sinr_cosp + cosr_cosp * cosr_cosp
-    gimbal = cos_pitch_sq < 4.0 * torch.finfo(w.dtype).eps
+    gimbal = cos_pitch_sq < 4.0 * torch.finfo(out_dtype).eps
     up = sinp > 0.0
     zero = torch.zeros_like(w)
     one = torch.ones_like(w)
@@ -1617,6 +1674,8 @@ def euler_from_quaternion(
     half_pi = torch.full_like(pitch, math.pi / 2)
     pitch = torch.where(gimbal, torch.where(up, half_pi, -half_pi), pitch)
 
+    if half:
+        return roll.to(out_dtype), pitch.to(out_dtype), yaw.to(out_dtype)
     return roll, pitch, yaw
 
 
@@ -1643,6 +1702,7 @@ def quaternion_from_euler(
         - the return is a tuple of **four separate tensors** ``(w, x, y, z)``,
           not a ``(*, 4)`` tensor: ``(0.3, 0.7, 1.1)`` gives
           ``[0.8186, -0.0575, 0.3624, 0.4418]``
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         roll: the roll euler angle.
@@ -1661,6 +1721,14 @@ def quaternion_from_euler(
     KORNIA_CHECK(roll.shape == pitch.shape)
     KORNIA_CHECK(pitch.shape == yaw.shape)
 
+    # float16 and bfloat16 are computed in float32 and rounded once, which keeps every coefficient within rounding of
+    # the exact value for the given angles; the half-precision arithmetic was up to 1.1 eps off. Other dtypes run
+    # unchanged.
+    out_dtype = roll.dtype
+    half = out_dtype in (torch.float16, torch.bfloat16) and pitch.dtype == out_dtype and yaw.dtype == out_dtype
+    if half:
+        roll, pitch, yaw = roll.float(), pitch.float(), yaw.float()
+
     roll_half = roll * 0.5
     pitch_half = pitch * 0.5
     yaw_half = yaw * 0.5
@@ -1677,6 +1745,8 @@ def quaternion_from_euler(
     qy = sy * cp * sr + cy * sp * cr
     qz = sy * cp * cr - cy * sp * sr
 
+    if half:
+        return qw.to(out_dtype), qx.to(out_dtype), qy.to(out_dtype), qz.to(out_dtype)
     return qw, qx, qy, qz
 
 
@@ -2086,6 +2156,8 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
           plane this is the opposite sense to
           :func:`~kornia.geometry.conversions.cart2pol`, whose Convention block
           spells out the modulo-:math:`2\pi` relation between the two ops
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype,
+          so a multiple of 90 degrees gives exact zeros and ones
 
     Args:
         angle: tensor of angles in degrees, any shape ``(*)``.
@@ -2106,10 +2178,17 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
         >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
 
     """
-    ang_rad = deg2rad(angle)
+    # A half-precision angle in radians carries the rounding of pi: deg2rad(90.) is 1.5703125 in float16, whose cosine
+    # is 4.8e-4 rather than 0, and 45 degrees gives 0.7075 rather than 0.7071. Converting and evaluating in float32
+    # rounds each entry once; float32 and float64 run unchanged.
+    half = angle.dtype in (torch.float16, torch.bfloat16)
+    ang_rad = deg2rad(angle.float() if half else angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
-    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
+    rotation = torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1)
+    if half:
+        rotation = rotation.to(angle.dtype)
+    return rotation.view(*angle.shape, 2, 2)
 
 
 def _chain_outside_autocast(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -2164,6 +2243,7 @@ def normalize_homography(
           subnormal or zero, and some backends lack a ``bfloat16`` ``cross`` kernel
           (MPS on torch 2.5.1). For any other dtype, a backend without a ``cross``
           kernel for it raises here
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     .. warning::
         An integer matrix is outside the contract and is not rejected: the
@@ -2219,6 +2299,13 @@ def normalize_homography(
     if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
+    # float16 and bfloat16 are normalized in float32 and rounded once: in the half dtype the scales 2 / (size - 1),
+    # their inverse and the products each round, and moved the identity's entries by up to 2 ULP. Other dtypes run
+    # unchanged.
+    out_dtype = dst_pix_trans_src_pix.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        dst_pix_trans_src_pix = dst_pix_trans_src_pix.float()
+
     # source and destination sizes
     src_h, src_w = dsize_src
     dst_h, dst_w = dsize_dst
@@ -2249,7 +2336,8 @@ def normalize_homography(
     ).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
-    return _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
+    homography = _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
+    return homography.to(out_dtype)
 
 
 def normal_transform_pixel(
@@ -2645,6 +2733,7 @@ def denormalize_homography(
         - the two functions invert each other to a small multiple of the
           working dtype's ``eps`` times the largest entry, not bitwise in
           general
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2670,6 +2759,13 @@ def denormalize_homography(
 
     if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # float16 and bfloat16 are normalized in float32 and rounded once: in the half dtype the scales 2 / (size - 1),
+    # their inverse and the products each round, and moved the identity's entries by up to 2 ULP. Other dtypes run
+    # unchanged.
+    out_dtype = dst_pix_trans_src_pix.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        dst_pix_trans_src_pix = dst_pix_trans_src_pix.float()
 
     # source and destination sizes
     src_h, src_w = dsize_src
@@ -2703,7 +2799,8 @@ def denormalize_homography(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
     # compute chain transformations
-    return _chain_outside_autocast(dst_denorm_trans_dst_pix, dst_pix_trans_src_pix, src_norm_trans_src_pix)
+    homography = _chain_outside_autocast(dst_denorm_trans_dst_pix, dst_pix_trans_src_pix, src_norm_trans_src_pix)
+    return homography.to(out_dtype)
 
 
 def normalize_homography3d(
@@ -2743,6 +2840,7 @@ def normalize_homography3d(
         - the shape guard is the 2-D function's for 4x4 matrices: ``(4, 4)``
           (returned as ``(1, 4, 4)``) or ``(B, 4, 4)``, anything else raises
           ``ValueError``
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2769,6 +2867,13 @@ def normalize_homography3d(
     if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
+    # float16 and bfloat16 are normalized in float32 and rounded once: in the half dtype the scales 2 / (size - 1),
+    # their inverse and the products each round, and moved the identity's entries by up to 2 ULP. Other dtypes run
+    # unchanged.
+    out_dtype = dst_pix_trans_src_pix.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        dst_pix_trans_src_pix = dst_pix_trans_src_pix.float()
+
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
@@ -2791,7 +2896,8 @@ def normalize_homography3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
     # compute chain transformations
-    return _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
+    homography = _chain_outside_autocast(dst_norm_trans_dst_pix, dst_pix_trans_src_pix, src_pix_trans_src_norm)
+    return homography.to(out_dtype)
 
 
 def denormalize_homography3d(
@@ -2829,6 +2935,7 @@ def denormalize_homography3d(
           does), and
           complex dtypes would be inverted in ``float32``
           (``_torch_inverse_cast``), losing ``complex128`` precision
+        - ``float16`` and ``bfloat16`` are computed in ``float32`` and rounded once to the input dtype
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2867,6 +2974,13 @@ def denormalize_homography3d(
     if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
+    # float16 and bfloat16 are normalized in float32 and rounded once: in the half dtype the scales 2 / (size - 1),
+    # their inverse and the products each round, and moved the identity's entries by up to 2 ULP. Other dtypes run
+    # unchanged.
+    out_dtype = dst_pix_trans_src_pix.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        dst_pix_trans_src_pix = dst_pix_trans_src_pix.float()
+
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
@@ -2885,7 +2999,8 @@ def denormalize_homography3d(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
     # compute chain transformations
-    return _chain_outside_autocast(dst_pix_trans_dst_norm, dst_pix_trans_src_pix, src_norm_trans_src_pix)
+    homography = _chain_outside_autocast(dst_pix_trans_dst_norm, dst_pix_trans_src_pix, src_norm_trans_src_pix)
+    return homography.to(out_dtype)
 
 
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:

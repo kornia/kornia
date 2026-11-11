@@ -347,7 +347,9 @@ class StereoCamera:
         lengths in the x and y direction.
 
         Integer camera matrices use the default floating-point dtype for Q; floating-point cameras
-        retain their dtype. The stored camera matrices and intrinsic parameter properties are unchanged.
+        retain their dtype. ``float16`` and ``bfloat16`` rigs are computed in ``float32`` and Q is rounded once;
+        a real rig's ``fx * fy * tx`` can still exceed the ``float16`` range. The stored camera matrices and
+        intrinsic parameter properties are unchanged.
 
         Return:
             The Q matrix of shape ``(B, 4, 4)``.
@@ -364,11 +366,17 @@ class StereoCamera:
         """
         floating_camera = self.rectified_left_camera.is_floating_point()
         dtype = self.dtype if floating_camera else torch.get_default_dtype()
-        # Promote before products and negation, which can overflow for narrow integer cameras.
-        fx, fy = self.fx.to(dtype), self.fy.to(dtype)
-        cx_left, cx_right, cy = self.cx_left.to(dtype), self.cx_right.to(dtype), self.cy.to(dtype)
-        baseline: torch.Tensor = -self.tx
-        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=dtype)
+        # Promote before products and negation, which can overflow for narrow integer cameras. Half-precision rigs
+        # are built in float32 and Q rounded once: the partial product fx * fy overflows float16 from fx = fy = 256
+        # even where Q[2, 3] = fx * fy * baseline fits, and each product would round in that dtype.
+        work = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        fx, fy = self.fx.to(work), self.fy.to(work)
+        cx_left, cx_right, cy = self.cx_left.to(work), self.cx_right.to(work), self.cy.to(work)
+        if work == dtype:
+            baseline: torch.Tensor = -self.tx
+        else:
+            baseline = self.rectified_right_camera[..., 0, 3].to(work) / fx
+        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=work)
         Q[:, 0, 0] = fy * baseline
         Q[:, 0, 3] = -fy * cx_left * baseline
         Q[:, 1, 1] = fx * baseline
@@ -376,7 +384,7 @@ class StereoCamera:
         Q[:, 2, 3] = fx * fy * baseline
         Q[:, 3, 2] = -fy
         Q[:, 3, 3] = fy * (cx_left - cx_right)  # NOTE: This is usually zero.
-        return Q
+        return Q.to(dtype)
 
     @overload
     def reproject_disparity_to_3D(
