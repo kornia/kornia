@@ -238,6 +238,28 @@ class TestTransformPoints(BaseTester):
         assert out.dtype == points_dtype
         self.assert_close(out.to(torch.float32), points_src.to(torch.float32), atol=1e-2, rtol=1e-2)
 
+    @pytest.mark.parametrize("trans_dtype", [torch.float16, torch.bfloat16])
+    def test_lower_precision_transform_uses_float32_arithmetic(self, device, trans_dtype):
+        if trans_dtype == torch.float16 and device.type == "cpu" and torch_version_lt(2, 2, 0):
+            pytest.skip("CPU float16 bmm requires PyTorch 2.2")
+
+        trans = torch.tensor(
+            [[[1.0003, 0.0007, 0.1234], [0.0002, 0.9997, 0.5678], [0.0001, 0.0002, 1.0]]],
+            device=device,
+            dtype=trans_dtype,
+        )
+        points = torch.tensor(
+            [[[123.456, 234.567], [456.789, 678.912], [789.123, 345.678]]],
+            device=device,
+            dtype=torch.float32,
+        )
+
+        actual = kgl.transform_points(trans, points)
+        expected = kgl.transform_points(trans.float(), points)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-5)
+
 
 class TestTransformPointsAutocast(BaseTester):
     """A caller's autocast region does not reach the product of transform_points (#6601)."""

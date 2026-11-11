@@ -320,8 +320,9 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
           (pixel indices from ``torch.nonzero`` or ``argmax``) to fractional ones. Integer points return in the
           floating dtype of ``trans_01``, or in the default floating dtype when both operands are integer, and an
           integer ``trans_01`` is applied in the dtype of the result. Floating points keep their dtype; the product
-          is computed in the dtype of ``trans_01``, so ``float64`` points under a ``float32`` matrix are transformed
-          in ``float32``.
+          is computed in the dtype of ``trans_01``, except that ``float16`` and ``bfloat16`` matrices are promoted to
+          ``float32`` when transforming ``float32`` points; ``float64`` points under a ``float32`` matrix are
+          transformed in ``float32``.
         - A caller's autocast region does not change the product, outside TorchScript, where a scripted call keeps the
           caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
@@ -400,9 +401,13 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
     # tensors in a different dtype than the transform matrix (e.g. fp32 bbox + fp16 image), so
-    # harmonise at the bmm site and return in ``out_dtype``.
-    points_1_h = points_1_h.to(trans_01.dtype)
-    trans_01 = trans_01.permute(0, 2, 1)
+    # harmonise at the bmm site in ``compute_dtype`` (promoting fp16/bf16 transforms to fp32
+    # for fp32 points) and return in ``out_dtype``.
+    compute_dtype = trans_01.dtype
+    if trans_01.dtype in (torch.float16, torch.bfloat16) and points_1.dtype == torch.float32:
+        compute_dtype = torch.float32
+    points_1_h = points_1_h.to(compute_dtype)
+    trans_01 = trans_01.to(compute_dtype).permute(0, 2, 1)
     # transform coordinates, outside a caller's autocast region: it would run this product in half precision and the
     # result would still come back in ``out_dtype``, up to 1.36 px off in bfloat16 at 256 px (#6601). The ``to`` above
     # already gives both operands one dtype, so the guard needs no reconciliation. TorchScript has no context managers;
