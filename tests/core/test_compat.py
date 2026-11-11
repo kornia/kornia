@@ -23,9 +23,11 @@ import copy
 import dataclasses
 import enum
 import functools
+import importlib.util
 import inspect
 import pickle
 import re
+import sys
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
@@ -35,6 +37,7 @@ import pytest
 import torch
 
 import kornia
+import kornia.core._compat as compat
 import kornia.utils
 from kornia.core._compat import deprecated, scaled_dot_product_attention
 from kornia.feature.dedode.transformer.layers.attention import Attention as DeDoDeAttention
@@ -918,6 +921,35 @@ class TestScaledDotProductAttention(BaseTester):
         assert seen == [{"attn_mask": mask, "dropout_p": 0.5, "is_causal": True, "scale": 0.25}]
 
     @pytest.mark.parametrize(
+        ("platform", "torch_version", "expected_version_lt", "expected_flag"),
+        [
+            pytest.param("win32", "2.5.1", True, True, id="windows-2.5.1"),
+            pytest.param("win32", "2.5.1+cpu", True, True, id="windows-2.5.1-local-suffix"),
+            pytest.param("win32", "2.6.0", False, False, id="windows-2.6.0"),
+            pytest.param("win32", "2.15.0+cu132", False, False, id="windows-2.15.0"),
+            pytest.param("linux", "2.5.1", True, False, id="linux-2.5.1"),
+            pytest.param("linux", "2.6.0", False, False, id="linux-2.6.0"),
+            pytest.param("darwin", "2.5.1", True, False, id="macos-2.5.1"),
+        ],
+    )
+    def test_platform_flag_is_set_only_for_windows_below_2_6(
+        self, monkeypatch, platform, torch_version, expected_version_lt, expected_flag
+    ):
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setattr(torch, "__version__", torch_version)
+
+        spec = importlib.util.spec_from_file_location("kornia.core._compat_copy", compat.__file__)
+        fresh = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fresh)
+
+        assert fresh._TORCH_VERSION == fresh._parse_torch_version(torch_version)
+        assert fresh.torch_version_lt(2, 6, 0) is expected_version_lt
+        assert fresh._SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY is expected_flag
+
+        param = inspect.signature(fresh.scaled_dot_product_attention).parameters["kernel_is_faulty"]
+        assert param.default is expected_flag
+
+    @pytest.mark.parametrize(
         "make_module",
         [
             lambda: DeDoDeAttention(dim=16, num_heads=4),
@@ -925,7 +957,7 @@ class TestScaledDotProductAttention(BaseTester):
         ],
         ids=["dedode", "qwen25"],
     )
-    def test_scripted_callers_compile(self, make_module):
+    def test_scripted_callers_are_scriptable(self, make_module):
         # TorchScript cannot read a Python global, whatever its value: the helper takes the flag as a default argument.
         torch.jit.script(make_module().eval())
 
