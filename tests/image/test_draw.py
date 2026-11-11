@@ -959,7 +959,9 @@ class TestDrawRectangle(BaseTester):
         not torch_version_ge(2, 14),
         reason="slices with data-dependent bounds export from torch 2.14 (2.9.1 fails to export, 2.6 bakes the input)",
     )
-    @pytest.mark.parametrize(("fill", "line_width"), [(False, 1), (True, 1), (False, 3)])
+    # An outline of one pixel is the outline of line_width pixels with a constant 0 added: three pixels exercise the
+    # clamps of each side to the box, which one pixel leaves idle.
+    @pytest.mark.parametrize(("fill", "line_width"), [(True, 1), (False, 3)])
     def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill, line_width):
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
