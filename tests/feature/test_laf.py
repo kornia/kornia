@@ -942,7 +942,9 @@ class TestExtractPatchesSimple(BaseTester):
     def test_gradcheck(self, device):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]], device=device, dtype=torch.float64)
         nlaf = nlaf.view(1, 1, 2, 3)
-        img = torch.rand(1, 3, 20, 30, device=device, dtype=torch.float64)
+        # Two channels and a 12 x 18 image keep the channel layout and the normalized frame: the full Jacobian has a
+        # column per pixel, 1800 of them for three channels of 20 x 30, 9 s on CUDA.
+        img = torch.rand(1, 2, 12, 18, device=device, dtype=torch.float64)
         PS = 11
         self.gradcheck(kornia.feature.extract_patches_simple, (img, nlaf, PS, False), fast_mode=False)
 

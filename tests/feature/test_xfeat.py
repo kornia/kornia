@@ -813,12 +813,11 @@ class TestConventionsXFeat(BaseTester):
         reliability[0, 0, 112, 175] = 1.0
         outputs = tuple(t.to(device, weights_dtype) for t in (feats, logits, reliability))
         image = torch.zeros(1, 3, 1000, 1500, device=device, dtype=weights_dtype)
-        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: outputs)
-        try:
-            (sparse,) = xfeat.detectAndCompute(image, top_k=1)
-            dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
-        finally:
-            handle.remove()
+        # The designed outputs replace the network's: skip its half-precision pass over the 992 x 1472 image too, 8 s
+        # of each case on the CPU. The input still goes through the resize and normalization in the weights' dtype.
+        xfeat.net.forward = lambda image: outputs
+        (sparse,) = xfeat.detectAndCompute(image, top_k=1)
+        dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
         expected = torch.tensor([[1427.65897, 908.27016]], device=device)
         self.assert_close(sparse["keypoints"], expected, rtol=0, atol=1e-3)
         expected_dense = torch.tensor([[[1426.63995, 903.22984]]], device=device)
