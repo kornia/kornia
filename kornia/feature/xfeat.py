@@ -329,11 +329,11 @@ class XFeat(nn.Module):
         - Use the named extraction and matching methods: XFeat has no ``forward``. Its network, ``xfeat.net``,
           is an :class:`XFeatModel` that produces dense maps. To match with LighterGlue, construct LAFs with
           :func:`~kornia.feature.laf_from_center_scale_ori` on ``keypoints[None]`` and pass them with the descriptors
-          to :class:`LightGlueMatcher` in ``"xfeat"`` mode, with gradients disabled.
-        - ``XFeat()`` builds random weights in training mode. Batch normalisation can raise on a single small image;
-          call ``.eval()`` for inference. :meth:`from_pretrained` returns the trained model in evaluation mode.
-        - :meth:`detectAndCompute`, :meth:`detectAndComputeDense`, :meth:`match_xfeat` and :meth:`match_xfeat_star`
-          run under ``torch.inference_mode``, so they return inference tensors.
+          to :class:`LightGlueMatcher` in ``"xfeat"`` mode.
+        - ``XFeat()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
+          running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
+          inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
+          run under ``torch.no_grad()``, so their outputs stay ordinary tensors.
         - The image is ``(B, C, H, W)`` with any channel count. Each extraction resizes the image it gets
           bilinearly to ``(H', W')``: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
@@ -695,7 +695,7 @@ class XFeat(nn.Module):
     # Public API
     # ------------------------------------------------------------------
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def detectAndCompute(
         self,
         x: torch.Tensor,
@@ -761,7 +761,7 @@ class XFeat(nn.Module):
             for b in range(B)
         ]
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def detectAndComputeDense(
         self,
         x: torch.Tensor,
@@ -806,7 +806,7 @@ class XFeat(nn.Module):
             cell = self._cell_scales(x, 1.0, mkpts)
         return {"keypoints": mkpts, "descriptors": feats, "scales": sc, "cell_scales": cell}
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def match_xfeat(
         self,
         img1: torch.Tensor,
@@ -850,7 +850,7 @@ class XFeat(nn.Module):
             return [torch.cat(pair, dim=-1) for pair in pairs]
         return pairs[0]
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def match_xfeat_star(
         self,
         im_set1: torch.Tensor,
@@ -873,6 +873,7 @@ class XFeat(nn.Module):
             batch gives an empty list.
             If ``B == 1``: tuple of ``(N, 2)`` matched keypoint tensors.
         """
+        KORNIA_CHECK(im_set1.shape[0] == im_set2.shape[0], "im_set1 and im_set2 must hold the same number of images")
         if top_k is None:
             top_k = self.top_k
         out1 = self._detect_dense(im_set1, top_k, True)
