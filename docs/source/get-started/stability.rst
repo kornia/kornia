@@ -154,7 +154,8 @@ The modules that wrap these functions, :class:`~kornia.enhance.AdjustGamma` and
 :class:`~kornia.enhance.AdjustContrast`, behave the same when scripted.
 
 A graph recorded with ``torch.jit.trace`` drops the operator too, on every device:
-the checks run on the values traced, and not when the traced graph runs again. A
+the checks run on the values traced, as in an eager call (so with checks disabled
+only the ``equalize`` range check runs), and not when the traced graph runs again. A
 traced call with an invalid argument then gives the results in the table on the CPU
 as well as on CUDA; on the CPU, ``equalize`` and ``equalize3d`` fail with PyTorch's
 out-of-bounds index error instead of the device-side assert.
