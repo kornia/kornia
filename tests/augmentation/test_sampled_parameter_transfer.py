@@ -216,7 +216,7 @@ class TestSampledParameterTransfer(BaseTester):
             self.assert_close(actual, torch.tensor(value, dtype=default_dtype).expand_as(actual), rtol=0, atol=1e-6)
 
 
-class TestCutMixPairTransfer(BaseTester):
+class TestMixPairTransfer(BaseTester):
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_pairs_survive_the_copy(self, device, default_dtype, monkeypatch):
         # The pairs are the argsort of a draw, and an unwritten draw reads as zeros, which sort like the constant draw
@@ -239,3 +239,27 @@ class TestCutMixPairTransfer(BaseTester):
             torch.set_default_dtype(original_dtype)
         assert params["mix_pairs"].device == torch.device("cpu")
         self.assert_close(params["mix_pairs"], torch.tensor([[2, 1, 0]]))
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_patchmix_pairs_and_lambda_survive_the_copy(self, device, default_dtype, monkeypatch):
+        # PatchMix pairs the same way. Its lambda is a Beta draw, which torch.rand does not fix, but a Beta(1, 1)
+        # draw lies strictly between 0 and 1, so an unwritten lambda (zeros) fails the bounds below.
+        aug = K.PatchMix(alpha=1.0, patch_size=2, p=1.0).to(device=device, dtype=torch.float32)
+        real_rand = torch.rand
+
+        def descending(*args, **kwargs):
+            out = real_rand(*args, **kwargs)
+            return (1.0 - torch.arange(out.numel(), device=out.device, dtype=out.dtype) / out.numel()).view_as(out)
+
+        monkeypatch.setattr(torch, "rand", descending)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            params = aug.forward_parameters((3, 3, 8, 9))
+        finally:
+            torch.set_default_dtype(original_dtype)
+        self.assert_close(params["mix_pairs"], torch.tensor([2, 1, 0]))
+        lam = params["lam"]
+        assert lam.device == torch.device("cpu")
+        assert lam.dtype == default_dtype
+        assert bool(((lam > 0) & (lam < 1)).all()), lam
