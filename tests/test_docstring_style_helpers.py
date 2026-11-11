@@ -506,7 +506,7 @@ def test_catalog_namespaces():
     # kornia.filters re-exports kornia.filters.blur_pool too, but its module docstring keeps a catalog of its own
     assert "kornia.filters.blur_pool" in listed
     assert all(covered(name, ["kornia.enhance", "kornia.filters"]) for name in listed)
-    # an excepted namespace is not listed and does not catalog its children
+    # an excepted namespace is not listed and does not count as a catalog above its children, so they need their own
     assert "kornia.enhance" not in catalog_namespaces(["kornia.enhance"], ["kornia.enhance"])
     assert "kornia.enhance.normalize" in catalog_namespaces(["kornia.enhance"], ["kornia.enhance"])
 

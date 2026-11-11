@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Kornia's public docstrings keep the choose-then-use style that a reader, an IDE or a coding agent relies on.
+"""In-scope kornia packages keep the choose-then-use docstring style that a reader, an IDE or a coding agent relies on.
 
 ``testing/docstring_rollout.py`` names the packages in scope and the exceptions. For every public object of those
 packages, this file enforces what a refactor silently breaks; the shape rule applies everywhere:
