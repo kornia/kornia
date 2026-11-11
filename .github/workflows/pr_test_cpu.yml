@@ -128,12 +128,17 @@ jobs:
       # torch 2.5.1 on Windows runs only in the scheduled matrix, on windows-2022: its wheels
       # crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in affine_grid on the windows-2025
       # image that windows-latest now resolves to.
+      # The ONNX tests (node ID contains "onnx", about 40% of a leg's test time) run on one leg
+      # per torch release, 2.5.1 float64, 2.9.1 and 2.15.0 float32, and on Windows; `skip-onnx`
+      # deselects them on the others. From 2026-10-01 to 2026-11-11, every ONNX test failure on a
+      # leg that now skips them also failed on a leg that keeps them (509 PR and 79 scheduled runs).
       matrix:
         include:
           - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.13"
             pytorch-version: "2.5.1"
+            skip-onnx: true
           - os: ubuntu-latest
             pytorch-dtype: "float64"
             python-version: "3.12"
@@ -150,6 +155,7 @@ jobs:
             pytorch-dtype: "float64"
             python-version: "3.11"
             pytorch-version: "2.15.0"
+            skip-onnx: true
           - os: windows-latest
             pytorch-dtype: "float64"
             python-version: "3.13"
@@ -158,6 +164,7 @@ jobs:
             pytorch-dtype: "float32"
             python-version: "3.13"
             pytorch-version: "2.15.0"
+            skip-onnx: true
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -165,6 +172,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.skip-onnx == true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
