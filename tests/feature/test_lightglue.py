@@ -615,6 +615,7 @@ class TestLightGlue(BaseTester):
         assert "matches0" in out
 
 
+@pytest.mark.uses_accelerator
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
 @pytest.mark.parametrize(
     ("model_device", "autocast_device", "autocast_dtype"),
