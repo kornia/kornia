@@ -23,16 +23,12 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core._compat import torch_version_lt
 from kornia.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 
-from testing.base import BaseTester
+from testing.base import BaseTester, onnx_exporter_params
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy-exporter`` runs, so only ``legacy-exporter`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy-exporter")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default-exporter"))
+_EXPORTERS = onnx_exporter_params("default-exporter", "legacy-exporter")
 
 
 class TestObjectDetector(BaseTester):

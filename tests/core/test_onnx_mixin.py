@@ -32,7 +32,7 @@ from kornia.core._compat import torch_version_ge
 from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
 from kornia.filters import GaussianBlur2d
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
 
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
@@ -46,11 +46,7 @@ DOCUMENTED_OPSET = 18
 _RGB = {"input_shape": [-1, 3, -1, -1], "output_shape": [-1, 3, -1, -1]}
 
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy-exporter`` runs, so only ``legacy-exporter`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy-exporter")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default-exporter"))
+_EXPORTERS = onnx_exporter_params("default-exporter", "legacy-exporter")
 
 
 def _default_domain_opset(op):

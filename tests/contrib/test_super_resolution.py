@@ -35,13 +35,9 @@ from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+_EXPORTERS = onnx_exporter_params()
 
 
 class TestSuperResolutionBuilders(BaseTester):

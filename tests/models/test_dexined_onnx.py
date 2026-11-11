@@ -21,17 +21,13 @@ import torch
 from kornia.core._compat import torch_version_ge
 from kornia.models.dexined import DexiNed
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
 
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+_EXPORTERS = onnx_exporter_params()
 
 
 @pytest.mark.timeout(120)

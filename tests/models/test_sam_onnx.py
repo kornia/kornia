@@ -30,17 +30,13 @@ from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
 from kornia.models.tiny_vit import TinyViT
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
 
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+_EXPORTERS = onnx_exporter_params()
 
 
 def test_sam_has_to_onnx():

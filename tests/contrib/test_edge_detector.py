@@ -29,7 +29,7 @@ from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.dexined import DexiNed
 from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
 
 try:
     from onnxruntime.capi.onnxruntime_pybind11_state import Fail as _OrtFail
@@ -41,11 +41,7 @@ except ImportError:  # the ONNX tests skip without onnxruntime
 # The interpolation modes an exported ``ResizePostProcessor`` resizes with; "area" raises, see its own test.
 _EXPORTABLE_MODES = ["nearest", "bilinear", "bicubic", "nearest-exact"]
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+_EXPORTERS = onnx_exporter_params()
 
 # Images of different heights and widths, an odd size, sizes above and below the pre-processor's 32, for a graph of
 # dynamic size; and a graph input size other than the pre-processor's, which keeps its own.

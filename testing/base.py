@@ -89,6 +89,20 @@ def dynamo_is_available() -> bool:
     )
 
 
+def onnx_exporter_params(default_id: str = "default", legacy_id: str = "legacy") -> list[Any]:
+    """Return the ``to_onnx`` keyword sets of the exporters worth testing, as ``pytest.param`` values.
+
+    ``{"dynamo": False}`` runs the legacy TorchScript exporter. ``{}`` runs ``torch.onnx.export``'s default: the dynamo
+    exporter from torch 2.9, the TorchScript exporter before it. The default case is listed only from torch 2.9, so an
+    older torch does not export the same graph twice. Keep the ids free of "dynamo" and "compile": conftest deselects
+    every test whose name contains them unless an optimizer is set.
+    """
+    params = [pytest.param({"dynamo": False}, id=legacy_id)]
+    if not torch_version_lt(2, 9, 0):
+        params.insert(0, pytest.param({}, id=default_id))
+    return params
+
+
 def dynamic_export_is_available() -> bool:
     """Return whether ``torch.export`` accepts named dynamic shapes on this Torch/Python pair.
 

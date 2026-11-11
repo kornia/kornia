@@ -29,7 +29,7 @@ from kornia.models.processors import ResizePreProcessor
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.rt_detr.post_processor import DETRPostProcessor
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
@@ -61,12 +61,7 @@ def _post_processor() -> DETRPostProcessor:
     return DETRPostProcessor(confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False)
 
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9, the TorchScript exporter before it.
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
-# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
-_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
-if torch_version_ge(2, 9, 0):
-    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+_EXPORTERS = onnx_exporter_params()
 
 
 def _importorskip_exporter(export_kwargs: dict) -> None:
