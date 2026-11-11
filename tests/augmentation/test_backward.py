@@ -24,10 +24,10 @@ import kornia.augmentation as K
 from testing.base import supports_bilinear_2d_grid_sample_backward
 
 # Every tensor form a learnable range argument accepts, one argument at a time with the others left as Python numbers:
-# (augmentation, argument, value, volumetric). Scales stay near 1, since ``(0.1, 0.2)`` shrinks a depth-4 volume below
-# one voxel and the gradient vanishes. ``TestLearnableRangeCopies`` and ``TestLearnableRangeFollowsItsValue`` in
-# ``test_base.py`` train one form of each family; RandomResizedCrop and RandomErasing draw their ranges without a
-# gradient and are covered there.
+# (augmentation, argument, value, volumetric). Values are cast to the test dtype, as a learnable range must be a
+# floating tensor. Scales stay near 1, since ``(0.1, 0.2)`` shrinks a depth-4 volume below one voxel and the gradient
+# vanishes. ``TestLearnableRangeCopies`` and ``TestLearnableRangeFollowsItsValue`` in ``test_base.py`` train one form
+# of each family; RandomResizedCrop and RandomErasing draw their ranges without a gradient and are covered there.
 _COLOR_FORMS = [
     (name, arg, value, False)
     for name in ("ColorJiggle", "ColorJitter")
@@ -42,27 +42,27 @@ _COLOR_FORMS = [
 _LEARNABLE_FORMS = [
     *_COLOR_FORMS,
     ("RandomAffine", "degrees", torch.tensor(10.0), False),
-    ("RandomAffine", "degrees", torch.tensor([10, 20]), False),
+    ("RandomAffine", "degrees", torch.tensor([10.0, 20.0]), False),
     ("RandomAffine", "translate", torch.tensor([0.1, 0.2]), False),
     ("RandomAffine", "scale", torch.tensor([0.9, 1.1]), False),
     ("RandomAffine", "scale", torch.tensor([0.9, 1.1, 0.9, 1.1]), False),
-    ("RandomAffine", "shear", torch.tensor([10, 20]), False),
-    ("RandomAffine", "shear", torch.tensor([10, 20, 30, 40]), False),
+    ("RandomAffine", "shear", torch.tensor([10.0, 20.0]), False),
+    ("RandomAffine", "shear", torch.tensor([10.0, 20.0, 30.0, 40.0]), False),
     ("RandomRotation", "degrees", torch.tensor(10.0), False),
-    ("RandomRotation", "degrees", torch.tensor([10, 20]), False),
+    ("RandomRotation", "degrees", torch.tensor([10.0, 20.0]), False),
     ("RandomPerspective", "distortion_scale", torch.tensor(0.5), False),
     ("RandomMotionBlur", "angle", torch.tensor([-20.0, 20.0]), False),
     ("RandomMotionBlur", "direction", torch.tensor([-0.5, 0.5]), False),
-    ("RandomSharpness", "sharpness", torch.tensor([0, 0.5]), False),
+    ("RandomSharpness", "sharpness", torch.tensor([0.0, 0.5]), False),
     ("RandomAffine3D", "degrees", torch.tensor(10.0), True),
     ("RandomAffine3D", "degrees", torch.tensor([10.0, 20.0]), True),
-    ("RandomAffine3D", "degrees", torch.tensor([10, 20, 30]), True),
-    ("RandomAffine3D", "degrees", torch.tensor([(10, 20), (10, 20), (10, 20)]), True),
+    ("RandomAffine3D", "degrees", torch.tensor([10.0, 20.0, 30.0]), True),
+    ("RandomAffine3D", "degrees", torch.tensor([(10.0, 20.0)] * 3), True),
     ("RandomAffine3D", "translate", torch.tensor([0.1, 0.2, 0.3]), True),
     ("RandomAffine3D", "scale", torch.tensor([0.9, 1.1]), True),
     ("RandomAffine3D", "scale", torch.tensor([(0.9, 1.1), (0.9, 1.1), (0.9, 1.1)]), True),
-    ("RandomAffine3D", "shears", torch.tensor(10), True),
-    ("RandomAffine3D", "shears", torch.tensor([10, 20]), True),
+    ("RandomAffine3D", "shears", torch.tensor(10.0), True),
+    ("RandomAffine3D", "shears", torch.tensor([10.0, 20.0]), True),
     ("RandomAffine3D", "shears", torch.tensor([10.0, 20.0, 30.0, 40.0, 50.0, 60.0]), True),
     ("RandomAffine3D", "shears", torch.tensor([(-10.0, 10.0)] * 6), True),
 ]
@@ -83,7 +83,7 @@ _FIXED_ARGS = {
 
 def _form_id(form):
     name, arg, value, _ = form
-    return f"{name}-{arg}-{'x'.join(map(str, value.shape)) or '0d'}-{str(value.dtype).removeprefix('torch.')}"
+    return f"{name}-{arg}-{'x'.join(map(str, value.shape)) or '0d'}"
 
 
 class TestLearnableRangeForms:
