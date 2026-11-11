@@ -134,7 +134,7 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    hash1 = "fbd2207fe384be85897e105346ae3b85649adec2"
     BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
         f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
     )

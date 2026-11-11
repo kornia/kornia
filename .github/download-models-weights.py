@@ -55,23 +55,27 @@ MODELS: dict[str, "str | list[str]"] = {
     # before the matrix so every job does not download them on a cold cache.
     "loftr_outdoor_and_homography_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_outdoor_and_homography_data.safetensors"
+        "fbd2207fe384be85897e105346ae3b85649adec2/loftr_outdoor_and_homography_data.safetensors"
     ),
     "loftr_indoor_and_fundamental_data.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "4ffed08df3d82af85aa9012d3104f19ca4b62604/loftr_indoor_and_fundamental_data.safetensors"
+        "fbd2207fe384be85897e105346ae3b85649adec2/loftr_indoor_and_fundamental_data.safetensors"
     ),
     "adalam_test.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "4ffed08df3d82af85aa9012d3104f19ca4b62604/adalam_test.safetensors"
+        "fbd2207fe384be85897e105346ae3b85649adec2/adalam_test.safetensors"
+    ),
+    "adalam_test_6660.safetensors": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "fbd2207fe384be85897e105346ae3b85649adec2/adalam_test_6660.safetensors"
     ),
     "knchurch_disk.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
+        "fbd2207fe384be85897e105346ae3b85649adec2/knchurch_disk.safetensors"
     ),
     "xfeat_reference.safetensors": (
         "https://raw.githubusercontent.com/kornia/data_test/"
-        "4ffed08df3d82af85aa9012d3104f19ca4b62604/xfeat_reference.safetensors"
+        "fbd2207fe384be85897e105346ae3b85649adec2/xfeat_reference.safetensors"
     ),
     # -- detectors, descriptors and orientation estimators -------------------
     # AffNet + OriNet: LAFAffNetShapeEstimator / LAFOrienter, and every composite
