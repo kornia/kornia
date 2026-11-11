@@ -161,12 +161,13 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     """Return the CUDA device of a given index when CUDA is available, else the CPU.
 
     ``device = get_cuda_device_if_available(index)`` returns ``torch.device(f"cuda:{index}")`` when
-    ``torch.cuda.is_available()`` is true and ``torch.device("cpu")`` otherwise. ``index`` is not checked against
-    ``torch.cuda.device_count()``: on a machine with one GPU, ``index=3`` returns ``cuda:3``, which fails only when a
-    tensor is placed on it.
+    ``torch.cuda.is_available()`` is true and ``index`` is inside ``[0, torch.cuda.device_count())``;
+    ``torch.device("cpu")`` otherwise, so an out-of-range ``index`` on a machine with one GPU never hands
+    out a ``cuda:3`` device that only fails when a tensor is placed on it.
 
     Args:
-        index: the CUDA device index.
+        index: the CUDA device index. Falls back to the CPU device when CUDA is unavailable or
+            ``index`` is outside ``[0, torch.cuda.device_count())``.
 
     Returns:
         ``cuda:<index>`` or ``cpu``.
@@ -176,7 +177,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device, else the CPU.
 
     """
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and 0 <= index < torch.cuda.device_count():
         return torch.device(f"cuda:{index}")
 
     return torch.device("cpu")
@@ -1234,7 +1235,8 @@ def batched_forward(
         The concatenated model output, on ``data.device``.
 
     Raises:
-        BaseError: if ``batch_size`` is not positive.
+        BaseError: if ``batch_size`` is not positive, or the model returns anything but a
+            single tensor (e.g. a tuple of tensors).
 
     Example:
         >>> import torch
@@ -1258,7 +1260,18 @@ def batched_forward(
             end = min((batch_idx + 1) * bs, B)
             if st >= end:
                 continue
-            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+            out = model_dev(data[st:end].to(device), **kwargs)
+            _check_batched_forward_output(out)
+            out_list.append(out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
-    return model_dev(data.to(device), **kwargs).to(data.device)
+    out = model_dev(data.to(device), **kwargs)
+    _check_batched_forward_output(out)
+    return out.to(data.device)
+
+
+def _check_batched_forward_output(output: Any) -> None:
+    KORNIA_CHECK(
+        isinstance(output, torch.Tensor),
+        lambda: f"batched_forward expects a model that returns a single tensor, got {type(output).__name__}",
+    )
