@@ -213,7 +213,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
         if isinstance(value, torch.Tensor):
             item = value.item()
-            if not float(item).is_integer():
+            if isinstance(item, bool) or not float(item).is_integer():
                 raise TypeError(f"`DType.get` expects a tensor with an integral scalar value. Got {value!r}.")
             return cls(int(item))
 

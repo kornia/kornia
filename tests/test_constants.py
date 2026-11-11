@@ -97,6 +97,9 @@ class TestEnumGet(BaseTester):
         # `int(2.7) == 2` used to truncate the value into DType.FLOAT32 instead of raising (#6691).
         with pytest.raises(TypeError, match="expects a tensor with an integral scalar value"):
             DType.get(torch.tensor(2.7))
+        # a bool tensor's item is a `bool`, which would resolve through `int` like `Resample.get(True)` did
+        with pytest.raises(TypeError, match="expects a tensor with an integral scalar value"):
+            DType.get(torch.tensor(True))
         # integral tensors keep resolving
         assert DType.get(torch.tensor(2)) is DType.FLOAT32
         assert DType.get(torch.tensor(3)) is DType.FLOAT64
