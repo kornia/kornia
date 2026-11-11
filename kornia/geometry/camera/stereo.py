@@ -523,12 +523,17 @@ def reproject_disparity_to_3D(
 
     Note:
         A point is valid when all four homogeneous components are finite,
-        ``abs(W) > 1e-8`` in the converter's working dtype, and XYZ is finite after
+        ``abs(W) > 1e-8`` in the computation dtype, and XYZ is finite after
         conversion to the returned disparity dtype. The matrix multiplication and
-        homogeneous conversion use Q's dtype, which a caller's autocast region does not
-        change, outside TorchScript, where a scripted call keeps the caller's precision.
-        The absolute W cutoff is the existing coordinate policy: scaling Q can change
-        validity near the cutoff, while Q and -Q have the same mask.
+        homogeneous conversion use Q's dtype by default, except that ``float16`` and
+        ``bfloat16`` Q matrices are promoted to ``float32`` when reprojecting
+        ``float32`` disparity; in that exception, multiplication, homogeneous
+        conversion, and the validity cutoff all evaluate in ``float32`` before
+        points are cast to the returned disparity dtype. A caller's autocast region does
+        not change the computation dtype, outside TorchScript, where a scripted call
+        keeps the caller's precision. The absolute W cutoff is the existing coordinate
+        policy: scaling Q can change validity near the cutoff, while Q and -Q have the
+        same mask.
 
         This mask does not certify a stereo match, front-of-camera eligibility,
         image bounds or occlusion. In particular, zero disparity can reconstruct a
