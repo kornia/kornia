@@ -1737,6 +1737,25 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("num_mix", [1, 3])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch_parameters_4429(self, num_mix, same_on_batch, device, dtype):
+        generator = CutmixGenerator(
+            num_mix=num_mix,
+            beta=torch.tensor(1.0, device=device, dtype=dtype),
+            cut_size=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+        )
+        params = generator(torch.Size([0, 3, 7, 9]), same_on_batch=same_on_batch)
+
+        assert params.keys() == {"mix_pairs", "crop_src", "image_shape"}
+        assert params["mix_pairs"].shape == (num_mix, 0)
+        assert params["mix_pairs"].dtype == torch.long
+        assert params["mix_pairs"].device == device
+        assert params["crop_src"].shape == (num_mix, 0, 4, 2)
+        assert params["crop_src"].dtype == dtype
+        assert params["crop_src"].device == device
+        assert_close(params["image_shape"], torch.tensor([7, 9], device=device, dtype=dtype))
+
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("p", [0, 0.5, 1.0])
     @pytest.mark.parametrize("width,height", [(200, 200)])
