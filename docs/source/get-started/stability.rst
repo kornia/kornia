@@ -155,7 +155,8 @@ The modules that wrap these functions, :class:`~kornia.enhance.AdjustGamma` and
 
 A graph recorded with ``torch.jit.trace`` drops the operator too, on every device:
 the checks run on the values traced, as in an eager call (so with checks disabled
-only the ``equalize`` range check runs), and not when the traced graph runs again. A
+only the ``equalize`` range check runs), except on MPS before torch 2.13, where none
+runs, and not when the traced graph runs again. A
 traced call with an invalid argument then gives the results in the table on the CPU
 as well as on CUDA; on the CPU, ``equalize`` and ``equalize3d`` fail with PyTorch's
 out-of-bounds index error instead of the device-side assert.
@@ -167,7 +168,10 @@ make the same kind of check but do not compile with ``torch.jit.script``.
 To keep the checks, call the function eagerly with checks enabled (see
 :func:`~kornia.core.check.disable_checks`), or through ``torch.compile`` with checks
 enabled: Inductor keeps the assert from torch 2.9 on, and earlier releases compile it
-to nothing. ``gaussian_blur2d`` skips its ``sigma`` check under ``torch.compile``.
+to nothing. ``gaussian_blur2d`` skips its ``sigma`` check under ``torch.compile``,
+and the checks are skipped under ``torch.vmap`` and in a compiled call under any
+functorch transform, such as ``torch.func.grad`` (the ``equalize`` range check
+still runs in the compiled call).
 Otherwise, validate the arguments before a scripted, traced or compiled call.
 
 Versioning caveat
