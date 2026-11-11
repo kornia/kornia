@@ -81,6 +81,10 @@ _FIXED_ARGS = {
 }
 
 
+# The families that reach the range without ``grid_sample``.
+_WITHOUT_GRID_SAMPLE = ("ColorJiggle", "ColorJitter", "RandomSharpness")
+
+
 def _form_id(form):
     name, arg, value, _ = form
     return f"{name}-{arg}-{'x'.join(map(str, value.shape)) or '0d'}"
@@ -90,7 +94,9 @@ class TestLearnableRangeForms:
     @pytest.mark.parametrize("form", _LEARNABLE_FORMS, ids=_form_id)
     def test_gradient_reaches_the_range(self, form, device, dtype):
         name, arg, value, volumetric = form
-        if name in ("RandomAffine", "RandomRotation") and not supports_bilinear_2d_grid_sample_backward(device, dtype):
+        # Every other family samples through ``grid_sample``, which has no CPU half-precision kernel up to torch 2.5.1;
+        # the 2D probe stands in for the 3D one, which has the same gap.
+        if name not in _WITHOUT_GRID_SAMPLE and not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("grid_sample backward is unavailable for this device/dtype")
         # ``clone``: on a matching device and dtype ``to`` returns the table entry itself, shared by every test.
         param = nn.Parameter(value.clone().to(device=device, dtype=dtype))
@@ -100,8 +106,11 @@ class TestLearnableRangeForms:
         torch.manual_seed(0)
         shape = (2, 3, 4, 10, 10) if volumetric else (2, 3, 10, 10)
         image = torch.randint(255, shape, device=device).to(dtype) / 255.0
-        # A target outside the image range gives every draw a non-zero loss gradient.
-        nn.functional.mse_loss(aug(image), torch.full_like(image, 2.0)).backward()
+        # A target outside the image range gives every draw a non-zero loss gradient. The loss runs in at least float32:
+        # torch 2.5.1's CPU ``mse_loss`` has no bfloat16 forward and no half-precision backward.
+        out = aug(image)
+        out = out.to(torch.promote_types(out.dtype, torch.float32))
+        nn.functional.mse_loss(out, torch.full_like(out, 2.0)).backward()
         assert param.grad is not None
         assert torch.isfinite(param.grad).all()
         assert torch.count_nonzero(param.grad) > 0
