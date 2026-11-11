@@ -51,7 +51,7 @@ torch.manual_seed(0)
 
 OUT = Path(__file__).absolute().parent / "source/_static/img/models"
 DATA = "https://raw.githubusercontent.com/kornia/data/main/"
-KNCHURCH = "https://github.com/kornia/data_test/raw/4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
+KNCHURCH = "https://github.com/kornia/data_test/raw/fbd2207fe384be85897e105346ae3b85649adec2/knchurch_disk.safetensors"
 IMAGENET_CLASSES = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
 
 FIGURES: dict = {}
