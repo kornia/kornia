@@ -166,14 +166,6 @@ class TestPatchDominantGradientOrientation(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,))
 
-    @pytest.mark.skip(" Compiled functions can't take variable number")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 1, 13, 13
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval())
-        self.assert_close(model(patches), model_jit(patches))
-
     def test_float64_rotation_by_pi_shifts_angle_by_pi_5127(self, device):
         if device.type == "mps":
             pytest.skip("float64 is unavailable on MPS")
@@ -402,13 +394,6 @@ class TestOriNet(BaseTester):
         ang = ori(inp)
         expected = torch.tensor([70.58], device=device)
         self.assert_close(rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
-
-    @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
-        batch_size, channels, height, width = 2, 1, 32, 32
-        patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        ori = OriNet(pretrained=False).to(device=device, dtype=patches.dtype).eval()
-        self.gradcheck(ori, (patches,), fast_mode=False)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32

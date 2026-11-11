@@ -804,15 +804,17 @@ class TestRotate(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.rotate, (input, angle))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         rot = kornia.geometry.transform.Rotate(angle)
         rot_traced = torch.jit.trace(kornia.geometry.transform.Rotate(angle), img)
-        self.assert_close(rot(img), rot_traced(img))
+        # TorchScript's CUDA fuser keeps a half chain in float32 and rounds once (0.03 from eager here); the
+        # comparison is about the trace, so it runs unfused.
+        with torch.jit.fuser("none"):
+            actual = rot_traced(img)
+        self.assert_close(rot(img), actual)
 
 
 class TestTranslate(BaseTester):
@@ -874,8 +876,6 @@ class TestTranslate(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.translate, (input, translation), requires_grad=(True, False))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -976,16 +976,6 @@ class TestScale(BaseTester):
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.scale, (input, scale_factor), requires_grad=(True, False))
-
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype):
-        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
-        batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        trans = kornia.geometry.transform.Scale(scale_factor)
-        trans_traced = torch.jit.trace(kornia.Scale(scale_factor), img)
-        self.assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
 class TestShear(BaseTester):
@@ -1100,8 +1090,6 @@ class TestShear(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.shear, (input, shear), requires_grad=(True, False))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64

@@ -153,7 +153,7 @@ MODELS: dict[str, "str | list[str]"] = {
     ],
     # -- DeDoDe --------------------------------------------------------------
     # Only the pair the ``DeDoDe.from_pretrained`` doctest builds: ``TestDeDoDe``
-    # is skipped outright, so every other variant -- and the 1.2 GB DINOv2
+    # uses random weights, so every other variant -- and the 1.2 GB DINOv2
     # backbone the G descriptor pulls -- would be cached for nothing.
     "dedode_detector_L_v2.pth": [
         "https://huggingface.co/kornia/dedode/resolve/main/dedode_detector_L_v2.pth",

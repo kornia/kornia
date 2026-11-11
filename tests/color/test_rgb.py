@@ -311,16 +311,6 @@ class TestRgbToRgba(BaseTester):
         aval = torch.ones(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_rgba, (img, aval), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skip(reason="unsupported Union type")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = kornia.color.rgb_to_rgba
-        op_jit = torch.jit.script(op)
-        self.assert_close(op(img, 1.0), op_jit(img, 1.0))
-        aval = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        self.assert_close(op(img, aval), op_jit(img, aval))
-
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

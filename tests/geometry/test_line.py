@@ -382,26 +382,6 @@ class TestParametrizedLine(BaseTester):
         for actual, expected in zip(actual_gradients, expected_gradients):
             self.assert_close(actual, expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
     def test_derived_state_moves_and_serializes(self, device, dtype):
         p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
         p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
@@ -1207,22 +1187,6 @@ class TestFitLine(BaseTester):
         direction = fit_line(points, weights).direction[0]
         axis = axis * torch.sign(direction.cpu().double() @ axis)
         self.assert_close(direction, axis.to(device=device, dtype=dtype))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestConventionsParametrizedLine(BaseTester):

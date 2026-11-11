@@ -23,7 +23,6 @@ from torch import nn
 
 import kornia
 import kornia.geometry.linalg as kgl
-from kornia.core._compat import torch_version_lt
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.geometry.create import create_random_homography
@@ -228,10 +227,6 @@ class TestTransformPoints(BaseTester):
         # Regression test for https://github.com/kornia/kornia/issues/3705
         if device.type == "mps" and torch.float64 in (trans_dtype, points_dtype):
             pytest.skip("MPS does not support float64")
-        if trans_dtype == torch.float16 and device.type == "cpu" and torch_version_lt(2, 2, 0):
-            # transform_points harmonises at the bmm site in the transform's dtype, and CPU
-            # float16 bmm ("bmm" not implemented for 'Half') only landed in PyTorch 2.2.
-            pytest.skip("CPU float16 bmm requires PyTorch 2.2")
         points_src = torch.rand(2, 3, 2, device=device, dtype=points_dtype)
         trans = kornia.core.ops.eye_like(3, points_src).to(trans_dtype)
         out = kgl.transform_points(trans, points_src)

@@ -46,7 +46,6 @@ class TestSOSNet(BaseTester):
         out = sosnet(inp)
         assert out.shape == (16, 128)
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype).eval()

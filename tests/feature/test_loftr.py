@@ -310,19 +310,6 @@ class TestLoFTR(BaseTester):
 
         self.gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4)
 
-    @pytest.mark.skip("does not like transformer.py:L99, zip iteration")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 1, 1, 32, 32
-        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        patches2x = resize(patches, (48, 48))
-        sample = {"image0": patches, "image1": patches2x}
-        model = LoFTR().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(model)
-        out = model(sample)
-        out_jit = model_jit(sample)
-        for k, v in out.items():
-            self.assert_close(v, out_jit[k])
-
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch flattens the coarse maps without a -1 to infer and returns no matches."""
         loftr = _loftr_matching_every_cell(device, dtype)

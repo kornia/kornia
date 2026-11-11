@@ -232,27 +232,14 @@ class TestRTDETR(BaseTester):
         # batch size, so the float32 tolerance is widened to 1e-4.
         self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.skip("Unnecessary")
-    def test_exception(self): ...
-
-    @pytest.mark.skip("Unnecessary")
-    def test_gradcheck(self): ...
-
-    @pytest.mark.skip("Unnecessary")
-    def test_module(self): ...
-
-    @pytest.mark.skip("Needs more investigation")
-    @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
-    def test_dynamo(self, variant, device, dtype, torch_optimizer):
-        # NOTE: This test passes on Mac M1 CPU, PyTorch 2.0.0,
-        # but fails on GitHub Actions Ubuntu-latest CPU, PyTorch 2.0.0.
-        # Perhaps random weights cause outputs to be much more different?
-        # Using pre-trained weights might see a smaller difference.
-        model = RTDETR.from_config(RTDETRConfig(variant, 10, head_num_queries=10)).to(device, dtype).eval()
+    @pytest.mark.slow
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        model = RTDETR.from_config(RTDETRConfig("resnet18d", 10, head_num_queries=10)).to(device, dtype).eval()
         model_optimized = torch_optimizer(model)
 
         img = torch.rand(1, 3, 224, 256, device=device, dtype=dtype)
-        expected = model(img)
-        actual = model_optimized(img)
+        expected_logits, expected_boxes = model(img)
+        actual_logits, actual_boxes = model_optimized(img)
 
-        self.assert_close(actual, expected)
+        self.assert_close(actual_logits, expected_logits)
+        self.assert_close(actual_boxes, expected_boxes)

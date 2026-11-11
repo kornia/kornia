@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
-from kornia.core._compat import torch_version, torch_version_ge
+from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import ImageError
 from kornia.filters import Canny, canny, gaussian_blur2d, sobel, spatial_gradient
 
@@ -370,8 +370,6 @@ class TestCanny(BaseTester):
         self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
-        if "cuda" in str(device):
-            pytest.skip("RuntimeError: Backward is not reentrant, i.e., running backward,")
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(canny, img)
@@ -387,14 +385,7 @@ class TestCanny(BaseTester):
 
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        if (
-            torch_version() in {"2.1.1", "2.1.2", "2.2.2", "2.3.1"}
-            and dtype == torch.float64
-            and (isinstance(kernel_size, int) or kernel_size[0] == kernel_size[1])
-        ):
-            pytest.skip("Canny compiled failing into fp64 for kernel sizes where kx and ky are equals")
         data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)
         op_optimized = torch_optimizer(op)

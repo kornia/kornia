@@ -769,10 +769,3 @@ class TestEdgeDetector(BaseTester):
             assert all(item.shape == (1, 1, 64, 64) for item in out)
         else:
             assert out.shape == (2, 1, 64, 64)
-
-    @pytest.mark.slow
-    @pytest.mark.skip(reason="issue with `ClassVar[list[int]]`")
-    def test_jit(self, device, dtype):
-        op = kornia.contrib.EdgeDetectorBuilder.build(pretrained=False).to(device, dtype)
-        op_jit = torch.jit.script(op)
-        assert op_jit is not None

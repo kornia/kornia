@@ -518,18 +518,6 @@ class TestMKDDescriptor(BaseTester):
 
         self.gradcheck(mkd_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
-    def test_jit(self, device, dtype):
-        batch_size, channels, ps = 1, 1, 19
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        kt = "concat"
-        wt = "lw"
-        model = MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(
-            MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
-        )
-        self.assert_close(model(patches), model_jit(patches))
-
     @pytest.mark.parametrize("output_dims", [20, 40])
     def test_pcaws_with_at_most_40_output_dims(self, device, dtype, output_dims):
         # pcaws used to index the eigenvalue at keval=40 after truncating the spectrum to output_dims (IndexError).

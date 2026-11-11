@@ -97,9 +97,6 @@ class TestMotionBlur(BaseTester):
         motion = MotionBlur(ksize, angle, direction)
         assert motion(sample).shape == shape
 
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
-
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("ksize", [3, 11])
     @pytest.mark.parametrize("angle", [0.0, 360.0])
@@ -352,9 +349,6 @@ class TestMotionBlur3D(BaseTester):
         sample = torch.rand(shape, device=device, dtype=dtype)
         motion = MotionBlur3D(ksize, angle, direction)
         assert motion(sample).shape == shape
-
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("ksize", [3, 11])

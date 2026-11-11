@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.image import ColorSpace
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
@@ -218,7 +217,6 @@ class TestImage(BaseTester):
         self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
         self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
 
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
     @pytest.mark.xfail(reason="This may fail some time due to jpeg compression assertion")
     def test_load_write(self, tmp_path: Path) -> None:
         data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)

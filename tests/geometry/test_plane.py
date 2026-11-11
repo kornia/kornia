@@ -40,22 +40,6 @@ class TestFitPlane(BaseTester):
         assert plane.offset.shape == ()
         assert plane.normal.shape == (D,)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
     def test_gradcheck(self, device):
         t = torch.linspace(-1.0, 1.0, 6, device=device, dtype=torch.float64)
         points = torch.stack([t, t**2, 0.2 * t**3], dim=-1)
@@ -552,22 +536,6 @@ class TestHyperplane(BaseTester):
         assert projected.data.shape == point.data.shape
         self.assert_close(projected.data, expected)
         self.assert_close(plane.signed_distance(projected).data, torch.zeros(2, 1, device=device, dtype=dtype))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         # A tilted triangle whose edges are neither orthogonal nor of equal length, so the SVD fallback

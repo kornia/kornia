@@ -136,13 +136,6 @@ class TestHistMatch(BaseTester):
         assert out.max() <= dst.max()
         self.assert_close(out, kornia.contrib.histogram_matching(src.float(), dst.float()))
 
-    @pytest.mark.skip(reason="not differentiable now.")
-    def test_grad(self, device):
-        B, C, H, W = 1, 3, 32, 32
-        src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(kornia.contrib.histogram_matching, (src, dst))
-
     def test_interp_is_exact_at_its_knots(self, device, dtype):
         xp = torch.tensor([0.0, 0.1, 0.35, 0.7, 1.0], device=device, dtype=dtype)
         fp = torch.tensor([10.0, 20.0, 30.0, 47.0, 51.0], device=device, dtype=dtype)

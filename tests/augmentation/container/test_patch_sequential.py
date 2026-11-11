@@ -159,8 +159,6 @@ class TestPatchSequential:
         assert seq.is_intensity_only()
 
     def test_autocast(self, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.PatchSequential(*tfs, grid_size=(2, 2), random_apply=True)

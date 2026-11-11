@@ -19,7 +19,6 @@ import pytest
 import torch
 
 from kornia.contrib.visual_prompter import VisualPrompter
-from kornia.core._compat import torch_version
 from kornia.models.sam import SamConfig
 
 from testing.base import BaseTester
@@ -123,13 +122,6 @@ class TestVisualPrompter(BaseTester):
             prompter._valid_keypoints(torch.rand(1, 1, 2), torch.rand(2, 1))
         assert "The keypoints and labels should have the same batch size" in str(errinfo)
 
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_gradcheck(self, device): ...
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self): ...
-
-    @pytest.mark.skipif(torch_version() in {"2.1.2", "2.0.1"}, reason="Not working well")
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         batch_size = 1

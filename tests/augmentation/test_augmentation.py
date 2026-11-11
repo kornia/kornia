@@ -83,7 +83,6 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.core._compat import torch_version
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
@@ -164,20 +163,8 @@ class CommonTests(BaseTester):
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
 
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_random_p_1(self): ...
-
     def test_inverse_coordinate_check(self):
         self._test_inverse_coordinate_check_implementation(params=self._default_param_set)
-
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_exception(self): ...
-
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_batch(self): ...
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self): ...
 
     def test_module(self):
         self._test_module_implementation(params=self._default_param_set)
@@ -605,10 +592,6 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
             params=parameters,
         )
 
-    @pytest.mark.skip(reason="No special parameters to validate.")
-    def test_exception(self):
-        pass
-
 
 class TestRandomVerticalFlipAlternative(CommonTests):
     possible_params: Dict["str", Tuple] = {}
@@ -665,10 +648,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
             expected_transformation=expected_transformation,
             params=parameters,
         )
-
-    @pytest.mark.skip(reason="No special parameters to validate.")
-    def test_exception(self):
-        pass
 
 
 class TestRandomRotationAlternative(CommonTests):
@@ -769,8 +748,12 @@ class TestRandomRotation90(CommonTests):
         "align_corners": True,
     }
 
-    @pytest.mark.skip(reason="not working for all torch versions")
-    def test_gradcheck(): ...
+    def test_gradcheck(self):
+        # One draw of quarter turns for every evaluation, as in TestRandomFisheye.test_gradcheck.
+        aug = RandomRotation90(**self._default_param_set, p=1.0)
+        input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=torch.float64)
+        params = aug.forward_parameters(input_tensor.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (input_tensor,))
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
@@ -4120,35 +4103,6 @@ class TestRandomCrop(BaseTester):
         inp = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3
         self.gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,))
 
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        actual = op_script(img)
-        expected = kornia.geometry.transform.center_crop3d(img)
-        self.assert_close(actual, expected)
-
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit_trace(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        # 1. Trace op
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        op_trace = torch.jit.trace(op_script, (img,))
-
-        # 2. Generate new input
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        # 3. Evaluate
-        actual = op_trace(img)
-        expected = op(img)
-        self.assert_close(actual, expected)
-
 
 class TestRandomResizedCrop(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -5425,13 +5379,16 @@ class TestRandomFisheye(BaseTester):
         aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
         assert img.shape == aug(img).shape
 
-    @pytest.mark.skip(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0")
-    def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
-        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
-        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
-        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
-        self.gradcheck(RandomFisheye(center_x, center_y, gamma), (img,))
+    def test_gradcheck(self, device):
+        # One parameter draw for every evaluation: gradcheck calls the op repeatedly, and a fresh draw each time
+        # makes the numerical Jacobian compare different warps.
+        img = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64)
+        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=torch.float64)
+        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=torch.float64)
+        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=torch.float64)
+        aug = RandomFisheye(center_x, center_y, gamma, p=1.0)
+        params = aug.forward_parameters(img.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (img,))
 
 
 class TestRandomElasticTransform(BaseTester):
@@ -5518,10 +5475,6 @@ class TestRandomElasticTransform(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
-    @pytest.mark.skipif(
-        torch_version() in {"1.11.0", "1.12.1"} and sys.version_info.minor == 10,
-        reason="failing because no gaussian mean",
-    )
     def test_apply(self, batch_prob, device, dtype):
         torch.manual_seed(0)
 

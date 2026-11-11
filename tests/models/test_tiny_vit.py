@@ -16,7 +16,6 @@
 #
 
 import copy
-import sys
 
 import pytest
 import torch
@@ -100,16 +99,6 @@ class TestTinyViT(BaseTester):
         out = model(torch.rand(0, 3, img_size, img_size, device=device, dtype=dtype))
         assert out.shape == (0, 1000)
 
-    @pytest.mark.skip("not implemented")
-    def test_exception(self): ...
-
-    @pytest.mark.skip("not implemented")
-    def test_gradcheck(self): ...
-
-    @pytest.mark.skip("not implemented")
-    def test_module(self): ...
-
-    @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         op = TinyViT().to(device=device, dtype=dtype)
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)
@@ -390,7 +379,6 @@ class TestTinyViT(BaseTester):
         with torch.no_grad():
             self.assert_close(op(img), op_optimized(img), rtol=rtol, atol=atol)
 
-    @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")

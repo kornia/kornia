@@ -266,22 +266,10 @@ class TestTensorWrapper(BaseTester):
         result = torch.cat([tensor, tensor])
         assert isinstance(result, TensorWrapper)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
     def test_exception(self):
         """Test exception handling for invalid inputs."""
         with pytest.raises(TypeCheckError):
             TensorWrapper([1, 2, 3])  # type: ignore
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         # No entry is an integer, where ``% 1.0`` jumps.
