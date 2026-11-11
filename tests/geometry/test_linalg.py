@@ -240,8 +240,17 @@ class TestTransformPoints(BaseTester):
 
     @pytest.mark.parametrize("trans_dtype", [torch.float16, torch.bfloat16])
     def test_lower_precision_transform_uses_float32_arithmetic(self, device, trans_dtype):
+        """FP16 and BF16 transforms compute in FP32 when applied to FP32 points (#6615)."""
         if trans_dtype == torch.float16 and device.type == "cpu" and torch_version_lt(2, 2, 0):
             pytest.skip("CPU float16 bmm requires PyTorch 2.2")
+
+        if device.type == "mps" and trans_dtype == torch.bfloat16:
+            try:
+                torch.empty(1, device=device, dtype=trans_dtype)
+            except (TypeError, RuntimeError) as error:
+                if "bfloat16 is only supported on macos 14 or newer" not in str(error).lower():
+                    raise
+                pytest.skip("MPS bfloat16 requires macOS 14 or newer")
 
         trans = torch.tensor(
             [[[1.0003, 0.0007, 0.1234], [0.0002, 0.9997, 0.5678], [0.0001, 0.0002, 1.0]]],
