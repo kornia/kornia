@@ -142,6 +142,10 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
     if color.ndim == 0:
         color = color.unsqueeze(0)
+    # Flatten the colour to a channel vector: the documented (C) and (C, 1) both
+    # become (C,), and a batch-shaped colour such as (1, 2) is read as the two
+    # values it carries rather than as one value on its first dimension.
+    color = color.reshape(-1)
     # A single value is written to every channel (see the docstring); any other
     # length must match the channels of the image. An (H, W) image is one
     # channel, so its colour is a single value. The colour is (C) or (C, 1), so
@@ -390,8 +394,7 @@ def draw_rectangle(
 
     # The colour is (C), (B, N, C) or a single value; its channels are its last
     # dimension, and a single value is written to every channel.
-    if color is not None:
-        _check_color_channels(color, c)
+    _check_color_channels(color, c)
 
     if len(color.shape) <= 1:
         color = color.expand(batch, num_rectangle, c)

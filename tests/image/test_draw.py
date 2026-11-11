@@ -81,6 +81,18 @@ class TestDrawPoint(BaseTester):
         with pytest.raises(BaseError, match="the color has 3 values and the image has 1 channel"):
             draw_point2d(img, points, color)
 
+    def test_draw_point2d_rejects_a_color_of_two_values_in_one_row(self, dtype, device):
+        """A (1, 2) colour carries two values, so an (H, W) image, one channel, refuses it.
+
+        The check reads the values of the colour, not its first dimension, which
+        is one here.
+        """
+        points = torch.tensor([(1, 3)], device=device)
+        color = torch.tensor([[7.0, 8.0]], dtype=dtype, device=device)
+        img = torch.zeros(8, 8, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match="the color has 2 values and the image has 1 channel"):
+            draw_point2d(img, points, color)
+
     def test_draw_point2d_with_mismatched_dtype(self, device):
         """Test that the color is correctly cast to the image dtype when drawing points."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
