@@ -85,7 +85,7 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         self.assert_close(out, torch.zeros_like(out))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)

@@ -1773,7 +1773,7 @@ class TestMultiResolutionDetector(BaseTester):
             responses, _ = MultiResolutionDetector(Identity(), num_features=k, config=cfg).to(device, dtype).detect(img)
             self.assert_close(responses[0], reference[0, :k])
 
-    def test_negative_score_threshold_is_rejected(self, device, dtype):
+    def test_negative_score_threshold_is_rejected(self):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would
         # admit all of them -- and collide with the zero response that marks an unfilled slot.
         with pytest.raises(ValueError):

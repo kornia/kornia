@@ -610,7 +610,7 @@ class TestLocalFeature(BaseTester):
 
 class TestSIFTFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         sift = SIFTFeature()
         assert sift is not None
 

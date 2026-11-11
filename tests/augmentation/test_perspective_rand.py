@@ -204,7 +204,7 @@ class TestRandomAffine(BaseTester):
             torch.tensor([-5.0, 5.0, -3.0, 3.0]),
         ],
     )
-    def test_batch_multi_params(self, degrees, translate, scale, shear, device, dtype):
+    def test_batch_multi_params(self, degrees, translate, scale, shear, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
         aug = kornia.augmentation.RandomAffine(degrees=degrees, translate=translate, scale=scale, shear=shear)
         out = aug(x_data)

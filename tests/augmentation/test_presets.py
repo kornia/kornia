@@ -29,7 +29,6 @@ class PresetTests(BaseTester):
     pass
 
 
-@pytest.mark.usefixtures("device", "dtype")
 class TestAdaptiveDiscriminatorAugmentation(PresetTests):
     @pytest.mark.parametrize("seed", [0, 2])
     @pytest.mark.parametrize("direct_forward", [False, True])
@@ -125,7 +124,7 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         inputs = torch.rand(4, 3, 16, 24, device=device, dtype=dtype)
         assert ada(inputs).shape == inputs.shape
 
-    def test_transforms_behaviour(self, device, dtype):
+    def test_transforms_behaviour(self, device):
         ada_preset = AdaptiveDiscriminatorAugmentation().to(device)
         inputs = torch.randn(2, 3, 32, 32).to(device)
         outputs = ada_preset(inputs)
@@ -136,7 +135,7 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         ada_outputs = ada_preset(inputs)
         self.assert_close(inputs, ada_outputs)
 
-    def test_adaptive_probability(self, device, dtype):
+    def test_adaptive_probability(self):
         inputs = torch.randn(2, 3, 32, 32)
         n_runs = 3
         initial_p = 0.5

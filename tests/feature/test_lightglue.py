@@ -545,7 +545,7 @@ class TestLightGlue(BaseTester):
         with pytest.raises(Exception):
             lg({"image0": {}})
 
-    def test_exception_wrong_features(self, device, dtype):
+    def test_exception_wrong_features(self):
         with pytest.raises(Exception):
             LightGlue(features="nonexistent_feature_type")
 
@@ -994,7 +994,7 @@ class TestConventionsLightGlue(BaseTester):
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
 
-    def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, device, dtype, monkeypatch):
+    def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, monkeypatch):
         # the configuration of the features gives the defaults, and an explicit keyword argument always wins: "xfeat"
         # sets width_confidence and filter_threshold, "keynet_affnet_hardnet" turns off pruning and early stopping
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})

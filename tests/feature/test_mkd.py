@@ -390,7 +390,7 @@ class TestWhitening(BaseTester):
 
         self.gradcheck(whitening_describe, (patches, in_dims), nondet_tol=1e-4)
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
         model = Whitening(xform="lw", whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
@@ -416,7 +416,7 @@ class TestWhitening(BaseTester):
         assert wh(torch.rand(3, in_dims, device=device, dtype=dtype)).shape == (3, output_dims)
 
     @pytest.mark.parametrize("keval", [40, -1, -31])
-    def test_pcaws_needs_the_shrinkage_eigenvalue(self, device, keval):
+    def test_pcaws_needs_the_shrinkage_eigenvalue(self, keval):
         # A whitening model with no eigenvalue at index keval has no shrinkage weight: say so instead of IndexError.
         # A negative keval has no meaning for a spectrum; it used to index the one truncated to output_dims.
         in_dims = 30

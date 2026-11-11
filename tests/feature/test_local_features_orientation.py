@@ -52,7 +52,7 @@ class TestPassLAF(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    def test_print(self):
         sift = PassLAF()
         sift.__repr__()
 
@@ -107,7 +107,7 @@ class TestPatchDominantGradientOrientation(BaseTester):
         ang = ori(inp)
         assert ang.shape == torch.Size([10])
 
-    def test_print(self, device):
+    def test_print(self):
         sift = PatchDominantGradientOrientation(32)
         sift.__repr__()
 
@@ -318,7 +318,7 @@ class TestOrientationKernelBuffer(BaseTester):
         assert mod.weighting.dtype == torch.float16
         assert mod.weighting.device == torch.empty(0, device=device).device
 
-    def test_kernel_stays_out_of_state_dict(self, device):
+    def test_kernel_stays_out_of_state_dict(self):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "weighting" not in PatchDominantGradientOrientation(32).state_dict()
 
@@ -383,7 +383,7 @@ class TestOriNet(BaseTester):
         ang = ori(inp)
         assert ang.shape == torch.Size([2])
 
-    def test_print(self, device):
+    def test_print(self):
         sift = OriNet(pretrained=False)
         sift.__repr__()
 
@@ -418,7 +418,7 @@ class TestLAFOrienter(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    def test_print(self):
         sift = LAFOrienter()
         sift.__repr__()
 

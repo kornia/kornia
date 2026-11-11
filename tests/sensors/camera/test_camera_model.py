@@ -62,7 +62,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(image_size.height, cam.height)
         self.assert_close(image_size.width, cam.width)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         # test for invalid params for different camera models
         params = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0])
         image_size = ImageSize(100, 100)
