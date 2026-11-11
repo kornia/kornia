@@ -152,7 +152,7 @@ catches every one, and each subclass also derives from the built-in exception th
 functions raise the built-in ``ValueError`` or ``TypeError`` themselves, which ``except BaseError`` does not catch;
 ``except ValueError`` or ``except TypeError`` catches those and the matching kornia errors alike. In a call
 compiled with ``torch.jit.script``, a failed check raises ``torch.jit.Error`` instead, which none of these clauses
-catches, and on CUDA the checks behind :exc:`AsyncCheckError` do not run at all. A graph recorded with
+catches, and the checks behind :exc:`AsyncCheckError` do not run at all on CUDA tensors. A graph recorded with
 ``torch.jit.trace`` skips those checks on every device; see :ref:`TorchScript support <torchscript-support>`.
 
 .. autoexception:: BaseError

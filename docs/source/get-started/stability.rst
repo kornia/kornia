@@ -97,7 +97,7 @@ CI checks it, is stated on the :ref:`support page <export-support-promise>`.
 TorchScript
 -----------
 
-PyTorch has deprecated TorchScript: its documentation since 2.5, and from 2.15
+PyTorch has deprecated TorchScript in its documentation since 2.5, and from 2.15
 ``torch.jit.script`` and ``torch.jit.trace`` emit a ``FutureWarning``. Use
 ``torch.compile`` or ``torch.export`` for new code. Kornia keeps the TorchScript
 support it has, and adds none:
@@ -108,13 +108,17 @@ support it has, and adds none:
   only in scripted calls is documented here and not fixed.
 
 **Scripted CUDA calls and traced calls skip value checks.** Some functions check
-their argument values with ``torch._assert_async`` on CUDA; on the CPU the same
-check raises :exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes
-that operator when it compiles a function, so a scripted call on CUDA runs without
-these checks, whether checks are enabled or not. A scripted call on the CPU still
-checks, even with checks disabled, and raises ``torch.jit.Error``. Shape and type
-checks (``KORNIA_CHECK*``) still run in scripted calls on every device. With torch
-2.15 on CUDA, these scripted calls take an invalid argument without kornia's error:
+their argument values with ``torch._assert_async`` when the checked tensor is on
+CUDA; on the CPU the same check raises
+:exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes that operator
+when it compiles a function (in every release from torch 2.5.1 to 2.15), so a
+scripted call runs without the checks on CUDA tensors, whether checks are enabled
+or not. A check on a CPU tensor still runs in a scripted call, even with checks
+disabled, and raises ``torch.jit.Error``: :func:`~kornia.enhance.histogram` and
+:func:`~kornia.enhance.histogram2d` check a CPU ``bandwidth`` on the CPU even when
+the samples are on CUDA. Shape and type checks (``KORNIA_CHECK*``) still run in
+scripted calls on every device. With torch 2.15, these scripted calls on CUDA take
+an invalid argument without kornia's error:
 
 .. list-table::
    :header-rows: 1
@@ -122,7 +126,7 @@ checks (``KORNIA_CHECK*``) still run in scripted calls on every device. With tor
 
    * - Function
      - Invalid argument
-     - Scripted CUDA call
+     - Scripted call on CUDA tensors
    * - :func:`~kornia.enhance.adjust_gamma`
      - negative ``gamma`` tensor
      - returns a finite result
@@ -130,18 +134,21 @@ checks (``KORNIA_CHECK*``) still run in scripted calls on every device. With tor
      - negative ``factor`` tensor
      - returns a finite result
    * - :func:`~kornia.enhance.histogram`
-     - ``bandwidth`` not greater than zero
-     - returns a finite result
+     - ``bandwidth <= 0``
+     - returns a result; it is finite for a negative ``bandwidth``, and NaN where a
+       sample sits on a bin center and ``bandwidth`` is zero
    * - :func:`~kornia.enhance.histogram2d`
-     - ``bandwidth`` not greater than zero
-     - returns a finite result
+     - ``bandwidth <= 0``
+     - as :func:`~kornia.enhance.histogram`
    * - :func:`~kornia.geometry.subpix.render_gaussian2d`
      - zero ``std``
      - returns non-finite values
    * - :func:`~kornia.enhance.equalize`, :func:`~kornia.enhance.equalize3d`
-     - image values outside [0, 1]
-     - fails with PyTorch's out-of-bounds index device-side assert (``ScatterGatherKernel.cu``) instead of
-       kornia's message; the CUDA context is unusable afterwards
+     - image values more than about 1/255 outside ``[0, 1]``, which the 256-level
+       lookup cannot index
+     - fails with PyTorch's out-of-bounds index device-side assert (raised in
+       ``ScatterGatherKernel.cu`` with torch 2.15) instead of kornia's message; the
+       CUDA context is unusable afterwards
 
 The modules that wrap these functions, :class:`~kornia.enhance.AdjustGamma` and
 :class:`~kornia.enhance.AdjustContrast`, behave the same when scripted.
@@ -154,9 +161,13 @@ out-of-bounds index error instead of the device-side assert.
 
 :func:`~kornia.enhance.solarize`, :func:`~kornia.enhance.posterize`,
 :func:`~kornia.enhance.equalize_clahe` and :func:`~kornia.filters.gaussian_blur2d`
-make the same kind of check but do not compile with ``torch.jit.script``. To keep
-the checks, call the function eagerly or through ``torch.compile``, which keeps the
-assert from torch 2.9, or validate the arguments before a scripted or traced call.
+make the same kind of check but do not compile with ``torch.jit.script``.
+
+To keep the checks, call the function eagerly with checks enabled (see
+:func:`~kornia.core.check.disable_checks`), or through ``torch.compile`` with checks
+enabled: Inductor keeps the assert from torch 2.9 on, and earlier releases compile it
+to nothing. ``gaussian_blur2d`` skips its ``sigma`` check under ``torch.compile``.
+Otherwise, validate the arguments before a scripted, traced or compiled call.
 
 Versioning caveat
 -----------------
