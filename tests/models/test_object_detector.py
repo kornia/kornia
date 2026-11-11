@@ -23,10 +23,16 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 
 from testing.base import BaseTester
+
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy-exporter`` runs, so only ``legacy-exporter`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy-exporter")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default-exporter"))
 
 
 class TestObjectDetector(BaseTester):
@@ -213,7 +219,7 @@ class TestObjectDetector(BaseTester):
         assert not _returns_per_image_outputs(detector, images)
         assert torch.equal(torch.get_rng_state(), state)
 
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_gives_back_the_random_state_6140(self, exporter):
         # ObjectDetector.to_onnx draws an input for its output check before the export draws its dummy. Both give back
         # what they drew, so the draws after an export are the ones the same calls make without it.

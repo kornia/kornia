@@ -62,7 +62,11 @@ def _post_processor() -> DETRPostProcessor:
 
 
 # ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9, the TorchScript exporter before it.
-_EXPORTERS = [pytest.param({}, id="default"), pytest.param({"dynamo": False}, id="legacy")]
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default"))
 
 
 def _importorskip_exporter(export_kwargs: dict) -> None:

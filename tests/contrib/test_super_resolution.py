@@ -37,6 +37,12 @@ from kornia.models.rrdbnet import RRDBNet
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+
 
 class TestSuperResolutionBuilders(BaseTester):
     """Pin the public super-resolution entry points.
@@ -160,7 +166,7 @@ class TestSuperResolutionBuilders(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
-    @pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
     def test_to_onnx_with_pre_and_post_processor_matches_eager_at_any_size(self, export_kwargs):
         """Without an ``image_size``, the graph takes any batch, height and width, as the eager pre-processor does."""
         pytest.importorskip("onnx")

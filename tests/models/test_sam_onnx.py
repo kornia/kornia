@@ -36,6 +36,13 @@ from testing.base import assert_close
 pytestmark = pytest.mark.device_agnostic
 
 
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+
+
 def test_sam_has_to_onnx():
     """Sam exposes a to_onnx() method via ONNXExportMixin."""
     assert hasattr(Sam, "to_onnx")
@@ -132,7 +139,7 @@ def test_vit_encoder_legacy_onnx_matches_eager_at_every_batch():
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     """A MobileSAM (TinyViT) encoder: a dynamic batch on the dynamo exporter, the pseudo batch on the legacy one.
 

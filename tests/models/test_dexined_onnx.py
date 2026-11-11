@@ -27,6 +27,13 @@ from testing.base import assert_close
 pytestmark = pytest.mark.device_agnostic
 
 
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+
+
 @pytest.mark.timeout(120)
 def test_dexined_to_onnx(tmp_path):
     """Ensure `DexiNed.to_onnx` exports a valid ONNX model and saves the file."""
@@ -44,7 +51,7 @@ def test_dexined_to_onnx(tmp_path):
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_dexined_onnx_matches_eager_at_other_shapes(export_kwargs):
     """Batch, height and width are dynamic: other batches than the traced 2, H != W and odd sizes match eager."""
     pytest.importorskip("onnx")
