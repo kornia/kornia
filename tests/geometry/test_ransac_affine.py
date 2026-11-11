@@ -28,6 +28,14 @@ from testing.base import BaseTester
 
 
 class TestRANSACAffine(BaseTester):
+    @pytest.fixture(autouse=True)
+    def _skip_on_mps(self, request):
+        # Too slow for the MPS CI leg: on its paravirtual GPU (macos-15, torch 2.14) this file took 130-370 s of the
+        # job's 60 minutes with no code change between runs. The affine solver and its scoring are covered by the
+        # CPU legs; the other RANSAC models keep MPS coverage in test_ransac.py.
+        if "device" in request.fixturenames and request.getfixturevalue("device").type == "mps":
+            pytest.skip("too slow on the MPS CI runner; the affine RANSAC tests are covered on CPU")
+
     @pytest.mark.parametrize("score_type", ["ransac", "msac"])
     @pytest.mark.parametrize("prosac", [False, True])
     @pytest.mark.parametrize("lo_sample_size", [None, 8])

@@ -250,6 +250,14 @@ def _rank_ratio_model(ratio: float, dtype, device):
 class TestRANSACFundamentalNearRankOne(BaseTester):
     """Rank-one matrices fit mismatches along a line in either image (#6574), and must not outvote the true geometry."""
 
+    @pytest.fixture(autouse=True)
+    def _skip_on_mps(self, request):
+        # Too slow for the MPS CI leg: on its paravirtual GPU (macos-15, torch 2.14) this class took 150-300 s of
+        # the job's 60 minutes, against 24 s for this whole file on a physical M1 with torch 2.15. The rank test is
+        # device-independent arithmetic, which the CPU legs cover; the other RANSAC classes keep MPS coverage.
+        if "device" in request.fixturenames and request.getfixturevalue("device").type == "mps":
+            pytest.skip("too slow on the MPS CI runner; the rank test is device-independent and covered on CPU")
+
     @pytest.mark.parametrize(
         "threshold, ratio, rejected",
         [
