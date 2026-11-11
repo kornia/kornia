@@ -22,6 +22,19 @@ import torch
 from testing.base import assert_close
 
 
+def float32_literal_tolerance(dtype: torch.dtype) -> dict[str, float]:
+    """Return the ``assert_close`` tolerance for a result checked against float32 values pinned to 4 or 5 decimals.
+
+    float32 and float64 keep the literals' 1e-4. A float16 or bfloat16 call rounds its input, its range and its
+    result, each by half an ulp: a generator draws in float32 from its range rounded to the dtype and rounds each
+    parameter once, and an elementwise intensity op adds one rounding of its own. That leaves the result within
+    about one eps of the pinned value, which is ``assert_close``'s default tolerance for the dtype.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {}
+    return {"rtol": 1e-4, "atol": 1e-4}
+
+
 def oversized_random_crop_params(crop, batch_shape):
     """Return the parameters ``crop.forward_parameters(batch_shape)`` gave before #4414 for an oversized crop.
 

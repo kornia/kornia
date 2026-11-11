@@ -155,8 +155,14 @@ class TestRandomPerspective(BaseTester):
 
         assert out_perspective.shape == x_data.shape
         assert aug.transform_matrix.shape == (1, 3, 3)
-        self.assert_close(out_perspective, expected_output, atol=1e-4, rtol=1e-4)
-        self.assert_close(aug.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        tol = {"atol": 1e-4, "rtol": 1e-4}
+        if dtype in (torch.float16, torch.bfloat16):
+            # The literals are float32 results. A half call rounds the image, the end points (moving the matrix) and
+            # the sampling grid, whose rounding moves a bilinear sample of this [0, 1] image by up to about two eps:
+            # bfloat16 lands 1.9 eps off the float32 output, float16 1.0 eps.
+            tol = {"atol": 2 * torch.finfo(dtype).eps, "rtol": 2 * torch.finfo(dtype).eps}
+        self.assert_close(out_perspective, expected_output, **tol)
+        self.assert_close(aug.transform_matrix, expected_transform, **tol)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_gradcheck(self, device, dtype):

@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **239 float16 and 251 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **180 float16 and 204 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -44,10 +44,11 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      - 0 / 0
      -
    * - ``kornia.augmentation``
+     - ✅
      - ⚠️
-     - ⚠️
-     - 59 / 47
-     - float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy
+     - 0 / 4
+     - Crop and perspective generators and hue/saturation adjustment compute half inputs in float32; bfloat16:
+       ``RandomRotation3D`` backward, where a learning-rate step is below half an ulp of the angle
    * - ``kornia.geometry.transform``
      - ⚠️
      - ⚠️
@@ -111,9 +112,9 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      - Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision
    * - ``kornia.losses``
      - ✅
-     - ⚠️
-     - 0 / 2
-     - bfloat16: total-variation accuracy
+     - ✅
+     - 0 / 0
+     -
    * - ``kornia.feature``
      - ✅
      - ✅
@@ -126,14 +127,14 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      -
    * - ``kornia.models``
      - ✅
-     - ⚠️
-     - 0 / 1
-     - bfloat16: RT-DETR RepVGG fusion accuracy
+     - ✅
+     - 0 / 0
+     -
    * - ``contrib, core, io, onnx, sensors, tracking, utils``
      - ✅
      - ⚠️
-     - 0 / 2
-     - bfloat16: histogram matching and _torch_svd_cast accuracy
+     - 0 / 1
+     - bfloat16: _torch_svd_cast accuracy
 
 ✅ No entries in the CPU known-failure manifest   ⚠️ Has recorded CPU failures.
 Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside

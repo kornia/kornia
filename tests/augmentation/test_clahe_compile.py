@@ -30,8 +30,9 @@ class TestClaheCompile(BaseTester):
     @pytest.mark.parametrize("differentiable", [False, True])
     @pytest.mark.parametrize("backend", ["eager", "inductor"])
     def test_compile_replay(self, device, dtype, torch_optimizer, differentiable, backend):
-        if backend == "inductor" and dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("Inductor changes half-precision lookup rounding in scalar CLAHE as well")
+        if backend == "inductor" and dtype == torch.float16:
+            # bfloat16 matches eager on CPU and CUDA (torch 2.15).
+            pytest.skip("Inductor changes float16 lookup rounding in scalar CLAHE as well")
         if differentiable and backend == "inductor" and device.type == "cpu" and torch.__version__.startswith("2.5.1"):
             pytest.skip(
                 "PyTorch 2.5.1 CPU Inductor emits invalid VecMask code for differentiable CLAHE, including scalar CLAHE"

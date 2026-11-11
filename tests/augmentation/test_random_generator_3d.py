@@ -31,6 +31,7 @@ from kornia.augmentation.random_generator import (
 )
 from kornia.geometry.bbox import infer_bbox_shape3d
 
+from testing.augmentation.utils import float32_literal_tolerance
 from testing.base import assert_close
 
 
@@ -75,6 +76,7 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             )
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 2
 
@@ -136,10 +138,11 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             ),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
-        assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
+        assert_close(res["start_points"], expected["start_points"], **tol)
+        assert_close(res["end_points"], expected["end_points"], **tol)
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 2
 
@@ -201,8 +204,8 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             ),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
-        assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
+        assert_close(res["start_points"], expected["start_points"], **tol)
+        assert_close(res["end_points"], expected["end_points"], **tol)
 
     @pytest.mark.parametrize("depth,height,width", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 1), (2, 3, 5)])
     @pytest.mark.device_agnostic
@@ -309,6 +312,7 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             )
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([[10, 20], [10, 20], [10, 20]], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1, 0.1], device=device, dtype=dtype)
@@ -337,18 +341,19 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             "szy": torch.tensor([10.9438, 0.1232], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angles"], expected["angles"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxy"], expected["sxy"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxz"], expected["sxz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syx"], expected["syx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syz"], expected["syz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szx"], expected["szx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szy"], expected["szy"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angles"], expected["angles"], **tol)
+        assert_close(res["sxy"], expected["sxy"], **tol)
+        assert_close(res["sxz"], expected["sxz"], **tol)
+        assert_close(res["syx"], expected["syx"], **tol)
+        assert_close(res["syz"], expected["syz"], **tol)
+        assert_close(res["szx"], expected["szx"], **tol)
+        assert_close(res["szy"], expected["szy"], **tol)
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([[10, 20], [10, 20], [10, 20]], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1, 0.1], device=device, dtype=dtype)
@@ -377,16 +382,16 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             "szy": torch.tensor([14.8219, 14.8219], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angles"], expected["angles"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxy"], expected["sxy"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxz"], expected["sxz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syx"], expected["syx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syz"], expected["syz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szx"], expected["szx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szy"], expected["szy"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angles"], expected["angles"], **tol)
+        assert_close(res["sxy"], expected["sxy"], **tol)
+        assert_close(res["sxz"], expected["sxz"], **tol)
+        assert_close(res["syx"], expected["syx"], **tol)
+        assert_close(res["syz"], expected["syz"], **tol)
+        assert_close(res["szx"], expected["szx"], **tol)
+        assert_close(res["szy"], expected["szy"], **tol)
 
 
 class TestRandomRotationGen3D(RandomGeneratorBaseTests):

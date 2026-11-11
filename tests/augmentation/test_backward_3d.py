@@ -159,6 +159,11 @@ class TestRandomMotionBlur3DBackward:
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() == 0
+            elif dtype in (torch.float16, torch.bfloat16):
+                # The step lr * grad, about 0.006 degrees (the float32 gradient is 6e-4), is under half an ulp of 20 in
+                # float16 (0.0078) and bfloat16 (0.0625), so SGD leaves the angle as it was. The nonzero gradient
+                # checked above is what reaches it; it must be finite too.
+                assert torch.isfinite(aug._param_generator.angle._grad).all()
             else:
                 # Assert if param not updated
                 assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() != 0

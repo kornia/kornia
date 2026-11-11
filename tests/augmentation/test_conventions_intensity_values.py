@@ -454,8 +454,6 @@ class TestIntensityColourConventions(BaseTester):
     # Each class's identity factor is 1.0, checked on two distinct samples.
     @pytest.mark.parametrize("cls", [K.RandomBrightness, K.RandomContrast, K.RandomSaturation])
     def test_convention_point_range_factor_one_is_identity(self, device, dtype, cls):
-        if dtype in _HALF and cls is K.RandomSaturation:
-            pytest.skip("adjust_saturation's HSV round trip is lossier than the half-precision tolerance")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)

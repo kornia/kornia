@@ -100,6 +100,10 @@ class PerspectiveGenerator(RandomGeneratorBase):
         width = batch_shape[-1]
 
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
+        # The corners are offset in at least float32 and rounded once to a half ``_dtype`` at the end: offsetting in
+        # half precision rounds the draw, the offset and the sum, up to two ulps off the float32 corner. float32 and
+        # float64 compute in their own dtype, as before.
+        _cdtype = torch.promote_types(_dtype, torch.float32)
         _common_param_check(batch_size, same_on_batch)
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
@@ -111,16 +115,16 @@ class PerspectiveGenerator(RandomGeneratorBase):
         # which changes large half-precision image coordinates.
         if isinstance(x_end, torch.Tensor) or isinstance(y_end, torch.Tensor):
             # _constant_tensor is specified for Python scalars only, so build the corners from the traced sizes.
-            x = _as_scalar_tensor(x_end, _device, _dtype)
-            y = _as_scalar_tensor(y_end, _device, _dtype)
-            zero = torch.zeros((), device=_device, dtype=_dtype)
+            x = _as_scalar_tensor(x_end, _device, _cdtype)
+            y = _as_scalar_tensor(y_end, _device, _cdtype)
+            zero = torch.zeros((), device=_device, dtype=_cdtype)
             start_points = torch.stack([torch.stack([zero, x, x, zero]), torch.stack([zero, zero, y, y])], dim=-1)
             start_points = start_points.unsqueeze(0)
         else:
             start_points = _constant_tensor(
                 [[[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]],
                 device=_device,
-                dtype=_dtype,
+                dtype=_cdtype,
             )
         start_points = start_points.expand(batch_size, -1, -1)
 
@@ -128,18 +132,18 @@ class PerspectiveGenerator(RandomGeneratorBase):
         fx = self._distortion_scale * x_extent / 2
         fy = self._distortion_scale * y_extent / 2
 
-        factor = _to_device_nonblocking(torch.stack([fx, fy], dim=0).view(-1, 1, 2), _device, _dtype)
+        factor = _to_device_nonblocking(torch.stack([fx, fy], dim=0).view(-1, 1, 2), _device, _cdtype)
 
         # TODO: This line somehow breaks the gradcheck
         rand_val: torch.Tensor = _to_device_nonblocking(
-            _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch), _device, _dtype
+            _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch), _device, _cdtype
         )
         if self.sampling_method == "basic":
-            pts_norm = _constant_tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            pts_norm = _constant_tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_cdtype)
             offset = factor * rand_val * pts_norm
         elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)
 
         end_points = start_points + offset
 
-        return {"start_points": start_points, "end_points": end_points}
+        return {"start_points": start_points.to(_dtype), "end_points": end_points.to(_dtype)}

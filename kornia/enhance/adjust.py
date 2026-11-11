@@ -282,11 +282,14 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # Reordering the HSV arithmetic has visibly different rounding in half precision (up to
-    # ~7e-3 in float16 and ~6e-2 in bfloat16 over the unit cube). Keep the established path there;
-    # the direct formula below agrees to float32 precision and targets the common augmentation dtype.
-    if not image.is_floating_point() or image.dtype in (torch.float16, torch.bfloat16):
+    if not image.is_floating_point():
         return hsv_to_rgb(adjust_saturation_raw(rgb_to_hsv(image), factor))
+
+    # A float16 or bfloat16 image is adjusted in float32 and rounded once: the HSV round trip in half precision
+    # rounds hue, saturation and the sextant arithmetic, up to 7.5 eps off the float32 result even at factor 1.
+    out_dtype = image.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        image = image.float()
 
     if isinstance(factor, float):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
@@ -311,7 +314,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 
     adjusted_delta = max_rgb * saturation
     delta_divisor = torch.where(delta == 0, torch.ones_like(delta), delta)
-    return (image - min_rgb) * (adjusted_delta / delta_divisor) + (max_rgb - adjusted_delta)
+    return ((image - min_rgb) * (adjusted_delta / delta_divisor) + (max_rgb - adjusted_delta)).to(out_dtype)
 
 
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -401,6 +404,13 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
         torch.Size([2, 3, 3, 3])
 
     """
+    # A float16 or bfloat16 image is shifted in float32 and rounded once: the HSV round trip in half precision rounds
+    # the hue angle and the sextant arithmetic, up to 7.5 eps off the float32 result even for a zero shift.
+    half_dtype: Optional[torch.dtype] = None
+    if isinstance(image, torch.Tensor) and image.dtype in (torch.float16, torch.bfloat16):
+        half_dtype = image.dtype
+        image = image.float()
+
     # convert the rgb image to hsv
     x_hsv: torch.Tensor = rgb_to_hsv(image)
 
@@ -410,7 +420,7 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
     # convert back to rgb
     out: torch.Tensor = hsv_to_rgb(x_adjusted)
 
-    return out
+    return out if half_dtype is None else out.to(half_dtype)
 
 
 def adjust_gamma(
