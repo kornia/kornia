@@ -21,10 +21,13 @@ import torch
 from kornia.core._compat import torch_version_ge
 from kornia.models.dexined import DexiNed
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
+
+
+_EXPORTERS = onnx_exporter_params()
 
 
 @pytest.mark.timeout(120)
@@ -44,7 +47,7 @@ def test_dexined_to_onnx(tmp_path):
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_dexined_onnx_matches_eager_at_other_shapes(export_kwargs):
     """Batch, height and width are dynamic: other batches than the traced 2, H != W and odd sizes match eager."""
     pytest.importorskip("onnx")
