@@ -415,6 +415,66 @@ class TestDeviceAgnosticSelection:
         result.assert_outcomes(passed=2)
 
 
+class TestSkipOnnxSelection:
+    def test_skip_onnx_deselects_tests_whose_node_id_names_onnx(self, pytester):
+        # The file needs its own name: by default pytester would name it after this test, and "onnx" in the file name
+        # would put every test in it into the deselection.
+        test_file = pytester.makepyfile(
+            test_export="""
+            import pytest
+
+            def test_to_onnx_matches_eager():
+                assert True
+
+            class TestOnnxExport:
+                def test_runs(self):
+                    assert True
+
+            @pytest.mark.parametrize("exporter", ["onnx", "eager"])
+            def test_exporter(exporter):
+                assert True
+
+            def test_unrelated():
+                assert True
+            """
+        )
+        args = ["-p", "conftest", str(test_file), "-o", "testpaths=.", "--device=cpu", "--dtype=float32"]
+
+        pytester.runpytest_subprocess(*args).assert_outcomes(passed=5)
+        result = pytester.runpytest_subprocess(*args, "--skip-onnx")
+        result.assert_outcomes(passed=2, deselected=3)
+        result.stdout.fnmatch_lines(["*deselected 3 ONNX test(s) by --skip-onnx*"])
+
+    def test_skip_onnx_reads_its_environment_variable(self, pytester, monkeypatch):
+        # The file needs its own name: by default pytester would name it after this test, and "onnx" in the file name
+        # would put every test in it into the deselection.
+        test_file = pytester.makepyfile(
+            test_export="""
+            def test_onnx_export():
+                assert True
+
+            def test_unrelated():
+                assert True
+            """
+        )
+        monkeypatch.setenv("KORNIA_TEST_SKIP_ONNX", "true")
+
+        result = pytester.runpytest_subprocess(
+            "-p", "conftest", str(test_file), "-o", "testpaths=.", "--device=cpu", "--dtype=float32"
+        )
+        result.assert_outcomes(passed=1, deselected=1)
+
+    def test_skip_onnx_rejects_an_onnx_conformance_selection(self, pytester):
+        # The conformance cases have "onnx" in their node IDs, so --skip-onnx would deselect every selected case.
+        test_file = pytester.makepyfile(test_unrelated="def test_unrelated():\n    assert True\n")
+        args = ["-p", "conftest", str(test_file), "-o", "testpaths=.", "--device=cpu", "--dtype=float32"]
+
+        result = pytester.runpytest_subprocess(*args, "--skip-onnx", "--onnx-conformance=color")
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*--skip-onnx (KORNIA_TEST_SKIP_ONNX) deselects every case --onnx-conformance*"])
+        pytester.runpytest_subprocess(*args, "--skip-onnx", "--compile-conformance=color").assert_outcomes(passed=1)
+
+
 class TestKeepDistributionValidation:
     # Named without "compile" or "dynamo" so the ordinary jobs, the ones that run the tests pinned on a
     # validation error, collect it.

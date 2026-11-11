@@ -252,6 +252,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
         "--ignore-glob": getattr(config.option, "ignore_glob", None),
         "xdist": getattr(config.option, "numprocesses", None),
         "-p": getattr(config.option, "plugins", None),
+        "--skip-onnx": getattr(config.option, "skip_onnx", None),
     }
     active = [name for name, value in partial_options.items() if value]
     if active:
@@ -269,6 +270,12 @@ def pytest_configure(config) -> None:
         if config._conformance[promise.marker]:
             plugin = conformance.KnownFailurePlugin(promise)
             config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
+    # The ONNX conformance cases have "onnx" in their node IDs, so --skip-onnx would deselect every selected case.
+    onnx_conformance = conformance_promise.ONNX
+    if config.getoption("--skip-onnx") and config._conformance[onnx_conformance.marker]:
+        raise pytest.UsageError(
+            f"--skip-onnx (KORNIA_TEST_SKIP_ONNX) deselects every case {onnx_conformance.option} selects; drop one"
+        )
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -385,6 +392,23 @@ def pytest_collection_modifyitems(config, items):
                     f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
                     "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
                     "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    yellow=True,
+                )
+
+    # ONNX tests depend on the torch release (its exporters) and the onnx packages, not on the Python version or the
+    # test dtype, so CI runs them on one CPU leg per torch release and passes --skip-onnx to the others. They are
+    # recognised by name: a test whose node ID does not contain "onnx" keeps running everywhere.
+    if config.getoption("--skip-onnx"):
+        onnx_items = [item for item in items if "onnx" in item.nodeid.lower()]
+        if onnx_items:
+            config.hook.pytest_deselected(items=onnx_items)
+            onnx_ids = {id(item) for item in onnx_items}
+            items[:] = [item for item in items if id(item) not in onnx_ids]
+            reporter = config.pluginmanager.get_plugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line(
+                    f"deselected {len(onnx_items)} ONNX test(s) by --skip-onnx (KORNIA_TEST_SKIP_ONNX): another job "
+                    "runs them on this torch release.",
                     yellow=True,
                 )
 
@@ -544,6 +568,15 @@ def pytest_addoption(parser):
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--skip-onnx",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_SKIP_ONNX", "false").lower() == "true",
+        help=(
+            "Deselect every test whose node ID contains 'onnx'. CI passes it to the CPU jobs that share a torch "
+            "release with a job that runs them. (env: KORNIA_TEST_SKIP_ONNX)"
         ),
     )
     for promise in conformance_promise.PROMISES:

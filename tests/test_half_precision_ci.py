@@ -722,6 +722,7 @@ class _RecordingConfig:
             "collectonly": False,
             "numprocesses": None,
             "plugins": [],
+            "skip_onnx": False,
         }
         options[option_name] = option_value
         self.option = SimpleNamespace(**options)
@@ -820,6 +821,7 @@ class TestProfileConfiguration:
         ("collectonly", True),
         ("numprocesses", 2),
         ("plugins", ["no:cacheprovider"]),
+        ("skip_onnx", True),
     ],
 )
 def test_record_mode_rejects_partial_run_options(

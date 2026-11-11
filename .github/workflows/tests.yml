@@ -69,6 +69,12 @@ on:
         required: false
         type: boolean
         default: false
+      skip-onnx:
+        # Deselect the tests whose node ID contains "onnx" (conftest's --skip-onnx). They depend on the torch release
+        # and the onnx packages, not on Python or the dtype, so one CPU job per torch release runs them.
+        required: false
+        type: boolean
+        default: false
       cache-path:
         required: false
         type: string
@@ -242,6 +248,7 @@ jobs:
           KORNIA_TEST_DEVICE: ${{ inputs.device }}
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
+          KORNIA_TEST_SKIP_ONNX: ${{ inputs.skip-onnx }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
           KNOWN_FAILURE_PROFILE: ${{ inputs.known-failure-profile }}
           KNOWN_FAILURE_MODE: ${{ inputs.known-failure-mode }}
