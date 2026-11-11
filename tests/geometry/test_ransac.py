@@ -229,6 +229,17 @@ def _rank_ratio_model(ratio: float, dtype, device):
     return U @ torch.diag(torch.tensor([1.0, ratio, 0.0], dtype=dtype, device=device)) @ V.T
 
 
+def _line_scene_seeds(device: torch.device, seeds: int) -> range:
+    """The seeds of :func:`_line_mismatch_scene` to run: all of them on the CPU, the first one elsewhere.
+
+    The scene seeds vary the geometry, not the arithmetic, so one seed keeps the accelerator coverage of the contract.
+    On CUDA every seven- or eight-point sample costs about 50 us (a batched LU of non-square design matrices runs
+    one matrix at a time: 0.4 s per 8192 samples on an RTX 4090 with torch 2.15, against 2 ms on the CPU), and an
+    eight-point call draws its whole budget of 102400 samples here, 5 s per call.
+    """
+    return range(seeds if device.type == "cpu" else 1)
+
+
 class TestRANSACFundamentalNearRankOne(BaseTester):
     """Rank-one matrices fit mismatches along a line in either image (#6574), and must not outvote the true geometry."""
 
@@ -300,8 +311,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     @pytest.mark.parametrize(
         "model_type, options",
         [
+            # "fundamental_7pt" is "fundamental" on every code path, so the seven-point case runs once.
             ("fundamental", {}),
-            ("fundamental_7pt", {}),
             ("fundamental_8pt", {}),
             ("fundamental", {"degensac": True}),
             ("fundamental", {"local_optimization": "dlt"}),
@@ -313,7 +324,7 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     ):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
-        for seed in range(1 if options.get("local_optimization") == "dlt" else 3):
+        for seed in _line_scene_seeds(device, 1 if options.get("local_optimization") == "dlt" else 3):
             kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, line_image))
             model, mask = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)(kp1, kp2)
             mask = mask.cpu()
@@ -349,7 +360,7 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
         if model_type == "fundamental_8pt" and "degensac" in options:
             pytest.skip("DEGENSAC is for seven-point samples")
-        for seed in range(3):
+        for seed in _line_scene_seeds(device, 3):
             kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, None))
             ransac = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)
             model, mask = ransac(kp1, kp2)
@@ -370,7 +381,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         on_line = torch.stack([u, 0.3 * u + 100], 1).to(device, dtype)
         scattered = (torch.rand(50, 2, generator=generator, dtype=torch.float64) * 480).to(device, dtype)
         kp1, kp2 = (on_line, scattered) if line_image == 1 else (scattered, on_line)
-        model, mask = RANSAC("fundamental_8pt", inl_th=1.0, max_iter=20, seed=0, **options)(kp1, kp2)
+        # With no consensus every call runs its whole budget, 8192 samples here, each of which must be rejected.
+        model, mask = RANSAC("fundamental_8pt", inl_th=1.0, max_iter=4, seed=0, **options)(kp1, kp2)
         assert model.abs().amax() == 0
         assert not mask.any()
 
@@ -3271,8 +3283,11 @@ class TestRANSACDegensac(BaseTester):
     def test_recovers_dominant_plane(self, device, dtype, scene):
         # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene on CPU, so the
         # explicit recovery's assertions fail there. Accelerators sample differently (MPS: plain succeeds on one
-        # frontal and zoomed seed), so the plain count only asserts that the scenes stay hard for it.
+        # frontal and zoomed seed), so the plain count only asserts that the scenes stay hard for it. That is a
+        # property of the scenes, counted on the CPU only: a plain call on CUDA costs 0.5 s, its first batch of 8192
+        # seven-point samples (see _line_scene_seeds).
         _skip_half(dtype)
+        count_plain = device.type == "cpu"
         plain_failures = 0
         for seed in range(5):
             kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(
@@ -3282,9 +3297,10 @@ class TestRANSACDegensac(BaseTester):
             assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu()), f"seed {seed}"
             off_plane = labels == 1
             assert float((mask & off_plane).sum()) >= 0.8 * float(off_plane.sum()), f"seed {seed}"
-            F_plain, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=False)(kp1, kp2)
-            plain_failures += int(not _explains_off_plane(F_plain.cpu(), clean1.cpu(), clean2.cpu()))
-        assert plain_failures >= 3
+            if count_plain:
+                F_plain, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=seed, degensac=False)(kp1, kp2)
+                plain_failures += int(not _explains_off_plane(F_plain.cpu(), clean1.cpu(), clean2.cpu()))
+        assert plain_failures >= 3 or not count_plain
 
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
     def test_both_score_types(self, device, dtype, score_type):
