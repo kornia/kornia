@@ -292,7 +292,7 @@ class Profiler:
         if self.results is None:
             raise RuntimeError("Run compute() before saving report.")
 
-        if not (path.endswith(".csv") or path.endswith(".json")):
+        if not path.endswith((".csv", ".json")):
             raise ValueError("Unsupported format. Use .csv or .json")
 
         if pd is None:

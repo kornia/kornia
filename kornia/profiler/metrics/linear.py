@@ -25,8 +25,8 @@ def linear_cka(x: Tensor, y: Tensor) -> Tensor:
     r"""Compute linear Centered Kernel Alignment (CKA).
 
     Each representation is centered across the batch dimension. Linear CKA
-    is computed as the squared Frobenius norm of the cross-covariance-like
-    product, normalized by the Frobenius norms of the two self-products.
+    is computed using the alignment of the two sample Gram matrices, normalized
+    by the Frobenius norms of those matrices.
 
     Args:
         x: First representation tensor of shape ``(B, D)``, where ``B`` is
@@ -40,11 +40,10 @@ def linear_cka(x: Tensor, y: Tensor) -> Tensor:
     x = x - x.mean(dim=0, keepdim=True)
     y = y - y.mean(dim=0, keepdim=True)
 
-    xy = x @ y.T
     xx = x @ x.T
     yy = y @ y.T
 
-    numerator = xy.square().sum()
+    numerator = (xx * yy).sum()
     denominator = torch.linalg.norm(xx) * torch.linalg.norm(yy)
 
     eps = torch.finfo(denominator.dtype).eps
