@@ -35,6 +35,10 @@ def test_in_range(device, dtype):
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
 
+# The tensor layouts a bound can take, as TestInRange._bounds_in_form builds them.
+_BOUND_FORMS = ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"]
+
+
 class TestInRange(BaseTester):
     def _get_expected(self, device, dtype):
         return torch.tensor(
@@ -127,8 +131,16 @@ class TestInRange(BaseTester):
         raise AssertionError(form)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("lower_form", ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"])
-    @pytest.mark.parametrize("upper_form", ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"])
+    # in_range brings each bound to (B, C, H, W) on its own, so every form as either bound, once with the same form and
+    # once with the next one, stands for the 49 pairings.
+    @pytest.mark.parametrize(
+        "lower_form,upper_form",
+        [
+            (form, _BOUND_FORMS[(i + shift) % len(_BOUND_FORMS)])
+            for shift in (0, 1)
+            for i, form in enumerate(_BOUND_FORMS)
+        ],
+    )
     @pytest.mark.parametrize("return_mask", [True, False])
     def test_tensor_bound_forms_match_bchw(self, batch_size, lower_form, upper_form, return_mask, device, dtype):
         # Every accepted tensor layout of a bound gives the same result as the (B, C, 1, 1) bound, in any pairing.

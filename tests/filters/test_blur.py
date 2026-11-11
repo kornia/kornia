@@ -135,10 +135,21 @@ class TestBoxBlur(BaseTester):
         self.assert_close(actual, expected, rtol=1e-5, atol=1e-6)
         self.assert_close(BoxBlur((3, 5), separable=separable)(data), expected, rtol=1e-5, atol=1e-6)
 
-    @pytest.mark.parametrize("has_mkldnn", [False, True])
-    @pytest.mark.parametrize("kernel_size", [5, (3, 7), 9])
     @pytest.mark.parametrize("separable", [False, True])
-    @pytest.mark.parametrize("shape", [(1, 2, 12, 13), (1, 4, 1024, 1024)])
+    @pytest.mark.parametrize(
+        "has_mkldnn,kernel_size,shape",
+        [
+            *(
+                (has_mkldnn, kernel_size, (1, 2, 12, 13))
+                for has_mkldnn in (False, True)
+                for kernel_size in (5, (3, 7), 9)
+            ),
+            # The 1 << 22 element threshold only matters with oneDNN. On the large input, 5 and (3, 7) fall on either
+            # side of the window limit of a 2D pass, and 9 dispatches as (3, 7) does in both modes.
+            (True, 5, (1, 4, 1024, 1024)),
+            (True, (3, 7), (1, 4, 1024, 1024)),
+        ],
+    )
     def test_pooling_dispatch(self, monkeypatch, has_mkldnn, kernel_size, separable, shape, device, dtype):
         # Eager oneDNN convolution beats CPU pooling except on large inputs with moderate windows.
         monkeypatch.setattr(blur_module, "_HAS_MKLDNN", has_mkldnn)
