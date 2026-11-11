@@ -574,8 +574,11 @@ def reproject_disparity_to_3D(
     # cannot distinguish a placeholder, or finite XYZ produced by infinite W.
     # This is transform_points' existing bmm/conversion/cast path, shared by both
     # return modes so requesting diagnostics cannot select different arithmetic.
-    uvd_h = convert_points_to_homogeneous(uvd).to(Q_matrix.dtype)
-    Q_t = Q_matrix.expand(batch_size, -1, -1).transpose(-1, -2)
+    compute_dtype = Q_matrix.dtype
+    if Q_matrix.dtype in (torch.float16, torch.bfloat16) and dtype == torch.float32:
+        compute_dtype = torch.float32
+    uvd_h = convert_points_to_homogeneous(uvd).to(compute_dtype)
+    Q_t = Q_matrix.to(compute_dtype).expand(batch_size, -1, -1).transpose(-1, -2)
     if torch.jit.is_scripting():
         homogeneous = torch.bmm(uvd_h, Q_t)
     else:
