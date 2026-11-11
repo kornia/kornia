@@ -241,7 +241,12 @@ class TestFindFundamental(BaseTester):
         )
 
         F_mat = epi.find_fundamental(points1, points2, weights)
-        self.assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
+        rtol = atol = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # The four-decimal points round to the dtype, which moves F by about one unit in the last place of its
+            # largest entry (the float64 fit of the rounded points does the same), and the small entries by as much.
+            rtol, atol = torch.finfo(dtype).eps, 2 * torch.finfo(dtype).eps * Fm_expected.abs().max().item()
+        self.assert_close(F_mat, Fm_expected, rtol=rtol, atol=atol)
 
     def test_7point_opencv(self, device, dtype):
         points1 = torch.tensor(
@@ -318,7 +323,13 @@ class TestFindFundamental(BaseTester):
                     min_index = i
             ordering.append(min_index)
         F_mat[0] = F_mat[0][ordering]
-        self.assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
+        rtol = atol = 1e-3
+        if dtype in (torch.float16, torch.bfloat16):
+            # The points round to the dtype, and the roots of the seven-point cubic carry that rounding into each
+            # candidate: up to 3 units in the last place of the largest entry, as for the float64 fit of the rounded
+            # points.
+            rtol, atol = torch.finfo(dtype).eps, 4 * torch.finfo(dtype).eps * Fm_expected.abs().max().item()
+        self.assert_close(F_mat, Fm_expected, rtol=rtol, atol=atol)
 
     def test_synthetic_sampson_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
@@ -722,7 +733,9 @@ class TestComputeCorrespondEpilines(BaseTester):
         )
 
         lines_est = epi.compute_correspond_epilines(point, F_mat)
-        self.assert_close(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
+        # The lines are computed in float32 for a half dtype and rounded once: half a unit in the last place.
+        tol = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(lines_est, lines_expected, rtol=tol, atol=tol)
 
     def test_gradcheck(self, device):
         point = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -789,7 +802,9 @@ class TestFundamentlFromEssential(BaseTester):
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        self.assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        # E and F_hat each round to the dtype once: about one unit in the last place in half precision.
+        tol = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(F_mat_norm, F_hat_norm, atol=tol, rtol=tol)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)

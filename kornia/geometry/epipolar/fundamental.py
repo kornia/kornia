@@ -25,6 +25,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import (
+    _at_least_float32,
     _autocast_disabled,
     _svd_work_dtype,
     _symmetric_eigenvector,
@@ -528,6 +529,8 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
+    dtype = torch.promote_types(points1.dtype, points2.dtype)
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
 
     # Autocast would run the matrix products in half precision and return half-precision candidates.
     with _autocast_disabled(points1.device.type):
@@ -539,7 +542,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
         candidates, valid = _seven_point_candidates(A)
         # F = T2^T F T1
         fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
-        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
+        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix)).to(dtype)
 
 
 def run_8point(
@@ -578,7 +581,9 @@ def run_8point(
             )
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
-        weights = weights.to(points1.dtype)
+        weights = _at_least_float32(weights.to(points1.dtype))
+    dtype = torch.promote_types(points1.dtype, points2.dtype)
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
 
     # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
     with _autocast_disabled(points1.device.type):
@@ -620,14 +625,12 @@ def run_8point(
                     # Weighted einsum
                     M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-            # No device has a half-precision eigh kernel; CPU autocast used to promote this one to float32.
-            half = M.dtype in (torch.float16, torch.bfloat16)
-            _evals, evecs = torch.linalg.eigh(M.float() if half else M)  # ascending order
-            h = evecs[..., 0].to(M.dtype)  # (B,9), eigenvector for smallest λ
+            _evals, evecs = torch.linalg.eigh(M)  # ascending order
+            h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
         F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
         F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
-        return normalize_transformation(F)
+        return normalize_transformation(F).to(dtype)
 
 
 def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -828,9 +831,11 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
             expected_shape=["*", "N", "2 or 3"],
         )
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
+    # Half-precision lines are computed in float32 and rounded once, after the scaling.
+    dtype = torch.promote_types(points_h.dtype, F_mat.dtype)
     # project points and retrieve lines components
-    points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
-    lines = F_mat @ points_h  # *x3xN
+    points_h = torch.transpose(_at_least_float32(points_h), dim0=-2, dim1=-1)
+    lines = _at_least_float32(F_mat) @ points_h  # *x3xN
     a, b, _ = torch.chunk(lines, dim=-2, chunks=3)
 
     # compute normal and compose equation line
@@ -840,7 +845,7 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     # The same values as concatenating ``a * nu``, ``b * nu`` and ``c * nu``, without the concatenation that
     # TorchScript's CUDA fuser compiles into a group returning an int32 tensor for N = 0 after non-empty calls.
     line = lines * nu  # *x3xN
-    return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
+    return torch.transpose(line, dim0=-2, dim1=-1).to(dtype)  # *xNx3
 
 
 def get_perpendicular(lines: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
@@ -986,13 +991,15 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
             f"got {list(E_mat.shape)}, {list(K1.shape)} and {list(K2.shape)}."
         )
 
-    K1_inv, valid1 = safe_inverse_with_mask(K1)
-    K2_inv, valid2 = safe_inverse_with_mask(K2)
-    F_mat = K2_inv.transpose(-2, -1) @ E_mat @ K1_inv
+    # Half-precision matrices are converted in float32 and the result is rounded once.
+    dtype = E_mat.dtype
+    K1_inv, valid1 = safe_inverse_with_mask(_at_least_float32(K1))
+    K2_inv, valid2 = safe_inverse_with_mask(_at_least_float32(K2))
+    F_mat = K2_inv.transpose(-2, -1) @ _at_least_float32(E_mat) @ K1_inv
     # A singular camera matrix has no fundamental matrix: keep it NaN rather than using the identity
     # that ``safe_inverse_with_mask`` substitutes for the inverse.
     valid = (valid1 & valid2)[..., None, None]
-    return torch.where(valid, F_mat, torch.full_like(F_mat, float("nan")))
+    return torch.where(valid, F_mat, torch.full_like(F_mat, float("nan"))).to(dtype)
 
 
 # adapted from:

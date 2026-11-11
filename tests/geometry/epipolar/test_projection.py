@@ -224,9 +224,14 @@ class TestKRtFromProjection(BaseTester):
         t_expected = torch.tensor([[[6.477699], [-1.129624], [-0.143123]]], device=device, dtype=dtype)
 
         K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
-        self.assert_close(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
-        self.assert_close(R_estimated, R_expected, atol=1e-4, rtol=1e-4)
-        self.assert_close(t_estimated, t_expected, atol=1e-4, rtol=1e-4)
+        tol = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # The factors round to the dtype, and bfloat16 rounds the odd entries of P above 256 (341, 459, 481) to
+            # steps of 2, which moves K by up to 2 units in the last place.
+            tol = 4 * torch.finfo(dtype).eps
+        self.assert_close(K_estimated, K_expected, atol=tol, rtol=tol)
+        self.assert_close(R_estimated, R_expected, atol=tol, rtol=tol)
+        self.assert_close(t_estimated, t_expected, atol=tol, rtol=tol)
 
     def test_projection_from_krt(self, device, dtype):
         K = torch.tensor(
@@ -250,7 +255,12 @@ class TestKRtFromProjection(BaseTester):
         )
 
         P_estimated = epi.projection_from_KRt(K, R, t)
-        self.assert_close(P_estimated, P_expected, atol=1e-4, rtol=1e-4)
+        rtol = atol = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # K, R and t are rounded to the dtype, and an entry such as P[0, 3] = 84 cancels products of up to 280:
+            # their rounding is a unit in the last place of the largest entry, as for the float64 product.
+            rtol, atol = torch.finfo(dtype).eps, torch.finfo(dtype).eps * P_expected.abs().max().item()
+        self.assert_close(P_estimated, P_expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device):
         P_mat = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
@@ -277,7 +287,6 @@ class TestKRtFromProjection(BaseTester):
     def test_still_scriptable(self, device, dtype):
         # TorchScript has no context managers, so a scripted call skips the autocast guard (#6174); it must keep
         # scripting and give the eager result.
-        _skip_half(dtype, _NO_HALF_QR)
         P = torch.tensor(
             [[[308.0, 139.0, 231.0, 84.0], [481.0, 161.0, 358.0, 341.0], [384.0, 387.0, 459.0, 102.0]]],
             device=device,
@@ -286,9 +295,6 @@ class TestKRtFromProjection(BaseTester):
         scripted = torch.jit.script(epi.KRt_from_projection)
         for a, e in zip(scripted(P), epi.KRt_from_projection(P)):
             self.assert_close(a, e)
-
-
-_NO_HALF_QR = "KRt_from_projection does not upcast half input, and torch.linalg.qr has no float16/bfloat16 kernel"
 
 
 def _skip_half(dtype: torch.dtype, reason: str) -> None:
@@ -346,9 +352,12 @@ class TestConventionProjection(BaseTester):
             with pytest.raises(ShapeError):
                 epi.KRt_from_projection(P_bad)
         if dtype in (torch.float16, torch.bfloat16):
-            # float16 and bfloat16 raise: the input is not upcast (projections_from_fundamental upcasts).
-            with pytest.raises((RuntimeError, NotImplementedError)):
-                epi.KRt_from_projection(two_view["P2"])
+            # A half-precision P is decomposed in float32 and its factors returned in the input dtype; the pixel-unit
+            # comparisons below are at float32 and float64 accuracy.
+            K, R, t = epi.KRt_from_projection(two_view["P2"])
+            assert K.dtype == R.dtype == t.dtype == dtype
+            self.assert_close(R @ R.transpose(-2, -1), torch.eye(3, device=device, dtype=dtype)[None])
+            self.assert_close(R, two_view["R"])
             return
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
         K, R, t = epi.KRt_from_projection(two_view["P2"])
@@ -461,7 +470,7 @@ class TestConventionProjection(BaseTester):
 
     def test_convention_krt_from_projection_scale_and_sign_of_P(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_QR)
+        _skip_half(dtype, "the pinned scales of P, down to 1e-17, underflow half precision")
         P, K_true, R_true, t_true = two_view["P2"], two_view["K2"], two_view["R"], two_view["t"]
         ones = torch.ones(1, device=device, dtype=dtype)
         # s * P is the same camera for every nonzero s, sign included: R stays a rotation, t the translation, and
