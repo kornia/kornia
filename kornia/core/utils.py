@@ -279,7 +279,9 @@ def _at_least_float32(input: torch.Tensor) -> torch.Tensor:
     factorizes half precision, and the steps around the solve would each round to the input dtype. A float32 or
     float64 input is the same tensor, so its result keeps its bits and its autograd graph.
     """
-    return input.to(torch.promote_types(input.dtype, torch.float32))
+    if input.dtype in (torch.float16, torch.bfloat16):
+        return input.float()
+    return input
 
 
 def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
