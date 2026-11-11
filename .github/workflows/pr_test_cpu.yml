@@ -132,6 +132,9 @@ jobs:
       # per torch release, 2.5.1 float64, 2.9.1 and 2.15.0 float32, and on Windows; `skip-onnx`
       # deselects them on the others. From 2026-10-01 to 2026-11-11, every ONNX test failure on a
       # leg that now skips them also failed on a leg that keeps them (509 PR and 79 scheduled runs).
+      # Across the PR and scheduled legs, the ONNX tests run in float64 only on torch 2.5.1 and in
+      # float32 only on 2.6.0 and 2.9.1, and never without Dynamo (Python 3.13 on torch 2.5.1). That
+      # history has no failure of either kind.
       matrix:
         include:
           - os: ubuntu-latest

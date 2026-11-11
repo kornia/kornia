@@ -417,7 +417,8 @@ class TestDeviceAgnosticSelection:
 
 class TestSkipOnnxSelection:
     def test_skip_onnx_deselects_tests_whose_node_id_names_onnx(self, pytester):
-        # Named explicitly: pytester names the file after this test, whose name contains "onnx".
+        # The file needs its own name: by default pytester would name it after this test, and "onnx" in the file name
+        # would put every test in it into the deselection.
         test_file = pytester.makepyfile(
             test_export="""
             import pytest
@@ -445,7 +446,8 @@ class TestSkipOnnxSelection:
         result.stdout.fnmatch_lines(["*deselected 3 ONNX test(s) by --skip-onnx*"])
 
     def test_skip_onnx_reads_its_environment_variable(self, pytester, monkeypatch):
-        # Named explicitly: pytester names the file after this test, whose name contains "onnx".
+        # The file needs its own name: by default pytester would name it after this test, and "onnx" in the file name
+        # would put every test in it into the deselection.
         test_file = pytester.makepyfile(
             test_export="""
             def test_onnx_export():
@@ -461,6 +463,16 @@ class TestSkipOnnxSelection:
             "-p", "conftest", str(test_file), "-o", "testpaths=.", "--device=cpu", "--dtype=float32"
         )
         result.assert_outcomes(passed=1, deselected=1)
+
+    def test_skip_onnx_rejects_an_onnx_conformance_selection(self, pytester):
+        # The conformance cases have "onnx" in their node IDs, so --skip-onnx would deselect every selected case.
+        test_file = pytester.makepyfile(test_unrelated="def test_unrelated():\n    assert True\n")
+        args = ["-p", "conftest", str(test_file), "-o", "testpaths=.", "--device=cpu", "--dtype=float32"]
+
+        result = pytester.runpytest_subprocess(*args, "--skip-onnx", "--onnx-conformance=color")
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*--skip-onnx (KORNIA_TEST_SKIP_ONNX) deselects every case --onnx-conformance*"])
+        pytester.runpytest_subprocess(*args, "--skip-onnx", "--compile-conformance=color").assert_outcomes(passed=1)
 
 
 class TestKeepDistributionValidation:

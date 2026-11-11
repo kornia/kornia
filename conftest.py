@@ -270,6 +270,12 @@ def pytest_configure(config) -> None:
         if config._conformance[promise.marker]:
             plugin = conformance.KnownFailurePlugin(promise)
             config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
+    # The ONNX conformance cases have "onnx" in their node IDs, so --skip-onnx would deselect every selected case.
+    onnx_conformance = conformance_promise.ONNX
+    if config.getoption("--skip-onnx") and config._conformance[onnx_conformance.marker]:
+        raise pytest.UsageError(
+            f"--skip-onnx (KORNIA_TEST_SKIP_ONNX) deselects every case {onnx_conformance.option} selects; drop one"
+        )
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:

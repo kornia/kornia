@@ -75,7 +75,7 @@ pixi run test-quick
 | `--record-known-failures=PATH` | none | unset | Record a complete profile to a guarded, untracked candidate path |
 | `--known-failure-manifest=PATH` | none | unset | Replay a candidate manifest instead of the checked-in profile manifest |
 | `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
-| `--skip-onnx` | `KORNIA_TEST_SKIP_ONNX` | off | Deselect every test whose node ID contains `onnx`. CI runs the ONNX tests on one CPU leg per torch release (and Windows and macOS on the newest) and passes this to the others; name a test that exports ONNX so it contains `onnx`. Rejected in known-failure complete mode |
+| `--skip-onnx` | `KORNIA_TEST_SKIP_ONNX` | off | Deselect every test whose node ID contains `onnx`. CI runs the ONNX tests on one CPU leg per torch release (and Windows and macOS on the newest) and passes this to the others; name a test that exports ONNX so it contains `onnx`. Rejected in known-failure complete mode and with `--onnx-conformance` |
 | `--onnx-conformance=PACKAGES` | `KORNIA_TEST_ONNX_CONFORMANCE` | unset | Run the ONNX conformance test for these stable-core packages (`geometry,color`, ...) or `all`; deselected otherwise (see below) |
 | `--compile-conformance=PACKAGES` | `KORNIA_TEST_COMPILE_CONFORMANCE` | unset | Run the torch.compile conformance test for these stable-core packages or `all`; deselected otherwise (see below) |
 
