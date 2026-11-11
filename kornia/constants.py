@@ -94,6 +94,12 @@ def _get(cls: Type[_T], value: TKEnum[_T]) -> _T:
     if isinstance(value, str):
         return _get_by_name(cls, value, value)
 
+    if isinstance(value, bool):
+        raise TypeError(
+            f"`{cls.__name__}.get` expects a `str`, `int` or `{cls.__name__}` value, not a `bool`. "
+            f"Got {value!r} of type `{type(value).__name__}`."
+        )
+
     if isinstance(value, int):
         return cls(value)
 
@@ -199,8 +205,17 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         if isinstance(value, torch.dtype):
             return _get_by_name(cls, str(value)[6:], value)
 
+        if isinstance(value, bool):
+            raise TypeError(
+                "`DType.get` expects a `str`, `int`, `torch.dtype`, `torch.Tensor` or `DType` value, not a `bool`. "
+                f"Got {value!r} of type `{type(value).__name__}`."
+            )
+
         if isinstance(value, torch.Tensor):
-            return cls(int(value.item()))
+            item = value.item()
+            if isinstance(item, bool) or not float(item).is_integer():
+                raise TypeError(f"`DType.get` expects a tensor with an integral scalar value. Got {value!r}.")
+            return cls(int(item))
 
         if isinstance(value, str):
             return _get_by_name(cls, value, value)

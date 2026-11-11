@@ -40,6 +40,7 @@ from kornia.core.utils import (
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
     batched_forward,
+    get_cuda_device_if_available,
     is_autocast_enabled,
     is_compiling,
     is_exporting,
@@ -835,6 +836,46 @@ class TestBatchedForwardBatchSize:
         # 1 is the smallest valid size; 5 == len(data) takes the single-call path
         for bs in (1, 2, 5, 128):
             assert_close(batched_forward(model, data, torch.device("cpu"), batch_size=bs), expected)
+
+
+class TestBatchedForwardOutputType:
+    class _TupleOutput(torch.nn.Module):
+        def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            return x, x
+
+    def test_rejects_a_tuple_output_single_call_path(self):
+        # len(data) <= batch_size: one model call, which used to fail with
+        # "AttributeError: 'tuple' object has no attribute 'to'" (#6691).
+        model = self._TupleOutput()
+        with pytest.raises(BaseError, match="batched_forward expects a model that returns a single tensor, got tuple"):
+            batched_forward(model, torch.rand(4, 3), torch.device("cpu"), batch_size=8)
+
+    def test_rejects_a_tuple_output_micro_batch_path(self):
+        # len(data) > batch_size: the micro-batch loop, which used to fail inside
+        # torch.cat with "TypeError: expected Tensor as element 0 ... got tuple" (#6691).
+        model = self._TupleOutput()
+        with pytest.raises(BaseError, match="batched_forward expects a model that returns a single tensor, got tuple"):
+            batched_forward(model, torch.rand(300, 3), torch.device("cpu"), batch_size=128)
+
+
+class TestGetCudaDeviceIfAvailable:
+    def test_in_range_index_resolves_when_cuda_is_available(self, monkeypatch):
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+        assert get_cuda_device_if_available() == torch.device("cuda:0")
+        assert get_cuda_device_if_available(1) == torch.device("cuda:1")
+
+    def test_out_of_range_index_falls_back_to_cpu(self, monkeypatch):
+        # A one-GPU machine used to hand out cuda:3, which only failed later when a
+        # tensor was placed there (#6691).
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        assert get_cuda_device_if_available(3) == torch.device("cpu")
+        assert get_cuda_device_if_available(-1) == torch.device("cpu")
+
+    def test_falls_back_to_cpu_without_cuda(self, monkeypatch):
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        assert get_cuda_device_if_available() == torch.device("cpu")
 
 
 class TestInverseWithMask:
