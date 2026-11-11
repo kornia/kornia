@@ -449,6 +449,21 @@ pixi run -e cuda test-cuda-half   # float16 + bfloat16, CUDA, with isolation
 
 Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).
 
+**Tests that fail a device-side assert on purpose.** A value check on CUDA is `torch._assert_async` (see
+`kornia.core.check._check_async`), so a test that pins it ends the CUDA context of its process. Mark such a test
+`@pytest.mark.cuda_device_assert`, or only the affected cases with `pytest.param(..., marks=...)`. Its CUDA items
+then always run through the same per-test subprocess runner, with or without `--isolate-half-precision` and on every
+dtype, under xdist too; CPU, MPS and other items run in place, so the CPU-half known-failure profiles see them as
+before. Do not set `KORNIA_TEST_IN_SUBPROCESS` yourself on a selection that holds such a test: the marked test then
+runs in place and `cuda_device_assert_guard` skips every later CUDA test of the process.
+
+On CUDA the failure surfaces at the next synchronization as a `RuntimeError` (`torch.AcceleratorError` where torch
+has it) naming a device-side assert, not the check's message, and the kernel prints the message to stderr. Expect it
+with `testing.base.raises_cuda_device_assert(match, capfd)`, which synchronizes, requires the device-side assert, and
+matches the printed message, so the test fails unless that check fired; `raises_value_check(device, match, capfd)`
+picks it on CUDA and `pytest.raises` elsewhere. Each item costs a fresh Python process (about 4 seconds), so mark only
+tests that fail a device-side assert.
+
 **Linux CPU half-precision CI baseline.** Pull requests and scheduled CI run the complete `cpu-float16` and
 `cpu-bfloat16` profiles on Linux, Python 3.11, and the workflow-pinned PyTorch release. Selecting a profile sets
 the device and dtype before parametrization, then gives each node an isolated, stable Python/NumPy/PyTorch seed.

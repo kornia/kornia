@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 import sys
 import types
 from contextlib import contextmanager
@@ -71,6 +72,49 @@ def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
         yield
     finally:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
+@contextmanager
+def raises_cuda_device_assert(match: str, capfd: pytest.CaptureFixture[str]) -> Iterator[None]:
+    """Expect the block to fail a CUDA device-side assert whose message matches ``match``.
+
+    A value check on CUDA is ``torch._assert_async``: the call returns, and the failure surfaces by the next
+    synchronization, which closes the block, as a :exc:`RuntimeError` (``torch.AcceleratorError`` where torch has it)
+    naming a device-side assert rather than the check's message. The kernel prints the message to stderr, which
+    ``capfd`` captures, so the message still pins which check fired. torch's Windows builds print only the asserted
+    condition: the MSVC branch of ``CUDA_KERNEL_ASSERT_MSG`` drops the message, so there only the assert is checked.
+
+    The assert leaves the CUDA context unusable for the rest of the process, so a test that uses this must be marked
+    ``@pytest.mark.cuda_device_assert``, which runs it in a fresh subprocess on CUDA (see TESTING.md).
+    """
+    try:
+        yield
+        torch.cuda.synchronize()
+    except RuntimeError as error:
+        if "device-side assert" not in str(error):
+            raise
+    else:
+        pytest.fail("the block failed no CUDA device-side assert")
+    err = capfd.readouterr().err
+    if sys.platform != "win32":
+        assert re.search(match, err), f"the device-side assert printed no message matching {match!r}:\n{err}"
+
+
+def raises_value_check(
+    device: torch.device,
+    match: str,
+    capfd: pytest.CaptureFixture[str],
+    expected_exception: type[BaseException] = RuntimeError,
+) -> Any:
+    """Expect the block to fail a value check whose message matches ``match``, on any device.
+
+    Off CUDA it is ``pytest.raises(expected_exception, match=match)``; the block synchronizes an asynchronous device
+    such as MPS itself. On CUDA it is :func:`raises_cuda_device_assert`, so the test must be marked
+    ``@pytest.mark.cuda_device_assert``.
+    """
+    if device.type == "cuda":
+        return raises_cuda_device_assert(match, capfd)
+    return pytest.raises(expected_exception, match=match)
 
 
 def skip_unsupported_autocast(device: torch.device, autocast_dtype: str) -> None:

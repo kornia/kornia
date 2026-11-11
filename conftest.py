@@ -104,6 +104,10 @@ TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Example: DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
+# A test that fails a CUDA device-side assert on purpose, after which its process cannot use CUDA: on CUDA it always
+# runs in a fresh subprocess, through the runner of --isolate-half-precision (see _is_subprocess_isolated_test).
+CUDA_DEVICE_ASSERT_MARKER = "cuda_device_assert"
+
 
 @pytest.fixture
 def device(device_name) -> torch.device:
@@ -114,11 +118,19 @@ def device(device_name) -> torch.device:
 
 
 @pytest.fixture
-def restore_torch_rng():
+def restore_torch_rng(request):
     """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
     cpu_state = torch.random.get_rng_state()
-    # Initialize available generators before snapshotting: a test can make the first accelerator draw.
-    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    # Initialize available generators before snapshotting: a test can make the first accelerator draw. A CUDA test
+    # marked cuda_device_assert ends the CUDA context of its own process, so it has no later CUDA draw to protect, and
+    # restoring the generators would raise its device-side assert again.
+    callspec = getattr(request.node, "callspec", None)
+    ends_cuda_context = (
+        request.node.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None
+        and callspec is not None
+        and callspec.params.get("device_name") == "cuda"
+    )
+    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() and not ends_cuda_context else None
     mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
     try:
         yield
@@ -765,14 +777,12 @@ def _extract_failure_output(output: str) -> str:
 def _is_subprocess_isolated_test(item) -> bool:
     """Return True if this test should be run in a fresh subprocess.
 
-    Checks that:
-    - ``--isolate-half-precision`` is set
-    - we are NOT already inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var)
-    - the test is parametrised with a half-precision dtype on CUDA
+    Never inside such a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var), and only for a test parametrised with
+    ``device_name="cuda"``. There it is True for:
+    - a test marked ``cuda_device_assert``, which fails a device-side assert on purpose, on any dtype and option set
+    - with ``--isolate-half-precision``, a test parametrised with a half-precision dtype
     """
     if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
-        return False
-    if not item.config.getoption("--isolate-half-precision", default=False):
         return False
     callspec = getattr(item, "callspec", None)
     if callspec is None:
@@ -780,13 +790,17 @@ def _is_subprocess_isolated_test(item) -> bool:
     params = callspec.params
     if params.get("device_name") != "cuda":
         return False
+    if item.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None:
+        return True
+    if not item.config.getoption("--isolate-half-precision", default=False):
+        return False
     if params.get("dtype_name") in ("float16", "bfloat16"):
         return True
     return any(v in (torch.float16, torch.bfloat16) for v in params.values())
 
 
 def pytest_runtest_protocol(item, nextitem):
-    """Run float16/bfloat16 CUDA tests in a fresh subprocess for true isolation.
+    """Run float16/bfloat16 CUDA tests, and CUDA tests marked ``cuda_device_assert``, in a fresh subprocess.
 
     ``pytest-forked`` uses ``fork()``, which copies the parent's CUDA context handle
     into the child.  A device-side assert in the child corrupts the *same* underlying
@@ -869,7 +883,9 @@ def pytest_runtest_protocol(item, nextitem):
         return pytest.TestReport(
             nodeid=item.nodeid,
             location=item.location,
-            keywords=dict(item.keywords),
+            # Names only, as pytest's own reports carry them: the values include Mark objects, which xdist cannot
+            # serialize to send the report from a worker.
+            keywords=dict.fromkeys(item.keywords, 1),
             outcome=out,
             longrepr=rep_longrepr,
             when=when,
@@ -1023,6 +1039,11 @@ def cuda_device_assert_guard(request):
         return
 
     if device.type != "cuda":
+        yield
+        return
+
+    # A marked test fails a device-side assert on purpose and checks it itself, in a process of its own.
+    if request.node.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None:
         yield
         return
 

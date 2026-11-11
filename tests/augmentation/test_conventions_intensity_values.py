@@ -41,7 +41,13 @@ from kornia.enhance import (
 )
 from kornia.geometry.transform import resize
 
-from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+from testing.base import (
+    BaseTester,
+    raises_cuda_device_assert,
+    raises_value_check,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -407,14 +413,17 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, raw.clamp(0.0, 1.0))
         assert float((out - raw).abs().max()) > unclamped_gap / 2
 
-    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
+    @pytest.mark.cuda_device_assert
+    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype, capfd):
         # The non-negativity check of adjust_gamma runs on every device. It reads a CPU value during the call, and so
-        # on MPS before torch 2.13, which has no assert kernel; from 2.13 the MPS assert raises at the next sync.
+        # on MPS before torch 2.13, which has no assert kernel; on CUDA, and from 2.13 on MPS, the assert raises at
+        # the next sync.
         image = torch.tensor([0.2, 0.5, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
         augmentation = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)
-        if device.type == "mps" and torch_version_ge(2, 13):
+        if device.type == "cuda":
+            with raises_cuda_device_assert("Gamma must be non-negative", capfd):
+                augmentation(image)
+        elif device.type == "mps" and torch_version_ge(2, 13):
             augmentation(image)
             with pytest.raises(RuntimeError, match="Gamma must be non-negative"):
                 torch.mps.synchronize()
@@ -1106,8 +1115,20 @@ class TestIntensityColourConventions(BaseTester):
                 r"bits out of bounds\. Expected inside \(0, 8\)",
             ),
             ("posterize_bits_negative", "construction", ValueError, r"bits out of bounds\. Expected inside \(0, 8\)"),
-            ("gamma_negative", "forward", RuntimeError, r"Gamma must be non-negative"),
-            ("gain_negative", "forward", RuntimeError, r"Gain must be non-negative"),
+            pytest.param(
+                "gamma_negative",
+                "forward",
+                RuntimeError,
+                r"Gamma must be non-negative",
+                marks=pytest.mark.cuda_device_assert,
+            ),
+            pytest.param(
+                "gain_negative",
+                "forward",
+                RuntimeError,
+                r"Gain must be non-negative",
+                marks=pytest.mark.cuda_device_assert,
+            ),
             (
                 "brightness_above_two",
                 "construction",
@@ -1174,9 +1195,12 @@ class TestIntensityColourConventions(BaseTester):
             ),
         ],
     )
-    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
-        if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
-            pytest.skip("CPU only: a device-side assert on CUDA, and raised at the next sync on MPS from torch 2.13")
+    def test_convention_intensity_constructors_reject_out_of_bounds(
+        self, device, dtype, case, stage, error, match, capfd
+    ):
+        device_assert = case in ("gamma_negative", "gain_negative")
+        if device_assert and device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA only: raised at the next sync on MPS from torch 2.13")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1222,14 +1246,12 @@ class TestIntensityColourConventions(BaseTester):
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = factories[case]()
-        with pytest.raises(error, match=match):
+        with raises_value_check(device, match, capfd, error) if device_assert else pytest.raises(error, match=match):
             _sync(aug(image).device)
 
     # Issue #4605: RandomSolarize admits the closed [-0.5, 0.5] for `additions`, and an endpoint is applied.
     @pytest.mark.parametrize("addition", [0.5, -0.5])
     def test_convention_random_solarize_applies_an_additions_endpoint_4605(self, device, dtype, addition):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         aug = K.RandomSolarize((0.5, 0.5), (addition, addition), p=1.0)
