@@ -23,6 +23,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge
+from kornia.core.check import disable_checks, enable_checks
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
@@ -975,6 +976,25 @@ class TestFillConvexPolygon(BaseTester):
         color = torch.tensor([[1.0, 2.0]] if batched_color else [1.0, 2.0], dtype=dtype, device=device)
         with pytest.raises(BaseError, match="the color has 2 values and the image has 3 channels"):
             draw_convex_polygon(image, polygon, color)
+
+    def test_a_wrong_color_is_not_read_while_checks_are_disabled(self, dtype, device):
+        """The length check follows the checks switch, like every other kornia check.
+
+        With the checks off the colour reaches the fill, which raises on its own,
+        as it did before the check existed; the check error does not appear.
+        """
+        image = torch.zeros(1, 3, 8, 8, dtype=dtype, device=device)
+        polygon = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [3.0, 5.0]]], dtype=dtype, device=device)
+        color = torch.tensor([1.0, 2.0], dtype=dtype, device=device)
+
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError) as excinfo:
+                draw_convex_polygon(image, polygon, color)
+        finally:
+            enable_checks()
+
+        assert "Color dim must match" not in str(excinfo.value)
 
     def test_batched_single_value_colors_fill_every_channel(self, dtype, device):
         """A (B, 1) colour gives each batch item its own value, written to every channel.

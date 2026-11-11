@@ -85,9 +85,14 @@ def _check_color_channels(color: torch.Tensor, channels: int, dim: int = -1) -> 
     The message is built only when the check fails. A size formatted on every
     call would specialize a symbolic shape under ``torch.compile``, which
     ``tests/core/test_check_message_call_sites.py`` guards against.
+
+    ``KORNIA_CHECK`` with ``raises=False`` reports the failure without a message
+    to build, and returns ``True`` without checking while the checks are
+    disabled, so the error is raised only when the checks are on and the length
+    is wrong; see :func:`~kornia.core.check.disable_checks`.
     """
     values = color.size(dim) if color.ndim > 0 else 1
-    if values not in (1, channels):
+    if not KORNIA_CHECK(values in (1, channels), raises=False):
         word = "channel" if channels == 1 else "channels"
         raise ShapeError(
             f"Color dim must match the channel dims of the provided image: the color has {values} values "
