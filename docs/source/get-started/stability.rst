@@ -107,14 +107,14 @@ support it has, and adds none:
 - A function that does not compile is not made to compile. A defect that appears
   only in scripted calls is documented here and not fixed.
 
-**Scripted CUDA calls skip value checks.** Some functions check their argument
-values with ``torch._assert_async`` on CUDA; on the CPU the same check raises
-:exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes that operator
-when it compiles a function, so a scripted call on CUDA runs without these checks,
-whether checks are enabled or not. A scripted call on the CPU still checks, and
-raises ``torch.jit.Error``. Shape and type checks (``KORNIA_CHECK*``) still run in
-scripted calls on every device. With torch 2.15 on CUDA, these scripted calls take
-an invalid argument without kornia's error:
+**Scripted CUDA calls and traced calls skip value checks.** Some functions check
+their argument values with ``torch._assert_async`` on CUDA; on the CPU the same
+check raises :exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes
+that operator when it compiles a function, so a scripted call on CUDA runs without
+these checks, whether checks are enabled or not. A scripted call on the CPU still
+checks, even with checks disabled, and raises ``torch.jit.Error``. Shape and type
+checks (``KORNIA_CHECK*``) still run in scripted calls on every device. With torch
+2.15 on CUDA, these scripted calls take an invalid argument without kornia's error:
 
 .. list-table::
    :header-rows: 1
@@ -132,19 +132,31 @@ an invalid argument without kornia's error:
    * - :func:`~kornia.enhance.histogram`
      - ``bandwidth`` not greater than zero
      - returns a finite result
+   * - :func:`~kornia.enhance.histogram2d`
+     - ``bandwidth`` not greater than zero
+     - returns a finite result
    * - :func:`~kornia.geometry.subpix.render_gaussian2d`
      - zero ``std``
      - returns non-finite values
-   * - :func:`~kornia.enhance.equalize`
+   * - :func:`~kornia.enhance.equalize`, :func:`~kornia.enhance.equalize3d`
      - image values outside [0, 1]
      - fails with PyTorch's out-of-bounds index device-side assert (``ScatterGatherKernel.cu``) instead of
        kornia's message; the CUDA context is unusable afterwards
 
+The modules that wrap these functions, :class:`~kornia.enhance.AdjustGamma` and
+:class:`~kornia.enhance.AdjustContrast`, behave the same when scripted.
+
+A graph recorded with ``torch.jit.trace`` drops the operator too, on every device:
+the checks run on the values traced, and not when the traced graph runs again. A
+traced call with an invalid argument then gives the results in the table on the CPU
+as well as on CUDA; on the CPU, ``equalize`` and ``equalize3d`` fail with PyTorch's
+out-of-bounds index error instead of the device-side assert.
+
 :func:`~kornia.enhance.solarize`, :func:`~kornia.enhance.posterize`,
 :func:`~kornia.enhance.equalize_clahe` and :func:`~kornia.filters.gaussian_blur2d`
 make the same kind of check but do not compile with ``torch.jit.script``. To keep
-the checks on CUDA, call the function eagerly or through ``torch.compile``, which
-keeps the assert from torch 2.9, or validate the arguments before a scripted call.
+the checks, call the function eagerly or through ``torch.compile``, which keeps the
+assert from torch 2.9, or validate the arguments before a scripted or traced call.
 
 Versioning caveat
 -----------------
