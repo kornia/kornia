@@ -75,7 +75,7 @@ class TestDrawPoint(BaseTester):
         img = torch.zeros(5, 6, dtype=dtype, device=device)
         points = torch.tensor([[1, 2]], device=device)
         color = torch.ones(color_shape, dtype=dtype, device=device)
-        with pytest.raises(BaseError, match=f"expected 1 or 1 values, got {color_shape[0]}"):
+        with pytest.raises(BaseError, match=rf"expected a single value or 1 \(one per channel\), got {color_shape[0]}"):
             draw_point2d(img, points, color)
         assert img.count_nonzero() == 0
 
@@ -87,6 +87,18 @@ class TestDrawPoint(BaseTester):
         expected = [7.0] * (shape[0] if len(shape) == 3 else 1)
         assert out[..., 2, 1].flatten().tolist() == expected
         assert int(out.count_nonzero()) == len(expected)
+
+    def test_draw_point2d_keeps_per_point_colors(self, dtype, device):
+        """A (C, N) or (1, N) color gives each of the N points its own color, as before the #6689 check."""
+        points = torch.tensor([[1, 2], [3, 4]], device=device)
+        rgb = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=dtype, device=device)
+        out = draw_point2d(torch.zeros(3, 5, 6, dtype=dtype, device=device), points, rgb)
+        assert out[:, 2, 1].tolist() == [1.0, 3.0, 5.0]
+        assert out[:, 4, 3].tolist() == [2.0, 4.0, 6.0]
+        gray = torch.tensor([[7.0, 8.0]], dtype=dtype, device=device)
+        out = draw_point2d(torch.zeros(3, 5, 6, dtype=dtype, device=device), points, gray)
+        assert out[:, 2, 1].tolist() == [7.0] * 3
+        assert out[:, 4, 3].tolist() == [8.0] * 3
 
     def test_draw_point2d_with_mismatched_dtype(self, device):
         """Test that the color is correctly cast to the image dtype when drawing points."""
@@ -850,7 +862,7 @@ class TestDrawRectangle(BaseTester):
         image = torch.zeros(2, 3, 8, 8, dtype=dtype, device=device)
         rectangle = torch.tensor([[[1, 1, 4, 4]], [[2, 2, 5, 5]]], device=device)
         color = torch.ones(color_shape, dtype=dtype, device=device)
-        with pytest.raises(BaseError, match=r"1 or 3 values to match the image channels, got 2"):
+        with pytest.raises(BaseError, match=r"expected a single value or 3 \(one per channel\), got 2"):
             draw_rectangle(image, rectangle, color=color)
         assert image.count_nonzero() == 0
 
@@ -1194,7 +1206,7 @@ class TestFillConvexPolygon(BaseTester):
         im = torch.zeros(1, 3, 8, 8, device=device, dtype=dtype)
         pts = torch.tensor([[[1.0, 1.0], [5.0, 1.0], [5.0, 5.0]]], device=device, dtype=dtype)
         color = torch.ones(color_shape, device=device, dtype=dtype)
-        with pytest.raises(BaseError, match=r"1 or 3 values to match the image channels, got 2"):
+        with pytest.raises(BaseError, match=r"expected a single value or 3 \(one per channel\), got 2"):
             draw_convex_polygon(im, pts, color)
         assert im.count_nonzero() == 0
 

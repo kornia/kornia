@@ -15,6 +15,14 @@
 # limitations under the License.
 #
 
+"""Download, cache and load the sample images of kornia's examples.
+
+Which function to use:
+
+- The sample images, or images from your own paths and URLs, as a list or one resized batch:
+  :func:`~kornia.io.get_sample_images`.
+"""
+
 from __future__ import annotations
 
 import contextlib
@@ -119,13 +127,15 @@ def get_sample_images(
     divisible_factor: Optional[int] = None,
     **kwargs: Any,
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
-    """Load multiple images from the given paths or URLs.
+    """Load kornia's sample images, or given paths and URLs, as a list or one batch.
 
-    Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
+    ``images = get_sample_images()`` downloads kornia's sample images from the ``kornia/data`` GitHub repository
+    unless they are already cached, and returns a list of ``(3, H, W)`` tensors, each in its own size. Each image is
+    loaded as ``RGB32`` by :func:`load_image`, ``float32`` in :math:`[0, 1]`. ``paths`` replaces the samples with local
+    files or ``http(s)`` URLs. With ``resize=(height, width)`` the result is one ``(B, 3, H, W)`` tensor, unless
+    ``as_list=True``.
 
     Convention:
-        - Each image loads with :func:`~kornia.io.load_image`'s default type, ``RGB32``: ``(3, H, W)``
-          ``float32`` in [0, 1].
         - A path is a URL only when its scheme is ``http`` or ``https``. A URL is cached under ``cache_dir`` with the
           file name of its path, byte for byte as downloaded, and a cached file is loaded without downloading it
           again. With ``download=False``, a URL that is not cached logs an error and raises ``FileNotFoundError``.
@@ -133,9 +143,8 @@ def get_sample_images(
           answering, and an unusable value of that variable raises ``ValueError``.
         - ``resize`` is ``(height, width)`` and goes to :func:`~kornia.geometry.transform.resize`; ``divisible_factor``
           is applied after it by :func:`~kornia.geometry.transform.resize_to_be_divisible`, so the final size can
-          differ from ``resize``. ``**kwargs`` reach both.
-        - The result is one ``(B, 3, H, W)`` tensor when ``resize`` is given and ``as_list`` is not ``True``, and a
-          list of ``(3, H, W)`` tensors otherwise; ``as_list=False`` without ``resize`` still gives a list.
+          differ from ``resize``. ``**kwargs`` reach both resizes, except ``side``, which reaches only
+          :func:`~kornia.geometry.transform.resize` when ``resize`` is given.
 
     Args:
         paths: A list of path or URL from which to load or download images.
@@ -151,10 +160,13 @@ def get_sample_images(
         as_list: ``True`` to return a list even when ``resize`` is given.
         divisible_factor:
             If not None, each side of every image is resized to a multiple of ``divisible_factor``.
-        **kwargs: Additional keyword arguments for both resizes.
+        **kwargs: Additional keyword arguments for the resizes; see the Convention.
 
     Returns:
         torch.Tensor | list[torch.Tensor]: the images, stacked or as a list.
+
+    See Also:
+        - :func:`load_image`: loads one file, with a choice of :class:`ImageLoadType` and device.
 
     """
     import kornia.geometry  # local import to avoid a circular dependency at import time

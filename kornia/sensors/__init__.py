@@ -15,7 +15,8 @@
 # limitations under the License.
 #
 
-"""Sensors submodule for Kornia.
+"""Model sensors: the experimental camera models of ``kornia.sensors.camera``.
 
-This package provides utilities and modules for sensor data processing and integration.
+``kornia.sensors.camera`` builds pinhole, Brown-Conrady, Kannala-Brandt K3 and orthographic cameras, or a custom
+model from a distortion and a projection.
 """

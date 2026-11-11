@@ -33,7 +33,7 @@ from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
-from kornia.core.mixin.image_module import _rebuild_container
+from kornia.core.mixin.image_module import _is_pil_image, _rebuild_container
 from kornia.core.ops import eye_like
 from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -67,13 +67,6 @@ def _is_numpy_array(arg: Any) -> bool:
     # imported, and an import inside a compiled ``forward`` is a graph break (``importlib.import_module``).
     numpy_module = sys.modules.get("numpy")
     return numpy_module is not None and isinstance(arg, numpy_module.ndarray)
-
-
-def _is_pil_image(arg: Any) -> bool:
-    # Look PIL up for the same reason as NumPy above, and because Pillow is optional: a PIL image can exist only once
-    # PIL is imported, so a tensor mask must not load it through the lazy loader.
-    pil_module = sys.modules.get("PIL.Image")
-    return pil_module is not None and isinstance(arg, pil_module.Image)
 
 
 # The inputs AugmentationSequential accepts next to a 3D child; a 4D tensor is ambiguous there.

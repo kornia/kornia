@@ -426,7 +426,7 @@ def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor
     puts the start one past the last valid position (#5052).
     """
     dtype = torch.promote_types(draw.dtype, extent.dtype)
-    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
+    return (_to_device_nonblocking(draw, extent.device, dtype) * extent.to(dtype)).floor().to(extent.dtype)
 
 
 def _adapted_sampling(

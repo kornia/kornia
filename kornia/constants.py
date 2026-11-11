@@ -15,6 +15,24 @@
 # limitations under the License.
 #
 
+r"""Name the interpolation, padding, border, dtype and data-kind options of the augmentations, as enums or strings.
+
+Each enum's ``get`` classmethod takes a member, its name in any case or its integer value and returns the member, so
+an argument typed ``TKEnum`` (``str | int | Enum``) accepts all three. A name that names no member raises an error that
+is both a ``KeyError`` and a ``ValueError``, an integer that is no member's value a ``ValueError``, and another type a
+``TypeError``. ``"bilinear" in Resample`` tests a name case-insensitively, and ``1 in Resample`` a value.
+
+Which class to use:
+
+- The interpolation of a resampling augmentation (``resample``): :class:`Resample`.
+- How a warping augmentation fills pixels that map outside the input (``padding_mode``): :class:`SamplePadding`.
+- The border mode of a blur augmentation (``border_type``): :class:`BorderType`.
+- The kind of each input of an augmentation container (``data_keys``): :class:`DataKey`.
+- A tensor dtype as an integer code: :class:`DType`.
+- The ``str | int | Enum`` type of the arguments that ``get`` reads: ``TKEnum``.
+- :math:`\pi` as a 0-d tensor of the default dtype and device at import: ``pi``.
+"""
+
 from enum import Enum, EnumMeta
 from typing import Iterator, Type, TypeVar, Union
 
@@ -89,7 +107,16 @@ def _get(cls: Type[_T], value: TKEnum[_T]) -> _T:
 
 
 class Resample(Enum, metaclass=_KORNIA_EnumMeta):
-    """Represent the resampling mode for image interpolation."""
+    """Name the interpolation mode of a resampling augmentation: nearest, bilinear or bicubic.
+
+    The geometric augmentations read their ``resample`` argument with ``Resample.get``, so
+    :class:`~kornia.augmentation.RandomAffine` takes ``resample="nearest"`` as well as ``Resample.NEAREST``.
+
+    See Also:
+        - :class:`SamplePadding`: the ``padding_mode`` of the same warping augmentations.
+        - :class:`BorderType`: the border mode of the blur augmentations.
+
+    """
 
     NEAREST = 0
     BILINEAR = 1
@@ -102,7 +129,17 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
-    """Represent the border padding mode for image operations."""
+    """Name the border mode of a blur augmentation: constant, reflect, replicate or circular padding.
+
+    The blur augmentations, such as :class:`~kornia.augmentation.RandomGaussianBlur`,
+    :class:`~kornia.augmentation.RandomBoxBlur` and :class:`~kornia.augmentation.RandomMotionBlur`, read their
+    ``border_type`` argument with ``BorderType.get`` and pass the lower-case name to their filter.
+
+    See Also:
+        - :class:`SamplePadding`: how a warping augmentation fills pixels that map outside the input.
+        - :class:`Resample`: the interpolation mode of the resampling augmentations.
+
+    """
 
     CONSTANT = 0
     REFLECT = 1
@@ -116,7 +153,18 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
-    """Represent the padding mode used during spatial sampling."""
+    """Name how a warping augmentation fills pixels outside the input: zeros, border, reflection or a fill value.
+
+    :class:`~kornia.augmentation.RandomAffine`, :class:`~kornia.augmentation.RandomThinPlateSpline` and the shear and
+    translation augmentations read their ``padding_mode`` argument with ``SamplePadding.get``. ``ZEROS``, ``BORDER`` and
+    ``REFLECTION`` are the padding modes of :func:`torch.nn.functional.grid_sample`; ``FILL`` fills with the
+    ``fill_value`` of an augmentation that takes one, such as :class:`~kornia.augmentation.RandomAffine`.
+
+    See Also:
+        - :class:`Resample`: the interpolation mode of the same warping augmentations.
+        - :class:`BorderType`: the border mode of the blur augmentations.
+
+    """
 
     ZEROS = 0
     BORDER = 1
@@ -130,7 +178,14 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class DType(Enum, metaclass=_KORNIA_EnumMeta):
-    """Represent the internal data types used across the library."""
+    """Name a tensor dtype by an integer code, so that it can be stored in a tensor of augmentation parameters.
+
+    ``DType.get`` also takes a ``torch.dtype`` or a one-element tensor holding a value, and ``DType.to_torch(value)``
+    returns the matching ``torch.dtype``; a torch dtype without a member, such as ``torch.uint8``, raises. The mix
+    augmentations, such as :class:`~kornia.augmentation.RandomMixUpV2`, record the input dtype in their ``dtype``
+    parameter this way.
+
+    """
 
     INT64 = 0
     FLOAT16 = 1
@@ -186,7 +241,16 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
-    """Kind of data an augmentation container transforms, one per entry of ``data_keys``."""
+    """Name the kind of each input of an augmentation container: image, mask, boxes, keypoints or labels.
+
+    ``AugmentationSequential(..., data_keys=[DataKey.INPUT, "mask"])`` takes one member, or its name in any case, per
+    input. ``INPUT`` is an alias of ``IMAGE`` and ``CLASS`` of ``LABEL``. ``BBOX`` holds ``(B, N, 4, 2)`` box corners,
+    ``BBOX_XYXY`` and ``BBOX_XYWH`` ``(B, N, 4)`` boxes, and ``KEYPOINTS`` ``(B, N, 2)`` points.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: the container whose ``data_keys`` these name.
+
+    """
 
     IMAGE = 0
     INPUT = 0

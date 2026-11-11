@@ -39,7 +39,7 @@ from kornia.feature import DISKFeatures
 from kornia.filters import dexined as _dexined
 
 # The kornia/data_test commit that carries every ``.safetensors`` reference file.
-DATA_TEST_SHA = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+DATA_TEST_SHA = "fbd2207fe384be85897e105346ae3b85649adec2"
 
 _RAW = f"https://raw.githubusercontent.com/kornia/data_test/{DATA_TEST_SHA}"
 
@@ -47,7 +47,7 @@ _RAW = f"https://raw.githubusercontent.com/kornia/data_test/{DATA_TEST_SHA}"
 TEST_DATA_URLS: dict[str, str | list[str]] = {
     "loftr_homo": f"{_RAW}/loftr_outdoor_and_homography_data.safetensors",
     "loftr_fund": f"{_RAW}/loftr_indoor_and_fundamental_data.safetensors",
-    "adalam_idxs": f"{_RAW}/adalam_test.safetensors",
+    "adalam_idxs": f"{_RAW}/adalam_test_6660.safetensors",
     "lightglue_idxs": f"{_RAW}/adalam_test.safetensors",
     "disk_outdoor": f"{_RAW}/knchurch_disk.safetensors",
     "xfeat_outdoor": f"{_RAW}/xfeat_reference.safetensors",

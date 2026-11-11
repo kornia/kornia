@@ -310,7 +310,7 @@ def image_histogram2d(
         torch.Size([2, 3, 16])
 
     """
-    if image is not None and not isinstance(image, torch.Tensor):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
 
     _check_image_rank(image)

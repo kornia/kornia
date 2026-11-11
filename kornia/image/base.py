@@ -27,15 +27,19 @@ from kornia.core.check import KORNIA_CHECK_SIZES, CheckMessage
 
 @dataclass(frozen=True)
 class ImageSize:
-    r"""Data class to represent the size of an image, without its channels.
+    r"""Hold the height and width of an image, without its channels.
 
-    Convention:
-        See the Convention block of :class:`~kornia.image.Image`. The positional order is ``(height, width)``,
-        kornia's order for sizes and the reverse of :math:`(x, y)` points.
+    ``size = ImageSize(height, width)`` stores the two sizes of one image in a frozen data class, read back as
+    ``size.height`` and ``size.width``. The positional order is ``(height, width)``, kornia's order for sizes and the
+    reverse of :math:`(x, y)` points.
 
     Args:
-        height: image height.
-        width: image width.
+        height: image height in pixels, an ``int``, a ``float`` or a one-element tensor.
+        width: image width in pixels, an ``int``, a ``float`` or a one-element tensor.
+
+    See Also:
+        - :class:`ImageLayout`: holds an ``ImageSize`` together with the channel count and order.
+        - :class:`Image`: checks the size against the shape of its data.
 
     Example:
         >>> size = ImageSize(3, 4)
@@ -51,11 +55,15 @@ class ImageSize:
 
 
 class ColorSpace(Enum):
-    r"""Enum that represents the color space of an image.
+    r"""Name the color space of an image: unknown, gray, RGB or BGR.
 
-    Convention:
-        See the Convention block of :class:`~kornia.image.Image`, which checks the color space against the channel
-        count. There is no color space with alpha: a 4-channel image is ``UNKNOWN``.
+    ``ColorSpace.RGB`` and its siblings label the channels of an :class:`Image` through :class:`PixelFormat`.
+    :class:`Image` checks the label against the channel count: ``GRAY`` needs 1 channel, ``RGB`` and ``BGR`` need 3,
+    and ``UNKNOWN`` takes any count. No member has alpha, so a 4-channel image is ``UNKNOWN``.
+
+    See Also:
+        - :class:`PixelFormat`: pairs the color space with the bit depth.
+        - :class:`Image`: converts between ``GRAY``, ``RGB`` and ``BGR`` with ``to_gray``, ``to_rgb`` and ``to_bgr``.
     """
 
     UNKNOWN = 0  # for now, in case of multi band images
@@ -66,16 +74,20 @@ class ColorSpace(Enum):
 
 @dataclass(frozen=True)
 class PixelFormat:
-    r"""Data class to represent the pixel format of an image.
+    r"""Hold the color space of an image and the storage size of one channel value.
 
-    Convention:
-        See the Convention block of :class:`~kornia.image.Image`, which checks a pixel format against the data; the
-        data class itself checks nothing.
+    ``pixel_format = PixelFormat(color_space, bit_depth)`` describes the values of an :class:`Image`: their
+    :class:`ColorSpace` and the bits that store one channel value. The data class checks nothing; :class:`Image`
+    raises when either field does not fit its data.
 
     Args:
         color_space: color space.
         bit_depth: the storage size of one channel value in bits, ``8 * element_size()`` of the data: 8 for
             ``uint8``, 32 for ``float32``.
+
+    See Also:
+        - :class:`ColorSpace`: the values of ``color_space``.
+        - :class:`ImageLayout`: describes the arrangement of the values instead: size, channel count and order.
 
     Example:
         >>> pixel_format = PixelFormat(ColorSpace.RGB, 8)
@@ -91,11 +103,14 @@ class PixelFormat:
 
 
 class ChannelsOrder(Enum):
-    r"""Enum that represents the channels order of an image.
+    r"""Name where an image keeps its channels: first, ``(C, H, W)``, or last, ``(H, W, C)``.
 
-    Convention:
-        See the Convention block of :class:`~kornia.image.Image`. ``CHANNELS_FIRST`` stores ``(C, H, W)`` and
-        ``CHANNELS_LAST`` stores ``(H, W, C)``.
+    ``ChannelsOrder.CHANNELS_FIRST`` is the order of kornia tensors, ``(C, H, W)``, and ``CHANNELS_LAST`` the order of
+    NumPy and OpenCV arrays, ``(H, W, C)``. :class:`ImageLayout` carries it, and :class:`Image` checks the shape of its
+    data against it.
+
+    See Also:
+        - :class:`ImageLayout`: holds the order together with the size and the channel count.
     """
 
     CHANNELS_FIRST = 0
@@ -104,16 +119,21 @@ class ChannelsOrder(Enum):
 
 @dataclass(frozen=True)
 class ImageLayout:
-    """Data class to represent the layout of an image.
+    """Hold the size, channel count and channel order of an image.
 
-    Convention:
-        See the Convention block of :class:`~kornia.image.Image`, which checks a layout against the data; the data
-        class itself checks nothing.
+    ``layout = ImageLayout(ImageSize(H, W), C, ChannelsOrder.CHANNELS_FIRST)`` describes the shape of an
+    :class:`Image`'s data. The data class checks nothing; :class:`Image` raises ``ShapeError`` when its data does not
+    have this shape.
 
     Args:
         image_size: image size.
         channels: number of channels.
         channels_order: channels order.
+
+    See Also:
+        - :class:`ImageSize`: the ``image_size`` field.
+        - :class:`ChannelsOrder`: the ``channels_order`` field.
+        - :class:`PixelFormat`: describes the values of the pixels instead of their arrangement.
 
     Example:
         >>> layout = ImageLayout(ImageSize(3, 4), 3, ChannelsOrder.CHANNELS_LAST)

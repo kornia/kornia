@@ -38,7 +38,6 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
     "io",
     "losses",
     "metrics",
-    "models",
     "morphology",
     "onnx",
     "sensors",
@@ -48,6 +47,7 @@ IN_SCOPE_PACKAGES: tuple[str, ...] = (
 
 EXCLUDED_PACKAGES: dict[str, str] = {
     "utils": "deprecated shims that keep their 'Deprecated: use X' first lines",
+    "models": "not converted; its docstrings keep the pre-rollout style",
     "transpiler": "a removal stub",
 }
 """Top-level packages left out of the rollout, with the reason."""
@@ -66,6 +66,18 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.augmentation.container.base",
     "kornia.augmentation.container.params",
     "kornia.color",
+    "kornia.config",
+    "kornia.constants",
+    "kornia.contrib",
+    "kornia.contrib.augmentation_audit",
+    "kornia.contrib.edge_detection",
+    "kornia.contrib.face_detection",
+    "kornia.contrib.object_detection",
+    "kornia.contrib.super_resolution",
+    "kornia.core",
+    "kornia.core.check",
+    "kornia.core.exceptions",
+    "kornia.core.safetensors",
     "kornia.enhance",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
@@ -102,14 +114,28 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.transform.pyramid",
     "kornia.geometry.transform.thin_plate_spline",
     "kornia.geometry.vector",
+    "kornia.image",
+    "kornia.io",
+    "kornia.io.sample",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.morphology.morphology",
+    "kornia.onnx.download",
+    "kornia.onnx.module",
+    "kornia.onnx.sequential",
+    "kornia.onnx.utils",
+    "kornia.sensors.camera",
+    "kornia.tracking",
 )
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.augmentation",
     "kornia.color",
+    "kornia.config",
+    "kornia.constants",
+    "kornia.contrib",
+    "kornia.core",
     "kornia.enhance",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
@@ -160,13 +186,29 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.subpix",
     "kornia.geometry.transform",
     "kornia.geometry.vector",
+    "kornia.image",
+    "kornia.io",
     "kornia.losses",
     "kornia.metrics",
+    "kornia.morphology",
+    "kornia.onnx",
+    "kornia.sensors",
+    "kornia.tracking",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
 SEE_ALSO_EXCEPTIONS: dict[str, str] = {
+    "kornia.contrib.kmeans.KMeans": "the only clustering in kornia; no other object fits or assigns centres",
     "kornia.feature.defmo.DeFMO": "the only deblurring model in kornia; no other object serves a nearby task",
+    "kornia.core.exceptions.BaseError": (
+        "the base of every kornia check error; the kornia.core.exceptions catalog lists its subclasses"
+    ),
+    "kornia.constants.DType": "the only dtype-code enum in kornia; no other object names a dtype by an integer",
+    "kornia.config.InstallationMode": "the only configuration enum in kornia; no other object sets a nearby policy",
+    "kornia.core.utils.batched_forward": (
+        "the only micro-batching helper, apart from its deprecated alias in kornia.utils"
+    ),
+    "kornia.core.utils.is_autocast_enabled": "the only autocast query, apart from its deprecated alias in kornia.utils",
 }
 """Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
 

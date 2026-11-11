@@ -27,7 +27,12 @@ from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.pose import NamedPose
 from kornia.geometry.vector import Vector2
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
 
 
 def _complex_dtype(dtype: torch.dtype) -> torch.dtype:
@@ -1057,3 +1062,14 @@ class TestSe2(BaseTester):
                 self.assert_close(s_multi.inverse().matrix()[i, j], ref_ij.inverse().matrix())
         self.assert_close(s_multi[0].matrix(), s_multi.matrix()[0])
         self.assert_close(s_multi[1].matrix(), s_multi.matrix()[1])
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # The history of v is held in buffers, which torch cannot deep-copy; the copy holds it as a new leaf.
+        v = torch.tensor([[1.0, -2.0, 0.4]], device=device, dtype=dtype, requires_grad=True)
+        pose = Se2.exp(v)
+        copied = assert_deepcopy_copies_state_as_leaves(pose)
+        self.assert_close(copied.matrix().detach(), pose.matrix().detach(), rtol=0, atol=0)
+        pose.matrix().sum().backward()
+        assert v.grad is not None

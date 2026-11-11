@@ -318,6 +318,12 @@ class TestPILLookupWithoutImport(BaseTester):
         x = torch.rand(3, 4, 6, device=device, dtype=dtype)
         self.assert_close(Scale()(x, scale=0.5), x * 0.5)
 
+    @pytest.mark.parametrize("method", ["to_tensor", "to_numpy", "to_pil"])
+    def test_unsupported_input_raises_type_error_without_loading_pil(self, pil_not_imported, method):
+        # Under InstallationMode.AUTO, consulting the loader here would install Pillow for an input it cannot be.
+        with pytest.raises(TypeError, match="Input type not supported"):
+            getattr(ImageModuleMixIn(), method)(object())
+
     def test_pil_image_is_still_converted(self):
         image = PILImage.fromarray(np.full((4, 6, 3), 255, dtype=np.uint8))
         module = ImageModuleMixIn()

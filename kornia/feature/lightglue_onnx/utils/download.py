@@ -40,7 +40,7 @@ def download_onnx_from_url(
     A file already present in ``model_dir`` is returned without a request.
     The default value of ``model_dir`` is ``<hub_dir>/checkpoints`` where
     ``hub_dir`` is the directory returned by :func:`~torch.hub.get_dir`.
-    The transfer goes through :func:`kornia.core.download.download_file_from_url`,
+    The transfer goes through :func:`~kornia.core.download_file_from_url`,
     which bounds a stalled server, retries transient failures and leaves no
     partial file in the cache.
 
