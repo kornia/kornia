@@ -111,10 +111,10 @@ support it has, and adds none:
 their argument values with ``torch._assert_async`` when the checked tensor is on
 CUDA; on the CPU the same check raises
 :exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes that operator
-when it compiles a function (in every release from torch 2.5.1 to 2.15), so a
-scripted call runs without the checks on CUDA tensors, whether checks are enabled
-or not. A check on a CPU tensor still runs in a scripted call, even with checks
-disabled, and raises ``torch.jit.Error``: :func:`~kornia.enhance.histogram` and
+when it compiles a function (checked with torch 2.5.1, the oldest supported
+release, and 2.15), so a scripted call runs without the checks on CUDA tensors,
+whether checks are enabled or not. A check on a CPU tensor still runs in a
+scripted call, even with checks disabled, and raises ``torch.jit.Error``: :func:`~kornia.enhance.histogram` and
 :func:`~kornia.enhance.histogram2d` check a CPU ``bandwidth`` on the CPU even when
 the samples are on CUDA. Shape and type checks (``KORNIA_CHECK*``) still run in
 scripted calls on every device. With torch 2.15, these scripted calls on CUDA take
