@@ -337,10 +337,8 @@ def draw_rectangle(
     Raises:
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
-        BaseError: if ``color`` has neither 1 nor ``C`` values.
+        BaseError: if ``color`` has neither 1 nor ``C`` values per rectangle.
         ValueError: if ``line_width`` is not a positive ``int``.
-        RuntimeError: if ``color`` has neither 1 nor ``C`` values per rectangle
-            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -523,11 +521,9 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     Raises:
         ShapeError: if the images are not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``polygons`` is a tensor that is not three dimensional.
-        BaseError: if ``colors`` has neither 1 nor ``C`` values.
+        BaseError: if ``colors`` has neither 1 nor ``C`` values per polygon.
         BaseError: if the vertices are not ``(x, y)`` points.
         BaseError: if the images, polygons and colors differ in batch size or device.
-        RuntimeError: if ``colors`` has neither 1 nor ``C`` values per polygon
-            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     See Also:
         - :func:`draw_rectangle`: draws outlines as well as fills, and several rectangles per image.
