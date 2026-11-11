@@ -41,8 +41,23 @@ except ImportError:  # the ONNX tests skip without onnxruntime
 # The interpolation modes an exported ``ResizePostProcessor`` resizes with; "area" raises, see its own test.
 _EXPORTABLE_MODES = ["nearest", "bilinear", "bicubic", "nearest-exact"]
 
-# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9, the TorchScript exporter before it.
-_EXPORTERS = [pytest.param({}, id="default"), pytest.param({"dynamo": False}, id="legacy")]
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9. Before it the default is the TorchScript
+# exporter, the one ``legacy`` runs, so only ``legacy`` runs there.
+_EXPORTERS = [pytest.param({"dynamo": False}, id="legacy")]
+if torch_version_ge(2, 9, 0):
+    _EXPORTERS.insert(0, pytest.param({}, id="default"))
+
+# Images of different heights and widths, an odd size, sizes above and below the pre-processor's 32, for a graph of
+# dynamic size; and a graph input size other than the pre-processor's, which keeps its own.
+_DYNAMIC_SIZE = (None, [(1, 3, 40, 72), (2, 3, 33, 47), (3, 3, 64, 48), (1, 3, 20, 28)])
+_FIXED_SIZE = (48, [(1, 3, 48, 48), (2, 3, 48, 48), (3, 3, 48, 48)])
+# On both exporters, "nearest", "bilinear" and "bicubic" export the same graph at either size apart from the attributes
+# of the final Resize, and "nearest-exact" exports nodes of its own. So every mode runs at the dynamic size, and the
+# fixed size runs "bilinear", the post-processor's default, and "nearest-exact".
+_RESIZE_CASES = [
+    *(pytest.param(mode, *_DYNAMIC_SIZE, id=f"dynamic_size-{mode}") for mode in _EXPORTABLE_MODES),
+    *(pytest.param(mode, *_FIXED_SIZE, id=f"fixed_size-{mode}") for mode in ("bilinear", "nearest-exact")),
+]
 
 
 def _run_onnx(op, x):
@@ -227,17 +242,7 @@ class TestEdgeDetector(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
-    @pytest.mark.parametrize("interpolation", _EXPORTABLE_MODES)
-    @pytest.mark.parametrize(
-        ("image_size", "shapes"),
-        [
-            # different heights and widths, an odd size, sizes above and below the pre-processor's 32
-            (None, [(1, 3, 40, 72), (2, 3, 33, 47), (3, 3, 64, 48), (1, 3, 20, 28)]),
-            # a graph input size other than the pre-processor's, which keeps its own
-            (48, [(1, 3, 48, 48), (2, 3, 48, 48), (3, 3, 48, 48)]),
-        ],
-        ids=["dynamic_size", "fixed_size"],
-    )
+    @pytest.mark.parametrize(("interpolation", "image_size", "shapes"), _RESIZE_CASES)
     def test_onnx_with_pre_and_post_processor_matches_eager(self, export_kwargs, interpolation, image_size, shapes):
         # The graph returns one (B, 1, H, W) tensor at the input's size, resized with the post-processor's mode:
         # ``torch.cat`` of the eager per-image list.
