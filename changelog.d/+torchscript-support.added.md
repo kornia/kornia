@@ -1,0 +1,1 @@
+Documented the state of TorchScript support: functions that script keep working, nothing new is made scriptable, and scripted CUDA calls of `adjust_gamma`, `adjust_contrast`, `histogram`, `render_gaussian2d` and `equalize` run without their value checks.
