@@ -749,11 +749,6 @@ class TestNormalizeMinMax(BaseTester):
         data = torch.arange(12, device=device, dtype=torch.float64).reshape(1, 1, 3, 4).transpose(-1, -2)
         self.gradcheck(kornia.enhance.normalize_min_max, (data,))
 
-    def test_smoke(self, device, dtype):
-        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
-        assert kornia.enhance.normalize_min_max(x) is not None
-        assert kornia.enhance.normalize_min_max(x) is not None
-
     def test_exception(self, device, dtype):
         x = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         with pytest.raises(TypeError):

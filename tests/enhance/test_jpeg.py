@@ -1300,7 +1300,7 @@ class TestDiffJPEG(BaseTester):
                     assert torch.equal(grad, expected_grad)
 
     @pytest.mark.applies_to(
-        dtypes=("float16", "bfloat16"), reason="float32 and float64 gradients are covered by test_gradcheck"
+        dtypes=("float16", "bfloat16"), reason="only half-precision inputs exercise this comparison"
     )
     def test_half_precision_backward(self, device, dtype) -> None:
         img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype, requires_grad=True)
@@ -1373,8 +1373,7 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
-    # @pytest.mark.slow
-    def test_gradcheck(self, device) -> None:
+    def test_reference_gradients(self, device) -> None:
         """We test that the gradient matches the gradient of the reference implementation."""
         B, H, W = 1, 16, 16
         img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
@@ -1390,7 +1389,9 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality_grad_ref = torch.tensor([0.0042], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
-        self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
+        # The reference is rounded to four decimals (at most 5e-5 absolute error).
+        # CPU/MPS give about 0.0041562; the old atol=0.01 also accepted zero or a reversed gradient.
+        self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=5e-5)
 
     def test_basis_cache_after_inference_mode(self, device, dtype, monkeypatch) -> None:
         """A first call under ``torch.inference_mode()`` must not break later calls that track gradients.

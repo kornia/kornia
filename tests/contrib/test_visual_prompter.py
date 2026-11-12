@@ -447,12 +447,3 @@ class TestVisualPrompter(BaseTester):
             alone = prompter.predict(boxes=boxes[k : k + 1], output_original_size=False)
             self.assert_close(together.logits[k], alone.logits[0])
             self.assert_close(together.scores[k], alone.scores[0])
-
-    def test_gradcheck(self):
-        pytest.skip("Gradcheck is not currently applicable for VisualPrompter inference.")
-
-    def test_cardinality(self):
-        pytest.skip("Cardinality is covered by the test_batching_pipeline.")
-
-    def test_dynamo(self, torch_optimizer):
-        pytest.skip("Dynamo compilation currently broken for VisualPrompter. See #FIXME in source.")

@@ -58,11 +58,6 @@ class TestExtractTensorPatches(BaseTester):
         with pytest.raises(ValueCheckError, match=argument):
             kornia.contrib.ExtractTensorPatches(**params)
 
-    def test_smoke(self, device):
-        img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
-        m = kornia.contrib.ExtractTensorPatches(3)
-        assert m(img).shape == (1, 4, 1, 3, 3)
-
     def test_b1_ch1_h4w4_ws3(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)

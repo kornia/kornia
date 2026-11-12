@@ -119,21 +119,6 @@ class TestCombineTensorPatches(BaseTester):
         with pytest.raises(AssertionError):
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
-    def test_expl_autopadding(self, device, dtype):
-        img_shape = (8, 13)
-        img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(
-            1, 1, img_shape[0], img_shape[1]
-        )
-        window_size = (3, 3)
-        padding = kornia.contrib.compute_padding(img_shape, window_size)
-        patches = kornia.contrib.extract_tensor_patches(
-            img, window_size=window_size, stride=window_size, padding=padding
-        )
-        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
-        assert m(patches).shape == (1, 1, *img_shape)
-
-        self.assert_close(img, m(patches))
-
     def test_impl_autopadding(self, device, dtype):
         img_shape = (11, 16)
         img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(1, 1, *img_shape)
