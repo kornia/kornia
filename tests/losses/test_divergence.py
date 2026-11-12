@@ -27,12 +27,14 @@ from testing.base import BaseTester
 
 
 class TestDivergenceLoss(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="only CPU autocast leaves log in half precision; CUDA and MPS autocast run it in float32",
+    )
     @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("identical", [False, True])
     def test_kl_autocast(self, amp_dtype, identical, device):
         """Evaluate half heatmap logarithms at the precision used by autocast KL divergence."""
-        if device.type != "cpu":
-            pytest.skip("only CPU autocast leaves log in half precision; CUDA and MPS autocast run it in float32")
         generator = torch.Generator().manual_seed(0)
         target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7)
         target = target.to(device=device, dtype=amp_dtype)
@@ -51,11 +53,10 @@ class TestDivergenceLoss(BaseTester):
         for gradient, reference in zip(gradients, references):
             self.assert_close(gradient, reference.to(amp_dtype))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="checks the CPU autocast logarithm lift")
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     def test_kl_autocast_keeps_full_precision_inputs(self, input_dtype, device):
         """Leave float32/float64 heatmaps untouched by the CPU autocast logarithm lift."""
-        if device.type != "cpu":
-            pytest.skip("checks the CPU autocast logarithm lift")
         generator = torch.Generator().manual_seed(0)
         target = torch.randn(1, 2, 49, generator=generator, dtype=input_dtype).softmax(-1).reshape(1, 2, 7, 7)
         pred = target.roll(1, -1)

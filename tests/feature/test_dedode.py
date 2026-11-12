@@ -32,6 +32,14 @@ from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
 from testing.base import BaseTester
 
+# Eager runs in half precision, but the compiled outputs differ from it by more than the tolerances of the compiled
+# tests (torch 2.14 CPU: descriptors by 4e-4 in float16 and 3e-3 in bfloat16; the last bfloat16 keypoints of the top
+# 100 move by a pixel).
+COMPILED_FULL_PRECISION = pytest.mark.applies_to(
+    dtypes=("float32", "float64"),
+    reason="compiled half-precision DeDoDe differs from eager by more than these tolerances",
+)
+
 
 class TestConvRefiner(BaseTester):
     def test_depthwise_channels_must_be_divisible(self):
@@ -119,10 +127,12 @@ class TestNestedTensorBlock(BaseTester):
 
 
 class TestDinoVisionTransformer(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_get_intermediate_layers_empty_batch_6266(self, device, dtype):
         """``reshape=True`` turns the token grid of an empty batch into an empty feature map."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = DinoVisionTransformer(img_size=56, patch_size=14, embed_dim=32, depth=2, num_heads=2)
         model = model.to(device, dtype).eval()
         (out,) = model.get_intermediate_layers(torch.rand(0, 3, 56, 56, device=device, dtype=dtype), reshape=True)
@@ -256,13 +266,12 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert logits.dtype == torch.promote_types(dtype, torch.float32)
         assert torch.isfinite(logits).all()
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a regression for the half dtypes")
     def test_half_scoremap_keeps_the_float32_top_k(self, device, dtype, monkeypatch):
         # A peaky map of integer logits, exact in every dtype. Over 252 x 336 pixels most of its softmax
         # probabilities are below 1e-8: float16 flushes them to 0 and bfloat16 keeps 8 significant bits, so a
         # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in at least float32,
         # so a half-precision model returns the float32 keypoints and scores.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a regression for the half dtypes")
         h, w = 252, 336
         logits = (torch.randn(1, 1, h, w, generator=torch.Generator().manual_seed(0)) * 8).round().to(device)
 
@@ -311,10 +320,12 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
     def _image(device):
         return torch.rand(1, 3, 56, 84, generator=torch.Generator().manual_seed(7)).to(device)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="CUDA runs the float16 mixed-precision path, which this test does not cover",
+    )
     @pytest.mark.parametrize("entry", ["detect", "describe", "forward"])
     def test_default_runs_with_float32(self, device, monkeypatch, entry):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe().to(device).eval()
         x = self._image(device)
@@ -332,9 +343,11 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
             assert out.dtype == torch.float32
             assert torch.isfinite(out).all()
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="CUDA runs the float16 mixed-precision path, which this test does not cover",
+    )
     def test_forward_is_detect_then_describe(self, device, monkeypatch):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe().to(device).eval()
         x = self._image(device)
@@ -344,9 +357,10 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         self.assert_close(scores, scores_d)
         self.assert_close(descs, model.describe(x, kpts_d))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda", reason="CUDA casts the DINOv2 backbone to amp_dtype by design"
+    )
     def test_dinov2_is_not_cast_off_cuda(self, device, monkeypatch):
-        if device.type == "cuda":
-            pytest.skip("CUDA casts the DINOv2 backbone to amp_dtype by design")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe().to(device).eval()
         backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14
@@ -355,10 +369,12 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         assert backbone[0].cls_token.dtype == torch.float32
         assert backbone[0].cls_token.device.type == device.type
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype",
+    )
     @pytest.mark.parametrize("entry", ["describe", "forward"])
     def test_descriptor_g_follows_the_model_dtype(self, device, dtype, monkeypatch, entry):
-        if device.type == "cuda":
-            pytest.skip("CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype")
         _tiny_dinov2(monkeypatch)
         model = DeDoDe(amp_dtype=dtype).to(device, dtype).eval()
         x = self._image(device).to(dtype)
@@ -368,9 +384,8 @@ class TestDeDoDeDefaultAmpDtype5934(BaseTester):
         backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0]
         assert backbone.cls_token.dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="requires CUDA")
     def test_cuda_casts_the_backbone_to_amp_dtype(self, device, monkeypatch):
-        if device.type != "cuda":
-            pytest.skip("requires CUDA")
         _tiny_dinov2(monkeypatch)
         amp_dtype = torch.float16
         model = DeDoDe(amp_dtype=amp_dtype).to(device).eval()
@@ -399,14 +414,6 @@ class TestDeDoDeNoGrad(BaseTester):
         gen = torch.Generator().manual_seed(7)
         return torch.rand(1, 3, 56, 84, generator=gen).to(device, dtype)
 
-    @staticmethod
-    def _skip_half(dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            # Eager runs in half precision, but the compiled outputs differ from it by more than the tolerances below
-            # (torch 2.14 CPU: descriptors by 4e-4 in float16 and 3e-3 in bfloat16; the last bfloat16 keypoints of the
-            # top 100 move by a pixel).
-            pytest.skip("compiled half-precision DeDoDe differs from eager by more than these tolerances")
-
     def test_outputs_are_ordinary_tensors_without_grad_5737(self, device, dtype):
         # `detect` and `describe` run under `torch.no_grad()`, not `torch.inference_mode()`: inference tensors
         # are what made inductor raise "Cannot set version_counter for inference tensor" on these two methods.
@@ -422,8 +429,8 @@ class TestDeDoDeNoGrad(BaseTester):
         assert not model.detector.seen[0].requires_grad
         assert not model.descriptor.seen[0].requires_grad
 
+    @COMPILED_FULL_PRECISION
     def test_dynamo_detect_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
-        self._skip_half(dtype)
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         n = 100
@@ -437,8 +444,8 @@ class TestDeDoDeNoGrad(BaseTester):
         assert dist.amin(dim=-2).max() < 1e-4
         self.assert_close(scores_c, scores, rtol=1e-3, atol=1e-6)
 
+    @COMPILED_FULL_PRECISION
     def test_dynamo_describe_5737(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
-        self._skip_half(dtype)
         model = self._model(device, dtype)
         x = self._image(device, dtype)
         kpts, _ = model.detect(x, n=100)

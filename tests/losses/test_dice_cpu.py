@@ -126,6 +126,10 @@ class TestDiceLossCpu(BaseTester):
             dice_loss(logits.requires_grad_(), labels, average, weight=weight)
         assert calls == [LARGE, LARGE]
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["case"] == "float32-pred-float64-weight" and p["device_name"] == "mps"),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize(
         "case",
         ["small", "float32-pred-float64-weight", "half", "trace", "functorch", "autocast"],
@@ -138,8 +142,6 @@ class TestDiceLossCpu(BaseTester):
         logits, labels = _inputs((1, 21, 32, 32) if case == "small" else LARGE, device, dtype)
         weight = None
         if case == "float32-pred-float64-weight":
-            if device.type == "mps":
-                pytest.skip("MPS has no float64")
             logits, weight = logits.float(), torch.ones(LARGE[1], device=device, dtype=torch.float64)
         if case == "trace":
             torch.jit.trace(lambda x: dice_loss(x, labels), (logits,), check_trace=False)
@@ -381,11 +383,13 @@ class TestDiceLossCpu(BaseTester):
         self.assert_close(loss.detach(), expected[0])
         self.assert_close_scaled(leaf.grad, expected[1])
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="dice_loss is not scriptable: its average check builds a set",
+    )
     @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_dynamo_on_an_eligible_input(self, average, device, dtype, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("dice_loss is not scriptable: its average check builds a set")
         if dtype == torch.float64 and not torch_version_ge(2, 6):
             # On torch 2.5.1 a compiled call keeps the one-hot target (is_exporting() is is_compiling() there), and
             # Inductor cannot compile its float64 backward at this size: "fmadd" has no double-vector overload.
@@ -430,12 +434,15 @@ def _compiled_calls_keep_the_one_hot_target() -> bool:
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestDiceLossCpuCompiledLabels(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, in float32",
+    )
     @NATIVE_CPU
     @pytest.mark.parametrize("average, weighted", [("micro", False), ("micro", True), ("macro", False)])
     @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
     def test_dynamo_invalid_label_raises(self, average, weighted, value, message, device, dtype, optimizer_backend):
-        if dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, in float32")
         if _compiled_calls_keep_the_one_hot_target():
             pytest.skip("this torch release compiles the one-hot path, which does not check labels")
         # The checkout under test, which "-c" imports first from the working directory.

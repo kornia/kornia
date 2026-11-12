@@ -200,12 +200,14 @@ class TestSolvePnpDlt(BaseTester):
             dtype=dtype,
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the pins compare the pose at 1e-4, below the half-precision rounding of the projected points",
+    )
     def test_convention_returns_the_world_to_camera_extrinsics(self, device, dtype):
         # The (B, 3, 4) [R | t] maps world points into the camera frame (PinholeCamera.extrinsics, OpenCV
         # solvePnP). Camera-frame world points recover [I | 0]; a camera with cam = world + (1, 0, 0) recovers
         # t = (+1, 0, 0), where a camera-to-world reading would give (-1, 0, 0).
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the pins compare the pose at 1e-4, below the half-precision rounding of the projected points")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         identity = torch.tensor(
@@ -261,11 +263,13 @@ class TestSolvePnpDlt(BaseTester):
         with pytest.raises(AssertionError, match="last singular value"):
             kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="bfloat16 rounds the projected points by up to 0.25 px, which moves t past this pin's 1e-2",
+    )
     def test_zero_weight_points_do_not_pass_the_degeneracy_check(self, device, dtype):
         # kornia#4799: the same coplanar set plus two off-plane points recovers [I | 0]; with those two points at
         # weight 0 only the coplanar points are left, so the degeneracy check must reject it.
-        if dtype == torch.bfloat16:
-            pytest.skip("bfloat16 rounds the projected points by up to 0.25 px, which moves t past this pin's 1e-2")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         planar = torch.stack(
@@ -317,12 +321,14 @@ class TestSolvePnpDlt(BaseTester):
         )
         self.assert_close(weighted, duplicated, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the pinned weight scales, 1e20 and 1e-25, are outside the half-precision range",
+    )
     def test_weights_scale_and_sign_do_not_change_the_result(self, device, dtype):
         # Only the weights' magnitudes relative to each other matter: a negative weight counts as its magnitude,
         # and scales whose squares overflow or underflow the dtype do not change the pose or the degeneracy
         # decision.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the pinned weight scales, 1e20 and 1e-25, are outside the half-precision range")
         torch.manual_seed(0)
         K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         points = torch.rand(2, 10, 3, device=device, dtype=dtype) * 4 - 2
@@ -421,14 +427,13 @@ class TestSolvePnpDltAutocast(BaseTester):
         weights = torch.rand(1, 40, generator=generator) + 0.5
         return [v.to(device) for v in (world, img, K, torch.cat([R, t], -1), weights)]
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("weighted", [False, True])
     def test_autocast_does_not_change_the_result_6168(self, device, weighted):
         # Under bfloat16 autocast the de-normalization products ran in bfloat16, and torch.det, which has no
         # half-precision CPU kernel, raised NotImplementedError for float32 inputs.
         if device.type == "cuda" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         world, img, K, expected_pose, weights = self._scene(device)
         weights = weights if weighted else None
         expected = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
@@ -442,13 +447,12 @@ class TestSolvePnpDltAutocast(BaseTester):
 class TestSolvePnpDltGradient(BaseTester):
     """``solve_pnp_dlt``'s gradient is finite when other singular values of the system are equal (#6213)."""
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
     def test_cube_corners_have_the_central_difference_gradient_6213(self, device):
         # The corners of a cube and its centre make singular values of the DLT system equal in some poses, where
         # torch's SVD backward made the gradient with respect to the image points NaN. Which poses tie depends on
         # the SVD backend: 4 to 6 of these 64 on the CPUs measured, and none in float64 on CUDA, so this test pins
         # the fix on CPU.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
         dtype = torch.float64

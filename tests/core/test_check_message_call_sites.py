@@ -492,15 +492,18 @@ _COMPILE_VALUES = {
 
 
 class TestDeferredMessagesUnderCompile:
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="counts the graphs of torch.compile, which torch.jit.script does not build",
+    )
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the graph count does not depend on the floating dtype"
+    )
     @pytest.mark.parametrize("case", sorted(_COMPILE_CASES))
     def test_dynamo_new_values_compile_no_new_graph(self, case, device, dtype, torch_optimizer, optimizer_backend):
         """A new value of a size or int that a check message formats compiles no new graph."""
         from torch._dynamo.testing import CompileCounter
 
-        if optimizer_backend == "jit":
-            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the graph count does not depend on the floating dtype")
         op, make_inputs = _COMPILE_CASES[case]
         if op is None:
             from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed

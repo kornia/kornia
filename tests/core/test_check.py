@@ -253,13 +253,13 @@ class TestCheckSameDevice:
         assert KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device)) is True
 
     @pytest.mark.uses_accelerator
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
+    @pytest.mark.applies_to(devices=("cuda",), reason="Skip if no GPU.")
     def test_invalid(self):
         with pytest.raises(DeviceError):
             KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device="cpu"), torch.rand(1, device="cuda"))
 
     @pytest.mark.uses_accelerator
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
+    @pytest.mark.applies_to(devices=("cuda",), reason="Skip if no GPU.")
     def test_invalid_raises_false(self):
         assert (
             KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device="cpu"), torch.rand(1, device="cuda"), raises=False) is False
@@ -667,11 +667,12 @@ class TestCheckSameSize:
         with pytest.raises(Exception, match="expected 4, got 3"):
             op_jit(torch.rand(3, 2), torch.rand(4, 2))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="counts the graphs of torch.compile, which torch.jit.script does not build",
+    )
     def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
-
-        if optimizer_backend == "jit":
-            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
             KORNIA_CHECK_SAME_SIZE(x, y, allow_one=True)
@@ -734,11 +735,12 @@ class TestCheckSizes:
         with pytest.raises(Exception, match=r"expected \(\*, 4\)"):
             op_jit(torch.rand(2, 3), [None, 4])
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="counts the graphs of torch.compile, which torch.jit.script does not build",
+    )
     def test_dynamo_relates_the_sizes_without_specializing(self, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
-
-        if optimizer_backend == "jit":
-            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(pred: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
             KORNIA_CHECK_SIZES(weight, [pred.shape[1]])
@@ -888,13 +890,14 @@ class TestDeferredMessage:
         with pytest.raises(Exception, match="a scripted message"):
             scripted(torch.ones(3, 3))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="counts the graphs of torch.compile, which torch.jit.script does not build",
+    )
     @pytest.mark.parametrize("helper", ["KORNIA_CHECK", "KORNIA_CHECK_SHAPE"])
     def test_dynamo_deferred_size_message_compiles_one_graph(self, helper, torch_optimizer, optimizer_backend):
         """Formatting a size inside the message function does not specialize it."""
         from torch._dynamo.testing import CompileCounter
-
-        if optimizer_backend == "jit":
-            pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             if helper == "KORNIA_CHECK":
@@ -933,17 +936,17 @@ class TestCheckAsync(BaseTester):
         with pytest.raises(AsyncCheckError, match="x must be positive"):
             _check_async((torch.tensor([1.0, -1.0], device=device) > 0).all(), "x must be positive")
 
+    @pytest.mark.applies_to(devices=("mps",), reason="pins the MPS assert kernel of torch 2.13")
     def test_invalid_on_mps_raises_at_the_next_sync(self, device):
-        if device.type != "mps" or not torch_version_ge(2, 13):
+        if not torch_version_ge(2, 13):
             pytest.skip("pins the MPS assert kernel of torch 2.13")
         _check_async((torch.tensor([1.0, -1.0], device=device) > 0).all(), "x must be positive")
         with pytest.raises(RuntimeError, match="x must be positive"):
             torch.mps.synchronize()
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="pins the CUDA device-side assert")
     def test_invalid_on_cuda_is_a_device_assert(self, device):
         # The assert leaves the CUDA context unusable, so it runs in a process of its own.
-        if device.type != "cuda":
-            pytest.skip("pins the CUDA device-side assert")
         script = textwrap.dedent(
             """
             import torch
@@ -970,9 +973,8 @@ class TestCheckAsync(BaseTester):
         expected = "input[0] != 0" if sys.platform == "win32" else "x must be positive"
         assert expected in result.stderr
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
     def test_valid_on_cuda_does_not_synchronize(self, device):
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         x = torch.rand(8, device=device) + 0.5
         torch.cuda.synchronize()
         previous = torch.cuda.get_sync_debug_mode()
@@ -1018,11 +1020,12 @@ class TestCheckAsync(BaseTester):
         with pytest.raises(AsyncCheckError, match="x must be positive"):
             torch.func.functionalize(op)(invalid)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript does not script functorch transforms"
+    )
     def test_dynamo_under_functorch_transforms(self, device, torch_optimizer, optimizer_backend):
         # Dynamo cannot trace the walk of the transform stack, so a compiled vmap or grad skips the check instead of
         # breaking the graph.
-        if optimizer_backend == "jit":
-            pytest.skip("TorchScript does not script functorch transforms")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")
@@ -1034,11 +1037,13 @@ class TestCheckAsync(BaseTester):
         gradient = torch_optimizer(torch.func.grad(op), fullgraph=True)
         self.assert_close(gradient(x[0]), torch.full_like(x[0], 2.0))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cuda",
+        reason="TorchScript drops torch._assert_async, so a scripted CUDA call is not checked",
+    )
     def test_jit_raises_on_the_host(self, device):
         # TorchScript cannot read whether MPS has the assert kernel (from torch 2.13), so a scripted call reads a
         # condition on any device but CUDA on the host, and raises during the call.
-        if device.type == "cuda":
-            pytest.skip("TorchScript drops torch._assert_async, so a scripted CUDA call is not checked")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")
@@ -1049,10 +1054,10 @@ class TestCheckAsync(BaseTester):
         with pytest.raises(torch.jit.Error, match="AsyncCheckError: x must be positive"):
             scripted(-torch.ones(2, device=device))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="covered by test_jit_raises_on_the_host"
+    )
     def test_dynamo(self, device, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("covered by test_jit_raises_on_the_host")
-
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")
             return x * 2
@@ -1067,10 +1072,11 @@ class TestCheckAsync(BaseTester):
         with pytest.raises(RuntimeError, match="x must be positive"):
             compiled(-x)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript does not script functorch transforms"
+    )
     def test_dynamo_guard_under_functorch_transforms(self, device, torch_optimizer, optimizer_backend):
         # A guard keeps a later index in bounds, so a compiled grad keeps it, unlike the checks without one.
-        if optimizer_backend == "jit":
-            pytest.skip("TorchScript does not script functorch transforms")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive", guard=True)

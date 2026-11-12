@@ -755,10 +755,9 @@ class TestImageModuleConversions(BaseTester):
         second = module(first, output_type="numpy")
         np.testing.assert_array_equal(second, first)
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "bfloat16", reason="NumPy has no bfloat16")
     @pytest.mark.parametrize("shape", [(3, 4, 6), (1, 4, 6), (2, 3, 4, 6), (2, 1, 4, 6)])
     def test_to_numpy_is_the_inverse_of_to_tensor_5207(self, shape, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("NumPy has no bfloat16")
         module = _Identity()
         image = torch.rand(shape, device=device, dtype=dtype)
         array = module.to_numpy(image)

@@ -183,11 +183,10 @@ class TestBilateralBlur(BaseTester):
         self.assert_close(actual, bilateral_blur(image, 3, 0.5, (1.25, 1.5)))
         assert BilateralBlur(3, 0.5, sigma_space)(image).dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cpu", "mps"), reason="uint8 reflect padding is pinned on the CPU and MPS only")
     def test_integer_input_keeps_a_tensor_sigma_space_5521(self, device):
         # Only a floating input casts sigma_space: a uint8 cast would truncate 1.5 to 1. With a huge sigma_color every
         # colour weight is 1 whatever the uint8 differences do (#5155), so the filter is gaussian_blur2d's.
-        if device.type not in ("cpu", "mps"):
-            pytest.skip("uint8 reflect padding is pinned on the CPU and MPS only")
         image = (torch.arange(63, device=device).view(1, 1, 7, 9) * 4).to(torch.uint8)
         sigma_space = torch.tensor([[1.5, 1.5]], device=device)
 
@@ -302,12 +301,13 @@ class TestBilateralBlur(BaseTester):
         expected = torch.tensor([[[[edge * 1j, 1j / (1 + 2 * e**2), edge * 1j]]]], dtype=torch.complex64)
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="MPS retains two-step sum for reduction performance"
+    )
     @pytest.mark.parametrize("half_dtype", [torch.float16])
     def test_half_precision_sigma_gradients(self, device, half_dtype):
         # A two-step window sum in half precision truncated intermediate partial sums, raising sigma gradient relative
         # error to ~7.5e-2 for sigma_color and ~3.8e-2 for sigma_space (#6284). Single-step reduction restores < 2.5e-2.
-        if device.type == "mps":
-            pytest.skip("MPS retains two-step sum for reduction performance")
         if not supports_reflect_padding(device, half_dtype):
             pytest.skip("reflection padding is unsupported for this device/dtype")
         torch.manual_seed(0)
@@ -631,10 +631,9 @@ class TestJointBilateralBlur(BaseTester):
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
         self.assert_close(out, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_wider_guidance_keeps_the_input_dtype_5521(self, device, dtype):
         # A floating guidance is cast to the input's dtype, so a wider one does not promote the output.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
         guidance = torch.rand(2, 1, 8, 9, device=device, dtype=torch.float64)
 
@@ -643,12 +642,11 @@ class TestJointBilateralBlur(BaseTester):
         self.assert_close(actual, joint_bilateral_blur(image, guidance.to(dtype), 3, 0.5, (1.5, 1.5)))
         assert JointBilateralBlur(3, 0.5, (1.5, 1.5))(image, guidance).dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cpu", "mps"), reason="uint8 reflect padding is pinned on the CPU and MPS only")
     def test_integer_input_keeps_a_floating_guidance_5521(self, device):
         # Only a floating input casts guidance: a uint8 cast would truncate a [0, 1] guidance to zeros. The guidance is
         # what gets differenced, so a uint8 input filters as its float copy does. A tuple sigma_space would build the
         # spatial kernel in uint8 (#5155); a float tensor one keeps it in floating point.
-        if device.type not in ("cpu", "mps"):
-            pytest.skip("uint8 reflect padding is pinned on the CPU and MPS only")
         image = (torch.arange(63, device=device).view(1, 1, 7, 9) * 4).to(torch.uint8)
         guidance = torch.linspace(0, 1, 63, device=device).view(1, 1, 7, 9)
         sigma_space = torch.tensor([[1.5, 1.5]], device=device)
@@ -757,12 +755,10 @@ class TestConventionsBilateralBlur(BaseTester):
         assert guided.dtype == wide
         self.assert_close(guided, stripes.to(wide), rtol=0.0, atol=0.01)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float64", reason="nothing is wider than a float64 input")
     def test_convention_bilateral_blur_wider_sigma_space_keeps_the_input_dtype_5521(self, device, dtype):
         """A tensor sigma_space or guidance of a wider dtype is cast to the input's, as sigma_color is (#5521)."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
-        if dtype == torch.float64:
-            pytest.skip("nothing is wider than a float64 input")
         self._skip_without_reflect_padding(device, dtype)
         image = torch.rand(1, 1, 7, 9, device=device).to(dtype)
         wide_space = torch.full((1, 2), 1.5, device=device, dtype=torch.float64)

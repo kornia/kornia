@@ -275,9 +275,8 @@ class TestKeypoints(BaseTester):
         kp.index_put(idx, new_vals, inplace=True)
         self.assert_close(kp.data[:3], new_vals)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_type(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         data = torch.rand(5, 2, device=device, dtype=torch.float32)
         kp = Keypoints(data)
         kp.type(torch.float64)

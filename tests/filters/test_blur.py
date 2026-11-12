@@ -78,11 +78,10 @@ class TestBoxBlur(BaseTester):
         assert torch.equal(torch.isposinf(actual), torch.isposinf(expected))
         assert torch.equal(torch.isneginf(actual), torch.isneginf(expected))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="The data-dependent fallback is specific to eager CPU execution")
     @pytest.mark.parametrize("separable", [False, True])
     @pytest.mark.parametrize("value", ["large", "inf", "nan"])
     def test_extreme_cpu_values_match_convolution(self, separable, value, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("The data-dependent fallback is specific to eager CPU execution")
         fill = torch.finfo(dtype).max / 2 if value == "large" else float(value)
         data = torch.full((1, 1, 7, 9), fill, device=device, dtype=dtype)
         if separable:

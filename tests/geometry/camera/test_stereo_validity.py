@@ -102,11 +102,13 @@ class TestStereoReconstructionValidity(BaseTester):
         assert not valid[0, 0, 0, 0]
         torch.testing.assert_close(points, _legacy(d, q), atol=0, rtol=0, equal_nan=True)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (torch.float64 in (p["q_dtype"], p["d_dtype"]))),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("q_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("d_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_mixed_dtypes_preserve_coordinates(self, device, q_dtype, d_dtype):
-        if device.type == "mps" and torch.float64 in (q_dtype, d_dtype):
-            pytest.skip("MPS does not support float64")
         q = _camera(device, q_dtype).Q
         d = torch.full((2, 2, 3, 1), 10, device=device, dtype=d_dtype)
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)

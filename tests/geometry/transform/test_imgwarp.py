@@ -205,12 +205,11 @@ def _output_dtype_or_none(call):
         return None
 
 
+@pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("matrix_dtype", [torch.float32, torch.float64, torch.int64])
 def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, matrix_dtype, device):
-    if device.type == "mps":
-        pytest.skip("MPS does not support float64")
     op = getattr(kornia.geometry.transform, op_name)
     rows = 2 if op_name == "warp_affine" else 3
     src = torch.zeros(1, 3, 3, 4, device=device, dtype=src_dtype)
@@ -497,10 +496,12 @@ class TestGetPerspectiveTransform(BaseTester):
 
 
 class TestRotationMatrix2d(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["dtype_name"] == "float64")),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
     def test_dtype_mismatch_message_5662(self, argument, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         inputs = {
             "center": torch.zeros(1, 2, device=device, dtype=dtype),
             "angle": torch.zeros(1, device=device, dtype=dtype),
@@ -514,10 +515,12 @@ class TestRotationMatrix2d(BaseTester):
         for name, value in inputs.items():
             assert f"{name} {value.dtype}" in str(exc.value)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["dtype_name"] == "float64")),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
     def test_device_mismatch_message_5662(self, argument, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         inputs = {
             "center": torch.zeros(1, 2, device=device, dtype=dtype),
             "angle": torch.zeros(1, device=device, dtype=dtype),
@@ -867,12 +870,13 @@ class TestWarpAffine(BaseTester):
 
 
 class TestWarpPerspective(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range"
+    )
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize("scale", [1e-15, -1e-15, 1e15, -1e15])
     def test_projective_scale_invariance(self, device, dtype, align_corners, scale):
         _skip_if_mps_lacks_grid_sample_backward(device)
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("these scales test the float32/float64 arithmetic range")
         if dtype == torch.float64:
             scale = (1e-110 if abs(scale) < 1 else 1e110) * (1 if scale > 0 else -1)
         image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6) / 36
@@ -891,10 +895,11 @@ class TestWarpPerspective(BaseTester):
         # H and s*H describe the same projective map: dL/d(s*H) = (dL/dH)/s.
         self.assert_close(actual_grad * scale, reference_grad)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range"
+    )
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_projective_scale_invariance_under_trace(self, device, dtype, align_corners):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("these scales test the float32/float64 arithmetic range")
         image = torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6) / 36
         # A zero bottom-right entry is valid: scale normalization must use the whole matrix.
         matrix = torch.tensor([[[1.0, 0.1, 0.3], [0.05, 1.0, 0.2], [0.3, 0.2, 0.0]]], device=device, dtype=dtype)
@@ -920,9 +925,10 @@ class TestWarpPerspective(BaseTester):
         )
         self.gradcheck(kornia.geometry.warp_perspective, (image, matrix, (5, 7)), requires_grad=(False, True, False))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="this translation tests the float32/float64 arithmetic range"
+    )
     def test_large_translation_preserves_unit_diagonal(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("this translation tests the float32/float64 arithmetic range")
         image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
         matrix = torch.eye(3, device=device, dtype=dtype)[None]
         matrix[..., 0, 2] = 1e20
@@ -948,10 +954,9 @@ class TestWarpPerspective(BaseTester):
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("size", [8, 64])
     def test_identity_float64_precision(self, device, size):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
         # float64 roundoff like warp_affine, not to float32 grid precision
         img = torch.rand(1, 1, size, size, device=device, dtype=torch.float64)
@@ -1411,12 +1416,11 @@ class TestRemap(BaseTester):
         with pytest.raises(ValueError, match="expected padding_mode"):
             kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
     @pytest.mark.parametrize("map_dtype", [torch.float32, torch.float64, torch.int64])
     @pytest.mark.parametrize("normalized_coordinates", [False, True])
     def test_empty_maps_follow_nonempty_dtype_policy(self, image_dtype, map_dtype, normalized_coordinates, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         image = torch.zeros(1, 2, 4, 5, device=device, dtype=image_dtype)
 
         def call(map_):
@@ -1597,13 +1601,12 @@ class TestInvertAffineTransform(BaseTester):
 class TestGetPerspectiveTransformAutocast(BaseTester):
     """A caller's autocast region does not reach get_perspective_transform (#6168)."""
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     def test_autocast_does_not_change_the_result_6168(self, device):
         # Under bfloat16 autocast the closed form ran its products in bfloat16: the homography between the corners of
         # a 640 x 480 image and four targets mapped those corners about 1.4 px off.
         if device.type == "cuda" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         src = torch.tensor([[[0.0, 0.0], [639.0, 0.0], [639.0, 479.0], [0.0, 479.0]]], device=device)
         dst = torch.tensor([[[12.0, 7.0], [630.0, 15.0], [610.0, 470.0], [-5.0, 460.0]]], device=device)
         expected = kornia.geometry.transform.get_perspective_transform(src, dst)
@@ -1648,6 +1651,10 @@ class TestWarpAutocast(BaseTester):
     def _warp(op_name, image, matrix):
         return getattr(kornia.geometry.transform, op_name)(image, matrix, (256, 256), align_corners=False)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["src_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
@@ -1656,8 +1663,6 @@ class TestWarpAutocast(BaseTester):
         # [0, 1] values, without a sign of it, as the output is still float32. A half image runs in float32 and got the
         # same matrix. Autocast does not cast a float64 one, so its result never changed.
         self._skip_unsupported(device, autocast_dtype)
-        if device.type == "mps" and src_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         image, matrix = self._warp_inputs(op_name, device, src_dtype)
         expected = self._warp(op_name, image, matrix)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -1823,6 +1828,20 @@ class TestMatrixBuildersAutocast(BaseTester):
         "get_affine_matrix3d_shear",
     )
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["src_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (
+                p["device_name"] == "cpu"
+                and p["src_dtype"] in (torch.float16, torch.bfloat16)
+                and p["src_dtype"] != getattr(torch, p["autocast_dtype"])
+            )
+        ),
+        reason="CPU autocast rejects a half tensor of the other half dtype in torch.stack",
+    )
     @pytest.mark.parametrize("op_name", _builders)
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
@@ -1831,14 +1850,6 @@ class TestMatrixBuildersAutocast(BaseTester):
         # the center of a 640 x 480 image moved its corner by about 1 px, and rotate, scale and the affine
         # augmentations warped by that matrix.
         self._skip_unsupported(device, autocast_dtype)
-        if device.type == "mps" and src_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
-        if (
-            device.type == "cpu"
-            and src_dtype in (torch.float16, torch.bfloat16)
-            and src_dtype != getattr(torch, autocast_dtype)
-        ):
-            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
         build, _ = self._builder(op_name, device, src_dtype)
         expected = build()
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -1860,16 +1871,17 @@ class TestMatrixBuildersAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the reference is in float64, which MPS does not support")
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "cpu" and p["center_dtype"] != getattr(torch, p["autocast_dtype"])),
+        reason="CPU autocast rejects a half tensor of the other half dtype in torch.stack",
+    )
     @pytest.mark.parametrize("op_name", ["get_affine_matrix2d", "get_affine_matrix3d"])
     @pytest.mark.parametrize("center_dtype", [torch.bfloat16, torch.float16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_float32_shear_with_half_center_in_a_region_6573(self, op_name, center_dtype, autocast_dtype, device):
         # The reverse mismatch raised under the guard, while the base ran it in the autocast dtype.
         self._skip_unsupported(device, autocast_dtype)
-        if device.type == "mps":
-            pytest.skip("the reference is in float64, which MPS does not support")
-        if device.type == "cpu" and center_dtype != getattr(torch, autocast_dtype):
-            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack")
         build = self._shear_builder(op_name, device)
         expected = build(torch.float64, torch.float64)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -2086,13 +2098,12 @@ class TestWarpOnePixelSourceAxis6433(BaseTester):
         row = self._row(device, dtype)
         assert kornia.geometry.transform.imgwarp._pad_one_pixel_axes(row, padding_mode) is row
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the missing kernel is on the CPU")
     @pytest.mark.parametrize("padding_mode", ["border", "reflection"])
     @pytest.mark.parametrize("cached", [False, True])
     def test_cpu_float16_pixel_homography(self, padding_mode, cached, device):
         # torch 2.5.1 has no float16 CPU replication_pad2d, and the half image reaches the padding here: a hardcoded
         # float16, because no CI job runs that torch at that dtype.
-        if device.type != "cpu":
-            pytest.skip("the missing kernel is on the CPU")
         row = self._row(device, torch.float16)
         homography = torch.eye(3, device=device, dtype=torch.float16)[None]
         homography[0, 1, 2] = 0.5

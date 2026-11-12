@@ -118,10 +118,9 @@ class TestHistMatch(BaseTester):
         assert out.isfinite().all()
         self.assert_close(out, exp)
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="float64 only")
     def test_histmatch_float64_keeps_template_values(self, device, dtype):
         # A float64 source is matched in float64: float32 would round the template value 1 + 2**-40 to 1.
-        if dtype != torch.float64:
-            pytest.skip("float64 only")
         src = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
         dst = torch.tensor([1.0, 1.0 + 2**-40], device=device, dtype=dtype)
         assert torch.equal(kornia.contrib.histogram_matching(src, dst), dst)
@@ -276,13 +275,15 @@ class TestHistMatch(BaseTester):
         )
         assert out.tolist() == [0.0, 30.0]
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["complex_dtype"] == torch.complex128),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
     def test_interp_complex_fp(self, complex_dtype, device):
         # The real and imaginary parts are interpolated separately, as np.interp does:
         # np.interp([0, 0.5, 1, 1.5], [0, 1], [1+2j, 3+4j]) gives [1+2j, 2+3j, 3+4j, 3+4j]; kornia extrapolates the
         # last point to 4+5j.
-        if device.type == "mps" and complex_dtype == torch.complex128:
-            pytest.skip("MPS has no float64")
         real_dtype = torch.float32 if complex_dtype == torch.complex64 else torch.float64
         x = torch.tensor([0.0, 0.5, 1.0, 1.5], device=device, dtype=real_dtype)
         xp = torch.tensor([0.0, 1.0], device=device, dtype=real_dtype)
@@ -307,9 +308,8 @@ class TestHistMatch(BaseTester):
         kornia.contrib.interp(x, xp, 3 * xp).sum().backward()
         assert x.grad.tolist() == [3.0, 3.0, 3.0, 3.0]
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_interp_gradcheck(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         xp = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=torch.float64)
         x = torch.tensor([0.3, 1.7, 2.2, 3.4], device=device, dtype=torch.float64, requires_grad=True)
         fp = torch.tensor([1.0, -2.0, 5.0, 4.0], device=device, dtype=torch.float64, requires_grad=True)
@@ -324,14 +324,16 @@ class TestHistMatch(BaseTester):
         expected = torch.tensor([-big, -big / 2, 0.0, big / 2, big], device=device, dtype=float_dtype)
         self.assert_close(out, expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["float_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize(
         ("float_dtype", "big"), [(torch.float64, 1e308), (torch.float32, 3e38), (torch.float16, 40000.0)]
     )
     def test_interp_gradient_is_the_slope_when_the_difference_overflows(self, float_dtype, big, device):
         # f1 - f0 = 2 * big overflows, but the slope 2 * big / 4 = big / 2 is representable, at the knots too. The
         # formulas the overflow branch replaces used to multiply their zero gradient by the infinite difference: nan.
-        if device.type == "mps" and float_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         x = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0], device=device, dtype=float_dtype, requires_grad=True)
         xp = torch.tensor([0.0, 4.0], device=device, dtype=float_dtype)
         out = kornia.contrib.interp(x, xp, torch.tensor([-big, big], device=device, dtype=float_dtype))

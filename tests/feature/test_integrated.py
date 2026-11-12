@@ -268,11 +268,12 @@ class TestLocalFeatureMatcherEmptyPath(BaseTester):
         assert out["lafs0"][0].shape == (0, 2, 3)
         assert out["keypoints0"].shape == (0, 2)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"), reason="MPS has no float64"
+    )
     def test_no_match_keypoints_keep_the_laf_dtype(self, device, dtype):
         # Kornia's detectors return float32 LAFs for a float16 or bfloat16 image; a pair without matches returns
         # keypoints and LAFs in the dtype a matched pair has, so the two concatenate without a cast.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not supports_replicate_padding(device, dtype):
             pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
         matcher = kornia.feature.LocalFeatureMatcher(
@@ -401,10 +402,9 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         B, N, C, H, W = patches.shape
         return ref(patches.view(B * N, C, H, W)).view(B, N, -1)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("train", [True, False])
     def test_module_is_unchanged_and_output_is_the_eval_cast_copy_5724(self, device, train):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
         module = _TrainModeProbe().to(device).train(train)  # float32 module, float64 image
         before = self._state(module)
@@ -423,9 +423,8 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         self._assert_state_equal(before, self._state(module))
         self.assert_close(out, self._reference(module, img, lafs, 16))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_module_with_a_float32_image_5724(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float32)
         module = _TrainModeProbe().to(device, torch.float64).train()
         before = self._state(module)
@@ -435,9 +434,8 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         assert out.dtype == torch.float32
         self.assert_close(out, self._reference(module, img, lafs, 16))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_gradients_reach_the_module_parameters_5724(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
         module = _TrainModeProbe().to(device).eval()  # float32 parameters, float64 image
         get_laf_descriptors(img, lafs, module, 16).sum().backward()
@@ -447,11 +445,13 @@ class TestDescriptorModuleIsNotModified(BaseTester):
             assert torch.isfinite(p.grad).all()
         assert module.proj.weight.grad.abs().sum() > 0
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["image_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("kind", ["script_hardnet", "trace_sift"])
     @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
     def test_torchscript_descriptors_5724(self, device, kind, image_dtype):
-        if torch.device(device).type == "mps" and image_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, image_dtype)
         patch = torch.rand(2, 1, 32, 32, device=device)
         if kind == "script_hardnet":
@@ -468,9 +468,8 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         # the trace holds its float32 casts, so a float64 image gets a float32 descriptor
         assert out.dtype == (torch.float32 if kind == "trace_sift" else image_dtype)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_empty_lafs_leave_the_module_alone_5724(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, _ = self._inputs(device, torch.float32)
         module = _TrainModeProbe().to(device, torch.float64).train()
         before = self._state(module)
@@ -501,9 +500,8 @@ class TestDescriptorModuleIsNotModified(BaseTester):
             assert p.grad.device == torch.device("cpu")
             self.assert_close(p.grad, q.grad)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_dynamo_casts_a_module_of_another_dtype_5724(self, device, torch_optimizer):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
         module = _TrainModeProbe().to(device).train()  # float32 module, float64 image
         before = self._state(module)
@@ -512,10 +510,9 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         self._assert_state_equal(before, self._state(module))
         self.assert_close(out, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export_casts_a_module_of_another_dtype_5724(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         img, lafs = self._inputs(device, torch.float64)
         module = _TrainModeProbe().to(device)  # float32 module, float64 image
         expected = self._reference(module, img, lafs, 16)
@@ -672,11 +669,13 @@ class TestSIFTFeature(BaseTester):
             assert dist.numel() > 0, name
             assert bool((dist <= 3.0).all()), f"{name} blob: detections at distances {dist.tolist()}"
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the DoG is computed in the input dtype, which rounds an image and its negative differently",
+    )
     def test_frames_do_not_depend_on_polarity_5743(self, device, dtype):
         # DoG(1 - x) = -DoG(x): an image and its negative have the same extrema with the same magnitudes, so
         # upright SIFTFeature finds the same frames in both. Every pixel lies in [0.5, 1], where 1 - x is exact.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the DoG is computed in the input dtype, which rounds an image and its negative differently")
         blobs = [(34.0, 30.0, 3.0, 0.2), (88.0, 42.0, 4.0, -0.2), (58.0, 66.0, 2.5, -0.15), (100.0, 70.0, 3.5, 0.12)]
         img = self._blobs(96, 128, blobs, device, dtype, background=0.75)
         feature = SIFTFeature(8, upright=True).to(device, dtype)
@@ -689,11 +688,10 @@ class TestSIFTFeature(BaseTester):
 
 
 class TestSIFTFeatureHalfPrecision(BaseTester):
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast changes the effective dtype")
     def test_lafs_and_descriptors_are_finite(self, device):
         # The orienter's unguarded `sqrt`/`atan2` gave a NaN LAF at a *filled* slot, which the
         # padding mask cannot cover, and 128 NaN descriptor values in that row with it.
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
         if not supports_replicate_padding(device, torch.float16):
             pytest.skip("no replicate-padding kernel for float16 on this device")
         torch.manual_seed(0)

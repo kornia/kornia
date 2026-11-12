@@ -227,14 +227,16 @@ class TestNMS2d(BaseTester):
             _reference_nms_mask(inp, kernel_size).to(dtype),
         )
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["dtype_name"] == "float64")),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("pooled", [False, True])
     @pytest.mark.parametrize("kernel_size", [(5, 5), (7, 7)])
     def test_pooled_and_chained_windows_match_the_reference_rule(self, device, dtype, kernel_size, pooled, monkeypatch):
         # (5, 5) and (7, 7) take their comparison chains, or the pooled path for floating-point CUDA maps
         # (`_pooled_window_is_faster`). Force each in turn on ties and non-finite values, which the two handle
         # differently inside: a chain compares every neighbour, the pooled path compares with their max.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         if device.type == "mps" and pooled:
             # before torch 2.16, MPS stride-1 max_pool2d drops nan and turns an all -inf window into 0
             pytest.skip("MPS maps never take the pooled path (pytorch#200910, pytorch#200789)")
@@ -254,11 +256,13 @@ class TestNMS2d(BaseTester):
         assert not bool(mask[0, 0, 5, 5])
         assert not bool(mask[0, 0, 6, 6])
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["dtype_name"] == "float64")),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("kernel_size", [(5, 5), (7, 7)])
     def test_only_floating_point_cuda_maps_take_the_pooled_path(self, device, dtype, kernel_size, monkeypatch):
         # the production selection, with `_pooled_window_is_faster` left in place: count the pooled calls
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         module = importlib.import_module("kornia.geometry.subpix.nms")
         calls = []
         pooled = module._neighbourhood_max2d
@@ -283,10 +287,12 @@ class TestNMS2d(BaseTester):
         scripted = torch.jit.script(kornia.geometry.subpix.NonMaximaSuppression2d((5, 5)))
         torch.onnx.export(scripted, (torch.rand(1, 1, 16, 16),), io.BytesIO(), dynamo=False)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["dtype_name"] == "float64")),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("kernel_size", [(5, 5), (7, 7)])
     def test_dynamo_on_ties_and_nonfinite_values(self, device, dtype, kernel_size, torch_optimizer):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         inp = torch.randint(0, 4, (2, 3, 23, 27), device=device).to(dtype)
         inp[0, 0, 5, 5] = float("nan")

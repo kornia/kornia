@@ -341,11 +341,10 @@ class TestMutualInformationLoss(BaseTester):
 
         self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("module", [MILossFromRef, NMILossFromRef])
     def test_to_dtype_matches_module_built_in_that_dtype(self, device, module):
         """``.to(dtype)`` makes the module use that dtype's epsilon, like one built in that dtype (#5547)."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         target = torch.rand(2, 12, 20, generator=generator).to(device)
         pred = torch.rand(2, 12, 20, generator=generator).to(device)
@@ -1018,6 +1017,7 @@ class TestConventionsMutualInformation(BaseTester):
         target_mask[0, 0] = True
         self.assert_close(module(a), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression")
     @pytest.mark.parametrize("shape", [(12, 20), (184, 184)])
     @pytest.mark.parametrize("kernel", list(MIKernel))
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss_2d, normalized_mutual_information_loss_2d])
@@ -1025,8 +1025,6 @@ class TestConventionsMutualInformation(BaseTester):
     def test_convention_mi_losses_half_precision_match_float32_4153(
         self, device, dtype, shape, kernel, loss_fn, masked
     ):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression")
         g = torch.Generator().manual_seed(7)
         u = torch.rand(shape, generator=g)
         v = u**2 + 0.05 * torch.rand(shape, generator=g)
@@ -1113,11 +1111,10 @@ class TestMutualInformationLargeSampleCounts(BaseTester):
         ):
             self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(devices=("mps",), reason="pytorch/pytorch#195163 is an MPS matmul defect.")
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
     @pytest.mark.parametrize("num_samples", [33856, 70000])
     def test_mps_large_sample_counts_match_cpu_5873(self, device, dtype, loss_fn, num_samples):
-        if device.type != "mps":
-            pytest.skip("pytorch/pytorch#195163 is an MPS matmul defect.")
         generator = torch.Generator().manual_seed(0)
         x = torch.rand(1, num_samples, generator=generator)
         y = x**2 + 0.05 * torch.rand(1, num_samples, generator=generator)

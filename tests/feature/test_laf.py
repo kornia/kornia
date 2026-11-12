@@ -278,11 +278,12 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the quadratic form check is meaningful only in full precision"
+    )
     def test_boundary_lies_on_the_ellipse(self, device, dtype):
         # The LAF maps the unit circle onto the region it describes, so every boundary point has to
         # satisfy the Oxford quadratic form a x^2 + 2 b x y + c y^2 = 1 of the input ellipse.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the quadratic form check is meaningful only in full precision")
         ells = torch.tensor(
             [
                 [
@@ -303,11 +304,13 @@ class TestELL2LAF(BaseTester):
         x, y = boundary[..., 0, :], boundary[..., 1, :]
         self.assert_close(a * x * x + 2.0 * b * x * y + c * y * y, torch.ones_like(x))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="torch.inverse does not support half precision and the check needs full precision",
+    )
     def test_roundtrip_is_make_upright(self, device, dtype):
         # The ellipse implied by a LAF A is [[a, b], [b, c]] = inverse(A A^T); converting it back must
         # give the upright LAF of the same region.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("torch.inverse does not support half precision and the check needs full precision")
         torch.manual_seed(0)
         A = torch.randn(2, 5, 2, 2, device=device, dtype=dtype) + 3.0 * torch.eye(2, device=device, dtype=dtype)
         det = A[..., 0, 0] * A[..., 1, 1] - A[..., 0, 1] * A[..., 1, 0]
@@ -623,9 +626,8 @@ class TestLAF2pts(BaseTester):
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_boundary_points, (laf))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_circle_is_built_in_the_laf_dtype_5724(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         n_pts = 7
         laf = torch.tensor([[[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]], device=device, dtype=torch.float64)
         pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
@@ -640,6 +642,13 @@ class TestLAF2pts(BaseTester):
         # a float32 circle cast to float64 is off by ~1e-8 here
         self.assert_close(pts[0, 0], expected, rtol=0, atol=1e-14)
 
+    # `einsum` and `bmm` accumulate the length-3 dot in a different order, which in half
+    # precision costs more than the equality being pinned here (4.4e-3 in float16 against a
+    # float64 reference, i.e. this dtype's own resolution). `test_dtype_device_preserved`
+    # carries the half coverage.
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="reference accumulates differently from bmm in half precision"
+    )
     def test_matches_explicit_affine_reference(self, device, dtype):
         """The boundary points are the LAF affine map applied to the origin + unit-circle basis.
 
@@ -649,12 +658,6 @@ class TestLAF2pts(BaseTester):
         of appending a constant `[0, 0, 1]` row and dividing the result by its homogeneous
         coordinate, which is then always exactly 1.
         """
-        if dtype in (torch.float16, torch.bfloat16):
-            # `einsum` and `bmm` accumulate the length-3 dot in a different order, which in half
-            # precision costs more than the equality being pinned here (4.4e-3 in float16 against a
-            # float64 reference, i.e. this dtype's own resolution). `test_dtype_device_preserved`
-            # carries the half coverage.
-            pytest.skip("reference accumulates differently from bmm in half precision")
         torch.manual_seed(0)
         laf = torch.randn(2, 5, 2, 3, device=device, dtype=dtype)
         n_pts = 9
@@ -781,9 +784,10 @@ class TestClampGridToPixelCenters(BaseTester):
         grid = (torch.rand(1, 9, 11, 2, dtype=dtype) * 3.0) - 1.5
         return img, grid
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="grid_sample reference comparison is meaningful only in full precision"
+    )
     def test_matches_border_padding(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("grid_sample reference comparison is meaningful only in full precision")
         h, w = 17, 23
         img, grid = self._make(h, w, dtype)
         expected = torch.nn.functional.grid_sample(img, grid, padding_mode="border", align_corners=False)
@@ -792,10 +796,11 @@ class TestClampGridToPixelCenters(BaseTester):
         actual = torch.nn.functional.grid_sample(img.to(device), clamped, padding_mode="zeros", align_corners=False)
         self.assert_close(actual.cpu(), expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="grid_sample reference comparison is meaningful only in full precision"
+    )
     def test_naive_clamp_is_not_equivalent(self, device, dtype):
         """Guard against regressing to ``grid.clamp(-1, 1)``, which is off by half a pixel."""
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("grid_sample reference comparison is meaningful only in full precision")
         h, w = 17, 23
         img, grid = self._make(h, w, dtype)
         expected = torch.nn.functional.grid_sample(img, grid, padding_mode="border", align_corners=False)
@@ -812,14 +817,15 @@ class TestClampGridToPixelCenters(BaseTester):
         grid = ((torch.rand(1, 3, 3, 2, device=device, dtype=torch.float64) * 3.0) - 1.5).requires_grad_()
         self.gradcheck(lambda g: kornia.feature.laf._clamp_grid_to_pixel_centers(g, 7, 11), (grid,), fast_mode=False)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="cross-device comparison is meaningful only in full precision"
+    )
     @pytest.mark.parametrize(
         "extractor",
         [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid],
     )
     def test_extractors_match_cpu_at_the_border(self, device, dtype, extractor):
         """Patches overlapping the image border must not depend on the device."""
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("cross-device comparison is meaningful only in full precision")
         torch.manual_seed(0)
         img = torch.rand(1, 1, 64, 64, dtype=dtype)
         # centered near the corner with a large scale, so the patch runs off two edges
@@ -881,12 +887,11 @@ class TestExtractPatchesSimple(BaseTester):
         with pytest.raises(Exception, match="same batch size"):
             kornia.feature.extract_patches_simple(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="autocast coverage is provided by CPU and CUDA")
     def test_mixed_dtype_laf_under_autocast(self, device):
         # Reduced-precision detectors commonly emit a half/bfloat16 LAF while their source image
         # remains float32. The extractor owns this small conversion instead of rejecting a valid
         # autocast pipeline or relying on backend-specific grid_sample promotion.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("autocast coverage is provided by CPU and CUDA")
         laf_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         img = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.tensor([[4.0, 0.0, 16.0], [0.0, 4.0, 16.0]], device=device, dtype=laf_dtype).view(1, 1, 2, 3)
@@ -896,11 +901,10 @@ class TestExtractPatchesSimple(BaseTester):
         assert actual.dtype == img.dtype
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU provides deterministic reduced-precision reference coverage")
     def test_mixed_dtype_preserves_laf_precision(self, device):
         # A float32 LAF paired with a half image must not be rounded to half and then upcast: its
         # subpixel coordinates are the reason grid arithmetic uses a promoted dtype.
-        if device.type != "cpu":
-            pytest.skip("CPU provides deterministic reduced-precision reference coverage")
         img = torch.rand(1, 1, 32, 32).to(torch.float16)
         laf = torch.tensor([[4.1234, 0.2712, 15.789], [-0.1923, 3.9876, 16.321]]).view(1, 1, 2, 3)
         actual = kornia.feature.extract_patches_simple(img, laf, 8)
@@ -1028,6 +1032,7 @@ class TestExtractPatchesSimple(BaseTester):
                 single = kornia.feature.extract_patches_simple(img[b : b + 1], laf[b : b + 1, n : n + 1], PS)
                 self.assert_close(patches[b, n], single[0, 0])
 
+    @pytest.mark.applies_to(devices=("cpu",), reason=_HALF_BORDER_SKIP)
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_border_patches_stay_in_range(self, device, half_dtype):
         # A patch straddling the frame reads border pixels, so every sampled value is a convex
@@ -1037,8 +1042,6 @@ class TestExtractPatchesSimple(BaseTester):
         # extractor samples reduced-precision CPU images in float32. Parametrized on the dtype
         # rather than taking the global `dtype` fixture: CI runs the suite in float32/float64 only,
         # where the kernel is sound and this test cannot fail.
-        if device.type != "cpu":
-            pytest.skip(_HALF_BORDER_SKIP)
         torch.manual_seed(0)
         img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
         laf = _corner_border_laf(device, half_dtype)
@@ -1048,12 +1051,11 @@ class TestExtractPatchesSimple(BaseTester):
         assert patches.min() >= img.min()
         assert patches.max() <= img.max()
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "cpu", reason="needs a second device besides the CPU")
     def test_laf_on_another_device(self, device, dtype):
         # The sampling grid follows the LAF, so it has to be moved to the image: this function has
         # always accepted a LAF on a different device than the image and returned a patch on the
         # image's device.
-        if device.type == "cpu":
-            pytest.skip("needs a second device besides the CPU")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         laf = torch.tensor([[4.0, 0.0, 16.0], [0.0, 4.0, 16.0]], dtype=dtype).view(1, 1, 2, 3)
         patches = kornia.feature.extract_patches_simple(img, laf, 8)
@@ -1142,9 +1144,8 @@ class TestExtractPatchesPyr(BaseTester):
         with pytest.raises(Exception, match="same batch size"):
             kornia.feature.extract_patches_from_pyramid(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="autocast coverage is provided by CPU and CUDA")
     def test_mixed_dtype_laf_under_autocast(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("autocast coverage is provided by CPU and CUDA")
         laf_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         img = torch.rand(1, 1, 64, 64, device=device)
         laf = torch.tensor([[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], device=device, dtype=laf_dtype).view(1, 1, 2, 3)
@@ -1154,9 +1155,8 @@ class TestExtractPatchesPyr(BaseTester):
         assert actual.dtype == img.dtype
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU provides deterministic reduced-precision reference coverage")
     def test_mixed_dtype_preserves_laf_precision(self, device):
-        if device.type != "cpu":
-            pytest.skip("CPU provides deterministic reduced-precision reference coverage")
         img = torch.rand(1, 1, 64, 64).to(torch.float16)
         laf = torch.tensor([[8.1234, 0.2712, 31.789], [-0.1923, 7.9876, 32.321]]).view(1, 1, 2, 3)
         actual = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
@@ -1299,11 +1299,12 @@ class TestExtractPatchesPyr(BaseTester):
 
         self.assert_close(fallback, atlas)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the coordinate-rounding leak this test pins is below half-precision resolution",
+    )
     def test_atlas_guards_preserve_level_border_value_and_gradient(self, device, dtype, monkeypatch):
         import kornia.feature.laf as laf_module
-
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the coordinate-rounding leak this test pins is below half-precision resolution")
 
         def sample(limit, size, patch_size):
             monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: limit > 0)
@@ -1447,6 +1448,7 @@ class TestExtractPatchesPyr(BaseTester):
                 single = kornia.feature.extract_patches_from_pyramid(img[b : b + 1], laf[b : b + 1, n : n + 1], PS)
                 self.assert_close(patches[b, n], single[0, 0])
 
+    @pytest.mark.applies_to(devices=("cpu",), reason=_HALF_BORDER_SKIP)
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_border_patches_stay_in_range(self, device, half_dtype):
         # Same border read as in `TestExtractPatchesSimple`, at pyramid level 0: `_corner_border_laf`
@@ -1455,8 +1457,6 @@ class TestExtractPatchesPyr(BaseTester):
         # by a blurred level whose near-constant patch stays in range even when the read is wrong.
         # The whole pyramid (pad, `pyrdown`, sampling) runs in float32 for half inputs, so no
         # reduced-precision pad or `grid_sample` kernel gate is needed on any torch version.
-        if device.type != "cpu":
-            pytest.skip(_HALF_BORDER_SKIP)
         torch.manual_seed(0)
         img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
         laf = _corner_border_laf(device, half_dtype)
@@ -1467,12 +1467,11 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.max() <= img.max()
         self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, 16))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="reduced-precision sampling policy")
     def test_reduced_precision_level_zero_matches_float_reference(self, device, dtype):
         # Unlike the explicit half_dtype regression above, this uses the global dtype fixture so
         # CUDA half tests run in the suite's per-test subprocess isolation. The float32 grid policy
         # is universal even though the out-of-bounds kernel bug that motivated it is CPU-specific.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("reduced-precision sampling policy")
         img = torch.rand(1, 1, 256, 256, device=device).to(dtype)
         laf = _corner_border_laf(device, dtype)
         simple = kornia.feature.extract_patches_simple(img, laf, 16)
@@ -1484,6 +1483,7 @@ class TestExtractPatchesPyr(BaseTester):
         self.assert_close(simple, reference)
         self.assert_close(pyramid, reference)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "cpu", reason="needs a second device besides the CPU")
     def test_laf_on_another_device(self, device, dtype, monkeypatch):
         # The small LAF is moved to the image before grid construction, so the pyramid extractor
         # accepts a cross-device pair like `extract_patches_simple` -- on the atlas path AND on the
@@ -1491,8 +1491,6 @@ class TestExtractPatchesPyr(BaseTester):
         # flip with the image size).
         import kornia.feature.laf as laf_module
 
-        if device.type == "cpu":
-            pytest.skip("needs a second device besides the CPU")
         img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         laf = torch.tensor([[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], dtype=dtype).view(1, 1, 2, 3)
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
@@ -1503,11 +1501,13 @@ class TestExtractPatchesPyr(BaseTester):
         assert fallback.device == img.device
         self.assert_close(fallback, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
 
+    # `pyrdown` -> `filter2d` closes over a `set` of valid border modes, which TorchScript
+    # cannot compile; unrelated to this extractor and to the compile path CI exercises.
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`",
+    )
     def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            # `pyrdown` -> `filter2d` closes over a `set` of valid border modes, which TorchScript
-            # cannot compile; unrelated to this extractor and to the compile path CI exercises.
-            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 40, 30, device=device, dtype=dtype)
         expected = kornia.feature.extract_patches_from_pyramid(img, laf, 10)
@@ -1519,12 +1519,14 @@ class TestExtractPatchesPyr(BaseTester):
         compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
         self.assert_close(compiled(img, laf, 10), expected)
 
+    # Same TorchScript incompatibility `test_dynamo` skips.
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`",
+    )
     def test_dynamo_levelwise_fallback(self, device, dtype, torch_optimizer, optimizer_backend, monkeypatch):
         import kornia.feature.laf as laf_module
 
-        if optimizer_backend == "jit":
-            # Same TorchScript incompatibility `test_dynamo` skips.
-            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
@@ -1535,14 +1537,16 @@ class TestExtractPatchesPyr(BaseTester):
         compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
         self.assert_close(compiled(img, laf, 16), expected)
 
+    # Same TorchScript incompatibility `test_dynamo` skips.
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`",
+    )
     def test_dynamo_chunked(self, device, dtype, torch_optimizer, optimizer_backend, monkeypatch):
         # The chunk loop unrolls at trace time for static shapes; forcing one LAF per chunk
         # exercises it.
         import kornia.feature.laf as laf_module
 
-        if optimizer_backend == "jit":
-            # Same TorchScript incompatibility `test_dynamo` skips.
-            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
@@ -1630,6 +1634,9 @@ class TestPatchSamplingFrame(BaseTester):
             self.assert_close(px[1], torch.tensor([x - 1.0, x, x + 1.0], device=device, dtype=dtype))
             self.assert_close(py[:, 1], torch.tensor([y - 1.0, y, y + 1.0], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="pyrdown in half precision differs from the pyramid's float32 levels"
+    )
     @pytest.mark.parametrize("atlas", [True, False])
     @pytest.mark.parametrize("level", [1, 2])
     def test_pyramid_level_samples_the_same_pixels_5678(self, level, atlas, device, dtype, monkeypatch):
@@ -1638,8 +1645,6 @@ class TestPatchSamplingFrame(BaseTester):
         # extraction from that level at the LAF mapped there; odd sizes make W_l / W differ from 2 ** -l.
         import kornia.feature.laf as laf_module
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("pyrdown in half precision differs from the pyramid's float32 levels")
         monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: atlas)
         g = torch.Generator().manual_seed(0)
         img = torch.rand(1, 1, 61, 75, generator=g).to(device=device, dtype=dtype)
@@ -1682,13 +1687,12 @@ class TestLAFIsTouchingBoundary(BaseTester):
             torch.full((1, 1, 1, 1), radius, device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="boundary comparison needs full precision")
     def test_boundary_is_the_last_valid_pixel(self, device, dtype):
         """Valid coordinates run 0 .. size-1, matching `get_laf_center`'s documented convention.
 
         A LAF reaching exactly `w - 1` is inside; anything past it is not (see #4064).
         """
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("boundary comparison needs full precision")
         w = h = 32  # valid coordinates 0 .. 31
         img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
         r = 2.0
@@ -1701,10 +1705,9 @@ class TestLAFIsTouchingBoundary(BaseTester):
         assert bool(kornia.feature.laf_is_inside_image(self._radius_laf(16.0, 29.0, r, device, dtype), img)[0, 0])
         assert not bool(kornia.feature.laf_is_inside_image(self._radius_laf(16.0, 29.5, r, device, dtype), img)[0, 0])
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="boundary comparison needs full precision")
     def test_boundary_is_symmetric(self, device, dtype):
         """The low and high edges must be equally strict."""
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("boundary comparison needs full precision")
         w = h = 32
         img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
         r = 2.0
@@ -1717,9 +1720,8 @@ class TestLAFIsTouchingBoundary(BaseTester):
             )
             assert bool(low[0, 0]) == bool(high[0, 0]), f"asymmetric at offset {offset}"
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="boundary comparison needs full precision")
     def test_border_argument_shrinks_both_edges(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("boundary comparison needs full precision")
         w = h = 32
         img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
         r = 2.0
@@ -2375,13 +2377,14 @@ class TestExtractPatchesAutocast(BaseTester):
         scripted = torch.jit.script(kornia.feature.extract_patches_simple)
         self.assert_close(scripted(image, laf, 32), kornia.feature.extract_patches_simple(image, laf, 32))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="extract_patches_from_pyramid does not script"
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
         # 70 samples a coarser level, which pyrdown builds. Compiled on MPS, a convolution under the nested guard
         # raised, so the guard is skipped there and the call must run (_convolution_outside_autocast).
-        if optimizer_backend == "jit":
-            pytest.skip("extract_patches_from_pyramid does not script")
         skip_unsupported_autocast(device, autocast_dtype)
         image, laf = self._inputs(device, 70.3)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)

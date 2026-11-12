@@ -366,9 +366,8 @@ class TestDistortPoints(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(*inputs), op_jit(*inputs))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
     def test_half_precision_rounds_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision accuracy check")
         # f = 1000 px and 64 x 100 points over a 1280 x 720 image. Distorted in float32 and rounded once, every
         # coordinate is within half a unit in the last place (ulp) of the float64 result of the same rounded inputs,
         # plus about 2e-4 px of float32 arithmetic (1e-3 px allowed). Distorting in half precision leaves the result off

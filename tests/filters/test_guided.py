@@ -124,11 +124,10 @@ class TestGuidedBlur(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual, expected.to(dtype))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision covariance regression")
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_half_low_contrast_gradients(self, guide_dim, device, dtype):
         """Half-precision low-contrast outputs and gradients match float32 calculations."""
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision covariance regression")
         guide = torch.linspace(0.45, 0.55, 63, device=device, dtype=dtype).reshape(1, 1, 7, 9)
         guide = guide.repeat(1, guide_dim, 1, 1).requires_grad_()
         expected_input = guide.detach().clone().requires_grad_()
@@ -143,6 +142,7 @@ class TestGuidedBlur(BaseTester):
         tolerance = 4 * torch.finfo(dtype).eps
         self.assert_close(actual_grad, expected_grad, atol=tolerance * expected_grad.abs().max().item(), rtol=tolerance)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision covariance regression")
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("separate_input", [False, True])
     def test_half_inputs_are_filtered_in_float32(self, guide_dim, separate_input, device, dtype):
@@ -151,8 +151,6 @@ class TestGuidedBlur(BaseTester):
         A separate ``input`` enters the window statistics in float32 too: left in half precision, the rounding of
         ``E[p]`` alone costs ``E[g p] - E[g] E[p]`` several units in the last place of the result here.
         """
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision covariance regression")
         guide = torch.linspace(0.45, 0.55, 63, device=device, dtype=dtype).reshape(1, 1, 7, 9)
         guide = guide.repeat(1, guide_dim, 1, 1)
         image = guide
@@ -175,11 +173,10 @@ class TestGuidedBlur(BaseTester):
             assert out.shape == image.shape
             assert out.dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU/CUDA autocast regression")
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_autocast_preserves_covariance(self, guide_dim, device):
         """Autocast preserves the covariance accuracy of float32 inputs."""
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU/CUDA autocast regression")
         guide = torch.linspace(0.45, 0.55, 63, device=device).reshape(1, 1, 7, 9).repeat(1, guide_dim, 1, 1)
         expected = guided_blur(guide, guide, 5, 1e-4)
         autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
@@ -188,12 +185,13 @@ class TestGuidedBlur(BaseTester):
         assert actual.dtype == expected.dtype
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["eps_dtype"] == torch.float64 and p["device_name"] == "mps"), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("eps_dtype", [torch.float32, torch.float64])
     def test_tensor_regularization_output_dtype(self, guide_dim, eps_dtype, device, dtype):
         """Tensor regularization widens grayscale output while retaining multichannel output dtype."""
-        if eps_dtype == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         guide = torch.full((1, guide_dim, 5, 7), 0.5, device=device, dtype=dtype)
         eps = torch.tensor([1e-3], device=device, dtype=eps_dtype)
         result = guided_blur(guide, guide, 3, eps)
@@ -445,6 +443,7 @@ class TestGuidedBlur(BaseTester):
             op(guide, img, kernel_size, eps, subsample=subsample, separable=separable),
         )
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="regression test for the half-precision solve path")
     @pytest.mark.parametrize("tensor_eps", [False, True], ids=["float_eps", "tensor_eps"])
     def test_multichannel_guidance_in_half_precision(self, tensor_eps, device, dtype) -> None:
         """Multi-channel guidance must run in float16/bfloat16 rather than dying in the solver.
@@ -459,8 +458,6 @@ class TestGuidedBlur(BaseTester):
         even next to a half guidance and takes part in dtype promotion, so the matrix handed to
         ``solve`` is wider than the right-hand side.
         """
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("regression test for the half-precision solve path")
 
         # ``constant`` keeps this test on the solver: the default ``reflect`` border needs a
         # half-precision ``reflection_pad2d``, which CPU PyTorch 2.5.1 does not have for float16.
@@ -904,6 +901,9 @@ class TestConventionsGuidedBlur(BaseTester):
         assert out.isfinite().all()
         self.assert_close(GuidedBlur(5, 0.01, subsample=2)(guidance, image), out)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["expected"] == torch.float64 and p["device_name"] == "mps"), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize(
         ("input_dtype", "guidance_dtype", "expected"),
         [
@@ -915,8 +915,6 @@ class TestConventionsGuidedBlur(BaseTester):
     )
     def test_convention_guided_blur_mixed_dtypes_promote_5155(self, input_dtype, guidance_dtype, expected, device):
         """An integer guidance or input counts as float32, and the result has the promoted dtype of the two."""
-        if expected == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         guidance = torch.randint(256, (2, 1, 9, 13), generator=generator).to(guidance_dtype)
         image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(input_dtype)
@@ -928,6 +926,9 @@ class TestConventionsGuidedBlur(BaseTester):
         )  # CPU: MPS has no float64
         self.assert_close(out.cpu().double(), reference, rtol=1e-2, atol=1e-1)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["expected"] == torch.float64 and p["device_name"] == "mps"), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize(
         ("guidance_dtype", "input_dtype", "expected"),
         [
@@ -952,8 +953,6 @@ class TestConventionsGuidedBlur(BaseTester):
         ``RuntimeError: expected scalar type Float but found Double``. Grayscale guidance never
         reached the mismatch, and a float64 guidance with a float32 input already worked.
         """
-        if expected == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         guidance = torch.randint(256, (2, 3, 9, 13), generator=generator).to(device=device, dtype=guidance_dtype)
         image = torch.randint(256, (2, 2, 9, 13), generator=generator).to(device=device, dtype=input_dtype)
@@ -967,10 +966,9 @@ class TestConventionsGuidedBlur(BaseTester):
         tolerance = _HALF_TOLERANCE.get(expected, 1e-2)
         self.assert_close(out.cpu().double(), reference, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_convention_guided_blur_multichannel_guidance_promotion_fixes_6046(self, device):
         """Promoting the guidance is the whole fix: pre-promoting it in the caller gives the same numbers (#6046)."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         guidance = torch.randint(256, (2, 3, 9, 13), generator=generator).float()
         image = torch.randint(256, (2, 2, 9, 13), generator=generator).double().to(device)

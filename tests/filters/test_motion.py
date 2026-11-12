@@ -222,6 +222,12 @@ class TestMotionBlur(BaseTester):
         self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["device_name"] == "mps" and (p["dtype_name"] == "float64" or p["tensor_dtype"] == torch.float64))
+        ),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("tensor_parameter", ["angle", "angle_0d", "direction"])
     def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
@@ -229,8 +235,6 @@ class TestMotionBlur(BaseTester):
     ):
         # A tensor angle or direction with a Python number for the other builds the number on the tensor's device and
         # in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
-        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
-            pytest.skip("MPS has no float64")
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         if not supports_nearest_2d_grid_sample(device, tensor_dtype):
@@ -498,6 +502,12 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["device_name"] == "mps" and (p["dtype_name"] == "float64" or p["tensor_dtype"] == torch.float64))
+        ),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("tensor_parameter", ["angle", "direction"])
     def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
@@ -505,8 +515,6 @@ class TestMotionBlur3D(BaseTester):
     ):
         # A tensor angle or direction with a Python number, or a tuple, for the other builds that one on the tensor's
         # device and in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
-        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
-            pytest.skip("MPS has no float64")
         if not supports_replicate_padding_3d(device, dtype):
             pytest.skip("replication_pad3d is unavailable for this device/dtype")
         if not supports_nearest_3d_grid_sample(device, tensor_dtype):

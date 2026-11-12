@@ -251,12 +251,11 @@ class TestRgbToHls(BaseTester):
         compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
         self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_matches_eager(self, dtype):
         # The TorchScript exporter (the torch.onnx.export default before torch 2.9) did not trace the `out=` writes
         # into views of the output, so the exported graph ignored its input and returned zeros.
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
 

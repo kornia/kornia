@@ -1055,37 +1055,33 @@ def _yaw_only_6213(device):
 class TestQuaternionAverageGradient(BaseTester):
     """``average_quaternions``' gradient is finite when the three smaller eigenvalues are not distinct (#6213)."""
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_identical_members_6213(self, device):
         # Two identity quaternions: sum q q^T = diag(2, 0, 0, 0), and eigh's backward divided by the zero gaps.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         data = torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
         reference = average_quaternions(Quaternion(data)).data.detach()
         self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_rotations_about_one_axis_have_first_and_second_derivatives_6213(self, device):
         # Members about a common coordinate axis span a plane, so two of the eigenvalues are zero.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         data = _yaw_only_6213(device)
         reference = average_quaternions(Quaternion(data)).data.detach()
         self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
         q = data.clone().requires_grad_(True)
         assert torch.autograd.gradgradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (q,))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_weighted_rotations_about_one_axis_6213(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         data = _yaw_only_6213(device)
         weights = torch.tensor([0.5, 1.0, 2.0, 0.25], device=device, dtype=torch.float64)
         reference = average_quaternions(Quaternion(data), weights).data.detach()
         self.gradcheck(lambda q, w: _average_with_fixed_sign_6213(q, reference, w), (data, weights), fast_mode=False)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_forward_mode_under_no_grad_6213(self, device):
         # torch.func.jvp runs under no_grad too, so a call whose input carries a tangent needs the gradient path even
         # when grad mode is off; skipping it there made the tangent 0.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         g = torch.Generator().manual_seed(0)
         q = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)
         t = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)

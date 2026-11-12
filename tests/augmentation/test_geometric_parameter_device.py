@@ -170,6 +170,7 @@ class TestGeometricParameterDevice(BaseTester):
                     assert value.device == device, name
         assert torch.overrides._get_current_function_mode_stack() == original_modes
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     @pytest.mark.parametrize("batch_size", [1, 4])
     @pytest.mark.parametrize(
         "placement",
@@ -178,8 +179,6 @@ class TestGeometricParameterDevice(BaseTester):
     def test_dynamo_parameter_generation(self, make_aug, batch_size, placement, device, dtype, torch_optimizer):
         # #4516: capture fresh parameter generation and CPU-to-image transfers in one graph.
         # Replaying precomputed parameters alone does not reproduce the Inductor defect.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
         if placement == "container" and torch_version_lt(2, 6, 0):
             pytest.skip("PyTorch 2.5 cannot trace the container's isinstance checks with union types")
         with torch.device(device if placement == "default_device" else "cpu"):

@@ -1251,9 +1251,10 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img_jpeg, img_jpeg_ref, rtol=0.01, atol=0.01)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 inputs are computed in float32"
+    )
     def test_half_precision_rounds_float32_once(self, device, dtype) -> None:
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
         # Computed in the input dtype, the codec rounded pixels scaled to [0, 255], DCT coefficients of about 1000 and a
         # quantization scale of 2500 to an 8-bit (bfloat16) or 11-bit (float16) significand, and its outputs were up to
         # 0.2 away from float64's on these qualities.
@@ -1271,12 +1272,11 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.dtype == dtype
         assert torch.equal(img_jpeg, wide.to(dtype))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU, CUDA and MPS autocast")
     def test_a_mixed_precision_region_does_not_reach_the_codec(self, device) -> None:
         # A caller's autocast ran the codec's matrix products and convolutions in its lower dtype: a float32 image under
         # CPU bfloat16 autocast came out about 0.1 away from the same call outside autocast. MPS autocasts to float16;
         # the test has no "autocast" in its name, which conftest would skip on MPS.
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU, CUDA and MPS autocast")
         # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
         bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
         autocast_dtype = torch.bfloat16 if bfloat16_ok else torch.float16
@@ -1299,9 +1299,10 @@ class TestDiffJPEG(BaseTester):
                 else:
                     assert torch.equal(grad, expected_grad)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="float32 and float64 gradients are covered by test_gradcheck"
+    )
     def test_half_precision_backward(self, device, dtype) -> None:
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
         img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype, requires_grad=True)
         jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype, requires_grad=True)
         img32 = img.detach().float().requires_grad_(True)
@@ -1468,7 +1469,7 @@ class TestDefaultQuantizationTables(BaseTester):
         assert img.grad is not None
 
     @pytest.mark.uses_accelerator
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
+    @pytest.mark.applies_to(devices=("cuda",), reason="needs CUDA streams")
     def test_cached_tables_are_complete_on_another_stream(self):
         # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels
         # are still queued behind other work on the stream that built them.

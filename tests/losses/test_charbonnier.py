@@ -249,6 +249,9 @@ class TestConventionsRobustLosses(BaseTester):
         self.assert_close(loss_fn(img2, img1), expected_map)
         self.assert_close(module()(img1, img2), expected_map)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only half-precision inputs can be evaluated in another dtype"
+    )
     @pytest.mark.parametrize(
         "loss_fn",
         [
@@ -260,8 +263,6 @@ class TestConventionsRobustLosses(BaseTester):
         ids=["charbonnier", "cauchy", "geman_mcclure", "welsch"],
     )
     def test_convention_robust_loss_half_precision_compute_dtype(self, loss_fn, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only half-precision inputs can be evaluated in another dtype")
         # All four losses evaluate half-precision inputs in float32 and round once; their gradients are pinned in
         # test_robust.py and test_welcsh.py. This pin runs eagerly and all four return the input dtype.
         residual = torch.linspace(-8.0, 8.0, 641, device=device, dtype=dtype)

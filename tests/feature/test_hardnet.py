@@ -115,10 +115,12 @@ class TestHardNet8(BaseTester):
         expected = torch.nn.functional.normalize(torch.nn.functional.normalize(features, dim=1)[:, :128], dim=1)
         self.assert_close(model(patches), expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="half-precision rounding leaves a noise gradient on the degenerate placeholder as well",
+    )
     def test_untrained_model_is_trainable_5692(self, device, dtype):
         # The all-ones placeholder made the normalised output constant, so the gradient was zero (~1e-15).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rounding leaves a noise gradient on the degenerate placeholder as well")
         torch.manual_seed(0)
         patches = torch.rand(4, 1, 32, 32, device=device, dtype=dtype)
         model = HardNet8(pretrained=False).to(device, dtype).eval()

@@ -538,6 +538,9 @@ class TestSe3(BaseTester):
         with pytest.raises(TypeCheckError, match=r"Se3 stores 'translation'.*torch.int64"):
             Se3(Quaternion.identity(1, device), torch.tensor([[1, 2, 3]], device=device))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (torch.float64 in p["pair"])), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize(
         "pair",
         [
@@ -550,8 +553,6 @@ class TestSe3(BaseTester):
     @pytest.mark.parametrize("wrap", ["so3", "quaternion"])
     def test_mixed_dtype_translation_raises_5913(self, device, pair, wrap):
         # The mix used to construct, then inverse()/adjoint()/__mul__ raised torch's "expected scalar type" error.
-        if device.type == "mps" and torch.float64 in pair:
-            pytest.skip("MPS has no float64")
         r_dtype, t_dtype = pair
         rotation = So3.identity(1, device, r_dtype) if wrap == "so3" else Quaternion.identity(1, device, r_dtype)
         with pytest.raises(
@@ -573,10 +574,12 @@ class TestSe3(BaseTester):
         args = (torch.rand(2, 4, device=device), torch.rand(2, 3, device=device))
         self.assert_close(torch_optimizer(build, fullgraph=True)(*args), build(*args))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["cdtype"] != torch.cfloat)),
+        reason="MPS supports complex64 only",
+    )
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_complex_translation_raises_5913(self, device, cdtype):
-        if device.type == "mps" and cdtype != torch.cfloat:
-            pytest.skip("MPS supports complex64 only")
         with pytest.raises(TypeCheckError, match=r"Se3 translation must be a real floating-point tensor.*complex"):
             Se3(So3.identity(1, device), torch.zeros(1, 3, device=device, dtype=cdtype))
 
@@ -771,9 +774,8 @@ class TestSe3(BaseTester):
         assert list(dict(dst.named_parameters())) == ["_translation"]
         assert list(dict(dst.named_buffers())) == ["_rotation._q._data"]
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_parent_casts_rotation_and_translation_4923(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         pose = Se3(Quaternion.identity(1, device, dtype), torch.ones(1, 3, device=device, dtype=dtype))
         parent = torch.nn.ModuleDict({"pose": pose})
         for method, expected_dtype in (("double", torch.float64), ("float", torch.float32)):
@@ -940,9 +942,11 @@ class TestSe3HalfPrecision(BaseTester):
             q, t = q.cpu(), t.cpu()
         return Se3(So3(Quaternion(q.to(dtype))), t.to(dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)",
+    )
     def test_float32_and_float64_are_evaluated_in_their_own_dtype(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("float16 and bfloat16 are computed in float32 (test_half_precision_rounds_float32_once)")
         a, b, p = self._poses(device, dtype, 5)
         # bit for bit the group formulas in the input dtype, with no detour through another dtype
         assert torch.equal(a * p, a.r * p + a.t)
@@ -952,9 +956,10 @@ class TestSe3HalfPrecision(BaseTester):
         assert torch.equal(a.inverse().t, a.r.inverse() * (-1 * a.t))
         assert torch.equal(a.matrix()[..., :3, :3], a.r.matrix())
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 inputs are computed in float32"
+    )
     def test_half_precision_rounds_float32_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
         a, b, p = self._poses(device, dtype, 5)
         a32, b32 = self._cast(a, torch.float32), self._cast(b, torch.float32)
         for actual, wide in (
@@ -968,9 +973,10 @@ class TestSe3HalfPrecision(BaseTester):
             assert actual.dtype == dtype
             assert torch.equal(actual, wide.to(dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="float32 and float64 are evaluated in their own dtype"
+    )
     def test_half_precision_matches_float64_within_one_rounding(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 are evaluated in their own dtype")
         # The reference is float64 from the same rounded inputs. Every output is below 2 in magnitude, where one
         # rounding costs at most eps / 2 (plus a float32 error far below it); evaluated in half precision, g * p
         # rounded the rotated point and then the sum.
@@ -981,9 +987,10 @@ class TestSe3HalfPrecision(BaseTester):
         self.assert_close((a * b).t.cpu().double(), (a64 * b64).t, rtol=0.0, atol=eps)
         self.assert_close(a.inverse().t.cpu().double(), a64.inverse().t, rtol=0.0, atol=eps)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="float32 and float64 gradients are covered by test_gradcheck"
+    )
     def test_half_precision_backward(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
         a, b, p = self._poses(device, dtype, 4)
         leaves = [a.r.q.data.detach(), a.t.detach(), b.t.detach(), p.detach()]
         leaves = [x.requires_grad_(True) for x in leaves]

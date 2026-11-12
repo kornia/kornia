@@ -280,11 +280,10 @@ def _cpu64(x: torch.Tensor) -> torch.Tensor:
 
 
 class TestConventionEpipolarMetrics(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     @pytest.mark.parametrize("metric", ["sampson", "symmetrical", "left_to_right", "right_to_left"])
     def test_convention_metrics_argument_order_and_squared(self, metric, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         F = _pixel_F_unit_norm(two_view)
@@ -321,10 +320,9 @@ class TestConventionEpipolarMetrics(BaseTester):
             self.assert_close(fn(_hom(x1), _hom(x2), F), fn(x1, x2, F))
             assert ((fn(2.0 * _hom(x1), _hom(x2), F) - fn(x1, x2, F)).abs() / fn(x1, x2, F)).min() > 0.25
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_metrics_do_not_depend_on_the_scale_of_F_4881(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip(_HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         F = _pixel_F_unit_norm(two_view)
@@ -446,10 +444,9 @@ def _near_epipole_scene(n: int, seed: int):
 class TestSampsonSharedPoints(BaseTester):
     """One point set scored against many fundamental matrices: two matrix products instead of per-model broadcasting."""
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="compared at float32 and float64 accuracy")
     @pytest.mark.parametrize("squared", [True, False])
     def test_public_dispatch_and_paths_agree_4881(self, device, dtype, squared):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("compared at float32 and float64 accuracy")
         # 256 matrices x 300 points reach the shared path on every device. At 1e-4 of unit scale the eps that the
         # manual path added to the denominator moved the distances by tens of percent against the CUDA matmul path
         # (#4881); the three implementations agree to roundoff.
@@ -512,9 +509,8 @@ class TestSampsonSharedPoints(BaseTester):
         expected = _sampson_epipolar_distance_manual_impl_(scaled.to(work), pts2.to(work), Fm.to(work), True)
         self.assert_close(out, expected.to(dtype))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_non_contiguous_and_mixed_dtype_models(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         pts1 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         pts2 = torch.rand(1, 11, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(4, dtype=dtype, device=device)
@@ -525,9 +521,11 @@ class TestSampsonSharedPoints(BaseTester):
         expanded = _sampson_epipolar_distance_shared_impl_(pts1, pts2, one, True)
         self.assert_close(expanded, expanded[:1].expand_as(expanded))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32",),
+        reason="a float32 cancellation case (half cannot hold 1000.1 or 2e6; float64 is the reference)",
+    )
     def test_residual_order_regression(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("a float32 cancellation case (half cannot hold 1000.1 or 2e6; float64 is the reference)")
         # PR #5031 review: a numerator expanded into monomials of the coordinates cancels here (0.0521 against a
         # float64 value of 0.0403); forming x2 . (F x1) keeps the manual path's 0.0319.
         F = torch.tensor(
@@ -545,10 +543,9 @@ class TestSampsonSharedPoints(BaseTester):
         self.assert_close(shared, manual.expand_as(shared), rtol=1e-4, atol=0.0)
         assert (shared - reference).abs().max() <= 2 * (manual - reference).abs()
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the float32 cancellation case")
     @pytest.mark.parametrize("seed", [0, 1, 2, 3])
     def test_near_epipoles_in_pixels(self, device, dtype, seed):
-        if dtype != torch.float32:
-            pytest.skip("the float32 cancellation case")
         x1, x2, F = _near_epipole_scene(2000, seed=seed)
         perturb = 1 + 1e-4 * torch.randn(7, 3, 3, generator=torch.Generator().manual_seed(1), dtype=torch.float64)
         models = torch.cat([F[None], F[None] * perturb])
@@ -568,9 +565,8 @@ class TestSampsonSharedPoints(BaseTester):
         assert error_shared.quantile(0.99) <= 1.25 * error_manual.quantile(0.99)
         assert (error_shared > 1).sum() <= 1.25 * (error_manual > 1).sum() + 2
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="RANSAC scores in float32 on the device")
     def test_ransac_quadratic_form_near_epipoles(self, device, dtype):
-        if dtype != torch.float32:
-            pytest.skip("RANSAC scores in float32 on the device")
         x1, x2, F = _near_epipole_scene(2000, seed=0)
         n1, t1 = epi.normalize_points(x1[None])
         n2, t2 = epi.normalize_points(x2[None])

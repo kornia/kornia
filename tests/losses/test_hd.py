@@ -198,11 +198,12 @@ class TestHausdorffLoss(BaseTester):
         actual = loss(logits, labels)
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the weighted sum of ten erosions is not exact in half precision"
+    )
     def test_numeric_every_erosion_counts(self, device, dtype):
         # Random inputs as in test_numeric erode to zero after a few steps. These mismatches are 24 to 26 pixels wide
         # and stay nonzero through eleven erosions: k = 9 gives 17.93455078125 and k = 11 gives 22.183046875.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the weighted sum of ten erosions is not exact in half precision")
         target = torch.zeros(2, 1, 64, 64, dtype=torch.long, device=device)
         target[0, :, 6:58, 6:58] = 1  # a 52 x 52 object
         fg = torch.zeros(2, 64, 64, device=device, dtype=dtype)

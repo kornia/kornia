@@ -1423,12 +1423,11 @@ class TestAffine2d(BaseTester):
 
         assert out[0, 0, 0, 9] == 0.0
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
     @pytest.mark.parametrize("op", ["rotate", "scale", "Affine"])
     def test_default_center_takes_parameter_dtype_6545(self, device, op):
         # float32 parameters with a float64 image sample in float64, as warp_affine documents. The default center was
         # built in the image dtype and failed the matrix's same-dtype check, while an explicit center worked.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         image = torch.rand(2, 3, 6, 7, device=device, dtype=torch.float64)
         angle = torch.tensor([30.0, -15.0], device=device, dtype=torch.float32)
         factor = torch.tensor([[1.5, 0.75], [0.5, 2.0]], device=device, dtype=torch.float32)
@@ -1512,18 +1511,22 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
             return transform.rotate(image, torch.tensor([25.0], device=device, dtype=dtype))
         return transform.scale(image, torch.tensor([[1.13, 1.13]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (
+                p["device_name"] == "cpu"
+                and p["src_dtype"] in (torch.float16, torch.bfloat16)
+                and p["src_dtype"] != getattr(torch, p["autocast_dtype"])
+            )
+        ),
+        reason="CPU autocast rejects a half tensor of the other half dtype in torch.stack and torch.cat",
+    )
     @pytest.mark.parametrize("op_name", ["rotate", "scale", "rotate3d"])
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
         # In bfloat16, float32 rotate, scale and rotate3d of [0, 1] inputs were off by 0.11, 0.36 and 0.14.
         self._skip_unsupported(device, autocast_dtype)
-        if (
-            device.type == "cpu"
-            and src_dtype in (torch.float16, torch.bfloat16)
-            and src_dtype != getattr(torch, autocast_dtype)
-        ):
-            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack and torch.cat")
         expected = self._call(op_name, device, src_dtype)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = self._call(op_name, device, src_dtype)

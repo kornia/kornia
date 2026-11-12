@@ -231,11 +231,12 @@ class TestKMeans(BaseTester):
         # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
         self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), reason="autocast precision regression is exercised on CPU and CUDA"
+    )
     @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
     def test_autocast_preserves_cluster_sum_precision(self, device, dtype, autocast_dtype):
         """Keep centroid accumulation in the work dtype under autocast."""
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("autocast precision regression is exercised on CPU and CUDA")
         if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
             pytest.skip("CUDA device does not support bfloat16 autocast")
         x = torch.full((100000, 3), 0.75, device=device, dtype=dtype)

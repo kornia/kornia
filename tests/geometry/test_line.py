@@ -261,9 +261,8 @@ class TestParametrizedLine(BaseTester):
         # Each point lies on its own plane, n . p + d = 0, with this normal along z: z = -d.
         self.assert_close(points[..., 2], -offset)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_unbatched_line_keeps_its_dtype_for_one_plane_6497(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         # A 0-d step does not promote the line's dtype; a (1,) one would.
         line = ParametrizedLine(
             torch.tensor([1.0, 2.0, 0.0], device=device, dtype=torch.float32),
@@ -1274,21 +1273,19 @@ def _direction_with_fixed_sign_6213(points, reference):
 class TestFitLineGradient(BaseTester):
     """``fit_line``'s gradient is finite when the other eigenvalues of the scatter matrix are equal (#6213)."""
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("dim", [3, 4])
     def test_points_along_a_coordinate_axis_6213(self, device, dim):
         # The scatter matrix of points along an axis is diag(s, 0, ..., 0): its other eigenvalues are all zero, and
         # torch's SVD backward divided by their zero gaps, so every entry of the gradient was NaN.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         points = torch.zeros(1, 5, dim, device=device, dtype=torch.float64)
         points[..., 0] = torch.linspace(0.0, 1.0, 5, device=device, dtype=torch.float64)
         reference = fit_line(points).direction.detach()
         self.gradcheck(lambda p: _direction_with_fixed_sign_6213(p, reference), (points,), fast_mode=False)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_equal_spread_across_the_line_6213(self, device):
         # A cloud along x with the same spread in y and z: the two smaller eigenvalues are equal.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         x = torch.linspace(-2.0, 2.0, 5, dtype=torch.float64)
         across = torch.tensor([[0.1, 0.0], [0.0, 0.1], [-0.1, 0.0], [0.0, -0.1]], dtype=torch.float64)
         points = torch.cat([torch.cat([torch.full((4, 1), float(t), dtype=torch.float64), across], -1) for t in x])

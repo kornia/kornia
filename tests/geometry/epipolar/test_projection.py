@@ -297,11 +297,6 @@ class TestKRtFromProjection(BaseTester):
             self.assert_close(a, e)
 
 
-def _skip_half(dtype: torch.dtype, reason: str) -> None:
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip(reason)
-
-
 def _dehom(x: torch.Tensor) -> torch.Tensor:
     return x[..., :2] / x[..., 2:]
 
@@ -468,9 +463,11 @@ class TestConventionProjection(BaseTester):
         with pytest.raises(RuntimeError):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the pinned scales of P, down to 1e-17, underflow half precision"
+    )
     def test_convention_krt_from_projection_scale_and_sign_of_P(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, "the pinned scales of P, down to 1e-17, underflow half precision")
         P, K_true, R_true, t_true = two_view["P2"], two_view["K2"], two_view["R"], two_view["t"]
         ones = torch.ones(1, device=device, dtype=dtype)
         # s * P is the same camera for every nonzero s, sign included: R stays a rotation, t the translation, and

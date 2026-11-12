@@ -270,9 +270,8 @@ class TestWunschLineMatcher(BaseTester):
             torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
         )
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_needleman_wunsch_float64_matches_float32_5722(self, device):
-        if torch.device(device).type == "mps":
-            pytest.skip("MPS does not support float64")
         scores = torch.rand(2, 3, 5, device=device, dtype=torch.float32)
         out32 = WunschLineMatcher().needleman_wunsch(scores)
         out64 = WunschLineMatcher().needleman_wunsch(scores.double())

@@ -164,9 +164,8 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
         assert out.dtype == half
         self.assert_close(out, interp(x.float(), pos.float(), H * 8, W * 8).to(half))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_integer_positions_normalise_in_the_default_dtype(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # Only half-precision positions go through float32: integer ones divide in the default dtype, as they did.
         g = torch.Generator().manual_seed(0)
         x = torch.rand(1, 8, 24, 32, generator=g, dtype=torch.float64).to(device)
@@ -266,10 +265,9 @@ class TestXFeat(BaseTester):
         ):
             assert all(points.dtype == torch.float32 and points.isfinite().all() for points in matches)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="bfloat16 autocast is exercised on CPU and CUDA")
     def test_float32_model_keeps_its_dtype_under_autocast(self, device):
         # Autocast gives the sampler half-precision maps, and it returns them in that dtype; the model's outputs do not.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("bfloat16 autocast is exercised on CPU and CUDA")
         model = XFeat(detection_threshold=0.0).to(device).eval()
         g = torch.Generator().manual_seed(0)
         with torch.autocast(device.type, dtype=torch.bfloat16):
@@ -278,11 +276,12 @@ class TestXFeat(BaseTester):
         assert out["scores"].dtype == torch.float32
         assert out["descriptors"].dtype == torch.float32
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), reason="float16 and bfloat16 autocast are exercised on CPU and CUDA"
+    )
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
     def test_half_model_keeps_its_dtype_under_autocast(self, device, half):
         # On CUDA, autocast takes F.normalize's norm in float32, which promotes a bfloat16 map and descriptor.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 and bfloat16 autocast are exercised on CPU and CUDA")
         model = XFeat(detection_threshold=0.0).to(device, half).eval()
         sampled = []
         model.interpolator.register_forward_pre_hook(lambda _, args: sampled.append(args[0].dtype))
@@ -789,13 +788,14 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(out["keypoints"], torch.tensor([expected], device=device), rtol=0, atol=1e-3)
         self.assert_close(out["keypoints"][0], seen[0, :2, 13, 22], rtol=0, atol=1e-3)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="half-precision XFeat weights are not covered on MPS"
+    )
     @pytest.mark.parametrize("weights_dtype", [torch.float16, torch.bfloat16])
     def test_resized_coordinates_do_not_round_in_half_weights_6537(self, weights_dtype, device):
         # Keypoints are float32 whatever the weights: bfloat16 would hold 1427.66 as 1428. Generated with plain Python:
         # (1401.5 * 1500 / 1472 - 0.5, 901.5 * 1000 / 992 - 0.5) and, for the top-left pixel (1400, 896) of the cell,
         # (1400.5 * 1500 / 1472 - 0.5, 896.5 * 1000 / 992 - 0.5).
-        if device.type == "mps":
-            pytest.skip("half-precision XFeat weights are not covered on MPS")
         if not supports_bicubic_2d_grid_sample(device, torch.float32):
             pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
         xfeat = XFeat().to(device, weights_dtype).eval()
@@ -1094,10 +1094,9 @@ class TestConventionsXFeat(BaseTester):
         for m in matches:
             assert m.shape[0] <= 1
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast")
     def test_convention_xfeat_dense_multiscale_descriptor_dtype_is_the_same_on_both_sides_of_a_zero_share(self, device):
         # under autocast the backbone's output dtype is not the parameters' dtype; the empty scale must not change it
-        if torch.device(device).type != "cpu":
-            pytest.skip("CPU autocast")
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)
@@ -1177,6 +1176,9 @@ class TestConventionsXFeat(BaseTester):
             out_t = interp(ramp.flip(1).transpose(-1, -2).to(device, dtype), pos.flip(-1).to(device, dtype), W, H)
             self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float16", "bfloat16"), reason="the defect is in the CPU float16 / bfloat16 path"
+    )
     @pytest.mark.parametrize("sampler", ["ALIKED", "SOLD2"])
     def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
@@ -1184,8 +1186,6 @@ class TestConventionsXFeat(BaseTester):
         # call it with the half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use,
         # samples CPU half in float32 instead, and so do XFeat's InterpolateSparse2d and ALIKED's deformable
         # convolution without autograd (#6464).
-        if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
             pytest.skip("ALIKED pads with replication, absent for this dtype")
         from kornia.feature import ALIKED, SOLD2

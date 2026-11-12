@@ -34,6 +34,11 @@ from testing.base import (
     dynamo_is_available,
 )
 
+NO_COMPLEX_BFLOAT16 = pytest.mark.applies_to(
+    dtypes=("float16", "float32", "float64"),
+    reason="torch has no complex bfloat16 dtype, which So2 stores its rotation in",
+)
+
 
 class TestSo2(BaseTester):
     def _make_rand_data(self, device, dtype, input_shape):
@@ -46,12 +51,14 @@ class TestSo2(BaseTester):
         with pytest.raises(TypeCheckError, match=r"So2 stores 'z'.*torch.int64"):
             So2(torch.tensor([1], device=device))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["real_dtype"] == torch.float64) and (p["device_name"] == "mps")),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("real_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_real_z_raises_5913(self, device, real_dtype):
         # A real z only fails inside matrix()/log()/__mul__ with torch's "imag is not implemented"; the constructor
         # rejects it with a kornia error naming the argument and dtype.
-        if real_dtype == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         for z in (
             torch.tensor([0.6, 0.8], device=device, dtype=real_dtype),
             torch.tensor(0.5, device=device, dtype=real_dtype),
@@ -72,19 +79,20 @@ class TestSo2(BaseTester):
         real, imag = torch.rand(2, device=device), torch.rand(2, device=device)
         self.assert_close(torch_optimizer(build, fullgraph=True)(real, imag), build(real, imag))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["cdtype"] != torch.cfloat)),
+        reason="MPS supports complex64 only",
+    )
     @pytest.mark.parametrize("cdtype", [torch.chalf, torch.cfloat, torch.cdouble])
     @pytest.mark.filterwarnings("ignore:ComplexHalf support is experimental")
     def test_every_complex_dtype_is_accepted_5913(self, device, cdtype):
-        if device.type == "mps" and cdtype != torch.cfloat:
-            pytest.skip("MPS supports complex64 only")
         z = torch.complex(torch.tensor([0.6, 0.8]), torch.tensor([0.8, 0.6])).to(cdtype).to(device)
         s = So2(z)
         assert s.z.dtype == cdtype
         assert s[0].z.dtype == cdtype
 
+    @NO_COMPLEX_BFLOAT16
     def test_internal_constructions_still_build_5913(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         a = So2.exp(torch.tensor([0.3, -0.4], device=device, dtype=dtype))
         b = So2.identity(2, device, dtype)
         assert isinstance(a * b, So2)
@@ -120,11 +128,10 @@ class TestSo2(BaseTester):
         assert s.z.shape == (2,)  # a (B, 1) z is read as (B,) (#4932)
         self.assert_close(s.z.data, z.data[:, 0])
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_cardinality(self, device, dtype, input_shape, cdtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         z = torch.randn(input_shape, dtype=cdtype, device=device)
         s = So2(z)
         theta = torch.rand(input_shape, dtype=dtype, device=device)
@@ -136,23 +143,21 @@ class TestSo2(BaseTester):
         assert s.hat(theta).shape == expected_hat_shape
         assert s.inverse().z.shape == input_shape
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("input_shape", [(1, 2, 2), (2, 2, 2), (5, 2, 2), (2, 2)])
     def test_matrix_cardinality(self, device, dtype, input_shape):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         matrix = torch.rand(input_shape, dtype=dtype, device=device)
         matrix[..., 0, 1] = -matrix[..., 1, 0]
         matrix[..., 1, 1] = matrix[..., 0, 0]
         s = So2.from_matrix(matrix)
         assert s.matrix().shape == input_shape
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_exception(self, batch_size, device, dtype, cdtype):
         # A bfloat16 identity raises TypeCheckError, a TypeError, so the TypeError check below would pass for
         # the wrong reason; test_bfloat16_rotation_raises pins that error instead.
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
         with pytest.raises(ValueError):
             assert So2(z)
@@ -178,9 +183,8 @@ class TestSo2(BaseTester):
         self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
         self.gradcheck(lambda x: So2.exp(x).log(), (theta,))
 
+    @NO_COMPLEX_BFLOAT16
     def test_jit(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
         # identity row, so a branch taken while tracing would show up as a mismatch against eager.
         v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
@@ -190,9 +194,8 @@ class TestSo2(BaseTester):
             traced = torch.jit.trace(fn, (v,))
             self.assert_close(traced(other), fn(other))
 
+    @NO_COMPLEX_BFLOAT16
     def test_module(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         v = torch.tensor([0.4, -0.3], device=device, dtype=dtype)
         source = nn.ModuleDict({"pose": So2.exp(v)})
         target = nn.ModuleDict({"pose": So2.exp(v * 0.5)})
@@ -213,11 +216,10 @@ class TestSo2(BaseTester):
         assert moved.matrix().device == v.device
         self.assert_close(moved.matrix(), expected)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     @pytest.mark.parametrize("cdtype", [torch.cfloat, torch.cdouble])
     def test_init(self, device, dtype, batch_size, cdtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         z1 = self._make_rand_data(device, cdtype, (batch_size,))
         z2 = self._make_rand_data(device, cdtype, (batch_size, 1))
         z3_real = self._make_rand_data(device, dtype, (batch_size,))
@@ -246,10 +248,9 @@ class TestSo2(BaseTester):
                 actual = z[i]
             self.assert_close(expected, actual)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s1 = So2.identity(batch_size, device, dtype)
         z = self._make_rand_data(device, dtype, (batch_size, 2))
         s2 = So2(torch.complex(z[..., 0], z[..., 1]))
@@ -264,10 +265,9 @@ class TestSo2(BaseTester):
         self.assert_close((s1 * t1), t1)
         self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s1 = So2.identity(batch_size, device, dtype)
         shape = () if batch_size is None else (batch_size,)
         t1 = Vector2.random(shape, device, dtype)
@@ -275,10 +275,9 @@ class TestSo2(BaseTester):
         self.assert_close((s1 * t1), t1)
         self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         s = So2.exp(theta)
         self.assert_close(s.z.real, theta.flatten().cos())
@@ -291,10 +290,9 @@ class TestSo2(BaseTester):
         t = So2(z).log()
         self.assert_close(t, z.imag.atan2(z.real))
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp_log(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         self.assert_close(So2.exp(theta).log(), theta.flatten())
 
@@ -312,20 +310,18 @@ class TestSo2(BaseTester):
         self.assert_close(So2.vee(omega), omega[..., 1, 0])
         self.assert_close(So2.vee(m), theta)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix_exp_of_hat_is_exp(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size,))
         # The reference runs in float64 on the CPU: MPS has no float64 and CPU matrix_exp has no
         # half-precision kernel.
         expm = torch.linalg.matrix_exp(So2.hat(theta).cpu().double()).to(device=device, dtype=dtype)
         self.assert_close(expm, So2.exp(theta).matrix())
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = So2.exp(theta)
@@ -333,10 +329,9 @@ class TestSo2(BaseTester):
         p2 = s.matrix() @ t[..., None]
         self.assert_close(p1, p2.squeeze(-1))
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_from_matrix(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         matrix = torch.eye(2, device=device, dtype=dtype)
         if batch_size is not None:
             matrix = matrix.repeat(batch_size, 1, 1)
@@ -358,21 +353,22 @@ class TestSo2(BaseTester):
         self.assert_close(s_in_in.z.real, z.real)
         self.assert_close(s_in_in.z.imag, z.imag)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_random(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
         s_in_s = s.inverse() * s
         i = So2.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.z.real, i.z.real)
         self.assert_close(s_in_s.z.imag, i.z.imag)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="torch.complex has no bfloat16 overload and linalg.det has no float16 CPU kernel",
+    )
     def test_random_is_a_uniform_unit_rotation_4930(self, device, dtype):
         # #4930: random drew independent uniform real and imaginary parts on [0, 1), so |z| ranged over (0, sqrt 2),
         # matrix() was a rotation scaled by |z| with det = |z|**2 down to 3.5e-6, and every angle was in [0, pi / 2].
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("torch.complex has no bfloat16 overload and linalg.det has no float16 CPU kernel")
         torch.manual_seed(0)
         s = So2.random(1000, device=device, dtype=dtype)
         self.assert_close(s.z.abs(), torch.ones(1000, device=device, dtype=dtype))
@@ -389,18 +385,16 @@ class TestSo2(BaseTester):
         assert theta.max() > torch.pi - 0.05, (theta.min(), theta.max())
         self.assert_close(So2.random(device=device, dtype=dtype).z.abs(), torch.tensor(1.0, device=device, dtype=dtype))
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_adjoint(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         s = So2.identity(batch_size, device=device, dtype=dtype)
         self.assert_close(s.matrix(), s.adjoint())
 
+    @NO_COMPLEX_BFLOAT16
     def test_user_leaf_receives_the_gradient(self, device, dtype):
         # A complex leaf that requires grad is kept, not re-wrapped as a new Parameter, so the gradient reaches it
         # (#4943). d/dz of sum(R @ (1, 0)) = d(re + im)/dz.
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         re = torch.tensor([0.6], device=device, dtype=dtype)
         z = torch.complex(re, re + 0.2).requires_grad_(True)
         s = So2(z)
@@ -408,9 +402,8 @@ class TestSo2(BaseTester):
         assert z.grad is not None
         assert "_z" in s.state_dict()
 
+    @NO_COMPLEX_BFLOAT16
     def test_derived_state_moves_and_serializes(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
         s = So2.exp(theta)
         assert s.z.grad_fn is not None
@@ -422,9 +415,8 @@ class TestSo2(BaseTester):
         s.to(device).matrix().sum().backward()
         assert theta.grad is not None
 
+    @NO_COMPLEX_BFLOAT16
     def test_convention_so2_positive_angle_rotates_x_toward_y(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # A positive angle turns the x axis toward the y axis, counter-clockwise in a y-up frame, and matrix() is
         # [[cos, -sin], [sin, cos]]. Reference: math.cos(0.3), math.sin(0.3).
         c, s = 0.955336489125606, 0.29552020666133955
@@ -435,9 +427,8 @@ class TestSo2(BaseTester):
         self.assert_close(rotated, torch.tensor([[c, s], [-s, c]], device=device, dtype=dtype))
         self.assert_close(g.matrix(), torch.tensor([[c, -s], [s, c]], device=device, dtype=dtype))
 
+    @NO_COMPLEX_BFLOAT16
     def test_convention_so2_is_transpose_of_angle_to_rotation_matrix(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # kornia.geometry.conversions.angle_to_rotation_matrix takes degrees and returns [[cos, sin], [-sin, cos]],
         # the transpose of So2's matrix: the same angle turns the other way.
         theta = torch.tensor([0.3, -1.2], device=device, dtype=dtype)
@@ -445,9 +436,8 @@ class TestSo2(BaseTester):
         assert (m - m.mT).abs().max() > 0.5  # a non-symmetric fixture, so a transpose is visible
         self.assert_close(m, angle_to_rotation_matrix(torch.rad2deg(theta)).mT)
 
+    @NO_COMPLEX_BFLOAT16
     def test_convention_so2_log_is_principal(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # log returns the angle in [-pi, pi], so exp(3.5) logs to 3.5 - 2 pi. Reference: 3.5 - 2 * math.pi.
         theta = torch.tensor([3.5, -3.5, 0.3], device=device, dtype=dtype)
         g = So2.exp(theta)
@@ -455,9 +445,8 @@ class TestSo2(BaseTester):
         self.assert_close(g.log(), expected)
         self.assert_close(So2.exp(g.log()).matrix(), g.matrix())
 
+    @NO_COMPLEX_BFLOAT16
     def test_convention_so2_from_matrix_rejects_a_reflection(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # from_matrix checks m00 == m11 and m01 == -m10. The first reflection fails only the diagonal check, the
         # axis swap only the off-diagonal one.
         for reflection in ([[1.0, 0.0], [0.0, -1.0]], [[0.0, 1.0], [1.0, 0.0]]):
@@ -468,10 +457,9 @@ class TestSo2(BaseTester):
         rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
         self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_from_matrix_check_skipped_under_any_capture_5037(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # from_matrix checks the rotation block on the host, which a fullgraph trace cannot do, so any capture skips
         # the check, not only export (#5037), and reads the block as z = m00 + i m10. Eager still raises on a
         # reflection; a traced call does not.
@@ -491,9 +479,8 @@ class TestSo2(BaseTester):
             log(reflection)
         self.assert_close(traced(reflection), torch.zeros(2, device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
+    @NO_COMPLEX_BFLOAT16
     def test_so2_column_angle_is_squeezed_4932(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
         p = torch.tensor([[1.0, 0.0], [0.0, 1.0], [2.0, 3.0]], device=device, dtype=dtype)
         paired = So2.exp(theta) * p  # the (B,) layout rotates point i by angle i
@@ -525,11 +512,10 @@ class TestSo2(BaseTester):
         assert column.grad.shape == (3, 1)
         assert torch.isfinite(column.grad).all()
 
+    @NO_COMPLEX_BFLOAT16
     def test_so2_column_parameter_stays_the_module_parameter_4932(self, device, dtype):
         # Reading a (B, 1) z as (B,) must not take a caller's nn.Parameter away from the module: it stays its own
         # parameter under the same state_dict key and shape, so an optimizer over So2.parameters() trains it.
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         theta = torch.tensor([0.3, 0.5, 0.7], device=device, dtype=dtype)
         param = torch.nn.Parameter(torch.complex(theta.cos(), theta.sin())[:, None])
         s = So2(param)
@@ -586,16 +572,16 @@ class TestSo2(BaseTester):
 
     # #6426: a pose maps (2,) or (N, 2) unbatched and one point per pose for a batch; other layouts, such as a
     # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize(
         ("batch_size", "points_shape"), [(None, (2, 5, 2)), (2, (7, 2)), (2, (2, 7, 2)), (1, (1, 7, 2))]
     )
     def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         pose = So2.identity(batch_size, device, dtype)
         with pytest.raises(ValueError, match=r"Expected points of shape \(2,\) or \(N, 2\)"):
             pose * torch.zeros(points_shape, device=device, dtype=dtype)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize(
         ("batch_size", "points_shape", "out_shape"),
         [
@@ -608,14 +594,11 @@ class TestSo2(BaseTester):
         ],
     )
     def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         pose = So2.identity(batch_size, device, dtype)
         assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
 
+    @NO_COMPLEX_BFLOAT16
     def test_deepcopy_with_autograd_history_4923(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # The history of theta is held in a buffer, which torch cannot deep-copy; the copy holds it as a new
         # leaf.
         theta = torch.tensor([0.4, -1.2], device=device, dtype=dtype, requires_grad=True)
@@ -636,11 +619,10 @@ class _So2PointTransform(torch.nn.Module):
 
 
 class TestSo2Inverse(BaseTester):
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("shape", [(), (1,), (4, 1)])
     @pytest.mark.parametrize("parts", [(0.6, 0.8), (2.0, -3.0), (512.0, 256.0), (2**-14, -(2**-15))])
     def test_matches_complex_reference_4153(self, device, dtype, shape, parts):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         # Non-unit inputs are accepted by So2. Large/small inputs also catch a squared norm computed in float16.
         real = torch.full(shape, parts[0], device=device, dtype=dtype)
         imag = torch.full(shape, parts[1], device=device, dtype=dtype)
@@ -655,10 +637,9 @@ class TestSo2Inverse(BaseTester):
         self.assert_close(result.real, expected.real.reshape(result.shape))
         self.assert_close(result.imag, expected.imag.reshape(result.shape))
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("as_parameter", [False, True])
     def test_backward_matches_complex_reference_4153(self, device, dtype, as_parameter):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         parts = torch.tensor([[0.6, 0.8], [0.25, -0.5], [2.0, -3.0]], device=device, dtype=dtype)
         z = torch.complex(parts[:, 0], parts[:, 1]).requires_grad_()
         if as_parameter:
@@ -674,10 +655,9 @@ class TestSo2Inverse(BaseTester):
         self.assert_close(grad.real, expected.real)
         self.assert_close(grad.imag, expected.imag)
 
+    @NO_COMPLEX_BFLOAT16
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo(self, device, dtype, torch_optimizer):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
 
         def inverse(parts):
             return So2(torch.complex(parts[:, 0], parts[:, 1])).inverse().matrix()
@@ -686,12 +666,11 @@ class TestSo2Inverse(BaseTester):
         self.assert_close(torch_optimizer(inverse, fullgraph=True)(parts), inverse(parts))
 
 
+@pytest.mark.applies_to(
+    dtypes=("float16", "float32", "float64"),
+    reason="PyTorch has no complex bfloat16 dtype; module bfloat16 conversion is tested separately",
+)
 class TestSo2DtypeMigration(BaseTester):
-    @pytest.fixture(autouse=True)
-    def _require_complex_dtype(self, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("PyTorch has no complex bfloat16 dtype; module bfloat16 conversion is tested separately")
-
     def _source_dtype(self, device, dtype):
         # Exercise a precision change in both directions, without constructing float64 on MPS.
         return torch.float64 if dtype == torch.float32 and device.type != "mps" else torch.float32

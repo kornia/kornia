@@ -118,12 +118,13 @@ class TestBasicAugmentationBase(BaseTester):
         assert batch_prob.shape == (8,)
         assert ((batch_prob == 0) | (batch_prob == 1)).all()
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["aug_dtype"] == torch.float64), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize("aug_dtype", [torch.float32, torch.float64])
     def test_batch_prob_keeps_the_default_dtype_stream(self, aug_dtype, device):
         # Outside float64 on MPS, the gate still draws in the default dtype, so a seed gives the same gate for an
         # augmentation moved to another dtype.
-        if device.type == "mps" and aug_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         augmentation = _BasicAugmentationBase(0.5, 1.0, False).to(device=device, dtype=aug_dtype)
         torch.manual_seed(0)
         expected = (torch.rand(8, device=device) < 0.5).to(aug_dtype)
@@ -2124,10 +2125,9 @@ class TestLearnableRangeCopies(BaseTester):
         for key in ("r_shift", "g_shift", "b_shift"):
             assert bool((params[key].abs() <= float(limit) * (1 + 1e-3)).all())
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "cpu", reason="needs a device to map from")
     @pytest.mark.parametrize("name", ["RandomBrightness", "RandomAffine"])
     def test_load_mapped_to_the_cpu_rebuilds_the_samplers_there(self, name, device, dtype):
-        if device.type == "cpu":
-            pytest.skip("needs a device to map from")
         # ``torch.load(map_location=...)`` moves the tensors of a module but not its generator's ``device``. The
         # samplers are rebuilt where the tensors went, so a module saved on an accelerator loads where there is none.
         aug, x = self._case(name, device, dtype)
@@ -2421,11 +2421,12 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         drawn = aug.forward_parameters(torch.Size((2048, 3, 4, 8, 8)))["yaw"].detach()
         assert drawn.max() - drawn.min() >= 800.0 * 0.9
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cpu", reason="needs a range on another device than the module"
+    )
     @pytest.mark.parametrize("form", _RANGE_FORMS)
     @pytest.mark.parametrize("name", ["RandomBrightness", "RandomRotation", "RandomAffine", "ColorJitter"])
     def test_range_on_an_accelerator_with_the_module_on_the_cpu_follows_too(self, name, form, device, dtype):
-        if device.type == "cpu":
-            pytest.skip("needs a range on another device than the module")
         self._skip_without_backward(name, device, dtype)
         make, key, pair, half_width, (center, floor), wide_pair, wide_half_width = _FOLLOWED_RANGES[name]
         param = torch.nn.Parameter(torch.tensor(pair if form == "range" else half_width, device=device, dtype=dtype))
@@ -2469,12 +2470,14 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         aug(torch.rand(shape, device=device, dtype=dtype))
         assert list(aug.state_dict()) == keys
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["placement"] == "module on the cpu" and p["device_name"] == "cpu"),
+        reason="needs a range on another device than the module",
+    )
     @pytest.mark.parametrize("placement", ["same device", "module on the cpu"])
     def test_draws_outside_grad_mode_do_not_stick(self, placement, device, dtype):
         # With the module on the CPU, the range is copied only when something changed since the last draw. A draw under
         # ``no_grad`` after an optimizer step built samplers without a graph, and the next training forward kept them.
-        if placement == "module on the cpu" and device.type == "cpu":
-            pytest.skip("needs a range on another device than the module")
         aug, param, _, _, _ = self._make("RandomBrightness", "half-width", device, dtype)
         if placement == "module on the cpu":
             aug = K.RandomBrightness(param, p=1.0)
@@ -2860,10 +2863,11 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         aug(torch.rand(2, 3, 4, 8, 8, device=device, dtype=dtype))
         self.assert_close(generator._translate.detach(), torch.full((3,), 0.1, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cpu", reason="needs a range on another device than the module"
+    )
     def test_replaced_parameter_with_the_module_on_the_cpu_is_followed(self, device, dtype):
         # The version counter of a new parameter can equal that of the old one.
-        if device.type == "cpu":
-            pytest.skip("needs a range on another device than the module")
         aug = K.RandomRotation3D(torch.nn.Parameter(torch.tensor(10.0, device=device, dtype=dtype)), p=1.0)
         aug(torch.rand(2, 3, 4, 8, 8, device=device, dtype=dtype))
         aug._param_generator.degrees = torch.nn.Parameter(torch.tensor(40.0, device=device, dtype=dtype))
@@ -2871,12 +2875,13 @@ class TestLearnableRangeFollowsItsValue(BaseTester):
         yaw = aug.forward_parameters(torch.Size((1024, 3, 4, 8, 8)))["yaw"].detach()
         assert yaw.max() - yaw.min() >= 80.0 * 0.9
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript cannot script an augmentation"
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_compile_of_a_learnable_range_trains_and_follows_it(
         self, device, dtype, torch_optimizer, optimizer_backend
     ):
-        if optimizer_backend == "jit":
-            pytest.skip("TorchScript cannot script an augmentation")
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("grid_sample backward is unavailable for this device/dtype")
         for name in ("RandomBrightness", "RandomRotation", "RandomAffine"):
@@ -2975,14 +2980,15 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         "numbers": (lambda degrees: K.RandomRotation(tuple(degrees), p=1.0), [-80.0, 80.0], [10.0, 11.0], "degrees"),
     }
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "cpu" and p["dtype_name"] == "float32"), reason="nothing moves"
+    )
     @pytest.mark.parametrize("order", ["move, load, move back", "load, move"])
     @pytest.mark.parametrize("name", list(_MOVED_CASES))
     def test_load_of_one_range_of_several_keeps_up_with_moves(self, name, order, device, dtype):
         # The buffer of a loaded range moves with the module, while the other entries stay as they were given. Put next
         # to them, it made every forward of a moved module refuse their mix of devices or dtypes, and it left the draws
         # behind on a later move. A loaded module draws like one built with the loaded range and moved the same way.
-        if device.type == "cpu" and dtype == torch.float32:
-            pytest.skip("nothing moves")
         make, narrow, far, key = self._MOVED_CASES[name]
         target, reference, state = make(narrow), make(far), make(far).state_dict()
         if order == "load, move":
@@ -3019,11 +3025,13 @@ class TestLoadedRangeReachesTheDraws(BaseTester):
         assert degrees.min() >= 10.0 - 1e-3
         assert degrees.max() <= 11.0 + 1e-3
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS has no float64, and the exact double is the point of this test",
+    )
     def test_load_of_the_same_range_changes_nothing(self, device):
         # The sampler keeps the given numbers in the generator's dtype: 0.1 exactly in float64, not 0.1 rounded to the
         # float32 of the buffer. A checkpoint that holds the same range, in either dtype, must keep them.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64, and the exact double is the point of this test")
         target = K.RandomRotation((-0.1, 0.1), p=1.0).to(device=device, dtype=torch.float64)
         samplers = dict(target._param_generator.sampler_dict)
         low = samplers["degrees"].low.item()

@@ -346,9 +346,8 @@ class TestSpatialExpectation2d(BaseTester):
         assert actual.shape == (*shape[:2], 2)
         assert actual.dtype == dtype
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_float64_normalized_grid_is_exact_5019(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # #5019: the normalised grid was built in float32 and cast afterwards, so float64 coordinates carried
         # float32 rounding error (4e-8 here). A width of 7 has spacing 1/3, which float32 cannot represent.
         heatmap = torch.zeros(1, 1, 4, 7, device=device, dtype=torch.float64)

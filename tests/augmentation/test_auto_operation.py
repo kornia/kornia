@@ -291,6 +291,7 @@ class TestTrivialAugment(BaseTester):
                 assert (aug(image).flatten(1).amax(1) > 0).all()
 
 
+@pytest.mark.applies_to(devices=("cpu",), reason="dtype-preservation check runs on CPU")
 @pytest.mark.parametrize("low_dtype", [torch.float16, torch.bfloat16])
 def test_operation_preserves_input_dtype(device, low_dtype):
     # OperationBase.forward gated the op output with a float32 ``batch_prob``
@@ -299,8 +300,6 @@ def test_operation_preserves_input_dtype(device, low_dtype):
     # up), which is why this only shows below float32. Covers RandAugment /
     # AutoAugment / TrivialAugment / AugMix, which all route through this method.
     # dtype preservation is device-independent; check it on CPU.
-    if torch.device(device).type != "cpu":
-        pytest.skip("dtype-preservation check runs on CPU")
     checked = 0
     for op in _find_all_ops():
         x = torch.rand(2, 3, 16, 16, dtype=low_dtype)

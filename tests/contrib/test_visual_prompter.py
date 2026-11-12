@@ -61,14 +61,17 @@ def _prompt_dtype(dtype: torch.dtype) -> torch.dtype:
     return torch.promote_types(dtype, torch.float32)
 
 
-def _skip_float64_on_mps(device: torch.device, dtype: torch.dtype) -> None:
-    if device.type == "mps" and dtype == torch.float64:
-        pytest.skip("MPS does not support float64")
+NO_MPS_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+    reason="MPS does not support float64",
+)
 
 
 def _prompter_with_stub(device: torch.device, dtype: torch.dtype) -> tuple[VisualPrompter, _StubImageEncoder]:
-    """Random-init MobileSAM prompter in evaluation mode, with the stub encoder and no image set."""
-    _skip_float64_on_mps(device, dtype)
+    """Random-init MobileSAM prompter in evaluation mode, with the stub encoder and no image set.
+
+    Tests that build it from the injected device and dtype are marked ``NO_MPS_FLOAT64``.
+    """
     prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
     prompter.model.eval()
     stub = _StubImageEncoder(device, dtype)
@@ -125,16 +128,18 @@ class TestVisualPrompter(BaseTester):
         assert captured_configs[0].model_type == "vit_h"
         assert captured_configs[0].pretrained is True
 
+    @NO_MPS_FLOAT64
     def test_smoke(self, device, dtype):
-        _skip_float64_on_mps(device, dtype)
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         assert prompter is not None
         assert not prompter.is_image_set
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float16"),
+        reason="the real MobileSAM encoder runs here; test_predict_in_every_dtype covers the other dtypes",
+    )
     @pytest.mark.slow
     def test_batching_pipeline(self, device, dtype):
-        if dtype not in (torch.float32, torch.float16):
-            pytest.skip("the real MobileSAM encoder runs here; test_predict_in_every_dtype covers the other dtypes")
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         prompter.model.eval()
 
@@ -156,10 +161,12 @@ class TestVisualPrompter(BaseTester):
         assert results.logits.shape == (2, 3, 256, 256)
         assert results.scores.shape == (2, 3)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float16"),
+        reason="the real MobileSAM encoder runs here; test_predict_in_every_dtype covers the other dtypes",
+    )
     @pytest.mark.slow
     def test_predict_without_prompts(self, device, dtype):
-        if dtype not in (torch.float32, torch.float16):
-            pytest.skip("the real MobileSAM encoder runs here; test_predict_in_every_dtype covers the other dtypes")
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         prompter.set_image(torch.rand(3, 256, 256, device=device, dtype=dtype))
 
@@ -178,11 +185,12 @@ class TestVisualPrompter(BaseTester):
         random_init = VisualPrompter(SamConfig("mobile_sam")).model
         assert {m.training for m in random_init.modules()} == {True}
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="guards the cast of an evaluation-mode model to a half dtype"
+    )
     @pytest.mark.slow
     def test_weighted_config_runs_in_half(self, monkeypatch, device, dtype):
         # A weighted config comes back in evaluation mode, and VisualPrompter casts the model after that.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("guards the cast of an evaluation-mode model to a half dtype")
         monkeypatch.setattr(Sam, "load_checkpoint", lambda self, checkpoint, device=None: None)
         prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True), device=device, dtype=dtype)
 
@@ -193,6 +201,7 @@ class TestVisualPrompter(BaseTester):
         assert prompter.image_embeddings.shape == (1, 256, 64, 64)
         assert prompter.image_embeddings.dtype == dtype
 
+    @NO_MPS_FLOAT64
     def test_tensor_box_reaches_the_model(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
         box = torch.tensor([[10.0, 20.0, 60.0, 50.0]], device=device, dtype=dtype)
@@ -204,6 +213,7 @@ class TestVisualPrompter(BaseTester):
         self.assert_close(from_tensor, from_boxes)
         assert not torch.equal(prompter.predict(boxes=box).logits, prompter.predict().logits)
 
+    @NO_MPS_FLOAT64
     def test_keypoints_without_labels_raise(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
 
@@ -212,6 +222,7 @@ class TestVisualPrompter(BaseTester):
             with pytest.raises(BaseError, match="keypoints_labels"):
                 prompter.predict(keypoints=unlabelled)
 
+    @NO_MPS_FLOAT64
     def test_prompts_follow_the_half_pixel_resize(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
         # The long side 128 -> 1024 gives the scale s = 8 on both axes, and the short side 77 * 8 = 616.
@@ -227,6 +238,7 @@ class TestVisualPrompter(BaseTester):
         expected = torch.tensor([[[323.5, 243.5]], [[3.5, 3.5]]], device=device, dtype=_prompt_dtype(dtype))
         self.assert_close(points, expected)
 
+    @NO_MPS_FLOAT64
     def test_box_edges_scale_with_the_image(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
         # kornia's xyxy corners are pixel edges (width = x2 - x1); an edge maps to x * s, as both corners do in the
@@ -246,10 +258,12 @@ class TestVisualPrompter(BaseTester):
     # Bound of each case: at 77 x 128 the bilinear upscale reproduces a ramp exactly. At 1500 x 2000 the
     # antialiasing filter of SAM's reference (torch's, the same as PIL's bilinear reduce) starts and ends its taps on
     # whole source pixels, which moves a ramp in a sawtooth of up to 0.022 px, in float64 as well.
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="a ramp of 2000 columns needs float32 or wider to resolve the bound"
+    )
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("height, width, bound", [(77, 128, 1e-3), (1500, 2000, 0.025)])
     def test_resize_round_trip_is_aligned(self, device, dtype, height, width, bound):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a ramp of 2000 columns needs float32 or wider to resolve the bound")
         prompter, stub = _prompter_with_stub(device, dtype)
 
         # A horizontal ramp whose value is its own column index, centred on 0 to halve its float32 rounding, goes
@@ -268,6 +282,7 @@ class TestVisualPrompter(BaseTester):
         row = height // 2
         self.assert_close(back[0, 0, row, 3:-3], ramp[0, row, 3:-3], rtol=0.0, atol=bound)
 
+    @NO_MPS_FLOAT64
     def test_downscale_is_antialiased(self, device, dtype):
         prompter, stub = _prompter_with_stub(device, dtype)
         generator = torch.Generator().manual_seed(0)
@@ -286,6 +301,7 @@ class TestVisualPrompter(BaseTester):
         assert prompter._input_image_size == (768, 1024)
         self.assert_close(stub.last_input[..., :768, :1024], expected)
 
+    @NO_MPS_FLOAT64
     def test_predict_in_every_dtype(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
         keypoints = torch.tensor([[[40.0, 30.0]]], device=device, dtype=dtype)
@@ -296,8 +312,8 @@ class TestVisualPrompter(BaseTester):
             assert results.logits.dtype == dtype
             assert results.logits.shape == (1, 3, 256, 256)
 
+    @NO_MPS_FLOAT64
     def test_set_image_rejects_a_batch(self, device, dtype):
-        _skip_float64_on_mps(device, dtype)
         prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         prompter.model.image_encoder = _StubImageEncoder(device, dtype)
 
@@ -341,6 +357,7 @@ class TestVisualPrompter(BaseTester):
         prompter.set_image(torch.rand(3, 77, 128))
         assert prompter._input_image_size == (616, 1024)
 
+    @NO_MPS_FLOAT64
     def test_half_prompts_map_in_float32(self, device, dtype):
         prompter, _ = _prompter_with_stub(device, dtype)
         prompter.set_image(torch.rand(3, 1380, 2076, device=device, dtype=dtype))
@@ -373,6 +390,7 @@ class TestVisualPrompter(BaseTester):
             atol=2e-4,
         )
 
+    @NO_MPS_FLOAT64
     def test_box_prompt_shapes(self, device, dtype):
         prompter = _prompter_with_stub_encoder(device, dtype)
 
@@ -395,6 +413,7 @@ class TestVisualPrompter(BaseTester):
 
     # A sub-pixel box, and one whose -1 vertex offset bfloat16 cannot represent at 256 (spacing 2): the ``Boxes``
     # vertex round trip gives [9.5, 19.5, 11, 21] for the first and, in bfloat16, [256, 256, 256, 256] for the second.
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("box", [[10.0, 20.0, 10.5, 20.5], [256.0, 256.0, 258.0, 258.0]], ids=["subpixel", "256"])
     def test_tensor_box_corners_are_taken_as_given(self, device, dtype, box):
         prompter = _prompter_with_stub_encoder(device, dtype)
@@ -406,6 +425,7 @@ class TestVisualPrompter(BaseTester):
         expected = torch.tensor([box], dtype=torch.float64) * 8
         self.assert_close(mapped, expected.to(device=device, dtype=_prompt_dtype(dtype)))
 
+    @NO_MPS_FLOAT64
     def test_box_prompts_stay_separate(self, device, dtype, cudnn_tf32_follows_option):
         prompter = _prompter_with_stub_encoder(device, dtype)
         boxes = torch.tensor(

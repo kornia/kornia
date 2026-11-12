@@ -45,6 +45,13 @@ from testing.two_view import (
     two_view_scene,
 )
 
+_NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
+_HALF_PIXELS = "half precision rounds the fixture's pixel coordinates, 120 to 440, to steps of 0.125 to 0.25"
+_HALF_PIXEL_F = (
+    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
+    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
+)
+
 
 class TestNormalizePoints(BaseTester):
     def test_zero_weight_outlier_does_not_change_transform(self, device, dtype):
@@ -378,6 +385,7 @@ class TestFindFundamental(BaseTester):
         weights = torch.ones(1, 10, device=device, dtype=torch.float64)
         self.gradcheck(epi.find_fundamental, (points1, points2, weights))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_zero_weight_backward_is_the_one_sided_derivative(self, device, dtype):
         """The gradient of a weight of exactly 0 is finite and is the derivative from above (#4912).
 
@@ -385,7 +393,6 @@ class TestFindFundamental(BaseTester):
         ``w.sqrt()``, whose derivative is unbounded at 0: the gradient was NaN on torch 2.5.1 and 2.9.1, and 0 on
         2.14, where ``clamp_min(0)`` masks it at the bound. Both differ from the derivative at a tiny positive weight.
         """
-        _skip_half(dtype, _NO_HALF_EIGH)
         two_view = two_view_scene(device, dtype)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
@@ -425,8 +432,8 @@ class TestFindFundamentalAffine(BaseTester):
     def _noisy(scene: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         return scene["x1"] + scene["noise"][..., :2], scene["x2"] + scene["noise"][..., 2:]
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_exact_correspondences_give_the_cameras_matrix(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         scene = affine_two_view_scene(device, dtype)
         F = epi.find_fundamental(scene["x1"], scene["x2"], method="AFFINE")
         assert F.shape == (1, 3, 3)
@@ -434,14 +441,14 @@ class TestFindFundamentalAffine(BaseTester):
         assert not F[:, :2, :2].any()
         self.assert_close(F, scene["F"], **self._tol(dtype))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_four_correspondences_determine_it(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         scene = affine_two_view_scene(device, dtype)
         F = epi.find_fundamental(scene["x1"][:, :4], scene["x2"][:, :4], method="affine")
         self.assert_close(F, scene["F"], **self._tol(dtype))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_noisy_correspondences_give_the_gold_standard(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         scene = affine_two_view_scene(device, dtype)
         x1, x2 = self._noisy(scene)
         F = epi.find_fundamental(x1, x2, method="AFFINE")
@@ -449,14 +456,14 @@ class TestFindFundamentalAffine(BaseTester):
         # Control: the noise moves the minimizer away from the cameras' matrix by more than the tolerance.
         assert (scene["F_gold"] - scene["F"]).abs().max() > 1e-5
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_swapping_the_images_transposes_it(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
         F = epi.find_fundamental(x1, x2, method="AFFINE")
         self.assert_close(epi.find_fundamental(x2, x1, method="AFFINE"), F.transpose(-2, -1), **self._tol(dtype))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_weights_semantics(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
         x2[0, 5] += torch.tensor([40.0, -25.0], device=device, dtype=dtype)
         keep = torch.arange(12, device=device) != 5
@@ -473,9 +480,8 @@ class TestFindFundamentalAffine(BaseTester):
         # Control: equal weights keep the mismatch and give another matrix.
         assert (epi.find_fundamental(x1, x2, method="AFFINE") - F_w).abs().max() > 1e-4
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision input check")
     def test_half_precision_points_fit_in_float32(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision input check")
         scene = affine_two_view_scene(device, dtype)
         # Squared pixel coordinates in the hundreds overflow float16, so the fit runs in float32.
         F = epi.find_fundamental(scene["x1"], scene["x2"], method="AFFINE")
@@ -484,9 +490,8 @@ class TestFindFundamentalAffine(BaseTester):
         expected = epi.find_fundamental(scene["x1"].float(), scene["x2"].float(), method="AFFINE").to(dtype)
         assert torch.equal(F, expected)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64; the fit runs in float32 there")
     def test_float32_points_fit_in_float64(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS has no float64; the fit runs in float32 there")
         x1, x2 = self._noisy(affine_two_view_scene(device, torch.float64))
         # Far from the origin, as in a large image: the float32 points round to 2e-3 px, and a float32 scatter matrix
         # of their centred coordinates would move F by more than that.
@@ -506,8 +511,8 @@ class TestFindFundamentalAffine(BaseTester):
         X = torch.cartesian_prod(grid, grid, grid)
         return X[None, :, :2], torch.stack([X[:, 2], X[:, 1] + 10.0], dim=-1)[None]
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_gradient_is_finite_when_two_other_eigenvalues_are_equal(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         x1, x2 = self._cube_seen_from_front_and_side(device, dtype)
         weights = torch.ones(1, 27, device=device, dtype=dtype, requires_grad=True)
         x1.requires_grad_()
@@ -565,8 +570,8 @@ class TestFindFundamentalAffine(BaseTester):
         expected[2, 2] = 1.0
         self.assert_close(F, expected.expand_as(F), rtol=0.0, atol=1e-4)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_nonfinite_batch_element_gives_nan(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
         x1, x2 = x1.repeat(3, 1, 1), x2.repeat(3, 1, 1)
         x1[1, 4] = float("nan")
@@ -596,8 +601,8 @@ class TestFindFundamentalAffine(BaseTester):
 
         self.gradcheck(fit, (x1.requires_grad_(), x2.requires_grad_(), weights.requires_grad_()))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXELS)
     def test_zero_weight_backward_is_the_one_sided_derivative(self, device, dtype):
-        _skip_half(dtype, _HALF_PIXELS)
         x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
         grads = []
         for w3 in (0.0, 1e-6):
@@ -614,6 +619,7 @@ class TestFindFundamentalAffine(BaseTester):
 
 
 class TestFundamentalAutocast(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize(
         "method, num_points, weighted",
         [("7POINT", 7, False), ("8POINT", 8, False), ("8POINT", 100, False), ("8POINT", 100, True)],
@@ -621,8 +627,6 @@ class TestFundamentalAutocast(BaseTester):
     def test_autocast_does_not_reach_the_fit(self, device, method, num_points, weighted):
         # A caller's bfloat16 autocast ran the 7- and 8-point matrix products in bfloat16: float32 points gave a
         # bfloat16 fundamental matrix far from the float32 one, and CUDA's eigh, which has no bfloat16 kernel, raised.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         generator = torch.Generator().manual_seed(0)
         points1 = torch.rand(1, num_points, 2, generator=generator) * torch.tensor([640.0, 480.0])
         points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, num_points, 2, generator=generator)
@@ -760,9 +764,8 @@ class TestComputeCorrespondEpilines(BaseTester):
         with pytest.raises(ShapeError, match=r"points must have shape \(\*, N, 2\) or \(\*, N, 3\), got \["):
             epi.get_closest_point_on_epipolar_line(points, pts2, F_mat)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
     def test_half_precision_rounds_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision accuracy check")
         # 256 scenes with F = K2^-T E K1^-1 and 100 points each in a 1280 x 720 image. Projecting and scaling in half
         # precision leaves the lines off by 1.0 of their largest entry in float16 and by 1.5 eps in bfloat16, and
         # rounding F x to the dtype before the scaling by 3.9 eps and 1.04 eps.
@@ -773,9 +776,8 @@ class TestComputeCorrespondEpilines(BaseTester):
         assert actual.dtype == dtype
         assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CUDA has no integer matmul kernel, nor MPS on torch 2.5.1")
     def test_integer_input_returns_float32(self, device):
-        if device.type != "cpu":
-            pytest.skip("CUDA has no integer matmul kernel, nor MPS on torch 2.5.1")
         # torch promotes the integer line to float32 for the scaling, and the scaled line is not cast back.
         points = torch.tensor([[1, 1]], device=device)
         F_mat = torch.tensor([[0, 0, 1], [0, 0, 1], [1, 1, -3]], device=device)
@@ -853,9 +855,8 @@ class TestFundamentlFromEssential(BaseTester):
         ):
             epi.fundamental_from_essential(E_mat, K, E_mat)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
     def test_half_precision_rounds_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision accuracy check")
         # 256 scenes with focal lengths near 1000 px. Multiplying in half precision leaves F off by 0.33 of its
         # largest entry in float16 and by 1.1 in bfloat16.
         scene = pixel_two_view_batch(256, 100, seed=0)
@@ -1057,22 +1058,11 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
         self.assert_close(epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm), expected)
 
 
-_NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
-_HALF_PIXELS = "half precision rounds the fixture's pixel coordinates, 120 to 440, to steps of 0.125 to 0.25"
-_HALF_PIXEL_F = (
-    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
-    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
-)
 # Fixed pixel offsets added to x2 where a pin needs inexact matches.
 _NOISE = [
     [1.5, -2.0], [-2.5, 1.0], [0.5, 3.0], [-1.0, -1.5], [2.0, 0.5], [-3.0, 2.5],
     [1.0, -0.5], [-0.5, -3.0], [2.5, 1.5], [-2.0, -2.5], [3.0, -1.0], [-1.5, 2.0],
 ]  # fmt: skip
-
-
-def _skip_half(dtype: torch.dtype, reason: str) -> None:
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip(reason)
 
 
 def _hom(p: torch.Tensor) -> torch.Tensor:
@@ -1093,9 +1083,9 @@ def _pixel_F(scene: Dict[str, torch.Tensor]) -> torch.Tensor:
 
 
 class TestConventionFundamental(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_convention_find_fundamental_acts_x2_F_x1(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_EIGH)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = epi.find_fundamental(x1, x2, torch.ones_like(x1[..., 0]))
         # x2^T F x1 = 0 for points1 from the first image and points2 from the second (OpenCV's findFundamentalMat
@@ -1106,9 +1096,9 @@ class TestConventionFundamental(BaseTester):
         # The result is scaled so that F[2, 2] = 1.
         self.assert_close(F[..., 2, 2], torch.ones_like(F[..., 2, 2]))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_convention_find_fundamental_7point_candidates(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_EIGH)
         # A 7-point sample whose cubic has three real roots, so all three candidates are genuine solutions.
         idx = [0, 1, 2, 3, 4, 5, 6]
         x1, x2 = two_view["x1"][:, idx], two_view["x2"][:, idx]
@@ -1129,9 +1119,9 @@ class TestConventionFundamental(BaseTester):
         dist = (F[0, :, None] - Fs[0, None]).abs().amax(dim=(-2, -1))
         assert dist.amin(dim=1).max() < 1e-3
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_convention_find_fundamental_weights_semantics(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_EIGH)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         w = torch.tensor([[0.5, 1.0, 2.0, 1.5, 0.75, 1.25, 3.0, 0.25, 1.0, 2.5, 0.6, 1.8]], device=device, dtype=dtype)
@@ -1153,9 +1143,9 @@ class TestConventionFundamental(BaseTester):
         F7 = epi.find_fundamental(x1_7, x2_7, method="7POINT")
         assert torch.equal(epi.find_fundamental(x1_7, x2_7, w7, method="7POINT"), F7)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_convention_fundamental_from_projections_direction_and_scale(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _HALF_PIXEL_F)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = epi.fundamental_from_projections(two_view["P1"], two_view["P2"])
         # x2^T F x1 = 0 for (P1, P2): points1 from the first camera, the order of find_fundamental.
@@ -1177,9 +1167,9 @@ class TestConventionFundamental(BaseTester):
         self.assert_close(F_n, -E)
         assert (F_n - E).abs().max() > 0.5
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_convention_fundamental_from_essential_K_sides(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _HALF_PIXEL_F)
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         eye = torch.eye(3, device=device, dtype=dtype)[None]
         E = epi.essential_from_Rt(eye, torch.zeros_like(two_view["t"]), two_view["R"], two_view["t"])
@@ -1190,9 +1180,9 @@ class TestConventionFundamental(BaseTester):
         resid = _epipolar_residual(F / F.norm(), x1, x2)
         assert resid.max() < 1e-3 * _epipolar_residual(F_swapped / F_swapped.norm(), x1, x2).max()
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_convention_epilines_of_image1_points_lie_in_image2(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _HALF_PIXEL_F)
         x1, x2 = two_view["x1"], two_view["x2"]
         F = _pixel_F(two_view)
         # Lines F x1 of first-image points live in the second image, scaled to a^2 + b^2 = 1.
@@ -1230,9 +1220,9 @@ class TestConventionFundamental(BaseTester):
         M[0, 2, 2] = 0.5
         self.assert_close(epi.normalize_transformation(M), M / 0.5)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
     def test_convention_get_closest_point_on_epipolar_line_in_image2(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _HALF_PIXEL_F)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         F = _pixel_F(two_view)
@@ -1245,9 +1235,9 @@ class TestConventionFundamental(BaseTester):
         swapped = epi.get_closest_point_on_epipolar_line(x2, x1, F)
         assert (_hom(swapped) * lines).sum(-1).abs().max() > 1.0
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_run_7point_zeroes_padded_roots_4862(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_EIGH)
         # #4862: a 7-point sample whose cubic has one real root. The candidates of its two missing roots used to be one
         # rank-3 matrix repeated, and are now zero matrices.
         idx = [0, 1, 2, 3, 4, 6, 10]
@@ -1269,10 +1259,11 @@ class TestConventionFundamental(BaseTester):
         out = epi.normalize_transformation(M, eps=1e-3)
         self.assert_close(out, M / M[..., -1:, -1:], rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"), reason="the near-threshold values are not representable in float16"
+    )
     @pytest.mark.parametrize("value", [1.0, 1e-3, 1e-6, -1e-7, 1.01e-8, -1.01e-8])
     def test_normalize_transformation_exact_last_entry(self, device, dtype, value):
-        if dtype == torch.float16:
-            pytest.skip("the near-threshold values are not representable in float16")
         M = torch.tensor([[2.0, 0.5, 1.0], [0.3, 1.5, -2.0], [0.1, 0.2, value]], device=device, dtype=dtype)
         out = epi.normalize_transformation(M)
         assert out[2, 2] == 1
@@ -1288,9 +1279,9 @@ class TestConventionFundamental(BaseTester):
         out.sum().backward()
         self.assert_close(M.grad, torch.ones_like(M), rtol=0, atol=0)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_find_fundamental_zero_weight_ignores_outlier_4875(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_EIGH)
         # #4875: zero-weight correspondences must not enter either the DLT system or Hartley statistics.
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
@@ -1349,14 +1340,14 @@ class TestEpipolarDesignRows(BaseTester):
 
 
 class TestRankTwoProjection(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_matches_svd(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         F = torch.randn(128, 3, 3, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(device)
         U, S, Vh = torch.linalg.svd(F)
         expected = U @ torch.diag_embed(S * torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64)) @ Vh
         self.assert_close(_rank2_projection(F), expected, atol=1e-9, rtol=0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize(
         "values, rotate",
         [
@@ -1374,8 +1365,6 @@ class TestRankTwoProjection(BaseTester):
     def test_repeated_singular_values(self, device, values, rotate):
         # At a repeated smallest singular value the nearest rank-2 matrix is not unique, so compare what every one of
         # them shares with the SVD's: the two largest singular values, a zero third one, and the distance sigma_3.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         F = _with_singular_values(values, rotate).to(device)[None]
         P = _rank2_projection(F)
         s = torch.linalg.svdvals(F)[0]
@@ -1397,9 +1386,8 @@ class TestRankTwoProjection(BaseTester):
         P = _enforce_rank2(F.to(device, torch.float32)).cpu().double()
         assert (P - expected).abs().max() < 1e-5
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_backward_is_finite_at_a_repeated_spectrum(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         F = torch.eye(3, device=device, dtype=torch.float64)[None].requires_grad_()
         _rank2_projection(F).sum().backward()
         assert torch.isfinite(F.grad).all()
@@ -1412,8 +1400,10 @@ class TestRankTwoProjection(BaseTester):
         F = torch.randn(2, 3, 3, generator=torch.Generator().manual_seed(2)).to(device, dtype)
         assert _rank2_projection(F).dtype == dtype
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the eight-point kernel is compared at float32 and float64 accuracy"
+    )
     def test_eight_point_fundamental_is_exact(self, device, dtype):
-        _skip_half(dtype, "the eight-point kernel is compared at float32 and float64 accuracy")
         two_view = two_view_scene(torch.device("cpu"), torch.float64)
         x1, x2 = two_view["x1"][:, :8], two_view["x2"][:, :8]
         n1, t1 = epi.normalize_points(x1)
@@ -1427,9 +1417,9 @@ class TestRankTwoProjection(BaseTester):
         assert torch.linalg.det(F).abs().max() < tolerance
         assert min((F - truth).norm(), (F + truth).norm()) < tolerance
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     @pytest.mark.parametrize("num_points", [8, 12])
     def test_run_8point_small_batches_keep_the_svd(self, device, dtype, num_points):
-        _skip_half(dtype, _NO_HALF_EIGH)
         # Below a few hundred matrices a batched 3x3 SVD is cheaper than the closed form's fixed cost, so small
         # batches keep the SVD rank-2 step, and their results, to the bit.
         generator = torch.Generator().manual_seed(num_points)
@@ -1449,8 +1439,8 @@ class TestRankTwoProjection(BaseTester):
         expected = epi.normalize_transformation(t2.transpose(-2, -1) @ ((U @ torch.diag_embed(S_new) @ V.mH) @ t1))
         assert torch.equal(epi.find_fundamental(points1, points2), expected)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_NO_HALF_EIGH)
     def test_run_8point_large_batches_match_small_ones(self, device, dtype):
-        _skip_half(dtype, _NO_HALF_EIGH)
         generator = torch.Generator().manual_seed(3)
         points1 = torch.rand(600, 12, 2, generator=generator).to(device, dtype)
         points2 = torch.rand(600, 12, 2, generator=generator).to(device, dtype)
@@ -1470,16 +1460,20 @@ class TestRankTwoProjection(BaseTester):
 
 
 class TestSevenPoint(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the seven-point kernel is compared at float32 and float64 accuracy"
+    )
     def test_identically_singular_pencil_is_finite(self, device, dtype):
-        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
         # Only the first two entries of F are free: every matrix in this null space is rank deficient.
         design = torch.eye(9, device=device, dtype=dtype)[None, 2:]
         candidates, valid = _seven_point_candidates(design)
         assert torch.isfinite(candidates).all()
         assert not valid.any()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the seven-point kernel is compared at float32 and float64 accuracy"
+    )
     def test_singular_pencil_endpoints(self, device, dtype):
-        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
         points1 = torch.tensor(
             [[[0, -2], [-2, 1], [0, 1], [0, 0], [-1, 2], [-1, 1], [2, -1]]], device=device, dtype=dtype
         )
@@ -1505,8 +1499,10 @@ class TestSevenPoint(BaseTester):
             distances = torch.cdist(candidates.flatten(-2), candidates.flatten(-2))
             assert distances.max() > 0.1  # Keep both distinct matrices, including the root at infinity.
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the seven-point kernel is compared at float32 and float64 accuracy"
+    )
     def test_candidates_are_exact(self, device, dtype):
-        _skip_half(dtype, "the seven-point kernel is compared at float32 and float64 accuracy")
         two_view = two_view_scene(torch.device("cpu"), torch.float64)
         x1, x2 = two_view["x1"][:, :7], two_view["x2"][:, :7]
         n1, t1 = epi.normalize_points(x1)
@@ -1522,12 +1518,11 @@ class TestSevenPoint(BaseTester):
         distance = torch.minimum((F - truth).flatten(1).norm(dim=1), (F + truth).flatten(1).norm(dim=1))
         assert distance.min() < tolerance
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("idx", [[0, 1, 2, 3, 4, 5, 6], [0, 1, 2, 3, 4, 6, 10]])
     def test_backward_is_finite(self, device, idx):
         # The second sample has one real root (#4862): masking candidates built from NaN roots used to leave NaN in
         # the backward pass although the output was finite.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         two_view = two_view_scene(device, torch.float64)
         x1 = two_view["x1"][:, idx].clone().requires_grad_()
         F = epi.find_fundamental(x1, two_view["x2"][:, idx], method="7POINT")
@@ -1620,13 +1615,15 @@ class TestClosestPointOnEpipolarLineMixedPrecision(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["other_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("operand", ["Fm", "pts2"])
     @pytest.mark.parametrize("other_dtype", [torch.float32, torch.float64])
     def test_fm_and_pts2_take_the_dtype_of_pts1_6177(self, device, dtype, other_dtype, operand):
         # Autocast used to unify half-precision operands with float32 ones; the function now casts Fm and pts2 to the
         # dtype of pts1 itself, in and out of autocast. A mixed pts2 raised on CPU and gave wrong values on MPS.
-        if device.type == "mps" and other_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         points1, points2, Fm = self._inputs(device, dtype)
         expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
         if operand == "Fm":

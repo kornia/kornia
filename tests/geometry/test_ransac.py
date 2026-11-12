@@ -251,6 +251,7 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         if "device" in request.fixturenames and request.getfixturevalue("device").type == "mps":
             pytest.skip("too slow on the MPS CI runner; the rank test is device-independent and covered on CPU")
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     @pytest.mark.parametrize(
         "threshold, ratio, rejected",
         [
@@ -269,16 +270,13 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         ],
     )
     def test_closed_form_compares_the_singular_values(self, device, dtype, threshold, ratio, rejected):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         model = _rank_ratio_model(ratio, dtype, device)
         for scale in (1.0, 1e-3):
             near = ransac_module._fundamental_near_rank_one((scale * model)[None], threshold**2)
             assert near.tolist() == [rejected]
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     def test_tensor_threshold_gives_the_same_answer(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         models = torch.stack([_rank_ratio_model(r, dtype, device) for r in (0.04, 0.06, 0.09, 0.11)])
         for threshold in (1e-2, 1.0):
             expected = ransac_module._fundamental_near_rank_one(models, threshold**2)
@@ -287,9 +285,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             )
             assert torch.equal(near, expected)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     def test_pixel_models_are_tested_in_the_normalized_frame(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         # Square corners of mean radius 100 sqrt(2) in image 1 and three times that in image 2: Hartley's shared scale
         # is 0.005 (per image it would be 0.01 and 0.0033), and 1 px is a threshold of 0.005, whose five thresholds are
         # a floor of 0.025 in the frame of these two literal normalizations. The compared values are 0.0235 and 0.0352
@@ -307,6 +304,9 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         models = torch.full((1, 3, 3), float("nan"), device=device)
         assert ransac_module._fundamental_near_rank_one(models, 1e-4).tolist() == [False]
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the 0.3 px noise is below half-precision resolution at these coordinates"
+    )
     @pytest.mark.parametrize("line_image", [1, 2])
     @pytest.mark.parametrize(
         "model_type, options",
@@ -323,8 +323,6 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     def test_mismatches_along_a_line_do_not_outvote_the_true_geometry(
         self, device, dtype, model_type, options, line_image
     ):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
         for seed in _line_scene_seeds(device, 1 if options.get("local_optimization") == "dlt" else 3):
             kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, line_image))
             model, mask = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)(kp1, kp2)
@@ -334,12 +332,13 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             assert mask[:30].sum() >= 27
             assert mask[30:70].sum() <= 5
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="the scene is in float64, which MPS does not support"
+    )
     @pytest.mark.parametrize("line_image", [None, 2])
     def test_the_frame_does_not_depend_on_the_pixel_scale(self, device, line_image):
         # In pixels s2 / s1 of the true geometry scales with the images (9.4e-3 at 640 x 480): a pixel-space floor would
         # reject it. Everything scaled together, with the threshold, is the same problem in the normalized frame.
-        if device.type == "mps":
-            pytest.skip("the scene is in float64, which MPS does not support")
         results = []
         kp1, kp2 = (kp.to(device) for kp in _line_mismatch_scene(0, line_image))
         for scale in (1.0, 16.0, 0.0625):
@@ -354,13 +353,16 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         )
         assert mask[:30].sum() >= 27
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the 0.3 px noise is below half-precision resolution at these coordinates"
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["model_type"] == "fundamental_8pt" and "degensac" in p["options"]),
+        reason="DEGENSAC is for seven-point samples",
+    )
     @pytest.mark.parametrize("options", [{}, {"local_optimization": "dlt"}, {"degensac": True}])
     @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt"])
     def test_scene_without_a_line_keeps_its_estimate(self, monkeypatch, device, dtype, model_type, options):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the 0.3 px noise is below half-precision resolution at these coordinates")
-        if model_type == "fundamental_8pt" and "degensac" in options:
-            pytest.skip("DEGENSAC is for seven-point samples")
         for seed in _line_scene_seeds(device, 3):
             kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(seed, None))
             ransac = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, **options)
@@ -372,11 +374,10 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             assert torch.equal(mask, untested_mask)
             assert torch.equal(model, untested_model)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     @pytest.mark.parametrize("options", [{}, {"local_optimization": "dlt"}])
     @pytest.mark.parametrize("line_image", [1, 2])
     def test_correspondences_all_on_a_line_give_no_model(self, device, dtype, line_image, options):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         generator = torch.Generator().manual_seed(0)
         u = torch.rand(50, generator=generator, dtype=torch.float64) * 640
         on_line = torch.stack([u, 0.3 * u + 100], 1).to(device, dtype)
@@ -387,11 +388,10 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         assert model.abs().amax() == 0
         assert not mask.any()
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     def test_keypoints_inside_the_threshold_still_get_a_model(self, device, dtype):
         # The limit of the floor: with unit-square keypoints and the default threshold of 2 px every correspondence is
         # an inlier of most models, and five thresholds of that frame would otherwise reject all of them.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         generator = torch.Generator().manual_seed(0)
         kp1 = torch.rand(30, 2, generator=generator, dtype=torch.float64).to(device, dtype)
         kp2 = torch.rand(30, 2, generator=generator, dtype=torch.float64).to(device, dtype)
@@ -440,10 +440,9 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             assert len(calls) == 1
 
     # The scene test below runs "fundamental" only; this one pins that every fundamental name is rank-tested.
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scores models in at least float32")
     @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_7pt", "fundamental_8pt"])
     def test_verify_counts_no_inliers_for_a_rank_one_pixel_model(self, device, dtype, model_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scores models in at least float32")
         kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(0, 2))
         # l m^T for the mismatches' line, l = (0.3, -1, 100), and a line m through image 1.
         line = torch.tensor([0.3, -1.0, 100.0], device=device, dtype=dtype)
@@ -455,14 +454,15 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
         assert support == 0
         assert not inliers.any()
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="the scene is in float64, which MPS does not support"
+    )
     @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
     @pytest.mark.parametrize("line_image", [1, 2])
     def test_refinement_that_collapses_is_not_selected(self, monkeypatch, device, line_image, loss):
         # The sampling loop tests minimal models; a refinement must not bring a rank-one model back in. Here each
         # refinement of one kind returns the exact rank-one matrix of the mismatches' line, which outscores the true
         # geometry (40 inliers to 30).
-        if device.type == "mps":
-            pytest.skip("the scene is in float64, which MPS does not support")
         kp1, kp2 = (kp.to(device, torch.float64) for kp in _line_mismatch_scene(0, line_image))
         ransac = RANSAC("fundamental", inl_th=1.0, max_iter=50, seed=0)
         original = ransac._lm_refine
@@ -492,11 +492,13 @@ class TestRANSACFundamental(BaseTester):
         Fm, _ = ransac(points1, points2)
         assert Fm.shape == (3, 3)
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"),
+        reason="float16 rounds the pixel coordinates enough to push a match past the 1 px inlier threshold",
+    )
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
-        if dtype == torch.float16:
-            pytest.skip("float16 rounds the pixel coordinates enough to push a match past the 1 px inlier threshold")
         torch.random.manual_seed(0)
         # generate input data
         data_dev = dict_to(data, device, dtype)
@@ -624,9 +626,11 @@ class TestRANSACLocalOptimization(BaseTester):
         assert len(calls) > 0, "the local-optimization step never ran"
         self.assert_close(Fm, good_fit[0])
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="line_segment_transfer_error_one_way overflows half precision on 600 px coordinates",
+    )
     def test_line_segment_polish_improves_the_fit(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("line_segment_transfer_error_one_way overflows half precision on 600 px coordinates")
         # Segments about 100 px long, half of them outliers. The polisher's Gaussian weights are on the perpendicular
         # distance in pixels, not on that distance times the segment length (#4867), so local optimization refines
         # the minimal-sample model instead of fitting a handful of segments.
@@ -1055,9 +1059,10 @@ class TestConventionRANSAC(BaseTester):
             assert bool(mask[6]) is expected
             assert int(mask.sum()) == 11 + int(expected)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="seed=None draws from the generator of the input's device; this test reads the CPU one"
+    )
     def test_convention_ransac_seed_is_private(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("seed=None draws from the generator of the input's device; this test reads the CPU one")
         kp1, kp2 = _planar_matches(device, dtype)
         kp2[9, 0] += 10.0
 
@@ -1083,9 +1088,8 @@ class TestConventionRANSAC(BaseTester):
         assert torch.equal(model_c, model_d)
         assert torch.equal(mask_c, mask_d)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_LINES)
     def test_convention_ransac_linesegment_threshold_units_4867(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip(_HALF_LINES)
         H = torch.tensor([_H_TRUE], device=device, dtype=dtype)
         # One segment moved 3 px off its line in image 2, scored by the true H. The inlier test uses the mean
         # endpoint-to-line distance in pixels, whatever the segment's length: the 3-px offset is an inlier at
@@ -1492,9 +1496,11 @@ class TestRANSACSampling(BaseTester):
         assert ransac._prosac_max_samples(inliers, 45) == 4096
         assert ransac._prosac_schedule(8, 200, inliers.device)[100 - 8].item() < 3970
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="a 1 px threshold on 500 px coordinates is below half-precision resolution",
+    )
     def test_prosac_stops_on_a_certified_prefix(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a 1 px threshold on 500 px coordinates is below half-precision resolution")
         # 150 of 500 correspondences follow the homography and are ranked first: PROSAC stops after
         # its first batch, while uniform sampling needs far more than one batch of 16 at 30% inliers.
         torch.manual_seed(0)
@@ -1667,9 +1673,11 @@ class TestRANSACAutoBatch(BaseTester):
         expected = (torch.searchsorted(ends, last_draws) + 4).tolist()
         assert [int(b.max()) + 1 for b in batches] == expected
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="a 1 px threshold on 500 px coordinates is below half-precision resolution",
+    )
     def test_auto_batch_forward_matches_explicit_batch(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a 1 px threshold on 500 px coordinates is below half-precision resolution")
         # The auto batch is a plain batch size: the same seed gives the same draws as that size given explicitly.
         torch.manual_seed(0)
         kp1 = torch.rand(200, 2, device=device, dtype=dtype) * 500
@@ -1762,14 +1770,13 @@ class TestRANSACBoundedLO(BaseTester):
 
 
 class TestRANSACAutocast(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
     @pytest.mark.parametrize("local_optimization", ["lm", "dlt"])
     def test_autocast_does_not_reach_the_estimate(self, device, model_type, local_optimization):
         # Under a caller's bfloat16 autocast, local_optimization="dlt" fitted in bfloat16 and returned a bfloat16
         # model (CUDA "fundamental" raised in eigh), and "lm" solved and scored its minimal samples in bfloat16, which
         # changed its estimate. Noise at half the threshold puts many inliers where bfloat16 scores flip them.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         kp1, kp2, _, _, _ = create_dominant_plane_scene(500, 0.9, 0.5, 0, noise=1.0, device=device)
         results = []
         for enabled in (False, True):
@@ -2019,10 +2026,12 @@ class TestRANSACLevenbergMarquardt(BaseTester):
     pixel threshold and tolerance converted by :func:`_px`.
     """
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="sub-pixel checks on 600 px coordinates are below half-precision resolution",
+    )
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_recovers_exact_model_among_outliers(self, device, dtype, model_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
         kp1, kp2, _, _, inliers = _scene(model_type, 200, 60, 0.0, seed=0)
         ransac = RANSAC(model_type, inl_th=_px(model_type, 1.0), seed=0)
         model, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
@@ -2046,9 +2055,10 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert mask.any()
         assert torch.equal(mask.cpu(), errors <= _px(model_type, 1.5))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="this tight-threshold regression uses float32/float64 coordinates"
+    )
     def test_msac_does_not_discard_supported_candidates(self, device, dtype, monkeypatch):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("this tight-threshold regression uses float32/float64 coordinates")
         generator = torch.Generator().manual_seed(31)
         kp1 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
         kp2 = (torch.rand(40, 2, generator=generator) * 100).to(device, dtype)
@@ -2062,9 +2072,8 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert mask.sum() > 8
         assert torch.isfinite(model).all()
 
+    @pytest.mark.applies_to(dtypes=("bfloat16",), reason="the model loses consensus when rounded to bfloat16")
     def test_failure_when_model_cast_loses_support(self, device, dtype):
-        if dtype != torch.bfloat16:
-            pytest.skip("the model loses consensus when rounded to bfloat16")
         kp1, kp2, _, _, _ = _scene("homography", 12, 0, 0.0, seed=1)
         model, mask = RANSAC("homography", seed=0, max_samples=256, inl_th=0.5)(
             kp1.to(device, dtype), kp2.to(device, dtype)
@@ -2072,10 +2081,12 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert not mask.any()
         assert torch.equal(model, torch.zeros_like(model))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="sub-pixel accuracy on 600 px coordinates is below half-precision resolution",
+    )
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_refinement_improves_on_the_minimal_model(self, device, dtype, model_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("sub-pixel accuracy on 600 px coordinates is below half-precision resolution")
         kp1, kp2, clean, _, inliers = _scene(model_type, 300, 90, 0.5, seed=2)
         args = kp1.to(device, dtype), kp2.to(device, dtype)
         th = _px(model_type, 1.5)
@@ -2101,10 +2112,12 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert mask.dtype == torch.bool
         assert not bool(mask.any())
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="sub-pixel checks on 600 px coordinates are below half-precision resolution",
+    )
     @pytest.mark.parametrize("model_type", _LM_MODELS)
     def test_nonfinite_correspondences_are_outliers(self, device, dtype, model_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
         kp1, kp2, _, _, _ = _scene(model_type, 150, 0, 0.0, seed=3)
         kp1[:3] = float("nan")
         kp2[3:6, 0] = float("inf")
@@ -2127,19 +2140,20 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert torch.equal(model_a, model_b)
         assert torch.equal(mask_a, mask_b)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="sub-pixel checks on 600 px coordinates are below half-precision resolution",
+    )
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
     def test_score_types(self, device, dtype, score_type):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
         kp1, kp2, _, _, inliers = _planar_scene(200, 80, 0.0, seed=5)
         _, mask = RANSAC("homography", inl_th=1.0, score_type=score_type, seed=0)(
             kp1.to(device, dtype), kp2.to(device, dtype)
         )
         assert torch.equal(mask.cpu(), inliers)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision inputs only")
     def test_half_precision_inputs(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision inputs only")
         # A 10 px extent keeps bfloat16 rounding of the exact matches below inl_th; the pipeline computes in float32.
         kp1, kp2, _, _, inliers = _planar_scene(64, 16, 0.0, seed=6)
         kp1, kp2 = kp1 / 60, kp2 / 60
@@ -2149,6 +2163,7 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert torch.isfinite(model).all()
         assert torch.equal(mask.cpu(), inliers)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the CPU batch schedule")
     @pytest.mark.parametrize(
         "model_type, max_samples, expected",
         [
@@ -2158,8 +2173,6 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         ],
     )
     def test_auto_batches_grow_on_cpu_and_cover_the_budget(self, device, model_type, max_samples, expected):
-        if device.type != "cpu":
-            pytest.skip("the CPU batch schedule")
         # confidence=1 draws the whole budget: batches double from the first one, the last is cut to the budget.
         kp1, kp2, _, _, _ = _scene(model_type, 100, 30, 0.5, seed=7)
         ransac = RANSAC(model_type, max_samples=max_samples, confidence=1.0, seed=0)
@@ -2197,9 +2210,11 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         # Without an offset, the batch index times the batch size is assumed, as before.
         assert torch.equal(ransac.sample(4, 100, 40, 3, device), ransac.sample(4, 100, 40, 3, device, offset=120))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="sub-pixel checks on 600 px coordinates are below half-precision resolution",
+    )
     def test_prosac_finds_the_ranked_consensus(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("sub-pixel checks on 600 px coordinates are below half-precision resolution")
         # 60 of 300 matches follow the homography and are ranked first.
         kp1, kp2, _, _, inliers = _planar_scene(300, 240, 0.0, seed=9)
         kp1, kp2, inliers = kp1.flip(0), kp2.flip(0), inliers.flip(0)
@@ -2209,16 +2224,14 @@ class TestRANSACLevenbergMarquardt(BaseTester):
         assert torch.equal(mask.cpu(), inliers)
 
 
+@pytest.mark.applies_to(
+    dtypes=("float32", "float64"), reason="calibrated thresholds of 1e-3 are below half-precision resolution"
+)
 class TestRANSACEssentialLevenbergMarquardt(BaseTester):
     """What is specific to essential matrices with ``local_optimization="lm"``: no normalization, unit-norm output."""
 
-    def _skip_half(self, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("calibrated thresholds of 1e-3 are below half-precision resolution")
-
     @pytest.mark.parametrize("seed", [0, 2, 3])
     def test_returns_a_unit_frobenius_essential_matrix(self, device, dtype, seed):
-        self._skip_half(dtype)
         kp1, kp2, _, _, _ = _scene("essential", 200, 60, 0.5, seed=seed)
         E, _ = RANSAC("essential", inl_th=_px("essential", 1.5), seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
         singular_values = torch.linalg.svdvals(E.cpu().double())
@@ -2230,7 +2243,6 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
 
     @pytest.mark.parametrize("n", [6, 7, 8])
     def test_small_inputs(self, device, dtype, n):
-        self._skip_half(dtype)
         kp1, kp2, _, truth, _ = _scene("essential", n, 0, 0.0, seed=3)
         E, mask = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0)(
             kp1.to(device, dtype), kp2.to(device, dtype)
@@ -2244,7 +2256,6 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         assert min(float((E - truth).norm()), float((E + truth).norm())) < tolerance
 
     def test_pixel_coordinates_by_mistake_stay_finite(self, device, dtype):
-        self._skip_half(dtype)
         # Pixel coordinates are not a valid input for "essential", but must not produce NaN or raise.
         kp1, kp2, _, _, _ = _two_view_scene(100, 30, 0.0, seed=4)
         E, mask = RANSAC("essential", inl_th=1.0, seed=0)(kp1.to(device, dtype), kp2.to(device, dtype))
@@ -2253,7 +2264,6 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
 
     @pytest.mark.parametrize("seed", [0, 1, 2])
     def test_planar_scene(self, device, dtype, seed):
-        self._skip_half(dtype)
         # A calibrated plane admits multiple essential matrices with the same epipolar fit. Check the recovered
         # consensus and essential manifold, not equality to one generating motion (which depends on sampled ties).
         generator = torch.Generator().manual_seed(12)
@@ -2276,7 +2286,6 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         assert error.max() < (1e-16 if dtype == torch.float64 else 1e-10)
 
     def test_batch_of_one_sample(self, device, dtype):
-        self._skip_half(dtype)
         kp1, kp2, _, _, inliers = _scene("essential", 60, 10, 0.0, seed=5)
         ransac = RANSAC("essential", inl_th=_px("essential", 1.0), seed=0, batch_size=1, max_samples=64)
         _, mask = ransac(kp1.to(device, dtype), kp2.to(device, dtype))
@@ -2284,15 +2293,11 @@ class TestRANSACEssentialLevenbergMarquardt(BaseTester):
         assert torch.equal(mask.cpu(), inliers)
 
 
+@pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the kernels run in float32 or float64")
 class TestRANSACLevenbergMarquardtKernels(BaseTester):
     """RANSAC's normalization and the Levenberg-Marquardt refiners it calls."""
 
-    def _skip_half(self, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the kernels run in float32 or float64")
-
     def test_normalize_correspondences(self, dtype):
-        self._skip_half(dtype)
         kp1, kp2, _, _, _ = _two_view_scene(50, 0, 0.0, seed=14)
         kp1[3] = float("nan")
         kp2[7, 0] = float("inf")
@@ -2312,12 +2317,13 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         self.assert_close((t1 @ torch.cat([kp1[finite], ones], 1).T).T, x1[finite])
         self.assert_close((t2 @ torch.cat([kp2[finite], ones], 1).T).T, x2[finite])
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="the refinement kernels run in float64, which MPS does not support",
+    )
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
     @pytest.mark.parametrize("loss", ["cauchy", "truncated"])
     def test_refinement_reaches_a_local_minimum(self, device, dtype, model_type, loss):
-        self._skip_half(dtype)
-        if device.type == "mps":
-            pytest.skip("the refinement kernels run in float64, which MPS does not support")
         # Noisy inliers only, refined from a perturbed ground truth: the refit's cost is below the start's and does
         # not drop along small steps in any direction of the model's manifold.
         kp1, kp2, _, truth, _ = _scene(model_type, 80, 0, 1.0, seed=13)
@@ -2355,6 +2361,7 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
 
 
 class TestRANSACScoring(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="RANSAC scoring uses at least float32")
     @pytest.mark.parametrize("model_type", ["homography", "fundamental", "essential"])
     @pytest.mark.parametrize("score_type", ["ransac", "msac"])
     @pytest.mark.parametrize("prosac", [False, True])
@@ -2362,8 +2369,6 @@ class TestRANSACScoring(BaseTester):
         from kornia.geometry.epipolar._metrics import _sampson_from_quadratic_basis, _sampson_quadratic_basis
         from kornia.geometry.homography import _transfer_basis, _transfer_from_basis
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RANSAC scoring uses at least float32")
         generator = torch.Generator().manual_seed(10)
         x1 = torch.rand(137, 3, generator=generator).to(device, dtype)
         x2 = torch.rand(137, 3, generator=generator).to(device, dtype)
@@ -2413,13 +2418,12 @@ class TestRANSACCompiled(BaseTester):
     rather than on every pull request.
     """
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("line_image", [1, 2])
     @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_8pt"])
     def test_compile_mismatches_along_a_line_do_not_outvote_the_true_geometry(self, device, model_type, line_image):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         for seed in range(3):
             kp1, kp2 = (kp.to(device, torch.float32) for kp in _line_mismatch_scene(seed, line_image))
             model, mask = RANSAC(model_type, inl_th=1.0, max_iter=50, seed=seed, compile=True)(kp1, kp2)
@@ -2427,13 +2431,12 @@ class TestRANSACCompiled(BaseTester):
             assert mask[:30].sum() >= 27
             assert mask[30:70].sum() <= 5
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("loss", ["truncated", "cauchy"])
     def test_compile_refinement_that_collapses_is_not_selected(self, monkeypatch, device, loss):
         # As test_refinement_that_collapses_is_not_selected, in the graph: a fresh program traces the patched one.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         from kornia.geometry import _ransac_program
 
         kp1, kp2 = (kp.to(device, torch.float64) for kp in _line_mismatch_scene(0, 2))
@@ -2470,14 +2473,14 @@ class TestRANSACCompiled(BaseTester):
         with pytest.raises(ValueError, match="batches of at most"):
             RANSAC("homography", batch_size=1 << 21, compile=True)(torch.rand(8, 2), torch.rand(8, 2))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the compiled program is checked in float32 and float64"
+    )
     @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
     def test_compile_recovers_the_eager_estimate(self, device, dtype, model_type):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the compiled program is checked in float32 and float64")
         kp1, kp2, _, _, inliers = _scene(model_type, 300, 120, 0.5, seed=1)
         kp1, kp2 = kp1.to(device, dtype), kp2.to(device, dtype)
         th = _px(model_type, 1.5)
@@ -2496,13 +2499,12 @@ class TestRANSACCompiled(BaseTester):
         assert (mask.cpu() & ~inliers).sum() <= 2
         assert (mask.cpu() & inliers).sum() >= 0.9 * inliers.sum()
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("artifact", ["0", "1"])
     @pytest.mark.parametrize("model_type", _COMPILED_MODELS)
     def test_compile_one_graph_for_every_input(self, monkeypatch, artifact, device, model_type):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         from torch._dynamo.utils import counters
 
         from kornia.geometry import _ransac_program
@@ -2525,10 +2527,9 @@ class TestRANSACCompiled(BaseTester):
             assert torch.equal(mask.cpu(), _model_errors(model_type, model, kp1, kp2) <= threshold)
         assert counters["stats"]["unique_graphs"] == graphs
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_seeded_calls_repeat_and_keep_the_global_generator(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         kp1, kp2, _, _, _ = _planar_scene(200, 80, 0.5, seed=3)
         kp1, kp2 = kp1.to(device, torch.float32), kp2.to(device, torch.float32)
         ransac = RANSAC("homography", seed=7, compile=True)
@@ -2613,6 +2614,7 @@ class TestRANSACCompiled(BaseTester):
         actual = _mix32(torch.tensor(values, dtype=torch.int64, device=device)).cpu().tolist()
         assert actual == [lowbias32(v) for v in values]
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_sampler_keys_are_private_reproducible_and_batch_independent(self, device):
         """A sample's keys are a hash of the seed and the sample's index alone.
@@ -2622,9 +2624,6 @@ class TestRANSACCompiled(BaseTester):
         ``2**32`` do not share samples.
         """
         from kornia.geometry._ransac_program import _uniform_keys
-
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
 
         def keys(seed, drawn, batch=4, target=device):
             return _uniform_keys(torch.tensor(seed), torch.tensor(drawn), batch, 8, target)
@@ -2646,14 +2645,13 @@ class TestRANSACCompiled(BaseTester):
         assert not torch.equal(keys(0, 0), keys(1 << 32, 0))
         assert len({keys(seed, 0, 1)[0, 0].item() for seed in range(256)}) == 256
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_sampler_draws_uniform_subsets(self, device):
         """Floyd's algorithm, which the program uses on every device: distinct indices, every 4-subset of 10 equally
         likely (chi-square over the 210 subsets, 209 degrees of freedom, far below 4.5 standard deviations)."""
         from kornia.geometry._ransac_program import _draw_samples
 
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         draws = 105_000
         samples = _draw_samples(4, 10, draws, device, torch.tensor(5), torch.tensor(0)).cpu()
         assert samples.shape == (draws, 4)
@@ -2799,12 +2797,11 @@ class TestRANSACCompiled(BaseTester):
         with pytest.raises(RuntimeError, match="kernel failed"):
             _artifact_or_traced(artifact, traced)(torch.rand(8, 2))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     @pytest.mark.parametrize("artifact", ["0", "1"])
     def test_compile_reuses_program_across_inference_contexts(self, monkeypatch, artifact, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         from torch._dynamo.utils import counters
 
         from kornia.geometry import _ransac_program
@@ -2844,10 +2841,9 @@ class TestRANSACCompiled(BaseTester):
             self.assert_close(actual[0], expected[0], rtol=0, atol=0)
             assert counters["stats"]["unique_graphs"] == graphs
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_no_consensus_returns_the_failure_result(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         # Every sample maps a triangle onto a single point: sample_is_valid_for_homography rejects them all.
         points1 = (10.0 * torch.rand(16, 2, generator=torch.Generator().manual_seed(123))).to(device)
         points2 = torch.full((16, 2), 5.0)
@@ -2860,10 +2856,9 @@ class TestRANSACCompiled(BaseTester):
             assert torch.equal(model, torch.zeros(3, 3, device=device))
             assert not mask.any()
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="the compiled program supports CPU and CUDA")
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
     def test_compile_non_finite_correspondences_are_never_inliers(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("the compiled program supports CPU and CUDA")
         kp1, kp2, _, _, inliers = _planar_scene(200, 40, 0.3, seed=4)
         kp1, kp2 = kp1.to(device, torch.float32), kp2.to(device, torch.float32)
         kp1[50], kp2[60, 1], kp2[70, 0] = float("nan"), float("inf"), float("-inf")
@@ -3008,9 +3003,9 @@ def _degenerate_sample(labels, generator):
     )
 
 
-def _skip_half(dtype):
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("the scene's pixel coordinates quantize at the noise scale in half precision")
+FULL_PRECISION_SCENE = pytest.mark.applies_to(
+    dtypes=("float32", "float64"), reason="the scene's pixel coordinates quantize at the noise scale in half precision"
+)
 
 
 def _off_plane_error(F, clean1, clean2):
@@ -3025,11 +3020,11 @@ def _explains_off_plane(F, clean1, clean2):
 
 
 class TestRANSACDegensacRecovery(BaseTester):
+    @FULL_PRECISION_SCENE
     @pytest.mark.parametrize("max_lo_iters", [0, 5])
     def test_degenerate_samples_are_recovered(self, device, dtype, max_lo_iters):
         # Every sample the degeneracy test flags must come back as a model that explains the off-plane geometry;
         # a sample it does not flag must come back as None.
-        _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         ransac = RANSAC("fundamental", inl_th=1.0, max_lo_iters=max_lo_iters, seed=0, degensac=True)
@@ -3061,8 +3056,8 @@ class TestRANSACDegensacRecovery(BaseTester):
             assert _explains_off_plane(t2.mT @ best @ t1, clean1.cpu(), clean2.cpu())
         assert flagged >= 5
 
+    @FULL_PRECISION_SCENE
     def test_record_checks_are_batched(self, device, dtype, monkeypatch):
-        _skip_half(dtype)
         sizes = []
         original = ransac_module._h_degenerate_samples
 
@@ -3081,9 +3076,9 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert max(sizes) > 1
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
 
+    @FULL_PRECISION_SCENE
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
     def test_batched_recovery_matches_scalar_checks(self, device, dtype, score_type, monkeypatch):
-        _skip_half(dtype)
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 5, device=device, dtype=dtype)
         estimator = RANSAC("fundamental", inl_th=1.0, seed=5, degensac=True, score_type=score_type)
         batched = estimator(kp1, kp2)
@@ -3096,11 +3091,11 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert torch.equal(batched[0], scalar[0])
         assert torch.equal(batched[1], scalar[1])
 
+    @FULL_PRECISION_SCENE
     def test_unseeded_recoveries_leave_the_global_generator(self, device, dtype):
         # The minimal samples of an unseeded call come from the global generator. Recoveries drawing from it too
         # would shift every later sample, so an unseeded call with a recovery would sample a different sequence than
         # degensac=False (on the loftr_fund pair: 9 of 20 global seeds with 2+ gross errors instead of 5).
-        _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         ransac = RANSAC("fundamental", inl_th=1.0, degensac=True)
@@ -3118,11 +3113,11 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert recoveries  # the recovery drew
         assert torch.equal(torch.get_rng_state(), state)
 
+    @FULL_PRECISION_SCENE
     def test_unseeded_recovery_draws_follow_the_samples(self, device, dtype, monkeypatch):
         # An unseeded call seeds its private recovery generator from the sample that triggered the recovery, which
         # comes from the global generator: the draws differ between calls without advancing it. A constant seed
         # would repeat the same draws, and so the same luck, on every unseeded call.
-        _skip_half(dtype)
         seeds = []
         original = RANSAC._degensac_recover
 
@@ -3157,11 +3152,11 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert per_call[1]
         assert per_call[0] != per_call[1]
 
+    @FULL_PRECISION_SCENE
     def test_repeated_plane_is_searched_once(self, device, dtype, monkeypatch):
         # Every degenerate record setter of a dominant plane finds the same plane (the refined planes of repeated
         # recoveries have Jaccard index 0.997-1.0 on these scenes), and nine searches of it per call made DEGENSAC
         # eleven times slower than plain RANSAC; VSAC skips a model whose inliers repeat (Jaccard index 0.95).
-        _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
@@ -3193,11 +3188,11 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert len(calls) == 1
         assert len(recoveries) == 1
 
+    @FULL_PRECISION_SCENE
     def test_dominant_plane_is_refined_once_per_call(self, device, dtype, monkeypatch):
         # A later record setter's homography is noisier than the refined plane (Jaccard index 0.03-1.0 against it at
         # N=4000), so a Jaccard test before innerH let one to five repeated refinements through per call; its inliers
         # lie inside the refined plane (98.3-100% of them in every repeat measured), which a containment test sees.
-        _skip_half(dtype)
         refinements = []
         original = ransac_module._inner_homography
         monkeypatch.setattr(ransac_module, "_inner_homography", lambda *a: refinements.append(1) or original(*a))
@@ -3207,8 +3202,8 @@ class TestRANSACDegensacRecovery(BaseTester):
             RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
             assert len(refinements) == 1, f"seed {seed}"
 
+    @FULL_PRECISION_SCENE
     def test_dominant_plane_is_searched_at_most_twice_per_call(self, device, dtype, monkeypatch):
-        _skip_half(dtype)
         calls = []
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
@@ -3231,18 +3226,18 @@ class TestRANSACDegensacRecovery(BaseTester):
         generator = torch.Generator().manual_seed(999)
         return ransac._degensac_recover(model, sample, x1, x2, x1_host, x2_host, basis, threshold, generator)
 
+    @FULL_PRECISION_SCENE
     def test_refinement_never_lowers_the_recovered_score(self, device, dtype):
         # With score_type="ransac" the truncated LM can trade inliers: on this sample it took the recovered model from
         # 568 to 566. The recovery keeps the better of its raw and refined models.
-        _skip_half(dtype)
         raw = self._recover_once(0, "ransac", 5, device, dtype)
         refined = self._recover_once(5, "ransac", 5, device, dtype)
         assert raw is not None
         assert refined is not None
         assert float(refined[1][0]) >= float(raw[1][0])
 
+    @FULL_PRECISION_SCENE
     def test_worse_refinement_keeps_the_raw_model(self, device, dtype, monkeypatch):
-        _skip_half(dtype)
         raw = self._recover_once(0, "msac", 0, device, dtype)
         # A "refinement" that returns a scrambled model scores far below the raw one.
         monkeypatch.setattr(RANSAC, "_lm_refine", lambda self, models, *args: models.roll(1, dims=-1))
@@ -3252,11 +3247,11 @@ class TestRANSACDegensacRecovery(BaseTester):
         assert torch.equal(kept[0], raw[0])
         assert torch.equal(kept[1], raw[1])
 
+    @FULL_PRECISION_SCENE
     def test_non_degenerate_sample_returns_none(self, device, dtype):
         # Seven off-plane correspondences are not always in general position at the test's tolerance: a five-point
         # homography fit leaves two redundant constraints, and five of the first seven here fit one within 2.2 px^2
         # < 3 t. The contract is the implication: a sample the test does not flag is not recovered.
-        _skip_half(dtype)
         work = torch.float64 if dtype == torch.float64 else torch.float32
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 0.5, 0, device=device, dtype=dtype)
         ransac = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)
@@ -3280,6 +3275,7 @@ _SCENES = {"frontal": {}, "zoom": {"zoom": 3.0}, "skew": {"skew": 0.5}}
 
 
 class TestRANSACDegensac(BaseTester):
+    @FULL_PRECISION_SCENE
     @pytest.mark.parametrize("scene", sorted(_SCENES))
     def test_recovers_dominant_plane(self, device, dtype, scene):
         # On main (a7d177cbf) plain seven-point RANSAC fails every one of these seeds on every scene on CPU, so the
@@ -3287,7 +3283,6 @@ class TestRANSACDegensac(BaseTester):
         # frontal and zoomed seed), so the plain count only asserts that the scenes stay hard for it. That is a
         # property of the scenes, counted on the CPU only: a plain call on CUDA costs 0.5 s, its first batch of 8192
         # seven-point samples (see _line_scene_seeds).
-        _skip_half(dtype)
         count_plain = device.type == "cpu"
         plain_failures = 0
         for seed in range(5):
@@ -3303,19 +3298,19 @@ class TestRANSACDegensac(BaseTester):
                 plain_failures += int(not _explains_off_plane(F_plain.cpu(), clean1.cpu(), clean2.cpu()))
         assert plain_failures >= 3 or not count_plain
 
+    @FULL_PRECISION_SCENE
     @pytest.mark.parametrize("score_type", ["msac", "ransac"])
     def test_both_score_types(self, device, dtype, score_type):
-        _skip_half(dtype)
         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         F, _ = RANSAC("fundamental", inl_th=1.0, confidence=0.999, seed=0, score_type=score_type, degensac=True)(
             kp1, kp2
         )
         assert _explains_off_plane(F.cpu(), clean1.cpu(), clean2.cpu())
 
+    @FULL_PRECISION_SCENE
     def test_never_degenerate_is_bitwise_plain(self, device, dtype, monkeypatch):
         # With the test stubbed to find no degenerate sample, the record tracking, sample rows and host transfers
         # must leave the result bit for bit the same, even where recoveries would fire.
-        _skip_half(dtype)
         monkeypatch.setattr(ransac_module, "_h_degenerate_samples", lambda models, *args: [None] * len(models))
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
@@ -3323,11 +3318,11 @@ class TestRANSACDegensac(BaseTester):
         assert torch.equal(F, F_plain)
         assert torch.equal(mask, mask_plain)
 
+    @FULL_PRECISION_SCENE
     def test_scene_without_plane_keeps_its_accuracy(self, device, dtype, monkeypatch):
         # Without a dominant plane, record setters are still often H-degenerate at Chum's 3 t: five of seven
         # correspondences fit one homography within 0.6-2.1 t in 5 of these 6 seeds. The recoveries then join the
         # pool, so the estimate is not bitwise the plain one, but it must explain the geometry as well.
-        _skip_half(dtype)
         calls = []
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
@@ -3347,10 +3342,10 @@ class TestRANSACDegensac(BaseTester):
             assert abs(int(mask.sum()) - int(mask_plain.sum())) <= 0.01 * len(mask), f"seed {seed}"
         assert calls  # the recovered path ran
 
+    @FULL_PRECISION_SCENE
     def test_recovered_incumbent_does_not_hide_later_records(self, device, dtype, monkeypatch):
         # The stub's first model outscores every raw model. A trigger tied to the incumbent's score would stop
         # testing after the first batch; the raw record keeps finding record setters in later batches.
-        _skip_half(dtype)
         batches = []
 
         def stub(
@@ -3377,8 +3372,8 @@ class TestRANSACDegensac(BaseTester):
         RANSAC("fundamental", inl_th=1.0, batch_size=64, max_iter=20, confidence=1.0, seed=0, degensac=True)(kp1, kp2)
         assert len(set(batches)) >= 2
 
+    @FULL_PRECISION_SCENE
     def test_seeded_calls_are_reproducible_and_private(self, device, dtype, monkeypatch):
-        _skip_half(dtype)
         kp1, kp2, _, _, _ = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
 
         def device_state():
@@ -3402,8 +3397,8 @@ class TestRANSACDegensac(BaseTester):
             assert torch.equal(device_state(), accelerator_state)
 
     # Review focus 1: non-finite correspondences.
+    @FULL_PRECISION_SCENE
     def test_non_finite_rows_are_skipped(self, device, dtype):
-        _skip_half(dtype)
         kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.95, 0, device=device, dtype=dtype)
         kp1[:5] = float("nan")
         kp2[5:10] = float("inf")
@@ -3414,8 +3409,8 @@ class TestRANSACDegensac(BaseTester):
     # Review focus 2: a fully planar scene. Its off-plane set is the outliers, so the pair search runs on them and may
     # return a model consistent with the plane plus a few outliers (as Chum's code does; VSAC's DEGENSAC+ adds a
     # randomness check against that). Every model consistent with the plane is valid here: the plane must stay in.
+    @FULL_PRECISION_SCENE
     def test_fully_planar_scene(self, device, dtype):
-        _skip_half(dtype)
         kp1, kp2, labels, _, _ = create_dominant_plane_scene(1000, 0.6, 1.0, 0, device=device, dtype=dtype)
         F, mask = RANSAC("fundamental", inl_th=1.0, seed=0, degensac=True)(kp1, kp2)
         assert F.shape == (3, 3)
@@ -3433,10 +3428,10 @@ class TestRANSACDegensac(BaseTester):
         assert mask.dtype == torch.bool
 
     # Review focus 4: PROSAC's stopping rule takes the recovered incumbent's mask.
+    @FULL_PRECISION_SCENE
     def test_prosac(self, device, dtype, monkeypatch):
         # The raw degenerate incumbent already certifies itself after the first batch here, so the final model alone
         # cannot show which mask set the recovered incumbent's bound: spy on PROSAC's termination test instead.
-        _skip_half(dtype)
         recovered, tested = [], []
         original_recover, original_prosac = RANSAC._degensac_recover, RANSAC._prosac_max_samples
 
@@ -3461,9 +3456,11 @@ class TestRANSACDegensac(BaseTester):
         assert any(torch.equal(mask, inliers) for mask in recovered for inliers in tested)
 
     # Review focus 5: half-precision correspondences run the float64 host recovery and float32 device scoring.
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="the half-precision RANSAC legs run on CPU; accelerator half kernels are covered elsewhere",
+    )
     def test_half_precision_smoke(self, device):
-        if device.type != "cpu":
-            pytest.skip("the half-precision RANSAC legs run on CPU; accelerator half kernels are covered elsewhere")
         for dtype in (torch.float16, torch.bfloat16):
             kp1, kp2, _, _, _ = create_dominant_plane_scene(500, 0.6, 0.95, 0, device=device, dtype=dtype)
             F, mask = RANSAC("fundamental", inl_th=2.0, seed=0, degensac=True)(kp1, kp2)

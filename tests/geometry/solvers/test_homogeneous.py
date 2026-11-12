@@ -280,11 +280,10 @@ class TestConventionNullVector3x4(BaseTester):
 class TestNullSpaceLU(BaseTester):
     """``_null_space_lu``, the batched null space behind the seven-, eight- and four-point minimal solvers."""
 
+    @pytest.mark.applies_to(devices=("mps",), dtypes=("float32",), reason="MPS float32 regression")
     @pytest.mark.parametrize("rows", [7, 8])
     @pytest.mark.parametrize("batch_size", [1, 32])
     def test_mps_matches_cpu(self, device, dtype, rows, batch_size, monkeypatch):
-        if device.type != "mps" or dtype != torch.float32:
-            pytest.skip("MPS float32 regression")
         generator = torch.Generator().manual_seed(0)
         A = torch.randn(batch_size, rows, 9, generator=generator, dtype=dtype)
         expected = _null_space_lu(A)
@@ -310,10 +309,11 @@ class TestNullSpaceLU(BaseTester):
         self.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
         self.assert_close(A @ actual, torch.zeros(batch_size, rows, 9 - rows, dtype=dtype), atol=1e-5, rtol=0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="no backend factorizes half precision; callers promote to float32"
+    )
     @pytest.mark.parametrize("rows", [7, 8])
     def test_matches_svd_subspace(self, device, dtype, rows):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("no backend factorizes half precision; callers promote to float32")
         A = torch.randn(64, rows, 9, device=device, dtype=dtype)
         basis = _null_space_lu(A)
         assert basis.shape == (64, 9, 9 - rows)
@@ -336,13 +336,14 @@ class TestNullSpaceLU(BaseTester):
         basis = basis / basis.norm(dim=1, keepdim=True)
         assert (A @ basis).abs().amax() < 1e-5
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="no backend factorizes half precision; callers promote to float32"
+    )
     @pytest.mark.parametrize("rows", [7, 8])
     def test_square_cuda_factorization_matches_non_square(self, device, dtype, rows):
         # Without a gradient, CUDA factorizes A^T padded with zero columns to a square matrix in one batched kernel
         # instead of the looped non-square one, which rank_deficient_basis keeps: on full-rank matrices, including
         # badly scaled columns and a repeated row, the two give the same basis to the bit.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("no backend factorizes half precision; callers promote to float32")
         generator = torch.Generator().manual_seed(rows)
         A = torch.randn(256, rows, 9, generator=generator, dtype=torch.float64)
         A[64:128] *= torch.logspace(-6, 6, 9, dtype=torch.float64)
@@ -353,12 +354,13 @@ class TestNullSpaceLU(BaseTester):
         # A gradient keeps the non-square factorization: the padded square matrix is singular.
         assert torch.equal(_null_space_lu(A.requires_grad_()).detach(), expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="no backend factorizes half precision; callers promote to float32"
+    )
     def test_square_cuda_factorization_under_function_transforms(self, device, dtype, monkeypatch):
         # torch.func.vmap takes the square factorization and gives the same basis; torch.func.grad, whose inputs
         # require a gradient, and every forward-mode tangent keep the non-square one, since the padded square
         # matrix is singular and its derivatives are not finite.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("no backend factorizes half precision; callers promote to float32")
         generator = torch.Generator().manual_seed(1)
         A = torch.randn(6, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
         tangent = torch.randn(6, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
@@ -389,12 +391,13 @@ class TestNullSpaceLU(BaseTester):
             torch.func.jvp(_null_space_lu, (A,), (tangent,))
         assert factorized == [(9, 8), (9, 8)]
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="no backend factorizes half precision; callers promote to float32"
+    )
     def test_square_cuda_factorization_rank_deficient(self, device, dtype):
         # The batched square kernel stops at the first exactly zero pivot, where the non-square factorization skips
         # the column: a zero pivot before the last column (zero rows above the last) reports the matrix as NaN on
         # CUDA without a gradient, and a zero last row, the last pivot, still gives the same basis.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("no backend factorizes half precision; callers promote to float32")
         generator = torch.Generator().manual_seed(0)
         A = torch.randn(5, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
         A[0, 0] = 0

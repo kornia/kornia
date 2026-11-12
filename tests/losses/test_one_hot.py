@@ -148,9 +148,8 @@ class TestCheckClassLabels(BaseTester):
         empty = torch.zeros(0, 3, device=device, dtype=torch.int64)
         assert _check_class_labels(empty, 3) is empty
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="only CPU labels are checked")
     def test_exception(self, device):
-        if device.type != "cpu":
-            pytest.skip("only CPU labels are checked")
         for value, message in ((3, "smaller than num_classes"), (-1, "non-negative")):
             labels = torch.tensor([[0, 2, 1], [2, value, 0]], device=device)
             with pytest.raises(RuntimeError, match=f"Class values must be {message}"):
@@ -197,11 +196,15 @@ class TestCheckClassLabels(BaseTester):
         with pytest.raises(RuntimeError, match="Class values must be smaller than num_classes"):
             exported.module()(x, labels)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, on the CPU in float32",
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
     def test_dynamo_gather_fused_before_the_asserts_raises(self, value, message, device, dtype, optimizer_backend):
-        if device.type != "cpu" or dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, on the CPU in float32")
         from torch._inductor.decomposition import decompositions
 
         if torch.ops.aten._assert_async.msg in decompositions:

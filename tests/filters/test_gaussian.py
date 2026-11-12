@@ -119,9 +119,8 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     assert_close(result, expected)
 
 
+@pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
 def test_gaussian_mixed_native_precision_mean(device):
-    if device.type == "mps":
-        pytest.skip("MPS does not support float64")
     sigma = torch.tensor([[1.3]], device=device, dtype=torch.float32)
     mean = torch.tensor([[2.123456789]], device=device, dtype=torch.float64)
     actual = gaussian(5, sigma, mean=mean)
@@ -332,11 +331,13 @@ class TestGaussianIntegerSigma(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("sigma", [1, 2])
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_default_dtype(self, builder, sigma, default_dtype, device):
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         previous_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)
@@ -653,11 +654,10 @@ class TestGaussianBlur2d(BaseTester):
             torch.onnx.export(model, sample_input, dynamic_buf, dynamic_axes=dynamic_axes, **export_kwargs)
         assert dynamic_buf.getbuffer().nbytes > 0
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_dynamic_matches_eager(self, dtype):
         """Test that a dynamic-axes legacy export of GaussianBlur2d matches eager execution."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         model = GaussianBlur2d((3, 3), (1.5, 1.5))
@@ -682,11 +682,10 @@ class TestGaussianBlur2d(BaseTester):
             exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(exported, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_dynamic_size_per_sample_sigma_matches_eager(self, dtype):
         """Test that a per-sample sigma keeps a static batch but exports a dynamic height and width (#5222)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         model = GaussianBlur2d((3, 5), torch.tensor([[1.5, 0.7], [0.5, 2.0]], dtype=dtype))
@@ -708,12 +707,11 @@ class TestGaussianBlur2d(BaseTester):
             exported = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(exported, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     def test_torch_export_dynamic_channels_matches_eager(self, dtype):
         """Test that torch.export keeps a dynamic channel axis; only the legacy tracer reads it as an int (#5222)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         model = GaussianBlur2d((3, 3), (1.5, 1.5))
         channels = torch.export.Dim("channels", min=2, max=16)
         exported = torch.export.export(model, (torch.rand(2, 3, 8, 8, dtype=dtype),), dynamic_shapes=({1: channels},))
@@ -776,6 +774,7 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(BaseError, match="sigma must be positive"):
             gaussian_blur2d(sample, (3, 3), sigma)
 
+    @pytest.mark.applies_to(devices=("cuda", "mps"), reason="pins CUDA and MPS: a CPU sigma is read on the host")
     @pytest.mark.cuda_device_assert
     def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype, capfd):
         # kornia#6335: reading a device sigma on the host waited for every queued kernel. torch._assert_async checks it
@@ -787,8 +786,6 @@ class TestGaussianBlur2d(BaseTester):
             with raises_cuda_device_assert("sigma must be positive", capfd):
                 gaussian_blur2d(sample, (3, 3), sigma)
             return
-        if device.type != "mps":
-            pytest.skip("pins CUDA and MPS: a CPU sigma is read on the host")
         if not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so sigma is read on the host there")
         sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
@@ -811,9 +808,8 @@ class TestGaussianBlur2d(BaseTester):
             if were_checks_enabled:
                 enable_checks()
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
     def test_sigma_on_the_device_does_not_synchronize_6335(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         sigma = torch.rand(2, 2, device=device, dtype=dtype) + 0.5
         expected = gaussian_blur2d(sample, (5, 5), sigma.cpu())
@@ -833,9 +829,8 @@ class TestGaussianBlur2d(BaseTester):
         with torch.device("meta"), pytest.raises(BaseError, match="sigma must be positive"):
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
     def test_sigma_tuple_under_a_cuda_default_device_does_not_synchronize_6337(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         expected = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
         torch.cuda.synchronize()

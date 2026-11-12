@@ -27,9 +27,12 @@ from testing.base import BaseTester
 
 
 class TestScalePyramidCpu(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32", "float64"),
+        reason="the optimized scale-pyramid blur supports native CPU float32 and float64 only",
+    )
     def test_fast_blur_matches_separable_convolution(self, monkeypatch, device, dtype):
-        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("the optimized scale-pyramid blur supports native CPU float32 and float64 only")
         # Exercise the generic ScalePyramid integration even on hosts where
         # oneDNN would normally keep the existing convolution implementation.
         monkeypatch.setattr(importlib.import_module("kornia.filters.gaussian"), "_HAS_MKLDNN", False)

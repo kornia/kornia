@@ -597,10 +597,11 @@ class TestCrop3DAffineBoxes(BaseTester):
                 volume.expand(2, -1, -1, -1, -1), torch.cat([cube, skewed]), (5, 5, 5), align_corners=True
             )
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the half-precision tolerance admits a 0.1-voxel skew of a box this size"
+    )
     @pytest.mark.parametrize("corners", [(1, 3), (4, 6)])
     def test_crop_and_resize3d_rejects_a_sub_voxel_skew_6436(self, corners, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the half-precision tolerance admits a 0.1-voxel skew of a box this size")
         volume = self._coordinate_volume(device, dtype)
         skewed = self._skewed_box(device, dtype, corners, shift=0.1)
         with pytest.raises(AssertionError, match="affine map"):

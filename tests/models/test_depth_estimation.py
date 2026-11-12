@@ -256,14 +256,15 @@ def test_from_json_rejects_an_unsupported_resample(resample):
         DPTImageProcessor.from_json({**_DEPTH_ANYTHING_V2_SMALL_CONFIG, "resample": resample})
 
 
-class TestDepthEstimation(BaseTester):
-    @staticmethod
-    def _skip_float64_on_mps(device, dtype) -> None:
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
+NO_MPS_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+    reason="MPS does not support float64",
+)
 
+
+class TestDepthEstimation(BaseTester):
+    @NO_MPS_FLOAT64
     def test_tensor_batch_returns_b1hw(self, device, dtype):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
 
@@ -273,9 +274,9 @@ class TestDepthEstimation(BaseTester):
         # the stand-in's depth is the channel mean; without a resize stage it is computed at the input size
         self.assert_close(depth, images.float().mean(1, keepdim=True).to(dtype))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("sizes", [[(300, 400), (200, 150)], [(200, 150)], []])
     def test_list_returns_1hw_items(self, device, dtype, sizes):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = [torch.rand(3, h, w, device=device, dtype=dtype) for h, w in sizes]
 
@@ -286,10 +287,10 @@ class TestDepthEstimation(BaseTester):
         for depth, image in zip(depths, images):
             self.assert_close(depth, image.float().mean(0, keepdim=True).to(dtype))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("as_list", [False, True])
     def test_graph_returning_b1hw_keeps_its_layout(self, device, dtype, as_list):
         # a graph that already returns (B, 1, H, W) gives the same layout as Depth-Anything's (B, H, W) graph
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(keepdims=True), pre_processor=None)
         images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
 
@@ -301,9 +302,9 @@ class TestDepthEstimation(BaseTester):
         assert depth.shape == (2, 1, 300, 400)
         self.assert_close(depth, images.float().mean(1, keepdim=True).to(dtype))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("as_list", [False, True])
     def test_visualize_and_save_take_a_tensor_batch(self, device, dtype, as_list, tmp_path):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
         if as_list:
@@ -323,8 +324,8 @@ class TestDepthEstimation(BaseTester):
         assert sum("_src_" in n for n in names) == 2
         assert sum("_depth_" in n for n in names) == 2
 
+    @NO_MPS_FLOAT64
     def test_any_float_dtype(self, device, dtype):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
 
@@ -393,10 +394,10 @@ class TestDepthEstimation(BaseTester):
         assert [tuple(x.shape) for x in spy.inputs] == [(1, 3, 392, 518), (1, 3, 518, 392)]
         assert [tuple(d.shape) for d in depths] == [(1, 300, 400), (1, 200, 150)]
 
+    @NO_MPS_FLOAT64
     def test_resize_runs_in_float32(self, device, dtype):
         # the resize runs in float32 whatever the input dtype, so the depth of a half image is the depth of the same
         # values in float32, cast at the end
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
         images = torch.rand(1, 3, 60, 80, device=device, dtype=dtype)
 

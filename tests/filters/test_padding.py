@@ -337,11 +337,13 @@ class TestThinFilterBorders(BaseTester):
         for level in pyramid:
             self.assert_close(level, torch.full_like(level, 0.5), rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] not in (None, "", "jit"),
+        reason="this check requires a torch.compile backend",
+    )
     @pytest.mark.parametrize("border_type", ["reflect", "circular"])
     def test_dynamo_fullgraph_thin_filter(self, device, dtype, border_type, optimizer_backend, torch_optimizer):
         """Match eager thin-image filtering under full-graph compilation."""
-        if optimizer_backend in (None, "", "jit"):
-            pytest.skip("this check requires a torch.compile backend")
         image = torch.tensor([[[[0.0, 0.25, 1.0]]]], device=device, dtype=dtype)
         kernel = torch.ones((1, 7, 7), device=device, dtype=dtype)
 

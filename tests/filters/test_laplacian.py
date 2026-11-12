@@ -135,11 +135,12 @@ class TestLaplacian(BaseTester):
         uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64) and small
         assert calls == int(not uses_slices)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32", "float64"), reason="The CPU slice path supports float32/float64"
+    )
     @pytest.mark.parametrize("value", ["large", "inf", "nan"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_extreme_cpu_values_match_convolution(self, monkeypatch, value, normalized, device, dtype):
-        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("The CPU slice path supports float32/float64")
         data = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
         data[..., 3, 4] = torch.finfo(dtype).max / 2 if value == "large" else float(value)
         kernel = get_laplacian_kernel2d(3, device=device, dtype=dtype)[None]

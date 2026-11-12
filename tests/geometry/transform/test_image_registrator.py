@@ -502,6 +502,7 @@ class TestConventionsImageRegistrator(BaseTester):
         with pytest.raises(ValueError):
             ir.register(dst.expand(1, 3, -1, -1), dst)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 registration")
     @pytest.mark.parametrize("resize", [False, True])
     @pytest.mark.parametrize("model_type", ["similarity", "homography"])
     def test_convention_image_registrator_optimizes_half_in_float32(self, device, dtype, model_type, resize):
@@ -510,8 +511,6 @@ class TestConventionsImageRegistrator(BaseTester):
         # and raised in linalg.inv on CUDA. A half model is optimized in float32 and handed back in its own dtype, so
         # it ends where a float32 registration of the same half images does. With allow_shape_mismatch=True that
         # includes the resize of src_img, which runs in float32 as well.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 registration")
         self._skip_without_kernels(device, torch.float32)  # register() samples half images in float32
         src = self._scene(0.0, 0.0, device, dtype)
         dst = self._scene(3.0, -1.5, device, dtype)
@@ -534,13 +533,12 @@ class TestConventionsImageRegistrator(BaseTester):
             self.assert_close(parameter, expected_parameters[name].to(dtype), **exact)
         self.assert_close(actual, expected.to(dtype))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 registration")
     @pytest.mark.parametrize("model_is_half", [True, False])
     @pytest.mark.parametrize("other", ["float32", "other half"])
     def test_convention_image_registrator_warps_mixed_dtypes(self, device, dtype, model_is_half, other):
         # register() optimizes a half model or image in float32, so a model and images of different dtypes, one of
         # them half, register; the warps then sample such a pair in float32 as well and return the image's dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 registration")
         self._skip_without_kernels(device, torch.float32)  # register() and these warps sample in float32
         other_half = torch.bfloat16 if dtype == torch.float16 else torch.float16
         other_dtype = torch.float32 if other == "float32" else other_half
@@ -559,12 +557,11 @@ class TestConventionsImageRegistrator(BaseTester):
         self.assert_close(ir.warp_src_into_dst(src).detach(), expected_src_to_dst, **exact)
         self.assert_close(ir.warp_dst_into_src(dst).detach(), expected_dst_to_src, **exact)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 registration")
     def test_convention_image_registrator_failed_setup_keeps_model_dtype(self, device, dtype, monkeypatch):
         # register() promotes a half model and images to float32 only inside the region that gives the model's tensors
         # their dtype back, so an error while it prepares the images, such as running out of memory in the float32
         # copy of src_img, leaves the model in its own dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 registration")
         src = self._scene(0.0, 0.0, device, dtype)
         ir = ImageRegistrator("similarity", num_iterations=1, pyramid_levels=1).to(device, dtype)
         to_float = torch.Tensor.float

@@ -25,10 +25,11 @@ from kornia.geometry.homography import _refine_homography_lm
 from testing.base import BaseTester
 
 
+@pytest.mark.applies_to(
+    devices=("cpu",), dtypes=("float32", "float64"), reason="CPU LM fast path uses float32 or float64"
+)
 class TestRANSACRefinementCPU(BaseTester):
     def scene(self, device, dtype, model):
-        if device.type != "cpu" or dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("CPU LM fast path uses float32 or float64")
         generator = torch.Generator(device=device).manual_seed(42)
         x1 = torch.randn(60, 3, generator=generator, device=device, dtype=dtype)
         x1[:, 2] = 1.0

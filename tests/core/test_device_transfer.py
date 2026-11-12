@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking, _torch_inverse_cast
 
 from testing.base import BaseTester
 
-requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA device")
+requires_cuda = pytest.mark.applies_to(devices=("cuda",), reason="needs a CUDA device")
 
 # About 3 ms of queued GPU work on a current GPU, so that a copy which waited for the queue would be visible.
 _SLEEP_CYCLES = 5_000_000
@@ -71,11 +71,10 @@ class TestToDeviceNonblocking(BaseTester):
         assert _to_device_nonblocking(src, device, dtype) is src
         assert _to_device_nonblocking(src, device) is src
 
+    @pytest.mark.applies_to(devices=("mps",), reason="only MPS lacks float64")
     def test_float64_cast_across_mps(self, device) -> None:
         # MPS has no float64. On torch 2.14 a single MPS -> CPU float64 copy, and the backward of a single
         # CPU float64 -> MPS copy, leave the destination unwritten; on 2.15 they raise (pytorch/pytorch#197715).
-        if device.type != "mps":
-            pytest.skip("only MPS lacks float64")
         out = _to_device_nonblocking(torch.tensor([0.25, 0.5, 0.75], device=device), torch.device("cpu"), torch.float64)
         assert out.dtype == torch.float64
         self.assert_close(out, torch.tensor([0.25, 0.5, 0.75], dtype=torch.float64))

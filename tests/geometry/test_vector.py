@@ -385,12 +385,11 @@ class TestConventionsVector(BaseTester):
         # A result that does not hold vectors falls back to the Scalar.
         assert type(torch.cat([v, s], -1)) is Scalar
 
+    @pytest.mark.applies_to(dtypes=("bfloat16", "float32", "float64"), reason="1e-13 underflows to 0 in float16")
     def test_convention_vector3_normalized_scales_below_eps_3952(self, device, dtype):
         # Convention (#3952, kept by maintainer decision): normalized() divides by max(norm, 1e-12), so a vector
         # shorter than 1e-12 is scaled by 1e12 instead of normalized: (1e-13, 0, 0) comes back with length 0.1.
         # float16 cannot hold 1e-13 (it underflows to the zero vector).
-        if dtype == torch.float16:
-            pytest.skip("1e-13 underflows to 0 in float16")
         short = Vector3(torch.tensor([1e-13, 0.0, 0.0], device=device, dtype=dtype))
         self.assert_close(short.normalized().data, torch.tensor([0.1, 0.0, 0.0], device=device, dtype=dtype))
         self.assert_close(

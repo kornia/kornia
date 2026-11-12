@@ -870,11 +870,10 @@ class TestScaledDotProductAttention(BaseTester):
         monkeypatch.setattr(torch.nn.functional, "scaled_dot_product_attention", faulty)
         return ndims
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the kernel is CPU-only")
     @pytest.mark.parametrize("masked", [False, True])
     @pytest.mark.parametrize("scale", [None, 0.25])
     def test_faulty_kernel_is_avoided(self, device, monkeypatch, masked, scale):
-        if device.type != "cpu":
-            pytest.skip("the kernel is CPU-only")
         dtype = torch.float64
         q, k, v = (torch.rand(2, 3, 5, 8, device=device, dtype=dtype) for _ in range(3))
         mask = None
@@ -887,6 +886,7 @@ class TestScaledDotProductAttention(BaseTester):
         self._simulate_the_fault(monkeypatch, faulty_platform=True)
         self.assert_close(scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=scale), expected)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the kernel is CPU-only")
     @pytest.mark.parametrize(
         "faulty_platform, shape, dtype, expected_ndim",
         [
@@ -897,8 +897,6 @@ class TestScaledDotProductAttention(BaseTester):
         ],
     )
     def test_only_the_faulty_input_is_rerouted(self, device, monkeypatch, faulty_platform, shape, dtype, expected_ndim):
-        if device.type != "cpu":
-            pytest.skip("the kernel is CPU-only")
         ndims = self._simulate_the_fault(monkeypatch, faulty_platform)
         q = torch.rand(*shape, device=device, dtype=dtype)
         assert scaled_dot_product_attention(q, q, q).shape == q.shape
@@ -973,9 +971,8 @@ class TestScaledDotProductAttention(BaseTester):
         actual = torch.jit.script(scaled_dot_product_attention)(q, k, v, kernel_is_faulty=faulty_platform)
         self.assert_close(actual, scaled_dot_product_attention(q, k, v, kernel_is_faulty=faulty_platform))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the kernel is CPU-only")
     def test_gradcheck(self, device, monkeypatch):
-        if device.type != "cpu":
-            pytest.skip("the kernel is CPU-only")
         self._simulate_the_fault(monkeypatch, faulty_platform=True)
         q, k, v = (torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3))
         self.gradcheck(scaled_dot_product_attention, (q, k, v))

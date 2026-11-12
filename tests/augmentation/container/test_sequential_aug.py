@@ -111,6 +111,10 @@ class TestConventionImageSequential(BaseTester):
         self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
         assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["output_type"] == "numpy" and p["dtype_name"] == "bfloat16"),
+        reason="NumPy has no bfloat16",
+    )
     @pytest.mark.parametrize("container", ["ImageSequential", "AugmentationSequential"])
     @pytest.mark.parametrize("output_type", ["numpy", "pil"])
     def test_show_and_save_after_a_numpy_or_pil_output_4956(self, container, output_type, tmp_path, device, dtype):
@@ -118,8 +122,6 @@ class TestConventionImageSequential(BaseTester):
         # converts the output to NumPy or PIL; it used to cache the converted output and the helpers failed on it
         from PIL import Image as PILImage
 
-        if output_type == "numpy" and dtype == torch.bfloat16:
-            pytest.skip("NumPy has no bfloat16")
         image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
         aug = getattr(K, container)(K.RandomHorizontalFlip(p=1.0))
 
@@ -1115,12 +1117,14 @@ class TestConventionImageSequential(BaseTester):
             assert len(names) == (len(seq) if random_apply is True else random_apply)
             assert len(set(names)) == len(names)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["weight_dtype"] != torch.float32),
+        reason="MPS has no float64 and its half-precision multinomial is not part of this contract",
+    )
     @pytest.mark.parametrize("weight_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("as_parameter", [False, True])
     def test_random_apply_weight_kinds_take_the_same_route_6114(self, weight_dtype, as_parameter, device):
         # The route follows the stored count and the weights' value, whatever tensor holds them.
-        if device.type == "mps" and weight_dtype != torch.float32:
-            pytest.skip("MPS has no float64 and its half-precision multinomial is not part of this contract")
 
         def weights():
             values = torch.tensor([0.5, 0.25, 0.25], device=device, dtype=weight_dtype)
