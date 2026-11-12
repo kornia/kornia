@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 from torch._dynamo.exc import BackendCompilerFailed, InternalTorchDynamoError, Unsupported, UserError
@@ -379,6 +381,31 @@ class TestVideoKeypoints(BaseTester):
         data = torch.rand(2, 5, 10, 2, device=device, dtype=dtype)
         vkp = VideoKeypoints.from_tensor(data)
         assert isinstance(vkp, VideoKeypoints)
+
+    @pytest.mark.parametrize("validate_boxes", [True, False])
+    def test_validate_boxes_is_deprecated_and_ignored_6552(self, validate_boxes, device, dtype):
+        # `validate_boxes` is read nowhere: keypoints have no validity rule. It now warns when passed, and the result
+        # stays what the call without it returns.
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes") as record:
+            vkp = VideoKeypoints.from_tensor(data, validate_boxes=validate_boxes)
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "validate_boxes" in str(w.message)] == [__file__]
+        assert vkp.temporal_channel_size == 3
+        self.assert_close(vkp.to_tensor(), data)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6552(self, kwargs, device, dtype):
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            VideoKeypoints.from_tensor(data, **kwargs)
+
+    def test_error_message_names_keypoints_6552(self, device, dtype):
+        with pytest.raises(ValueError, match="keypoints"):
+            VideoKeypoints.from_tensor(torch.rand(2, 3, 4, 4, device=device, dtype=dtype))
 
     def test_cardinality(self, device, dtype):
         B, T, N = 2, 5, 10
