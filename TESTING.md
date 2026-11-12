@@ -63,7 +63,7 @@ pixi run test-quick
 
 | Option | Env var | Default | Description |
 |---|---|---|---|
-| `--device` | `KORNIA_TEST_DEVICE` | `cpu` | `cpu`, `cuda`, `mps`, `tpu`, or `all` |
+| `--device` | `KORNIA_TEST_DEVICE` | `cpu` | `cpu`, `cuda`, `mps`, `tpu`, or `all`. A selection without `cuda` or `all` sets `CUDA_VISIBLE_DEVICES=""` for the run, unless you set that variable yourself: the first `torch.compile` creates a CUDA context even for CPU tensors, which fails on a full GPU. Tests that reach CUDA without the `device` fixture skip there and run in CUDA runs |
 | `--dtype` | `KORNIA_TEST_DTYPE` | `float32` | `float32`, `float64`, `float16`, `bfloat16`, or `all` |
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
