@@ -487,6 +487,62 @@ class TestDeviceAgnosticSelection:
         result_cuda.stdout.no_fnmatch_line("*test_with_dtype_only*")
 
 
+class TestCpuOnlyRunsHideCuda:
+    """A CPU-only ``--device`` selection hides CUDA before anything probes it.
+
+    Dynamo initializes a CUDA context on the first ``torch.compile`` call even for CPU tensors, and that context
+    fails with "CUDA error: out of memory" when another process holds the GPU.
+    """
+
+    _PROBE = """
+        import os
+
+        import torch
+
+        def test_visible_devices():
+            expected = os.environ["EXPECTED_VISIBLE_DEVICES"]
+            assert os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>") == expected
+            if expected == "":
+                assert not torch.cuda.is_available()
+
+        def test_cpu_graph_capture_leaves_cuda_untouched():
+            from testing.base import dynamo_is_available
+
+            # Dynamo is unavailable on some supported legs, such as Python 3.13 with torch 2.5.1.
+            if os.environ["EXPECTED_VISIBLE_DEVICES"] != "" or not dynamo_is_available():
+                return
+            torch.compile(lambda x: x + 1, backend="eager", fullgraph=True)(torch.ones(2))
+            assert not torch.cuda.is_initialized()
+        """
+
+    def _run(self, pytester, monkeypatch, device: str, expected: str, preset: str | None = None):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        if preset is not None:
+            monkeypatch.setenv("CUDA_VISIBLE_DEVICES", preset)
+        monkeypatch.setenv("EXPECTED_VISIBLE_DEVICES", expected)
+        test_file = pytester.makepyfile(self._PROBE)
+        return pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            f"--device={device}",
+            "--dtype=float32",
+            "--run-device-agnostic",
+        )
+
+    def test_cpu_only_selection_hides_cuda(self, pytester, monkeypatch):
+        self._run(pytester, monkeypatch, "cpu", "").assert_outcomes(passed=2)
+
+    @pytest.mark.parametrize("device", ["cuda", "cpu,cuda", "all"])
+    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device):
+        self._run(pytester, monkeypatch, device, "<unset>").assert_outcomes(passed=2)
+
+    def test_caller_visible_devices_are_kept(self, pytester, monkeypatch):
+        self._run(pytester, monkeypatch, "cpu", "0", preset="0").assert_outcomes(passed=2)
+
+
 class TestSkipOnnxSelection:
     def test_skip_onnx_deselects_tests_whose_node_id_names_onnx(self, pytester):
         # The file needs its own name: by default pytester would name it after this test, and "onnx" in the file name

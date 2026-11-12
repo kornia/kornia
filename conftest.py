@@ -16,6 +16,7 @@
 #
 
 import contextlib
+import functools
 import os
 import random
 import subprocess
@@ -81,6 +82,33 @@ def get_test_devices() -> dict[str, torch.device]:
     return devices
 
 
+@functools.cache
+def available_test_devices() -> dict[str, torch.device]:
+    """Return :func:`get_test_devices`, probed on first use.
+
+    The probe initializes the CUDA driver, which fixes the visible devices for the process. Deferring it to the
+    first use lets :func:`_hide_cuda_from_cpu_only_runs` set ``CUDA_VISIBLE_DEVICES`` from ``pytest_configure``.
+    """
+    return get_test_devices()
+
+
+def _hide_cuda_from_cpu_only_runs(config) -> None:
+    """Hide CUDA devices from a run whose ``--device`` selection does not include CUDA.
+
+    The first ``torch.compile`` call initializes a CUDA context even when every tensor is on the CPU: Dynamo saves
+    and restores the CUDA RNG state around each frame. On a busy GPU that context fails with "CUDA error: out of
+    memory" in a CPU test. A CPU-only selection has no use for the GPU, so it gets none; tests that reach CUDA
+    without the ``device`` fixture run in CUDA runs instead. Must run before anything probes CUDA, and keeps a
+    ``CUDA_VISIBLE_DEVICES`` the caller set. xdist workers and per-test subprocesses inherit the setting.
+    """
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        return
+    selected = set(config.getoption("--device").split(","))
+    if selected & {"all", "cuda"}:
+        return
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+
 def get_test_dtypes() -> dict[str, torch.dtype]:
     """Create a dictionary with the dtypes to test.
 
@@ -97,7 +125,6 @@ def get_test_dtypes() -> dict[str, torch.dtype]:
 
 # setup the devices to test the source code
 
-TEST_DEVICES: dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: dict[str, torch.dtype] = get_test_dtypes()
 TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Combinations of device and dtype to be excluded from testing.
@@ -108,9 +135,10 @@ DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 @pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
-    if device_name not in TEST_DEVICES:
+    devices = available_test_devices()
+    if device_name not in devices:
         pytest.skip(f"Device '{device_name}' is not available on this system")
-    return TEST_DEVICES[device_name]
+    return devices[device_name]
 
 
 @pytest.fixture
@@ -261,6 +289,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    _hide_cuda_from_cpu_only_runs(config)
     config._conformance = {}
     for promise in conformance_promise.PROMISES:
         try:
@@ -326,7 +355,7 @@ def pytest_generate_tests(metafunc) -> None:
     params: list[tuple[str, list]] = []
 
     if "device_name" in metafunc.fixturenames:
-        params.append(("device_name", _parse_test_option(metafunc.config, "--device", TEST_DEVICES)))
+        params.append(("device_name", _parse_test_option(metafunc.config, "--device", available_test_devices())))
     if "dtype_name" in metafunc.fixturenames:
         params.append(("dtype_name", _parse_test_option(metafunc.config, "--dtype", TEST_DTYPES)))
     if "optimizer_backend" in metafunc.fixturenames:
@@ -395,7 +424,7 @@ def pytest_collection_modifyitems(config, items):
     # them once whenever CPU is part of the matrix instead of repeating the same work in every
     # accelerator job. --run-device-agnostic forces them back on, so an accelerator-only run can
     # still cover the whole suite when that is what the caller wants.
-    selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
+    selected_devices = _parse_test_option(config, "--device", available_test_devices())
     if "cpu" not in selected_devices and not config.getoption("--run-device-agnostic"):
         device_agnostic_items = [item for item in items if _is_device_agnostic(item)]
         if device_agnostic_items:
@@ -451,7 +480,7 @@ def pytest_collection_modifyitems(config, items):
             items[:] = [item for item in items if id(item) not in conformance_ids]
 
     if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
-        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        devices = _parse_test_option(config, "--device", available_test_devices())
         dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
         if len(devices) != 1 or len(dtypes) != 1:
             raise pytest.UsageError("--xfail-known-failures requires exactly one --device and one --dtype")
