@@ -499,9 +499,10 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
-    # Half-precision matrices are multiplied in float32 and the product is rounded once.
+    # Outside an autocast region, half-precision matrices are multiplied in float32 and the product is rounded once.
+    # Only a half-precision result is cast back, so a float32 input keeps the dtype that autocast gives it.
     E_mat = _at_least_float32(K2).transpose(-2, -1) @ _at_least_float32(F_mat) @ _at_least_float32(K1)
-    return E_mat.to(F_mat.dtype)
+    return E_mat.to(F_mat.dtype) if F_mat.dtype in (torch.float16, torch.bfloat16) else E_mat
 
 
 def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:

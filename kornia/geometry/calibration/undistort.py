@@ -199,7 +199,9 @@ def undistort_points(
     new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
-    return torch.stack([x, y], -1).to(out_dtype)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287

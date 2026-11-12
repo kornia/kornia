@@ -268,4 +268,6 @@ def distort_points(
     x = fx * xd + cx
     y = fy * yd + cy
 
-    return torch.stack([x, y], -1).to(out_dtype)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out
