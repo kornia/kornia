@@ -239,6 +239,18 @@ class TestAdjustSaturation(BaseTester):
         self.gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0))
 
 
+    @pytest.mark.parametrize("factor", [0.0, 1.0, 1.7])
+    def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
+        # float16 and bfloat16 images are adjusted in float32 and rounded once. The half-precision arithmetic it
+        # replaces was up to 7 eps off the float32 result (1.4 eps for the direct formula run in half precision).
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 images are adjusted in float32")
+        img = torch.rand(2, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        out = kornia.enhance.adjust_saturation(img, factor)
+        assert out.dtype == dtype
+        assert torch.equal(out, kornia.enhance.adjust_saturation(img.float(), factor).to(dtype))
+
+
 class TestAdjustHue(BaseTester):
     def test_black_pixels(self, device, dtype):
         data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 2, 2)
@@ -342,6 +354,18 @@ class TestAdjustHue(BaseTester):
         with pytest.raises(BaseError, match=r"an int, a float or a torch\.Tensor") as errinfo:
             op(img, factor)
         assert "PI" not in str(errinfo.value)
+
+
+    @pytest.mark.parametrize("factor", [0.0, 0.3, -2.5])
+    def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
+        # float16 and bfloat16 images are shifted in float32 and rounded once. The half-precision HSV round trip it
+        # replaces was up to 7.5 eps off the float32 result, even for a zero shift.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 images are shifted in float32")
+        img = torch.rand(2, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        out = kornia.enhance.adjust_hue(img, factor)
+        assert out.dtype == dtype
+        assert torch.equal(out, kornia.enhance.adjust_hue(img.float(), factor).to(dtype))
 
 
 class TestAdjustGamma(BaseTester):
