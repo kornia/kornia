@@ -1151,21 +1151,9 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    @pytest.mark.skip(reason="turn off due to Union Type")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = K.AugmentationSequential(
-            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
-        )
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
-
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     @pytest.mark.parametrize("box", ["bbox", "bbox_xyxy", "bbox_xywh"])
     def test_autocast(self, batch_prob, box, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         def mock_forward_parameters_sequential(batch_shape, cls, batch_prob):
             named_modules = cls.get_forward_sequence()

@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import pytest
 import torch
 
 from kornia.geometry.camera import project_points_orthographic, unproject_points_orthographic
@@ -26,30 +25,6 @@ from testing.base import BaseTester
 
 
 class TestProjection(BaseTester):
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_smoke(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_gradcheck(self, device):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self, device, dtype):
-        pass
-
     def test_project(self, device, dtype):
         projection = Z1Projection()
         points = torch.tensor(

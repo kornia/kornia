@@ -54,7 +54,6 @@ class TestTFeat(BaseTester):
         out = tfeat(inp)
         assert out.shape == (4, 128)
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         tfeat = TFeat(pretrained=False).to(patches.device, patches.dtype).eval()

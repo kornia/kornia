@@ -165,6 +165,14 @@ jobs:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
         pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.15.0"]
+        include:
+        # The legs that run the ONNX tests (node ID contains "onnx"): one per torch release on Ubuntu, and
+        # torch 2.15.0 on Windows and macOS. These entries match an existing leg and only add `onnx`; the
+        # other legs pass skip-onnx, as in pr_test_cpu.yml.
+          - {pytorch-dtype: "float64", python-version: "3.12", pytorch-version: "2.5.1", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.12", pytorch-version: "2.6.0", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.12", pytorch-version: "2.9.1", onnx: true}
+          - {pytorch-dtype: "float32", python-version: "3.11", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -172,6 +180,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -265,6 +274,8 @@ jobs:
             pytorch-dtype: "float64"
             python-version: "3.12"
             pytorch-version: "2.5.1"
+          # Matches an existing leg and only adds `onnx`: the Windows leg that runs the ONNX tests.
+          - {os: "windows-latest", pytorch-dtype: "float64", python-version: "3.13", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -272,6 +283,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -293,6 +305,9 @@ jobs:
             pytorch-version: "2.5.1"
           # macOS only runs float32 tests
           - pytorch-dtype: "float64"
+        include:
+          # Matches an existing leg and only adds `onnx`: the macOS leg that runs the ONNX tests.
+          - {pytorch-dtype: "float32", python-version: "3.13", pytorch-version: "2.15.0", onnx: true}
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -300,6 +315,7 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      skip-onnx: ${{ matrix.onnx != true }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

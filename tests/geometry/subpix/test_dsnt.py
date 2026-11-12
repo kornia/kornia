@@ -360,7 +360,6 @@ class TestSpatialExpectation2d(BaseTester):
         expected = torch.tensor([[[2064.0, 0.0]]], device=device, dtype=torch.bfloat16)
         self.assert_close(out, expected, rtol=0.0, atol=0.0)
 
-    @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
         op = kornia.geometry.subpix.spatial_expectation2d

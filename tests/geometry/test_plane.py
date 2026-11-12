@@ -23,7 +23,7 @@ from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Scalar, Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_deepcopy_copies_state_as_leaves
 
 
 # TODO: implement the rest of methods
@@ -39,22 +39,6 @@ class TestFitPlane(BaseTester):
         assert isinstance(plane, Hyperplane)
         assert plane.offset.shape == ()
         assert plane.normal.shape == (D,)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         t = torch.linspace(-1.0, 1.0, 6, device=device, dtype=torch.float64)
@@ -553,22 +537,6 @@ class TestHyperplane(BaseTester):
         self.assert_close(projected.data, expected)
         self.assert_close(plane.signed_distance(projected).data, torch.zeros(2, 1, device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
     def test_gradcheck(self, device):
         # A tilted triangle whose edges are neither orthogonal nor of equal length, so the SVD fallback
         # (which torch.where differentiates as well) has distinct singular values.
@@ -675,6 +643,18 @@ class TestHyperplane(BaseTester):
         finally:
             if checks_were_enabled:
                 enable_checks()
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # A plane built from tensors with a grad_fn holds them in buffers, which torch cannot deep-copy; the copy
+        # holds them as new leaves.
+        n = torch.tensor([0.0, 0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane.from_vector(
+            Vector3(n * 1), Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
+        )
+        copied = assert_deepcopy_copies_state_as_leaves(plane)
+        self.assert_close(copied.normal.data.detach(), plane.normal.data.detach(), rtol=0, atol=0)
+        plane.offset.data.sum().backward()
+        assert n.grad is not None
 
 
 class TestConventionsHyperplane(BaseTester):

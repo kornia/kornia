@@ -619,10 +619,6 @@ class TestSSIM3DLoss(BaseTester):
         actual = kornia.losses.SSIM3DLoss(5)(img, img)
         assert actual.shape == ()
 
-    @pytest.mark.skip("loss have no exception case")
-    def test_exception(self):
-        pass
-
     def test_int_max_val_6663(self, device, dtype):
         # An int max_val used to raise a TypeError.
         img1 = torch.rand(1, 2, 6, 6, 6, device=device, dtype=dtype)

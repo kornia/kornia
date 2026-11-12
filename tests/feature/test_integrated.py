@@ -24,7 +24,6 @@ import torch
 from torch import nn
 
 import kornia
-from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import (
     DescriptorMatcher,
@@ -45,7 +44,7 @@ from kornia.feature import (
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.feature.scale_space_detector import get_default_detector_config
-from kornia.geometry import RANSAC, resize, transform_points
+from kornia.geometry import RANSAC, transform_points
 
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
@@ -688,13 +687,6 @@ class TestSIFTFeature(BaseTester):
         self.assert_close(lafs_neg, lafs)
         self.assert_close(responses_neg, responses)
 
-    @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
-        B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
-        local_feature = SIFTFeature(2, True).to(device)
-        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
-
 
 class TestSIFTFeatureHalfPrecision(BaseTester):
     def test_lafs_and_descriptors_are_finite(self, device):
@@ -724,26 +716,12 @@ class TestKeyNetHardNetFeature(BaseTester):
         out = sift(img)
         assert out is not None
 
-    @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
-        B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
-        local_feature = KeyNetHardNet(2, True).to(device).to(device)
-        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
-
 
 class TestGFTTAffNetHardNet(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
         feat = GFTTAffNetHardNet().to(device, dtype)
         assert feat is not None
-
-    @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
-        B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
-        local_feature = GFTTAffNetHardNet(2, True).to(device, img.dtype)
-        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
 
 
 class TestDoGHardNet(BaseTester):
@@ -977,19 +955,7 @@ class TestLocalFeatureMatcher(BaseTester):
             out = matcher({"image0": data_dev["image0"], "image1": 0 * data_dev["image0"]})
         assert len(out["keypoints0"]) == 0
 
-    @pytest.mark.skip("Takes too long time (but works)")
-    def test_gradcheck(self, device):
-        matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("nn", 1.0)).to(device)
-        patches = torch.rand(1, 1, 32, 32, device=device, dtype=torch.float64)
-        patches05 = resize(patches, (48, 48))
-
-        def proxy_forward(x, y):
-            return matcher({"image0": x, "image1": y})["keypoints0"]
-
-        self.gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4)
-
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -1007,7 +973,6 @@ class TestLocalFeatureMatcher(BaseTester):
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift_preextract(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -1035,7 +1000,6 @@ class TestLocalFeatureMatcher(BaseTester):
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
@@ -1054,7 +1018,6 @@ class TestLocalFeatureMatcher(BaseTester):
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_keynet(self, device, dtype, data):
@@ -1071,20 +1034,6 @@ class TestLocalFeatureMatcher(BaseTester):
         assert inliers.sum().item() > 50  # we have enough inliers
         # Reprojection error of 5px is OK
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
-
-    @pytest.mark.skip("ScaleSpaceDetector now is not jittable")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 1, 1, 32, 32
-        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        patches2x = resize(patches, (48, 48))
-        inputs = {"image0": patches, "image1": patches2x}
-        model = LocalFeatureMatcher(SIFTDescriptor(32), DescriptorMatcher("snn", 0.8)).to(device).eval()
-        model_jit = torch.jit.script(model)
-
-        out = model(inputs)
-        out_jit = model_jit(inputs)
-        for k, v in out.items():
-            self.assert_close(v, out_jit[k])
 
 
 class TestSIFTPyramidBackend(BaseTester):

@@ -1640,15 +1640,6 @@ class TestSharpness(BaseTester):
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSharpness.f, (inputs, 0.8))
 
-    @pytest.mark.skip(reason="union type input")
-    def test_jit(self, device, dtype):
-        op = TestSharpness.f
-        op_script = torch.jit.script(TestSharpness.f)
-        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(img, 0.8)
-        actual = op_script(img, 0.8)
-        self.assert_close(actual, expected)
-
     def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
         op = kornia.enhance.sharpness
@@ -1785,16 +1776,6 @@ class TestSolarize(BaseTester):
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSolarize.f, (inputs, 0.8))
 
-    # TODO: implement me
-    @pytest.mark.skip(reason="union type input")
-    def test_jit(self, device, dtype):
-        op = TestSolarize.f
-        op_script = torch.jit.script(op)
-        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(img, 0.8)
-        actual = op_script(img, 0.8)
-        self.assert_close(actual, expected)
-
     def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
         op = kornia.enhance.solarize
@@ -1882,22 +1863,6 @@ class TestPosterize(BaseTester):
         self.assert_close(TestPosterize.f(inputs, 1), expected)
         self.assert_close(TestPosterize.f(inputs, 0), torch.zeros_like(inputs))
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
-
-    @pytest.mark.skip(reason="IndexError: tuple index out of range")
-    def test_gradcheck(self, device):
-        bs, channels, height, width = 2, 3, 4, 5
-        inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
-        self.gradcheck(TestPosterize.f, (inputs, 0))
-
-    # TODO: implement me
-    @pytest.mark.skip(reason="union type input")
-    def test_jit(self, device, dtype):
-        op = TestPosterize.f
-        op_script = torch.jit.script(op)
-        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(img, 8)
-        actual = op_script(img, 8)
-        self.assert_close(actual, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)

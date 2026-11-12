@@ -155,20 +155,6 @@ class TestExtractTensorPatches(BaseTester):
         self.assert_close(img[0, :, 1:3, 0:3], patches[0, 2])
         self.assert_close(img[0, :, 1:3, 1:4], patches[0, 3])
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(img: torch.Tensor, height: int, width: int) -> torch.Tensor:
-            return kornia.geometry.denormalize_pixel_coordinates(img, height, width)
-
-        height, width = 3, 4
-        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True).to(device)
-
-        actual = op_script(grid, height, width)
-        expected = kornia.denormalize_pixel_coordinates(grid, height, width)
-
-        self.assert_close(actual, expected)
-
     def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.contrib.extract_tensor_patches, (img, 3))

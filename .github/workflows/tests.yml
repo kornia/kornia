@@ -69,6 +69,12 @@ on:
         required: false
         type: boolean
         default: false
+      skip-onnx:
+        # Deselect the tests whose node ID contains "onnx" (conftest's --skip-onnx). They depend on the torch release
+        # and the onnx packages, not on Python or the dtype, so one CPU job per torch release runs them.
+        required: false
+        type: boolean
+        default: false
       cache-path:
         required: false
         type: string
@@ -85,10 +91,11 @@ permissions:
 jobs:
   tests:
     runs-on: ${{ inputs.os }}
-    # Hang guard: norms are ~6–15m (ubuntu), ~38m (MPS, ~42m p90), ~61m (hosted macOS CPU), and 26–45m for the
-    # inductor leg, whose cold compiles run ~1.6x slower on EPYC 7763 runners than on 9V45 ones.
-    # Keep well under GitHub's 6h default so a wedged test fails as a timeout.
-    timeout-minutes: ${{ inputs.device == 'mps' && 60 || startsWith(inputs.os, 'macos') && 90 || inputs.optimizer == 'inductor' && 60 || 45 }}
+    # Hang guard: norms are ~6–15m (ubuntu), ~50–56m (MPS in 2026-11, before the slow RANSAC tests were
+    # skipped there), ~61m (hosted macOS CPU), and 26–45m for the inductor leg, whose cold compiles run
+    # ~1.6x slower on EPYC 7763 runners than on 9V45 ones. Keep well under GitHub's 6h default so a wedged
+    # test fails as a timeout.
+    timeout-minutes: ${{ inputs.device == 'mps' && 75 || startsWith(inputs.os, 'macos') && 90 || inputs.optimizer == 'inductor' && 60 || 45 }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
@@ -241,6 +248,7 @@ jobs:
           KORNIA_TEST_DEVICE: ${{ inputs.device }}
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
+          KORNIA_TEST_SKIP_ONNX: ${{ inputs.skip-onnx }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
           KNOWN_FAILURE_PROFILE: ${{ inputs.known-failure-profile }}
           KNOWN_FAILURE_MODE: ${{ inputs.known-failure-mode }}

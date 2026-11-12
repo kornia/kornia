@@ -401,7 +401,7 @@ INHERENT_SITES: dict[str, str] = {
         "ADA augments the drawn subset only, whose size depends on the device draw (boolean indexing)"
     ),
     "augmentation/presets/ada.py:_merge_inputs": "ADA writes the augmented subset back by its device mask",
-    "geometry/transform/thin_plate_spline.py:get_tps_transform": (
+    "geometry/transform/thin_plate_spline.py:_get_tps_transform": (
         "`torch.linalg.solve` checks the user-visible TPS system for singularity and raises (decision D1)"
     ),
     "augmentation/_2d/geometric/base.py:compute_inverse_transformation": (

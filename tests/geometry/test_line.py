@@ -26,7 +26,7 @@ from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, assert_deepcopy_copies_state_as_leaves
 
 
 class TestParametrizedLine(BaseTester):
@@ -382,26 +382,6 @@ class TestParametrizedLine(BaseTester):
         for actual, expected in zip(actual_gradients, expected_gradients):
             self.assert_close(actual, expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
     def test_derived_state_moves_and_serializes(self, device, dtype):
         p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
         p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
@@ -462,6 +442,16 @@ class TestParametrizedLine(BaseTester):
             ParametrizedLine(integer, floating)
         with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'direction'.*torch.int64"):
             ParametrizedLine(floating, integer)
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # An origin with a grad_fn is held in a buffer, which torch cannot deep-copy; the copy holds it as a new
+        # leaf.
+        origin = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine(origin * 2, torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        copied = assert_deepcopy_copies_state_as_leaves(line)
+        self.assert_close(copied.origin.detach(), line.origin.detach(), rtol=0, atol=0)
+        line.origin.sum().backward()
+        assert origin.grad is not None
 
 
 def _near_vertical_points_5040(device, dtype) -> torch.Tensor:
@@ -1197,22 +1187,6 @@ class TestFitLine(BaseTester):
         direction = fit_line(points, weights).direction[0]
         axis = axis * torch.sign(direction.cpu().double() @ axis)
         self.assert_close(direction, axis.to(device=device, dtype=dtype))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestConventionsParametrizedLine(BaseTester):

@@ -62,9 +62,6 @@ class Testunsharp(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(UnsharpMask((5, 5), (1.5, 1.5))(data), expected)
 
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
-
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         data = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

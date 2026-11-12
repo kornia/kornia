@@ -1285,10 +1285,11 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     r"""Map ``(w, x, y, z)`` quaternions ``(*, 4)`` to log 3-vectors ``(*, 3)``, the logarithm map.
 
     ``v = quaternion_exp_to_log(q)`` takes quaternions ``(*, 4)`` with the real part first and returns the 3-vectors
-    ``atan2(||u||, w) u / max(||u||, eps)`` of shape ``(*, 3)``, with ``u`` the vector part. While ``||u||`` is at
-    least ``eps``, the input need not be unit and :func:`quaternion_log_to_exp` maps the result back to the unit
-    quaternion of ``q``; below ``eps`` the log shrinks by ``||u|| / eps``, so ``(-1, 0, 0, 0)`` comes back as
-    ``(1, 0, 0, 0)``. For ``w >= 0`` the result is half the
+    of shape ``(*, 3)``: ``atan2(||u||, w) u / ||u||`` for ``w > 0``, which is ``u / w`` at ``u = 0``, and
+    ``atan2(||u||, w) u / max(||u||, eps)`` for ``w <= 0``, with ``u`` the vector part. For ``w > 0``, and for
+    ``w <= 0`` while ``||u||`` is at least ``eps``, the input need not be unit and :func:`quaternion_log_to_exp` maps
+    the result back to the unit quaternion of ``q``; for ``w <= 0`` below ``eps`` the log shrinks by
+    ``||u|| / eps``, so ``(-1, 0, 0, 0)`` comes back as ``(1, 0, 0, 0)``. For ``w >= 0`` the result is half the
     axis-angle vector; for ``w < 0`` it is not, because this map tells ``q`` from ``-q``. For the axis-angle vector,
     use :func:`quaternion_to_axis_angle`.
 
@@ -1309,15 +1310,17 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           rounds to ``-1`` and the vector part falls under the ``eps`` clamp.
           Both are properties of the map, not defects
         - ``float16``/``bfloat16`` are computed in ``float32``, so the identity
-          returns ``[0., 0., 0.]`` at every dtype, and the gradient is finite
-          at ``w = +-1``, the identity included
-        - the map is invariant to a positive scale while ``||u||`` stays at least ``eps``: a non-unit quaternion
-          produces the same log as its normalisation, and ``-q`` another one
+          returns ``[0., 0., 0.]`` at every dtype. At a zero vector part with
+          ``w > 0``, the identity included, the gradient is the limit of the
+          map, ``I / w`` with respect to ``(x, y, z)`` and 0 with respect to
+          ``w``; at ``w = -1`` it is finite
+        - the map is invariant to a positive scale for ``w > 0``, and for ``w <= 0`` while ``||u||`` stays at least
+          ``eps``: a non-unit quaternion produces the same log as its normalisation, and ``-q`` another one
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape ``(*, 4)``.
-        eps: a small number for clamping.
+        eps: a small number for clamping ``||u||``, applied only for ``w <= 0``.
 
     Return:
         the quaternion log map of shape ``(*, 3)``.
@@ -1356,7 +1359,16 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     safe_scalar = torch.where(at_origin, torch.ones_like(quaternion_scalar), quaternion_scalar)
     theta = torch.atan2(norm_v, safe_scalar)
 
-    quaternion_log: torch.Tensor = (quaternion_vector * theta / norm_q).to(orig_dtype)
+    # For w > 0, theta / ||v|| tends to 1 / w as v -> 0 (#6207), so the eps clamp only distorts it: below eps it
+    # shrank the log by ||v|| / eps, and at v = 0 it left the derivative 0 instead of I / w. Divide by ||v|| itself
+    # there, and use the limit v / w at v = 0. The clamp stays for w <= 0, where (-1, 0, 0, 0) relies on it.
+    exact = (quaternion_scalar > 0) & (norm_v > 0)
+    on_axis = (quaternion_scalar > 0) & (norm_v == 0)
+    denom = torch.where(exact, norm_v, norm_q)
+    safe_w = torch.where(on_axis, quaternion_scalar, torch.ones_like(quaternion_scalar))
+    quaternion_log: torch.Tensor = torch.where(
+        on_axis, quaternion_vector / safe_w, quaternion_vector * theta / denom
+    ).to(orig_dtype)
 
     return quaternion_log
 

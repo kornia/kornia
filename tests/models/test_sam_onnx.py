@@ -30,10 +30,13 @@ from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
 from kornia.models.tiny_vit import TinyViT
 
-from testing.base import assert_close
+from testing.base import assert_close, onnx_exporter_params
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
+
+
+_EXPORTERS = onnx_exporter_params()
 
 
 def test_sam_has_to_onnx():
@@ -132,7 +135,7 @@ def test_vit_encoder_legacy_onnx_matches_eager_at_every_batch():
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     """A MobileSAM (TinyViT) encoder: a dynamic batch on the dynamo exporter, the pseudo batch on the legacy one.
 

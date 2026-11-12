@@ -133,8 +133,9 @@ class CutmixGenerator(RandomGeneratorBase):
 
         if batch_size == 0:
             return {
-                "mix_pairs": torch.zeros([0, 3], device=_device, dtype=torch.long),
-                "crop_src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "mix_pairs": torch.zeros([self.num_mix, 0], device=_device, dtype=torch.long),
+                "crop_src": torch.zeros([self.num_mix, 0, 4, 2], device=_device, dtype=_dtype),
+                "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
             }
 
         with torch.no_grad():

@@ -35,7 +35,9 @@ from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
+
+_EXPORTERS = onnx_exporter_params()
 
 
 class TestSuperResolutionBuilders(BaseTester):
@@ -160,7 +162,7 @@ class TestSuperResolutionBuilders(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
-    @pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
     def test_to_onnx_with_pre_and_post_processor_matches_eager_at_any_size(self, export_kwargs):
         """Without an ``image_size``, the graph takes any batch, height and width, as the eager pre-processor does."""
         pytest.importorskip("onnx")

@@ -18,7 +18,6 @@
 import pytest
 import torch
 
-from kornia.core._compat import torch_version
 from kornia.filters import InRange, in_range
 
 from testing.base import BaseTester, assert_close
@@ -470,8 +469,6 @@ class TestInRange(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        if device == torch.device("cpu") and torch_version() in {"2.3.0", "2.3.1"}:
-            pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
         data = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype)
         op = InRange(lower=(0.2, 0.2, 0.2), upper=(0.6, 0.6, 0.6), return_mask=True)
         op_optimized = torch_optimizer(op, fullgraph=True)
@@ -480,8 +477,6 @@ class TestInRange(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("form", ["c", "c11", "1c11", "chw", "bc11"])
     def test_dynamo_tensor_bounds(self, batch_size, form, device, dtype, torch_optimizer):
-        if device == torch.device("cpu") and torch_version() in {"2.3.0", "2.3.1"}:
-            pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
         data = torch.rand(batch_size, 3, 4, 5, device=device, dtype=dtype)
         lower_c, upper_c = self._per_channel_bounds(3, device, dtype)
         lower = self._bounds_in_form(lower_c, form, batch_size)

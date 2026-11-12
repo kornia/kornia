@@ -16,6 +16,7 @@
 #
 
 
+import copy
 import importlib.util
 import platform
 import sys
@@ -160,12 +161,13 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     """Return the CUDA device of a given index when CUDA is available, else the CPU.
 
     ``device = get_cuda_device_if_available(index)`` returns ``torch.device(f"cuda:{index}")`` when
-    ``torch.cuda.is_available()`` is true and ``torch.device("cpu")`` otherwise. ``index`` is not checked against
-    ``torch.cuda.device_count()``: on a machine with one GPU, ``index=3`` returns ``cuda:3``, which fails only when a
-    tensor is placed on it.
+    ``torch.cuda.is_available()`` is true and ``index`` is inside ``[0, torch.cuda.device_count())``;
+    ``torch.device("cpu")`` otherwise, so an out-of-range ``index`` on a machine with one GPU never hands
+    out a ``cuda:3`` device that only fails when a tensor is placed on it.
 
     Args:
-        index: the CUDA device index.
+        index: the CUDA device index. Falls back to the CPU device when CUDA is unavailable or
+            ``index`` is outside ``[0, torch.cuda.device_count())``.
 
     Returns:
         ``cuda:<index>`` or ``cpu``.
@@ -175,7 +177,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device, else the CPU.
 
     """
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and 0 <= index < torch.cuda.device_count():
         return torch.device(f"cuda:{index}")
 
     return torch.device("cpu")
@@ -1062,7 +1064,8 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
     ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
     (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
     buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
-    built.
+    built. torch cannot deep-copy such a buffer, so a module using it takes ``_deepcopy_module_state`` as its
+    ``__deepcopy__``.
 
     Raises:
         TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
@@ -1081,6 +1084,27 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
             module.register_buffer(name, x)
             return
     setattr(module, name, x)
+
+
+def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> torch.nn.Module:
+    """``copy.deepcopy`` for a module whose state ``register_module_state`` registered.
+
+    torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
+    raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
+    like a ``torch.save`` / ``torch.load`` round trip; the copy has no history, so no gradient flows
+    back through it. The same applies to a plain tensor attribute, which is where ``register_module_state``
+    stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
+    ``__deepcopy__``.
+    """
+    attributes = [value for value in module.__dict__.values() if isinstance(value, torch.Tensor)]
+    for tensor in [*module.buffers(recurse=False), *attributes]:
+        if tensor.grad_fn is not None and id(tensor) not in memo:
+            memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
+    copied = module.__class__.__new__(module.__class__)
+    memo[id(module)] = copied
+    # __setstate__, as the default deepcopy path calls it, so a class that normalizes its state there stays correct.
+    copied.__setstate__(copy.deepcopy(module.__dict__, memo))
+    return copied
 
 
 def dataclass_to_dict(obj: Any) -> Any:
@@ -1211,7 +1235,8 @@ def batched_forward(
         The concatenated model output, on ``data.device``.
 
     Raises:
-        BaseError: if ``batch_size`` is not positive.
+        BaseError: if ``batch_size`` is not positive, or the model returns anything but a
+            single tensor (e.g. a tuple of tensors).
 
     Example:
         >>> import torch
@@ -1235,7 +1260,18 @@ def batched_forward(
             end = min((batch_idx + 1) * bs, B)
             if st >= end:
                 continue
-            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+            out = model_dev(data[st:end].to(device), **kwargs)
+            _check_batched_forward_output(out)
+            out_list.append(out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
-    return model_dev(data.to(device), **kwargs).to(data.device)
+    out = model_dev(data.to(device), **kwargs)
+    _check_batched_forward_output(out)
+    return out.to(data.device)
+
+
+def _check_batched_forward_output(output: Any) -> None:
+    KORNIA_CHECK(
+        isinstance(output, torch.Tensor),
+        lambda: f"batched_forward expects a model that returns a single tensor, got {type(output).__name__}",
+    )

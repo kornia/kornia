@@ -94,10 +94,8 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Raises:
         ValueError: if the image is not ``(C, H, W)`` or ``(H, W)``, or a point lies outside the image after rounding.
-        BaseError: if ``color`` has neither 1 nor ``C`` values for a ``(C, H, W)`` image, or ``points`` is not
-            ``(2,)`` or ``(N, 2)``.
-        RuntimeError: if ``color`` has more than one value for an ``(H, W)`` image
-            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
+        BaseError: if ``color`` has neither 1 nor ``C`` values (an ``(H, W)`` image has one channel), or ``points``
+            is not ``(2,)`` or ``(N, 2)``.
 
     See Also:
         - :func:`draw_line`: draws the pixels between two points, and states the rules both functions follow.
@@ -115,10 +113,14 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     # A 0-d scalar has no channel dimension for the check below to read; treat it as one channel, as draw_line does.
     if color.ndim == 0:
         color = color.unsqueeze(0)
-    # A single value is written to every channel (see the docstring).
+    # An (H, W) image has a single channel: its axis 0 is a height, not a channel count, so the count comes from
+    # the rank. A longer color used to pass here and fail later at the indexing, with a raw RuntimeError (#6689).
+    channels = 1 if image.dim() == 2 else image.shape[0]
+    color_length = color.shape[0]
     KORNIA_CHECK(
-        (len(image.shape) == 2 and len(color.shape) == 1) or color.shape[0] in (1, image.shape[0]),
-        "Color dim must match the channel dims of the provided image",
+        color_length in (1, channels),
+        f"Color dim must match the channel dims of the provided image: "
+        f"expected a single value or {channels} (one per channel), got {color_length}",
     )
     # round on the points' own device: MPS has no float64, and float64 points from NumPy are common
     points = _round_to_pixel(points).to(image.device)
@@ -316,8 +318,7 @@ def draw_rectangle(
         ShapeError: if the image is not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``rectangle`` is not ``(B, N, 4)``, or its batch size differs from the image's.
         ValueError: if ``line_width`` is not a positive ``int``.
-        RuntimeError: if ``color`` has neither 1 nor ``C`` values per rectangle
-            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
+        BaseError: if ``color`` has neither 1 nor ``C`` values per rectangle.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
@@ -358,6 +359,15 @@ def draw_rectangle(
 
     if color is None:
         color = torch.tensor([0.0] * c).expand(batch, num_rectangle, c)
+
+    # The color must hold one value or one per channel. A wrong length used to reach the expand below and fail
+    # there with a raw RuntimeError instead of a kornia check (#6689).
+    color_length = color.numel() if color.ndim == 0 else color.shape[-1]
+    KORNIA_CHECK(
+        color_length in (1, c),
+        f"Color dim must match the channel dims of the provided image: "
+        f"expected a single value or {c} (one per channel), got {color_length}",
+    )
 
     if fill is None:
         fill = False
@@ -495,10 +505,9 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     Raises:
         ShapeError: if the images are not ``(B, C, H, W)``. It is also a ``ValueError``.
         ValueError: if ``polygons`` is a tensor that is not three dimensional.
+        BaseError: if ``colors`` has neither 1 nor ``C`` values per polygon.
         BaseError: if the vertices are not ``(x, y)`` points.
         BaseError: if the images, polygons and colors differ in batch size or device.
-        RuntimeError: if ``colors`` has neither 1 nor ``C`` values per polygon
-            (`#6689 <https://github.com/kornia/kornia/issues/6689>`_).
 
     See Also:
         - :func:`draw_rectangle`: draws outlines as well as fills, and several rectangles per image.
@@ -520,6 +529,16 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         # `[]` has no polygon to take a dtype or device from; an empty (0, 0, 2) batch returns below.
         polygons = _batch_polygons(polygons) if polygons else images.new_zeros(0, 0, 2)
     b_p, _, xy, device_p = *polygons.shape, polygons.device
+    # The colors must hold one value or one per image channel. A wrong length used to reach the fill below and
+    # fail there with a raw RuntimeError instead of a kornia check (#6689).
+    color_length = colors.numel() if colors.ndim == 0 else colors.shape[-1]
+    KORNIA_CHECK(
+        color_length in (1, c_i),
+        lambda: (
+            f"Color dim must match the channel dims of the provided image: "
+            f"expected a single value or {c_i} (one per channel), got {color_length}"
+        ),
+    )
     if len(colors.shape) <= 1:
         colors = colors.expand(b_i, c_i)
     b_c, _, device_c = *colors.shape, colors.device

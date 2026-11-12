@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import copy
+import io
 from contextlib import nullcontext
 
 import pytest
@@ -25,6 +27,7 @@ from kornia.core.utils import (
     _adjugate_closed_form,
     _autocast_disabled,
     _closed_form_inverse,
+    _deepcopy_module_state,
     _det_perm_closed_form,
     _extract_device_dtype,
     _inverse_3x3_closed_form,
@@ -37,6 +40,7 @@ from kornia.core.utils import (
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
     batched_forward,
+    get_cuda_device_if_available,
     is_autocast_enabled,
     is_compiling,
     is_exporting,
@@ -46,7 +50,19 @@ from kornia.core.utils import (
     safe_solve_with_mask,
 )
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_close,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
+
+
+class _DeepcopyState(torch.nn.Module):
+    """A module holding registered state, with the deep copy of the geometry modules (module level, so it pickles)."""
+
+    __deepcopy__ = _deepcopy_module_state
 
 
 def _issue_5476_batch(device, dtype):
@@ -415,6 +431,57 @@ class TestExportHelpers:
         moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
 
+    def test_deepcopy_module_state_copies_history_as_leaves(self, device, dtype):
+        # torch cannot deep-copy a tensor with a grad_fn, so a module holding one as a buffer used to make
+        # copy.deepcopy raise. The copy now holds it as a new leaf that keeps requires_grad, still a buffer, as
+        # torch.save / torch.load does, and the rest of the module is deep-copied as usual.
+        m = _DeepcopyState()
+        v = torch.rand(3, device=device, dtype=dtype, requires_grad=True)
+        register_module_state(m, "y", v * 2)
+        register_module_state(m, "x", torch.rand(3, device=device, dtype=dtype))
+        m.tag = ["kept"]
+        m.eval()
+        with pytest.raises(RuntimeError, match="graph leaves"):
+            copy.deepcopy(m.y)
+        copied = assert_deepcopy_copies_state_as_leaves(m)
+        assert isinstance(copied.x, torch.nn.Parameter)
+        buffer = io.BytesIO()
+        torch.save(m, buffer)
+        buffer.seek(0)
+        loaded = torch.load(buffer, weights_only=False)
+        for name, tensor in loaded.state_dict(keep_vars=True).items():
+            assert type(copied.state_dict(keep_vars=True)[name]) is type(tensor)
+            assert copied.state_dict(keep_vars=True)[name].requires_grad == tensor.requires_grad
+        assert set(dict(loaded.named_buffers())) == set(dict(copied.named_buffers())) == {"y"}
+        assert copied.tag == ["kept"]
+        assert copied.tag is not m.tag
+        assert copied.training is False
+        # The copy has no history, and the original keeps its own.
+        copied.y.sum().backward()
+        assert v.grad is None
+        assert_close(copied.y.grad, torch.ones_like(v))
+        m.y.sum().backward()
+        assert_close(v.grad, torch.full_like(v, 2.0))
+        # Under graph capture register_module_state stores the tensor as a plain attribute, copied the same way.
+        m.__dict__["traced"] = v * 3
+        traced = copy.deepcopy(m).traced
+        assert traced.grad_fn is None
+        assert traced.requires_grad
+        assert_close(traced.detach(), m.traced.detach(), rtol=0, atol=0)
+        del m.__dict__["traced"]
+        # One deep copy keeps shared objects shared, also a reference from the module back to itself.
+        first, second = copy.deepcopy([m, m])
+        assert first is second
+        # Two modules sharing one tensor with history still share its copy.
+        shared = _DeepcopyState()
+        shared.__dict__["traced"] = m.y
+        copied_m, copied_shared = copy.deepcopy([m, shared])
+        assert copied_shared.traced is copied_m.y
+        m.cycle = [m]
+        assert copy.deepcopy(m).cycle[0].cycle is not m.cycle
+        cyclic = copy.deepcopy(m)
+        assert cyclic.cycle[0] is cyclic
+
     @pytest.mark.parametrize("state_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
     def test_register_module_state_rejects_non_floating(self, device, state_dtype):
         # Only a floating-point or complex tensor can be optimizable state: any other dtype raises a kornia error
@@ -769,6 +836,46 @@ class TestBatchedForwardBatchSize:
         # 1 is the smallest valid size; 5 == len(data) takes the single-call path
         for bs in (1, 2, 5, 128):
             assert_close(batched_forward(model, data, torch.device("cpu"), batch_size=bs), expected)
+
+
+class TestBatchedForwardOutputType:
+    class _TupleOutput(torch.nn.Module):
+        def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            return x, x
+
+    def test_rejects_a_tuple_output_single_call_path(self):
+        # len(data) <= batch_size: one model call, which used to fail with
+        # "AttributeError: 'tuple' object has no attribute 'to'" (#6691).
+        model = self._TupleOutput()
+        with pytest.raises(BaseError, match="batched_forward expects a model that returns a single tensor, got tuple"):
+            batched_forward(model, torch.rand(4, 3), torch.device("cpu"), batch_size=8)
+
+    def test_rejects_a_tuple_output_micro_batch_path(self):
+        # len(data) > batch_size: the micro-batch loop, which used to fail inside
+        # torch.cat with "TypeError: expected Tensor as element 0 ... got tuple" (#6691).
+        model = self._TupleOutput()
+        with pytest.raises(BaseError, match="batched_forward expects a model that returns a single tensor, got tuple"):
+            batched_forward(model, torch.rand(300, 3), torch.device("cpu"), batch_size=128)
+
+
+class TestGetCudaDeviceIfAvailable:
+    def test_in_range_index_resolves_when_cuda_is_available(self, monkeypatch):
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+        assert get_cuda_device_if_available() == torch.device("cuda:0")
+        assert get_cuda_device_if_available(1) == torch.device("cuda:1")
+
+    def test_out_of_range_index_falls_back_to_cpu(self, monkeypatch):
+        # A one-GPU machine used to hand out cuda:3, which only failed later when a
+        # tensor was placed there (#6691).
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        assert get_cuda_device_if_available(3) == torch.device("cpu")
+        assert get_cuda_device_if_available(-1) == torch.device("cpu")
+
+    def test_falls_back_to_cpu_without_cuda(self, monkeypatch):
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        assert get_cuda_device_if_available() == torch.device("cpu")
 
 
 class TestInverseWithMask:

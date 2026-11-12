@@ -53,7 +53,6 @@ class TestVflip(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -124,7 +123,6 @@ class TestHflip(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -193,7 +191,6 @@ class TestRot180(BaseTester):
 
         self.assert_close(f(input), expected)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:

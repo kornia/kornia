@@ -133,15 +133,6 @@ class TestRANSACHomography(BaseTester):
         # Reprojection error of 5px is OK
         self.assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=0.15, atol=5)
 
-    @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
-    def test_jit(self, device, dtype):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(4, 2, device=device, dtype=dtype)
-        points2 = torch.rand(4, 2, device=device, dtype=dtype)
-        model = RANSAC("homography").to(device=device, dtype=dtype)
-        model_jit = torch.jit.script(RANSAC("homography").to(device=device, dtype=dtype))
-        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
-
 
 class TestRANSACHomographyLineSegments(BaseTester):
     def test_smoke(self, device, dtype):
@@ -180,15 +171,6 @@ class TestRANSACHomographyLineSegments(BaseTester):
         self.assert_close(
             transform_points(dst_homo_src[None], points_src_st[:, :-1]), points_dst_st[:, :-1], rtol=1e-3, atol=1e-3
         )
-
-    @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
-    def test_jit(self, device, dtype):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(4, 2, 2, device=device, dtype=dtype)
-        points2 = torch.rand(4, 2, 2, device=device, dtype=dtype)
-        model = RANSAC("homography_from_linesegments").to(device=device, dtype=dtype)
-        model_jit = torch.jit.script(RANSAC("homography_from_linesegments").to(device=device, dtype=dtype))
-        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
 
 
 def _line_mismatch_scene(seed: int, line_image: Optional[int] = 2):
@@ -249,6 +231,14 @@ def _rank_ratio_model(ratio: float, dtype, device):
 
 class TestRANSACFundamentalNearRankOne(BaseTester):
     """Rank-one matrices fit mismatches along a line in either image (#6574), and must not outvote the true geometry."""
+
+    @pytest.fixture(autouse=True)
+    def _skip_on_mps(self, request):
+        # Too slow for the MPS CI leg: on its paravirtual GPU (macos-15, torch 2.14) this class took 150-300 s of
+        # the job's 60 minutes, against 24 s for this whole file on a physical M1 with torch 2.15. The rank test is
+        # device-independent arithmetic, which the CPU legs cover; the other RANSAC classes keep MPS coverage.
+        if "device" in request.fixturenames and request.getfixturevalue("device").type == "mps":
+            pytest.skip("too slow on the MPS CI runner; the rank test is device-independent and covered on CPU")
 
     @pytest.mark.parametrize(
         "threshold, ratio, rejected",
@@ -570,27 +560,6 @@ class TestRANSACFundamental(BaseTester):
         )
         assert gross_errors.sum().item() < 2
 
-    @pytest.mark.skip(reason="try except block in python version")
-    def test_jit(self, device, dtype):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(8, 2, device=device, dtype=dtype)
-        points2 = torch.rand(8, 2, device=device, dtype=dtype)
-        model = RANSAC("fundamental").to(device=device, dtype=dtype)
-        model_jit = torch.jit.script(model)
-        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
-
-    @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
-    def test_gradcheck(self, device):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
-        model = RANSAC("fundamental").to(device=device, dtype=torch.float64)
-
-        def gradfun(p1, p2):
-            return model(p1, p2)[0]
-
-        self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))
-
 
 class TestRANSACLocalOptimization(BaseTester):
     @pytest.mark.parametrize("good_idx", [1, 2])
@@ -881,27 +850,6 @@ class TestRANSACEssential(BaseTester):
         zero_tolerance = max(1e-4, torch.finfo(E.dtype).eps)
         assert torch.all((sv[..., 2] / sv[..., 0]).abs() < zero_tolerance)
 
-    @pytest.mark.skip(reason="try except block in python version")
-    def test_jit(self, device, dtype):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(8, 2, device=device, dtype=dtype)
-        points2 = torch.rand(8, 2, device=device, dtype=dtype)
-        model = RANSAC("essential").to(device=device, dtype=dtype)
-        model_jit = torch.jit.script(model)
-        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
-
-    @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
-    def test_gradcheck(self, device):
-        torch.random.manual_seed(0)
-        points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
-        model = RANSAC("essential").to(device=device, dtype=torch.float64)
-
-        def gradfun(p1, p2):
-            return model(p1, p2)[0]
-
-        self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))
-
 
 # Sixteen exact planar matches for the convention pins. _MATCHES_1 is an asymmetric 4 x 4 lattice with a per-point
 # diagonal jitter, generated by
@@ -948,11 +896,6 @@ _HALF_LINES = (
 )
 
 
-def _cpu_only(device: torch.device) -> None:
-    if device.type != "cpu":
-        pytest.skip("the RANSAC convention pins are verified on the CPU only")
-
-
 def _planar_matches(device, dtype):
     """Sixteen exact matches ``kp2 = H(kp1)``, generated in float64 on the CPU and cast, shape ``(16, 2)`` each."""
     kp1 = torch.tensor([_MATCHES_1], dtype=torch.float64)
@@ -992,7 +935,6 @@ def _max_transfer(model: torch.Tensor, src: torch.Tensor, dst: torch.Tensor) -> 
 
 class TestConventionRANSAC(BaseTester):
     def test_convention_ransac_model_maps_kp1_to_kp2(self, device, dtype, monkeypatch):
-        _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         # inl_th=5 keeps every exact match an inlier in bfloat16 too, whose pixel coordinates carry up to 2 px of
         # rounding here.
@@ -1033,7 +975,6 @@ class TestConventionRANSAC(BaseTester):
 
     @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
     def test_convention_ransac_inl_th_is_pixels_for_point_models(self, model_type, device, dtype):
-        _cpu_only(device)
         if model_type == "homography":
             # inl_th is compared with the one-way transfer error in pixels (forward passes inl_th**2 to the squared
             # error): a match displaced by 10 px is an outlier at inl_th=4 and an inlier at inl_th=15. RANSAC may
@@ -1102,7 +1043,8 @@ class TestConventionRANSAC(BaseTester):
             assert int(mask.sum()) == 11 + int(expected)
 
     def test_convention_ransac_seed_is_private(self, device, dtype):
-        _cpu_only(device)
+        if device.type != "cpu":
+            pytest.skip("seed=None draws from the generator of the input's device; this test reads the CPU one")
         kp1, kp2 = _planar_matches(device, dtype)
         kp2[9, 0] += 10.0
 
@@ -1129,7 +1071,6 @@ class TestConventionRANSAC(BaseTester):
         assert torch.equal(mask_c, mask_d)
 
     def test_convention_ransac_linesegment_threshold_units_4867(self, device, dtype):
-        _cpu_only(device)
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip(_HALF_LINES)
         H = torch.tensor([_H_TRUE], device=device, dtype=dtype)
@@ -1148,7 +1089,6 @@ class TestConventionRANSAC(BaseTester):
                 assert bool(mask[0]) is expected
 
     def test_convention_ransac_msac_finds_model_with_outliers_4868(self, device, dtype):
-        _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         kp1 = torch.cat([kp1, torch.tensor(_UNRELATED_1, device=device, dtype=dtype)])
         kp2 = torch.cat([kp2, torch.tensor(_UNRELATED_2, device=device, dtype=dtype)])
@@ -1167,7 +1107,6 @@ class TestConventionRANSAC(BaseTester):
         assert not bool(mask[16:].any())
 
     def test_convention_ransac_prosac_sampling_4869(self, device, dtype):
-        _cpu_only(device)
         # PROSAC draws its first sample from the four top-ranked correspondences and then grows the prefix it samples
         # from, one newest correspondence per sample, so its first samples differ from uniform ones. #4869 stored
         # prosac_sampling and never read it.
@@ -1187,7 +1126,6 @@ class TestConventionRANSAC(BaseTester):
         ],
     )
     def test_convention_ransac_size_validation_4872(self, model_type, n, validated_type, validated_n, device, dtype):
-        _cpu_only(device)
         kp1, kp2 = _planar_matches(device, dtype)
         # Too few correspondences for the validated model types raise kornia's ValueError before sampling.
         with pytest.raises(ValueError):

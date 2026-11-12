@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import sys
 import types
@@ -88,6 +89,20 @@ def dynamo_is_available() -> bool:
     )
 
 
+def onnx_exporter_params(default_id: str = "default", legacy_id: str = "legacy") -> list[Any]:
+    """Return the ``to_onnx`` keyword sets of the exporters worth testing, as ``pytest.param`` values.
+
+    ``{"dynamo": False}`` runs the legacy TorchScript exporter. ``{}`` runs ``torch.onnx.export``'s default: the dynamo
+    exporter from torch 2.9, the TorchScript exporter before it. The default case is listed only from torch 2.9, so an
+    older torch does not export the same graph twice. Keep the ids free of "dynamo" and "compile": conftest deselects
+    every test whose name contains them unless an optimizer is set.
+    """
+    params = [pytest.param({"dynamo": False}, id=legacy_id)]
+    if not torch_version_lt(2, 9, 0):
+        params.insert(0, pytest.param({}, id=default_id))
+    return params
+
+
 def dynamic_export_is_available() -> bool:
     """Return whether ``torch.export`` accepts named dynamic shapes on this Torch/Python pair.
 
@@ -148,6 +163,30 @@ def assert_close(
         equal_nan=False,
         **kwargs,
     )
+
+
+def assert_deepcopy_copies_state_as_leaves(module: torch.nn.Module) -> torch.nn.Module:
+    """Check that ``copy.deepcopy(module)`` copies its state like ``torch.save`` / ``torch.load``.
+
+    The copy holds the same keys, each as a parameter or a buffer like the original and with the same values, dtype,
+    device and ``requires_grad``, but as leaves in storage of their own, so no gradient flows back through it. The
+    property is checked directly, since ``torch.load`` cannot rebuild a complex32 tensor that requires grad. Returns
+    the copy.
+    """
+    copied = copy.deepcopy(module)
+    assert type(copied) is type(module)
+    original = module.state_dict(keep_vars=True)
+    actual = copied.state_dict(keep_vars=True)
+    assert list(actual) == list(original)
+    assert set(dict(copied.named_buffers())) == set(dict(module.named_buffers()))
+    for name, source in original.items():
+        tensor = actual[name]
+        assert type(tensor) is type(source), name
+        assert tensor.grad_fn is None, name
+        assert tensor.requires_grad == source.requires_grad, name
+        assert tensor.data_ptr() != source.data_ptr(), name
+        assert_close(tensor.detach(), source.detach(), rtol=0, atol=0)
+    return copied
 
 
 def tensor_to_gradcheck_var(

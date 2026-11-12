@@ -85,6 +85,25 @@ class TestEnumGet(BaseTester):
         assert message.startswith("torch.uint8 is not a valid DType")
         assert "'float32'" in message
 
+    @pytest.mark.parametrize("enum", _ENUMS)
+    def test_bool_is_rejected_by_every_enum_get_6691(self, enum):
+        # `bool` is an `int`, so `Resample.get(True)` used to resolve to BILINEAR (#6691).
+        with pytest.raises(TypeError, match="not a `bool`"):
+            enum.get(True)
+        with pytest.raises(TypeError, match="not a `bool`"):
+            enum.get(False)
+
+    def test_dtype_rejects_a_non_integral_tensor_6691(self):
+        # `int(2.7) == 2` used to truncate the value into DType.FLOAT32 instead of raising (#6691).
+        with pytest.raises(TypeError, match="expects a tensor with an integral scalar value"):
+            DType.get(torch.tensor(2.7))
+        # a bool tensor's item is a `bool`, which would resolve through `int` like `Resample.get(True)` did
+        with pytest.raises(TypeError, match="expects a tensor with an integral scalar value"):
+            DType.get(torch.tensor(True))
+        # integral tensors keep resolving
+        assert DType.get(torch.tensor(2)) is DType.FLOAT32
+        assert DType.get(torch.tensor(3)) is DType.FLOAT64
+
     def test_dynamo_name_lookup_fullgraph_5907(self, device, dtype, torch_optimizer):
         # augmentations look names up in their forward too (a per-call `border_type`, `data_keys`)
         def op(x):

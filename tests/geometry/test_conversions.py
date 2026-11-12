@@ -1751,6 +1751,54 @@ class TestQuaternionExpToLog(BaseTester):
         ).to(dtype)
         self.assert_close(fn(near_boundary), unguarded)
 
+    @pytest.mark.parametrize("w", [1.0, 2.0, 0.5])
+    def test_gradient_at_a_zero_vector_part_is_the_limit_6207(self, device, w):
+        # At v = 0 the log was v * 0 / eps, so its gradient with respect to v was 0 instead of the limit I / w of the
+        # map log(q) ~ v / w: a rotation fitted through the log map from the identity never moved.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        quaternion = torch.tensor([w, 0.0, 0.0, 0.0], device=device, dtype=torch.float64)
+        jac = torch.autograd.functional.jacobian(kornia.geometry.conversions.quaternion_exp_to_log, quaternion)
+        expected = torch.cat([torch.zeros(3, 1, dtype=torch.float64), torch.eye(3, dtype=torch.float64) / w], dim=1)
+        self.assert_close(jac, expected.to(device), atol=0, rtol=0)
+
+    @pytest.mark.parametrize("x", [1e-12, 1e-9, 9.9e-9])
+    def test_eps_band_keeps_value_and_gradient_6207(self, device, x):
+        # Below eps the clamp returned v * theta / eps, so (1, 1e-9, 0, 0) gave 1e-10 with d log_x / dx = 0.2. For
+        # w = 1 the log of (1, x, 0, 0) is atan(x) along x, which is x to float64 precision here, with derivative 1.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        quaternion = torch.tensor([1.0, x, 0.0, 0.0], device=device, dtype=torch.float64)
+        log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion)
+        self.assert_close(log, torch.tensor([x, 0.0, 0.0], device=device, dtype=torch.float64), atol=0, rtol=1e-12)
+        jac = torch.autograd.functional.jacobian(kornia.geometry.conversions.quaternion_exp_to_log, quaternion)
+        self.assert_close(jac[:, 1:], torch.eye(3, device=device, dtype=torch.float64), atol=1e-12, rtol=0)
+        self.gradcheck(kornia.geometry.conversions.quaternion_exp_to_log, (quaternion[None],))
+
+    def test_eps_still_clamps_for_non_positive_w_6207(self, device, dtype):
+        # The clamp is kept for w <= 0: the antipode of the identity still comes back as the identity's log.
+        _skip_if_dtype_unavailable(device, dtype)
+        quaternion = torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion)
+        self.assert_close(log, torch.zeros(3, device=device, dtype=dtype))
+
+    def test_gradcheck_at_the_identity_6207(self, device):
+        quaternion = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.conversions.quaternion_exp_to_log, (quaternion,))
+
+    def test_fit_from_the_identity_moves_6207(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the fit needs float32 or float64 steps")
+        _skip_if_dtype_unavailable(device, dtype)
+        target = torch.tensor([0.1, -0.2, 0.3], device=device, dtype=dtype)
+        quaternion = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
+        optimizer = torch.optim.SGD([quaternion], lr=0.5)
+        for _ in range(50):
+            optimizer.zero_grad()
+            ((kornia.geometry.conversions.quaternion_exp_to_log(quaternion) - target) ** 2).sum().backward()
+            optimizer.step()
+        self.assert_close(
+            kornia.geometry.conversions.quaternion_exp_to_log(quaternion.detach()), target, atol=1e-4, rtol=0
+        )
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_exp_to_log

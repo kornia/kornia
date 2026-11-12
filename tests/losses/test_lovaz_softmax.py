@@ -303,9 +303,7 @@ class TestLovaszSoftmaxLoss(BaseTester):
         with pytest.raises(Exception, match="weight must hold one value per class of pred"):
             op_script(logits, labels, torch.rand(num_classes + 1, device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="Not matching results")
     def test_dynamo(self, device, dtype, torch_optimizer):
-        # TODO: investigate if we can fix it or report the issue
         num_classes = 6
         logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
         labels = torch.randint(0, num_classes, (2, 1, 2), device=device)

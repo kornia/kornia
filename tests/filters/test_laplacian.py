@@ -225,9 +225,6 @@ class TestLaplacian(BaseTester):
         actual = laplacian(sample, kernel_size)
         assert actual.shape == shape
 
-    @pytest.mark.skip(reason="Nothing to test.")
-    def test_exception(self): ...
-
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         sample = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

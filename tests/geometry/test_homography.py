@@ -16,13 +16,11 @@
 #
 
 import re
-import sys
 
 import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.geometry.epipolar import normalize_points
@@ -1479,9 +1477,6 @@ class TestFindHomographyDLTIter(BaseTester):
         assert H.shape == (1, 3, 3)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
-    @pytest.mark.skipif(
-        sys.platform == "darwin" and torch_version_le(1, 9, 1), reason="Known bug in torch 1.9.1 on macos"
-    )
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)

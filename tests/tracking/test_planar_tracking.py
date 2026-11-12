@@ -22,7 +22,6 @@ import pytest
 import torch
 
 from kornia.contrib import ImageStitcher
-from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
 from kornia.feature.loftr.loftr import default_cfg
@@ -461,7 +460,6 @@ class TestHomographyTracker(BaseTester):
         assert not success
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real(self, device, dtype, data):
         # The fixture is session-scoped and shared; cast into a copy rather than in place.

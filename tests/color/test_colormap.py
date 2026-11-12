@@ -254,14 +254,6 @@ class TestApplyColorMap(BaseTester):
             assert actual.device == input_tensor.device
             assert actual.dtype == dtype
 
-    @pytest.mark.skip(reason="jacobian mismatch")
-    def test_gradcheck(self, device):
-        # TODO: implement differentiability
-        cm = ColorMap(base="autumn", device=device, dtype=torch.float64)
-        input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=torch.float64)
-
-        self.gradcheck(apply_colormap, (input_tensor, cm))
-
     def test_preserves_input_shape(self, device):
         cm = ColorMap(
             base="autumn",

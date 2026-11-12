@@ -446,9 +446,6 @@ class TestFilter2D(BaseTester):
         # evaluate function gradient
         self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
-    @pytest.mark.skip(reason="filter2d do not have a module")
-    def test_module(self): ...
-
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_dynamo(self, normalized, padding, device, dtype, torch_optimizer):
@@ -467,8 +464,6 @@ class TestFilter3D(BaseTester):
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, border_type, normalized, device, dtype):
-        if torch_version_le(1, 9, 1) and border_type == "reflect":
-            pytest.skip(reason="Reflect border is not implemented for 3D on torch < 1.9.1")
 
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         data = torch.ones(1, 1, 6, 7, 8, device=device, dtype=dtype)
@@ -860,9 +855,6 @@ class TestFilter3D(BaseTester):
             nondet_tol=1e-8,
         )
 
-    @pytest.mark.skip(reason="filter3d do not have a module")
-    def test_module(self): ...
-
     @pytest.mark.parametrize("normalized", [True, False])
     def test_dynamo(self, normalized, device, dtype, torch_optimizer):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
@@ -1245,9 +1237,6 @@ class TestFilter2D_fftconv(BaseTester):
 
         # evaluate function gradient
         self.gradcheck(fft_conv, (sample, kernel), nondet_tol=1e-8)
-
-    @pytest.mark.skip(reason="filter2d do not have a module")
-    def test_module(self): ...
 
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])

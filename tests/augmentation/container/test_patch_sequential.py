@@ -36,6 +36,42 @@ def _restore_global_rng():
         yield
 
 
+# Every pair of values of any two arguments of ``test_forward`` appears in at least one case: 27 of the 324 valid
+# combinations (``patchwise_apply=True`` takes only a boolean ``random_apply``). The other combinations reach no
+# further line or branch of ``kornia.augmentation`` and catch no further mutant of the containers. Generated greedily:
+# repeatedly add the valid combination that covers the most uncovered pairs, preferring the earliest values on a tie.
+_EVEN, _ODD = (2, 3, 24, 24), (2, 3, 23, 25)
+_FORWARD_CASES = [
+    (_EVEN, "same", True, True, True, True),
+    (_ODD, "valid", True, False, False, True),
+    (_EVEN, "valid", True, None, None, False),
+    (_ODD, "same", False, True, None, 1),
+    (_EVEN, "same", False, False, False, (2, 2)),
+    (_ODD, "valid", False, None, True, (2, 2)),
+    (_EVEN, "valid", False, True, False, (1, 2)),
+    (_EVEN, "same", False, None, False, (2,)),
+    (_ODD, "same", True, False, True, False),
+    (_ODD, "same", False, False, None, (1, 2)),
+    (_EVEN, "valid", False, False, True, 1),
+    (_EVEN, "same", False, True, True, 10),
+    (_ODD, "valid", False, True, True, (2,)),
+    (_EVEN, "same", False, True, True, True),
+    (_EVEN, "same", False, True, True, False),
+    (_ODD, "valid", False, False, False, 10),
+    (_ODD, "valid", False, False, False, True),
+    (_ODD, "valid", False, False, False, False),
+    (_EVEN, "same", True, True, False, False),
+    (_EVEN, "same", True, None, None, True),
+    (_EVEN, "same", False, None, False, 1),
+    (_EVEN, "same", False, True, None, (2, 2)),
+    (_EVEN, "same", False, None, True, (1, 2)),
+    (_EVEN, "same", False, False, None, (2,)),
+    (_EVEN, "same", False, None, None, 10),
+    (_EVEN, "same", False, None, None, True),
+    (_EVEN, "same", False, None, None, False),
+]
+
+
 class TestPatchSequential:
     @pytest.mark.parametrize(
         "error_param",
@@ -63,15 +99,10 @@ class TestPatchSequential:
                 **error_param,
             )
 
-    @pytest.mark.parametrize("shape", [(2, 3, 24, 24), (2, 3, 23, 25)])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    @pytest.mark.parametrize("patchwise_apply", [True, False])
-    @pytest.mark.parametrize("same_on_batch", [True, False, None])
-    @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize(
+        ("shape", "padding", "patchwise_apply", "same_on_batch", "keepdim", "random_apply"), _FORWARD_CASES
+    )
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
-        if patchwise_apply and not isinstance(random_apply, bool):
-            pytest.skip("patchwise_apply=True only supports boolean random_apply")
         torch.manual_seed(11)
         # Exercise nested colour/geometric/mix operations without the unrelated HSV float16
         # zero-pixel path: perspective padding can introduce black pixels before another colour draw.
@@ -128,8 +159,6 @@ class TestPatchSequential:
         assert seq.is_intensity_only()
 
     def test_autocast(self, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.PatchSequential(*tfs, grid_size=(2, 2), random_apply=True)
