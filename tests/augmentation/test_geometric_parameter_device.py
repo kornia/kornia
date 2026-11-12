@@ -158,7 +158,7 @@ class TestGeometricParameterDevice(BaseTester):
         finally:
             torch.set_default_dtype(original_dtype)
 
-    def test_ambient_default_device(self, make_aug, device, dtype):
+    def test_ambient_default_device(self, make_aug, device):
         # Sampling stays on CPU while numeric returned parameters follow the default device.
         original_modes = torch.overrides._get_current_function_mode_stack()
         with torch.device(device):

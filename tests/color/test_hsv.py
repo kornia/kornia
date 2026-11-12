@@ -162,7 +162,7 @@ class TestRgbToHsv(BaseTester):
         expected = torch.tensor([[[0.0]], [[value / (value + eps)]], [[value]]], device=device, dtype=dtype)
         self.assert_close(kornia.color.rgb_to_hsv(data, eps=eps), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hsv, (img,), raise_exception=True, fast_mode=True)
@@ -352,7 +352,7 @@ class TestHsvToRgb(BaseTester):
         expected_black = torch.zeros(5, 3, 1, 1, device=device, dtype=dtype)
         self.assert_close(kornia.color.hsv_to_rgb(data_black), expected_black)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hsv_to_rgb, (img,), raise_exception=True, fast_mode=True)

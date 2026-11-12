@@ -36,6 +36,8 @@ dice_module = importlib.import_module("kornia.losses.dice")
 
 # 2 x 21 x 128 x 128 logits are past the CPU path's size threshold; the 21 classes are those of the flagship benchmark.
 LARGE = (2, 21, 128, 128)
+# 2 x 21 x 32 x 40 logits are just past it too: enough for comparisons that do not depend on the size.
+ELIGIBLE = (2, 21, 32, 40)
 
 
 def _require_native_cpu(device: torch.device, dtype: torch.dtype) -> None:
@@ -155,11 +157,13 @@ class TestDiceLossCpu(BaseTester):
     @pytest.mark.parametrize("eps", [1e-8, 0.0])
     def test_matches_one_hot_target(self, monkeypatch, average, weighted, ignore_index, eps, device, dtype):
         _require_native_cpu(device, dtype)
-        logits, labels = _inputs(LARGE, device, dtype, ignore_index)
-        weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype) if weighted else None
+        calls = _count_calls(monkeypatch)
+        logits, labels = _inputs(ELIGIBLE, device, dtype, ignore_index)
+        weight = torch.linspace(0.5, 1.5, ELIGIBLE[1], device=device, dtype=dtype) if weighted else None
         kwargs = {"weight": weight, "ignore_index": ignore_index}
         expected = _reference(monkeypatch, logits, labels, average, eps, **kwargs)
         actual = _value_and_grads(logits, labels, average, eps, **kwargs)
+        assert calls == [ELIGIBLE]
         self.assert_values_and_grads_close(actual, expected)
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
@@ -226,16 +230,18 @@ class TestDiceLossCpu(BaseTester):
     @pytest.mark.parametrize("weighted", [False, True])
     def test_strided_inputs_match_one_hot_target(self, monkeypatch, layout, average, weighted, device, dtype):
         _require_native_cpu(device, dtype)
-        logits, labels = _inputs(LARGE, device, dtype)
+        calls = _count_calls(monkeypatch)
+        logits, labels = _inputs(ELIGIBLE, device, dtype)
         if layout == "transposed":
             logits, labels = logits.transpose(-1, -2), labels.transpose(-1, -2)
         elif layout == "channels_last":
             logits = logits.contiguous(memory_format=torch.channels_last)
         else:
             logits = torch.cat([logits, logits], dim=1)[:, ::2]
-        weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype) if weighted else None
+        weight = torch.linspace(0.5, 1.5, ELIGIBLE[1], device=device, dtype=dtype) if weighted else None
         expected = _reference(monkeypatch, logits, labels, average, weight=weight)
         actual = _value_and_grads(logits, labels, average, weight=weight)
+        assert calls == [logits.shape]
         self.assert_values_and_grads_close(actual, expected)
         # The gradient keeps the one-hot path's layout.
         assert actual[1].stride() == expected[1].stride()

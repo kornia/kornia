@@ -373,9 +373,7 @@ class TestGaussianIntegerMean(BaseTester):
 
 
 class TestGaussianDiscreteStability(BaseTester):
-    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (121, 20.0), (5, 100.0)])
-    def test_finite_normalized(self, window_size, sigma, device, dtype):
-        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+    def _assert_finite_normalized(self, actual, window_size, device, dtype):
         assert actual.shape == (1, window_size)
         assert actual.device == device
         assert actual.dtype == dtype
@@ -383,6 +381,12 @@ class TestGaussianDiscreteStability(BaseTester):
         assert (actual >= 0).all()
         self.assert_close(actual, actual.flip(-1))
         self.assert_close(actual.sum(-1), torch.ones(1, device=device, dtype=dtype))
+
+    # The 121-tap window at sigma 20 is checked by test_reference_taps, which builds that kernel anyway.
+    @pytest.mark.parametrize("window_size,sigma", [(19, 3.0), (43, 7.0), (5, 100.0)])
+    def test_finite_normalized(self, window_size, sigma, device, dtype):
+        actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        self._assert_finite_normalized(actual, window_size, device, dtype)
 
     @pytest.mark.parametrize(
         "sigma,expected",
@@ -414,8 +418,36 @@ class TestGaussianDiscreteStability(BaseTester):
         # Reference: scipy.special.ive(abs(arange(window_size) - window_size // 2), sigma**2),
         # normalized by its sum, then indexed at window_size // 2 + offsets.
         actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+        self._assert_finite_normalized(actual, window_size, device, dtype)
         taps = actual[0, [window_size // 2 + offset for offset in offsets]]
         self.assert_close(taps, torch.tensor(expected, device=device, dtype=dtype))
+
+    def test_reference_every_tap(self, device, dtype):
+        # sigma**2 = 9 < 16**2 / 4, so the backward recurrence collects orders 2 to 15 and rescales them.
+        # Reference (scipy 1.17.1), centre to edge:
+        # n = abs(arange(31) - 15); r = scipy.special.ive(n, 9.0); r / r.sum()
+        half = [
+            0.1349597138,
+            0.1272251623,
+            0.1066874555,
+            0.07980851544,
+            0.05348177858,
+            0.0322691567,
+            0.01762716002,
+            0.008766276675,
+            0.003990729637,
+            0.00167164621,
+            0.0006474372172,
+            0.0002328968381,
+            7.813383519e-05,
+            2.453994428e-05,
+            7.240662812e-06,
+            2.013437758e-06,
+        ]
+        expected = torch.tensor([half[:0:-1] + half], device=device, dtype=dtype)
+        actual = get_gaussian_discrete_kernel1d(31, 3.0, device=device, dtype=dtype)
+        rtol = 1e-5 if dtype in (torch.float32, torch.float64) else 1e-2
+        self.assert_close(actual, expected, rtol=rtol, atol=0.0)
 
     def test_backward_finite_large_sigma(self, device, dtype):
         sigma = torch.tensor([[100.0]], device=device, dtype=dtype, requires_grad=True)
@@ -423,7 +455,9 @@ class TestGaussianDiscreteStability(BaseTester):
         (kernel * torch.arange(5, device=device, dtype=dtype)).sum().backward()
         assert torch.isfinite(sigma.grad).all()
 
-    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (121, 0.5)])
+    # Without the placeholder, 61 taps at sigma 0.5 still give a NaN float32 gradient, as 121 taps did (55 taps do,
+    # 51 do not), at under a third of the cost, which grows with the square of the window.
+    @pytest.mark.parametrize("window_size, sigma", [(5, 0.0), (61, 0.5)])
     def test_backward_finite_small_sigma(self, window_size, sigma, device, dtype):
         # The upward-recurrence lanes are computed and discarded here; they must run on a safe placeholder
         # argument, or their division by sigma**2 (zero, or tiny next to the order) puts NaN in the gradient.

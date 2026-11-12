@@ -49,8 +49,8 @@ class TestMixValidation(BaseTester):
         _, output = KeypointMix(p=p)(image, keypoints, data_keys=["input", "keypoints"])
         self.assert_close(output, keypoints + p)
 
-    @pytest.mark.parametrize("p", [0.0, 1.0])
-    @pytest.mark.parametrize("gate", [None, [0.0, 0.0], [1.0, 0.0]])
+    # A call that draws its own gate uses p; replayed params bring their gate, and p leaves the rejection alone.
+    @pytest.mark.parametrize("p,gate", [(0.0, None), (1.0, None), (0.0, [0.0, 0.0]), (0.0, [1.0, 0.0])])
     @pytest.mark.parametrize("constructor_keys", [False, True])
     @pytest.mark.parametrize(
         ("augmentation", "kwargs", "keys", "error"),
@@ -124,7 +124,7 @@ class TestMixValidation(BaseTester):
 
 
 class TestRandomMixUpV2(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = RandomMixUpV2()
         repr = "RandomMixUpV2(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr, str(f)

@@ -142,10 +142,17 @@ class TestFocalLossCpu(BaseTester):
     @pytest.mark.parametrize("ignore_index", [None, -100, 255])
     def test_matches_log_softmax(self, monkeypatch, reduction, gamma, alpha, ignore_index, device, dtype):
         _require_native_cpu(device, dtype)
-        logits, labels = _inputs(LARGE, device, dtype, ignore_index)
+        # The size threshold is pinned by test_large_reduced_input_takes_the_cpu_path; without it, a small input takes
+        # the CPU path, in two one-sample chunks as LARGE does.
+        shape = (2, 21, 16, 16)
+        monkeypatch.setattr(focal_module, "_CPU_MIN_NUMEL", 0)
+        monkeypatch.setattr(focal_module, "_CPU_CHUNK_BYTES", torch.Size(shape[1:]).numel() * dtype.itemsize)
+        calls = _count_calls(monkeypatch)
+        logits, labels = _inputs(shape, device, dtype, ignore_index)
         kwargs = {"ignore_index": ignore_index}
         expected, expected_grad = _reference(monkeypatch, logits, labels, alpha, gamma, reduction, **kwargs)
         actual, grad = _value_and_grad(logits, labels, alpha, gamma, reduction, **kwargs)
+        assert calls == [shape]
         self.assert_close(actual, expected)
         self.assert_close_scaled(grad, expected_grad)
 

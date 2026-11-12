@@ -363,7 +363,7 @@ class TestSe2(BaseTester):
         self.assert_close(expm, Se2.exp(v).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
-    def test_identity(self, device, dtype, batch_size):
+    def test_identity(self, batch_size):
         s = Se2.random(batch_size)
         s_pose_s = s * Se2.identity(batch_size)
         self.assert_close(s_pose_s.so2.z.real, s.so2.z.real)
@@ -461,7 +461,7 @@ class TestSe2(BaseTester):
         self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
-    def test_adjoint(self, device, dtype, batch_size):
+    def test_adjoint(self, batch_size):
         x = Se2.random(batch_size)
         y = Se2.random(batch_size)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())

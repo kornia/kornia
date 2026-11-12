@@ -273,7 +273,7 @@ class TestKeypoints(BaseTester):
         kp.index_put(idx, new_vals, inplace=True)
         self.assert_close(kp.data[:3], new_vals)
 
-    def test_type(self, device, dtype):
+    def test_type(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
         data = torch.rand(5, 2, device=device, dtype=torch.float32)
@@ -321,11 +321,11 @@ class TestKeypoints(BaseTester):
         with pytest.raises(RuntimeError, match="one row"):
             unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
-    def test_int_input_raises_by_default(self, device, dtype):
+    def test_int_input_raises_by_default(self, device):
         with pytest.raises(ValueError):
             Keypoints(torch.ones(5, 2, device=device, dtype=torch.int32))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 2, device=device, dtype=torch.int32)
         kp = Keypoints(data, raise_if_not_floating_point=False)
         assert kp.dtype == torch.float32
@@ -349,12 +349,6 @@ class TestKeypoints(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass  # Keypoints is not a nn.Module, jit test not applicable
-
-    def test_module(self, device, dtype):
-        pass  # Keypoints is not a nn.Module
 
 
 class TestVideoKeypoints(BaseTester):
@@ -473,15 +467,6 @@ class TestVideoKeypoints(BaseTester):
             return VideoKeypoints.from_tensor(x.transpose(0, 1)).to_tensor()
 
         self.assert_close(torch_optimizer(roundtrip, fullgraph=True)(data), data.transpose(0, 1))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_exception_in_base(self, device, dtype):
-        pass
 
 
 class TestKeypoints3D(BaseTester):
@@ -605,7 +590,7 @@ class TestKeypoints3D(BaseTester):
         with pytest.raises(ValueError, match=r"must be \(4, 4\) or \(B, 4, 4\)"):
             kp.transform_keypoints(torch.eye(3, device=device, dtype=dtype))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 3, device=device, dtype=torch.int32)
         kp = Keypoints3D(data, raise_if_not_floating_point=False)
         assert kp.data.dtype == torch.float32
@@ -629,12 +614,6 @@ class TestKeypoints3D(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")

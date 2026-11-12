@@ -89,6 +89,7 @@ class TestToDeviceNonblocking(BaseTester):
         src = torch.rand(3, dtype=torch.float64)
         assert torch.equal(scripted(src, device, dtype).cpu(), src.to(device, dtype).cpu())
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_cpu_to_cuda_does_not_sync(self) -> None:
         src = torch.rand(8, 3)
@@ -100,6 +101,7 @@ class TestToDeviceNonblocking(BaseTester):
         finally:
             torch.cuda.set_sync_debug_mode(0)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_source_mutation_after_copy(self) -> None:
         cuda = torch.device("cuda")
@@ -113,6 +115,7 @@ class TestToDeviceNonblocking(BaseTester):
                 torch.cuda.synchronize()
                 assert torch.equal(out.cpu(), expected)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_pinned_source_mutation_after_copy(self) -> None:
         # A pinned source is copied asynchronously by a non-blocking copy, so it must be copied blocking: a caller may
@@ -127,6 +130,7 @@ class TestToDeviceNonblocking(BaseTester):
             torch.cuda.synchronize()
             assert torch.equal(out.cpu(), expected)
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     @pytest.mark.parametrize("dst_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_cast_bits_equal_blocking_copy_including_nan_payloads(self, dst_dtype) -> None:
@@ -146,6 +150,7 @@ class TestToDeviceNonblocking(BaseTester):
                 expected.view(torch.int16 if dst_dtype != torch.float32 else torch.int32),
             )
 
+    @pytest.mark.uses_accelerator
     @requires_cuda
     def test_cuda_to_cpu_is_blocking(self) -> None:
         x = torch.rand(256, 256)

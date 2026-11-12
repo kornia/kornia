@@ -30,12 +30,13 @@ from conftest import _deselect_cuda_device_assert_dtypes, _is_subprocess_isolate
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, raises_cuda_device_assert
 
 pytest_plugins = ["pytester"]
-# Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
-# several of them guard accelerator-only entry points -- `test_isolated_skip_is_reported_with_
-# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`. Marking the module would
-# deselect exactly the tests that command needs. They take no device fixture, so they run once
-# per session on any device matrix. `test_half_precision_isolation_probe` below is the one
-# exception, and is marked deliberately -- see its docstring.
+# These are the runner's own regression tests. Most take no device fixture: their pytester children
+# pick their own --device, so an accelerator-only run deselects them as device-agnostic and the CPU
+# job runs them. The two whose child takes a different path on a CUDA machine are marked
+# uses_accelerator so accelerator-only runs keep them -- `test_isolated_skip_is_reported_with_
+# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`.
+# `test_half_precision_isolation_probe` below is marked device_agnostic deliberately -- see its
+# docstring.
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
 
@@ -243,15 +244,20 @@ class TestSkipHalfPrecisionOnCuda:
 
 
 class TestIntegrationLocalHalfPrecision:
-    @pytest.mark.parametrize("teardown_error", [False, True])
-    def test_isolated_item_tears_down_previous_module(self, pytester, monkeypatch, teardown_error):
-        """An isolated item must release parent fixtures before the next module runs (#4149)."""
+    def test_isolated_item_tears_down_previous_module(self, pytester, monkeypatch):
+        """An isolated item must release parent fixtures before the next module runs (#4149).
+
+        One session runs both cases, each a module with an isolated item followed by a module that reads its events:
+        a parent finalizer that passes, which must report no error, and one that raises after it ran, whose error is
+        reported at the isolated item's teardown.
+        """
         # Load the real isolation plugin in both the parent and its child. The test requests
         # device_name rather than device, so the protocol runs without requiring a CUDA kernel.
         monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
-        events = pytester.path / "events.txt"
-        pytester.makepyfile(
-            test_first=f"""
+        modules = {}
+        for case, teardown_error in (("passes", False), ("raises", True)):
+            events = pytester.path / f"events_{case}.txt"
+            modules[f"test_first_{case}"] = f"""
             import os
             from pathlib import Path
             import pytest
@@ -281,8 +287,8 @@ class TestIntegrationLocalHalfPrecision:
             def test_isolated(device_name, dtype_name, isolated_fixture):
                 assert child
                 record("isolated")
-            """,
-            test_next=f"""
+            """
+            modules[f"test_next_{case}"] = f"""
             from pathlib import Path
 
             def test_next_module():
@@ -290,20 +296,29 @@ class TestIntegrationLocalHalfPrecision:
                     "setup parent", "normal", "setup child", "isolated",
                     "teardown child", "teardown parent",
                 ]
-            """,
-        )
+            """
+        pytester.makepyfile(**modules)
+        # test_normal and test_next_module take no device fixture, so the CUDA-only parent would
+        # deselect them as device-agnostic; the event sequence needs both.
         result = pytester.runpytest_subprocess(
-            "test_first.py",
-            "test_next.py",
+            *(f"{name}.py" for name in modules),
             "--device=cuda",
             "--dtype=float16",
             "--isolate-half-precision",
+            "--run-device-agnostic",
             "-q",
         )
-        result.assert_outcomes(passed=3, errors=int(teardown_error))
-        if teardown_error:
-            result.stdout.fnmatch_lines(["*ERROR at teardown of test_isolated*", "*parent finalizer failed*"])
+        result.assert_outcomes(passed=6, errors=1)
+        # The one error is the raising module's: the summary names its node, and the count leaves none for the other.
+        result.stdout.fnmatch_lines(
+            [
+                "*ERROR at teardown of test_isolated*",
+                "*parent finalizer failed*",
+                "ERROR test_first_raises.py::test_isolated*",
+            ]
+        )
 
+    @pytest.mark.uses_accelerator
     def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
         """Integration test: verify real pytest execution with local half_dtype."""
         test_file = pytester.makepyfile(
@@ -341,6 +356,7 @@ class TestIntegrationLocalHalfPrecision:
         )
         result_cpu.assert_outcomes(passed=1)
 
+    @pytest.mark.uses_accelerator
     def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester, monkeypatch):
         """The isolation parent must not turn a child's skip into a pass when addopts is quiet.
 
@@ -522,6 +538,8 @@ class TestCudaDeviceAssertMarker:
 
 
 class TestDeviceAgnosticSelection:
+    # The children request device_name rather than device: the device fixture skips an unavailable
+    # device, and these outcomes must not depend on whether the machine has CUDA.
     def test_device_agnostic_tests_run_once_in_cpu_containing_matrix(self, pytester):
         test_file = pytester.makepyfile(
             """
@@ -531,7 +549,7 @@ class TestDeviceAgnosticSelection:
             def test_device_agnostic():
                 assert True
 
-            def test_unmarked():
+            def test_unmarked(device_name):
                 assert True
             """
         )
@@ -567,7 +585,10 @@ class TestDeviceAgnosticSelection:
             def test_device_agnostic():
                 assert True
 
-            def test_unmarked():
+            def test_without_device():
+                assert True
+
+            def test_unmarked(device_name):
                 assert True
             """
         )
@@ -582,7 +603,114 @@ class TestDeviceAgnosticSelection:
             "--dtype=float32",
             "--run-device-agnostic",
         )
-        result.assert_outcomes(passed=2)
+        result.assert_outcomes(passed=3)
+
+    def test_tests_without_the_device_fixture_are_device_agnostic(self, pytester):
+        """A test that nothing hands the selected device repeats the CPU job's work on an accelerator leg."""
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            def test_without_device():
+                assert True
+
+            def test_with_dtype_only(dtype):
+                assert True
+
+            @pytest.fixture
+            def tensor_on_device(device_name):
+                return device_name
+
+            def test_device_through_a_fixture(tensor_on_device):
+                assert True
+
+            def test_with_device(device_name):
+                assert True
+
+            @pytest.mark.uses_accelerator
+            def test_reaches_the_accelerator_itself():
+                assert True
+
+            @pytest.mark.uses_accelerator
+            @pytest.mark.device_agnostic
+            def test_uses_accelerator_overrides_device_agnostic():
+                assert True
+            """
+        )
+        args = ("-p", "conftest", str(test_file), "-o", "testpaths=.", "--dtype=float32,float64", "-v")
+
+        result_cpu = pytester.runpytest_subprocess(*args, "--device=cpu")
+        result_cpu.assert_outcomes(passed=7)
+
+        result_cuda = pytester.runpytest_subprocess(*args, "--device=cuda")
+        # test_without_device (1) and test_with_dtype_only (2 dtypes) go; the other four stay.
+        result_cuda.assert_outcomes(passed=4, deselected=3)
+        result_cuda.stdout.fnmatch_lines(["*deselected 3 device-agnostic test(s)*"])
+        for kept in (
+            "test_device_through_a_fixture*PASSED*",
+            "test_with_device*PASSED*",
+            "test_reaches_the_accelerator_itself PASSED*",
+            "test_uses_accelerator_overrides_device_agnostic PASSED*",
+        ):
+            result_cuda.stdout.fnmatch_lines([f"*{kept}"])
+        result_cuda.stdout.no_fnmatch_line("*test_without_device*")
+        result_cuda.stdout.no_fnmatch_line("*test_with_dtype_only*")
+
+
+class TestCpuOnlyRunsHideCuda:
+    """A CPU-only ``--device`` selection hides CUDA before anything probes it.
+
+    Dynamo initializes a CUDA context on the first ``torch.compile`` call even for CPU tensors, and that context
+    fails with "CUDA error: out of memory" when another process holds the GPU.
+    """
+
+    _PROBE = """
+        import os
+
+        import torch
+
+        def test_visible_devices():
+            expected = os.environ["EXPECTED_VISIBLE_DEVICES"]
+            assert os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>") == expected
+            if expected == "":
+                assert not torch.cuda.is_available()
+
+        def test_cpu_graph_capture_leaves_cuda_untouched():
+            from testing.base import dynamo_is_available
+
+            # Dynamo is unavailable on some supported legs, such as Python 3.13 with torch 2.5.1.
+            if os.environ["EXPECTED_VISIBLE_DEVICES"] != "" or not dynamo_is_available():
+                return
+            torch.compile(lambda x: x + 1, backend="eager", fullgraph=True)(torch.ones(2))
+            assert not torch.cuda.is_initialized()
+        """
+
+    def _run(self, pytester, monkeypatch, device: str, expected: str, preset: str | None = None):
+        monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        if preset is not None:
+            monkeypatch.setenv("CUDA_VISIBLE_DEVICES", preset)
+        monkeypatch.setenv("EXPECTED_VISIBLE_DEVICES", expected)
+        test_file = pytester.makepyfile(self._PROBE)
+        return pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            f"--device={device}",
+            "--dtype=float32",
+            "--run-device-agnostic",
+        )
+
+    def test_cpu_only_selection_hides_cuda(self, pytester, monkeypatch):
+        self._run(pytester, monkeypatch, "cpu", "").assert_outcomes(passed=2)
+
+    @pytest.mark.parametrize("device", ["cuda", "cpu,cuda", "all"])
+    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device):
+        self._run(pytester, monkeypatch, device, "<unset>").assert_outcomes(passed=2)
+
+    def test_caller_visible_devices_are_kept(self, pytester, monkeypatch):
+        self._run(pytester, monkeypatch, "cpu", "0", preset="0").assert_outcomes(passed=2)
 
 
 class TestSkipOnnxSelection:
