@@ -31,6 +31,7 @@ from kornia.augmentation.random_generator import (
 )
 from kornia.geometry.bbox import infer_bbox_shape3d
 
+from testing.augmentation.utils import float32_literal_tolerance
 from testing.base import assert_close
 
 
@@ -75,6 +76,7 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             )
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 2
 
@@ -136,10 +138,11 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             ),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
-        assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
+        assert_close(res["start_points"], expected["start_points"], **tol)
+        assert_close(res["end_points"], expected["end_points"], **tol)
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 2
 
@@ -201,8 +204,8 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             ),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
-        assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
+        assert_close(res["start_points"], expected["start_points"], **tol)
+        assert_close(res["end_points"], expected["end_points"], **tol)
 
     @pytest.mark.parametrize("depth,height,width", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 1), (2, 3, 5)])
     @pytest.mark.device_agnostic
@@ -247,6 +250,45 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         for axis, size in ((0, width), (1, height), (2, depth)):
             if size == 1:
                 assert torch.equal(end[..., axis], start[..., axis])
+
+    def test_perspective3d_half_corners_round_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the half-precision rounding")
+        scale = torch.tensor(0.37, device=device, dtype=dtype)
+        gen = PerspectiveGenerator3D(scale)
+        gen.set_rng_device_and_dtype(device, dtype)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 1, 40, 300, 411]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 8, 3, device=device, dtype=dtype).float()
+        sign = torch.tensor(
+            [[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]],
+            device=device,
+            dtype=torch.float32,
+        )
+        start = torch.where(sign > 0, 0.0, torch.tensor([410.0, 299.0, 39.0], device=device))
+        factor = float(scale) * torch.tensor([411.0, 300.0, 40.0], device=device) / 2
+        assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
+
+    def test_perspective3d_offsets_in_the_sampler_dtype(self, device):
+        # A float64 scale with the default float32 sampler scales in float32, as before the half fix.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64.")
+        gen = PerspectiveGenerator3D(torch.tensor(0.3, device=device, dtype=torch.float64))
+        gen.set_rng_device_and_dtype(device, torch.float32)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 1, 7, 37, 1001]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 8, 3, device=device, dtype=torch.float32).double()
+        sampler_scale = torch.tensor(0.3, device=device, dtype=torch.float32)
+        factor = torch.stack([sampler_scale * 1001 / 2, sampler_scale * 37 / 2, sampler_scale * 7 / 2]).double()
+        sign = torch.tensor(
+            [[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]],
+            device=device,
+            dtype=torch.float64,
+        )
+        start = torch.where(sign > 0, 0.0, torch.tensor([1000.0, 36.0, 6.0], device=device, dtype=torch.float64))
+        assert torch.equal(res["end_points"], start + factor * draw * sign)
 
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
@@ -309,6 +351,7 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             )
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([[10, 20], [10, 20], [10, 20]], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1, 0.1], device=device, dtype=dtype)
@@ -337,18 +380,19 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             "szy": torch.tensor([10.9438, 0.1232], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angles"], expected["angles"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxy"], expected["sxy"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxz"], expected["sxz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syx"], expected["syx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syz"], expected["syz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szx"], expected["szx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szy"], expected["szy"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angles"], expected["angles"], **tol)
+        assert_close(res["sxy"], expected["sxy"], **tol)
+        assert_close(res["sxz"], expected["sxz"], **tol)
+        assert_close(res["syx"], expected["syx"], **tol)
+        assert_close(res["syz"], expected["syz"], **tol)
+        assert_close(res["szx"], expected["szx"], **tol)
+        assert_close(res["szy"], expected["szy"], **tol)
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([[10, 20], [10, 20], [10, 20]], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1, 0.1], device=device, dtype=dtype)
@@ -377,16 +421,16 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             "szy": torch.tensor([14.8219, 14.8219], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angles"], expected["angles"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxy"], expected["sxy"], rtol=1e-4, atol=1e-4)
-        assert_close(res["sxz"], expected["sxz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syx"], expected["syx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["syz"], expected["syz"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szx"], expected["szx"], rtol=1e-4, atol=1e-4)
-        assert_close(res["szy"], expected["szy"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angles"], expected["angles"], **tol)
+        assert_close(res["sxy"], expected["sxy"], **tol)
+        assert_close(res["sxz"], expected["sxz"], **tol)
+        assert_close(res["syx"], expected["syx"], **tol)
+        assert_close(res["syz"], expected["syz"], **tol)
+        assert_close(res["szx"], expected["szx"], **tol)
+        assert_close(res["szy"], expected["szy"], **tol)
 
 
 class TestRandomRotationGen3D(RandomGeneratorBaseTests):

@@ -87,7 +87,13 @@ def test_regvgg_optimize_for_deployment(device, dtype):
     expected = module(x)
     module.optimize_for_deployment()
     actual = module(x)
-    assert_close(actual, expected, atol=1e-3, rtol=1e-2)
+    atol = 1e-3
+    if dtype in (torch.float16, torch.bfloat16):
+        # Fusing reorders the arithmetic. In half precision the fused and the branch outputs each land within 0.8 eps
+        # of the largest output off the float32 result, and up to 1.4 eps of it apart (bfloat16, 5 seeds); 1e-3 is
+        # below a bfloat16 ulp of these outputs, which reach 3.
+        atol = max(atol, 2 * torch.finfo(dtype).eps * float(expected.abs().max()))
+    assert_close(actual, expected, atol=atol, rtol=1e-2)
 
 
 class TestDETRPostProcessor(BaseTester):

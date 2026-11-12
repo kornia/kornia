@@ -22,6 +22,7 @@ import kornia
 import kornia.augmentation as K
 
 from testing.augmentation.utils import assert_close, reproducibility_test
+from testing.base import autocast_for
 
 
 class TestVideoSequential:
@@ -154,7 +155,7 @@ class TestVideoSequential:
         elif data_format == "BTCHW":
             imgs = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"

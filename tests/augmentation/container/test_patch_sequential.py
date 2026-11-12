@@ -26,7 +26,7 @@ from kornia.color import RgbToBgr
 from kornia.core.exceptions import InputRankError
 
 from testing.augmentation.utils import reproducibility_test
-from testing.base import BaseTester
+from testing.base import BaseTester, autocast_for
 
 
 @pytest.fixture(autouse=True)
@@ -164,7 +164,7 @@ class TestPatchSequential:
         aug = K.PatchSequential(*tfs, grid_size=(2, 2), random_apply=True)
         imgs = torch.rand(2, 3, 7, 4, dtype=dtype, device=device)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"

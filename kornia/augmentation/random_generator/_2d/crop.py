@@ -95,14 +95,18 @@ class CropGenerator(RandomGeneratorBase):
             }
 
         input_size = (batch_shape[-2], batch_shape[-1])
+        # The corners are computed in at least float32 and cast to a half ``_dtype`` at the end, so each is rounded
+        # once: bfloat16 holds whole numbers exactly only up to 256, and a start drawn from a rounded size and
+        # rounded again in the sum lands off the float32 corner. float32 and float64 keep their own dtype.
+        _cdtype = torch.promote_types(_dtype, torch.float32)
         if not isinstance(crop_size, torch.Tensor):
-            size = _constant_tensor(crop_size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            size = _constant_tensor(crop_size, device=_device, dtype=_cdtype).repeat(batch_size, 1)
             if size.shape != torch.Size([batch_size, 2]):
                 raise AssertionError(
                     f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {crop_size!r}."
                 )
         else:
-            size = crop_size.to(device=_device, dtype=_dtype)
+            size = crop_size.to(device=_device, dtype=_cdtype)
         if size.shape != torch.Size([batch_size, 2]):
             raise AssertionError(
                 "If `size` is a torch.Tensor, it must be shaped as (B, 2). "
@@ -132,19 +136,19 @@ class CropGenerator(RandomGeneratorBase):
             x_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), x_diff)
             y_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), y_diff)
         crop_src = bbox_generator(
-            x_start.view(-1).to(device=_device, dtype=_dtype),
-            y_start.view(-1).to(device=_device, dtype=_dtype),
-            torch.where(size[:, 1] == 0, torch.full((), input_size[1], device=_device, dtype=_dtype), size[:, 1]),
-            torch.where(size[:, 0] == 0, torch.full((), input_size[0], device=_device, dtype=_dtype), size[:, 0]),
-        )
+            x_start.view(-1).to(device=_device, dtype=_cdtype),
+            y_start.view(-1).to(device=_device, dtype=_cdtype),
+            torch.where(size[:, 1] == 0, torch.full((), input_size[1], device=_device, dtype=_cdtype), size[:, 1]),
+            torch.where(size[:, 0] == 0, torch.full((), input_size[0], device=_device, dtype=_cdtype), size[:, 0]),
+        ).to(_dtype)
 
         if self.resize_to is None:
             crop_dst = bbox_generator(
-                torch.zeros(batch_size, device=_device, dtype=_dtype),
-                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_cdtype),
+                torch.zeros(batch_size, device=_device, dtype=_cdtype),
                 size[:, 1],
                 size[:, 0],
-            )
+            ).to(_dtype)
             _output_size = size.to(dtype=torch.long)
         else:
             if not (
@@ -270,17 +274,22 @@ class ResizedCropGenerator(CropGenerator):
                 "size": torch.zeros([0, 2], device=_device, dtype=_dtype),
             }
 
+        # The candidate sizes are computed in at least float32 and cast to a half ``_dtype`` once they are whole
+        # numbers. A float16 candidate area of a 256 x 256 crop or more overflows to inf and is rejected, so a large
+        # float16 input fell back to the whole image, and a bfloat16 area that size rounds to 256-pixel steps.
+        # float32 and float64 keep their own dtype.
+        _cdtype = torch.promote_types(_dtype, torch.float32)
         rand_tensor = _to_device_nonblocking(
-            _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch), _device, _dtype
+            _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch), _device, _cdtype
         )
         scale_tensor = (
-            self.scale.to(device=_device, dtype=_dtype)
+            self.scale.to(device=_device, dtype=_cdtype)
             if isinstance(self.scale, torch.Tensor)
-            else _constant_tensor(self.scale, device=_device, dtype=_dtype)
+            else _constant_tensor(self.scale, device=_device, dtype=_cdtype)
         )
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
         log_ratio = _to_device_nonblocking(
-            _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch), _device, _dtype
+            _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch), _device, _cdtype
         )
         aspect_ratio = torch.exp(log_ratio)
 
@@ -308,14 +317,14 @@ class ResizedCropGenerator(CropGenerator):
         _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
         _max = float(self.ratio.max()) if isinstance(self.ratio, torch.Tensor) else max(self.ratio)
         if in_ratio < _min:
-            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
+            w_ct = torch.full((), size[1], device=_device, dtype=_cdtype)
             h_ct = torch.round(w_ct / _min)
         elif in_ratio > _max:
-            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            h_ct = torch.full((), size[0], device=_device, dtype=_cdtype)
             w_ct = torch.round(h_ct * _max)
         else:  # whole image
-            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
-            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
+            h_ct = torch.full((), size[0], device=_device, dtype=_cdtype)
+            w_ct = torch.full((), size[1], device=_device, dtype=_cdtype)
         h_ct = h_ct.floor()
         w_ct = w_ct.floor()
 
@@ -327,8 +336,11 @@ class ResizedCropGenerator(CropGenerator):
         w_out = torch.clamp(w_out, min=1, max=size[1])
 
         # The drawn crop sizes are this call's, so they are passed on rather than stored on the generator, whose
-        # ``size`` stays the output size it was built with.
-        return self._crop_parameters(batch_shape, same_on_batch, torch.stack([h_out, w_out], dim=1))
+        # ``size`` stays the output size it was built with. They stay in ``_cdtype`` until the corners are built.
+        params = self._crop_parameters(batch_shape, same_on_batch, torch.stack([h_out, w_out], dim=1))
+        params["src"] = params["src"].to(_dtype)
+        params["dst"] = params["dst"].to(_dtype)
+        return params
 
 
 def center_crop_generator(

@@ -74,6 +74,17 @@ def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
+def autocast_for(device: torch.device, dtype: torch.dtype) -> torch.autocast:
+    """Return a ``torch.autocast`` region on ``device`` for an input of ``dtype``.
+
+    A float16 or bfloat16 input runs in a region of its own dtype, any other input in the device's default region.
+    CPU autocast promotes the operands of ``torch.stack`` and ``torch.cat`` within one half dtype: a float16 operand in
+    the default bfloat16 region raises ``Unexpected floating ScalarType in at::autocast::prioritize`` in plain PyTorch
+    (torch 2.15 and the 2.16.0.dev20261105 nightly), so a mixed-half region tests PyTorch rather than Kornia.
+    """
+    return torch.autocast(device.type, dtype=dtype if dtype in (torch.float16, torch.bfloat16) else None)
+
+
 @contextmanager
 def raises_cuda_device_assert(match: str, capfd: pytest.CaptureFixture[str]) -> Iterator[None]:
     """Expect the block to fail a CUDA device-side assert whose message matches ``match``.

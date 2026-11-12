@@ -46,6 +46,7 @@ from kornia.augmentation.random_generator import (
 )
 from kornia.augmentation.utils import _truncate_to_start
 
+from testing.augmentation.utils import float32_literal_tolerance
 from testing.base import BaseTester, assert_close
 
 
@@ -202,6 +203,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 8
         jitter_params = ColorJiggleGenerator(
@@ -249,35 +251,31 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         assert_close(
             jitter_params["brightness_factor"],
             expected_jitter_params["brightness_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["contrast_factor"],
             expected_jitter_params["contrast_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["hue_factor"],
             expected_jitter_params["hue_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["saturation_factor"],
             expected_jitter_params["saturation_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["order"],
             expected_jitter_params["order"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
 
     def test_random_gen_accumulative_additive_additive(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 8
         jitter_params = ColorJiggleGenerator(
@@ -325,35 +323,31 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         assert_close(
             jitter_params["brightness_factor"],
             expected_jitter_params["brightness_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["contrast_factor"],
             expected_jitter_params["contrast_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["hue_factor"],
             expected_jitter_params["hue_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["saturation_factor"],
             expected_jitter_params["saturation_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["order"],
             expected_jitter_params["order"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         batch_size = 8
         jitter_params = ColorJiggleGenerator(
@@ -374,32 +368,27 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         assert_close(
             jitter_params["brightness_factor"],
             expected_res["brightness_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["contrast_factor"],
             expected_res["contrast_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["hue_factor"],
             expected_res["hue_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["saturation_factor"],
             expected_res["saturation_factor"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
         assert_close(
             jitter_params["order"],
             expected_res["order"],
-            rtol=1e-4,
-            atol=1e-4,
+            **tol,
         )
 
 
@@ -797,6 +786,48 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 sampling_method="non_existing_method",
             )(torch.Size([batch_size, 1, 200, 200]))
 
+    def test_perspective_half_corners_round_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the half-precision rounding")
+        scale = torch.tensor(0.37, device=device, dtype=dtype)
+        gen = PerspectiveGenerator(scale)
+        gen.set_rng_device_and_dtype(device, dtype)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 3, 300, 411]))
+        # Uniform(0, 1).rsample in ``dtype`` is torch.rand in ``dtype``; the corner is offset in float32 and rounded
+        # once.
+        torch.manual_seed(0)
+        draw = torch.rand(16, 4, 2, device=device, dtype=dtype).float()
+        sign = torch.tensor([[1, 1], [-1, 1], [-1, -1], [1, -1]], device=device, dtype=torch.float32)
+        start = torch.tensor([[0, 0], [410, 0], [410, 299], [0, 299]], device=device, dtype=torch.float32)
+        factor = float(scale) * torch.tensor([411.0, 300.0], device=device) / 2
+        assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
+
+    @pytest.mark.parametrize(
+        ("scale_dtype", "sampler_dtype"),
+        [(None, torch.float64), (torch.float64, torch.float32)],
+        ids=["py-f64", "f64-f32"],
+    )
+    def test_perspective_offsets_in_the_sampler_dtype(self, device, scale_dtype, sampler_dtype):
+        # Only a half-precision sampler widens the scale: a float32 or float64 sampler scales in its own dtype, which
+        # need not be the input dtype, and the factor is then cast to the input dtype, as before the half fix.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64.")
+        scale = 0.3 if scale_dtype is None else torch.tensor(0.3, device=device, dtype=scale_dtype)
+        out_dtype = torch.float32 if scale_dtype is None else scale_dtype
+        gen = PerspectiveGenerator(scale)
+        gen.set_rng_device_and_dtype(device, sampler_dtype)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 3, 37, 1001]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 4, 2, device=device, dtype=sampler_dtype).to(out_dtype)
+        sampler_scale = torch.tensor(0.3, device=device, dtype=sampler_dtype)
+        factor = torch.stack([sampler_scale * 1001 / 2, sampler_scale * 37 / 2]).to(out_dtype)
+        sign = torch.tensor([[1, 1], [-1, 1], [-1, -1], [1, -1]], device=device, dtype=out_dtype)
+        start = torch.tensor([[0, 0], [1000, 0], [1000, 36], [0, 36]], device=device, dtype=out_dtype)
+        # A Python scale puts the corners on the default device.
+        assert torch.equal(res["end_points"].to(device), start + factor * draw * sign)
+
 
 class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
     def test_float64_constant_angle_is_not_rounded_via_float32_4426(self, device):
@@ -893,6 +924,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
             )(torch.Size([8, 1, height, width]))
 
     def test_random_gen(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
@@ -913,14 +945,15 @@ class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
             "shear_y": torch.tensor([19.3460, 15.9358], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angle"], expected["angle"], rtol=1e-4, atol=1e-4)
-        assert_close(res["shear_x"], expected["shear_x"], rtol=1e-4, atol=1e-4)
-        assert_close(res["shear_y"], expected["shear_y"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angle"], expected["angle"], **tol)
+        assert_close(res["shear_x"], expected["shear_x"], **tol)
+        assert_close(res["shear_y"], expected["shear_y"], **tol)
 
     def test_same_on_batch(self, device, dtype):
+        tol = float32_literal_tolerance(dtype)
         torch.manual_seed(42)
         degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
@@ -941,12 +974,12 @@ class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
             "shear_y": torch.tensor([16.0090, 16.0090], device=device, dtype=dtype),
         }
         assert res.keys() == expected.keys()
-        assert_close(res["translations"], expected["translations"], rtol=1e-4, atol=1e-4)
-        assert_close(res["center"], expected["center"], rtol=1e-4, atol=1e-4)
-        assert_close(res["scale"], expected["scale"], rtol=1e-4, atol=1e-4)
-        assert_close(res["angle"], expected["angle"], rtol=1e-4, atol=1e-4)
-        assert_close(res["shear_x"], expected["shear_x"], rtol=1e-4, atol=1e-4)
-        assert_close(res["shear_y"], expected["shear_y"], rtol=1e-4, atol=1e-4)
+        assert_close(res["translations"], expected["translations"], **tol)
+        assert_close(res["center"], expected["center"], **tol)
+        assert_close(res["scale"], expected["scale"], **tol)
+        assert_close(res["angle"], expected["angle"], **tol)
+        assert_close(res["shear_x"], expected["shear_x"], **tol)
+        assert_close(res["shear_y"], expected["shear_y"], **tol)
 
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
@@ -1032,6 +1065,21 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_close(res["src"], expected["src"])
         assert_close(res["dst"], expected["dst"])
+
+    def test_crop_half_size_corners_round_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the half-precision rounding")
+        size = torch.tensor([[300, 332]] * 64, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        res = CropGenerator(size)(torch.Size([64, 3, 500, 700]))
+        # The size is exact in both half dtypes and the start draws are float32; bfloat16 spaces whole numbers 4 apart
+        # in [512, 1024), so a corner rounded twice lands a step off.
+        torch.manual_seed(0)
+        x = (torch.rand(64) * (700 - 332 + 1)).floor()
+        y = (torch.rand(64) * (500 - 300 + 1)).floor()
+        corners = [(x, y), (x + 331, y), (x + 331, y + 299), (x, y + 299)]
+        expected = torch.stack([torch.stack(c, -1) for c in corners], 1).to(device=device, dtype=dtype)
+        assert torch.equal(res["src"], expected)
 
 
 class TestCropIntSizeMessages:
@@ -1119,6 +1167,19 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             "input_size": torch.tensor([[300, 300], [300, 300]], device=device, dtype=torch.int64),
             "output_size": torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
         }
+        if dtype == torch.bfloat16:
+            # bfloat16 holds the ratio range as [0.8984, 1.1016], which moves the first crop by a pixel: the
+            # reference is the float32 draw from that rounded range, rounded to bfloat16 (293 becomes 292). Generated by
+            #   torch.manual_seed(42); ResizedCropGenerator((100, 100), torch.tensor([0.7, 1.3]).bfloat16().float(),
+            #   torch.tensor([0.9, 1.1]).bfloat16().float())(torch.Size([2, 1, 300, 300]))["src"].bfloat16()
+            expected["src"] = torch.tensor(
+                [
+                    [[12.0, 3.0], [292.0, 3.0], [292.0, 298.0], [12.0, 298.0]],
+                    [[8.0, 22.0], [286.0, 22.0], [286.0, 298.0], [8.0, 298.0]],
+                ],
+                device=device,
+                dtype=dtype,
+            )
         assert res.keys() == expected.keys()
         assert_close(res["src"], expected["src"])
         assert_close(res["dst"], expected["dst"])

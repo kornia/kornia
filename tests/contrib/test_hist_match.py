@@ -71,7 +71,10 @@ class TestHistMatch(BaseTester):
             dtype=dtype,
         )
         assert exp.shape == out.shape
-        self.assert_close(out, exp, rtol=1e-4, atol=1e-4)
+        # A half call equals the float32 match of its rounded inputs, rounded once: within an eps of these float32
+        # values (0.67 eps in bfloat16), the dtype's default tolerance.
+        tol = {} if dtype in (torch.float16, torch.bfloat16) else {"rtol": 1e-4, "atol": 1e-4}
+        self.assert_close(out, exp, **tol)
 
     def test_histmatch_stays_in_template_range(self, device, dtype):
         # The lowest source quantile (1/4) is below the template's (3/4): it maps to the template minimum, as np.interp

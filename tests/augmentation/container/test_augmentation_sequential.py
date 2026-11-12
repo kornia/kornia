@@ -33,7 +33,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import resize
 
 from testing.augmentation.utils import oversized_random_crop_params, reproducibility_test
-from testing.base import BaseTester, assert_close, supports_bilinear_2d_grid_sample
+from testing.base import BaseTester, assert_close, autocast_for, supports_bilinear_2d_grid_sample
 
 
 class TestAugmentationSequential:
@@ -859,7 +859,10 @@ class TestAugmentationSequential:
 
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
-        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        # Values below the fill value, so that ``out[0] == fill_value`` marks only erased pixels: a half-precision
+        # ``randn`` holds 0.5 itself in a few of these 90000 pixels. The bound is 0.25, not 0.5, because
+        # half-precision torch.rand on MPS can return exactly 1.0 (#4553).
+        input = 0.25 * torch.rand(3, 3, 100, 100, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["image", "mask"])
 
         reproducibility_test((input, input), aug)
@@ -921,21 +924,34 @@ class TestAugmentationSequential:
             [[[0.0, -1.0], [1.0, 0.0]], [[0.0, 0.0], [1.0, 1.0]], [[-1.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype
         )
 
+        # The 360 degree rotation is the identity only up to rounding. That moves the bilinear image samples off the
+        # nearest mask samples, and the boxes and points off their expected positions, by a few eps in every dtype:
+        # over 50 seeds, up to 8 eps (float32) and 9.8 eps (float16) of the largest input for the image after the
+        # inverse, and 5 eps (float32) and 4 eps (float16) of a pixel for the coordinates. The fixed tolerances leave
+        # float32 room to spare; a half dtype needs the eps-scaled ones.
+        if dtype in (torch.float16, torch.bfloat16):
+            eps = torch.finfo(dtype).eps
+            image_tol = {"atol": 16 * eps * float(input.abs().max()), "rtol": 0.0}
+            box_tol = point_tol = {"atol": 8 * eps, "rtol": 0.0}
+        else:
+            image_tol = point_tol = {"atol": 1e-4, "rtol": 1e-4}
+            box_tol = {"atol": 1e-3, "rtol": 1e-3}
+
         out = aug(input, input, bbox, points, params=_params)
         assert out[0].shape == (3, 3, 3, 3)
-        assert_close(out[0], out[1], atol=1e-4, rtol=1e-4)
+        assert_close(out[0], out[1], **image_tol)
         assert out[2].shape == bbox.shape
-        assert_close(out[2], expected_out_bbox, atol=1e-3, rtol=1e-3)
+        assert_close(out[2], expected_out_bbox, **box_tol)
         assert out[3].shape == points.shape
-        assert_close(out[3], expected_out_points, atol=1e-4, rtol=1e-4)
+        assert_close(out[3], expected_out_points, **point_tol)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == input.shape
-        assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
+        assert_close(out_inv[0], out_inv[1], **image_tol)
         assert out_inv[2].shape == bbox.shape
-        assert_close(out_inv[2], bbox, atol=1e-3, rtol=1e-3)
+        assert_close(out_inv[2], bbox, **box_tol)
         assert out_inv[3].shape == points.shape
-        assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
+        assert_close(out_inv[3], points, **point_tol)
 
     def test_random_resized_crop(self, device, dtype):
         size = 50
@@ -1192,7 +1208,7 @@ class TestAugmentationSequential:
         with patch.object(aug, "forward_parameters", fwd_params):
             params = aug.forward_parameters(imgs.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             outputs = aug(imgs, msk, bb, points, params=params)
 
         assert outputs[0].dtype == dtype, "Output image dtype should match the input dtype"

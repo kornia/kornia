@@ -51,6 +51,7 @@ from kornia.geometry.keypoints import Keypoints
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
     BaseTester,
+    autocast_for,
     dynamo_is_available,
     supports_bilinear_2d_grid_sample_backward,
     supports_reflect_padding,
@@ -287,7 +288,7 @@ class TestGeometricAugmentationBase2D:
         with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
@@ -306,7 +307,7 @@ class TestIntensityAugmentationBase2D:
         with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
@@ -325,7 +326,7 @@ class TestIntensityAugmentationBase3D:
         with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
@@ -344,7 +345,7 @@ class TestGeometricAugmentationBase3D:
         with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"

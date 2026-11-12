@@ -41,8 +41,9 @@ class TestRandomEqualize3D(BaseTester):
 
         inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
 
+        # The float32 result to 6 decimals, enough for the literal to round to the same float16 value (4 did not).
         row_expected = torch.tensor(
-            [0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000],
+            [0.0, 0.117647, 0.235294, 0.352941, 0.470588, 0.588235, 0.705882, 0.823529, 0.941176, 1.0],
             device=device,
             dtype=dtype,
         )
@@ -63,7 +64,10 @@ class TestRandomEqualize3D(BaseTester):
 
         inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
 
-        row_expected = torch.tensor([0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000])
+        # The float32 result to 6 decimals, enough for the literal to round to the same float16 value (4 did not).
+        row_expected = torch.tensor(
+            [0.0, 0.117647, 0.235294, 0.352941, 0.470588, 0.588235, 0.705882, 0.823529, 0.941176, 1.0]
+        )
         expected = self.build_input(channels, depth, height, width, bs, row=row_expected, device=device, dtype=dtype)
 
         identity = kornia.core.ops.eye_like(4, expected)  # 2 x 4 x 4

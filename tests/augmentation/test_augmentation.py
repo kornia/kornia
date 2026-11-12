@@ -88,7 +88,7 @@ from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.augmentation.utils import oversized_random_crop_params
+from testing.augmentation.utils import float32_literal_tolerance, oversized_random_crop_params
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.overwrite import default_with_one_parameter_changed
 
@@ -691,8 +691,6 @@ class TestRandomRotationAlternative(CommonTests):
         )
 
     def test_batch(self):
-        if self.dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         torch.manual_seed(12)
 
@@ -792,8 +790,6 @@ class TestRandomRotation90(CommonTests):
         )
 
     def test_batch(self):
-        if self.dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         torch.manual_seed(12)
 
@@ -1768,8 +1764,6 @@ class TestColorJiggle(BaseTester):
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1783,8 +1777,6 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1913,8 +1905,6 @@ class TestColorJitter(BaseTester):
         assert torch.equal(op(image, params=params), sampled(image, params=params))
 
     def test_color_jitter(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -1927,8 +1917,6 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -2301,8 +2289,6 @@ class TestColorJitter(BaseTester):
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -2316,8 +2302,6 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJitter(), ColorJitter())
 
@@ -2459,8 +2443,6 @@ class TestRandomBrightness(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomBrightness())
@@ -2472,8 +2454,6 @@ class TestRandomBrightness(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_random_brightness_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomBrightness(), RandomBrightness())
 
@@ -2573,8 +2553,6 @@ class TestRandomContrast(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomContrast())
@@ -2586,8 +2564,6 @@ class TestRandomContrast(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_random_contrast_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomContrast(), RandomContrast())
 
@@ -2701,8 +2677,6 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomHue())
@@ -2714,8 +2688,6 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_random_hue_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomHue(), RandomHue())
 
@@ -2818,8 +2790,6 @@ class TestRandomSaturation(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomSaturation())
@@ -2831,8 +2801,6 @@ class TestRandomSaturation(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_random_saturation_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomSaturation(), RandomSaturation())
 
@@ -3067,8 +3035,6 @@ class TestRandomGamma(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
@@ -3080,8 +3046,6 @@ class TestRandomGamma(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_random_gamma_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
 
@@ -4838,7 +4802,7 @@ class TestRandomGaussianIllumination(BaseTester):
         aug = RandomGaussianIllumination(gain=0.5, p=1.0)
         res = aug(input_tensor)
         assert input_tensor.shape == res.shape
-        self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(res, expected, **float32_literal_tolerance(dtype))
 
     def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
@@ -6101,7 +6065,7 @@ class TestRandomRGBShift(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, **float32_literal_tolerance(dtype))
 
     def test_random_rgb_shift_same_batch(self, device, dtype):
         if device.type != "cpu":
@@ -6125,7 +6089,7 @@ class TestRandomRGBShift(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, **float32_literal_tolerance(dtype))
 
 
 class TestRandomTranslate(BaseTester):
@@ -6731,8 +6695,6 @@ class TestRandomThinPlateSpline(CommonTests):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_zero_scale_identity(self, same_on_batch, align_corners, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
         # Both conventions: a zero-scale spline is the identity whichever one the class is built
         # with, and align_corners=False is the class default. This used to be pinned at True only,
         # because warp_image_tps built its sampling grid corner-aligned whatever flag reached
