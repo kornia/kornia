@@ -132,7 +132,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **180 float16 and 204 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **131 float16 and 147 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. [#4153](https://github.com/kornia/kornia/issues/4153) tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -147,21 +147,21 @@ measurement of the whole test suite is [below](#cuda-test-suite-measurement).
 | `kornia.augmentation` | ✅ | ⚠️ | 0 / 4 | Crop and perspective generators and hue/saturation adjustment compute half inputs in float32; bfloat16: `RandomRotation3D` backward, where a learning-rate step is below half an ulp of the angle |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 30 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
-| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT solver accuracy, including iterated and line-based variants |
+| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 7 / 7 | solve_pnp_dlt, distort_points and undistort_points compute half inputs in float32; the remaining entries are solve_pnp_dlt pose checks on a scene whose pixel coordinates, up to 8e4, overflow float16 or round by many pixels in both half dtypes |
+| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 4 / 3 | Essential-matrix decomposition/motion, KRt_from_projection and the fundamental-matrix estimators compute half inputs in float32; the remaining entries are Sampson residuals of a pixel-unit F, whose entries span eight decades, and float16 projection matrices with entries above 65504 |
+| `kornia.geometry.homography` | ✅ | ✅ | 0 / 0 | The point and line DLTs, iterated or not, compute half inputs in float32 and return the input dtype |
 | `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
 | `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py |
-| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | Essential-model fitting raises in epipolar solvers |
+| `kornia.geometry.ransac` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.geometry (other)` | ⚠️ | ⚠️ | 3 / 10 | Box-transform and depth accuracy |
 | `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision |
 | `kornia.losses` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.models` | ✅ | ✅ | 0 / 0 |  |
-| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 1 | bfloat16: _torch_svd_cast accuracy |
+| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ✅ | 0 / 0 |  |
 
 ✅ No entries in the CPU known-failure manifest &nbsp; ⚠️ Has recorded CPU failures.
 Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside

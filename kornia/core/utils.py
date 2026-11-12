@@ -272,6 +272,18 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
 
 
+def _at_least_float32(input: torch.Tensor) -> torch.Tensor:
+    """Return a float16 or bfloat16 ``input`` in float32, and a float32 or float64 one as it is.
+
+    For an estimator that fits half-precision data in float32 and rounds its result once, on return: no backend
+    factorizes half precision, and the steps around the solve would each round to the input dtype. A float32 or
+    float64 input is the same tensor, so its result keeps its bits and its autograd graph.
+    """
+    if input.dtype in (torch.float16, torch.bfloat16):
+        return input.float()
+    return input
+
+
 def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
     """L2-normalise ``input`` along ``dim`` with :func:`torch.nn.functional.normalize`'s default ``eps``.
 

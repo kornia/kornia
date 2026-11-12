@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _at_least_float32
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
@@ -153,6 +154,7 @@ def distort_points(
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
         - ``points`` must be ``(*, N, 2)``: a trailing size other than 2, or a single ``(2,)`` point, raises
           :class:`~kornia.core.exceptions.ShapeError`.
+        - float16 and bfloat16 inputs are distorted in float32 and the result is returned in their dtype.
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
@@ -202,6 +204,12 @@ def distort_points(
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
+
+    # Half-precision inputs are distorted in float32, so that the pixel result is rounded once, at the end.
+    out_dtype = torch.promote_types(
+        torch.promote_types(points.dtype, K.dtype), torch.promote_types(dist.dtype, new_K.dtype)
+    )
+    points, K, new_K, dist = (_at_least_float32(t) for t in (points, K, new_K, dist))
 
     has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
@@ -260,4 +268,6 @@ def distort_points(
     x = fx * xd + cx
     y = fy * yd + cy
 
-    return torch.stack([x, y], -1)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out

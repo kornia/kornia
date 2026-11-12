@@ -708,7 +708,6 @@ class TestFindHomographyDLT(BaseTester):
         # SVD solver and cv2.findHomography(points1, points2, 0) do, rather than NaN. Six points in general
         # position determine it, so it is checked through the points it maps (MPS float32 gets the pixel-unit
         # translation of the 90-degree rotation to about 2e-4).
-        _skip_half(dtype, _HALF_DLT)
         points1 = torch.tensor([points], device=device, dtype=dtype)
         linear_part = torch.tensor(linear, device=device, dtype=dtype)
         points2 = points1 @ linear_part.T + torch.tensor(shift, device=device, dtype=dtype)
@@ -735,7 +734,6 @@ class TestFindHomographyDLT(BaseTester):
         # normalized square, each twice, turned by 90 degrees), so its normal matrix is integer and its pivoted LU
         # is exact on every backend: pivots 8 (16 with these weights, which give every corner the same total)
         # and a last one of 0. The rank is 8, so the homography is unique, and the LU solver must return it.
-        _skip_half(dtype, _HALF_DLT)
         corners = torch.tensor([[1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0], [1.0, -1.0]] * 2, device=device, dtype=dtype)
         rotation = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         A = _homography_design_rows(corners[None], (corners @ rotation[:2, :2].T)[None])
@@ -750,7 +748,7 @@ class TestFindHomographyDLT(BaseTester):
         # largest. ``L diag(1, ..., 1, tau, 0) L^T`` with ``L[8, :8] = 1/2`` has an exact LU with exactly those
         # pivots and the null vector ``(-1/2, ..., -1/2, 1)``: returned for ``tau`` just above the bound, NaN just
         # below it, where ``eps`` itself would still accept it.
-        _skip_half(dtype, _HALF_DLT)
+        _skip_half(dtype, "pins the float32 and float64 pivot bound; a half-precision normal matrix is not exact here")
         bound = 26 if dtype == torch.float64 else 11  # sqrt(eps) is 2 ** -26 (float64) or 2 ** -11.5 (float32)
         null = torch.tensor([-0.5] * 8 + [1.0], device=device, dtype=dtype)
         normals = []
@@ -945,8 +943,7 @@ class TestFindHomographyDLT(BaseTester):
         rtol = 1e-3
         atol = 1e-4
         if dtype not in (torch.float32, torch.float64):
-            rtol = 3e-3
-            atol = 1e-3
+            rtol = atol = _half_reprojection_tolerance(dtype)
         elif device.type == "cuda" and dtype == torch.float32:
             atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
@@ -967,8 +964,7 @@ class TestFindHomographyDLT(BaseTester):
         rtol = 1e-3
         atol = 1e-4
         if dtype not in (torch.float32, torch.float64):
-            rtol = 3e-3
-            atol = 1e-3
+            rtol = atol = _half_reprojection_tolerance(dtype)
         elif device.type == "cuda" and dtype == torch.float32:
             atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
@@ -1267,8 +1263,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         rtol = 1e-3
         atol = 1e-4
         if dtype not in (torch.float32, torch.float64):
-            rtol = 5e-3
-            atol = 1e-3
+            rtol = atol = _half_reprojection_tolerance(dtype, lines=True)
         elif device.type == "cuda" and dtype == torch.float32:
             atol = 5e-3
         self.assert_close(
@@ -1307,8 +1302,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         rtol = 1e-3
         atol = 1e-4
         if dtype not in (torch.float32, torch.float64):
-            rtol = 5e-3
-            atol = 1e-3
+            rtol = atol = _half_reprojection_tolerance(dtype, lines=True)
         elif device.type == "cuda" and dtype == torch.float32:
             atol = 5e-3
         self.assert_close(
@@ -1499,8 +1493,10 @@ class TestFindHomographyDLTIter(BaseTester):
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 10)
 
-        atol = 2e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
-        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=atol)
+        rtol, atol = 1e-3, 2e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            rtol = atol = _half_reprojection_tolerance(dtype)
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     def test_gradcheck(self, device):
         torch.manual_seed(0)
@@ -1528,8 +1524,13 @@ class TestFindHomographyDLTIter(BaseTester):
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 0.5, 10)
 
+        atol = 1e-3
+        if dtype in (torch.float16, torch.bfloat16):
+            # The homography and the reprojection round to the dtype at the scale of the scene, up to about 400 px,
+            # so a point near the origin carries the rounding of the large ones: 4 eps of the largest coordinate.
+            atol = 4 * torch.finfo(dtype).eps * points_dst.abs().max().item()
         self.assert_close(
-            kornia.geometry.transform_points(dst_homo_src, points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
+            kornia.geometry.transform_points(dst_homo_src, points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=atol
         )
 
 
@@ -1546,13 +1547,8 @@ _H_TRUE = [
     [2.851519e-04, 1.404178e-04, 1.0],
 ]
 _HALF_DLT = (
-    "the homography DLTs form the normalised points, the design and normal matrices and the denormalisation in the "
-    "input dtype, so in float16/bfloat16 an exact fit misses by up to several pixels"
-)
-_F16_LU = (
-    "find_homography_dlt's solver='lu' path casts its unnormalised float32 solution back to float16, where the "
-    "denormalisation can overflow to inf/NaN depending on rounding (the float16 manifest carries test_clean_points_lu "
-    "for the same reason, #4153)"
+    "the fixture's pixel coordinates, 90 to 450 px, round to 0.25 px in float16 and 2 px in bfloat16, and the "
+    "transfer errors these pins bound are measured on them in the input dtype"
 )
 _HALF_POINTS = (
     "kornia evaluates the transfer errors in the input dtype, and the fixture's pixel coordinates carry up to 2 px "
@@ -1562,6 +1558,17 @@ _HALF_LINES = (
     "the line DLT and these references build the unnormalised image-2 lines in the input dtype; their constant term "
     "is of order (pixel coordinate)**2, which overflows float16 and which bfloat16 cannot resolve"
 )
+
+
+def _half_reprojection_tolerance(dtype: torch.dtype, lines: bool = False) -> float:
+    """Tolerance of the half-precision clean-fit checks: the fit runs in float32 and its homography rounds to dtype.
+
+    The reprojected points and the targets each round to the dtype, and the targets carry the rounding of the
+    source points through the homography. Over 300 seeds of these fixtures the float64 fit of the same rounded
+    correspondences, rounded to the dtype, needs ``2.7 eps`` (points) and ``25 eps`` (segments, whose line fit
+    amplifies the rounding of the endpoints, worst for a homography of scale 130), and the float32 fit the same.
+    """
+    return (32 if lines else 4) * torch.finfo(dtype).eps
 
 
 def _skip_half(dtype: torch.dtype, reason: str) -> None:
@@ -1678,8 +1685,6 @@ class TestHomographyDLTAutocast(BaseTester):
 
 class TestConventionHomography(BaseTester):
     def test_convention_find_homography_dlt_maps_p1_to_p2(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip(_F16_LU)
         p1, p2, H_true = _planar(device, dtype)
         H = find_homography_dlt(p1, p2)
         # points2 ~ H @ points1 (OpenCV's findHomography(src, dst) order). The control: applying H to points2 misses
@@ -1827,8 +1832,6 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
-        if model == "points" and dtype == torch.float16:
-            pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
             # Count the point polisher's DLT solves across iterations.
@@ -1899,8 +1902,6 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_gaussian_weights_4870(self, model, device, dtype, monkeypatch):
-        if model == "points" and dtype == torch.float16:
-            pytest.skip(_F16_LU)
         if model == "lines":
             _skip_half(dtype, _HALF_LINES)
         p1, p2, _ = _planar(device, dtype)
@@ -1926,7 +1927,9 @@ class TestConventionHomography(BaseTester):
         weights = torch.ones(1, args[0].shape[1], device=device, dtype=dtype)
         # soft_inl_th is set to the moved correspondence's first-solve error e_k, so that its Gaussian weight is
         # exp(-1/2) whatever the error's scale.
-        sigma = float(error(plain(*args, weights))[0, k])
+        # A half-precision fit runs in float32, so sigma is the error of the float32 first solve.
+        work = torch.promote_types(dtype, torch.float32)
+        sigma = float(error(plain(*(a.to(work) for a in args), weights.to(work)))[0, k])
         calls = []
 
         if model == "points":
@@ -1953,7 +1956,7 @@ class TestConventionHomography(BaseTester):
         # The second solve weights each correspondence by the Gaussian exp(-e^2 / (2 sigma^2)) of its error e, so
         # soft_inl_th is a standard deviation in the error's units (#4870 used exp(-e / (2 sigma^2))).
         self.assert_close(calls[1][0], torch.exp(-(e**2) / (2.0 * sigma**2)))
-        self.assert_close(calls[1][0][0, k], torch.full((), 0.5, device=device, dtype=dtype).neg().exp())
+        self.assert_close(calls[1][0][0, k], torch.full((), 0.5, device=device, dtype=work).neg().exp())
         assert (calls[1][0] - torch.exp(-e / (2.0 * sigma**2)))[0, k].abs() > 0.1
 
     def test_transfer_error_does_not_depend_on_the_scale_of_H_4881(self, device, dtype):
@@ -2007,7 +2010,6 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_h22_eps_divisor_4874(self, model, device, dtype):
-        _skip_half(dtype, _HALF_DLT)
         p1, p2, _ = _planar(device, dtype)
         # The same fixture with the true H[2, 2] set to 1e-6 (a mild warp whose origin maps far out), exact matches.
         H_small = torch.tensor([_H_TRUE], dtype=torch.float64)
@@ -2027,7 +2029,6 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("solver", ["lu", "svd"])
     def test_find_homography_dlt_zero_weight_preserves_normalisation_4890(self, solver, device, dtype):
-        _skip_half(dtype, _HALF_DLT)
         p1, p2, _ = _planar(device, dtype)
         # 3-px noise on the twelve matches, generated by
         #   g = torch.Generator().manual_seed(0)
@@ -2072,7 +2073,8 @@ class TestHomographySharedKernels(BaseTester):
         self.assert_close(transform_points(actual, n1), n2, atol=1e-5, rtol=1e-5)
 
     def test_design_rows_vanish_on_exact_matches(self, device, dtype):
-        _skip_half(dtype, _HALF_DLT)
+        if dtype == torch.float16:
+            pytest.skip("the design rows multiply pixel coordinates in the input dtype, past float16's 65504")
         src, dst, H = _planar(device, dtype)
         rows = _homography_design_rows(src, dst)
         assert rows.shape == (src.shape[0], 2 * src.shape[1], 9)
@@ -2080,7 +2082,7 @@ class TestHomographySharedKernels(BaseTester):
         assert residual.abs().max() < 1e-3 * rows.abs().max()
 
     def test_four_point_homography_is_exact(self, device, dtype):
-        _skip_half(dtype, _HALF_DLT)
+        _skip_half(dtype, "the normalised points round to the half dtype, which moves the model past the 1e-3 pin")
         src, dst, H = _planar(torch.device("cpu"), torch.float64)
         src, dst = src[:, :4], dst[:, :4]
         n1, t1 = normalize_points(src)

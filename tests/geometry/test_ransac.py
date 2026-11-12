@@ -495,8 +495,8 @@ class TestRANSACFundamental(BaseTester):
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel")
+        if dtype == torch.float16:
+            pytest.skip("float16 rounds the pixel coordinates enough to push a match past the 1 px inlier threshold")
         torch.random.manual_seed(0)
         # generate input data
         data_dev = dict_to(data, device, dtype)
@@ -588,8 +588,6 @@ class TestRANSACLocalOptimization(BaseTester):
         patched to a plausible but worse fit, so the local-optimization branch adopts a candidate by construction
         rather than depending on how the random minimal samples fall.
         """
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("find_fundamental needs linalg_eigh, which has no float16/bfloat16 kernel")
         torch.random.manual_seed(0)
         points1 = torch.rand(60, 2, device=device, dtype=dtype) * 100.0
         H = torch.tensor([[1.0, 0.05, 3.0], [-0.03, 1.0, -2.0], [1e-4, 1e-4, 1.0]], device=device, dtype=dtype)
@@ -826,11 +824,12 @@ class TestRANSACEssential(BaseTester):
         kp2 = torch.rand(20, 2, device=device, dtype=dtype)
         inliers = torch.ones(20, dtype=torch.bool, device=device)
         E = ransac.polish_model(kp1, kp2, inliers)  # (1, 3, 3)
-        sv = torch.linalg.svdvals(E[0])
+        # A half-precision E has no SVD kernel; its rounding to the dtype leaves sv[2] / sv[0] up to 1.5 eps.
+        sv = torch.linalg.svdvals(E[0].to(torch.promote_types(dtype, torch.float32)))
         # two non-zero singular values must be equal (essential-matrix constraint)
         assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
         # third singular value must be ~0 (relative to the largest singular value)
-        assert (sv[2] / sv[0]).abs() < 1e-4
+        assert (sv[2] / sv[0]).abs() < max(1e-4, 2 * torch.finfo(dtype).eps)
 
     def test_forward_enforces_essential_constraint(self, device, dtype):
         """Regression test for https://github.com/kornia/kornia/issues/3874 (forward path).
@@ -850,9 +849,10 @@ class TestRANSACEssential(BaseTester):
             kp1 = torch.rand(20, 2, device=device, dtype=dtype)
             kp2 = torch.rand(20, 2, device=device, dtype=dtype)
             E, _ = ransac(kp1, kp2)
-            sv = torch.linalg.svdvals(E)
+            # A half-precision E has no SVD kernel; its rounding to the dtype leaves sv[2] / sv[0] up to 1.5 eps.
+            sv = torch.linalg.svdvals(E.to(torch.promote_types(dtype, torch.float32)))
             assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
-            assert (sv[2] / sv[0]).abs() < 1e-4
+            assert (sv[2] / sv[0]).abs() < max(1e-4, 2 * torch.finfo(dtype).eps)
 
     def test_project_to_essential(self, device, dtype):
         """project_to_essential must enforce the essential-matrix constraint."""
@@ -1022,8 +1022,6 @@ class TestConventionRANSAC(BaseTester):
                 assert bool(mask[9]) is expected
                 assert int(mask.sum()) == 15 + int(expected)
             return
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel")
         kp1, kp2 = _scene_matches(device, dtype)
         if dtype == torch.float64:
             # kp1 is the estimator's first image: the returned F explains every match in this order
