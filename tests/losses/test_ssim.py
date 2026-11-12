@@ -112,12 +112,18 @@ class TestMS_SSIMLoss(BaseTester):
     @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
     def test_batch_of_one_broadcasts(self, reduction, device, dtype):
         # GH#6157 a batch of one is compared with every image of the other batch, in either argument.
-        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        single = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        generator = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 16, 16, generator=generator, dtype=dtype).to(device)
+        single = torch.rand(1, 3, 16, 16, generator=generator, dtype=dtype).to(device)
         criterion = kornia.losses.MS_SSIMLoss(reduction=reduction).to(device, dtype)
         repeated = single.expand_as(img)
-        self.assert_close(criterion(img, single), criterion(img, repeated), rtol=0, atol=0)
-        self.assert_close(criterion(single, img), criterion(repeated, img), rtol=0, atol=0)
+        # Equal only up to rounding: the CPU ``conv2d`` of a batch of one and of a batch of two may sum in a different
+        # order, depending on the thread count (up to 2 eps relative seen over 200 seeds). A wrong broadcast changes
+        # the loss, which the default compensation of 200 scales to tens, by orders of magnitude more. The tolerance
+        # comes from float32 at least: half results agree bit for bit, and 16 bfloat16 eps would hide a wrong broadcast.
+        rtol = 16 * torch.finfo(torch.promote_types(dtype, torch.float32)).eps
+        self.assert_close(criterion(img, single), criterion(img, repeated), rtol=rtol, atol=0)
+        self.assert_close(criterion(single, img), criterion(repeated, img), rtol=rtol, atol=0)
 
     def test_batch_of_one_does_not_warn_6663(self, device, dtype):
         # The L1 term used to warn that the target size differs from the input size.
