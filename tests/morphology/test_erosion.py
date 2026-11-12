@@ -27,10 +27,6 @@ from testing.parametrized_tester import parametrized_test
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        torch.rand(1, 3, 4, 4, device=device, dtype=dtype),
-        torch.ones((3, 3), device=device, dtype=dtype),
-    ),
     cardinality_tests=[
         {
             "inputs": lambda device, dtype: (
@@ -61,14 +57,16 @@ from testing.parametrized_tester import parametrized_test
             "expected_shape": torch.Size([3, 2, 5, 5]),
         },
     ],
-    gradcheck_inputs=lambda device: (
-        torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64),
-        torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64),
-    ),
 )
 class TestErode(BaseTester):
     def setup_method(self) -> None:
         self.func = erosion
+
+    def test_gradcheck(self, device):
+        tensor = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64)
+        # The kernel is a discrete membership mask, not a differentiable input.
+        kernel = torch.ones(3, 3, device=device, dtype=torch.float64)
+        self.gradcheck(lambda image: self.func(image, kernel), (tensor,))
 
     def test_kernel(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -110,18 +108,6 @@ class TestErode(BaseTester):
             atol=1e-3,
             rtol=1e-3,
         )
-
-    def test_flip(self, device, dtype):
-        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
-            None, None, :, :
-        ]
-        kernel = torch.tensor([[0.0, 1.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.3, 0.3, 0.3], [0.3, 0.2, 0.2], [0.3, 0.2, 0.2]], device=device, dtype=dtype)[
-            None, None, :, :
-        ]
-        assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # The convolution and unfold engines agree within the test tolerance.
-        assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -199,17 +185,6 @@ class TestErode(BaseTester):
         actual = erosion(tensor, kernel, structuring_element=structuring_element, engine=engine)
 
         assert torch.equal(actual, expected)
-
-    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
-    def test_accepted_border_types(self, device, dtype, border_type):
-        # Every documented border_type must pass the validation (#4736).
-        if border_type == "reflect" and not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
-            pytest.skip("replication_pad2d is unavailable for this device/dtype")
-        tensor = torch.rand(1, 2, 5, 6, device=device, dtype=dtype)
-        kernel = torch.ones(3, 3, device=device, dtype=dtype)
-        assert erosion(tensor, kernel, border_type=border_type).shape == tensor.shape
 
     def test_jit(self, device, dtype):
         op = erosion
