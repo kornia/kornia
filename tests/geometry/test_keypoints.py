@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 from torch._dynamo.exc import BackendCompilerFailed, InternalTorchDynamoError, Unsupported, UserError
@@ -273,7 +275,7 @@ class TestKeypoints(BaseTester):
         kp.index_put(idx, new_vals, inplace=True)
         self.assert_close(kp.data[:3], new_vals)
 
-    def test_type(self, device, dtype):
+    def test_type(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
         data = torch.rand(5, 2, device=device, dtype=torch.float32)
@@ -321,11 +323,11 @@ class TestKeypoints(BaseTester):
         with pytest.raises(RuntimeError, match="one row"):
             unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
-    def test_int_input_raises_by_default(self, device, dtype):
+    def test_int_input_raises_by_default(self, device):
         with pytest.raises(ValueError):
             Keypoints(torch.ones(5, 2, device=device, dtype=torch.int32))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 2, device=device, dtype=torch.int32)
         kp = Keypoints(data, raise_if_not_floating_point=False)
         assert kp.dtype == torch.float32
@@ -349,12 +351,6 @@ class TestKeypoints(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass  # Keypoints is not a nn.Module, jit test not applicable
-
-    def test_module(self, device, dtype):
-        pass  # Keypoints is not a nn.Module
 
 
 class TestVideoKeypoints(BaseTester):
@@ -385,6 +381,31 @@ class TestVideoKeypoints(BaseTester):
         data = torch.rand(2, 5, 10, 2, device=device, dtype=dtype)
         vkp = VideoKeypoints.from_tensor(data)
         assert isinstance(vkp, VideoKeypoints)
+
+    @pytest.mark.parametrize("validate_boxes", [True, False])
+    def test_validate_boxes_is_deprecated_and_ignored_6552(self, validate_boxes, device, dtype):
+        # `validate_boxes` is read nowhere: keypoints have no validity rule. It now warns when passed, and the result
+        # stays what the call without it returns.
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes") as record:
+            vkp = VideoKeypoints.from_tensor(data, validate_boxes=validate_boxes)
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "validate_boxes" in str(w.message)] == [__file__]
+        assert vkp.temporal_channel_size == 3
+        self.assert_close(vkp.to_tensor(), data)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6552(self, kwargs, device, dtype):
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            VideoKeypoints.from_tensor(data, **kwargs)
+
+    def test_error_message_names_keypoints_6552(self, device, dtype):
+        with pytest.raises(ValueError, match="keypoints"):
+            VideoKeypoints.from_tensor(torch.rand(2, 3, 4, 4, device=device, dtype=dtype))
 
     def test_cardinality(self, device, dtype):
         B, T, N = 2, 5, 10
@@ -473,15 +494,6 @@ class TestVideoKeypoints(BaseTester):
             return VideoKeypoints.from_tensor(x.transpose(0, 1)).to_tensor()
 
         self.assert_close(torch_optimizer(roundtrip, fullgraph=True)(data), data.transpose(0, 1))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_exception_in_base(self, device, dtype):
-        pass
 
 
 class TestKeypoints3D(BaseTester):
@@ -605,7 +617,7 @@ class TestKeypoints3D(BaseTester):
         with pytest.raises(ValueError, match=r"must be \(4, 4\) or \(B, 4, 4\)"):
             kp.transform_keypoints(torch.eye(3, device=device, dtype=dtype))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 3, device=device, dtype=torch.int32)
         kp = Keypoints3D(data, raise_if_not_floating_point=False)
         assert kp.data.dtype == torch.float32
@@ -629,12 +641,6 @@ class TestKeypoints3D(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")

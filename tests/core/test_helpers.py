@@ -1092,6 +1092,7 @@ def test_is_autocast_enabled_cpu():
     assert not is_autocast_enabled()
 
 
+@pytest.mark.uses_accelerator
 def test_is_autocast_enabled_mps():
     if not torch.backends.mps.is_available():
         pytest.skip("MPS is not available")
@@ -1180,6 +1181,7 @@ def test_reconcile_under_autocast_leaves_what_autocast_leaves(first, second):
     assert out_b is b
 
 
+@pytest.mark.uses_accelerator
 def test_reconcile_under_autocast_does_nothing_outside_autocast():
     a, b = torch.ones(2, 2, dtype=torch.float32), torch.ones(2, 2, dtype=torch.bfloat16)
     out_a, out_b = _reconcile_under_autocast(a, b)

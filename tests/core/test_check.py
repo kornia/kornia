@@ -252,11 +252,13 @@ class TestCheckSameDevice:
     def test_valid(self, device):
         assert KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device)) is True
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
         with pytest.raises(DeviceError):
             KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device="cpu"), torch.rand(1, device="cuda"))
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid_raises_false(self):
         assert (

@@ -220,7 +220,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         for edge_map in edge_maps:
             output.append(grayscale_to_rgb(edge_map)[0])
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
+        return self._tensor_to_type(output, output_type)
 
     def save(
         self,

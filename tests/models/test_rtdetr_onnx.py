@@ -18,6 +18,7 @@
 """ONNX export tests for RT-DETR."""
 
 import importlib
+from dataclasses import replace
 
 import pytest
 import torch
@@ -35,28 +36,6 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_avai
 pytestmark = pytest.mark.device_agnostic
 
 
-@pytest.mark.timeout(120)
-def test_rtdetr_to_onnx(tmp_path):
-    """RT-DETR exports to ONNX with correct dual output names."""
-    onnx = pytest.importorskip("onnx")
-    pytest.importorskip("onnxscript")
-
-    config = RTDETRConfig.from_name("rtdetr_r18vd", num_classes=10)
-    model = RTDETR.from_config(config)
-    model.eval()
-
-    onnx_path = tmp_path / "rtdetr.onnx"
-    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 640, 640])
-
-    assert isinstance(op, onnx.ModelProto)
-    assert onnx_path.exists(), "ONNX file was not written to disk"
-
-    # Verify the output nodes are named correctly
-    output_names = [o.name for o in op.graph.output]
-    assert "pred_logits" in output_names, f"Expected 'pred_logits' in outputs, got {output_names}"
-    assert "pred_boxes" in output_names, f"Expected 'pred_boxes' in outputs, got {output_names}"
-
-
 def _post_processor() -> DETRPostProcessor:
     return DETRPostProcessor(confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False)
 
@@ -71,9 +50,14 @@ def _importorskip_exporter(export_kwargs: dict) -> None:
 
 
 def _small_rtdetr() -> RTDETR:
-    """A randomly initialised RT-DETR-R18 with 10 queries, which runs on 96 x 128 images (252 anchors)."""
+    """A randomly initialised RT-DETR-R18 with 10 queries, which runs on 96 x 128 images (252 anchors).
+
+    Two decoder layers instead of R18's three: the second refines the first's boxes, as every further layer does, and
+    each layer adds about a quarter of the dynamo export's time.
+    """
     torch.manual_seed(0)
-    return RTDETR.from_config(RTDETRConfig("resnet18d", num_classes=4, head_num_queries=10)).eval()
+    r18 = RTDETRConfig.from_name("rtdetr_r18vd", num_classes=4)
+    return RTDETR.from_config(replace(r18, head_num_queries=10, head_num_decoder_layers=2)).eval()
 
 
 def _images(shapes: list[tuple[int, int, int]]) -> list[torch.Tensor]:
@@ -118,12 +102,19 @@ def _dims(value_info) -> list:
 
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
-def test_rtdetr_onnx_matches_eager_at_other_batches(export_kwargs):
-    """``RTDETR.to_onnx`` keeps the batch dynamic: batches 1 and 3 match eager on a graph traced at 2, H != W."""
-    _importorskip_exporter(export_kwargs)
-    model = _small_rtdetr()
-    op = model.to_onnx(save=False, pseudo_shape=[1, 3, 96, 128], **export_kwargs)
+def test_rtdetr_onnx_matches_eager_at_other_batches(tmp_path, export_kwargs):
+    """``RTDETR.to_onnx`` writes the model it returns, with its two outputs by name, and keeps the batch dynamic.
 
+    Batches 1 and 3 match eager on a graph traced at 2, H != W.
+    """
+    _importorskip_exporter(export_kwargs)
+    onnx = pytest.importorskip("onnx")
+    model = _small_rtdetr()
+    onnx_path = tmp_path / "rtdetr.onnx"
+    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 96, 128], **export_kwargs)
+
+    assert isinstance(op, onnx.ModelProto)
+    assert onnx.load(str(onnx_path)) == op
     assert [o.name for o in op.graph.output] == ["pred_logits", "pred_boxes"]
     for images in _images([(1, 96, 128), (3, 96, 128)]):
         _check_onnx_against_eager(op, model, images)

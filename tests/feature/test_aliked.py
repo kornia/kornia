@@ -646,6 +646,24 @@ class TestSDDH(BaseTester):
         ]
         return x, keypoints
 
+    def _assert_matches_the_convolutions(self, descriptors, offsets, expected_descriptors, expected_offsets, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
+                self.assert_close(actual, expected)
+            return
+        # In half precision the matrix products and the convolutions round their sums in different orders (cuBLAS and
+        # cuDNN on CUDA). Both are about as far from a float32 computation, up to 7 eps (float16) and 5 eps (bfloat16),
+        # so neither is the more accurate. Over ~63000 random draws per dtype on an RTX 4090 the unit descriptors
+        # differed by up to 9.25 eps (float16) and 10.25 eps (bfloat16), and 2 to 4 of the 16 CUDA cases of a run
+        # failed the default tolerances; CPU bfloat16 reached 1.7 eps. A small norm before the normalization amplifies
+        # the error, hence the tail; 16 eps leaves a 1.5x margin. The offsets, up to max_offset = 8, were at most
+        # 1 eps apart (|offset| < 1.2): a relative 2 eps allows two roundings at any magnitude.
+        eps = torch.finfo(dtype).eps
+        for actual, expected in zip(descriptors, expected_descriptors):
+            self.assert_close(actual, expected, rtol=0.0, atol=16 * eps)
+        for actual, expected in zip(offsets, expected_offsets):
+            self.assert_close(actual, expected, rtol=2 * eps, atol=eps)
+
     @pytest.mark.parametrize("kernel_size", [1, 3])
     @pytest.mark.parametrize("mask", [False, True])
     @pytest.mark.parametrize("conv2d", [False, True])
@@ -656,8 +674,7 @@ class TestSDDH(BaseTester):
             descriptors, offsets = sddh(x, keypoints)
             expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
         assert [d.shape for d in descriptors] == [(37, 16), (0, 16)]
-        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
-            self.assert_close(actual, expected)
+        self._assert_matches_the_convolutions(descriptors, offsets, expected_descriptors, expected_offsets, dtype)
 
     def test_gate_gets_the_convolution_output_map(self, device, dtype):
         # a gate that accepts only (N, C, H, W) input, such as Softmax2d, works as it did on the convolution output
@@ -666,8 +683,7 @@ class TestSDDH(BaseTester):
         with torch.no_grad():
             descriptors, offsets = sddh(x, keypoints)
             expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
-        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
-            self.assert_close(actual, expected)
+        self._assert_matches_the_convolutions(descriptors, offsets, expected_descriptors, expected_offsets, dtype)
 
     def test_gradients_match_the_convolutions(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
@@ -1400,14 +1416,14 @@ class TestALIKEDStateDict(BaseTester):
         assert aliked.dkd.hw_grid.device == device
         assert aliked.dkd.hw_grid.dtype == dtype
 
-    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, dtype, monkeypatch):
+    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, monkeypatch):
         weights = ALIKED(model_name="aliked-t16").state_dict()
         weights["desc_head.sf.weight"] = weights.pop("desc_head.sf_conv.weight")
         monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
         with pytest.raises(RuntimeError, match=r"Missing key.*desc_head\.sf_conv\.weight"):
             ALIKED.from_pretrained("aliked-t16", device=device)
 
-    def test_state_dict_with_hw_grid_loads(self, device, dtype, monkeypatch):
+    def test_state_dict_with_hw_grid_loads(self, device, monkeypatch):
         saved = ALIKED(model_name="aliked-t16")
         weights = {**saved.state_dict(), "dkd.hw_grid": saved.dkd.hw_grid.clone()}
         aliked = ALIKED(model_name="aliked-t16")

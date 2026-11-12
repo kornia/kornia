@@ -345,10 +345,31 @@ class VideoKeypoints(Keypoints):
 
     @classmethod
     def from_tensor(
-        cls, boxes: Union[torch.torch.Tensor, List[torch.torch.Tensor]], validate_boxes: bool = True
+        cls, boxes: Union[torch.torch.Tensor, List[torch.torch.Tensor]], validate_boxes: Optional[bool] = None
     ) -> "VideoKeypoints":
+        """Build video keypoints from a ``(B, T, N, 2)`` tensor of ``(x, y)`` points.
+
+        The ``B`` videos of ``T`` frames are stored as ``B * T`` frames of ``N`` keypoints, and
+        :attr:`temporal_channel_size` records ``T``. A list, or a tensor of any other shape, raises ``ValueError``.
+
+        Args:
+            boxes: the keypoints, with shape ``(B, T, N, 2)``. The name is kept for callers that pass it by keyword.
+            validate_boxes: deprecated since kornia 0.9.1 and ignored; passing ``True`` or ``False`` emits a
+              :class:`DeprecationWarning`, and the default ``None`` does not. Keypoints have no validity rule to check.
+
+        Returns:
+            the video keypoints.
+
+        """
+        if validate_boxes is not None:
+            _emit_deprecation_warning(
+                "VideoKeypoints.from_tensor(validate_boxes=...)",
+                None,
+                "0.9.1",
+                "The argument has no effect: keypoints are not validated, whatever its value; stop passing it.",
+            )
         if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
-            raise ValueError("Input box type is not yet supported. Please input an `BxTxNx2` tensor directly.")
+            raise ValueError("Input keypoints type is not yet supported. Please input a `BxTxNx2` tensor directly.")
 
         temporal_channel_size = boxes.size(1)
 

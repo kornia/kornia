@@ -70,7 +70,7 @@ class TestAugmentationSequential:
         ],
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
-    def test_exception(self, augmentation_list, data_keys, error_type, match, device, dtype):
+    def test_exception(self, augmentation_list, data_keys, error_type, match):
         with pytest.raises(error_type, match=match):
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
@@ -1001,7 +1001,7 @@ class TestAugmentationSequential:
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
-    def test_class(self, device, dtype):
+    def test_class(self):
         img = torch.zeros((5, 1, 5, 5))
         labels = torch.randint(0, 10, size=(5, 1))
         aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=["input", "class"])

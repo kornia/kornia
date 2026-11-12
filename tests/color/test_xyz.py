@@ -142,7 +142,7 @@ class TestRgbToXyz(BaseTester):
         data_out = xyz(rgb(data))
         self.assert_close(data_out, data)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_xyz, (img,), raise_exception=True, fast_mode=True)
@@ -269,7 +269,7 @@ class TestXyzToRgb(BaseTester):
         data_out = rgb(xyz(data))
         self.assert_close(data_out, data, low_tolerance=True)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.xyz_to_rgb, (img,), raise_exception=True, fast_mode=True)

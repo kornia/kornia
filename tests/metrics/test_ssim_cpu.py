@@ -239,7 +239,7 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(ssim(img1, img2, 11), expected)
 
-    def test_float64_keeps_the_nchw_path(self, monkeypatch, device, dtype):
+    def test_float64_keeps_the_nchw_path(self, monkeypatch, device):
         if device.type != "cpu":
             pytest.skip("the channels-last SSIM path runs on CPU float32 only")
         _forbid_helper(monkeypatch)

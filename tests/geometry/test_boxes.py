@@ -32,7 +32,13 @@ from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    raises_value_check,
+    skip_unsupported_autocast,
+)
 
 # Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
 # one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
@@ -3265,14 +3271,15 @@ class TestVideoBoxes(BaseTester):
                 enable_checks()
         assert video_boxes.data.shape == boxes.reshape(-1, 1, 4, 2).shape
 
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("the vertex check is torch._assert_async: synchronous only on CPU")
+    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype, capfd):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the vertex check is torch._assert_async: it raises at the next sync on MPS from torch 2.13")
         boxes = self._sample_video_boxes(device, dtype)
         boxes[0, 0, 0, 0, 0] = value
 
-        with pytest.raises(RuntimeError, match="non-finite coordinates"):
+        with raises_value_check(device, "non-finite coordinates", capfd):
             VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
     def test_exception(self, device, dtype):

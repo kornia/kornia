@@ -142,13 +142,13 @@ else:
 
 
 class TestCheckClassLabels(BaseTester):
-    def test_valid_labels_pass_unchanged(self, device, dtype):
+    def test_valid_labels_pass_unchanged(self, device):
         labels = torch.tensor([[0, 2, 1], [2, 2, 0]], device=device)
         assert _check_class_labels(labels, 3) is labels
         empty = torch.zeros(0, 3, device=device, dtype=torch.int64)
         assert _check_class_labels(empty, 3) is empty
 
-    def test_exception(self, device, dtype):
+    def test_exception(self, device):
         if device.type != "cpu":
             pytest.skip("only CPU labels are checked")
         for value, message in ((3, "smaller than num_classes"), (-1, "non-negative")):
@@ -157,7 +157,7 @@ class TestCheckClassLabels(BaseTester):
                 _check_class_labels(labels, 3)
 
     @pytest.mark.device_agnostic
-    def test_other_devices_and_vmap_skip_the_check(self, device, dtype):
+    def test_other_devices_and_vmap_skip_the_check(self):
         # A meta tensor stands for any device but the CPU on every leg, and vmap has no batching rule for the assert.
         def asserts(labels):
             graph = make_fx(lambda x: _check_class_labels(x, 3))(labels).graph
@@ -172,7 +172,7 @@ class TestCheckClassLabels(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_version_gate_matches_inductor(self, device, dtype):
+    def test_version_gate_matches_inductor(self):
         # Compiled labels are clamped only where Inductor keeps the asserts; up to torch 2.8 it decomposes them away.
         from torch._inductor.decomposition import decompositions
 
@@ -180,7 +180,7 @@ class TestCheckClassLabels(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_export_keeps_the_labels_unclamped(self, device, dtype):
+    def test_export_keeps_the_labels_unclamped(self):
         # ONNX translates an exported graph without its asserts, where clamped labels would turn the failing index op
         # into a silent wrong value. The exported program itself keeps the asserts.
         class _Gather(torch.nn.Module):

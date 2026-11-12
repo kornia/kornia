@@ -27,7 +27,7 @@ from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
-from testing.base import BaseTester
+from testing.base import BaseTester, raises_value_check
 
 
 def _clahe_interpolation_reference(img, luts, tile_size):
@@ -38,6 +38,10 @@ def _clahe_interpolation_reference(img, luts, tile_size):
     scale = 255 * (1 + 2**-21) if img.dtype in (torch.float32, torch.float64) else 255
     expected = torch.zeros_like(values)
     gh, gw = tables.shape[1:3]
+    # Preserve the input dtype's lookup quantization, the 8-bit level with 255 raised by four float32 epsilons in
+    # float32 and float64; this reference tests only interpolation. Computed once on the input's device: the same
+    # elementwise product and truncation per pixel, without a device round trip for each.
+    levels = (img * scale).long().cpu()
     for y in range(values.shape[-2]):
         fy = (y + 0.5) / tile_size[0] - 0.5
         y0 = math.floor(fy)
@@ -46,9 +50,7 @@ def _clahe_interpolation_reference(img, luts, tile_size):
             fx = (x + 0.5) / tile_size[1] - 0.5
             x0 = math.floor(fx)
             ax = fx - x0
-            # Preserve the input dtype's lookup quantization, the 8-bit level with 255 raised by four float32
-            # epsilons in float32 and float64; this reference tests only interpolation.
-            index = (img[..., y, x] * scale).long().cpu().unsqueeze(-1)
+            index = levels[..., y, x].unsqueeze(-1)
             for row, wy in [(y0, 1 - ay), (y0 + 1, ay)]:
                 for col, wx in [(x0, 1 - ax), (x0 + 1, ax)]:
                     lut = tables[:, min(max(row, 0), gh - 1), min(max(col, 0), gw - 1)]
@@ -287,34 +289,28 @@ class TestEqualization(BaseTester):
 
         self.gradcheck(grad_rot, (inputs, 40.0, grid_size, True), nondet_tol=1e-4)
 
-    def test_module(self):
-        # equalize_clahe is only a function
-        pass
-
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
-    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype, capfd):
         # kornia#4564: the tile-LUT gather used to fail with a raw
         # "index ... is out of bounds for dimension 5 with size 256". MPS range-checks it too
         # (kornia#4600): from torch 2.13 the assert is asynchronous there, so the message arrives at
         # the sync.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(enhance.equalize_clahe(x).device)
 
-    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype, capfd):
         # The range check keeps the gather in bounds, so it runs with checks disabled too (``python -O``,
         # ``KORNIA_CHECKS=0``): compiled on the CPU, the gather with an index out of range terminates the process.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
-            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
                 _sync(enhance.equalize_clahe(x).device)
         finally:
             if were_checks_enabled:
@@ -332,25 +328,23 @@ class TestEqualization(BaseTester):
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), enhance.equalize_clahe(x))
 
-    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
         # compiling if the asynchronous assert is traced, because a host read cannot be.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         torch._dynamo.reset()
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
-    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The range check keeps the gather in bounds, so a compiled torch.func.grad keeps it, although a compiled
         # functorch transform skips the value checks that guard no index.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         if not torch_version_ge(2, 14):
@@ -359,7 +353,7 @@ class TestEqualization(BaseTester):
         torch._dynamo.reset()
         gradient = torch.func.grad(lambda image: enhance.equalize_clahe(image).sum())
         compiled = torch.compile(gradient, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
     @pytest.fixture

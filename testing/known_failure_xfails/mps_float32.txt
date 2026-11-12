@@ -1,6 +1,6 @@
 # Strict known-failure baseline for the tests-mps CI leg: macos-15-arm64, Python 3.13, PyTorch 2.14.0,
-# MPS float32, no CPU fallback, one pytest process for the full suite (tests marked device_agnostic are
-# deselected on an mps-only run).
+# MPS float32, no CPU fallback, one pytest process for the full suite (device-agnostic tests -- marked
+# device_agnostic, or taking no device fixture and not marked uses_accelerator -- are deselected on an mps-only run).
 # Remove an entry when it becomes a strict XPASS; fix any new failure, or add it with a comment naming its own
 # tracking issue.
 # Keep the entries sorted by node ID: KnownFailureTracker prints its regeneration output sorted,

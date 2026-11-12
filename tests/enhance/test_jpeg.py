@@ -1467,6 +1467,7 @@ class TestDefaultQuantizationTables(BaseTester):
         kornia.enhance.jpeg_codec_differentiable(img, quality).sum().backward()
         assert img.grad is not None
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
     def test_cached_tables_are_complete_on_another_stream(self):
         # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels

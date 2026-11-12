@@ -155,7 +155,7 @@ class TestRawToRgb(BaseTester):
         assert_close(bgres[:, :, 1:5, 1:5], grres[:, :, 2:6, 1:5])
         assert_close(bgres[:, :, 1:5, 1:5], rgres[:, :, 2:6, 2:6])
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG))
@@ -200,7 +200,7 @@ class TestRgbToRaw(BaseTester):
 
         # Reverse test in rawtorgb is sufficient functional test
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG))
@@ -288,7 +288,7 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         img_rgb = kornia.color.raw_to_rgb_2x2_downscaled(data, cfa)
         self.assert_close(img_rgb, expected_rgb)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 8, 8
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(

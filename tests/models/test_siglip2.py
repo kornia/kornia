@@ -626,7 +626,7 @@ class TestSigLip2Model(BaseTester):
         self.assert_close(output_changed.image_embeds, output.image_embeds)
         self.assert_close(output_changed.loss, output.loss)
 
-    def test_gradcheck(self, device, dtype, config):
+    def test_gradcheck(self, device, config):
         """Test gradient computation correctness."""
         # Convert model to float64 for gradcheck
         model = SigLip2Model(config).to(device, torch.float64).train()

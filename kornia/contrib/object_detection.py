@@ -272,7 +272,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 out_img = draw_rectangle(out_img, box)
             output.append(out_img[0])
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
+        return self._tensor_to_type(output, output_type)
 
     def save(
         self,

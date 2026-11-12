@@ -744,9 +744,6 @@ class TestEuclideanDistance(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(pt1, pt2), op_optimized(pt1, pt2))
 
-    def test_module(self, device, dtype):
-        pass
-
 
 # Two rigid, non-commuting transforms (T01 T02 != T02 T01 by 0.854), neither the identity nor a pure translation.
 # Generated in float64:

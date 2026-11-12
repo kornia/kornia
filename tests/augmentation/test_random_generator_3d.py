@@ -36,16 +36,16 @@ from testing.base import assert_close
 
 
 class RandomGeneratorBaseTests:
-    def test_valid_param_combinations(self, device, dtype):
+    def test_valid_param_combinations(self):
         raise NotImplementedError
 
-    def test_invalid_param_combinations(self, device, dtype):
+    def test_invalid_param_combinations(self):
         raise NotImplementedError
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self):
         raise NotImplementedError
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         raise NotImplementedError
 
 
@@ -692,7 +692,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("depth,height,width", [(200, 200, 200)])
     @pytest.mark.parametrize("size", [(100, 100, 100)])
-    def test_valid_param_combinations(self, batch_size, depth, height, width, size, device, dtype):
+    def test_valid_param_combinations(self, batch_size, depth, height, width, size):
         center_crop_generator3d(batch_size=batch_size, depth=depth, height=height, width=width, size=size)
 
     @pytest.mark.parametrize(
@@ -705,11 +705,11 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
             (200, 100, 150, (120, 80, 200)),
         ],
     )
-    def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
+    def test_invalid_param_combinations(self, depth, height, width, size):
         with pytest.raises((AssertionError, ValueError), match=r"depth|height|width|size"):
             center_crop_generator3d(batch_size=2, depth=depth, height=height, width=width, size=size)
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self, device):
         torch.manual_seed(42)
         res = center_crop_generator3d(batch_size=2, depth=200, height=200, width=200, size=(120, 150, 100))
         expected = {
@@ -752,7 +752,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         pass
 
 
