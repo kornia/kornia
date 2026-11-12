@@ -92,7 +92,7 @@ class TestParamValidation:
         torch.testing.assert_close(res, expected.to(device))
 
     @pytest.mark.uses_accelerator
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA not available")
     def test_tuple_range_reader_honours_cuda_device(self):
         """`_tuple_range_reader` allocates its own tensors, so the CUDA branch needs its own test.
 

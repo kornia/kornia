@@ -182,10 +182,12 @@ class TestLayerNorm2d:
         assert out.dtype == torch.float32
         assert torch.equal(out, layer(x.float()))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["full"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("full", [torch.float32, torch.float64], ids=["float32", "float64"])
     def test_full_precision_formula_is_unchanged(self, device, full):
-        if device.type == "mps" and full == torch.float64:
-            pytest.skip("MPS does not support float64")
         layer, x = _layer_norm_2d_case(device, full)
 
         # The formula of Meta's LayerNorm2d (segment-anything@3518c86, modeling/common.py), bit for bit.

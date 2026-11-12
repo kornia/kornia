@@ -238,12 +238,13 @@ class TestAdjustSaturation(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0))
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 images are adjusted in float32"
+    )
     @pytest.mark.parametrize("factor", [0.0, 1.0, 1.7])
     def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
         # float16 and bfloat16 images are adjusted in float32 and rounded once. The half-precision arithmetic it
         # replaces was up to 7 eps off the float32 result (1.4 eps for the direct formula run in half precision).
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 images are adjusted in float32")
         img = torch.rand(2, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         out = kornia.enhance.adjust_saturation(img, factor)
         assert out.dtype == dtype
@@ -354,12 +355,13 @@ class TestAdjustHue(BaseTester):
             op(img, factor)
         assert "PI" not in str(errinfo.value)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only float16 and bfloat16 images are shifted in float32"
+    )
     @pytest.mark.parametrize("factor", [0.0, 0.3, -2.5])
     def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
         # float16 and bfloat16 images are shifted in float32 and rounded once. The half-precision HSV round trip it
         # replaces was up to 7.5 eps off the float32 result, even for a zero shift.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only float16 and bfloat16 images are shifted in float32")
         img = torch.rand(2, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         out = kornia.enhance.adjust_hue(img, factor)
         assert out.dtype == dtype
@@ -379,10 +381,11 @@ class TestAdjustGamma(BaseTester):
         expected = kornia.enhance.adjust_gamma(image, image.new_tensor([gamma]), image.new_tensor([gain]))
         self.assert_close(kornia.enhance.adjust_gamma(image, gamma, gain), expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["dtype_name"] != "float64", reason="The negative value is representable in float64"
+    )
     @pytest.mark.parametrize("parameter", ["gamma", "gain"])
     def test_negative_scalar_rounds_to_zero(self, device, dtype, parameter):
-        if dtype == torch.float64:
-            pytest.skip("The negative value is representable in float64")
         image = torch.full((1, 2, 2), 0.5, device=device, dtype=dtype)
         kwargs = {"gamma": 1.0, "gain": 1.0, parameter: -1e-50}
         expected = kornia.enhance.adjust_gamma(image, **{**kwargs, parameter: 0.0})
@@ -409,9 +412,8 @@ class TestAdjustGamma(BaseTester):
         with pytest.raises(RuntimeError, match="must be non-negative"):
             kornia.enhance.adjust_gamma(image, **{"gamma": 1.0, "gain": 1.0, parameter: value})
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 gradcheck")
     def test_tensor_parameter_gradients(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 gradcheck")
         image = torch.full((2, 1, 2, 2), 0.4, device=device, dtype=torch.float64, requires_grad=True)
         gamma = torch.tensor([0.8, 1.2], device=device, dtype=torch.float64, requires_grad=True)
         gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
@@ -646,19 +648,19 @@ class TestAdjustContrast(BaseTester):
         f = kornia.enhance.AdjustContrast(1.0)
         self.assert_close(f(data), expected)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the value check raises during the call only on CPU; see test_mps_checks_the_factor"
+    )
     def test_negative_factor_errors(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("the value check raises during the call only on CPU; see test_mps_checks_the_factor")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="non-negative"):
             kornia.enhance.adjust_contrast(img, factor)
 
+    @pytest.mark.applies_to(devices=("mps",), reason="pins the MPS behavior")
     def test_mps_checks_the_factor(self, device, dtype):
         # The factor is checked on MPS as well: from torch 2.13 by the asynchronous assert, which raises at the next
         # synchronization, and before, without that kernel, on the host during the call.
-        if device.type != "mps":
-            pytest.skip("pins the MPS behavior")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         if torch_version_ge(2, 13):
@@ -1704,6 +1706,10 @@ class TestSolarize(BaseTester):
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["param_dtype"] == torch.float64 and p["device_name"] == "mps"),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (3, 4, 5), (2, 2, 3, 4, 5)])
     @pytest.mark.parametrize("element_shape", [(1,), (1, 1)])
     @pytest.mark.parametrize("param_dtype", [None, torch.float64])
@@ -1711,8 +1717,6 @@ class TestSolarize(BaseTester):
         # A one-element thresholds or additions tensor solarizes the whole batch, as a 0-d one does; it was read as
         # per-sample and rejected unless the batch (or, unbatched, the channel count) was 1. It is cast to the image
         # dtype first, as the per-sample path does.
-        if param_dtype == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         img = torch.rand(shape, device=device, dtype=dtype)
         thresholds = torch.full(element_shape, 0.3, device=device, dtype=param_dtype or dtype)
         additions = torch.full(element_shape, 0.1, device=device, dtype=param_dtype or dtype)

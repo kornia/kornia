@@ -52,11 +52,10 @@ def _convolution_pyramid(pyramid: _SIFTScalePyramid, image: torch.Tensor) -> lis
         first = levels[3][..., : 2 * (height // 2) : 2, : 2 * (width // 2) : 2]
 
 
+@pytest.mark.applies_to(devices=("cpu",), reason="the optimized implementation is CPU-only")
 class TestSIFTScalePyramidCPUOptimized(BaseTester):
     @staticmethod
     def _cpu(device: torch.device, dtype: torch.dtype) -> None:
-        if device.type != "cpu":
-            pytest.skip("the optimized implementation is CPU-only")
         if not supports_replicate_padding(device, dtype) or not supports_reflect_padding(device, dtype):
             pytest.skip("direct pyramid helper requires native border padding; the detector promotes half inputs")
 
@@ -133,11 +132,10 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
             self.assert_close(actual_octave, expected_octave)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the CPU slice implementation uses full precision")
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_fullgraph(self, device, dtype):
         self._cpu(device, dtype)
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the CPU slice implementation uses full precision")
         pyramid = _SIFTScalePyramid().to(device, dtype)
         image = torch.rand(1, 1, 17, 19, device=device, dtype=dtype)
         kernel = pyramid.kernel_4.to(image)

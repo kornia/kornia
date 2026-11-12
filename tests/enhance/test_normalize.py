@@ -582,10 +582,9 @@ class TestNormalizeIntegerInput(BaseTester):
         assert normalized.abs().max() < 3.0
         self.assert_close(kornia.enhance.denormalize(normalized, mean, std), img.to(normalized.dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_integer_input_follows_the_default_dtype_5403(self, device):
         # The promotion target is torch's default floating dtype, the same as `x * 0.5`, not a hardcoded float32.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         img = self._image(device, torch.uint8)
         previous = torch.get_default_dtype()
         torch.set_default_dtype(torch.float64)
@@ -653,11 +652,10 @@ class TestNormalizeMinMax(BaseTester):
         actual = kornia.enhance.normalize_min_max(image, min_val=-2.0, max_val=3.0)
         self.assert_close(actual, torch.full(image.shape, -2.0, device=device))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("scripted", [False, True])
     def test_integer_follows_default_dtype(self, device, scripted):
         """The integer promotion follows normalize/denormalize and torch's default floating dtype."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         image = torch.tensor([-128, 0, 127], device=device, dtype=torch.int8).reshape(1, 3)
         previous = torch.get_default_dtype()
         try:

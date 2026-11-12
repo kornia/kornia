@@ -50,13 +50,15 @@ class TestPsnr(BaseTester):
         assert torch.isfinite(expected)
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["partner_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("partner_dtype", [torch.float16, torch.bfloat16, torch.float64])
     def test_integer_image_with_a_floating_partner(self, device, partner_dtype):
         # The integer image counts as float32 and the pair is computed in the promoted dtype, as in ssim, so a half
         # partner gives float32, not the half dtype. Given two dtypes, mse_loss aborts the process on MPS and its
         # backward raises on torch 2.5.1 (#5536).
-        if device.type == "mps" and partner_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         image = (torch.rand(2, 3, 9, 13, generator=generator) * 255).to(torch.uint8).to(device)
         partner = (torch.rand(2, 3, 9, 13, generator=generator) * 255).round().to(device, partner_dtype)
@@ -70,6 +72,9 @@ class TestPsnr(BaseTester):
         assert partner.grad is not None
         assert partner.grad.dtype == partner_dtype
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and torch.float64 in p["dtypes"]), reason="MPS has no float64"
+    )
     @pytest.mark.parametrize(
         "dtypes",
         [
@@ -84,8 +89,6 @@ class TestPsnr(BaseTester):
         # Two floating images of different dtypes are compared in their promoted dtype, in either order, and each
         # gradient keeps its image's dtype. Given two dtypes, mse_loss aborts the process on MPS and its backward
         # raises on torch 2.5.1 (#5536).
-        if device.type == "mps" and torch.float64 in dtypes:
-            pytest.skip("MPS has no float64")
         generator = torch.Generator().manual_seed(0)
         image = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[0])
         target = torch.rand(2, 3, 9, 13, generator=generator).to(device, dtypes[1])
@@ -215,13 +218,15 @@ class TestPSNRIntegerRange(BaseTester):
 
 
 class TestPSNRHalfPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["range_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("range_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("scalar_range", [True, False])
     def test_tensor_range_value_dtype_and_gradients(self, device, image_dtype, range_dtype, scalar_range):
         """Square tensor data ranges in the compute dtype without losing their output dtype or gradients."""
-        if device.type == "mps" and range_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         image = torch.tensor([32.0], device=device, dtype=image_dtype, requires_grad=True)
         values = 512.0 if scalar_range else [512.0, 1024.0]
         max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)

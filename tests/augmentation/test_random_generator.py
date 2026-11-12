@@ -477,12 +477,13 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
                 ),
             )(torch.Size([8]))
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        reason="Random parameters are device- and dtype-dependent; expected values were computed on CPU float32",
+    )
     def test_random_gen(self, device, dtype):
         # The generator documents that samples are not reproducible across devices or dtypes.
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip(
-                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
-            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -559,11 +560,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             atol=1e-4,
         )
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        reason="Random parameters are device- and dtype-dependent; expected values were computed on CPU float32",
+    )
     def test_same_on_batch(self, device, dtype):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip(
-                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
-            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -786,9 +788,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 sampling_method="non_existing_method",
             )(torch.Size([batch_size, 1, 200, 200]))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="checks the half-precision rounding")
     def test_perspective_half_corners_round_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("checks the half-precision rounding")
         scale = torch.tensor(0.37, device=device, dtype=dtype)
         gen = PerspectiveGenerator(scale)
         gen.set_rng_device_and_dtype(device, dtype)
@@ -803,6 +804,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         factor = float(scale) * torch.tensor([411.0, 300.0], device=device) / 2
         assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64.")
     @pytest.mark.parametrize(
         ("scale_dtype", "sampler_dtype"),
         [(None, torch.float64), (torch.float64, torch.float32)],
@@ -811,8 +813,6 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     def test_perspective_offsets_in_the_sampler_dtype(self, device, scale_dtype, sampler_dtype):
         # Only a half-precision sampler widens the scale: a float32 or float64 sampler scales in its own dtype, which
         # need not be the input dtype, and the factor is then cast to the input dtype, as before the half fix.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64.")
         scale = 0.3 if scale_dtype is None else torch.tensor(0.3, device=device, dtype=scale_dtype)
         out_dtype = torch.float32 if scale_dtype is None else scale_dtype
         gen = PerspectiveGenerator(scale)
@@ -830,9 +830,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64.")
     def test_float64_constant_angle_is_not_rounded_via_float32_4426(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64.")
         degrees = torch.tensor((0.1, 0.1), device=device, dtype=torch.float64)
         default_dtype = torch.get_default_dtype()
         try:
@@ -1066,9 +1065,8 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert_close(res["src"], expected["src"])
         assert_close(res["dst"], expected["dst"])
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="checks the half-precision rounding")
     def test_crop_half_size_corners_round_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("checks the half-precision rounding")
         size = torch.tensor([[300, 332]] * 64, device=device, dtype=dtype)
         torch.manual_seed(0)
         res = CropGenerator(size)(torch.Size([64, 3, 500, 700]))
@@ -1340,10 +1338,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         assert_close(res["ys"], expected["ys"])
         assert_close(res["values"], expected["values"])
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="This regression exercises the CPU sampler with half tensor parameters."
+    )
     @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_positions_stay_in_bounds(self, device, parameter_dtype):
-        if device.type != "cpu":
-            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
         batch_size, height, width = 65536, 16, 16
         scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -1354,10 +1353,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         params = generator(torch.Size([batch_size, 1, height, width]))
         self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="This regression exercises the CPU sampler with half tensor parameters."
+    )
     @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_positions_stay_in_bounds_on_wide_image(self, device, parameter_dtype):
-        if device.type != "cpu":
-            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
         batch_size, height, width = 1024, 4, 4096
         scale = torch.tensor((0.001, 0.001), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -1366,10 +1366,9 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         params = generator(torch.Size([batch_size, 1, height, width]))
         self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="This control records CPU sampler parity.")
     @pytest.mark.parametrize("parameter_dtype", [torch.float32, torch.float64])
     def test_float_positions_stay_in_bounds(self, device, parameter_dtype):
-        if device.type != "cpu":
-            pytest.skip("This control records CPU sampler parity.")
         batch_size, height, width = 32, 11, 19
         scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -1379,6 +1378,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         )
         self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, parameter_dtype)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="This control records CPU sampler parity.")
     @pytest.mark.parametrize(
         "requested_sampler_dtype, expected_sampler_dtype",
         [
@@ -1389,8 +1389,6 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         ],
     )
     def test_tuple_position_sampler_uses_safe_bounds(self, device, requested_sampler_dtype, expected_sampler_dtype):
-        if device.type != "cpu":
-            pytest.skip("This control records CPU sampler parity.")
         generator = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(1.0, 1.0))
         generator.set_rng_device_and_dtype(device, requested_sampler_dtype)
         assert generator.uniform_sampler.low.dtype == expected_sampler_dtype
@@ -1410,9 +1408,8 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         assert generator.uniform_sampler.low.device == device
         assert generator.uniform_sampler.high.device == device
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="This control records CPU sampler parity.")
     def test_tuple_positions_stay_in_bounds(self, device):
-        if device.type != "cpu":
-            pytest.skip("This control records CPU sampler parity.")
         batch_size, height, width = 32, 11, 19
         torch.manual_seed(0)
         params = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(1.0, 1.0), value=0.25)(
@@ -1420,10 +1417,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         )
         self._assert_rectangle_parameters_in_bounds(params, batch_size, height, width, device, torch.float32)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="This regression exercises the CPU sampler with half tensor parameters."
+    )
     @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_same_on_batch_preserves_rectangle(self, device, parameter_dtype):
-        if device.type != "cpu":
-            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
         height, width = 16, 16
         scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -1766,11 +1764,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
                 torch.Size([8, 3, 200, 200]), same_on_batch=False
             )
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU",
+    )
     def test_random_gen(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip(
-                "Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU"
-            )
         torch.manual_seed(42)
         batch_size = 8
         res = MixupGenerator(p=0.5, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(
@@ -1788,11 +1786,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         assert_close(res["mixup_pairs"], expected["mixup_pairs"], rtol=1e-4, atol=1e-4)
         assert_close(res["mixup_lambdas"], expected["mixup_lambdas"], rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU",
+    )
     def test_same_on_batch(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip(
-                "Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU"
-            )
         torch.manual_seed(9)
         batch_size = 8
         res = MixupGenerator(p=0.999999, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(
@@ -2255,13 +2253,15 @@ class TestBetaSamplersInHalfPrecision:
 class TestTruncateToStart:
     # The largest float32 below 1 rounds to 1.0 in float16 and in bfloat16, the largest float64 below 1 rounds to
     # 1.0 in float32. The start has to stay at the last valid position and come back in the extent's dtype.
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["draw_dtype"] == torch.float64),
+        reason="MPS has no float64.",
+    )
     @pytest.mark.parametrize(
         "draw_dtype,extent_dtype",
         [(torch.float32, torch.float16), (torch.float32, torch.bfloat16), (torch.float64, torch.float32)],
     )
     def test_draw_below_one_stays_in_range(self, device, draw_dtype, extent_dtype):
-        if device.type == "mps" and draw_dtype == torch.float64:
-            pytest.skip("MPS has no float64.")
         draw = torch.tensor([0.0, 0.5, 1.0 - torch.finfo(draw_dtype).eps / 2], device=device, dtype=draw_dtype)
         extent = torch.tensor(5.0, device=device, dtype=extent_dtype)
         start = _truncate_to_start(draw, extent)

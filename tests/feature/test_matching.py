@@ -147,10 +147,9 @@ class TestMatchMNN(BaseTester):
         self.assert_close(idxs, torch.tensor([[2, 0], [1, 1]], device=device))
         self.assert_close(dists, torch.tensor([[0.2], [0.1]], device=device))
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="Host synchronization is observable on CUDA only.")
     @pytest.mark.parametrize("swap", [False, True])
     def test_waits_for_the_device_once(self, device, swap):
-        if device.type != "cuda":
-            pytest.skip("Host synchronization is observable on CUDA only.")
         assert _host_synchronizations(match_mnn, *_descriptors_with_planted_matches(device, swap)) == 1
 
 
@@ -221,10 +220,9 @@ class TestMatchSNN(BaseTester):
         else:
             match_snn(desc1, desc2, 0.8)
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="Host synchronization is observable on CUDA only.")
     @pytest.mark.parametrize("swap", [False, True])
     def test_waits_for_the_device_once(self, device, swap):
-        if device.type != "cuda":
-            pytest.skip("Host synchronization is observable on CUDA only.")
         assert _host_synchronizations(match_snn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
 
 
@@ -588,10 +586,9 @@ class TestMatchSMNN(BaseTester):
         self.assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
         self.assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="Host synchronization is observable on CUDA only.")
     @pytest.mark.parametrize("swap", [False, True])
     def test_waits_for_the_device_once(self, device, swap):
-        if device.type != "cuda":
-            pytest.skip("Host synchronization is observable on CUDA only.")
         assert _host_synchronizations(match_smnn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
 
     @pytest.mark.parametrize("swap", [False, True])
@@ -1077,9 +1074,8 @@ class TestLightGlueMatcherOrientations(BaseTester):
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
         return seen
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_orientations_wrap_by_full_precision_two_pi_5127(self, device, monkeypatch):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         seen = self._record_lightglue_inputs(monkeypatch, device)
         degrees = torch.tensor([[-90.0, -45.0, 30.0], [-135.0, 60.0, -30.0]], device=device, dtype=torch.float64)
         xy = torch.rand(2, 3, 2, device=device, dtype=torch.float64) * 50
@@ -1222,12 +1218,14 @@ def _sine_pattern(shape, frequency, chirp, phase, device, dtype):
 
 
 class TestCDist(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not p["use_autocast"] or p["device_name"] in ("cpu", "cuda"),
+        reason="autocast coverage requires CPU or CUDA",
+    )
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("use_autocast", [False, True])
     @pytest.mark.parametrize("scripted", [False, True])
     def test_half_precision_nearby_descriptors(self, device, desc_dtype, use_autocast, scripted):
-        if use_autocast and device.type not in ("cpu", "cuda"):
-            pytest.skip("autocast coverage requires CPU or CUDA")
         desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
         desc2 = desc1.repeat(2, 1)
         desc2[0, 0] += 0.03125
@@ -1257,10 +1255,9 @@ class TestCDist(BaseTester):
         self.assert_close(desc1.grad, torch.tensor([[-1.0, 0.0]], device=device, dtype=desc_dtype))
         self.assert_close(desc2.grad, torch.tensor([[1.0, 0.0]], device=device, dtype=desc_dtype))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="autocast coverage requires CPU or CUDA")
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_export_branch_ignores_autocast(self, device, desc_dtype, monkeypatch):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("autocast coverage requires CPU or CUDA")
         # Export traces the manual branch; autocast must not lower its float32 matmul back to half.
         monkeypatch.setattr("kornia.feature.matching.is_exporting", lambda: True)
         desc1 = torch.full((1, 128), 0.0625, device=device, dtype=desc_dtype)
@@ -1278,14 +1275,13 @@ class TestCDist(BaseTester):
         with pytest.raises(RuntimeError):
             _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="autocast region of CPU, CUDA and MPS only")
     @pytest.mark.parametrize("exporting", [False, True])
     @pytest.mark.parametrize("rows", [10, 30])
     def test_mixed_pair_under_mixed_precision_is_computed(self, device, monkeypatch, rows, exporting):
         # Inside autocast a mixed pair of float16, bfloat16 and float32 is computed in float32, by `torch.cdist` and by
         # the fallback that export takes; more than 25 rows also send `torch.cdist` through its matrix form. Autocast
         # does not cast float64, so a pair with it raises, as outside autocast.
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("autocast region of CPU, CUDA and MPS only")
         monkeypatch.setattr(matching, "is_exporting", lambda: exporting)
         low = torch.bfloat16 if device.type == "cpu" else torch.float16
         d1 = _sine_pattern((rows, 16), 0.71, 0.13, 0.0, device, torch.float32)
@@ -1367,26 +1363,28 @@ def _without_the_squared_path(monkeypatch, fn, *args):
         return fn(*args)
 
 
+SQUARED_PATH = pytest.mark.applies_to(
+    devices=("cpu", "cuda"),
+    dtypes=("float32", "float64"),
+    reason="The squared-distance path runs for float32 and float64 on the CPU and CUDA.",
+)
+
+
 class TestSquaredDistanceMatching(BaseTester):
     """match_nn, match_mnn, match_snn and match_smnn select on squared distances on the CPU and CUDA."""
 
-    @staticmethod
-    def _skip_unless_squared_path(device, dtype):
-        if device.type not in ("cpu", "cuda") or dtype not in (torch.float32, torch.float64):
-            pytest.skip("The squared-distance path runs for float32 and float64 on the CPU and CUDA.")
-
+    @SQUARED_PATH
     def test_square_roots_are_the_cdist_matrix(self, device, dtype):
-        self._skip_unless_squared_path(device, dtype)
         desc1, desc2 = _descriptors_for_the_squared_path(device, dtype)
         squared = _squared_distances(desc1, desc2)
         assert squared is not None
         _assert_bitwise_equal(_distance_from_squared(squared), torch.cdist(desc1, desc2))
 
+    @SQUARED_PATH
     @pytest.mark.parametrize("nonfinite", [False, True])
     @pytest.mark.parametrize("swap", [False, True])
     @pytest.mark.parametrize("match", [match_nn, match_mnn, match_snn, match_smnn])
     def test_same_bits_as_the_cdist_matrix(self, device, dtype, match, swap, nonfinite, monkeypatch):
-        self._skip_unless_squared_path(device, dtype)
         desc1, desc2 = _descriptors_for_the_squared_path(device, dtype, swap, nonfinite)
         assert _squared_distances(desc1, desc2) is not None
         dists, idxs = match(desc1, desc2)
@@ -1395,9 +1393,8 @@ class TestSquaredDistanceMatching(BaseTester):
         assert torch.equal(idxs, expected_idxs)
         assert len(idxs) > 0
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="The squared-distance path runs on the CPU and CUDA.")
     def test_returns_the_nearer_of_distances_tied_by_the_square_root(self, device, monkeypatch):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("The squared-distance path runs on the CPU and CUDA.")
         # 2 ** 24 + 2 > 2 ** 24, but both square roots round to 4096 in float32: torch.cdist's matrix ties them, and
         # torch.min returns the first, while the squared distances tell the second is nearer.
         squared = torch.tensor([[2.0**24 + 2, 2.0**24, 1e8]], device=device)
@@ -1408,9 +1405,10 @@ class TestSquaredDistanceMatching(BaseTester):
         assert idxs.tolist() == [[0, 1]]
         assert dists.tolist() == [[4096.0]]
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="The squared-distance path runs for float32 and float64."
+    )
     def test_two_smallest_are_those_of_topk(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("The squared-distance path runs for float32 and float64.")
         distances = _distances_with_ties_and_nonfinite(40, 30, device, dtype)
         for dim in (0, 1):
             key = _topk_order_key_(distances.clone())
@@ -1431,9 +1429,8 @@ class TestSquaredDistanceMatching(BaseTester):
             unique = (distances == nearest.unsqueeze(dim)).sum(dim) == 1
             assert torch.equal(index[unique], indices.select(dim, 0)[unique])
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="The squared-distance path runs on the CPU and CUDA.")
     def test_keeps_the_cdist_matrix_where_the_squared_path_does_not_apply(self, device, monkeypatch):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("The squared-distance path runs on the CPU and CUDA.")
         desc1, desc2 = _descriptors_for_the_squared_path(device, torch.float32)
         assert _squared_distances(desc1, desc2) is not None
         assert _squared_distances(desc1, desc2, torch.cdist(desc1, desc2)) is None
@@ -1453,17 +1450,16 @@ class TestSquaredDistanceMatching(BaseTester):
             patch.setattr(torch.jit, "is_tracing", lambda: True)
             assert _squared_distances(desc1, desc2) is None
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="Host synchronization is observable on CUDA only.")
     @pytest.mark.parametrize("match", [match_mnn, match_snn, match_smnn])
     def test_waits_for_the_device_once(self, device, match):
-        if device.type != "cuda":
-            pytest.skip("Host synchronization is observable on CUDA only.")
         desc1, desc2 = _descriptors_for_the_squared_path(device, torch.float32)
         assert _squared_distances(desc1, desc2) is not None
         assert _host_synchronizations(match, desc1, desc2) == 1
 
+    @SQUARED_PATH
     @pytest.mark.parametrize("match", [match_nn, match_mnn, match_snn, match_smnn])
     def test_dynamo(self, device, dtype, torch_optimizer, match):
-        self._skip_unless_squared_path(device, dtype)
         desc1, desc2 = _descriptors_for_the_squared_path(device, dtype)
         dists, idxs = torch_optimizer(match)(desc1, desc2)
         expected_dists, expected_idxs = match(desc1, desc2)

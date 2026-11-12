@@ -864,11 +864,10 @@ class TestIntensityColourConventions(BaseTester):
         assert int(drawn.min()) >= 1
         assert int(drawn.max()) <= 5
 
+    @pytest.mark.applies_to(devices=("mps",), reason="MPS device not available")
     @pytest.mark.uses_accelerator
     def test_convention_random_posterize_generator_supports_mps_device_6334(self):
         """Check that PosterizeGenerator avoids float64 conversion on MPS device."""
-        if not torch.backends.mps.is_available():
-            pytest.skip("MPS device not available")
         generator = PosterizeGenerator(torch.tensor([0, 8], device="mps"))
         params = generator(torch.Size([4]))
         assert params["bits_factor"].device.type == "mps"
@@ -1014,10 +1013,8 @@ class TestIntensityColourConventions(BaseTester):
             assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == dtype
 
     # Issue #4574, the wider direction: a module cast wider than the input does not widen the output.
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_convention_random_planckian_jitter_wider_module_dtype_4574(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
-
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float32)
         torch.manual_seed(_FORWARD_SEED)
@@ -1097,6 +1094,10 @@ class TestIntensityColourConventions(BaseTester):
     # forward pass for the checks that need the image.  `match` pins kornia's message, so a case cannot be
     # satisfied by a different error of the same class; `bits=9` is the example -- a scalar becomes [9, 8]
     # and trips the "lo > hi" arm, so the (0, 8] bound needs the explicit range row.
+    @pytest.mark.applies_to(
+        when=lambda p: p["case"] not in ("gamma_negative", "gain_negative") or p["device_name"] in ("cpu", "cuda"),
+        reason="CPU and CUDA only: raised at the next sync on MPS from torch 2.13",
+    )
     @pytest.mark.parametrize(
         ("case", "stage", "error", "match"),
         [
@@ -1198,8 +1199,6 @@ class TestIntensityColourConventions(BaseTester):
         self, device, dtype, case, stage, error, match, capfd
     ):
         device_assert = case in ("gamma_negative", "gain_negative")
-        if device_assert and device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA only: raised at the next sync on MPS from torch 2.13")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1709,9 +1708,10 @@ class TestIntensityInputClamping(BaseTester):
     # float64, rounding leaves green on the bound and red just outside it: the gradient per input channel of a neutral
     # RandomSnow is (1, 1, 1), the identity, on every torch version (#6600). On torch 2.15 a plain clamp gave (2, 0, 1).
     # Other dtypes round to another side of the kink, so this is a float64 pin.
+    @pytest.mark.applies_to(
+        dtypes=("float64",), reason="the hue of this pixel rounds onto another side of the kink in other dtypes"
+    )
     def test_snow_keeps_the_gradient_of_a_coloured_pixel_on_the_hls_clamp_6600(self, device, dtype):
-        if dtype != torch.float64:
-            pytest.skip("the hue of this pixel rounds onto another side of the kink in other dtypes")
         image = torch.tensor([0.0, 0.0, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
         out = K.RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(1.0, 1.0), p=1.0)(image)
         (grad,) = torch.autograd.grad(out.sum(), image)

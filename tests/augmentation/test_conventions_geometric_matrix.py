@@ -34,6 +34,7 @@ class TestGeometricAugmentationAutocast(BaseTester):
 
     # Exact: in and out of the region run the same arithmetic on one device.
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU, CUDA and MPS autocast")
     @pytest.mark.parametrize(
         "name,make",
         [
@@ -51,8 +52,6 @@ class TestGeometricAugmentationAutocast(BaseTester):
     def test_region_does_not_change_the_output_6573(self, name, make, autocast_dtype, device):
         # In bfloat16 a seeded float32 RandomRotation of a 256 px [0, 1] image was up to 0.83 off, RandomAffine 0.41
         # and RandomPerspective 0.94, from the half-precision products of the matrix builders and the warps.
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU, CUDA and MPS autocast")
         if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
             pytest.skip("this CUDA device does not support bfloat16")
         generator = torch.Generator().manual_seed(0)
@@ -327,12 +326,11 @@ class TestConventionGeometricMatrices(BaseTester):
             K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image, low_tolerance=True
         )
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_random_perspective_float64_identity_is_exact_4776(self, device, align_corners):
         # #4776: warp_perspective builds its grid in the input dtype, so a float64 identity warp is exact to
         # float64 roundoff, like RandomAffine's warp_affine on the same input.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         image = torch.arange(35, device=device, dtype=torch.float64).reshape(1, 1, 5, 7) / 35
         output = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image)
         assert output.dtype == torch.float64

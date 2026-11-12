@@ -40,14 +40,22 @@ from testing.base import (
 # ---------------------------------------------------------------------------
 
 
+NO_MPS_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+    reason="MPS does not support float64",
+)
+
+
 class TestDeformConv2d(BaseTester):
     """Tests for the pure-PyTorch deform_conv2d implementation."""
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_zero_offset_matches_regular_conv(self, device, dtype):
         """With all-zero offsets, deform_conv2d should equal regular conv2d."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         B, C_in, H, W = 1, 4, 8, 8
         C_out, kH, kW = 8, 3, 3
         K = kH * kW
@@ -191,6 +199,7 @@ class TestDeformConv2d(BaseTester):
         dtype=torch.float64,
     ).reshape(1, 2, 4, 4)
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
     @pytest.mark.parametrize("use_mask", [False, True])
     def test_matches_torchvision_reference(self, device, dtype, use_mask, grad_enabled):
@@ -201,8 +210,6 @@ class TestDeformConv2d(BaseTester):
         generated once offline -- see the comment above ``_EXPECTED_NO_MASK``. Without autograd
         deform_conv2d samples with ``grid_sample``, so both samplers are checked.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         with torch.set_grad_enabled(grad_enabled):
             x64, weight64, bias64, offset64, mask64 = self._torchvision_reference_inputs()
             expected64 = self._EXPECTED_WITH_MASK if use_mask else self._EXPECTED_NO_MASK
@@ -248,6 +255,7 @@ class TestDeformConv2d(BaseTester):
         assert weight.grad is not None
         assert offset.grad is not None
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize(
         "shape, groups, n_off_grps, stride, dilation, use_mask",
         [
@@ -261,8 +269,6 @@ class TestDeformConv2d(BaseTester):
         self, device, dtype, shape, groups, n_off_grps, stride, dilation, use_mask
     ):
         """Without autograd the grid_sample sampler gives the values of the absolute-coordinate one."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         B, C_in, H, W = shape
         C_out, kH, kW = 6, 3, 3
         K = kH * kW
@@ -288,10 +294,9 @@ class TestDeformConv2d(BaseTester):
         tol = {torch.float16: 2e-3, torch.bfloat16: 1.6e-2}.get(dtype)
         self.assert_close(actual, expected, rtol=tol, atol=tol)
 
+    @NO_MPS_FLOAT64
     def test_dynamo(self, device, dtype, torch_optimizer):
         """Compiled without autograd, the grid_sample sampler gives eager's values, or more accurate ones in half."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         g = torch.Generator().manual_seed(0)
         # two offset groups and two convolution groups, a stride and a mask
         x = torch.randn(2, 8, 13, 17, generator=g, dtype=torch.float64)
@@ -317,10 +322,9 @@ class TestDeformConv2d(BaseTester):
         else:
             self.assert_close(actual, expected)
 
+    @NO_MPS_FLOAT64
     def test_inference_samples_with_grid_sample(self, device, dtype, monkeypatch):
         """Without autograd deform_conv2d does not call the absolute-coordinate sampler."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
 
         def autograd_sampler(*args):
             raise AssertionError("the absolute-coordinate sampler ran without autograd")
@@ -336,13 +340,12 @@ class TestDeformConv2d(BaseTester):
         with pytest.raises(AssertionError, match="without autograd"):
             deform_conv2d(x, offset, weight, padding=1)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half precision only")
     def test_inference_sampler_is_accurate_in_half_precision(self, device, dtype):
         """grid_sample samples half-precision inputs in float32, at least as accurately as the autograd sampler.
 
         Sampled in half precision, the normalized coordinates would be several times less accurate.
         """
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision only")
         C, H, W, K = 8, 37, 53, 9
         n = K * H * W
         x = torch.sin(0.37 * torch.arange(C * H * W, dtype=torch.float64)).reshape(1, C, H, W)
@@ -358,10 +361,9 @@ class TestDeformConv2d(BaseTester):
         autograd = _bilinear_sample(x, sample_h, sample_w, 1, C).cpu().double()
         assert (inference - expected).abs().mean() <= (autograd - expected).abs().mean()
 
+    @NO_MPS_FLOAT64
     def test_inference_nonfinite_offsets_give_nan(self, device, dtype):
         """A nan or infinite offset gives nan in both samplers, which grid_sample alone does not do on every device."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         x = torch.arange(15, device=device, dtype=dtype).reshape(1, 1, 3, 5)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         offset = torch.zeros(1, 2, 3, 5, device=device, dtype=dtype)
@@ -377,11 +379,10 @@ class TestDeformConv2d(BaseTester):
         assert torch.equal(torch.isnan(actual), nan)
         self.assert_close(actual[~nan], expected[~nan])
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("image_hw", [(1, 5), (4, 1), (3, 5)])
     def test_inference_huge_finite_offsets_sample_zero_padding(self, device, dtype, image_hw):
         """A finite offset too large to normalize lands in the zero padding instead of overflowing."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         H, W = image_hw
         x = torch.arange(1, H * W + 1, device=device, dtype=dtype).reshape(1, 1, H, W)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -393,10 +394,9 @@ class TestDeformConv2d(BaseTester):
             actual = deform_conv2d(x, offset, weight)
         self.assert_close(actual, torch.zeros_like(actual))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
     def test_empty_batch(self, device, dtype, grad_enabled):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         x = torch.empty(0, 4, 5, 7, device=device, dtype=dtype)
         weight = torch.empty(6, 2, 3, 3, device=device, dtype=dtype)
         offset = torch.empty(0, 18, 5, 7, device=device, dtype=dtype)
@@ -404,14 +404,13 @@ class TestDeformConv2d(BaseTester):
             output = deform_conv2d(x, offset, weight, padding=1)
         assert output.shape == (0, 6, 5, 7)
 
+    @NO_MPS_FLOAT64
     def test_integer_offset_derivative_uses_the_next_pixel(self, device, dtype):
         """Autograd keeps the absolute-coordinate sampler, whose derivative at an integer position is one-sided.
 
         grid_sample's normalized coordinates round some integer positions down onto the previous pixel, which would
         give those positions the derivative from the left instead.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         H, W = 7, 11
         image = (3 + torch.arange(H * W, device=device, dtype=dtype)).reshape(1, 1, H, W)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -450,6 +449,7 @@ class TestALIKED(BaseTester):
                 assert bottom - top in (0, 1)
                 assert right - left in (0, 1)
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("channels_last", [False, True])
     def test_dynamo_dense_map_with_changing_sizes(self, dtype, device, torch_optimizer, channels_last):
         """extract_dense_map compiles in one graph and matches eager, also once the image size changes.
@@ -458,8 +458,6 @@ class TestALIKED(BaseTester):
         which reached the float offset bound of DeformableConv2d, and inductor (torch 2.14) failed to lower it:
         ``TensorReferenceAnalysis has no attribute 'python_mod'``. The channels_last map keeps its layout compiled.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
         op = torch_optimizer(aliked.extract_dense_map, fullgraph=True)
@@ -472,10 +470,9 @@ class TestALIKED(BaseTester):
                 self.assert_close(a, e)
             assert (actual[0].stride(1) == 1) == channels_last
 
+    @NO_MPS_FLOAT64
     def test_dynamo_model_with_changing_sizes(self, dtype, device, torch_optimizer):
         """The compiled model, with the graph breaks of its keypoint selection, runs on changing image sizes."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
         op = torch_optimizer(aliked)
         for hw in ((64, 96), (96, 72)):
@@ -685,10 +682,11 @@ class TestSDDH(BaseTester):
             expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
         self._assert_matches_the_convolutions(descriptors, offsets, expected_descriptors, expected_offsets, dtype)
 
+    # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="half-precision weight gradients differ by their accumulation order"
+    )
     def test_gradients_match_the_convolutions(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
-            pytest.skip("half-precision weight gradients differ by their accumulation order")
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("bilinear grid_sample has no backward for this dtype")
         sddh = SDDH(16, 3, 4, gate=torch.nn.SELU(inplace=True)).to(device, dtype)
@@ -708,11 +706,10 @@ class TestSDDH(BaseTester):
 
 
 class TestALIKEDHalfPrecisionCoordinates(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_half_model_returns_float32_keypoints(self, device, dtype):
         # R4: the soft-argmax keypoints were formed and returned in the score map's dtype, which puts every bfloat16
         # keypoint past x = 256 on a 2 px grid. They are float32 now; scores and descriptors keep the model dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         torch.manual_seed(0)
@@ -1018,11 +1015,10 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert responses[1, 1:].abs().max() == 0
             assert descs[1, 1:].abs().max() == 0
 
+    @NO_MPS_FLOAT64
     def test_isolated_peaks_past_256_land_on_their_pixel(self, device, dtype):
         # The keypoints are float32 for a half-precision model, normalised by W - 1 = 319, which bfloat16 rounds to
         # 320: the odd pixels past 256, which bfloat16 cannot hold, come back exactly from forward and forward_laf.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         peaks = [(0, 257, 13, 0.9), (0, 301, 40, 0.8), (0, 35, 50, 0.7)]
@@ -1035,12 +1031,11 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert found.dtype == torch.promote_types(dtype, torch.float32)
             self.assert_close(found.cpu().double(), expected, rtol=0.0, atol=1e-4)
 
+    @NO_MPS_FLOAT64
     def test_descriptor_head_reads_the_keypoint_pixel_past_256(self, device, dtype):
         # SDDH predicts its sampling offsets from the feature patch around each keypoint's pixel. With W - 1 = 319,
         # which bfloat16 rounds to 320, a half-precision normaliser put that pixel one column off past x = 256. The
         # right neighbour moves the keypoint to x = 300.27 by the soft-argmax, so its pixel is column 300.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         score_map = self._score_map([(0, 300, 40, 0.8), (0, 301, 40, 0.7)], device, dtype, w=320)

@@ -595,12 +595,14 @@ class TestHomographyTrackerConventions:
         assert fast.image1_dtypes == [torch.float64]
         assert torch.equal(prior, _H_TRUE)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["target_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("target_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_homography_dtype_is_the_same_on_every_path(self, target_dtype, device):
         # _ExactMatcher returns float32 keypoints for every image dtype, so RANSAC estimates in float32; the tracker
         # returns and stores the homography in the target dtype, float32 for a half target.
-        if device.type == "mps" and target_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         expected = torch.promote_types(target_dtype, torch.float32)
         tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
         tracker.set_target(torch.rand(1, 1, 44, 54, device=device, dtype=target_dtype))
@@ -710,11 +712,10 @@ class TestHomographyTrackerHalfKeypointsAndAutocast:
         assert max(gaps) < 1.0, gaps
         assert ransac_dtypes[half] == [(torch.float32, torch.float32)] * 2
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast is not exercised here")
     def test_autocast_does_not_reach_the_tracker_geometry(self, device):
         # Under the caller's autocast, the warp's and transform_points' matrix products would run in bfloat16: the
         # keypoints mapped back to the frame moved by up to 7.6 px at 600 px (CPU; 5.9 px on CUDA).
-        if device.type == "mps":
-            pytest.skip("MPS autocast is not exercised here")
         fast = _FixedMatcher()
         tracker = HomographyTracker(_FixedMatcher(), fast, minimum_inliers_num=10)
         tracker.set_target(torch.rand(1, 1, 450, 600, device=device))
@@ -730,11 +731,10 @@ class TestHomographyTrackerHalfKeypointsAndAutocast:
         assert torch.equal(fast.image1[0], fast.image1[1])
         assert torch.equal(results[0], results[1])
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast is not exercised here")
     def test_autocast_does_not_reach_ransac(self, device):
         # With local_optimization="dlt", a bfloat16 fit moved the frame corners by up to 3.1 px here. RANSAC keeps
         # autocast out of its fit; the tracker also fits with autocast off, for a ``ransac`` module that does not.
-        if device.type == "mps":
-            pytest.skip("MPS autocast is not exercised here")
         results = []
         for autocast in (False, True):
             ransac = RANSAC("homography", inl_th=5.0, batch_size=4096, max_iter=10, local_optimization="dlt")

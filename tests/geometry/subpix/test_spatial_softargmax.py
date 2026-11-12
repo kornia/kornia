@@ -66,10 +66,9 @@ class TestStridedSubpixel(BaseTester):
         for result, reference in zip(actual, expected):
             self.assert_close(result, reference, atol=0, rtol=0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("operation", ["conv_soft_argmax2d", "conv_soft_argmax3d"])
     def test_channels_last_gradient(self, device, operation):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         shape = (2, 3, 5, 7) if operation.endswith("2d") else (2, 3, 5, 6, 7)
         sample = torch.arange(math.prod(shape), device=device, dtype=torch.float64).sin().reshape(shape)
         reference = sample.clone().requires_grad_()
@@ -587,12 +586,11 @@ class TestConvSoftArgmax3d(BaseTester):
         gradient = torch.autograd.grad([output.sum() for output in outputs], data)[0]
         assert gradient.shape == data.shape
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="The ONNX export is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("op_name", ["function", "module"])
     @pytest.mark.parametrize("dynamic", [False, True], ids=["static", "dynamic"])
     def test_legacy_onnx_export_matches_eager(self, dtype, op_name, dynamic):
-        if dtype != torch.float32:
-            pytest.skip("The ONNX export is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
 
@@ -1270,12 +1268,13 @@ class TestAdaptiveQuadInterp3d(BaseTester):
 
 
 class TestPackedQuadraticFit(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Packed quadratic fit is dispatched only for float32/float64"
+    )
     @pytest.mark.parametrize("count", [0, 17])
     def test_cramer_reference(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
         # Transposed input exercises the strided columns used by the patch gather.
         system = torch.randn(count, 9, device=device, dtype=dtype).T.detach().requires_grad_()
         if count:
@@ -1298,11 +1297,12 @@ class TestPackedQuadraticFit(BaseTester):
         grad_ref = torch.autograd.grad(sum((v * weights.cpu()).sum() for v in expected[:3]), cpu)[0]
         self.assert_close(grad.cpu(), grad_ref)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Packed quadratic fit is dispatched only for float32/float64"
+    )
     def test_cramer_keeps_input_shape(self, device, dtype):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
         # The packed CUDA solve indexes a single batch dimension. A wider caller
         # must keep its shape and its values rather than be flattened on CUDA only.
         torch.manual_seed(0)
@@ -1314,13 +1314,14 @@ class TestPackedQuadraticFit(BaseTester):
             assert got.shape == (2, 5)
             self.assert_close(got.reshape(-1), want, atol=0, rtol=0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Packed quadratic fit is dispatched only for float32/float64"
+    )
     @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
     @pytest.mark.parametrize("amplitude", [1e-3, 1.0, 1e3])
     def test_cramer_relative_floor_5065(self, device, dtype, solver, amplitude):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
         # Rows are (dxx, dyy, dss, dxy, dxs, dys). A fit is singular when |det| <= 1e-7 * m**3, with m the largest
         # Hessian magnitude, so each row keeps its status at every amplitude. The first row sits a decade above that
         # floor and the second a decade below. Each later singular row has its unique largest entry in a different
@@ -1342,14 +1343,17 @@ class TestPackedQuadraticFit(BaseTester):
         solved = getattr(subpix, solver)(*system)[3]
         assert solved.tolist() == [True] + [False] * 8
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Packed quadratic fit is dispatched only for float32/float64"
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["solver"] == "_solve_cramer_sym3x3_cuda") and (p["device_name"] not in ("cpu", "cuda"))),
+        reason="the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one",
+    )
     @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
     def test_cramer_backward_of_a_tiny_system_is_finite(self, device, dtype, solver):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
-        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
-            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
         # On a flat float32 image the Hessian entries of a BlobHessian response are rounding noise of about 1e-15.
         # Their determinants reach float32's smallest subnormal, 1.4e-45, and the relative floor 1e-7 * m**3
         # underflows to 0: the shifts were inaccurate, and the backward of num / det, (num / det) / det, was inf. The
@@ -1379,15 +1383,16 @@ class TestPackedQuadraticFit(BaseTester):
         assert bool(torch.isfinite(grad).all())
         self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="float32 only: there a scaled-down determinant underflows")
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["solver"] == "_solve_cramer_sym3x3_cuda") and (p["device_name"] not in ("cpu", "cuda"))),
+        reason="the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one",
+    )
     @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
     @pytest.mark.parametrize("power", [64, 100, 120])
     def test_cramer_large_right_hand_side_is_not_rescaled(self, device, dtype, solver, power):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype != torch.float32:
-            pytest.skip("float32 only: there a scaled-down determinant underflows")
-        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
-            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
         # A well-conditioned Hessian of order 1 needs no scaling. A large right-hand side must not scale it down:
         # 2**-57 would take det = 1e-6 to 2**-171 * 1e-6, which underflows to 0 and rejects a solvable system.
         system = torch.tensor([1.0, 1.0, 1e-6, 0.0, 0.0, 0.0, 2.0**power, 0.0, 0.0], device=device, dtype=dtype)
@@ -1396,6 +1401,18 @@ class TestPackedQuadraticFit(BaseTester):
         self.assert_close(sx, system[6:7], atol=0, rtol=0)
         assert torch.stack([sy, ss]).eq(0).all()
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["solver"] == "_solve_cramer_sym3x3_cuda") and (p["solve_dtype"] != torch.float32)),
+        reason="the packed solve is dispatched only for float32/float64",
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["solver"] == "_solve_cramer_sym3x3_cuda") and (p["device_name"] not in ("cpu", "cuda"))),
+        reason="the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one",
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["solve_dtype"] == torch.float16) and (p["device_name"] == "mps")),
+        reason="checked on CPU and CUDA",
+    )
     @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
     @pytest.mark.parametrize(
         ("system", "solve_dtype"),
@@ -1415,12 +1432,6 @@ class TestPackedQuadraticFit(BaseTester):
     def test_cramer_unsolved_system_is_zero_with_a_finite_backward(self, device, system, solve_dtype, solver):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if solver == "_solve_cramer_sym3x3_cuda" and solve_dtype != torch.float32:
-            pytest.skip("the packed solve is dispatched only for float32/float64")
-        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
-            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
-        if solve_dtype == torch.float16 and device.type == "mps":
-            pytest.skip("checked on CPU and CUDA")
         entries = [torch.tensor([v], device=device, dtype=solve_dtype, requires_grad=True) for v in system]
         sx, sy, ss, solved = getattr(subpix, solver)(*entries)
         assert not bool(solved.any())
@@ -1432,12 +1443,13 @@ class TestPackedQuadraticFit(BaseTester):
         grads = torch.autograd.grad(kept.sum() + sy.sum() + ss.sum(), [*entries, gradient])
         assert all(bool(torch.isfinite(g).all()) for g in grads)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="Packed quadratic fit is dispatched only for float32/float64"
+    )
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
         patch = torch.randn(27, count, device=device, dtype=dtype).T.detach().requires_grad_()
         actual = subpix._quadratic_derivatives3d(patch)
         expected = (
@@ -1459,12 +1471,15 @@ class TestPackedQuadraticFit(BaseTester):
         grad_ref = torch.autograd.grad(loss_ref, patch)[0]
         self.assert_close(grad, grad_ref)
 
+    @pytest.mark.applies_to(
+        devices=("cuda",),
+        dtypes=("float32", "float64"),
+        reason="Compare the packed CUDA path against the scalar CPU path",
+    )
     @pytest.mark.parametrize("op_name", ["conv_quad_interp3d", "iterative_quad_interp3d"])
     @pytest.mark.parametrize("n_iters", [1, 5])
     @pytest.mark.parametrize("allow_scale_steps", [False, True])
     def test_public_cuda_reference(self, device, dtype, op_name, n_iters, allow_scale_steps):
-        if device.type != "cuda" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("Compare the packed CUDA path against the scalar CPU path")
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
 
         op = getattr(subpix, op_name)

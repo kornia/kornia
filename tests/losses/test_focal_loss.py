@@ -326,9 +326,8 @@ class TestFocalLoss(BaseTester):
         expected = kornia.losses.focal_loss(logits, labels, alpha, 2.0, reduction)
         self.assert_close(compiled(logits, labels, alpha, 2.0, reduction), expected)
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA synchronization check")
     def test_reduced_alpha_does_not_synchronize(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA synchronization check")
         logits = torch.randn(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
         labels = torch.randint(4, (2, 3, 5), device=device)
         expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "none").mean()
@@ -585,13 +584,15 @@ class TestFocalLoss(BaseTester):
         self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
         assert (values[~off_class] > 0).all()
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="an out-of-range index fails a device-side assert off the CPU, which ends the CUDA context",
+    )
     @pytest.mark.parametrize("reduction, weighted", [("mean", False), ("sum", False), ("mean", True), ("none", False)])
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_exception_labels_outside_the_classes(self, device, dtype, reduction, weighted, ignore_index):
         # Unweighted 'mean' and 'sum' gather the target class, the others build a one-hot target: both raise
         # one_hot's errors. The gather used to raise its own "index ... is out of bounds".
-        if device.type != "cpu":
-            pytest.skip("an out-of-range index fails a device-side assert off the CPU, which ends the CUDA context")
         num_classes = 3
         logits = torch.rand(2, num_classes, 4, device=device, dtype=dtype)
         weight = torch.ones(num_classes, device=device, dtype=dtype) if weighted else None
@@ -602,12 +603,11 @@ class TestFocalLoss(BaseTester):
                 kornia.losses.focal_loss(logits, labels, 0.25, 2.0, reduction, weight, ignore_index)
 
     # The name keeps "compile" and "dynamo" out, so the ordinary jobs run it.
+    @pytest.mark.applies_to(devices=("cpu",), reason="the label check runs on the CPU only")
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     def test_reduced_label_check_traces_in_one_graph(self, device, dtype, reduction):
         # The label check of the gather path is captured with the loss, in one graph, and raises when it runs.
-        if device.type != "cpu":
-            pytest.skip("the label check runs on the CPU only")
         graphs = []
 
         def backend(gm, example_inputs):
@@ -715,6 +715,12 @@ else:
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestFocalLossCompiledLabels(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, on the CPU in float32",
+    )
     @pytest.mark.parametrize(
         "reduction, ignore_index, requires_grad", [("mean", -100, False), ("mean", -100, True), ("sum", None, False)]
     )
@@ -726,8 +732,6 @@ class TestFocalLossCompiledLabels(BaseTester):
         # bounds") where eager raises: for a label past the classes on torch 2.5.1, 2.9.1 and 2.14, and for a
         # negative one on 2.14; 2.5.1 and 2.9.1 returned a loss for it without gradients. The check does not depend
         # on is_exporting(), which a torch.compile capture also reports on 2.5.1 and 2.9.1, so 2.9.1 runs it too.
-        if device.type != "cpu" or dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, on the CPU in float32")
         from torch._inductor.decomposition import decompositions
 
         if torch.ops.aten._assert_async.msg in decompositions:

@@ -268,11 +268,13 @@ class TestStereoCamera(BaseTester):
         _, zero_valid = camera.reproject_disparity_to_3D(torch.zeros_like(disparity), return_mask=True)
         assert not zero_valid.any()
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["default_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_integer_camera_default_dtype_6471(self, device: torch.device, default_dtype: torch.dtype) -> None:
         """Check integer Q and baseline promotion under each supported default precision."""
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         previous_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)

@@ -134,6 +134,10 @@ class TestScaleSpaceDetector(BaseTester):
             assert kernel.device == expected_device
             assert kernel.dtype == torch.float32
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["subpix_type"] is ConvQuadInterp3d and p["max_candidates"] is not None),
+        reason="ConvQuadInterp3d has no candidate cap",
+    )
     @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("batch", [1, 2])
     @pytest.mark.parametrize("max_candidates", [None, 3])
@@ -146,8 +150,6 @@ class TestScaleSpaceDetector(BaseTester):
         class SeparateSubpix(subpix_type):
             pass
 
-        if subpix_type is ConvQuadInterp3d and max_candidates is not None:
-            pytest.skip("ConvQuadInterp3d has no candidate cap")
         torch.manual_seed(17)
         img = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype, requires_grad=True)
         mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype).clamp_min(0.05)
@@ -411,6 +413,11 @@ class TestScaleSpaceDetector(BaseTester):
         assert torch.equal(resps_fwd, resps)
         assert torch.equal(lafs_fwd, lafs)
 
+    # The shifted response is flat at half precision and yields no maxima at all.
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="a Hessian response offset by 1.0 has no resolution left in half precision",
+    )
     def test_negative_detections_sort_before_the_padding(self, device, dtype):
         # A signed response function can have every maximum below zero. The padding must still
         # come last: it is ranked with a sentinel and zeroed only afterwards.
@@ -422,9 +429,6 @@ class TestScaleSpaceDetector(BaseTester):
             def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
                 return self.resp(x) - 1.0
 
-        if dtype in (torch.float16, torch.bfloat16):
-            # The shifted response is flat at half precision and yields no maxima at all.
-            pytest.skip("a Hessian response offset by 1.0 has no resolution left in half precision")
         # Gaussian blobs of increasing size give the Hessian one scale-space maximum per blob. Random noise
         # left one or two maxima whose survival depended on the exact response scale and on the dtype.
         # Built in float64 on the CPU so every device sees the same input: MPS has no float64.
@@ -595,11 +599,12 @@ class TestScaleSpaceDetector(BaseTester):
             assert 0 < int(filled[0].sum()) < 20
             assert bool((resps[~filled] == 0).all())
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"), reason="MPS has no float64"
+    )
     def test_float_weights_are_cast_to_the_response_dtype(self, device, dtype):
         # The refinement runs on a float32 copy of a half-precision response, but the weights are still cast to the
         # response's dtype first: a weight of 1e-8 is zero in float16, where it suppresses, and positive otherwise.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         _skip_without_half_padding(device, dtype)
         g = torch.Generator().manual_seed(0)
         img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 96, 128, generator=g), 5, 1, 2).to(device, dtype)
@@ -691,10 +696,12 @@ class TestScaleSpaceDetector(BaseTester):
         # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
         self.assert_close(gradient.float(), expected, rtol=0, atol=0.05)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["response_dtype"] == torch.float64 and p["device_name"] == "mps"),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("response_dtype", [torch.float32, torch.float64])
     def test_float16_image_keeps_a_wider_custom_response(self, device, response_dtype):
-        if response_dtype == torch.float64 and device.type == "mps":
-            pytest.skip("MPS has no float64")
         _skip_without_half_padding(device, torch.float16)
         seen = []
 
@@ -919,15 +926,15 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["dtype_name"] != "bfloat16",
+        reason="in bfloat16 the octave-1 copy of this blob does not survive NMS, with or without a spare level",
+    )
     @pytest.mark.parametrize("sigma", [2.016, 4.032])
     def test_octave_boundary_scale_is_detected_once_5670(self, device, dtype, sigma):
         # sigma = 1.6 * 2 ** (4 / 3) * 2 ** k is level 4 of one octave and level 1 of the next. With
         # extra_levels=3 a per-level response has a level 4 in every octave, but it is only the NMS neighbour of
         # level 3: searching it as well found this blob once in each octave.
-        if dtype == torch.bfloat16:
-            pytest.skip(
-                "in bfloat16 the octave-1 copy of this blob does not survive NMS, with or without a spare level"
-            )
         yy, xx = torch.meshgrid(
             torch.arange(160, dtype=torch.float64), torch.arange(200, dtype=torch.float64), indexing="ij"
         )
@@ -979,6 +986,10 @@ class TestScaleSpaceDetector(BaseTester):
         self.assert_close(lafs[1], lafs[0])
         self.assert_close(resps[1], resps[0])
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="the sub-pixel refinement alone moves a half-precision centre by more than the tolerance",
+    )
     @pytest.mark.parametrize(
         "double_image, sigma, octave_div",
         [
@@ -997,8 +1008,6 @@ class TestScaleSpaceDetector(BaseTester):
         # One blob per octave, far from the origin. ScalePyramid resizes with align_corners=True, so octave pixel u
         # is input pixel u * (W - 1) / (W_o - 1); mapping it by 2 ** o instead put the doubled octave ~0.4 px past
         # the blob and pulled every coarser octave towards the origin, by ~0.8 px at 1/2 and ~2.3 px at 1/4.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the sub-pixel refinement alone moves a half-precision centre by more than the tolerance")
         h, w = 241, 320
         yy, xx = torch.meshgrid(
             torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
@@ -1060,9 +1069,8 @@ class TestScaleSpaceDetector(BaseTester):
             )
             assert bool(kornia.feature.laf_is_inside_image(half_frame, img, 5)[0, 0]) == kept
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 images")
     def test_border_check_runs_in_the_frame_dtype_for_a_narrower_response(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 images")
 
         # A response may return float32 for a float64 image. The frames are then float64, and a frame whose half
         # extent is 5 + 1 float32 ulp at x = 85 reaches 90 + 2**-21 > 96 - 1 - 5 there, but exactly 90 in float32.
@@ -1093,9 +1101,8 @@ class TestScaleSpaceDetector(BaseTester):
         assert kornia.feature.laf_is_filled(detect(float(mr), torch.float32)).tolist() == [[True]]
         assert kornia.feature.laf_is_filled(detect(float(mr), torch.float64)).tolist() == [[False]]
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 responses")
     def test_border_check_preserves_a_wider_response_dtype(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 responses")
 
         class Float64Peak(torch.nn.Module):
             def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
@@ -1187,6 +1194,7 @@ class TestScaleSpaceDetector(BaseTester):
         det = ScaleSpaceDetector(2, subpix_module=ConvQuadInterp3d(10)).to(device)
         self.gradcheck(det, patches, nondet_tol=1e-4)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     @pytest.mark.parametrize("refiner", ["adaptive", "conv_quad", "iterative", "soft_argmax"])
     def test_half_image_refines_coordinates_in_float32(self, refiner, device, dtype):
         # R4 / plan review P2: the refiners write absolute coordinates into a tensor of the response's dtype, and
@@ -1194,8 +1202,6 @@ class TestScaleSpaceDetector(BaseTester):
         # 260, 262]); float16 holds only multiples of 0.25 in [256, 512). The refiner sees a float32 response, so the
         # refined centres past x = 256 lie off that grid; a centre rounded through the half dtype in the image frame
         # lies on it, whatever the LAF dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         _skip_without_half_padding(device, dtype)
         refiners = {
             "adaptive": AdaptiveQuadInterp3d,
@@ -1225,9 +1231,8 @@ class TestMultiResolutionDetector(BaseTester):
         cfg.update(config_overrides)
         return MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=num_features, config=cfg)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_multi_resolution_half_image_gives_float32_lafs(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         _skip_without_half_padding(device, dtype)
         g = torch.Generator().manual_seed(0)
         img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
@@ -1976,6 +1981,12 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         self.assert_close(scales[6.0], 6.0 * scales[1.0])
         assert 0.95 <= scales[1.0].item() / sigma <= 1.15
 
+    # The same tie would hide the maximum that a reversed DoG makes of the bright blob, so the maxima-only case
+    # could not fail either.
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["response"] == "dog" and p["polarity"] == "bright" and p["dtype_name"] == "bfloat16"),
+        reason="bfloat16 rounds the DoG minimum into a tie with a neighbour, and the 3x3x3 NMS is strict",
+    )
     @pytest.mark.parametrize(
         "response, polarity, minima_are_also_good, found",
         [
@@ -1994,10 +2005,6 @@ class TestConventionsScaleSpaceDetector(BaseTester):
         # minimum at a bright one, which is detected only with minima_are_also_good, and a minimum's slot carries the
         # negated response, so it is positive.
         _skip_without_half_padding(device, dtype)
-        if response == "dog" and polarity == "bright" and dtype == torch.bfloat16:
-            # The same tie would hide the maximum that a reversed DoG makes of the bright blob, so the maxima-only case
-            # could not fail either.
-            pytest.skip("bfloat16 rounds the DoG minimum into a tie with a neighbour, and the 3x3x3 NMS is strict")
         blob = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
         img = blob if polarity == "bright" else 1.0 - blob
         if response == "hessian":
@@ -2200,13 +2207,14 @@ class TestConventionsMultiResolutionDetector(BaseTester):
             self.assert_close(lafs[:, :2], expected, rtol=0.0, atol=tol)
             assert bool((lafs[0, 2:] == 0).all())
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="a half-precision ramp cannot hold a coordinate to a fraction of a pixel"
+    )
     def test_convention_multi_resolution_detector_centre_is_what_the_level_pixel_sampled(self, device, dtype):
         # No mapping is written here: the image's two channels hold its own x and y coordinates, the pyramid carries
         # those ramps through the real `resize` and `pyrdown`, and the response reads them at its peak. Away from the
         # padded border, what a level pixel holds is the input position it looks at, and that is what must be reported
         # on each of the six default levels, whose W / W_l run from 0.71 to 4.03.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision ramp cannot hold a coordinate to a fraction of a pixel")
         h, w = 240, 320
         yy, xx = torch.meshgrid(
             torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"

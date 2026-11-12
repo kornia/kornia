@@ -415,14 +415,12 @@ class TestBoxes2D(BaseTester):
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the vertex check raises synchronously only on CPU")
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_convention_vertex_modes_reject_non_finite_coordinates_4177(self, mode, value, device, dtype):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
-        if device.type != "cpu":
-            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
-            pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
             device=device,
@@ -780,9 +778,10 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close(masks.sum((-1, -2)), expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript cannot compile a Boxes method"
+    )
     def test_dynamo_unbatched_selection_mask_6602(self, device, dtype, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("TorchScript cannot compile a Boxes method")
         boxes = self._padding_boxes(device, dtype)
         function = lambda selected: selected.to_mask(8, 8)  # noqa: E731
         compiled = torch_optimizer(function, fullgraph=True)
@@ -1199,14 +1198,15 @@ class TestBoxes2D(BaseTester):
         batched_bbox = torch.stack([_create_tensor_box(), _create_tensor_box()])
         assert Boxes(batched_bbox)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test exercises the cast under float64",
+    )
     def test_integer_input_respects_default_dtype_4379(self, device):
         # kornia#4379: integer boxes and transformation matrices were hardcoded to
         # float32 (`.float()`) regardless of the caller's default dtype. They now
         # cast to torch.get_default_dtype(). Pin the fix end to end and restore the
         # global default so the test cannot leak state to siblings.
-        # MPS does not support float64, so skip on MPS.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
@@ -2391,10 +2391,11 @@ class TestBbox3D(BaseTester):
         self.assert_close(h, torch.as_tensor([[21.0, 51.0]], device=device, dtype=dtype))
         self.assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test exercises the cast under float64",
+    )
     def test_integer_input_respects_default_dtype_4379(self, device):
-        # MPS does not support float64, so skip on MPS.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)

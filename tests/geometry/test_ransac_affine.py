@@ -90,9 +90,8 @@ class TestRANSACAffine(BaseTester):
         self.assert_close(inliers, torch.tensor([True, True, True, True, False], device=device))
         assert count == 4
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU/CUDA/MPS mixed-precision coverage")
     def test_affine_autocast_preserves_float32_scoring_and_inliers(self, device):
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
         autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         u = torch.linspace(-500.0, 500.0, 64, device=device)
         v = 100.0 * torch.tensor([1.0, -1.0], device=device).repeat(32)

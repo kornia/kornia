@@ -34,9 +34,9 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 ssim_module = importlib.import_module("kornia.metrics.ssim")
 
 
-def _require_cpu_float32(device: torch.device, dtype: torch.dtype) -> None:
-    if device.type != "cpu" or dtype != torch.float32:
-        pytest.skip("the channels-last SSIM path runs on CPU float32 only")
+CPU_FLOAT32 = pytest.mark.applies_to(
+    devices=("cpu",), dtypes=("float32",), reason="the channels-last SSIM path runs on CPU float32 only"
+)
 
 
 def _nchw_reference(
@@ -98,8 +98,8 @@ class TestSsimCpu(BaseTester):
         # dispatch tests do, so the dispatch and value tests run on every build; the test below closes it.
         monkeypatch.setattr(ssim_module, "_HAS_MKLDNN", True)
 
+    @CPU_FLOAT32
     def test_builds_without_onednn_keep_the_nchw_path(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         monkeypatch.setattr(ssim_module, "_HAS_MKLDNN", False)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
@@ -107,8 +107,8 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(ssim(img1, img2, 11), _nchw_reference(img1, img2, 11))
 
+    @CPU_FLOAT32
     def test_disabled_onednn_keeps_the_nchw_path(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         with torch.backends.mkldnn.flags(enabled=False):
@@ -117,8 +117,8 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(actual, _nchw_reference(img1, img2, 11))
 
+    @CPU_FLOAT32
     def test_contiguous_float32_dispatches_once(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 40))
 
@@ -127,8 +127,8 @@ class TestSsimCpu(BaseTester):
         assert len(calls) == 1
         self.assert_close(actual, _nchw_reference(img1, img2, 11))
 
+    @CPU_FLOAT32
     def test_ssim_loss_dispatches_once(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 40))
 
@@ -138,11 +138,11 @@ class TestSsimCpu(BaseTester):
         expected = torch.clamp((1.0 - _nchw_reference(img1, img2, 11)) / 2, min=0, max=1).mean()
         self.assert_close(actual, expected)
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("padding", ["same", "valid"])
     @pytest.mark.parametrize("window_size", [1, 3, 5, 11])
     @pytest.mark.parametrize("shape", [(1, 3, 32, 40), (2, 3, 17, 23), (5, 1, 16, 16), (2, 4, 24, 13), (0, 3, 16, 16)])
     def test_matches_nchw_convolutions(self, shape, window_size, padding, device, dtype):
-        _require_cpu_float32(device, dtype)
         img1, img2 = _pair(shape)
         assert _ssim_cpu_eligible(img1, img2)
 
@@ -151,9 +151,9 @@ class TestSsimCpu(BaseTester):
         assert actual.is_contiguous()
         self.assert_close(actual, _nchw_reference(img1, img2, window_size, padding=padding))
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("max_val, eps", [(255.0, 1e-12), (1.0, 0.0)])
     def test_matches_nchw_convolutions_for_other_constants(self, max_val, eps, device, dtype):
-        _require_cpu_float32(device, dtype)
         img1, img2 = _pair((2, 3, 32, 32))
         img1, img2 = (img1 * max_val).round(), (img2 * max_val).round()
 
@@ -161,8 +161,8 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(actual, _nchw_reference(img1, img2, 11, max_val=max_val, eps=eps))
 
+    @CPU_FLOAT32
     def test_preserves_nonfinite_pattern(self, device, dtype):
-        _require_cpu_float32(device, dtype)
         generator = torch.Generator().manual_seed(0)
         img1, img2 = _pair((2, 3, 64, 64))
         positions = torch.randperm(img1.numel(), generator=generator)[:12]
@@ -178,8 +178,8 @@ class TestSsimCpu(BaseTester):
         assert torch.equal(actual.isinf(), expected.isinf())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num())
 
+    @CPU_FLOAT32
     def test_identical_images(self, device, dtype):
-        _require_cpu_float32(device, dtype)
         img, _ = _pair((2, 3, 32, 32))
 
         actual = ssim(img, img, 11)
@@ -187,9 +187,9 @@ class TestSsimCpu(BaseTester):
         self.assert_close(actual, _nchw_reference(img, img, 11))
         assert (actual > 0.999).all()
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("input_dtype", [torch.float16, torch.bfloat16, torch.uint8])
     def test_half_and_integer_images_are_computed_in_float32(self, monkeypatch, input_dtype, device, dtype):
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         if input_dtype == torch.uint8:
@@ -205,10 +205,10 @@ class TestSsimCpu(BaseTester):
         expected = _nchw_reference(img1.float(), img2.float(), 11, max_val=max_val).to(actual.dtype)
         self.assert_close(actual, expected)
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("shape", [(1, 3, 5, 6), (1, 3, 1, 7), (1, 3, 7, 1), (1, 3, 1, 1)])
     def test_thin_images_match_the_gradient_path(self, shape, monkeypatch, device, dtype):
         """Keep thin-image SSIM values consistent across CPU dispatch paths."""
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair(shape)
         actual = ssim(img1, img2, 11)
@@ -221,9 +221,9 @@ class TestSsimCpu(BaseTester):
         assert actual.is_contiguous()
         self.assert_close(actual, expected)
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("layout", ["channels_last", "transposed", "mixed"])
     def test_noncontiguous_images_keep_the_nchw_path(self, monkeypatch, layout, device, dtype):
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         expected = _nchw_reference(img1, img2, 11)
@@ -239,19 +239,18 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(ssim(img1, img2, 11), expected)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the channels-last SSIM path runs on CPU float32 only")
     def test_float64_keeps_the_nchw_path(self, monkeypatch, device):
-        if device.type != "cpu":
-            pytest.skip("the channels-last SSIM path runs on CPU float32 only")
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32), dtype=torch.float64)
         assert not _ssim_cpu_eligible(img1, img2)
 
         self.assert_close(ssim(img1, img2, 11), _nchw_reference(img1, img2, 11))
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("requires_grad", [(True, True), (True, False), (False, True)])
     def test_reverse_mode_gradients_keep_the_nchw_path(self, monkeypatch, requires_grad, device, dtype):
         # Under torch.compile a channels-last reverse pass was slower than Inductor's own layout choice.
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         img1, img2 = img1.requires_grad_(requires_grad[0]), img2.requires_grad_(requires_grad[1])
@@ -269,8 +268,8 @@ class TestSsimCpu(BaseTester):
             assert actual_grad.is_contiguous()
             self.assert_close(actual_grad, expected_grad)
 
+    @CPU_FLOAT32
     def test_ssim_loss_backward_keeps_the_nchw_path(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         img1.requires_grad_()
@@ -281,9 +280,9 @@ class TestSsimCpu(BaseTester):
 
         self.assert_close(img1.grad, reference.grad)
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("mode", ["no_grad", "inference_mode"])
     def test_requires_grad_images_without_recorded_gradients_take_the_path(self, monkeypatch, mode, device, dtype):
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         expected = _nchw_reference(img1, img2, 11)
@@ -295,9 +294,9 @@ class TestSsimCpu(BaseTester):
         assert len(calls) == 1
         self.assert_close(actual, expected)
 
+    @CPU_FLOAT32
     def test_forward_mode_ad_matches_nchw_convolutions(self, monkeypatch, device, dtype):
         # A dual tensor records no reverse-mode gradient, so the in-place combination carries the tangents.
-        _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         tangent = torch.rand_like(img1)
@@ -310,9 +309,9 @@ class TestSsimCpu(BaseTester):
         self.assert_close(actual.primal, expected.primal)
         self.assert_close(actual.tangent, expected.tangent)
 
+    @CPU_FLOAT32
     @pytest.mark.parametrize("in_dims", [(0, 0), (0, None), (None, 0)])
     def test_public_vmap_has_no_user_warning(self, in_dims, device, dtype):
-        _require_cpu_float32(device, dtype)
         img1, img2 = _pair((3, 2, 3, 32, 32))
         args = tuple(image if dim == 0 else image[0] for image, dim in zip((img1, img2), in_dims))
 
@@ -325,26 +324,25 @@ class TestSsimCpu(BaseTester):
         expected = torch.stack([ssim(a, b, 11) for a, b in zip(*batched)])
         self.assert_close(actual, expected)
 
+    @CPU_FLOAT32
     def test_autocast_keeps_float32(self, device, dtype):
-        _require_cpu_float32(device, dtype)
         img1, img2 = _pair((2, 3, 32, 32))
         with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
             actual = ssim(img1, img2, 11)
         assert actual.dtype == torch.float32
         self.assert_close(actual, _nchw_reference(img1, img2, 11))
 
+    @CPU_FLOAT32
     def test_jit_trace_keeps_the_nchw_path(self, monkeypatch, device, dtype):
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         img1, img2 = _pair((2, 3, 32, 32))
         traced = torch.jit.trace(lambda a, b: ssim(a, b, 11), (img1, img2), check_trace=False)
         other1, other2 = _pair((2, 3, 32, 32), seed=1)
         self.assert_close(traced(other1, other2), _nchw_reference(other1, other2, 11))
 
+    @pytest.mark.applies_to(when=lambda p: p["optimizer_backend"] != "jit", reason="ssim is not scriptable")
+    @CPU_FLOAT32
     def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer, optimizer_backend):
-        _require_cpu_float32(device, dtype)
-        if optimizer_backend == "jit":
-            pytest.skip("ssim is not scriptable")
         img1, img2 = _pair((2, 3, 32, 40))
         assert _ssim_cpu_eligible(img1, img2)
         optimized = torch_optimizer(ssim, fullgraph=True)
@@ -361,9 +359,9 @@ class _Exportable(torch.nn.Module):
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestSsimCpuExport(BaseTester):
+    @CPU_FLOAT32
     def test_dynamic_shapes_keep_the_nchw_path(self, monkeypatch, device, dtype):
         # Exported programs keep main's graph: no channels-last copies, for any batch and image size.
-        _require_cpu_float32(device, dtype)
         _forbid_helper(monkeypatch)
         dim = torch.export.Dim
         sizes = {0: dim("B", min=1, max=64), 2: dim("H", min=8, max=4096), 3: dim("W", min=8, max=4096)}

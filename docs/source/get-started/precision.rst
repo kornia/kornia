@@ -126,7 +126,8 @@ totals of the whole test suite, measured together on one revision, are in :ref:`
      - ✅
      - ✅
      - 0 / 0
-     - Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped
+     - Matching uses a manual cdist fallback for half dtypes; LightGlue's tests do not apply to float16 and are
+       deselected
    * - ``kornia.metrics``
      - ✅
      - ✅
@@ -259,8 +260,11 @@ float64, CPU-only code paths in a CUDA run, CUDA-only checks in a CPU run, and b
 cannot store without a complex bfloat16 dtype. A CUDA run without ``--isolate-half-precision`` also skips the tests that
 pin a half dtype themselves: 649 in each of the CUDA float32 + float64 and float32 ``--runslow`` rows. Slow tests run
 only with ``--runslow``: they are 263 of the skips in each CPU row, 398 in each of the CUDA float32 + float64 and
-float16 + bfloat16 rows, and 28 in the compile row; in the float32 ``--runslow`` row, all of them pass. A few
-dozen skips need an optional package or tool, such as OpenCV or ``uv``.
+float16 + bfloat16 rows, and 28 in the compile row; in the float32 ``--runslow`` row, all of them pass. A few dozen
+skips need an optional package or tool, such as OpenCV or ``uv``. Since `#6750
+<https://github.com/kornia/kornia/pull/6750>`_, a case outside a test's declared device, dtype or parameter scope
+(``@pytest.mark.applies_to``) is deselected instead of skipped, so most of the dtype- and device-specific skips above no
+longer appear; the totals in this section predate it.
 
 **CUDA float32 and float64.** No failures.
 

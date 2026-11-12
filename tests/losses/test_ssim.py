@@ -202,11 +202,10 @@ class TestMS_SSIMLoss(BaseTester):
             assert loss.dtype == torch.float32
             self.assert_close(loss, criterion(img1.double(), img2.double()).float(), atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_images_match_a_float64_built_loss(self, device):
         # The Gaussian mask buffer is rounded to float32, also after ``.double()``; float64 images are filtered with
         # masks built in float64, as in a loss constructed under a float64 default dtype.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         img1 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
         img2 = torch.rand(1, 3, 32, 32, generator=generator, dtype=torch.float64).to(device)
@@ -219,12 +218,11 @@ class TestMS_SSIMLoss(BaseTester):
         for criterion in (kornia.losses.MS_SSIMLoss(), kornia.losses.MS_SSIMLoss().double()):
             self.assert_close(criterion.to(device)(img1, img2), reference(img1, img2), atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_images_match_the_numpy_reference(self, device):
         # The expected value comes from plain NumPy with the masks built in float64 (snippet in the PR). Masks built in
         # float32 are off by 7.2e-8 on Apple M1 and 8.1e-8 on x86 and CUDA. 1e-12 allows for the summation order. 0.3
         # and 0.7 are not float32 numbers.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         img1 = ((torch.arange(64, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 8, 8).to(device)
         img2 = ((torch.arange(64, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 8, 8).to(device)
         expected = torch.tensor(54.83400477404822, device=device, dtype=torch.float64)
@@ -232,11 +230,10 @@ class TestMS_SSIMLoss(BaseTester):
         for criterion in (kornia.losses.MS_SSIMLoss(sigmas), kornia.losses.MS_SSIMLoss(sigmas).double()):
             self.assert_close(criterion.to(device)(img1, img2), expected, rtol=1e-12, atol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_images_run_in_a_module_pickled_before_sigmas_were_stored(self, device):
         # A whole module pickled by an older release has no ``sigmas``; it keeps filtering float64 images with its
         # restored float32 masks, as it did then.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         criterion = kornia.losses.MS_SSIMLoss().to(device)
         legacy = kornia.losses.MS_SSIMLoss().to(device)
         del legacy.sigmas
@@ -475,10 +472,9 @@ class TestMS_SSIMLoss(BaseTester):
         self.assert_close(criterion(img1, img2.to(dtype)), expected)
         self.assert_close(criterion(img1.to(dtype), img2), expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_integer_images_follow_the_module_dtype_5351(self, device):
         # The masks follow the module dtype, so a float64 module computes uint8 images in float64.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         img1 = torch.randint(0, 256, (1, 1, 12, 16), device=device, dtype=torch.uint8)
         img2 = torch.randint(0, 256, (1, 1, 12, 16), device=device, dtype=torch.uint8)
         criterion = kornia.losses.MS_SSIMLoss(data_range=255.0).to(device, torch.float64)
@@ -578,12 +574,13 @@ class TestSSIM3DLoss(BaseTester):
         assert actual.max() <= 1
         self.assert_close(kornia.losses.SSIM3DLoss(5)(img1, img2), expected.mean())
 
+    @pytest.mark.applies_to(
+        dtypes=("float32",), reason="the clamp does not depend on the dtype; the offset fixture needs float32 roundoff"
+    )
     def test_clamps_roundoff_into_the_unit_range(self, device, dtype):
         # The clamp is inert in exact arithmetic, where the SSIM map lies in [-1, 1]. Float32 volumes with a large
         # constant offset make the moments cancel and push the map far outside [-1, 1] on both sides; the loss stays
         # in [0, 1], as ssim_loss does (#5533).
-        if dtype != torch.float32:
-            pytest.skip("the clamp does not depend on the dtype; the offset fixture needs float32 roundoff")
         generator = torch.Generator().manual_seed(0)
         img1 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
         img2 = (1000.0 + 1e-2 * torch.rand(2, 2, 7, 23, 31, generator=generator, dtype=torch.float64)).to(device, dtype)
@@ -653,11 +650,13 @@ class TestConventionsSSIMLoss(BaseTester):
         expected = ((1.0 - ssim_map) / 2).clamp(0, 1).mean()
         self.assert_close(kornia.losses.ssim_loss(x, y, 5), expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="ssim computes half images in float32, and a half image cannot hold the offset fixture",
+    )
     def test_convention_ssim_loss_clamps_roundoff_into_the_unit_range(self, device, dtype):
         # The clamp is inert in exact arithmetic, where the SSIM map lies in [-1, 1]. Images with a large constant
         # offset make the moments cancel and push the map far outside [-1, 1] on both sides; the loss stays in [0, 1].
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("ssim computes half images in float32, and a half image cannot hold the offset fixture")
         offset = 1000.0 if dtype == torch.float32 else 1e8
         g = torch.Generator().manual_seed(0)
         x = (offset + 1e-2 * torch.rand(2, 2, 23, 31, generator=g, dtype=torch.float64)).to(device, dtype)

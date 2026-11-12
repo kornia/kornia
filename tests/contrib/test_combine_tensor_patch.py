@@ -279,11 +279,10 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2, allow_auto_unpadding=True, unpadding=(0, 0))
         self.assert_close(out, img)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("stride", [2, 1])
     def test_float64_round_trip_is_exact(self, stride, device):
         # An eps added to every divisor returned 999.99999 for 1000.0.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         g = torch.Generator().manual_seed(0)
         img = (torch.rand(1, 2, 4, 6, generator=g, dtype=torch.float64) * 1000).to(device)
         out = kornia.contrib.combine_tensor_patches(

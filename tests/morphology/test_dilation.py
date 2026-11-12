@@ -508,13 +508,14 @@ class TestDilate(BaseTester):
 
         assert torch.equal(forward, safe)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="half-precision sums tie, and tied tangents differ between engines"
+    )
     @pytest.mark.parametrize("operand", ["image", "structuring_element"])
     def test_shift_engine_forward_ad(self, device, dtype, operand):
         # ``out=`` ops have no forward-mode AD formula, so a tangent on either operand must keep the
         # out-of-place reduction. ``make_dual`` is used because ``torch.func.jvp`` is a functorch transform,
         # which the in-place gate declines before it looks at the tangents.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half-precision sums tie, and tied tangents differ between engines")
 
         tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
@@ -553,11 +554,10 @@ class TestDilate(BaseTester):
         torch.jit.save(scripted, buffer)
         assert buffer.getbuffer().nbytes > 0
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the TorchScript-based ONNX export is checked on CPU")
     def test_shift_engine_onnx_trace(self, device, dtype):
         import io
 
-        if device.type != "cpu":
-            pytest.skip("the TorchScript-based ONNX export is checked on CPU")
         pytest.importorskip("onnx")
 
         class Morphology(torch.nn.Module):

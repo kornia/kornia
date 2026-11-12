@@ -135,10 +135,12 @@ class TestKimiVLModel(BaseTester):
         expected_patches = 16
         assert output.shape == (batch_size, expected_patches, config.projector_config.output_dim)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_empty_batch_6266(self, device, dtype, config):
         """An empty batch goes through the rotary position embedding of every attention layer."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = KimiVLModel(config).to(device, dtype)
         output = model(torch.randn(0, 3, 32, 32, device=device, dtype=dtype))
         assert output.shape == (0, 16, config.projector_config.output_dim)
@@ -283,9 +285,8 @@ class TestKimiVLModel(BaseTester):
 
 
 class TestKimiVLComponents(BaseTester):
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_apply_rotary_pos_emb_preserves_float64_precision(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
 
         # These values intentionally differ below float32 resolution. Before the
         # dtype-aware promotion, the identity rotation rounded them before casting

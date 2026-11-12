@@ -187,12 +187,11 @@ class TestImageHistogram2d(BaseTester):
         assert hist.max() > 255, "the bin counts must exceed what uint8 can hold for this input to discriminate"
         self.assert_close(hist, reference, atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_float64_image_keeps_float64_bin_centers(self, device):
         """A hard-coded float32 arange would give a float64 image float32-precision centers. With a bandwidth that is
         not a power of two (1 / 1000) the centers differ from the float64 ones by about 1e-8 and the histogram moves
         by ~1e-4, so this discriminates; a power-of-two n_bins would not."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         torch.manual_seed(0)
         n_bins = 1000
         image = torch.rand(1, 32, 32, device=device, dtype=torch.float64)
@@ -204,11 +203,10 @@ class TestImageHistogram2d(BaseTester):
         assert hist_auto.dtype == torch.float64
         self.assert_close(hist_auto, hist_explicit, atol=1e-12, rtol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_explicit_centers_keep_the_promoted_dtype(self, device):
         """Only the auto-built-centers path is cast back to the image dtype. With explicit float64 centers a float32
         image has always given float64 outputs, and the caller who supplied them to get that precision must keep it."""
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         torch.manual_seed(2)
         image = torch.rand(1, 8, 8, device=device, dtype=torch.float32)
         centers = torch.linspace(0, 1, 16, device=device, dtype=torch.float64)

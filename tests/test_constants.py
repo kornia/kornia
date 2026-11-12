@@ -64,11 +64,12 @@ class TestEnumGet(BaseTester):
         with pytest.raises(ValueError, match="7 is not a valid Resample"):
             Resample.get(7)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not isinstance(p["value"], p["enum"]), reason="a member of the enum itself is accepted"
+    )
     @pytest.mark.parametrize("enum", _ENUMS)
     @pytest.mark.parametrize("value", [BorderType.REFLECT, Resample.BILINEAR, 1.5, None])
     def test_wrong_type_message_names_the_enum_and_the_value_5907(self, enum, value):
-        if isinstance(value, enum):
-            pytest.skip("a member of the enum itself is accepted")
         with pytest.raises(TypeError) as excinfo:
             enum.get(value)
         message = str(excinfo.value)

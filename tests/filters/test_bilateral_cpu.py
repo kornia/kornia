@@ -35,9 +35,11 @@ bilateral_module = importlib.import_module("kornia.filters.bilateral")
 _ELIGIBLE = (1, 3, 148, 148)
 
 
-def _require_native_cpu(device: torch.device, dtype: torch.dtype) -> None:
-    if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-        pytest.skip("the CPU tap-loop bilateral path supports native CPU float32 and float64 only")
+NATIVE_CPU = pytest.mark.applies_to(
+    devices=("cpu",),
+    dtypes=("float32", "float64"),
+    reason="the CPU tap-loop bilateral path supports native CPU float32 and float64 only",
+)
 
 
 def _cpu_tolerance(dtype: torch.dtype) -> float:
@@ -108,11 +110,11 @@ def _assert_same_nonfinite(actual: torch.Tensor, expected: torch.Tensor) -> None
 
 
 class TestBilateralBlurCpuTapLoop(BaseTester):
+    @NATIVE_CPU
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     @pytest.mark.parametrize("channels", [1, 2, 3])
     def test_matches_unfold_path(self, border_type, color_distance_type, channels, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
         # test_threshold_and_odd_shapes pins the size threshold; a lower one lets small images take the tap loop.
         monkeypatch.setattr(bilateral_module, "_BILATERAL_CPU_MIN_NUMEL", 1)
@@ -125,9 +127,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("kernel_size", [1, 3, (3, 5), (7, 3), 9])
     def test_kernel_sizes(self, kernel_size, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype)
 
         actual = bilateral_blur(image, kernel_size, 0.3, (1.0, 2.5))
@@ -136,12 +138,12 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("channels, guidance_channels", [(3, 1), (1, 3), (2, 3), (3, 3)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_joint_matches_unfold_path(
         self, channels, guidance_channels, color_distance_type, monkeypatch, device, dtype
     ):
-        _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
         # As in test_matches_unfold_path, a lower size threshold lets small images take the tap loop.
         monkeypatch.setattr(bilateral_module, "_BILATERAL_CPU_MIN_NUMEL", 1)
@@ -155,9 +157,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("guidance_dtype", [torch.float16, torch.float32, torch.float64, torch.uint8])
     def test_joint_guidance_takes_the_input_dtype(self, guidance_dtype, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
         image = torch.rand(2, 3, 131, 257, device=device, dtype=dtype)
         guidance = (torch.rand(2, 1, 131, 257, device=device) * 255).to(guidance_dtype)
@@ -170,12 +172,12 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = _unfold_reference(image, guidance.to(dtype), 5, 30.0, (1.5, 1.5))
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("chunk_images", [1, 2, 3])
     @pytest.mark.parametrize("per_sample", [False, True], ids=["shared_sigma", "per_sample_sigma"])
     def test_batch_chunks(self, chunk_images, per_sample, monkeypatch, device, dtype):
         # Eager calls work through the batch in chunks; per-sample sigmas must follow their samples across chunks,
         # including a last chunk that is shorter than the others.
-        _require_native_cpu(device, dtype)
         image = torch.rand(5, 3, 64, 96, device=device, dtype=dtype)
         guidance = torch.rand(5, 2, 64, 96, device=device, dtype=dtype)
         rows = 5 if per_sample else 1
@@ -189,9 +191,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
             expected = _unfold_reference(image, guide, (3, 5), sigma_color, sigma_space, "reflect", "l1")
             self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     def test_chunks_do_not_change_values(self, monkeypatch, device, dtype):
         # Chunking only changes which samples each operation sees; every value is computed the same way.
-        _require_native_cpu(device, dtype)
         image = torch.rand(6, 3, 61, 67, device=device, dtype=dtype)
         sigma_color = torch.rand(6, device=device, dtype=dtype) + 0.05
 
@@ -201,11 +203,11 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
 
         self.assert_close(chunked, whole, rtol=0.0, atol=0.0)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_functional_form_computes_the_same_values(self, color_distance_type, monkeypatch, device, dtype):
         # Compiled calls run the functional form of the loop over the whole batch; its operations are the in-place
         # form's, so the values are identical.
-        _require_native_cpu(device, dtype)
         image = torch.rand(4, 3, 61, 67, device=device, dtype=dtype)
         guidance = torch.rand(4, 2, 61, 67, device=device, dtype=dtype)
         sigma_color = torch.rand(4, device=device, dtype=dtype) + 0.05
@@ -219,9 +221,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         for actual, expected in zip(functional, in_place):
             self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("joint", [False, True])
     def test_preserves_nonfinite_pattern(self, joint, device, dtype):
-        _require_native_cpu(device, dtype)
         generator = torch.Generator().manual_seed(0)
         image = torch.rand(2, 3, 128, 160, generator=generator, dtype=dtype)
         flat = image.view(-1)
@@ -243,10 +245,10 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         if joint:
             assert actual.isinf().any()
 
+    @NATIVE_CPU
     def test_large_finite_values_stay_finite(self, device, dtype):
         # The weights of a pixel sum to one up to rounding, so no partial weighted sum of values within half the
         # dtype's range can overflow, in either summation order.
-        _require_native_cpu(device, dtype)
         huge = torch.finfo(dtype).max / 2
         image = torch.zeros(1, 1, 256, 256, device=device, dtype=dtype)
         image[..., 100:, :] = huge
@@ -260,6 +262,7 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         assert torch.isfinite(actual).all()
         self.assert_close(actual / huge, expected / huge, rtol=1e-6, atol=1e-6)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize(
         "shape, eligible",
         [
@@ -272,7 +275,6 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         ],
     )
     def test_threshold_and_odd_shapes(self, shape, eligible, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(*shape, device=device, dtype=dtype)
         assert _bilateral_blur_cpu_eligible(image, None, 0.1, (1.5, 1.5)) == eligible
 
@@ -284,24 +286,26 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
             atol=tolerance,
         )
 
+    @NATIVE_CPU
     def test_small_input_uses_unfold(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         _forbid_tap_loop(monkeypatch)
         image = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
 
         self.assert_close(bilateral_blur(image, 5, 0.1, (1.5, 1.5)), _unfold_reference(image, None, 5, 0.1, (1.5, 1.5)))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "cpu" and p["dtype_name"] in ("float32", "float64")),
+        reason="covered by the tap-loop tests",
+    )
     def test_other_devices_and_dtypes_use_unfold(self, monkeypatch, device, dtype):
-        if device.type == "cpu" and dtype in (torch.float32, torch.float64):
-            pytest.skip("covered by the tap-loop tests")
         _forbid_tap_loop(monkeypatch)
         image = torch.rand(1, 3, 160, 160, device=device, dtype=dtype)
 
         self.assert_close(bilateral_blur(image, 5, 0.1, (1.5, 1.5)), _unfold_reference(image, None, 5, 0.1, (1.5, 1.5)))
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("which", ["input", "guidance", "sigma_color", "sigma_space"])
     def test_reverse_mode_gradients_use_unfold(self, which, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         _forbid_tap_loop(monkeypatch)
         tensors = {
             "input": torch.rand(*_ELIGIBLE, device=device, dtype=dtype),
@@ -332,9 +336,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
 
         self.assert_close(tensors[which].grad, reference[which].grad)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("mode", ["no_grad", "inference_mode"])
     def test_requires_grad_input_without_recorded_gradients_takes_the_tap_loop(self, mode, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
         image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype, requires_grad=True)
         sigma_color = torch.tensor([0.2], device=device, dtype=dtype, requires_grad=True)
@@ -348,8 +352,8 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = _unfold_reference(image.detach(), None, 5, sigma_color.detach(), (1.5, 1.5))
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     def test_jit_trace_uses_unfold(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype)
         _forbid_tap_loop(monkeypatch)
 
@@ -359,9 +363,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
             traced = torch.jit.trace(lambda x: bilateral_blur(x, 5, 0.1, (1.5, 1.5)), (image,), check_trace=False)
         self.assert_close(traced(image), _unfold_reference(image, None, 5, 0.1, (1.5, 1.5)))
 
+    @NATIVE_CPU
     def test_layouts_give_contiguous_outputs(self, device, dtype):
         # The unfold path returned contiguous outputs for any input layout; callers may .view() them.
-        _require_native_cpu(device, dtype)
         image = torch.rand(2, 3, 148, 150, device=device, dtype=dtype)
         transposed = image.transpose(-1, -2).contiguous().transpose(-1, -2)
         channels_last = image.contiguous(memory_format=torch.channels_last)
@@ -382,8 +386,8 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         batch = torch.rand(8, 3, 160, 160, device=device, dtype=dtype).contiguous(memory_format=torch.channels_last)
         assert bilateral_blur(batch, 3, 0.1, (1.5, 1.5)).is_contiguous()
 
+    @NATIVE_CPU
     def test_integer_input_is_filtered_in_float32(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
         image = torch.randint(0, 256, _ELIGIBLE, device=device, dtype=torch.uint8)
 
@@ -394,22 +398,22 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = _unfold_reference(image.float(), None, 5, 25.0, (1.5, 1.5))
         self.assert_close(actual, expected, rtol=1e-6, atol=1e-4)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("channels", [1, 3])
     def test_invalid_color_distance_type_raises(self, channels, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(1, channels, 256, 256, device=device, dtype=dtype)
 
         with pytest.raises(ValueError, match="color_distance_type only accepts l1 or l2"):
             bilateral_blur(image, 5, 0.1, (1.5, 1.5), color_distance_type="l3")
 
+    @NATIVE_CPU
     def test_reflect_padding_larger_than_the_image_keeps_a_constant(self, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.full((1, 1, 2, 40000), 0.5, device=device, dtype=dtype)
         self.assert_close(bilateral_blur(image, 5, 0.1, (1.5, 1.5)), image)
 
+    @NATIVE_CPU
     def test_cpu_autocast_does_not_change_the_result(self, device, dtype):
         # No operation of either path is on an autocast list except the shared padding, so autocast needs no clause.
-        _require_native_cpu(device, dtype)
         image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype)
 
         with torch.autocast("cpu", dtype=torch.bfloat16):
@@ -420,8 +424,8 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     def test_public_vmap_has_no_user_warning(self, device, dtype):
-        _require_native_cpu(device, dtype)
         images = torch.rand(2, 1, 3, 148, 148, device=device, dtype=dtype)
         guidance = torch.rand(2, 1, 1, 148, 148, device=device, dtype=dtype)
         tolerance = _cpu_tolerance(dtype)
@@ -438,10 +442,10 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         )
         self.assert_close(joint, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     def test_forward_mode_gradients_match_unfold(self, monkeypatch, device, dtype):
         # The tap loop runs for dual inputs, in place on its own temporaries and in chunks, and must carry their
         # tangents as the unfold path does.
-        _require_native_cpu(device, dtype)
         import torch.autograd.forward_ad as fwAD
 
         calls = _counting(monkeypatch)
@@ -470,9 +474,8 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         )
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the CPU tap-loop bilateral path runs on the CPU only")
     def test_gradcheck_tap_loop(self, device):
-        if device.type != "cpu":
-            pytest.skip("the CPU tap-loop bilateral path runs on the CPU only")
         image = torch.rand(2, 2, 6, 7, device=device, dtype=torch.float64)
         guidance = torch.rand(2, 1, 6, 7, device=device, dtype=torch.float64)
         sigma_color = torch.rand(2, device=device, dtype=torch.float64) + 0.5
@@ -480,10 +483,12 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         self.gradcheck(_bilateral_blur_cpu, (image, guidance, 3, sigma_color, sigma_space, "reflect", "l1"))
         self.gradcheck(_bilateral_blur_cpu, (image, None, (3, 5), 0.7, sigma_space, "circular", "l2"))
 
+    @NATIVE_CPU
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="passes torch.compile options, which torch.jit.script does not take",
+    )
     def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
-        _require_native_cpu(device, dtype)
         image = torch.rand(2, 3, 148, 150, device=device, dtype=dtype)
         guidance = torch.rand(2, 1, 148, 150, device=device, dtype=dtype)
         sigma_color = torch.tensor([0.1, 0.3], device=device, dtype=dtype)
@@ -498,14 +503,16 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = op(image, guidance, sigma_color)
         self.assert_close(compiled(image, guidance, sigma_color), expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="passes torch.compile options, which torch.jit.script does not take",
+    )
     @pytest.mark.parametrize("kernel_size", [(7, 7), (5, 7), 9])
     def test_dynamo_keeps_unfold_for_kernels_above_25_taps(
         self, kernel_size, monkeypatch, device, dtype, torch_optimizer, optimizer_backend
     ):
         # Compiling the tap loop of a 9 x 9 kernel took 56 s against 2.3 s for the unfold path.
-        if optimizer_backend == "jit":
-            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
-        _require_native_cpu(device, dtype)
         _forbid_tap_loop(monkeypatch)
         image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype)
 
@@ -515,11 +522,13 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = _unfold_reference(image, None, kernel_size, 0.1, (1.5, 1.5))
         self.assert_close(compiled(image), expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="passes torch.compile options, which torch.jit.script does not take",
+    )
     def test_dynamo_dynamic_batch_on_eligible_inputs(self, device, dtype, torch_optimizer, optimizer_backend):
         # The compiled tap loop runs over the whole batch, so one dynamic graph serves every eligible batch.
-        if optimizer_backend == "jit":
-            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
-        _require_native_cpu(device, dtype)
         from torch._dynamo.testing import CompileCounter
 
         def op(x, sigma_color, sigma_space):
@@ -551,9 +560,9 @@ class _Exportable(torch.nn.Module):
 class TestBilateralBlurCpuExport(BaseTester):
     # torch.export keeps the unfold path: the tap loop's size check would otherwise become a guard of the exported
     # program, which then fails at run time for an image on the other side of the threshold from the example.
+    @NATIVE_CPU
     @pytest.mark.parametrize("example, other", [((2, 3, 256, 256), (3, 3, 32, 48)), ((2, 3, 32, 32), (3, 3, 300, 310))])
     def test_dynamic_sizes_run_on_both_sides_of_the_threshold(self, example, other, device, dtype):
-        _require_native_cpu(device, dtype)
         dim = torch.export.Dim
         dynamic = {"image": {0: dim("B", min=1, max=64), 2: dim("H", min=8, max=4096), 3: dim("W", min=8, max=4096)}}
         program = torch.export.export(
@@ -566,9 +575,9 @@ class TestBilateralBlurCpuExport(BaseTester):
             image = torch.rand(*shape, device=device, dtype=dtype)
             self.assert_close(exported(image), _unfold_reference(image, None, 5, 0.1, (1.5, 1.5)))
 
+    @NATIVE_CPU
     def test_dynamic_batch_of_small_grayscale_images(self, device, dtype):
         # (B, 1, 128, 128) reaches the threshold from B = 4 on, so a size check would constrain the dynamic batch.
-        _require_native_cpu(device, dtype)
         dynamic = {"image": {0: torch.export.Dim("B", min=1, max=64)}}
         program = torch.export.export(
             _Exportable(), (torch.rand(8, 1, 128, 128, device=device, dtype=dtype),), dynamic_shapes=dynamic

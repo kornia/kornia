@@ -716,14 +716,16 @@ class TestSigLip2Components(BaseTester):
         num_patches = (config.image_size // config.patch_size) ** 2
         assert output.shape == (batch_size, num_patches, config.hidden_size)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         "size",
         [(16, 64), (8, 128), (33, 39), (32, 39), (39, 32), (40, 40)],
         ids=["2x8-grid", "1x16-grid", "33x39", "32x39", "39x32", "40x40"],
     )
     def test_vision_embeddings_reject_other_sizes(self, device, dtype, size):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         config = SigLip2VisionConfig(
             image_size=32,
             patch_size=8,
@@ -747,9 +749,11 @@ class TestSigLip2Components(BaseTester):
             with pytest.raises(ValueError, match="32"):
                 model(pixel_values)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_dynamo_fullgraph_vision_embeddings(self, device, dtype, torch_optimizer):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # The size check reads static shapes: it must compile without a graph break.
         embeddings = SigLip2VisionEmbeddings(_tiny_vision_config()).to(device, dtype).eval()
         pixel_values = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
@@ -1011,13 +1015,12 @@ class TestSigLip2Components(BaseTester):
         self.assert_close(pooled[1:], uniform)
         self.assert_close(pooled[:1], pooled_alone)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="autocast casts float32 inputs only")
     @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
     def test_pooling_head_all_masked_sample_pools_uniformly_under_autocast(self, device, dtype, autocast_dtype):
         # Under autocast the hidden state stays float32 while nn.MultiheadAttention computes the scores in the
         # autocast dtype, where float32's finfo.min rounds to -inf: the fill has to be finite in the autocast dtype,
         # or a sample with every key masked pools to nan.
-        if dtype != torch.float32:
-            pytest.skip("autocast casts float32 inputs only")
         config = _tiny_vision_config()
         head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
         hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
@@ -1034,6 +1037,11 @@ class TestSigLip2Components(BaseTester):
         # the autocast run rounds the projections to the autocast dtype
         self.assert_close(pooled.to(dtype), expected, rtol=5e-2, atol=5e-2)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="one run per device: the dtypes are the parameters")
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["param_dtype"] == torch.float64 and p["device_name"] == "mps"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         ("param_dtype", "autocast_dtype"), [(torch.bfloat16, torch.float16), (torch.float64, torch.float16)]
     )
@@ -1043,10 +1051,6 @@ class TestSigLip2Components(BaseTester):
         # The scores are computed in the autocast dtype for a float16, bfloat16 or float32 input and in float64 for a
         # float64 one, which autocast leaves alone. A bfloat16 mask filled with float16's minimum held -65536, which
         # overflows to -inf in float16 (nan); a float64 mask filled with it kept the score differences (not uniform).
-        if dtype != torch.float32:
-            pytest.skip("one run per device: the dtypes are the parameters")
-        if param_dtype == torch.float64 and device.type == "mps":
-            pytest.skip("MPS does not support float64")
         if param_dtype == torch.bfloat16 and device.type == "cpu":
             pytest.skip("CPU float16 autocast rejects the bfloat16 parameters of layer_norm")
         config = _tiny_vision_config()
@@ -1064,11 +1068,10 @@ class TestSigLip2Components(BaseTester):
         weights = captured["out"][1].float()
         self.assert_close(weights, torch.full_like(weights, 1 / 64), rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="autocast casts float32 inputs only")
     def test_dynamo_fullgraph_pooling_head_under_autocast(self, device, dtype, torch_optimizer):
         # The autocast fill is chosen inside the compiled graph too. torch.amp.is_autocast_available cannot be traced
         # before torch 2.6 (a graph break, so fullgraph raised on torch 2.5.1), so the head asks it in eager mode only.
-        if dtype != torch.float32:
-            pytest.skip("autocast casts float32 inputs only")
         autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         config = _tiny_vision_config()
         head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()

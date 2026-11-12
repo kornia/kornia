@@ -133,10 +133,12 @@ class TestConventionsUnsharpMask(BaseTester):
         assert out.max() > 1.3
 
 
+MIXED_PRECISION_DEVICES = pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU, CUDA and MPS autocast")
+
+
 def _mixed_precision_region_6182(device):
-    # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
-    if device.type not in ("cpu", "cuda", "mps"):
-        pytest.skip("CPU, CUDA and MPS autocast")
+    # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises. Callers are
+    # marked MIXED_PRECISION_DEVICES.
     bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
     return torch.bfloat16 if bfloat16_ok else torch.float16
 
@@ -147,6 +149,7 @@ class TestUnsharpMaskMixedPrecision(BaseTester):
     No "autocast" in the test names: the repository conftest skips those on MPS.
     """
 
+    @MIXED_PRECISION_DEVICES
     @pytest.mark.parametrize("as_module", [False, True])
     def test_a_mixed_precision_region_keeps_the_image_dtype_6182(self, device, as_module):
         # The blur, a convolution, came back in the autocast dtype and met the float32 image in torch.lerp, which raised
@@ -163,16 +166,16 @@ class TestUnsharpMaskMixedPrecision(BaseTester):
         self.assert_close(actual, torch.lerp(blur.float(), image, weight=2.0), atol=0, rtol=0)
         self.assert_close(actual, unsharp_mask(image, (5, 5), (1.5, 1.5)), atol=5e-2, rtol=0)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="measured on the CPU")
     def test_half_precision_image_in_the_other_half_precision_region_6182(self, device):
         # A float16 image inside a bfloat16 region also raised; it now keeps float16.
-        if device.type != "cpu":
-            pytest.skip("measured on the CPU")
         image = torch.rand(1, 3, 12, 12, generator=torch.Generator().manual_seed(6182)).to(device, torch.float16)
         with torch.autocast(device.type, dtype=torch.bfloat16):
             out = unsharp_mask(image, (3, 3), (1.0, 1.0))
         assert out.dtype == torch.float16
         self.assert_close(out.float(), unsharp_mask(image.float(), (3, 3), (1.0, 1.0)), atol=5e-2, rtol=0)
 
+    @MIXED_PRECISION_DEVICES
     def test_gradient_in_a_mixed_precision_region_6182(self, device):
         region_dtype = _mixed_precision_region_6182(device)
         image = torch.rand(1, 3, 12, 12, device=device, requires_grad=True)

@@ -398,11 +398,13 @@ class TestUndistortPoints(BaseTester):
             torch.tensor([[[2.0, 4.0]]], device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="half precision quantizes the residual, so the three step counts are indistinguishable",
+    )
     def test_convention_more_iterations_shrink_the_round_trip_residual(self, device, dtype):
         # Inside the convergence region, more iterations shrink the residual. Halving fy puts the five-step
         # answer outside assert_close's tolerance, so the decrease is not between already-converged answers.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half precision quantizes the residual, so the three step counts are indistinguishable")
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
@@ -414,12 +416,13 @@ class TestUndistortPoints(BaseTester):
         assert residuals[1] > residuals[2]
         self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="probe requires float32/float64 to avoid half-precision overflow"
+    )
     def test_wart_fixed_point_cycles_outside_valid_radius_4285(self, device, dtype):
         # Wart pin for #4285: outside the valid radius the fixed-point iteration silently alternates between two
         # inaccurate values (odd and even counts agree, even is worse) instead of converging or reporting it.
         # Delete when #4285 is repaired.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("probe requires float32/float64 to avoid half-precision overflow")
         points = torch.tensor([[[304.0, 3.0]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         dist = torch.tensor([[0.5, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
@@ -448,9 +451,8 @@ class TestUndistortPoints(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(*inputs), op_optimized(*inputs))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="a half-precision accuracy check")
     def test_half_precision_rounds_once(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("a half-precision accuracy check")
         # f = 1000 px and 64 x 100 points over a 1280 x 720 image. Iterated in float32 and rounded once, every
         # coordinate is within half a unit in the last place (ulp) of the float64 result of the same rounded inputs,
         # plus about 2e-4 px of float32 arithmetic (1e-3 px allowed). Iterating in half precision leaves the result off
@@ -654,11 +656,12 @@ class TestUndistortImage(BaseTester):
         bound = {torch.float16: 0.4, torch.bfloat16: 2.5}.get(dtype, 1e-3)
         assert error_px < bound, f"sampled {error_px:.3f} px away from the float64 positions"
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only a half image builds its map in another dtype than its own"
+    )
     def test_convention_half_image_keeps_the_precision_of_float32_calibration(self, device, dtype):
         # A half image takes K and dist of another dtype and keeps their precision: this focal length and these
         # coefficients do not survive a round trip through half, so the map below would change if they went through it.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only a half image builds its map in another dtype than its own")
         image = _ramp_image(1, 3, 50, 70, device, dtype)
         K = torch.tensor([[[60.3, 0.0, 35.1], [0.0, 60.7, 25.3], [0.0, 0.0, 1.0]]], device=device)
         dist = torch.tensor([[-0.2013, 0.0517, 0.0011, 0.0013]], device=device)

@@ -396,12 +396,14 @@ class TestCanny(BaseTester):
         self.assert_close(actual_magnitude, expected_magnitude)
         self.assert_close(actual_edges, expected_edges)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["dtype_name"] in ("float16", "bfloat16") and p["image"] == "random"),
+        reason="the compiled graph computes in float32 and rounds once, so near-ties may resolve differently",
+    )
     @pytest.mark.parametrize("hysteresis", [False, True])
     @pytest.mark.parametrize("image", ["random", "rectangle"])
     def test_dynamo_on_edges(self, image, hysteresis, device, dtype, torch_optimizer):
         self._require_padding(device, dtype)
-        if dtype in (torch.float16, torch.bfloat16) and image == "random":
-            pytest.skip("the compiled graph computes in float32 and rounds once, so near-ties may resolve differently")
         # test_dynamo's constant image has no edge. A random image, blurred, has no exact tie; a rectangle with an inner
         # step, unblurred, has exact ties that compiled and eager arithmetic resolve alike, in every dtype. Both
         # exercise the suppression and the hysteresis in the compiled graph
@@ -590,10 +592,9 @@ class TestCanny(BaseTester):
             _, edges = Canny(low, high, kernel_size=1, hysteresis=False)(img)
             self.assert_close(edges, expected)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_matches_eager(self, dtype):
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         # the legacy exporter's atan2 is NaN at (0, 0); cast to an index, NaN gives 0 on arm64 but an out-of-range
@@ -630,11 +631,10 @@ class TestCanny(BaseTester):
         img[..., 8:] = height[:, None]
         return img
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason="torch.export needs Dynamo on this torch/python pair")
     def test_torch_export_iterates_hysteresis_per_input(self, dtype):
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         # Graph capture cannot branch on the data, so the hysteresis loop is a while_loop: a graph traced on one image
         # repeats until nothing changes on another. On a random image the loop stops after a few rounds; the chain
         # needs 62.
@@ -651,12 +651,11 @@ class TestCanny(BaseTester):
         assert edges[0, 0, :, 7].all()
         assert int(edges.sum()) == 64
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason="torch.export needs Dynamo on this torch/python pair")
     @pytest.mark.skipif(not torch_version_ge(2, 11), reason="the dynamo exporter writes while_loop from torch 2.11")
     def test_onnx_export_iterates_hysteresis_per_input(self, dtype):
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         ort = pytest.importorskip("onnxruntime")
@@ -679,10 +678,9 @@ class TestCanny(BaseTester):
         assert edges[0, 0, :, 7].all()
         assert int(edges.sum()) == 64
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the traced graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_jit_trace_iterates_hysteresis_per_input(self, dtype):
-        if dtype != torch.float32:
-            pytest.skip("the traced graph is checked once, in float32")
         model = Canny(0.2, 1.0, kernel_size=1).eval()
         chain = self._long_weak_chain(dtype)
         traced_on = torch.rand(chain.shape, dtype=dtype, generator=torch.Generator().manual_seed(0))
@@ -704,10 +702,9 @@ class TestCanny(BaseTester):
         buffer.seek(0)
         assert int(torch.jit.load(buffer)(chain)[1].sum()) == 64
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_onnx_export_legacy_iterates_hysteresis_per_input(self, dtype):
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         model = Canny(0.2, 1.0, kernel_size=1).eval()
@@ -730,10 +727,9 @@ class TestCanny(BaseTester):
         assert edges[0, 0, :, 7].all()
         assert int(edges.sum()) == 64
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the traced graph is checked once, in float32")
     @pytest.mark.device_agnostic
     def test_jit_trace_warns_when_the_loop_cannot_be_scripted(self, dtype, monkeypatch):
-        if dtype != torch.float32:
-            pytest.skip("the traced graph is checked once, in float32")
         canny_module = importlib.import_module("kornia.filters.canny")  # kornia.filters.canny is the function
 
         def cannot_script():
@@ -839,9 +835,10 @@ class TestConventionsCanny(BaseTester):
         _, edges_rgb = canny(rgb, 200 / 255, 300 / 255, kernel_size=1, eps=0.0)
         self.assert_close(edges_rgb, torch.zeros_like(gray))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the near-threshold gap must be representable in the test dtype"
+    )
     def test_convention_canny_eps_can_promote_a_near_threshold_ridge(self, device, dtype):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the near-threshold gap must be representable in the test dtype")
         self._require_padding(device, dtype)
         # The untied raw ridge magnitude is 0.5; the high threshold is slightly above it, not equal to it.
         # Default eps raises the magnitude to about 0.500001, producing a strong edge instead of an isolated weak one.
@@ -910,20 +907,22 @@ class TestConventionsCanny(BaseTester):
             x = 16 - on[:, 1] if mirrored else on[:, 1]
             assert set((on[:, 0] + x).tolist()) == {13, 14}
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32",), reason="This underflow regression requires CPU float32"
+    )
     def test_convention_canny_gradient_sign_without_multiplication_underflow(self, device, dtype):
         """Direction selection does not multiply gradients that underflow in float32."""
         self._require_padding(device, dtype)
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("This underflow regression requires CPU float32")
         x = torch.rand((1, 1, 8, 8), generator=torch.Generator().manual_seed(0), device=device) * 2e-23
         _, edges = canny(x, kernel_size=1, eps=0, low_threshold=1e-24, high_threshold=2e-24, hysteresis=False)
         assert edges[0, 0, 5, 4].item() == 1.0
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32", "float64"), reason="Pinned legacy CPU float32/float64 boundary outputs"
+    )
     @pytest.mark.parametrize("transpose,flip", [(False, False), (False, True), (True, False), (True, True)])
     def test_convention_canny_nms_sector_boundary_adjacent_floats(self, transpose, flip, device, dtype):
         """Exercise Canny itself on both sides of its legacy rounded-angle sector boundaries."""
-        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("Pinned legacy CPU float32/float64 boundary outputs")
         # Source: Canny at 13c49f6d1, CPU, kernel_size=1, hysteresis=False, on this literal image.
         # Generate the three inputs with nextafter(0.6035533905932737, -inf), the value itself,
         # and nextafter(value, +inf). Transposition swaps 67.5/22.5 degrees; flipping changes signs.

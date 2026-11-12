@@ -274,10 +274,11 @@ class TestInverseCast:
         assert_close(adj / det[..., None, None], torch.linalg.inv(x_ref).to(dtype), atol=tol, rtol=tol)
         assert_close(det, torch.linalg.det(x_ref).to(dtype), atol=tol, rtol=tol)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="tracing under half precision is not a supported surface"
+    )
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_trace_has_no_linalg_inv(self, device, dtype, n):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("tracing under half precision is not a supported surface")
         x = torch.eye(n, device=device, dtype=dtype).expand(2, n, n).clone()
         x.add_(torch.rand_like(x), alpha=0.5)
         traced = torch.jit.trace(_torch_inverse_cast, x)
@@ -288,14 +289,13 @@ class TestInverseCast:
         with pytest.raises(NotImplementedError):
             _adjugate_closed_form(torch.eye(5, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the capture path computes in float32 or float64")
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_scaled_closed_form_is_adj_over_det_bit_for_bit(self, device, dtype, n):
         # The closed-form inverse balances rows and columns by powers of two before the adjugate (#5507). A power
         # of two changes no rounding step, so wherever the adjugate and the determinant are normal numbers the
         # result is the same to the bit. The last matrix has a second column that is ``2 ** -160`` of the first in
         # every row: a row scaling that is carried out would flush it, the exponent arithmetic does not.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the capture path computes in float32 or float64")
         torch.manual_seed(0)
         x = torch.randn(64, n, n, device=device, dtype=dtype)
         x = x * torch.logspace(-3, 3, 64, dtype=dtype).to(device)[:, None, None]  # ``logspace`` has no MPS kernel
@@ -306,11 +306,12 @@ class TestInverseCast:
         assert torch.isfinite(det).all()
         assert torch.equal(_closed_form_inverse(x), adj / det[..., None, None])
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="tracing under half precision is not a supported surface"
+    )
     def test_trace_keeps_the_inverse_finite_at_an_extreme_scale_5507(self, device, dtype):
         # Under capture ``1e13 * I`` of order 4 had ``adj inf`` and ``det inf`` in float32 and came back as NaN,
         # while eager returned ``1e-13 * I``. The scaled adjugate keeps the traced inverse finite and eager-close.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("tracing under half precision is not a supported surface")
         # The last matrix is regular with a column ``2 ** -160`` of the other in every row; ``_is_singular`` reads it
         # as singular in eager mode and under capture alike, so it is tested on this mask-free path. It is read
         # against its exact inverse, which the powers of two reach to the bit, not against eager, whose LU loses the
@@ -324,14 +325,15 @@ class TestInverseCast:
         assert_close(inverse[:-1], _torch_inverse_cast(A[:-1]), atol=0.0, rtol=rtol)
         assert torch.equal(inverse[-1], vanishing_inverse)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="tracing under half precision is not a supported surface"
+    )
     @pytest.mark.parametrize("n", [3, 4])
     def test_trace_scales_the_inverse_back_beyond_the_largest_power_of_two_5507(self, device, dtype, n):
         # The entry (1, 2) of the inverse of this matrix is ``-2 ** 45`` in float32, but its row factor ``2 ** -20``
         # and the column factor ``2 ** -126`` of the ``2 ** -26`` entries scale it back by ``2 ** 146``, beyond the
         # largest power of two of the dtype (``2 ** 1122`` in float64). One power of two capped at that largest
         # one returns ``-2 ** 26``. Every entry and the exact inverse are normal powers of two.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("tracing under half precision is not a supported surface")
         h, low, r = (100, 26, 20) if dtype == torch.float32 else (800, 222, 100)
         A = torch.eye(n, device=device, dtype=dtype)
         A[:3, :3] = torch.tensor(
@@ -534,14 +536,13 @@ class TestHistcCast(BaseTester):
 
 
 class TestInverse3x3ClosedForm(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="the float32 promotion applies to half dtypes only")
     @pytest.mark.parametrize("capture", [False, True], ids=["eager", "capture"])
     def test_half_input_is_inverted_in_float32(self, device, dtype, capture, monkeypatch):
         # #5197: inverted in float32 and rounded once to the half dtype, the result is within half an ulp-ish of the
         # float64 inverse of the rounded matrix (0.47 eps measured on 256 matrices, float16 and bfloat16); the
         # adjugate computed in the half dtype is 1.9 to 2.5 eps off. Pins the bfloat16 promotion as well, which no
         # other CI leg exercises (the cross kernel it avoids is missing only on MPS with torch 2.5.1).
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("the float32 promotion applies to half dtypes only")
         if capture:
             monkeypatch.setattr("kornia.core.utils._is_tracing_or_exporting", lambda: True)
         generator = torch.Generator().manual_seed(0)
@@ -697,6 +698,9 @@ class TestSvdCast:
         assert a.grad.device == a.device
         assert not a.grad.isnan().any()
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="MPS decomposes in float32 whatever the input dtype"
+    )
     @pytest.mark.parametrize(
         ("dtype_in", "work"),
         [(torch.float16, torch.float32), (torch.bfloat16, torch.float32), (torch.float32, torch.float64)],
@@ -704,8 +708,6 @@ class TestSvdCast:
     def test_in_work_dtype_decomposes_once(self, device, dtype_in, work):
         # The factors come back in the work dtype, and a half input is decomposed in float32, not promoted again to
         # float64 as casting it first and calling _torch_svd_cast would do (#6214).
-        if device.type == "mps":
-            pytest.skip("MPS decomposes in float32 whatever the input dtype")
         torch.manual_seed(0)
         a = torch.randn(3, 9, 9, device=device).to(dtype_in)
         u, s, v = _torch_svd_in_work_dtype(a)
@@ -770,12 +772,11 @@ class TestSolveWithMask:
         _X, _, mask = safe_solve_with_mask(B, A)
         assert torch.equal(mask, torch.zeros_like(mask))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the reference gradient needs full precision")
     @pytest.mark.parametrize("masking", ["mul", "where"])
     def test_singular_matrix_keeps_shared_gradient_finite(self, masking, device, dtype):
         # kornia#5194: one singular matrix in the batch made the gradient of a parameter shared by all
         # of them NaN, however the caller masked the output.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the reference gradient needs full precision")
         M = torch.stack([torch.eye(3), torch.zeros(3, 3), 2 * torch.eye(3)]).to(device, dtype)
         B = torch.ones(3, 3, device=device, dtype=dtype)
 
@@ -911,12 +912,11 @@ class TestInverseWithMask:
         _X, mask = safe_inverse_with_mask(A)
         assert torch.equal(mask, torch.zeros_like(mask))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the reference gradient needs full precision")
     @pytest.mark.parametrize("masking", ["mul", "where"])
     def test_singular_matrix_keeps_shared_gradient_finite(self, masking, device, dtype):
         # kornia#5194: one singular matrix in the batch made the gradient of a parameter shared by all
         # of them NaN, however the caller masked the output.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the reference gradient needs full precision")
         M = torch.stack([torch.eye(3), torch.zeros(3, 3), 2 * torch.eye(3)]).to(device, dtype)
 
         def grad(M: torch.Tensor) -> torch.Tensor:
@@ -1012,25 +1012,23 @@ class TestInverseWithMask:
             edges = torch.cat([edges, zero_row[None]])
             assert torch.jit.script(_is_singular)(edges).tolist() == _is_singular(edges).tolist() == [True, False, True]
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="half input is decided in float32")
     def test_regular_matrix_is_regular_at_a_scale_whose_products_overflow(self, device, dtype):
         # The terms of a 4x4 determinant are products of four entries, which overflow (or underflow) the dtype
         # long before the inverse does: unscaled, the rule would read ``inf <= inf`` (or ``0 <= 0``) and call a
         # well-conditioned matrix singular. Scaling two rows or two columns alone underflows the products too.
         # Powers of two keep the scaling exact. Half input is decided in float32, where these scales are harmless.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half input is decided in float32")
         A = _regular_at_extreme_scales(device, dtype)
         assert not _is_singular(A).any()
         assert safe_inverse_with_mask(A)[1].all()
         assert safe_solve_with_mask(torch.ones(len(A), 4, device=device, dtype=dtype), A)[2].all()
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="half input is decided in float32")
     def test_regular_matrix_at_an_extreme_scale_is_valid_under_trace_5507(self, device, dtype):
         # Under capture the inverse is the adjugate over the determinant, and their entries overflow or underflow
         # the dtype long before the inverse does: ``1e13 * I`` of order 4 reads ``inf / inf`` in float32 and
         # ``1e-13 * I`` reads ``x / 0``, so the traced mask rejected both matrices that eager accepted. The adjugate
         # is now taken on a row- and column-scaled copy, and the traced verdict and inverse are the eager ones.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half input is decided in float32")
         A = _regular_at_extreme_scales(device, dtype)
         expected_inverse, expected_mask = safe_inverse_with_mask(A)
         traced = torch.jit.trace(safe_inverse_with_mask, (A,), check_trace=False)
@@ -1039,6 +1037,7 @@ class TestInverseWithMask:
         assert torch.isfinite(inverse).all()
         assert_close(inverse, expected_inverse, atol=0.0, rtol=1e-5 if dtype == torch.float32 else 1e-12)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="half input is decided in float32")
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_nonfinite_matrix_is_invalid_under_trace_5507(self, device, dtype, n, monkeypatch):
         # The traced inverse balances the matrix by exponents read as indices into a table of powers of two. A NaN
@@ -1047,8 +1046,6 @@ class TestInverseWithMask:
         # mask then rejects the matrix and its row is the identity, as in eager mode.
         from kornia.core import utils
 
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half input is decided in float32")
         exponents = []
         times_power_of_two = utils._times_power_of_two
 
@@ -1109,11 +1106,9 @@ def test_is_autocast_enabled_cpu():
     assert not is_autocast_enabled()
 
 
+@pytest.mark.applies_to(devices=("mps",), reason="MPS is not available")
 @pytest.mark.uses_accelerator
 def test_is_autocast_enabled_mps():
-    if not torch.backends.mps.is_available():
-        pytest.skip("MPS is not available")
-
     assert not is_autocast_enabled()
 
     with torch.autocast("mps", dtype=torch.float16):

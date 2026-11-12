@@ -535,10 +535,8 @@ class TestRandomCutMixV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_random_cutmix_float64_lambda(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
-
         torch.manual_seed(76)
         f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
 
@@ -1314,9 +1312,8 @@ class TestRandomTransplantation(BaseTester):
 
         self.gradcheck(RandomTransplantation(p=1.0), (image, mask))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_exception(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(22)
         image = torch.rand(1, 3, 2, 2, device=device, dtype=torch.float64)
         mask = torch.randint(0, 2, (1, 2, 2), device=device, dtype=torch.float64)

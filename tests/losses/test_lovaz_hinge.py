@@ -132,9 +132,8 @@ class TestLovaszHingeLoss(BaseTester):
         assert loss.dtype == dtype
         self.assert_close(loss, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_matches_a_float64_reference(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         logits = torch.randn(2, 1, 16, 24, device=device, dtype=torch.float64, requires_grad=True)
         labels = torch.randint(0, 2, (2, 16, 24), device=device)

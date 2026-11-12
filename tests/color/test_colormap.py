@@ -41,10 +41,12 @@ def test_autumn(device, dtype):
 
 
 class TestColorMap(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64.",
+    )
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_integer_base_uses_default_float_dtype(self, device, default_dtype):
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64.")
         previous_dtype = torch.get_default_dtype()
         try:
             torch.set_default_dtype(default_dtype)

@@ -23,12 +23,8 @@ import kornia
 from testing.base import BaseTester
 
 
+@pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision numerical regressions")
 class TestHalfPrecisionAccuracy(BaseTester):
-    @pytest.fixture(autouse=True)
-    def half_only(self, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision numerical regressions")
-
     @pytest.mark.parametrize("space", ["lab", "luv"])
     @pytest.mark.parametrize("inverse", [False, True])
     def test_color(self, device, dtype, space, inverse):
@@ -113,6 +109,7 @@ class TestHalfPrecisionAccuracy(BaseTester):
         assert model.transform_matrix.dtype == torch.float32
         assert model.mean_vector.dtype == torch.float32
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast regression")
     @pytest.mark.parametrize(
         "op",
         [
@@ -126,8 +123,6 @@ class TestHalfPrecisionAccuracy(BaseTester):
         ],
     )
     def test_enclosing_autocast(self, device, dtype, op):
-        if device.type != "cpu":
-            pytest.skip("CPU autocast regression")
         data = (torch.arange(192, device=device).reshape(4, 3, 4, 4) % 13).to(dtype) / 16
         args = (3, (1.25, 1.5)) if op is kornia.filters.gaussian_blur2d else ()
         expected = op(data, *args)
@@ -139,9 +134,8 @@ class TestHalfPrecisionAccuracy(BaseTester):
         else:
             self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast regression")
     def test_inverse_enclosing_autocast(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("CPU autocast regression")
         data = torch.tensor([[0, 2], [1, 3], [-1, 4], [0.5, 1]], device=device, dtype=dtype)
         model = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
         whitened = model(data)

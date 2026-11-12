@@ -127,22 +127,22 @@ def _round_trip_tol(dtype):
     return _ROUND_TRIP_TOL.get(dtype, (1e-4, 1e-4))
 
 
-def _skip_without_real_float64(device) -> None:
-    # The #4044 regression below hardcodes float64 and asserts a raw deviation at 1e-12, so it
-    # needs a backend that actually computes in float64. MPS has none at all, and XLA executes a
-    # float64 request as float32 (the ``tpu`` fixture in conftest is ``xm.xla_device()``), where
-    # the round trip bottoms out around 1e-7 -- five orders above the tolerance -- for a pure
-    # precision reason.
-    #
-    # XLA breaks the rest of the file's contract too, for an unrelated reason:
-    # ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
-    # ``(1e-2, 1e-2)`` whenever either tensor sits on an XLA device (see ``testing/base.py``). On
-    # TPU, then, no tolerance below asserts what it derives -- _FORWARD_ATOL's 5e-4 is loosened
-    # past a U/V row swap, and _ROUND_TRIP_TOL[bfloat16]'s (8e-3, 1.5e-2) is *tightened* below
-    # the error it budgets for. That is a harness-wide gap rather than a YUV one, and no TPU runs
-    # in CI, so nothing here is skipped for it.
-    if "xla" in device.type or device.type == "mps":
-        pytest.skip(f"{device.type} does not compute in float64")
+# The #4044 regression below hardcodes float64 and asserts a raw deviation at 1e-12, so it
+# needs a backend that actually computes in float64. MPS has none at all, and XLA executes a
+# float64 request as float32 (the ``tpu`` fixture in conftest is ``xm.xla_device()``), where
+# the round trip bottoms out around 1e-7 -- five orders above the tolerance -- for a pure
+# precision reason.
+#
+# XLA breaks the rest of the file's contract too, for an unrelated reason:
+# ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
+# ``(1e-2, 1e-2)`` whenever either tensor sits on an XLA device (see ``testing/base.py``). On
+# TPU, then, no tolerance below asserts what it derives -- _FORWARD_ATOL's 5e-4 is loosened
+# past a U/V row swap, and _ROUND_TRIP_TOL[bfloat16]'s (8e-3, 1.5e-2) is *tightened* below
+# the error it budgets for. That is a harness-wide gap rather than a YUV one, and no TPU runs
+# in CI, so nothing here is skipped for it.
+REAL_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: p["device_name"] not in ("mps", "tpu"), reason="this device does not compute in float64"
+)
 
 
 def _unit_atol(base: float, dtype: torch.dtype) -> float:
@@ -623,6 +623,7 @@ class TestYuvToRgb(BaseTester):
 
         self.assert_close(kornia.color.yuv_to_rgb(yuv), expected, atol=0.0, rtol=0.0)
 
+    @REAL_FLOAT64
     def test_convention_yuv_to_rgb_inverts_rgb_to_yuv_4044(self, device):
         # Regression for kornia#4044. Two cells, both in float64 so a failure cannot be a
         # precision artefact:
@@ -636,8 +637,6 @@ class TestYuvToRgb(BaseTester):
         #   torch.linalg.inv(torch.tensor(K, dtype=torch.float64))[2, 1]  # -> 2.0319996843434343
         # 1e-12 sits four orders above the float64 noise floor of a 3x3 matmul (1.1e-16 measured)
         # and nine orders below the 1.356e-3 defect being excluded.
-        _skip_without_real_float64(device)
-
         rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
         assert (rgb_back - rgb).abs().max().item() < 1e-12

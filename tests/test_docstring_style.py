@@ -162,10 +162,11 @@ def test_converted_object_has_docstring(qualified: str) -> None:
     )
 
 
+@pytest.mark.applies_to(
+    when=lambda p: p["qualified"] not in SEE_ALSO_EXCEPTIONS, reason="excepted: listed in SEE_ALSO_EXCEPTIONS"
+)
 @pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
 def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
-    if qualified in SEE_ALSO_EXCEPTIONS:
-        pytest.skip(f"excepted: {SEE_ALSO_EXCEPTIONS[qualified]}")
     doc = own_docstring(obj)
     entries = see_also_entries(doc)
     target = status_target(doc)

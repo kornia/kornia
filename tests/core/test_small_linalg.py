@@ -171,14 +171,13 @@ class TestAdjugateKernels(BaseTester):
         )
         self.assert_close(det, torch.linalg.det(x.to(ref_dtype)).to(dtype), atol=tol, rtol=tol)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_adjugate_identity_is_exact_on_integral_float64(self, device, n):
         # A @ adj(A) == det(A) * I holds identically. Small integers held in float64 make every
         # intermediate exactly representable, so this is an equality, not a tolerance -- and it
         # is the only check here that exercises the float64 path against something other than a
         # same-precision torch.linalg call, which would be no reference at all.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         values = torch.arange(1, n * n + 1, device=device, dtype=torch.float64).reshape(n, n)
         x = values + torch.eye(n, device=device, dtype=torch.float64) * (n * n)
         adj, det = ADJUGATE[n](x)

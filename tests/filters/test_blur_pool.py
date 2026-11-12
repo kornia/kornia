@@ -49,6 +49,7 @@ class _FunctionalBlurPool(torch.nn.Module):
 
 
 class TestBlurPoolLegacyONNX(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
     @pytest.mark.parametrize("as_module", [True, False])
@@ -56,8 +57,6 @@ class TestBlurPoolLegacyONNX(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 4])
     def test_export_matches_eager(self, dtype, pool, as_module, dynamic, kernel_size):
         """Pin legacy export and runtime behavior for every blur-pool caller (#5753)."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         module, function = {
@@ -91,13 +90,12 @@ class TestBlurPoolLegacyONNX(BaseTester):
             actual = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
             self.assert_close(actual, model(image))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("pool", ["blur", "max", "edge"])
     @pytest.mark.parametrize("as_module", [True, False])
     def test_torch_export_dynamic_channels(self, dtype, pool, as_module):
         """The tracing-only channel conversion preserves symbolic channels in torch.export."""
-        if dtype != torch.float32:
-            pytest.skip("the exported graph is checked once, in float32")
         if not dynamic_export_is_available():
             pytest.skip("named dynamic export is unavailable on this Torch/Python pair")
         module, function = {

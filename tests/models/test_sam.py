@@ -190,9 +190,11 @@ class TestSam(BaseTester):
         with pytest.raises(BaseError, match="needs a model_type"):
             Sam.from_config(config)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_positional_encoding_keeps_float32_precision(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder: 256-dimensional embeddings, so 128 random frequencies drawn from N(0, 1).
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device)
@@ -213,9 +215,8 @@ class TestSam(BaseTester):
         self.assert_close(dense, reference((64, 64)).to(dtype))
         self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_positional_encoding_of_a_float64_model_is_float64(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device=device, dtype=torch.float64)
         pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator, dtype=torch.float64))
@@ -234,9 +235,11 @@ class TestSam(BaseTester):
         # The same encoding computed in float32 is off by about 1e-6, so the comparison above can tell them apart.
         assert (closed_form(torch.float32) - dense).abs().max() > 1e-8
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_prompt_encoder_shifts_to_pixel_centres_in_float32(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder for a 1024 x 1024 input and a 64 x 64 embedding (``_build_sam``).
         encoder = PromptEncoder(256, (64, 64), (1024, 1024), mask_in_chans=16).to(device=device, dtype=dtype)
         seen = []

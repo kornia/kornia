@@ -94,10 +94,12 @@ class TestNamedPose(BaseTester):
             b_from_a.pose.matrix(), NamedPose.from_rt(So3.from_matrix(rotation), translation).pose.matrix()
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="torch.complex has no bfloat16 overload, so So2 cannot be built at all",
+    )
     @pytest.mark.parametrize("batch_size", [None, 1, 2])
     def test_from_rt_tensor_batch_2d(self, device, dtype, batch_size):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
         batch_shape = () if batch_size is None else (batch_size,)
         rotation = So2.random(batch_size, device=device, dtype=dtype).matrix()
         translation = torch.rand(*batch_shape, 2, device=device, dtype=dtype)
@@ -287,9 +289,8 @@ class TestNamedPoseConventions(BaseTester):
         low = dtype in (torch.float16, torch.bfloat16)
         self.assert_close(a_from_b.pose.matrix(), expected, low_tolerance=low)
 
+    @pytest.mark.applies_to(dtypes=("float16", "float32", "float64"), reason="torch.complex has no bfloat16 overload")
     def test_convention_named_pose_se2_composition_and_inverse(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload")
         # The Se2 half of the block: two non-commuting planar poses (M1 M2 != M2 M1 by 0.611), neither the identity.
         g1 = Se2.exp(torch.tensor([0.5, -1.0, 0.3], device=device, dtype=dtype))
         g2 = Se2.exp(torch.tensor([-0.2, 0.4, -0.7], device=device, dtype=dtype))
@@ -326,9 +327,11 @@ class TestNamedPoseConventions(BaseTester):
         )
         self.assert_close(a_from_b.pose.matrix(), expected_inv)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"),
+        reason="torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all",
+    )
     def test_named_pose_rejects_wrong_types_4937(self, device, dtype):
-        if dtype == torch.bfloat16:
-            pytest.skip("torch.complex has no bfloat16 overload, so So2 (and an Se2 pose) cannot be built at all")
         # https://github.com/kornia/kornia/issues/4937: the pose type is checked at construction, and composing poses
         # of different groups, or a NamedPose with something else, raises a TypeError that names the offending type.
         g1, _ = self._poses(device, dtype)

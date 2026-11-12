@@ -795,6 +795,7 @@ def _plane_with_fixed_sign_6213(points, reference):
 class TestFitPlaneGradient(BaseTester):
     """``fit_plane``'s gradient is finite when the two in-plane singular values are equal (#6213)."""
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize(
         "rows, cols, posed, noise",
         [(5, 5, True, 0.0), (7, 7, True, 0.0), (2, 2, False, 0.0), (3, 3, False, 0.0), (4, 6, True, 0.0)]
@@ -804,8 +805,6 @@ class TestFitPlaneGradient(BaseTester):
         # torch's SVD backward divides by s_i^2 - s_j^2 for every pair, so the bit-equal in-plane singular values of
         # these square boards made every entry of the gradient NaN, although the normal is well defined. Which boards
         # tie exactly depends on the SVD backend. With noise, s_min is not zero.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         points = _board_6213(rows, cols, device, posed=posed)
         if noise:
             g = torch.Generator().manual_seed(0)
@@ -829,10 +828,9 @@ class TestFitPlaneGradient(BaseTester):
             )
         self.assert_close(jac, torch.stack(columns, -1), atol=1e-6, rtol=1e-6)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_axis_aligned_in_plane_pair_has_first_and_second_derivatives_6213(self, device):
         # (+-1, 0, 0), (0, +-1, 0) make the in-plane singular values equal by construction, on every SVD backend.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         points = torch.tensor([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]], device=device)
         points = points.to(torch.float64)
         reference = fit_plane(Vector3(points)).normal.data.detach()
@@ -840,15 +838,15 @@ class TestFitPlaneGradient(BaseTester):
         p = points.clone().requires_grad_(True)
         assert torch.autograd.gradgradcheck(lambda p: _plane_with_fixed_sign_6213(p, reference), (p,))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_batched_square_boards_6213(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         board = _board_6213(5, 5, device)
         points = torch.stack([board, board * 2, board + 1.0, board.flip(0)]).requires_grad_(True)
         plane = fit_plane(Vector3(points))
         (plane.normal.data.sum() + plane.offset.data.sum()).backward()
         assert torch.isfinite(points.grad).all()
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize(
         "points_dtype, scale",
         [(torch.float32, 1e-20), (torch.float32, 1e22), (torch.float64, 1e-160), (torch.float64, 1e160)],
@@ -856,8 +854,6 @@ class TestFitPlaneGradient(BaseTester):
     def test_extreme_coordinates_keep_the_normal_and_a_finite_gradient_6213(self, device, points_dtype, scale):
         # X^T X overflows or underflows near the square root of the dtype's range, where the SVD still works: the
         # gradient path must not turn the normal into NaN, and its gradient must stay right.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         board = _board_6213(5, 5, device, dtype=points_dtype)
         points = (board * scale).requires_grad_(True)
         plane = fit_plane(Vector3(points))
@@ -893,11 +889,10 @@ class TestFitPlaneGradient(BaseTester):
         self.assert_close(plane_grad.normal.data.detach(), plane.normal.data, rtol=0, atol=0)
         self.assert_close(plane_grad.offset.data.detach(), plane.offset.data, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_float32_gradient_of_a_thin_strip_keeps_the_float64_accuracy_6213(self, device):
         # X^T X squares the condition number of the centred points: the gradient is computed in the SVD's float64,
         # where float32 would leave this 2 m x 1 mm strip's gradient 2e-1 off instead of 4e-5.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 
         g = torch.Generator().manual_seed(0)

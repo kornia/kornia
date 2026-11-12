@@ -84,10 +84,12 @@ class TestTransformPoints(BaseTester):
         assert result.dtype == dtype
         self.assert_close(result, expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
     def test_integer_operands_take_the_default_dtype(self, default_dtype, device):
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         # w = 2 halves the coordinates, which an integer result would truncate.
         halve = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 2]], device=device)
         pixels = torch.tensor([[[3, 4], [1, 7]]], device=device)
@@ -221,12 +223,14 @@ class TestTransformPoints(BaseTester):
         expected = op(transform, points)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and torch.float64 in (p["trans_dtype"], p["points_dtype"])),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("trans_dtype", [torch.float16, torch.float32, torch.float64])
     @pytest.mark.parametrize("points_dtype", [torch.float16, torch.float32, torch.float64])
     def test_mixed_dtypes(self, device, trans_dtype, points_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705
-        if device.type == "mps" and torch.float64 in (trans_dtype, points_dtype):
-            pytest.skip("MPS does not support float64")
         points_src = torch.rand(2, 3, 2, device=device, dtype=points_dtype)
         trans = kornia.core.ops.eye_like(3, points_src).to(trans_dtype)
         out = kgl.transform_points(trans, points_src)
@@ -249,14 +253,16 @@ class TestTransformPointsAutocast(BaseTester):
         points = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)) * 256
         return homography.to(device=device, dtype=dtype), points.to(device=device, dtype=dtype)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["input_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_region_does_not_change_the_points_6601(self, input_dtype, autocast_dtype, device):
         # float32 ran the bmm in the autocast dtype and came back in float32, up to 1.36 px off in bfloat16 and 0.18 in
         # float16. Autocast does not cast float64, so that result never changed.
         skip_unsupported_autocast(device, autocast_dtype)
-        if device.type == "mps" and input_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         homography, points = self._inputs(device, input_dtype)
         expected = kgl.transform_points(homography, points)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -280,6 +286,10 @@ class TestTransformPointsAutocast(BaseTester):
             actual = kgl.transform_points(homography, points)
         self.assert_close(actual, expected, rtol=0, atol=1e-3)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and torch.float64 in (p["matrix_dtype"], p["points_dtype"])),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         "matrix_dtype,points_dtype",
         [(torch.float32, "half"), ("half", torch.float32), ("half", torch.float64), (torch.float64, "half")],
@@ -291,8 +301,6 @@ class TestTransformPointsAutocast(BaseTester):
         # The ``to`` before the product already gives both operands the matrix's dtype, so the guard needs no
         # reconciliation, unlike the warps of #6573: a mix that autocast ran still runs.
         skip_unsupported_autocast(device, autocast_dtype)
-        if device.type == "mps" and torch.float64 in (matrix_dtype, points_dtype):
-            pytest.skip("MPS does not support float64")
         half = getattr(torch, autocast_dtype)
         homography, points = self._inputs(device)
         homography = homography.to(half if matrix_dtype == "half" else matrix_dtype)
@@ -352,11 +360,13 @@ class TestTransformPointsAutocast(BaseTester):
         scripted = torch.jit.script(kgl.transform_points)
         self.assert_close(scripted(homography, points), kgl.transform_points(homography, points))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="a scripted call keeps the caller's precision; test_still_scriptable_6601 covers TorchScript",
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_dynamo_in_a_region_6601(self, autocast_dtype, device, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("a scripted call keeps the caller's precision; test_still_scriptable_6601 covers TorchScript")
         skip_unsupported_autocast(device, autocast_dtype)
         if device.type == "mps":
             pytest.skip("under torch.compile on MPS, a nested autocast(enabled=False) has no effect (#6601)")
@@ -643,9 +653,8 @@ class TestPointsLinesDistances(BaseTester):
         distances = kgl.point_line_distance(pts, lines)
         assert distances.shape == (B, T, N)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_functional(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
         lines = torch.tensor(
             [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
@@ -709,10 +718,12 @@ class TestEuclideanDistance(BaseTester):
         (grad,) = torch.autograd.grad(dst.sum(), pt1)
         assert (grad == 0).all(), grad
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["dist"] ** 2 >= torch.finfo(getattr(torch, p["dtype_name"])).tiny,
+        reason="the squared distance is subnormal in the dtype",
+    )
     @pytest.mark.parametrize("dist", [1e-4, 1e-3, 1e-2, 1.0])
     def test_distance_is_exact(self, device, dtype, dist):
-        if dist**2 < torch.finfo(dtype).tiny:
-            pytest.skip(f"the squared distance {dist**2:g} is subnormal in {dtype}")
         pt1 = torch.zeros(3, device=device, dtype=dtype)
         pt2 = torch.tensor([dist, 0.0, 0.0], device=device, dtype=dtype)
         # relative tolerance only: the default half tolerances would absorb the former bias of up to 1e-3

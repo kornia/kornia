@@ -178,10 +178,9 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 0].max() >= 8 * 5
         assert kpts0[:, 1].max() >= 8 * 9
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_half_model_returns_float32_keypoints(self, device, dtype):
         # R4: bfloat16 keypoints resolve 2 px for x in [256, 512); the any-size slow test failed on that alone.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         model = _loftr_matching_every_cell(device, dtype)
         g = torch.Generator().manual_seed(0)
         image0 = torch.rand(1, 1, 300, 424, generator=g).to(device, dtype)
@@ -194,9 +193,8 @@ class TestLoFTR(BaseTester):
         far = out["keypoints1"][out["keypoints1"][:, 0] > 256, 0]
         assert (far % 2 != 0).any()  # sub-2-px positions exist past 256, which bfloat16 cannot hold
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_position_encoding_growth_preserves_half_dtype(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         position_encoding = PositionEncodingSine(4, max_shape=(2, 2)).to(device, dtype)
         features = torch.zeros(1, 4, 3, 3, device=device, dtype=dtype)
 
@@ -865,9 +863,8 @@ class TestCoarseMatchingSelection(BaseTester):
             (grad_expected,) = torch.autograd.grad(prob, reference)
             self.assert_close(grad, grad_expected.to(device=device, dtype=dtype), rtol=1e-2, atol=1e-7)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
     def test_long_column_softmax_autocast(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 autocast regression runs on CPU and CUDA")
         # Float32 features can still produce float16 similarities under autocast.
         cm = CoarseMatching(self.CFG).to(device).eval()
         feat0 = torch.zeros(1, 65536, 2, device=device, dtype=torch.float32)
@@ -878,9 +875,8 @@ class TestCoarseMatchingSelection(BaseTester):
         expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=_autocast_softmax_dtype(device))
         self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
     def test_temperature_scaling_autocast(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 autocast regression runs on CPU and CUDA")
         cm = CoarseMatching(self.CFG).to(device).eval()
         feat0 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32, requires_grad=True)
         feat1 = torch.full((1, 1, 2), 10000.0, device=device, dtype=torch.float32, requires_grad=True)
@@ -1281,16 +1277,17 @@ class TestConventionsLoFTR(BaseTester):
         self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
         assert out["batch_indexes"].tolist() == batches
 
+    # The attention multiplies features by the mask, and float16 * bfloat16 promotes to float32, which the
+    # float16 projections reject. Masks are passed in the model dtype; that older limit is not tested here.
+    @pytest.mark.applies_to(
+        when=lambda p: p["dtype_name"] != "float16", reason="a bfloat16 mask needs a model dtype it promotes into"
+    )
     @pytest.mark.parametrize("wide", [0, 1])
     @pytest.mark.parametrize("side", [0, 1])
     def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, wide, monkeypatch):
         # Integer counting gives 257 columns; a bfloat16 sum rounds it to 256 and wrongly rejects column 254.
         # The 257-column image is either the masked one or the unmasked one, whose all-valid mask LoFTR builds.
         # Cached features avoid a wide backbone pass, but the real coarse/fine matcher still chooses the match.
-        if dtype == torch.float16:
-            # The attention multiplies features by the mask, and float16 * bfloat16 promotes to float32, which the
-            # float16 projections reject. Masks are passed in the model dtype; that older limit is not tested here.
-            pytest.skip("a bfloat16 mask needs a model dtype it promotes into")
         monkeypatch.setattr(self, "_PAIRS", {0: [((3, 254), (3, 3), 16.0, (2, 2))]})
         sample = {}
         widths = [257 if current == wide else 8 for current in (0, 1)]

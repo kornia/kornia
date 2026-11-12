@@ -869,14 +869,13 @@ class TestFilter3D(BaseTester):
 
 
 class TestFilter2D_fftconv(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="checks the float16 and bfloat16 path")
     @pytest.mark.parametrize("size", [(50, 50), (40, 45)])
     def test_half_input_is_transformed_in_float32(self, size, device, dtype):
         """A half input returns the float32 result for the same values, cast back to the input dtype.
 
         With a 15 x 15 kernel the padded sizes are 64 x 64, a power of two, and 54 x 59, which is not.
         """
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("checks the float16 and bfloat16 path")
         generator = torch.Generator().manual_seed(0)
         sample = torch.rand(2, 3, *size, generator=generator).to(device, dtype)
         kernel = torch.rand(1, 15, 15, generator=generator).to(device, dtype)
@@ -2379,13 +2378,14 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel3d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="an angle 1e-4 degrees from a tie is not representable in half precision"
+    )
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_convention_motion_kernel3d_nearest_next_to_a_tie_is_rotate3d_5510(self, kernel_size, device, dtype):
         """1e-4 degrees from a tie, the taps are rotate3d()'s: only an exact tie is snapped (#5510)."""
         from kornia.geometry.transform import rotate3d
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
         ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
         near = torch.cat([ties - 1e-4, ties + 1e-4])
         zero = torch.zeros_like(near)
@@ -2629,13 +2629,14 @@ class TestConventionsKernels(BaseTester):
         get_motion_kernel2d(5, angle, torch.tensor([0.3, -0.3], device=device, dtype=dtype)).sum().backward()
         self.assert_close(angle.grad, torch.zeros_like(angle))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="an angle 1e-4 degrees from a tie is not representable in half precision"
+    )
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_convention_motion_kernel2d_nearest_next_to_a_tie_is_rotate_5181(self, kernel_size, device, dtype):
         """1e-4 degrees from a tie, the taps are rotate()'s: only an exact tie is snapped (#5181)."""
         from kornia.geometry.transform import rotate
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("an angle 1e-4 degrees from a tie is not representable in half precision")
         ties = torch.tensor([30.0, 60.0, 120.0, 150.0, 210.0, 240.0, 300.0, 330.0], dtype=torch.float64)
         angle = torch.cat([ties - 1e-4, ties + 1e-4]).to(device=device, dtype=dtype)
         # 1e-4 degrees moves a source more than 1e-6 px off the half: rotate() in float64 resolves it, and so must

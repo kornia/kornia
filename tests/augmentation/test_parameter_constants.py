@@ -30,6 +30,10 @@ from testing.base import BaseTester
 
 
 class TestSamplerBoundsPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64 range normalization.",
+    )
     @pytest.mark.parametrize(
         "make_generator,ranges,sampler_name,expected",
         [
@@ -89,8 +93,6 @@ class TestSamplerBoundsPrecision(BaseTester):
         self, make_generator, ranges, sampler_name, expected, tensor_ranges, default_dtype, device, dtype
     ):
         # Exercise the float64 ambient default only on backends that support that precision.
-        if device.type == "mps" and default_dtype == torch.float64:
-            pytest.skip("MPS does not support float64 range normalization.")
         if tensor_ranges:
             ranges = {name: torch.tensor(value, device=device, dtype=dtype) for name, value in ranges.items()}
         previous_dtype = torch.get_default_dtype()
@@ -152,10 +154,9 @@ class TestParameterConstants(BaseTester):
         lifted = [node for node in graph.nodes if node.target == torch.ops.aten.lift_fresh_copy.default]
         assert not lifted, f"Forward lifted fresh tensor constants: {lifted}"
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     @pytest.mark.parametrize("moved", [False, True])
     def test_dynamo_transfer(self, make_generator, shape, moved, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
         generator = make_generator()
         if moved and isinstance(generator, torch.nn.Module):
             generator.to(device=device, dtype=dtype)
@@ -194,11 +195,10 @@ AUGMENTATIONS = [
 
 
 class TestAugmentationConstantTransfer(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     @pytest.mark.parametrize("make_aug,shape", AUGMENTATIONS)
     @pytest.mark.parametrize("moved", [False, True])
     def test_dynamo_replay(self, make_aug, shape, moved, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
         aug = make_aug()
         if moved:
             aug.to(device=device, dtype=dtype)
@@ -276,10 +276,8 @@ class TestConstantTensor(BaseTester):
         targets = [node.target for node in graph.nodes if node.op == "call_function"]
         assert targets.count(torch.ops.aten.full.default) == 3
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     def test_dynamo_dynamic_size(self, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
-
         def dimensions(input):
             return (
                 _constant_tensor([input.shape[-1] - 1, input.shape[-2] - 1], dtype=input.dtype).to(input) + input.sum()
@@ -360,7 +358,7 @@ class TestCenterCrop3DEmptyBatch(BaseTester):
             assert empty[name].dtype == value.dtype
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="Synchronization debugging requires CUDA")
+@pytest.mark.applies_to(devices=("cuda",), reason="Synchronization debugging requires CUDA")
 class TestCudaParameterSync(BaseTester):
     @pytest.mark.parametrize(
         "make_generator",
@@ -370,8 +368,6 @@ class TestCudaParameterSync(BaseTester):
         ],
     )
     def test_no_host_device_sync(self, make_generator, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("Synchronization debugging requires CUDA")
         generator = make_generator(device).to(device=device, dtype=dtype)
         generator((4, 3, 16, 19))
         torch.cuda.set_sync_debug_mode("error")

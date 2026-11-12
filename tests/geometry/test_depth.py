@@ -369,11 +369,12 @@ class TestDepthTo3d(BaseTester):
         assert torch.equal(depth_to_3d(depth, camera_matrix), depth_to_3d(reference, camera_matrix))
         assert torch.equal(depth_to_3d_v2(depth[:, 0], camera_matrix), depth_to_3d_v2(reference[:, 0], camera_matrix))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="float64 default dtype, which MPS does not compute in"
+    )
     def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device):
         # Both inputs integer: promote_types does not support the unsigned/signed pair, so the grid falls back
         # to the default floating dtype instead of raising. MPS cannot compute in float64.
-        if device.type == "mps":
-            pytest.skip("float64 default dtype, which MPS does not compute in")
         depth = torch.full((1, 1, 2, 3), 2, device=device, dtype=torch.uint16)
         camera_matrix = torch.tensor([[[100, 0, 4], [0, 100, 3], [0, 0, 1]]], device=device, dtype=torch.int32)
         previous_dtype = torch.get_default_dtype()
@@ -1429,11 +1430,13 @@ class TestDepthFromDisparity(BaseTester):
             torch.full((1, 1, 1, 1), 25.0, device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"),
+        reason="float16: the far depth of a zero disparity, 0.5 * 100 / 2**-24, is past the float16 range",
+    )
     def test_convention_zero_disparity_warps_as_a_point_at_infinity_4272(self, device, dtype):
         # kornia#4272 (kept by ruling): the far depth of a zero disparity sends warp_frame_depth along the
         # rotation-only homography K R K^-1, the limit for a point at infinity; an inf depth would give NaN.
-        if dtype == torch.float16:
-            pytest.skip("float16: the far depth of a zero disparity, 0.5 * 100 / 2**-24, is past the float16 range")
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -1715,14 +1718,16 @@ class TestDepthFromPlaneEquation(BaseTester):
         )
         self.assert_close(tilted, torch.tensor([[2.2360679774997896, 1.4907119849998598]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"),
+        reason="float16: eps is floored at 2**-24 and 2 / 2**-24 is past the float16 range: the depth is inf",
+    )
     def test_convention_depth_from_plane_equation_clamps_a_tiny_denominator(self, device, dtype):
         # A ray-plane dot product inside (-eps, eps) is clamped to +/- eps with its sign kept, so a nearly grazing
         # ray returns a large SIGNED finite depth (2 / 1e-8 = 2e8); eps is passed explicitly, and eps = 1e-6 gives
         # 2e6. An exact zero is covered by the #4280 pin below.
         # Snippet used to generate expected: depth_from_plane_equation([[0, 1, 2.384185791015625e-09]], [[2.0]],
         # [[[4.0, 3.0]]], K, eps=1e-8) and the negated normal
-        if dtype == torch.float16:
-            pytest.skip("float16: eps is floored at 2**-24 and 2 / 2**-24 is past the float16 range: the depth is inf")
         camera_matrix = _k_asymmetric(device, dtype)
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         principal_point = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
@@ -1736,11 +1741,12 @@ class TestDepthFromPlaneEquation(BaseTester):
         wider = depth_from_plane_equation(normal, offsets, principal_point, camera_matrix, eps=1e-6)
         self.assert_close(wider, torch.full((1, 1), 2.0e6, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"), reason="float16: 2e8 overflows the float16 range"
+    )
     def test_convention_depth_from_plane_equation_clamps_the_singularity_4280(self, device, dtype):
         # kornia#4280: an exactly zero denominator is replaced by POSITIVE eps, so the grazing ray returns +2e8 for
         # either sign of the normal.
-        if dtype == torch.float16:
-            pytest.skip("float16: 2e8 overflows the float16 range")
         camera_matrix = _k_asymmetric(device, dtype)
         for sign in (1.0, -1.0):
             grazing = depth_from_plane_equation(

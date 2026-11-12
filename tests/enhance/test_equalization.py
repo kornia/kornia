@@ -252,14 +252,15 @@ class TestEqualization(BaseTester):
         assert out.shape == img.shape
         assert torch.isfinite(out).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="1.0000001 and -1e-7 round to 1 and 0 in half precision"
+    )
     def test_histogram_skips_out_of_range(self, device, dtype):
         # Like torch.histc on CPU, _tiles_histc counts only values inside [0, 1]. 1.0000001 and -1e-7 are inside the
         # window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's torch.histc counts them, so
         # this also pins CPU/MPS parity. With 4 bins a value is counted in (x * 3).long(): 0.5 in 1 and 0.25 in 0.
         from kornia.enhance.equalization import _tiles_histc
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("1.0000001 and -1e-7 round to 1 and 0 in half precision")
         tiles = torch.tensor([[0.5, 1.0000001, -1e-7, 0.25]], device=device, dtype=dtype)
         expected = torch.tensor([[1.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
         self.assert_close(_tiles_histc(tiles, 4), expected)
@@ -669,12 +670,11 @@ class TestEqualization(BaseTester):
         flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
         self.assert_close(flipped, out.flip(dim))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_clahe_slow_path_does_not_depend_on_the_default_dtype_6366(self, device, dtype):
         # Differentiable CLAHE takes its bin centres and 0.001 bandwidth from the tile dtype, so
         # torch.set_default_dtype(torch.float64) must not change the output (#6366). The image is the
         # 2x3x32x40 seed-10 case from that report, cast to the parametrized dtype.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         x = torch.rand(2, 3, 32, 40, generator=torch.Generator().manual_seed(10), dtype=torch.float64).to(device, dtype)
         out = enhance.equalize_clahe(x, slow_and_differentiable=True)
         previous = torch.get_default_dtype()

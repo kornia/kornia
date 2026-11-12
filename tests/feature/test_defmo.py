@@ -64,6 +64,9 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
             out = mod(latent)
         assert out.dtype == torch.float16
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="checksum pinned on CPU; cross-device float summation can differ further"
+    )
     def test_matches_pre_fix_output_in_the_normal_float32_path(self, device):
         # behaviour-preserving: pinned against the pre-fix module (plain `self.times`
         # attribute, `.to(latent.device)`-only) with the same seed and input -- confirmed
@@ -74,8 +77,6 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
         # a ~1.6e-8 relative difference -- ordinary floating-point non-associativity, not
         # a behavioral change). rel=1e-3 keeps ~1000x margin above that while still
         # catching a real regression, which would produce a very different value.
-        if device.type != "cpu":
-            pytest.skip("checksum pinned on CPU; cross-device float summation can differ further")
         torch.manual_seed(0)
         mod = RenderingDeFMO().to(device).eval()
         latent = torch.rand(1, 2048, 4, 4, device=device)

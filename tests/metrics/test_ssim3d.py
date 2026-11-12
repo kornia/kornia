@@ -75,9 +75,8 @@ class TestSSIM3d(BaseTester):
         expected = torch.full_like(actual, (2 * 128 * 64 + c1) / (128**2 + 64**2 + c1))
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="Float64 reference is unsupported on MPS")
     def test_pixel_range_gradients(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("Float64 reference is unsupported on MPS")
         img1 = torch.arange(5**3, device=device, dtype=dtype).reshape((1, 1) + (5,) * 3) % 17 * 15
         img2 = (img1.flip(-1) * 0.8).detach().requires_grad_()
         img1 = img1.detach().requires_grad_()
@@ -91,9 +90,8 @@ class TestSSIM3d(BaseTester):
             assert torch.isfinite(actual_grad).all()
             self.assert_close(actual_grad, reference_grad.to(dtype), rtol=2e-2, atol=1e-5)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Autocast regression covers CPU and CUDA backends")
     def test_autocast_dynamic_range(self, device, dtype):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Autocast regression covers CPU and CUDA backends")
         img1 = torch.arange(8**3, device=device, dtype=dtype).reshape((1, 1) + (8,) * 3) % 17 * 15
         img2 = img1.flip(-1) * 0.8
         expected = kornia.metrics.ssim3d(img1.double(), img2.double(), 3, max_val=255.0).to(dtype)
@@ -268,11 +266,10 @@ class TestSSIM3d(BaseTester):
         tolerance = {"rtol": 1e-12, "atol": 1e-12} if dtype == torch.float64 else {}
         self.assert_close(actual, expected, **tolerance)
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="the pair needs a float64 argument")
     def test_mixed_float32_float64_pair_is_computed_in_float64(self, device, dtype):
         # A float32/float64 pair is filtered in float64, the result dtype, with a float64 window, whichever argument
         # is the float32 one, so it equals the all-float64 result to roundoff (#5534).
-        if dtype != torch.float64:
-            pytest.skip("the pair needs a float64 argument")
         generator = torch.Generator().manual_seed(0)
         img1 = torch.rand(1, 2, 6, 7, 9, generator=generator).to(device)
         img2 = torch.rand(1, 2, 6, 7, 9, generator=generator, dtype=torch.float64).to(device)
@@ -349,12 +346,13 @@ class TestConventionsSSIM3D(BaseTester):
         self.assert_close(same, padded("reflect"))
         assert (same - padded("replicate")).abs().max() > 0.1
 
+    @pytest.mark.applies_to(
+        dtypes=("float64",), reason="the input window dtype differs from float32 only for float64 inputs"
+    )
     def test_convention_ssim3d_window_uses_input_dtype_5534(self, device, dtype):
         """ssim3d builds its Gaussian window in the input dtype (#5534)."""
         # A float64 ssim3d equals a float64 SSIM computed with a float64 window, rather than a float32-rounded one.
         # The comparison runs on the valid voxels.
-        if dtype != torch.float64:
-            pytest.skip("the input window dtype differs from float32 only for float64 inputs")
         g = torch.Generator().manual_seed(0)
         x = torch.rand(1, 1, 6, 7, 9, generator=g, dtype=torch.float64).to(device)
         y = torch.rand(1, 1, 6, 7, 9, generator=g, dtype=torch.float64).to(device)

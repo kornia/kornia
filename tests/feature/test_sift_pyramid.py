@@ -81,9 +81,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert empty_lafs.shape == (2, 0, 2, 3)
         assert empty_descriptors.shape == (2, 0, 128)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_identity_remap_keeps_histogram_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         histograms = torch.rand(1, 3, 8, 5, device=device, dtype=torch.float64)
         affine = torch.eye(2, device=device, dtype=torch.float64).expand(1, 3, 2, 2)
         remapped = SIFTDescriptorFromPyramid._remap_angles(histograms, affine, 8)
@@ -99,9 +98,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=1e-2
         )
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_vertical_gradient_orientation_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         # The peak lands on orientation bin 9 of 36, so the bin-to-angle scale decides the angle; the
         # horizontal case above sits on bin 0 and cannot see it.
         image = torch.arange(64, device=device, dtype=torch.float64).reshape(1, 1, 64, 1).expand(1, 1, 64, 64)

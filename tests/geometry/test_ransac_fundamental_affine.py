@@ -71,16 +71,17 @@ def _tol(dtype: torch.dtype) -> Dict[str, float]:
     return {"rtol": 1e-7, "atol": 1e-9} if dtype == torch.float64 else {"rtol": 5e-5, "atol": 1e-7}
 
 
-def _skip_half(dtype: torch.dtype) -> None:
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("half precision rounds the fixture's pixel coordinates to steps of 0.125 to 0.25")
+FULL_PRECISION_FIXTURE = pytest.mark.applies_to(
+    dtypes=("float32", "float64"),
+    reason="half precision rounds the fixture's pixel coordinates to steps of 0.125 to 0.25",
+)
 
 
 class TestRANSACFundamentalAffine(BaseTester):
+    @FULL_PRECISION_FIXTURE
     @pytest.mark.parametrize("score_type", ["ransac", "msac"])
     @pytest.mark.parametrize("lo_sample_size", [None, 8])
     def test_inliers_and_model_with_outliers(self, device, dtype, score_type, lo_sample_size):
-        _skip_half(dtype)
         x1, x2, expected = _with_outliers(device, dtype)
         estimator = RANSAC(
             "fundamental_affine",
@@ -98,9 +99,9 @@ class TestRANSACFundamentalAffine(BaseTester):
         assert not model[:2, :2].any()
         self.assert_close(model, expected, **_tol(dtype))
 
+    @FULL_PRECISION_FIXTURE
     @pytest.mark.parametrize("lo_sample_size", [None, 8])
     def test_refit_gives_the_gold_standard_of_the_inliers(self, device, dtype, lo_sample_size):
-        _skip_half(dtype)
         scene = affine_two_view_scene(device, dtype)
         x1, x2, _ = _with_outliers(device, dtype)
         x1[:12] += scene["noise"][0, :, :2]
@@ -123,9 +124,9 @@ class TestRANSACFundamentalAffine(BaseTester):
         _, inliers = RANSAC("fundamental_affine", inl_th=1.0, max_samples=256, seed=0)(x1, x2)
         assert int(inliers.sum()) < 20
 
+    @FULL_PRECISION_FIXTURE
     @pytest.mark.parametrize("image", [1, 2])
     def test_mismatches_along_a_line_do_not_outvote_the_true_geometry(self, device, dtype, image):
-        _skip_half(dtype)
         x1, x2, expected = _with_outliers(device, dtype)
         on_a_line = torch.tensor(_ON_A_LINE, device=device, dtype=dtype)
         scattered = torch.tensor(_SCATTERED, device=device, dtype=dtype)
@@ -138,8 +139,8 @@ class TestRANSACFundamentalAffine(BaseTester):
         assert torch.equal(inliers, torch.arange(40, device=device) < 12)
         self.assert_close(model, expected, **_tol(dtype))
 
+    @FULL_PRECISION_FIXTURE
     def test_true_geometry_that_spreads_little_is_kept(self, device, dtype):
-        _skip_half(dtype)
         x1, x2, F = _with_outliers(device, dtype)
         # View 2 shrunk 20 times about (300, 260), as a far smaller-scale image would be. Over the keypoints, the
         # true matrix's two terms of the distance vary by 3.7 and 4.9 px (standard deviations): a check at four
@@ -159,8 +160,8 @@ class TestRANSACFundamentalAffine(BaseTester):
         assert torch.equal(inliers, torch.arange(20, device=device) < 12)
         self.assert_close(model, expected, **_tol(dtype))
 
+    @FULL_PRECISION_FIXTURE
     def test_nonfinite_correspondences_are_outliers(self, device, dtype):
-        _skip_half(dtype)
         x1, x2, expected = _with_outliers(device, dtype)
         # Copies of five true correspondences, three with a NaN point in image 1 and two with an infinite coordinate
         # in image 2. Most samples draw one of them, and the keypoints' spread includes them.
@@ -171,8 +172,8 @@ class TestRANSACFundamentalAffine(BaseTester):
         assert torch.equal(inliers, torch.arange(25, device=device) < 12)
         self.assert_close(model, expected, **_tol(dtype))
 
+    @FULL_PRECISION_FIXTURE
     def test_threshold_is_the_geometric_distance(self, device, dtype):
-        _skip_half(dtype)
         x1, x2, _ = _with_outliers(device, dtype)
         # Moves of x2 along the epipolar lines' normal (a, b) by which the correspondence is 0.75 px and 1.5 px from
         # the nearest pair of corresponding points (the four-dimensional distance, which the Sampson distance of an

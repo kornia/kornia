@@ -490,9 +490,8 @@ class TestDistortionKannalaBrandt(BaseTester):
             torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float16",), reason="CPU float16 near-origin regression")
     def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
-        if device.type != "cpu" or dtype != torch.float16:
-            pytest.skip("CPU float16 near-origin regression")
         params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
         point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
         undistorted = undistort_points_kannala_brandt(point, params)

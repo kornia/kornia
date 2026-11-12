@@ -40,9 +40,11 @@ LARGE = (2, 21, 128, 128)
 ELIGIBLE = (2, 21, 32, 40)
 
 
-def _require_native_cpu(device: torch.device, dtype: torch.dtype) -> None:
-    if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-        pytest.skip("the CPU one-hot-free Dice path supports native CPU float32 and float64 only")
+NATIVE_CPU = pytest.mark.applies_to(
+    devices=("cpu",),
+    dtypes=("float32", "float64"),
+    reason="the CPU one-hot-free Dice path supports native CPU float32 and float64 only",
+)
 
 
 def _inputs(shape, device, dtype, ignore_index: Optional[int] = -100, seed: int = 0):
@@ -112,10 +114,10 @@ class TestDiceLossCpu(BaseTester):
         assert torch.equal(actual.isnan(), expected.isnan())
         self.assert_close_scaled(actual.masked_fill(actual.isnan(), 0), expected.masked_fill(expected.isnan(), 0))
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
     def test_large_input_takes_the_cpu_path(self, monkeypatch, average, weighted, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs(LARGE, device, dtype)
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype) if weighted else None
@@ -124,6 +126,10 @@ class TestDiceLossCpu(BaseTester):
             dice_loss(logits.requires_grad_(), labels, average, weight=weight)
         assert calls == [LARGE, LARGE]
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["case"] == "float32-pred-float64-weight" and p["device_name"] == "mps"),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize(
         "case",
         ["small", "float32-pred-float64-weight", "half", "trace", "functorch", "autocast"],
@@ -136,8 +142,6 @@ class TestDiceLossCpu(BaseTester):
         logits, labels = _inputs((1, 21, 32, 32) if case == "small" else LARGE, device, dtype)
         weight = None
         if case == "float32-pred-float64-weight":
-            if device.type == "mps":
-                pytest.skip("MPS has no float64")
             logits, weight = logits.float(), torch.ones(LARGE[1], device=device, dtype=torch.float64)
         if case == "trace":
             torch.jit.trace(lambda x: dice_loss(x, labels), (logits,), check_trace=False)
@@ -151,12 +155,12 @@ class TestDiceLossCpu(BaseTester):
             dice_loss(logits, labels, weight=weight)
         assert calls == []
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
     @pytest.mark.parametrize("ignore_index", [None, -100, 255])
     @pytest.mark.parametrize("eps", [1e-8, 0.0])
     def test_matches_one_hot_target(self, monkeypatch, average, weighted, ignore_index, eps, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs(ELIGIBLE, device, dtype, ignore_index)
         weight = torch.linspace(0.5, 1.5, ELIGIBLE[1], device=device, dtype=dtype) if weighted else None
@@ -166,13 +170,13 @@ class TestDiceLossCpu(BaseTester):
         assert calls == [ELIGIBLE]
         self.assert_values_and_grads_close(actual, expected)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
     def test_large_homogeneous_target_matches_one_hot_target(self, monkeypatch, average, weighted, device, dtype):
         # A CPU scatter_add adds every pixel of a class into one running sum: the macro bins, and the backward of the
         # gather of the class weights. In float32, adding p_t = 0.9 to it 2**18 times gave an intersection of 236,496
         # instead of 235,930, a 4 % loss error.
-        _require_native_cpu(device, dtype)
         calls = _count_calls(monkeypatch)
         logits = torch.zeros(1, 2, 512, 512, device=device, dtype=dtype)
         logits[:, 0] = math.log(9.0)
@@ -183,10 +187,10 @@ class TestDiceLossCpu(BaseTester):
         self.assert_values_and_grads_close(actual, expected)
         assert calls
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("shape", [(21, 1), (21, 1, 1)])
     def test_column_weight_matches_one_hot_target(self, monkeypatch, shape, device, dtype):
         # The weight check accepts one value per class along dim 0 in any shape, and the one-hot micro Dice uses it.
-        _require_native_cpu(device, dtype)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs(LARGE, device, dtype)
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype).reshape(shape)
@@ -195,11 +199,11 @@ class TestDiceLossCpu(BaseTester):
         self.assert_values_and_grads_close(actual, expected)
         assert calls
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
     def test_edge_samples_match_one_hot_target(self, monkeypatch, average, weighted, device, dtype):
         # Sample 0 is fully ignored, sample 1 holds class 0 only, whose weight is 0 when weighted; sample 2 is normal.
-        _require_native_cpu(device, dtype)
         monkeypatch.setattr(dice_module, "_CPU_MIN_NUMEL", 0)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs((3, 4, 5, 6), device, dtype)
@@ -212,10 +216,10 @@ class TestDiceLossCpu(BaseTester):
             self.assert_values_and_grads_close(actual, expected)
         assert calls
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("shape", [(3, 1, 4, 5), (0, 4, 5, 6), (3, 4, 0, 6), (1, 2, 1, 1)])
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_shapes_match_one_hot_target(self, monkeypatch, shape, average, device, dtype):
-        _require_native_cpu(device, dtype)
         monkeypatch.setattr(dice_module, "_CPU_MIN_NUMEL", 0)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs(shape, device, dtype, ignore_index=None)
@@ -225,11 +229,11 @@ class TestDiceLossCpu(BaseTester):
         self.assert_close_scaled(actual[1], expected[1])
         assert calls
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("layout", ["transposed", "channels_last", "sliced"])
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
     def test_strided_inputs_match_one_hot_target(self, monkeypatch, layout, average, weighted, device, dtype):
-        _require_native_cpu(device, dtype)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs(ELIGIBLE, device, dtype)
         if layout == "transposed":
@@ -246,10 +250,10 @@ class TestDiceLossCpu(BaseTester):
         # The gradient keeps the one-hot path's layout.
         assert actual[1].stride() == expected[1].stride()
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("ignore_index", [None, -100])
     def test_non_finite_logits_match_one_hot_target(self, monkeypatch, average, ignore_index, device, dtype):
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype, ignore_index=None)
         # +inf, -inf and NaN logits on a labelled pixel of sample 0; with an ignore index, the same on an ignored one.
         logits[0, 3, 0, 0] = float("inf")
@@ -267,9 +271,9 @@ class TestDiceLossCpu(BaseTester):
         # Sample 1 has finite logits: its gradient is unaffected.
         assert actual[1][1].isfinite().all()
 
+    @NATIVE_CPU
     def test_fused_selection_is_bitwise_the_gather(self, device, dtype):
         # The one-hot comparison that torch.compile fuses selects the same values and gradients as the gather.
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype, ignore_index=None)
         logits[0, :, 0, :4] = float("nan")
         upstream = torch.randn(labels.shape, generator=torch.Generator().manual_seed(1)).to(device=device, dtype=dtype)
@@ -282,9 +286,9 @@ class TestDiceLossCpu(BaseTester):
             assert torch.equal(actual_value.isnan(), expected_value.isnan())
             assert torch.equal(actual_value.nan_to_num(), expected_value.nan_to_num())
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("weighted", [False, True])
     def test_fused_micro_loss_is_bitwise_the_gathered_one(self, monkeypatch, weighted, device, dtype):
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype) if weighted else None
         expected = _value_and_grads(logits, labels, "micro", weight=weight)
@@ -293,10 +297,10 @@ class TestDiceLossCpu(BaseTester):
         for actual_value, expected_value in zip(actual, expected):
             assert torch.equal(actual_value, expected_value)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_gradients_are_deterministic(self, average, device, dtype):
         # As on the one-hot path, repeated calls give the same bits, also for the weight's gradient.
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype)
         first = _value_and_grads(logits, labels, average, weight=weight)
@@ -304,10 +308,10 @@ class TestDiceLossCpu(BaseTester):
             for actual_value, expected_value in zip(_value_and_grads(logits, labels, average, weight=weight), first):
                 assert torch.equal(actual_value, expected_value)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("one_hot_path", [False, True])
     def test_invalid_labels_raise(self, monkeypatch, one_hot_path, device, dtype):
         # The same errors as one_hot's on the one-hot path: negative labels first, then labels past the classes.
-        _require_native_cpu(device, dtype)
         if one_hot_path:
             monkeypatch.setattr(dice_module, "_dice_loss_cpu_eligible", lambda pred, weight: False)
         logits, labels = _inputs(LARGE, device, dtype, ignore_index=None)
@@ -322,9 +326,9 @@ class TestDiceLossCpu(BaseTester):
                     with pytest.raises(RuntimeError, match=message):
                         dice_loss(logits, bad, average, weight=w)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_gradcheck(self, monkeypatch, average, device):
-        _require_native_cpu(device, torch.float64)
         monkeypatch.setattr(dice_module, "_CPU_MIN_NUMEL", 0)
         calls = _count_calls(monkeypatch)
         logits, labels = _inputs((2, 4, 3, 5), device, torch.float64)
@@ -336,9 +340,9 @@ class TestDiceLossCpu(BaseTester):
         assert torch.autograd.gradgradcheck(lambda x: dice_loss(x, labels, average), (logits,))
         assert calls
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_forward_mode_ad_matches_one_hot_target(self, monkeypatch, average, device, dtype):
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         tangent = torch.randn_like(logits)
 
@@ -356,10 +360,10 @@ class TestDiceLossCpu(BaseTester):
         self.assert_close(actual.primal, expected.primal)
         self.assert_close_scaled(actual.tangent, expected.tangent)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_vmap_has_no_user_warning(self, monkeypatch, average, device, dtype):
         # vmap keeps the one-hot target, as on main: the label check has no batching rule.
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         with warnings.catch_warnings(record=True) as recorded:
             warnings.simplefilter("always")
@@ -368,8 +372,8 @@ class TestDiceLossCpu(BaseTester):
         expected = torch.stack([dice_loss(x[None], y[None], average) for x, y in zip(logits, labels)])
         self.assert_close(actual, expected)
 
+    @NATIVE_CPU
     def test_module_and_backward_to_leaf(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype)
         expected = _reference(monkeypatch, logits, labels, "macro", weight=weight)
@@ -379,11 +383,13 @@ class TestDiceLossCpu(BaseTester):
         self.assert_close(loss.detach(), expected[0])
         self.assert_close_scaled(leaf.grad, expected[1])
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="dice_loss is not scriptable: its average check builds a set",
+    )
+    @NATIVE_CPU
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_dynamo_on_an_eligible_input(self, average, device, dtype, torch_optimizer, optimizer_backend):
-        _require_native_cpu(device, dtype)
-        if optimizer_backend == "jit":
-            pytest.skip("dice_loss is not scriptable: its average check builds a set")
         if dtype == torch.float64 and not torch_version_ge(2, 6):
             # On torch 2.5.1 a compiled call keeps the one-hot target (is_exporting() is is_compiling() there), and
             # Inductor cannot compile its float64 backward at this size: "fmadd" has no double-vector overload.
@@ -428,12 +434,15 @@ def _compiled_calls_keep_the_one_hot_target() -> bool:
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestDiceLossCpuCompiledLabels(BaseTester):
+    @pytest.mark.applies_to(
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, in float32",
+    )
+    @NATIVE_CPU
     @pytest.mark.parametrize("average, weighted", [("micro", False), ("micro", True), ("macro", False)])
     @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
     def test_dynamo_invalid_label_raises(self, average, weighted, value, message, device, dtype, optimizer_backend):
-        _require_native_cpu(device, dtype)
-        if dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, in float32")
         if _compiled_calls_keep_the_one_hot_target():
             pytest.skip("this torch release compiles the one-hot path, which does not check labels")
         # The checkout under test, which "-c" imports first from the working directory.
@@ -461,11 +470,11 @@ class TestDiceLossCpuExport(BaseTester):
     # torch.export keeps the one-hot target: the CPU path's size check would become a guard of the exported
     # program, which then fails at run time for logits on the other side of the threshold although its dynamic shapes
     # allow them.
+    @NATIVE_CPU
     @pytest.mark.parametrize(
         "example, other", [((2, 21, 128, 128), (3, 21, 8, 12)), ((2, 21, 8, 8), (3, 21, 160, 170))]
     )
     def test_dynamic_sizes_run_on_both_sides_of_the_threshold(self, example, other, device, dtype):
-        _require_native_cpu(device, dtype)
         dim = torch.export.Dim
         batch, height, width = dim("B", min=1, max=64), dim("H", min=2, max=4096), dim("W", min=2, max=4096)
         dynamic = {"logits": {0: batch, 2: height, 3: width}, "labels": {0: batch, 1: height, 2: width}}

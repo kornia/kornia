@@ -200,9 +200,8 @@ class TestOtsuThreshold(BaseTester):
         assert mask.flatten()[kept]
         assert not mask.flatten()[dropped]
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_float64_threshold_uses_float64_edges_5172(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         # The single split of two bins is the midpoint 0.5 + 2**-31, which float32 rounds to 0.5.
         image = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0 + 2**-30]], device=device, dtype=torch.float64)
         _, threshold = otsu_threshold(image, nbins=2)
@@ -374,11 +373,13 @@ class TestOtsuThreshold(BaseTester):
             expected_edges = torch.linspace(low, high, nbins + 1, device=device, dtype=stats_dtype)
             self.assert_close(edges[i], expected_edges)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="issue fixtures require float32 or float64; dtype extrema are covered separately",
+    )
     @pytest.mark.parametrize("nbins", [2, 256])
     @pytest.mark.parametrize("scale", [1.0, 1e35, 6e35, 7e35, 1e36, 1.6e38, 3.4e38])
     def test_large_finite_range_split_5471(self, scale, nbins, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("issue fixtures require float32 or float64; dtype extrema are covered separately")
         values = (
             [-3.4e38, -1e38, 0.0, 2e38, 3.4e38]
             if scale == 3.4e38
@@ -612,11 +613,15 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         _, threshold = otsu_threshold(x)
         assert not threshold.requires_grad
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["scale_kind"] == "subnormal" and p["device_name"] == "mps" and p["dtype_name"] != "float16")
+        ),
+        reason="MPS flushes float32 and bfloat16 subnormals to zero",
+    )
     @pytest.mark.parametrize("scale_kind", ["large", "small", "subnormal"])
     @pytest.mark.parametrize("signed", [False, True])
     def test_finite_extreme_ranges_5426(self, scale_kind, signed, device, dtype):
-        if scale_kind == "subnormal" and device.type == "mps" and dtype != torch.float16:
-            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
         limits = torch.finfo(dtype)
         scale = {"large": limits.max, "small": limits.tiny * 64, "subnormal": limits.tiny / 64}[scale_kind]
         levels = torch.tensor([[0.0, 0.1, 0.2, 0.6, 0.8, 1.0]], device=device, dtype=dtype)
@@ -650,10 +655,14 @@ class TestOtsuThresholdDifferentiable(BaseTester):
             atol=limits.tiny * limits.eps / scale,
         )
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["scale_kind"] == "subnormal" and p["device_name"] == "mps" and p["dtype_name"] != "float16")
+        ),
+        reason="MPS flushes float32 and bfloat16 subnormals to zero",
+    )
     @pytest.mark.parametrize("scale_kind", ["large", "subnormal"])
     def test_extreme_constant_plane_gradient_5426(self, scale_kind, device, dtype):
-        if scale_kind == "subnormal" and device.type == "mps" and dtype != torch.float16:
-            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
         limits = torch.finfo(dtype)
         value = limits.max if scale_kind == "large" else limits.tiny / 64
         x = torch.full((2, 3), value, device=device, dtype=dtype, requires_grad=True)
@@ -684,9 +693,11 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         assert mask.tolist() == [[False, True, True]]
         self.assert_close(threshold, x[:, 0], rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] != "float16"),
+        reason="MPS flushes float32 and bfloat16 subnormals to zero",
+    )
     def test_subnormal_range_keeps_background_when_edge_rounds_down_5426(self, device, dtype):
-        if device.type == "mps" and dtype != torch.float16:
-            pytest.skip("MPS flushes float32 and bfloat16 subnormals to zero")
         # The selected edge is 86 / 256 * 3u = 1.0078125u, which rounds down onto the background pixel u.
         u = torch.nextafter(torch.zeros((), dtype=dtype), torch.ones((), dtype=dtype)).item()
         x = torch.tensor([[0, 1, 3]], device=device, dtype=dtype) * u
@@ -728,11 +739,10 @@ class TestOtsuThresholdDifferentiable(BaseTester):
         magnitude = grad.abs().float()
         assert (magnitude > 1e-3 * magnitude.max()).all()
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="checks the formula, not dtype rounding")
     def test_threshold_gradient_is_the_documented_surrogate_5174(self, device, dtype):
         # The gradient is that of the note's soft-argmax: 0.5-bin kernel density estimate, temperature 0.01 of the
         # curve's maximum. The other tests check its properties, which other bandwidths and temperatures share too.
-        if dtype != torch.float64:
-            pytest.skip("checks the formula, not dtype rounding")
         x = _quantile_mixture(device, dtype).requires_grad_(True)
         (grad,) = torch.autograd.grad(otsu_threshold(x, nbins=64, slow_and_differentiable=True)[1].sum(), x)
         (expected,) = torch.autograd.grad(_documented_soft_threshold(x, 64), x)
@@ -952,10 +962,11 @@ class TestConventionsOtsuThreshold(BaseTester):
         assert mask.flatten().tolist() == [False, False, True, True] * 2
         assert torch.equal(mask, x > threshold.view(2, 1, 1, 1))
 
+    @pytest.mark.applies_to(
+        devices=("mps",), reason="#5421 compares the threshold computed on MPS with the one computed on the CPU"
+    )
     def test_convention_otsu_equivalent_splits_pick_the_same_edge_on_mps_5421(self, device, dtype):
         """#5421: empty bins do not add candidate splits, so MPS and CPU choose the same edge and mask."""
-        if device.type != "mps":
-            pytest.skip("#5421 compares the threshold computed on MPS with the one computed on the CPU")
         # These x^3 samples left empty-bin gaps where rounding once selected a later split on MPS.
         images = [torch.linspace(0, 1, 40).pow(3).view(1, 1, 4, 10), torch.linspace(0, 1, 48).pow(3).view(1, 1, 6, 8)]
         for img in images:

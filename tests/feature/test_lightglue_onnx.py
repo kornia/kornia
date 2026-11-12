@@ -147,7 +147,7 @@ class TestOnnxLightGlue:
 
     @pytest.mark.uses_accelerator
     @pytest.mark.slow
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.applies_to(devices=("cuda",), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])
     def test_pretrained_weights_cuda(self, weights):
         model = OnnxLightGlue(weights, "cuda")

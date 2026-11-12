@@ -1749,10 +1749,9 @@ class TestColorJiggle(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     @pytest.mark.parametrize("order", [None, (3,)])
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device, order):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -2275,9 +2274,8 @@ class TestColorJitter(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -2596,9 +2594,8 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -2841,11 +2838,12 @@ class TestRectangleRandomErasing(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="This regression exercises the CPU sampler with half tensor parameters."
+    )
     @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_half_precision_random_erasing_replays_native_params(self, device, parameter_dtype, same_on_batch):
-        if device.type != "cpu":
-            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
         batch_size, height, width = 65536, 16, 16
         scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -6025,10 +6023,12 @@ class TestPlanckianJitter(BaseTester):
 
     # The half dtypes are named rather than taken from the fixture so the preservation is
     # exercised on the default float32 leg too, not only on the two half-precision jobs.
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["half_dtype"] is torch.bfloat16),
+        reason="bfloat16 support on MPS is incomplete",
+    )
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_planckian_jitter_preserves_half_dtype_on_any_leg_4574(self, device, half_dtype):
-        if device.type == "mps" and half_dtype is torch.bfloat16:
-            pytest.skip("bfloat16 support on MPS is incomplete")
         input = torch.rand(2, 3, 4, 4, device=device, dtype=half_dtype)
         output = RandomPlanckianJitter(p=1.0)(input)
 
@@ -6043,9 +6043,10 @@ class TestRandomRGBShift(BaseTester):
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="Random parameters are device-dependent; expected values were computed on CPU"
+    )
     def test_random_rgb_shift(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -6067,9 +6068,10 @@ class TestRandomRGBShift(BaseTester):
         )
         self.assert_close(f(input), expected, **float32_literal_tolerance(dtype))
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="Random parameters are device-dependent; expected values were computed on CPU"
+    )
     def test_random_rgb_shift_same_batch(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -6641,23 +6643,31 @@ class TestRandomThinPlateSpline(CommonTests):
         return request.param
 
     # Disable unsupported base tests
+    @pytest.mark.applies_to(
+        when=lambda p: False, reason="RandomThinPlateSpline does not implement compute_transformation"
+    )
     def test_smoke(self, param_set):
-        pytest.skip("RandomThinPlateSpline does not implement compute_transformation")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_module(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_random_p_1(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_inverse_coordinate_check(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_exception(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_batch(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
     def test_same_on_batch_true(self):
         torch.manual_seed(0)

@@ -226,14 +226,17 @@ def _simulate_faulty_platform(monkeypatch) -> None:
 
 
 class TestAttention(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32", "float64"),
+        reason="regression for Windows CPU float64, with float32 as a control",
+    )
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("legacy_windows", [False, True])
     @pytest.mark.parametrize("masked", [False, True])
     def test_cpu_attention_matches_explicit_softmax_5992(
         self, device, dtype, monkeypatch, batch_size, legacy_windows, masked
     ):
-        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-            pytest.skip("regression for Windows CPU float64, with float32 as a control")
         g = torch.Generator().manual_seed(0)
         q, k, v = [torch.randn(batch_size, 4, 16, 64, generator=g, device=device, dtype=dtype) for _ in range(3)]
         mask = None
@@ -277,19 +280,21 @@ class TestAttention(BaseTester):
             torch.backends.cuda.cudnn_sdp_enabled(),
         )
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the fallback is CPU-only")
     @pytest.mark.parametrize("masked", [False, True])
     def test_windows_float64_fallback_gradcheck(self, device, monkeypatch, masked):
-        if device.type != "cpu":
-            pytest.skip("the fallback is CPU-only")
         _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
         mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
         self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        when=lambda p: p["optimizer_backend"] not in ("", None, "jit"),
+        reason="the fallback needs CPU torch.compile coverage",
+    )
     def test_dynamo_windows_float64_fallback(self, device, monkeypatch, torch_optimizer, optimizer_backend):
-        if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
-            pytest.skip("the fallback needs CPU torch.compile coverage")
         _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
@@ -297,12 +302,11 @@ class TestAttention(BaseTester):
         compiled = torch_optimizer(attention, fullgraph=True)
         self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the fallback is CPU-only")
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
     def test_eager_backend_traces_windows_float64_fallback(self, device, monkeypatch):
         # conftest deselects *dynamo* and *compile* tests unless KORNIA_TEST_OPTIMIZER is set, which CI does only on
         # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
-        if device.type != "cpu":
-            pytest.skip("the fallback is CPU-only")
         _simulate_faulty_platform(monkeypatch)
         attention = Attention(allow_flash=True)
         q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
@@ -471,9 +475,8 @@ class TestLightGlue(BaseTester):
     # No gradcheck: LightGlue detaches the descriptors, so it is not differentiable end to end. No torch.compile
     # test: its pruning and early stopping are data-dependent control flow.
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_smoke(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype)
         with torch.no_grad():
@@ -481,9 +484,8 @@ class TestLightGlue(BaseTester):
         assert "matches0" in out
         assert "matching_scores0" in out
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_cardinality(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N = 1, 20, 15
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype, B=B, M=M, N=N)
@@ -493,10 +495,9 @@ class TestLightGlue(BaseTester):
         assert out["matches1"].shape == (B, N)
         assert out["matching_scores0"].shape == (B, M)
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_image_tensor_input(self, device, dtype):
         """Accept image tensor instead of image_size."""
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N, H, W, D = 1, 10, 8, 32, 32, 64
         lg = _make_lightglue(device, dtype)
         data = {
@@ -515,9 +516,8 @@ class TestLightGlue(BaseTester):
             out = lg(data)
         assert "matches0" in out
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_matches_are_valid_indices(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         B, M, N = 1, 30, 25
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype, B=B, M=M, N=N)
@@ -527,9 +527,8 @@ class TestLightGlue(BaseTester):
         assert (m0 >= -1).all()
         assert (m0 < N).all()
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_scores_in_range(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype)
         with torch.no_grad():
@@ -538,9 +537,8 @@ class TestLightGlue(BaseTester):
         assert (scores >= 0).all()
         assert (scores <= 1).all()
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_exception_missing_key(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         with pytest.raises(Exception):
             lg({"image0": {}})
@@ -549,23 +547,21 @@ class TestLightGlue(BaseTester):
         with pytest.raises(Exception):
             LightGlue(features="nonexistent_feature_type")
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_module(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype)
         with torch.no_grad():
             out = lg(data)
         assert isinstance(out, dict)
 
+    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_mp_forward_uses_input_device_type(self, device, dtype):
         """With ``mp=True``, ``forward`` derives the autocast ``device_type`` from the
         keypoints device (the computation device), not from a hardcoded ``\"cuda\"`` nor
         from the first tensor encountered while scanning the input dict (regression for
         #4624).
         """
-        if dtype == torch.float16:
-            pytest.skip("LightGlue requires float32 or float64")
         lg = _make_lightglue(device, dtype, mp=True)
         data = _make_data(device, dtype)
         # Put a non-keypoint tensor (image_size) first so a naive "first tensor wins"
@@ -587,13 +583,12 @@ class TestLightGlue(BaseTester):
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_mp_keeps_a_float64_model_in_float64(self, device):
         """Autocast does not cast float64, so ``mp=True`` leaves a float64 model as ``mp=False`` runs it.
 
         On CUDA the descriptors used to be cast to float16 under autocast, which the float64 weights then met.
         """
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         models = {mp: _make_lightglue(device, torch.float64, mp=mp) for mp in (False, True)}
         models[True].load_state_dict(models[False].state_dict())
@@ -740,11 +735,12 @@ class TestLightGluePruningDtype(BaseTester):
         for key in ("matching_scores0", "matching_scores1"):
             self.assert_close(out[key], ref[key].to(dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"), reason="MPS has no float64"
+    )
     def test_float32_keypoints_with_a_half_precision_model(self, device, dtype):
         # kornia's detectors return float32 keypoints for a float16 or bfloat16 model; the positional encoding runs in
         # the model's dtype, so wider keypoints give the result of keypoints in the model's dtype.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         data, _ = self._scene(device, dtype)
         wide = torch.promote_types(dtype, torch.float32)
         wide_data = {name: {**image, "keypoints": image["keypoints"].to(wide)} for name, image in data.items()}
@@ -788,15 +784,15 @@ class TestLightGluePruningDtype(BaseTester):
 
     def _mixed_precision_score_dtype(self, device, dtype):
         # With mp=True, autocast sets the dtype the scores are computed in: CPU computes the log assignment and its exp
-        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference.
-        if dtype != torch.float32:
-            pytest.skip("mp=True autocasts a float32 model")
+        # in bfloat16, MPS runs that exp in float32. The model without pruning gives the reference. Its callers apply
+        # only to float32: mp=True autocasts a float32 model.
         plain = self._forward(self._model(device, dtype, mp=True, width_confidence=-1), self._scene(device, dtype)[0])
         score_dtype = plain["matching_scores0"].dtype
         if device.type in ("cpu", "mps"):
             assert score_dtype == (torch.bfloat16 if device.type == "cpu" else torch.float32)
         return score_dtype
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="mp=True autocasts a float32 model")
     def test_mixed_precision_prunes_in_the_score_dtype_5837(self, device, dtype):
         score_dtype = self._mixed_precision_score_dtype(device, dtype)
         data = self._scene(device, dtype)[0]
@@ -818,6 +814,7 @@ class TestLightGluePruningDtype(BaseTester):
         out = self._forward(self._model(device, dtype, mp=True), {"image0": empty, "image1": empty})
         assert self._floating_dtypes(out) == {dtype}
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="mp=True autocasts a float32 model")
     def test_mixed_precision_all_points_pruned_returns_the_score_dtype_5837(self, device, dtype):
         score_dtype = self._mixed_precision_score_dtype(device, dtype)
         self._skip_without_empty_attention(device, dtype)
@@ -1132,10 +1129,11 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         model.transformers[0].register_forward_pre_hook(hook)
         return seen
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     def test_convention_lightglue_mixed_precision_cpu_float16_model_autocasts_to_float16_5897(self, device, input_dim):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # With mp=True on CPU, a float16 model autocasts to float16, and any other model to bfloat16, CPU autocast's
         # default. Autocast's bfloat16 outputs meeting the float16 tensors of a float16 model raised in the first layer.
         model = self._model(device, torch.float16, input_dim, mp=True)
@@ -1157,12 +1155,13 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         self._forward(float32, True, device, torch.float32)
         assert seen == [(True, torch.bfloat16)]
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     @pytest.mark.parametrize("input_dim", [16, 8], ids=["input_dim_eq_descriptor_dim", "input_dim_ne_descriptor_dim"])
     def test_convention_lightglue_mixed_precision_cpu_float16_model_takes_float32_descriptors_5897(
         self, device, input_dim
     ):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # Float16 autocast takes float32 keypoints and descriptors too, and the scores stay float16. Both runs get the
         # same values, which float16 represents exactly.
         model = self._model(device, torch.float16, input_dim, mp=True)
@@ -1187,9 +1186,8 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
         for key in ("matching_scores0", "matching_scores1"):
             self.assert_close(out[key], ref[key], rtol=0.0, atol=2e-3)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="MPS and CUDA cast the descriptors to float16 under autocast")
     def test_wart_lightglue_mixed_precision_cpu_other_half_dtype_descriptors_raise_5929(self, device):
-        if device.type != "cpu":
-            pytest.skip("MPS and CUDA cast the descriptors to float16 under autocast")
         # #5929: with input_proj an identity, descriptors of the other half dtype than autocast's reach a torch.cat of
         # the first layer, which autocast rejects: float16 ones with a float32 model, bfloat16 ones with a float16 one.
         for model_dtype, input_dtype in ((torch.float32, torch.float16), (torch.float16, torch.bfloat16)):
@@ -1197,9 +1195,10 @@ class TestLightGlueAllPrunedScoreDtype(BaseTester):
             with pytest.raises(RuntimeError, match="prioritize"):
                 self._forward(model, True, device, input_dtype)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="the rule is CPU's: MPS and CUDA autocast to float16 for every model"
+    )
     def test_convention_lightglue_mixed_precision_cpu_float16_model_reads_lafs_5897(self, device):
-        if device.type != "cpu":
-            pytest.skip("the rule is CPU's: MPS and CUDA autocast to float16 for every model")
         # "keynet_affnet_hardnet" reads the LAFs before the layers, where bfloat16 autocast raised for a float16 model,
         # also for an image without descriptors.
 
