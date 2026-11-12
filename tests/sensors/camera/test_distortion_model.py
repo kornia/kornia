@@ -133,7 +133,11 @@ class TestBrownConradyTransform(BaseTester):
 
         actual = distortion.distort(params, Vector2(points)).data
 
+        # Point i goes through camera i: each row matches the unbatched call with that camera's parameters.
         assert actual.shape == points.shape
+        for i in range(2):
+            expected = distortion.distort(params[i], Vector2(points[i : i + 1])).data[0]
+            self.assert_close(actual[i], expected)
 
     def test_batched_undistort_preserves_batch_shape(self, device, dtype):
         distortion = BrownConradyTransform()
@@ -156,7 +160,11 @@ class TestBrownConradyTransform(BaseTester):
         distorted = distortion.distort(params, Vector2(normalized)).data
         actual = distortion.undistort(params, Vector2(distorted)).data
 
+        # Point i goes through camera i: each row matches the unbatched call with that camera's parameters.
         assert actual.shape == normalized.shape
+        for i in range(2):
+            expected = distortion.undistort(params[i], Vector2(distorted[i : i + 1])).data[0]
+            self.assert_close(actual[i], expected)
 
     def test_distort_matches_calibration(self, device, dtype):
         distortion = BrownConradyTransform()

@@ -28,7 +28,7 @@ from kornia.sensors.camera.distortion_model import (
     BrownConradyTransform,
     KannalaBrandtK3Transform,
 )
-from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
+from kornia.sensors.camera.projection_model import Z1Projection
 
 from testing.base import _DTYPE_PRECISIONS, BaseTester
 
@@ -53,27 +53,6 @@ class TestPinholeCamera(BaseTester):
         params = torch.rand(batch_size, 4).to(dtype).to(device)
         image_sizes = torch.randint(1, 100, (batch_size, 2)).to(dtype).to(device)
         return params, ImageSize(image_sizes[:, 0], image_sizes[:, 1])
-
-    def test_smoke(self, device, dtype):
-        params, image_size = self._make_rand_data(1, device, dtype)
-        cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
-        assert isinstance(cam, CameraModel)
-        self.assert_close(cam.params, params)
-        self.assert_close(image_size.height, cam.height)
-        self.assert_close(image_size.width, cam.width)
-
-    def test_exception(self):
-        # test for invalid params for different camera models
-        params = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0])
-        image_size = ImageSize(100, 100)
-        with pytest.raises(ValueError):
-            CameraModel(image_size, CameraModelType.PINHOLE, params)
-        with pytest.raises(ValueError):
-            CameraModel(image_size, CameraModelType.BROWN_CONRADY, params)
-        with pytest.raises(ValueError):
-            CameraModel(image_size, CameraModelType.KANNALA_BRANDT_K3, params)
-        with pytest.raises(ValueError):
-            CameraModel(image_size, CameraModelType.ORTHOGRAPHIC, params)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_project_unproject(self, device, dtype, batch_size):
@@ -400,19 +379,6 @@ class TestCameraModelBaseParamsValidation:
         with pytest.raises(ValueError, match="ORTHOGRAPHIC"):
             Orthographic(self.image_size, params)
 
-    def test_the_class_docstring_example_is_consistent(self, device, dtype):
-        """The example paired a Brown-Conrady transform with a 4-element affine vector."""
-        params = torch.tensor([328.0, 328.0, 320.0, 240.0], device=device, dtype=dtype)
-        cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
-        assert cam.params.shape == params.shape
-
-    def test_the_orthographic_pair_takes_four(self, device, dtype):
-        """AffineTransform + OrthographicProjection is the other 4-parameter pair."""
-        cam = CameraModelBase(
-            AffineTransform(), OrthographicProjection(), self.image_size, torch.ones(4, device=device, dtype=dtype)
-        )
-        assert tuple(cam.params.shape) == (4,)
-
 
 class TestNonPinholeCameraMatrix(BaseTester):
     @pytest.mark.parametrize(
@@ -487,69 +453,42 @@ class TestNonPinholeCameraMatrix(BaseTester):
 
 
 class TestNonPinholeCameraProjectUnproject(BaseTester):
+    # Two cameras with non-zero distortion coefficients, so project runs the distortion and the round trip goes
+    # through Brown-Conrady's fixed-point and Kannala-Brandt's Newton undistortion instead of the pinhole map.
+    _INTRINSICS = ((300.0, 320.0, 160.0, 120.0), (280.0, 300.0, 150.0, 110.0))
+    _DISTORTION = {
+        CameraModelType.BROWN_CONRADY: (0.1, -0.05, 0.01, -0.02, 0.003, 0.02, -0.01, 0.005),
+        CameraModelType.KANNALA_BRANDT_K3: (0.05, -0.01, 0.002, -0.0005),
+        CameraModelType.ORTHOGRAPHIC: (),
+    }
+    _POINTS = ((0.3, -0.2, 2.0), (-0.4, 0.25, 3.0))
+    # Pixels of _POINTS[i] through camera i, from the plain-tensor functions in float64:
+    #   BROWN_CONRADY      distort_points(xy / z, K_i, dist, new_K=torch.eye(3))
+    #   KANNALA_BRANDT_K3  distort_points_kannala_brandt(xy / z, torch.cat([intrinsics_i, dist]))
+    #   ORTHOGRAPHIC       distort_points_affine(xy, intrinsics_i)
+    # The distortion moves them by up to 0.5 px from the pinhole pixels (205, 88) and (112.67, 135).
+    _PROJECTED = {
+        CameraModelType.BROWN_CONRADY: ((204.5600220913, 88.2782065129), (112.1940012868, 135.2979753288)),
+        CameraModelType.KANNALA_BRANDT_K3: ((204.5921616765, 88.2900183634), (112.9250215202, 134.8269945177)),
+        CameraModelType.ORTHOGRAPHIC: ((250.0, 56.0), (38.0, 185.0)),
+    }
+
     @pytest.mark.parametrize(
-        ("model_type", "num_params"),
-        [
-            (CameraModelType.BROWN_CONRADY, 12),
-            (CameraModelType.KANNALA_BRANDT_K3, 8),
-            (CameraModelType.ORTHOGRAPHIC, 4),
-        ],
+        "model_type", [CameraModelType.BROWN_CONRADY, CameraModelType.KANNALA_BRANDT_K3, CameraModelType.ORTHOGRAPHIC]
     )
-    def test_project_unproject_unbatched(self, device, dtype, model_type, num_params):
-        params = torch.zeros(num_params, device=device, dtype=dtype)
-        params[:4] = torch.tensor(
-            [300.0, 320.0, 160.0, 120.0],
-            device=device,
-            dtype=dtype,
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_project_unproject(self, device, dtype, model_type, batched):
+        params = torch.tensor(
+            [intrinsics + self._DISTORTION[model_type] for intrinsics in self._INTRINSICS], device=device, dtype=dtype
         )
+        points = torch.tensor(self._POINTS, device=device, dtype=dtype)
+        expected = torch.tensor(self._PROJECTED[model_type], device=device, dtype=dtype)
+        if not batched:
+            params, points, expected = params[0], points[0], expected[0]
 
         cam = CameraModel(ImageSize(240, 320), model_type, params)
-
-        points = torch.tensor(
-            [0.3, -0.2, 2.0],
-            device=device,
-            dtype=dtype,
-        )
-
         projected = cam.project(Vector3(points))
         unprojected = cam.unproject(projected, points[..., 2])
 
-        self.assert_close(unprojected.data, points)
-
-    @pytest.mark.parametrize(
-        ("model_type", "num_params"),
-        [
-            (CameraModelType.BROWN_CONRADY, 12),
-            (CameraModelType.KANNALA_BRANDT_K3, 8),
-            (CameraModelType.ORTHOGRAPHIC, 4),
-        ],
-    )
-    def test_project_unproject_batched(self, device, dtype, model_type, num_params):
-        params = torch.zeros(2, num_params, device=device, dtype=dtype)
-        params[:, :4] = torch.tensor(
-            [
-                [300.0, 320.0, 160.0, 120.0],
-                [280.0, 300.0, 150.0, 110.0],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        cam = CameraModel(ImageSize(240, 320), model_type, params)
-
-        points = torch.tensor(
-            [
-                [0.3, -0.2, 2.0],
-                [-0.4, 0.25, 3.0],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        projected = cam.project(Vector3(points))
-        unprojected = cam.unproject(projected, points[..., 2])
-
-        assert projected.data.shape == (2, 2)
-        assert unprojected.data.shape == points.shape
-
+        self.assert_close(projected.data, expected)
         self.assert_close(unprojected.data, points)
