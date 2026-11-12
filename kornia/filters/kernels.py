@@ -349,14 +349,14 @@ def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
 
 
 def _modified_bessel_i_orders(max_order: int, x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
-    """Return ``I_2(x), ..., I_{max_order - 1}(x)`` concatenated along the last dimension of ``x``.
+    """Return ``I_2(x), ..., I_{max_order - 1}(x)`` for ``x`` of shape ``(B, 1)``, as a ``(B, max_order - 2)`` tensor.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     The backward (Miller) recurrence starts from a point set by ``max_order`` alone and passes through every lower
     order on its way down, so one pass collects all the orders instead of one pass per order. Each value goes
-    through the same operations as in a pass of its own, so the results are identical, and the work is linear
-    instead of quadratic in ``max_order``.
+    through the same operations as in a pass of its own, so the results are identical, and the number of
+    recurrence steps is linear instead of quadratic in ``max_order``.
     """
     KORNIA_CHECK(max_order >= 3, "max_order must be at least 3.")
 

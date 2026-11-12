@@ -416,6 +416,33 @@ class TestGaussianDiscreteStability(BaseTester):
         taps = actual[0, [window_size // 2 + offset for offset in offsets]]
         self.assert_close(taps, torch.tensor(expected, device=device, dtype=dtype))
 
+    def test_reference_every_tap(self, device, dtype):
+        # sigma**2 = 9 < 16**2 / 4, so the backward recurrence collects orders 2 to 15 and rescales them.
+        # Reference (scipy 1.17.1), centre to edge:
+        # n = abs(arange(31) - 15); r = scipy.special.ive(n, 9.0); r / r.sum()
+        half = [
+            0.1349597138,
+            0.1272251623,
+            0.1066874555,
+            0.07980851544,
+            0.05348177858,
+            0.0322691567,
+            0.01762716002,
+            0.008766276675,
+            0.003990729637,
+            0.00167164621,
+            0.0006474372172,
+            0.0002328968381,
+            7.813383519e-05,
+            2.453994428e-05,
+            7.240662812e-06,
+            2.013437758e-06,
+        ]
+        expected = torch.tensor([half[:0:-1] + half], device=device, dtype=dtype)
+        actual = get_gaussian_discrete_kernel1d(31, 3.0, device=device, dtype=dtype)
+        rtol = 1e-5 if dtype in (torch.float32, torch.float64) else 1e-2
+        self.assert_close(actual, expected, rtol=rtol, atol=0.0)
+
     def test_backward_finite_large_sigma(self, device, dtype):
         sigma = torch.tensor([[100.0]], device=device, dtype=dtype, requires_grad=True)
         kernel = get_gaussian_discrete_kernel1d(5, sigma)
