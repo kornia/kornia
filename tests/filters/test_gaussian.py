@@ -45,6 +45,7 @@ from testing.base import (
     BaseTester,
     assert_close,
     dynamic_export_is_available,
+    raises_cuda_device_assert,
     supports_reflect_padding,
     supports_replicate_padding,
 )
@@ -775,11 +776,19 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(BaseError, match="sigma must be positive"):
             gaussian_blur2d(sample, (3, 3), sigma)
 
-    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype, capfd):
         # kornia#6335: reading a device sigma on the host waited for every queued kernel. torch._assert_async checks it
         # on the device instead, so the call returns and the error surfaces at the next synchronization.
+        if device.type == "cuda":
+            sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+            sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
+            # The assert can surface at the next kernel launch, still inside the call.
+            with raises_cuda_device_assert("sigma must be positive", capfd):
+                gaussian_blur2d(sample, (3, 3), sigma)
+            return
         if device.type != "mps":
-            pytest.skip("pins MPS: a CPU sigma is read on the host, and on CUDA the assert poisons the context")
+            pytest.skip("pins CUDA and MPS: a CPU sigma is read on the host")
         if not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so sigma is read on the host there")
         sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)

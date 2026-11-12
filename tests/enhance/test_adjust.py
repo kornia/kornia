@@ -29,7 +29,7 @@ from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import AsyncCheckError, BaseError
 from kornia.enhance.adjust import _clip_unit_fresh
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, raises_value_check
 
 
 def _sync(device) -> None:
@@ -1367,27 +1367,25 @@ class TestEqualize(BaseTester):
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize, (inputs,), fast_mode=False)
 
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
-    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype, capfd):
         # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
         # "index 259 is out of bounds" from the gather. MPS range-checks it too (kornia#4600): from
         # torch 2.13 the assert is asynchronous there, so the message arrives at the sync.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
-        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
             _sync(kornia.enhance.equalize(x).device)
 
-    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype, capfd):
         # The range check keeps the lookup in bounds, so it runs with checks disabled too (``python -O``,
         # ``KORNIA_CHECKS=0``): a compiled CPU scatter with an index out of range terminates the process.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
         were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
-            with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
                 _sync(kornia.enhance.equalize(x).device)
         finally:
             if were_checks_enabled:
@@ -1405,24 +1403,22 @@ class TestEqualize(BaseTester):
         compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), kornia.enhance.equalize(x))
 
-    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
         # compiling if the asynchronous assert is traced, because a host read cannot be.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
         torch._dynamo.reset()
         compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
-    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The range check keeps the lookup in bounds, so a compiled torch.func.grad keeps it, although a compiled
         # functorch transform skips the value checks that guard no index.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         if not torch_version_ge(2, 14):
@@ -1431,7 +1427,7 @@ class TestEqualize(BaseTester):
         torch._dynamo.reset()
         gradient = torch.func.grad(lambda image: kornia.enhance.equalize(image).sum())
         compiled = torch.compile(gradient, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
     def test_jit(self, device, dtype):
@@ -1454,14 +1450,13 @@ class TestEqualize(BaseTester):
 
 
 class TestEqualize3D(BaseTester):
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("scale, shift", [(1.5, 0.0), (1.0, -0.5)])
-    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype, capfd):
         # kornia#4432: the 3D path shares the lookup, so it shares the MPS fix too (kornia#4600).
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(1, 1, 5, 7, 9, device=device, dtype=dtype) * scale + shift
-        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
             _sync(kornia.enhance.equalize3d(x).device)
 
     def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
@@ -1723,8 +1718,7 @@ class TestSolarize(BaseTester):
     # rather than to the ~1700 an 0.5001 leaves.
     @pytest.mark.parametrize("addition", [0.5 + 2**-24, -(0.5 + 2**-24), 0.5001, -0.5001])
     def test_additions_outside_closed_range_raise_4605(self, device, addition):
-        if device.type != "cpu":
-            pytest.skip("CPU only: the value check is an async device assert elsewhere")
+        # A float addition is checked on the host on every device, so it raises during the call.
         img = torch.rand(2, 3, 4, 5, device=device)
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)

@@ -172,6 +172,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
 ]
 markers = [
+  "cuda_device_assert: the test fails a CUDA device-side assert on purpose, so on CUDA it always runs in a fresh subprocess",
   "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix (a test without the device fixture is treated as marked)",
   "compile_conformance: torch.compile conformance of the promised operators (#5819); deselected unless --compile-conformance selects packages",
   "onnx_conformance: ONNX conformance of the promised operators (#5819); deselected unless --onnx-conformance selects packages",

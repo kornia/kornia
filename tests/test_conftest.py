@@ -17,15 +17,17 @@
 
 from __future__ import annotations
 
+import os
+import sys
 import types
 from pathlib import Path
 
 import pytest
 import torch
 
-from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
+from conftest import _deselect_cuda_device_assert_dtypes, _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, raises_cuda_device_assert
 
 pytest_plugins = ["pytester"]
 # These are the runner's own regression tests. Most take no device fixture: their pytester children
@@ -97,12 +99,17 @@ def test_half_precision_isolation_probe(device, dtype):
         pytest.skip("probe: skipped by design under half precision")
 
 
-def _make_mock_item(params: dict | None, isolate: bool = True):
+def _make_mock_item(params: dict | None, isolate: bool = True, marked: bool = False):
     config = types.SimpleNamespace(
         getoption=lambda opt, default=False: isolate if opt == "--isolate-half-precision" else default
     )
     callspec = types.SimpleNamespace(params=params) if params is not None else None
-    return types.SimpleNamespace(config=config, callspec=callspec)
+    marker = pytest.mark.cuda_device_assert.mark if marked else None
+    return types.SimpleNamespace(
+        config=config,
+        callspec=callspec,
+        get_closest_marker=lambda name: marker if name == "cuda_device_assert" else None,
+    )
 
 
 def _make_mock_request(
@@ -176,6 +183,20 @@ class TestIsSubprocessIsolatedTest:
         # No callspec
         item_no_callspec = _make_mock_item(None, isolate=True)
         assert _is_subprocess_isolated_test(item_no_callspec) is False
+
+    @pytest.mark.parametrize("target_dtype_name", ["float32", "float64", "float16"])
+    @pytest.mark.parametrize("isolate", [False, True])
+    def test_cuda_device_assert_marker_isolates_every_cuda_dtype(self, target_dtype_name, isolate):
+        item = _make_mock_item({"device_name": "cuda", "dtype_name": target_dtype_name}, isolate=isolate, marked=True)
+        assert _is_subprocess_isolated_test(item) is True
+
+    def test_cuda_device_assert_marker_negative_controls(self, monkeypatch):
+        """A marked test off CUDA, without a device parameter, or already in the subprocess runs in place."""
+        for params in ({"device_name": "cpu", "dtype_name": "float32"}, {"device_name": "mps"}, {}, None):
+            assert _is_subprocess_isolated_test(_make_mock_item(params, isolate=True, marked=True)) is False
+        monkeypatch.setenv("KORNIA_TEST_IN_SUBPROCESS", "1")
+        item = _make_mock_item({"device_name": "cuda", "dtype_name": "float32"}, marked=True)
+        assert _is_subprocess_isolated_test(item) is False
 
 
 class TestSkipHalfPrecisionOnCuda:
@@ -365,6 +386,155 @@ class TestIntegrationLocalHalfPrecision:
         # a divergence between parent and child collection is not. `-rs` puts the synthetic
         # report's reason in the summary, so require the skip to be the child's own.
         result.stdout.no_fnmatch_line("*no tests collected*")
+
+
+class TestCudaDeviceAssertMarker:
+    """``@pytest.mark.cuda_device_assert`` runs a CUDA item in a fresh subprocess, for one dtype of the matrix.
+
+    Each inner pytest process loads the kornia conftest (a few seconds), so the in-process tests below check the
+    selection rule and ``raises_cuda_device_assert`` itself, and one inner session spawns a single isolated child.
+    """
+
+    @staticmethod
+    def _deselect(dtypes: str, items: list) -> list:
+        deselected: list = []
+        config = types.SimpleNamespace(
+            getoption=lambda option: dtypes if option == "--dtype" else None,
+            hook=types.SimpleNamespace(pytest_deselected=lambda items: deselected.extend(items)),  # noqa: PLW0108
+            pluginmanager=types.SimpleNamespace(get_plugin=lambda name: None),
+        )
+        _deselect_cuda_device_assert_dtypes(config, items)
+        return deselected
+
+    @pytest.mark.parametrize(
+        "dtypes, kept",
+        [
+            ("float32,float64", "float32"),
+            ("float64,float32", "float32"),
+            ("float64", "float64"),
+            ("bfloat16,float16", "bfloat16"),
+        ],
+    )
+    def test_cuda_collects_a_marked_test_for_one_dtype(self, dtypes, kept):
+        """float32 when selected, else the first selected dtype; no-dtype, CPU and unmarked items keep every case."""
+        selected = dtypes.split(",")
+        marked = [
+            _make_mock_item({"device_name": device, "dtype_name": dtype}, marked=True)
+            for device in ("cpu", "cuda")
+            for dtype in selected
+        ]
+        unmarked = [_make_mock_item({"device_name": "cuda", "dtype_name": dtype}) for dtype in selected]
+        without_dtype = _make_mock_item({"device_name": "cuda"}, marked=True)
+        items = [*marked, *unmarked, without_dtype]
+        # Mock items compare by value, so compare identities.
+        expected = [id(item) for item in marked if item.callspec.params["device_name"] == "cuda"]
+        expected = [ident for ident, dtype in zip(expected, selected) if dtype != kept]
+        kept_items = [id(item) for item in items if id(item) not in expected]
+        assert [id(item) for item in self._deselect(dtypes, items)] == expected
+        assert [id(item) for item in items] == kept_items
+
+    def test_raises_cuda_device_assert_requires_the_assert_and_its_message(self, capfd, monkeypatch):
+        """The expectation passes only for a device-side assert that printed a matching message."""
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda *args: None)
+
+        def device_assert(message: bytes):
+            os.write(2, b"Assertion `" + message + b"` failed.\n")
+            raise RuntimeError("CUDA error: device-side assert triggered")
+
+        with raises_cuda_device_assert("the check under test", capfd):
+            device_assert(b"the check under test")
+        if sys.platform != "win32":  # torch's Windows builds print no message, so only the assert is checked there
+            wrong_message = pytest.raises(pytest.fail.Exception, match="printed no message matching")
+            with wrong_message, raises_cuda_device_assert("the check under test", capfd):
+                device_assert(b"another check")
+        no_assert = pytest.raises(pytest.fail.Exception, match="no CUDA device-side assert")
+        with no_assert, raises_cuda_device_assert("the check under test", capfd):
+            pass
+        other_error = pytest.raises(RuntimeError, match="out of memory")
+        with other_error, raises_cuda_device_assert("the check under test", capfd):
+            raise RuntimeError("CUDA error: out of memory")
+
+    def test_marked_cuda_items_run_in_a_subprocess(self, pytester, monkeypatch):
+        """One inner session: the CUDA item runs alone in a child, CPU items and the other dtype as the rule says.
+
+        With CUDA it fails a real device-side assert in the child, under ``cuda_device_assert_guard`` and
+        ``restore_torch_rng``, and the parent's CUDA context still works afterwards. ``report_check`` serializes every
+        report as xdist does, which the synthetic reports of isolated items failed while they carried Mark objects.
+        """
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        cuda = torch.cuda.is_available()
+        # Without CUDA the child takes device_name only: the device fixture would skip before the placement assert.
+        device_args = ", device, capfd, restore_torch_rng" if cuda else ""
+        pytester.makepyfile(
+            report_check="""
+            import json
+
+            def pytest_runtest_logreport(report):
+                json.dumps(report.keywords)
+            """,
+            test_placement=f"""
+            import os
+
+            import pytest
+            import torch
+
+            from testing.base import raises_cuda_device_assert
+
+            @pytest.mark.cuda_device_assert
+            def test_marked(device_name, dtype_name{device_args}):
+                assert bool(os.environ.get("KORNIA_TEST_IN_SUBPROCESS")) is (device_name == "cuda")
+                assert (device_name, dtype_name) != ("cuda", "float64"), "deselected on CUDA"
+                if {cuda!r} and device_name == "cuda":
+                    with raises_cuda_device_assert("the check under test", capfd):
+                        torch._assert_async(torch.tensor(False, device=device), "the check under test")
+
+            def test_after(device, dtype_name):
+                assert not os.environ.get("KORNIA_TEST_IN_SUBPROCESS")
+                assert torch.ones(4, device=device).sum().item() == 4
+            """,
+        )
+        result = pytester.runpytest_subprocess(
+            "test_placement.py", "-p", "report_check", "--device=cpu,cuda", "--dtype=float32,float64"
+        )
+        # test_marked: CPU float32 and float64 in place, CUDA float32 in the child, CUDA float64 deselected.
+        result.assert_outcomes(passed=7 if cuda else 5, skipped=0 if cuda else 2, deselected=1)
+        result.stdout.fnmatch_lines(["deselected 1 cuda_device_assert test(s) on CUDA*for float32 only*"])
+        result.stdout.no_fnmatch_line("*INTERNALERROR*")
+
+    def test_marked_cpu_item_keeps_its_known_failure_profile_entry(self, pytester, monkeypatch):
+        """A CPU-half profile run, which is CPU only, xfails a marked test in place as its manifest records."""
+        from testing.half_precision_ci import ManifestEntry, current_environment, get_profile, serialize_manifest
+
+        monkeypatch.delenv("KORNIA_TEST_OPTIMIZER", raising=False)
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        pytester.makepyfile(
+            test_profile="""
+            import os
+
+            import pytest
+
+            @pytest.mark.cuda_device_assert
+            def test_marked(device_name, dtype_name):
+                assert not os.environ.get("KORNIA_TEST_IN_SUBPROCESS")
+                raise RuntimeError("recorded failure")
+            """
+        )
+        manifest = pytester.path / "cpu_float16.txt"
+        entry = ManifestEntry("call", "builtins.RuntimeError", "test_profile.py::test_marked[cpu-float16]")
+        manifest.write_text(
+            serialize_manifest(get_profile("cpu-float16"), [entry], current_environment(), "pytest tests/"),
+            encoding="utf-8",
+        )
+        result = pytester.runpytest_subprocess(
+            "test_profile.py",
+            "--device=cpu",
+            "--dtype=float16",
+            "--known-failure-profile=cpu-float16",
+            "--xfail-known-failures",
+            f"--known-failure-manifest={manifest}",
+            "-q",
+        )
+        result.assert_outcomes(xfailed=1)
 
 
 class TestDeviceAgnosticSelection:
