@@ -129,8 +129,10 @@ class PerspectiveGenerator(RandomGeneratorBase):
         start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = self._distortion_scale * x_extent / 2
-        fy = self._distortion_scale * y_extent / 2
+        # Cast the scale first: a half scale times a Python extent would round the offsets in half precision.
+        distortion_scale = self._distortion_scale.to(_cdtype)
+        fx = distortion_scale * x_extent / 2
+        fy = distortion_scale * y_extent / 2
 
         factor = _to_device_nonblocking(torch.stack([fx, fy], dim=0).view(-1, 1, 2), _device, _cdtype)
 

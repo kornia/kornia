@@ -251,6 +251,25 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
             if size == 1:
                 assert torch.equal(end[..., axis], start[..., axis])
 
+    def test_perspective3d_half_corners_round_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("checks the half-precision rounding")
+        scale = torch.tensor(0.37, device=device, dtype=dtype)
+        gen = PerspectiveGenerator3D(scale)
+        gen.set_rng_device_and_dtype(device, dtype)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 1, 40, 300, 411]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 8, 3, device=device, dtype=dtype).float()
+        sign = torch.tensor(
+            [[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]],
+            device=device,
+            dtype=torch.float32,
+        )
+        start = torch.where(sign > 0, 0.0, torch.tensor([410.0, 299.0, 39.0], device=device))
+        factor = float(scale) * torch.tensor([411.0, 300.0, 40.0], device=device) / 2
+        assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
+
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_shape", [(0, 200, 300, 400), (1, 200, 300, 400), (8, 200, 300, 400)])
