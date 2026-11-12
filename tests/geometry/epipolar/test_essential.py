@@ -703,6 +703,34 @@ class TestDecomposeEssentialMatrix(BaseTester):
         self.gradcheck(eval_rot2, (E_mat,))
         self.gradcheck(eval_vec, (E_mat,))
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision(self, device, dtype):
+        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
+        R1, R2, t = epi.decompose_essential_matrix(E_mat)
+        assert R1.shape == (2, 3, 3)
+        assert R1.dtype == dtype
+        assert R2.shape == (2, 3, 3)
+        assert R2.dtype == dtype
+        assert t.shape == (2, 3, 1)
+        assert t.dtype == dtype
+
+        # unbatched (3, 3)
+        R1_u, R2_u, t_u = epi.decompose_essential_matrix(E_mat[0])
+        assert R1_u.shape == (3, 3)
+        assert R1_u.dtype == dtype
+        assert R2_u.shape == (3, 3)
+        assert R2_u.dtype == dtype
+        assert t_u.shape == (3, 1)
+        assert t_u.dtype == dtype
+
+        # autograd finite gradients
+        E_grad = E_mat.clone().requires_grad_()
+        out_r1, out_r2, out_t = epi.decompose_essential_matrix(E_grad)
+        (grad,) = torch.autograd.grad(out_r1.sum() + out_r2.sum() + out_t.sum(), E_grad)
+        assert grad.shape == E_mat.shape
+        assert grad.dtype == dtype
+        assert torch.isfinite(grad).all()
+
 
 class TestDecomposeEssentialMatrixNoSVD(BaseTester):
     def test_smoke(self, device, dtype):
@@ -899,7 +927,7 @@ class TestMotionFromEssential(BaseTester):
         rot_error = (Rs - R).abs().sum((-2, -1))
         vec_error = (ts - t).abs().sum(-1)
 
-        rtol: float = 1e-4
+        rtol: float = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
         assert (rot_error < rtol).any() & (vec_error < rtol).any()
 
     def test_gradcheck(self, device):
@@ -995,7 +1023,9 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         )
 
         self.assert_close(t, t_hat)
-        self.assert_close(R, R_hat, rtol=1e-4, atol=1e-4)
+        rtol = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        atol = 2e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(R, R_hat, rtol=rtol, atol=atol)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -1246,7 +1276,6 @@ class TestConventionEssential(BaseTester):
 
     def test_decompose_unbatched_keeps_input_dims_4878(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         # #4878 (fixed): the constant W was built with a batch dim, so a (3, 3) input returned rotations of shape
         # (1, 3, 3) next to t of shape (3, 1). All outputs now keep the leading dims of the input.
         E = _gt_essential(two_view)
@@ -1843,8 +1872,6 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     def test_convention_no_derivative_gradient_is_finite_6251(self, device, dtype, name, diagonal):
         # With s2 == s3 the singular vector u3 is not unique, so no derivative exists. The choice is a finite gradient
         # instead of NaN; its value is not part of the convention, as it depends on the basis the SVD returns.
-        if name != "project_to_essential":
-            _skip_half(dtype, _NO_HALF_LU.format(name))
         E_mat = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))[None].requires_grad_()
         outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
         outputs = outputs if isinstance(outputs, tuple) else (outputs,)

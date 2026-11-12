@@ -26,6 +26,7 @@ from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import (
     _autocast_disabled,
     _needs_derivatives,
+    _normalize_to_float32_or_float64,
     _right_singular_vector,
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
@@ -654,6 +655,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           compares OpenCV's labels.
         - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
           float32 rotations.
+        - Half-precision inputs (``float16`` and ``bfloat16``) compute the SVD and candidate poses in ``float32``
+          and return candidate rotations and translation in the input dtype.
         - First and second derivatives at an exact essential matrix are finite and correct, also where its two largest
           singular values are equal and the backward of :func:`torch.linalg.svd` divides by zero; a third derivative
           is not correct. They are those of the labeling the call returned. They need the smallest singular value to
@@ -691,14 +694,18 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
 def _decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # decompose matrix by its singular values
-    U, _, V = _torch_svd_cast(E_mat)
-    return _candidates_from_svd(U, V)
+    compute_dtype = _normalize_to_float32_or_float64(E_mat.dtype)
+    U, _, V = _torch_svd_in_work_dtype(E_mat)
+    R1, R2, T = _candidates_from_svd(U.to(compute_dtype), V.to(compute_dtype))
+    return (R1.to(E_mat.dtype), R2.to(E_mat.dtype), T.to(E_mat.dtype))
 
 
 def _decompose_essential_matrix_differentiable(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """The value of :func:`_decompose_essential_matrix`, with the derivatives of :func:`_pair_invariant_terms`."""
+    compute_dtype = _normalize_to_float32_or_float64(E_mat.dtype)
     U, S, V = _torch_svd_in_work_dtype(E_mat.detach())
-    R1, R2, T = _candidates_from_svd(U.to(E_mat.dtype), V.to(E_mat.dtype))
+    R1, R2, T = _candidates_from_svd(U.to(compute_dtype), V.to(compute_dtype))
+    R1, R2, T = R1.to(E_mat.dtype), R2.to(E_mat.dtype), T.to(E_mat.dtype)
     u, v, projection = _pair_invariant_terms(E_mat, U, S, V)
     # Divided by its largest magnitude, held constant, to keep the squares in range. A zero matrix has no rotations to
     # differentiate, and a division by its zero norm would still reach its gradient.
@@ -716,28 +723,31 @@ def _decompose_essential_matrix_differentiable(E_mat: torch.Tensor) -> Tuple[tor
 
 
 def _candidates_from_svd(U: torch.Tensor, V: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    Vt = V.transpose(-2, -1)
+    compute_dtype = _normalize_to_float32_or_float64(U.dtype)
+    U_work = U.to(compute_dtype)
+    V_work = V.to(compute_dtype)
+    Vt = V_work.transpose(-2, -1)
 
-    mask = torch.ones_like(U)
+    mask = torch.ones_like(U_work)
     mask[..., -1:] *= -1.0  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
     # avoid singularities
-    U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
+    U_work = torch.where((torch.det(U_work) < 0.0)[..., None, None], U_work * mask, U_work)
     Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
     # W = [e_z]_x + diag(0, 0, 1), built unbatched so that it does not add a batch dim to an unbatched U.
-    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=U.device, dtype=U.dtype)
+    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=U_work.device, dtype=U_work.dtype)
 
     # reconstruct rotations and retrieve translation vector
-    U_W_Vt = U @ W @ Vt
-    U_Wt_Vt = U @ W.transpose(-2, -1) @ Vt
+    U_W_Vt = U_work @ W @ Vt
+    U_Wt_Vt = U_work @ W.transpose(-2, -1) @ Vt
 
     # return values
-    R1 = U_W_Vt
-    R2 = U_Wt_Vt
-    T = U[..., -1:]
+    R1 = U_W_Vt.to(U.dtype)
+    R2 = U_Wt_Vt.to(U.dtype)
+    T = U_work[..., -1:].to(U.dtype)
     return (R1, R2, T)
 
 
