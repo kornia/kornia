@@ -48,12 +48,17 @@ _HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compil
 _TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
 
+# A zero mean and a unit std are the identity, which an exported program that dropped the op would also reproduce.
+_MEAN = (0.1, -0.2, 0.3)
+_STD = (0.5, 2.0, 0.25)
+
+
 def _normalize() -> torch.nn.Module:
-    return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
+    return K.Normalize(mean=torch.tensor(_MEAN), std=torch.tensor(_STD))
 
 
 def _denormalize() -> torch.nn.Module:
-    return K.Denormalize(mean=torch.zeros(3), std=torch.ones(3))
+    return K.Denormalize(mean=torch.tensor(_MEAN), std=torch.tensor(_STD))
 
 
 def _resize() -> torch.nn.Module:

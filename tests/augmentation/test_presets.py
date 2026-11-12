@@ -197,6 +197,8 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
 
         assert set(out) == {"input", "mask", "sample_id"}
         flipped = (out["input"] != x).flatten(1).any(1)
+        # Without a flipped row the comparisons below would also accept a dictionary returned unchanged.
+        assert flipped.any()
         self.assert_close(out["input"][flipped], x[flipped].flip(-1))
         self.assert_close(out["input"][~flipped], x[~flipped])
         self.assert_close(out["mask"][flipped], m[flipped].flip(-1))

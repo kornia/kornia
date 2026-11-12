@@ -110,20 +110,24 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert _lit_extent(make((1, 5))(transposed)[0, 0]) == ([3], [0, 1, 2, 3, 4])
 
+    # On a ramp ``arange(n * n)`` every padding mode gives the border windows a different median: the top row of
+    # the 3x3 median on 4x4 is [4, 4, 5, 6] with reflect, [1, 2, 3, 3] with replicate, [5, 5, 6, 6] with circular
+    # and [0, 1, 2, 0] with zeros. A constant image tells only zero padding apart.
+    # Snippet used to generate expected:
+    #   x = torch.arange(n * n, dtype=torch.float64).reshape(1, 1, n, n); r = k // 2
+    #   u = F.pad(x, (r, r, r, r), mode="reflect").unfold(2, k, 1).unfold(3, k, 1).reshape(n, n, k * k)
+    #   print(u.median(-1).values[0], u.median(-1).values[1, 1])  # (n, k) = (4, 3) and (6, 5)
     def test_convention_median_blur_border_median_uses_reflect_padding(self, device, dtype):
-        # A constant-ones image: reflect padding reflects the boundary ones into the padding window,
-        # so corner, edge, and center windows all hold only ones and their medians evaluate to 1.
-        ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
-        assert float(out[0, 0, 0, 0]) == 1.0
-        assert float(out[0, 0, 0, 1]) == 1.0
-        assert float(out[0, 0, 1, 1]) == 1.0
-        # 5x5 on a 6x6 image: reflect padding preserves the constant value across the border,
-        # so the top row consists entirely of ones.
+        out = K.RandomMedianBlur((3, 3), p=1.0)(image)
+        self.assert_close(out[0, 0, 0], image.new_tensor([4.0, 4.0, 5.0, 6.0]), rtol=0, atol=0)
+        assert float(out[0, 0, 1, 1]) == 5.0  # an interior window needs no padding
+        # 5x5 on a 6x6 image: the padding reaches two pixels in, past the first interior row.
         torch.manual_seed(_FORWARD_SEED)
-        wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
-        self.assert_close(wide[0, 0, 0], ones.new_tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
+        wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.arange(36, device=device, dtype=dtype).reshape(1, 1, 6, 6))
+        self.assert_close(wide[0, 0, 0], image.new_tensor([8.0, 8.0, 9.0, 10.0, 10.0, 10.0]), rtol=0, atol=0)
+        assert float(wide[0, 0, 1, 1]) == 8.0
 
     def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
         # Snippet used to generate expected:
