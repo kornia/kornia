@@ -349,7 +349,7 @@ class StereoCamera:
 
         Integer camera matrices use the default floating-point dtype for Q; ``float32`` and ``float64`` cameras
         retain their dtype. ``float16`` and ``bfloat16`` rigs get a ``float32`` Q: a real rig's
-        ``Q[2, 3] = fx * fy * baseline`` exceeds the ``float16`` range (``-5.4e6`` for a 721 px focal length and a
+        ``Q[2, 3] = fx * fy * baseline`` exceeds the ``float16`` range (``-2.8e5`` for a 721 px focal length and a
         0.54 m baseline), and reprojection then runs in ``float32`` and returns the disparity dtype. The stored
         camera matrices and intrinsic parameter properties keep the rig's dtype.
 

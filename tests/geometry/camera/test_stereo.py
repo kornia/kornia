@@ -455,8 +455,8 @@ class TestStereoCamera(BaseTester):
 
         if dtype in (torch.float16, torch.bfloat16):
             # The cameras, the disparity and the result each round by eps / 2 relative; Q and the reprojection are
-            # float32 (this rig's Q[2, 3] = fx * fy * tx = -5.4e6 is past the float16 range), with no cancellation
-            # in X / W, Y / W or Z / W: within 2 eps relative.
+            # float32 (this rig's Q[2, 3] = fx * fy * baseline = -5.4e6 is past the float16 range), with no
+            # cancellation in X / W, Y / W or Z / W: within 2 eps relative.
             self.assert_close(xyz, xyz_gt, rtol=2 * torch.finfo(dtype).eps, atol=0.0)
         else:
             self.assert_close(xyz, xyz_gt)
