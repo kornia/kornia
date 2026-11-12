@@ -238,7 +238,6 @@ class TestAdjustSaturation(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0))
 
-
     @pytest.mark.parametrize("factor", [0.0, 1.0, 1.7])
     def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
         # float16 and bfloat16 images are adjusted in float32 and rounded once. The half-precision arithmetic it
@@ -354,7 +353,6 @@ class TestAdjustHue(BaseTester):
         with pytest.raises(BaseError, match=r"an int, a float or a torch\.Tensor") as errinfo:
             op(img, factor)
         assert "PI" not in str(errinfo.value)
-
 
     @pytest.mark.parametrize("factor", [0.0, 0.3, -2.5])
     def test_half_is_the_rounded_float32_result(self, device, dtype, factor):
