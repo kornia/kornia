@@ -73,11 +73,14 @@ class TestDivergenceLoss(BaseTester):
         scripted = torch.jit.script(loss)
         self.assert_close(scripted(pred, target), loss(pred, target))
 
-    def test_js_div_loss_2d_small_probability(self, device, dtype):
-        # The mixture must not round a positive half-precision probability down to zero.
-        tiny = torch.finfo(dtype).tiny * torch.finfo(dtype).eps if dtype == torch.bfloat16 else 2.0**-24
+    @pytest.mark.parametrize("subnormal", [False, True])
+    def test_js_div_loss_2d_small_probability(self, device, dtype, subnormal):
+        # Cover both preserved subnormals and normal inputs whose halves may flush to zero (#6723).
+        tiny = torch.finfo(dtype).tiny * (torch.finfo(dtype).eps if subnormal else 1.5)
         pred = torch.tensor([[[[tiny, 0.0, 0.25, 0.75]]]], device=device, dtype=dtype, requires_grad=True)
         target = torch.tensor([[[[0.0, tiny, 0.75, 0.25]]]], device=device, dtype=dtype, requires_grad=True)
+        if subnormal and not bool(pred[0, 0, 0, 0] > 0):
+            pytest.skip("this backend flushes subnormal inputs to zero")
 
         loss = kornia.losses.js_div_loss_2d(pred, target)
         expected = 0.25 * math.log(0.5) + 0.75 * math.log(1.5) + tiny * math.log(2.0)
@@ -91,6 +94,37 @@ class TestDivergenceLoss(BaseTester):
         expected_grad = torch.tensor([math.log(2.0), math.log(0.5), math.log(1.5)], device=device, dtype=dtype) / 2
         self.assert_close(pred.grad[0, 0, 0, [0, 2, 3]], expected_grad)
         self.assert_close(target.grad[0, 0, 0, [1, 3, 2]], expected_grad)
+
+    def test_js_gaussian_coordinate_gradients_6723(self, device, dtype):
+        size = 128 if dtype == torch.float64 else 64
+        center = size / 2
+        mean = torch.tensor([[[center, center]]], device=device, dtype=dtype, requires_grad=True)
+        target_mean = torch.tensor([[[center + 1, center]]], device=device, dtype=dtype, requires_grad=True)
+        std = torch.full_like(mean, 2.0)
+        pred = kornia.geometry.subpix.render_gaussian2d(mean, std, (size, size), normalized_coordinates=False)
+        target = kornia.geometry.subpix.render_gaussian2d(target_mean, std, (size, size), normalized_coordinates=False)
+
+        actual = kornia.losses.js_div_loss_2d(pred, target)
+        # Independent scalar reference: sum p * (log(p) - log(p + q) + log(2)) / 2 and the q terms,
+        # omitting zero-input terms; differentiating the normalized Gaussian gives the coordinate derivative.
+        self.assert_close(actual, actual.new_tensor(0.03031130052083885))
+        gradients = torch.autograd.grad(actual, (mean, target_mean))
+        expected = mean.new_tensor([[[-0.05881587652871307, 0.0]]])
+        self.assert_close(gradients[0], expected)
+        self.assert_close(gradients[1], -expected)
+
+    def test_js_zero_cell_gradients(self, device, dtype):
+        pred = torch.tensor([[[[0.0, 0.25, 0.75, 0.0, 0.0]]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[[0.125, 0.5, 0.25, 0.125, 0.0]]]], device=device, dtype=dtype, requires_grad=True)
+        gradients = torch.autograd.grad(kornia.losses.js_div_loss_2d(pred, target), (pred, target))
+        # On positive cells dJ/dp = log(2p / (p + q)) / 2. The existing zero-cell convention leaves
+        # only the partner's mixture derivative (-1/2) at one-sided zeros, and 0 at shared zeros.
+        expected_pred = pred.new_tensor([[[[-0.5, math.log(2 / 3) / 2, math.log(1.5) / 2, -0.5, 0.0]]]])
+        expected_target = target.new_tensor(
+            [[[[math.log(2) / 2, math.log(4 / 3) / 2, -math.log(2) / 2, math.log(2) / 2, 0.0]]]]
+        )
+        self.assert_close(gradients[0], expected_pred)
+        self.assert_close(gradients[1], expected_target)
 
     @pytest.mark.parametrize(
         "pred,target,expected",

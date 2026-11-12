@@ -277,6 +277,7 @@ class TestMaskWritesWithoutHostReads(BaseTester):
         assert torch.equal(rain(x.cpu(), params=params), out.cpu())
 
 
+@pytest.mark.uses_accelerator
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA host synchronizations need a CUDA device")
 @pytest.mark.parametrize(
     "build",
@@ -312,6 +313,7 @@ def test_list_boxes_add_no_host_sync_to_dense_boxes(build) -> None:
     assert sites([first, second, second[:0], first]) == sites(second[:1].expand(4, -1, -1))
 
 
+@pytest.mark.uses_accelerator
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="host-to-device copies need a CUDA device")
 def test_erasing_copies_box_parameters_not_masks(tmp_path) -> None:
     # A large pageable copy stalls the host while the driver stages it, without any cudaStreamSynchronize: the

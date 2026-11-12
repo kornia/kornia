@@ -401,6 +401,11 @@ class TestDeprecatedFunction:
         x = torch.rand(3)
         compiled = torch_optimizer(lambda t: old(t) * 2, fullgraph=True)
         with _caught() as caught:
+            # Not kornia's: Triton 3.9 warns once per process, on Inductor's first compilation, that
+            # TRITON_DEFAULT_FP_FUSION is unset, which fails this test when it compiles first.
+            warnings.filterwarnings(
+                "ignore", message="TRITON_DEFAULT_FP_FUSION is unset", category=UserWarning, module=r"triton\."
+            )
             out = compiled(x)
         assert torch.equal(out, (x + 1) * 2)
         assert caught == []

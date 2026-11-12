@@ -294,7 +294,7 @@ class TestRgbToYuv(BaseTester):
             rtol=rtol,
         )
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True, fast_mode=True)
 
@@ -416,7 +416,7 @@ class TestRgbToYuv420(BaseTester):
         y, uv = kornia.color.rgb_to_yuv420(data)
         self.assert_close(kornia.color.yuv420_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True, fast_mode=True)
 
@@ -539,7 +539,7 @@ class TestRgbToYuv422(BaseTester):
         y, uv = kornia.color.rgb_to_yuv422(data)
         self.assert_close(kornia.color.yuv422_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True, fast_mode=True)
 
@@ -652,7 +652,7 @@ class TestYuvToRgb(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_yuv(kornia.color.yuv_to_rgb(yuv)), yuv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
@@ -795,7 +795,7 @@ class TestYuv420ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
@@ -938,7 +938,7 @@ class TestYuv422ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)

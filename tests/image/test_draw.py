@@ -110,7 +110,7 @@ class TestDrawPoint(BaseTester):
         for x, y in points:
             self.assert_close(img[:, y, x], color.to(torch.uint8))
 
-    def test_draw_point2d_with_singleton_color_dims(self, dtype, device):
+    def test_draw_point2d_with_singleton_color_dims(self, device):
         """Ensure that plotting behavior is consistent if we have a singleton dim for the color."""
         points = torch.tensor([(1, 3), (2, 4)], device=device)
         # Plot given a color tensor of shape [3]
@@ -959,7 +959,9 @@ class TestDrawRectangle(BaseTester):
         not torch_version_ge(2, 14),
         reason="slices with data-dependent bounds export from torch 2.14 (2.9.1 fails to export, 2.6 bakes the input)",
     )
-    @pytest.mark.parametrize(("fill", "line_width"), [(False, 1), (True, 1), (False, 3)])
+    # An outline of one pixel is the outline of line_width pixels with a constant 0 added: three pixels exercise the
+    # clamps of each side to the box, which one pixel leaves idle.
+    @pytest.mark.parametrize(("fill", "line_width"), [(True, 1), (False, 3)])
     def test_onnx_export_draws_the_rectangles_given_at_run_time(self, fill, line_width):
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
@@ -1043,13 +1045,13 @@ class TestFillConvexPolygon(BaseTester):
         assert img[0, 0, 2].nonzero().flatten()[[0, -1]].tolist() == [260, 280]
         assert int(img[0, 0, 2].sum()) == 21
 
-    def test_centre_exactly_on_a_sloped_edge_is_filled(self, device, dtype):
+    def test_centre_exactly_on_a_sloped_edge_is_filled(self, device):
         # hull [[13,18],[48,1],[12,31],[12,22]] on 31x47: (row 26, col 18) lies on edge (48,1)->(12,31)
         poly = torch.tensor([[[13.0, 18.0], [48.0, 1.0], [12.0, 31.0], [12.0, 22.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 31, 47, device=device), poly, torch.tensor([1.0], device=device))
         assert img[0, 0, 26, 18] == 1
 
-    def test_long_shallow_edge_with_vertices_outside_the_image(self, device, dtype):
+    def test_long_shallow_edge_with_vertices_outside_the_image(self, device):
         # triangle (-100,0),(100,4),(-100,4) on 5x6 covers 13 pixel centres (rows 2-4)
         poly = torch.tensor([[[-100.0, 0.0], [100.0, 4.0], [-100.0, 4.0]]], device=device)
         img = draw_convex_polygon(torch.zeros(1, 1, 5, 6, device=device), poly, torch.tensor([1.0], device=device))

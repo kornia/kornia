@@ -132,7 +132,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **239 float16 and 251 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **113 float16 and 120 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. [#4153](https://github.com/kornia/kornia/issues/4153) tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -144,19 +144,19 @@ measurement of the whole test suite is [below](#cuda-test-suite-measurement).
 | `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and FFT convolution compute half inputs in float32 and return the input dtype |
 | `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
-| `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 30 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
-| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
+| `kornia.augmentation` | ⚠️ | ⚠️ | 52 / 46 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
+| `kornia.geometry.transform` | ✅ | ✅ | 0 / 0 | Warps, rotation matrices, homography normalization and `crop_and_resize` compute half inputs in float32 and return the input dtype |
+| `kornia.geometry.camera` | ⚠️ | ✅ | 1 / 0 | float16: an affine round trip to pixels beyond 65504; `cam2pixel` and Kannala-Brandt distortion compute half inputs in float32, and a half-precision stereo rig keeps `Q` in float32 |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy |
 | `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT solver accuracy, including iterated and line-based variants |
 | `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
 | `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py |
+| `kornia.geometry.subpix` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.geometry.conversions` | ✅ | ⚠️ | 0 / 3 | Rotation conversions compute half inputs in float32 and return the input dtype; bfloat16: the log quaternion of a -179.9 degree turn rounds to the other side of the half turn. Includes tests/integration/test_conversions.py |
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | Essential-model fitting raises in epipolar solvers |
-| `kornia.geometry (other)` | ⚠️ | ⚠️ | 3 / 10 | Box-transform and depth accuracy |
-| `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision |
+| `kornia.geometry (other)` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.image` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16: total-variation accuracy |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |

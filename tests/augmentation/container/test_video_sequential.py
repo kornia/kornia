@@ -87,7 +87,8 @@ class TestVideoSequential:
         ],
     )
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
-    @pytest.mark.parametrize("random_apply", [1, (1, 1), (1,), 10, True, False])
+    # 1 is not repeated next to (1, 1): both store the range (1, 2), and 10 is an int.
+    @pytest.mark.parametrize("random_apply", [(1, 1), (1,), 10, True, False])
     def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
         aug_list = K.VideoSequential(
             *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply

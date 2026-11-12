@@ -145,6 +145,7 @@ class TestOnnxLightGlue:
         assert result["matches"].device.type == "cpu"
         torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.slow
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])

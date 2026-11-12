@@ -87,6 +87,7 @@ class TestDiscreteSteerer(BaseTester):
         assert desc.grad is not None
         assert torch.all(desc.grad != 0)
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_cpu_vs_cuda_consistency(self):
         generator = torch.tensor([[0.0, 1], [-1, 0]])

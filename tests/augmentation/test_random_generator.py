@@ -50,16 +50,16 @@ from testing.base import BaseTester, assert_close
 
 
 class RandomGeneratorBaseTests:
-    def test_valid_param_combinations(self, device, dtype):
+    def test_valid_param_combinations(self):
         raise NotImplementedError
 
-    def test_invalid_param_combinations(self, device, dtype):
+    def test_invalid_param_combinations(self):
         raise NotImplementedError
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self):
         raise NotImplementedError
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         raise NotImplementedError
 
 
@@ -90,25 +90,33 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
             (1.0, [True] * 8),
         ],
     )
-    def test_random_gen(self, p, expected, device, dtype):
+    def test_random_gen(self, p, expected):
         torch.manual_seed(42)
         batch_size = 8
         res = ProbabilityGenerator(p)(torch.Size([batch_size]))
         assert (res["probs"] == torch.tensor(expected)).long().sum() == batch_size
 
     @pytest.mark.parametrize("seed,expected", [(42, [False] * 8), (0, [True] * 8)])
-    def test_same_on_batch(self, seed, expected, device, dtype):
+    def test_same_on_batch(self, seed, expected):
         torch.manual_seed(seed)
         batch_size = 8
         res = ProbabilityGenerator(0.5)(torch.Size([batch_size]), True)
         assert (res["probs"] == torch.tensor(expected)).long().sum() == batch_size
 
 
+# The colour generators read each range on its own, so the cases need every range both set and unset, not all 16
+# combinations: none set, all set, and two halves set side by side.
+_COLOR_RANGES = (torch.tensor([0.8, 1.2]),) * 3 + (torch.tensor([-0.1, 0.1]),)
+_COLOR_RANGE_CASES = [
+    tuple(value if keep else None for value, keep in zip(_COLOR_RANGES, mask))
+    for mask in [(False,) * 4, (True,) * 4, (True, False, True, False), (False, True, False, True)]
+]
+# translate, scale and shear of the affine generator, each also left unset.
+_AFFINE_OPTIONAL_RANGES = (torch.tensor([0.1, 0.1]), torch.tensor([0.7, 1.2]), torch.tensor([[0, 20], [0, 20]]))
+
+
 class TestColorJiggleGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("brightness", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("contrast", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("saturation", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("hue", [None, torch.tensor([-0.1, 0.1])])
+    @pytest.mark.parametrize("brightness,contrast,saturation,hue", _COLOR_RANGE_CASES)
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
@@ -396,10 +404,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
 
 class TestColorJitterGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("brightness", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("contrast", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("saturation", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("hue", [None, torch.tensor([-0.1, 0.1])])
+    @pytest.mark.parametrize("brightness,contrast,saturation,hue", _COLOR_RANGE_CASES)
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
@@ -823,10 +828,19 @@ class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
-    @pytest.mark.parametrize("degrees", [torch.tensor([0, 30]), 0.5])
-    @pytest.mark.parametrize("translate", [None, torch.tensor([0.1, 0.1])])
-    @pytest.mark.parametrize("scale", [None, torch.tensor([0.7, 1.2])])
-    @pytest.mark.parametrize("shear", [None, torch.tensor([[0, 20], [0, 20]])])
+    @pytest.mark.parametrize(
+        "degrees,translate,scale,shear",
+        # Each range is read on its own: every form of each one, set and unset ranges side by side, in four cases.
+        [
+            (degrees, *(value if keep else None for value, keep in zip(_AFFINE_OPTIONAL_RANGES, mask)))
+            for degrees, mask in [
+                (torch.tensor([0, 30]), (False, False, False)),
+                (0.5, (True, True, True)),
+                (torch.tensor([0, 30]), (True, False, True)),
+                (0.5, (False, True, False)),
+            ]
+        ],
+    )
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
         self,
@@ -1365,7 +1379,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [200])
     @pytest.mark.parametrize("size", [(100, 100)])
-    def test_valid_param_combinations(self, batch_size, height, width, size, device, dtype):
+    def test_valid_param_combinations(self, batch_size, height, width, size):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     @pytest.mark.parametrize(
@@ -1378,12 +1392,12 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
             (100, 150, (120, 120)),
         ],
     )
-    def test_invalid_param_combinations(self, height, width, size, device, dtype):
+    def test_invalid_param_combinations(self, height, width, size):
         batch_size = 2
         with pytest.raises(AssertionError):
             center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self, device):
         torch.manual_seed(42)
         res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
         expected = {
@@ -1410,7 +1424,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         assert_close(res["src"].to(device=device), expected["src"])
         assert_close(res["dst"].to(device=device), expected["dst"])
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         pass
 
 
@@ -1561,7 +1575,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("bits", [torch.tensor([0, 8])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
+    def test_valid_param_combinations(self, batch_size, bits, same_on_batch):
         PosterizeGenerator(bits)(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -1757,14 +1771,20 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         assert_close(params["image_shape"], torch.tensor([7, 9], device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
-    @pytest.mark.parametrize("p", [0, 0.5, 1.0])
     @pytest.mark.parametrize("width,height", [(200, 200)])
-    @pytest.mark.parametrize("num_mix", [1, 3])
     # The small beta is 1e-2: Beta(1e-2, 1e-2) puts most draws of lambda next to 0 or 1, so the generator reaches
     # the full-size and the empty cut in every dtype. A tinier value does not: 1e-15 rounds to 0 in float16, which
     # Beta rejects, and torch samples exactly 0.5 from Beta(1e-15, 1e-15) in float32 and float64.
-    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-2), torch.tensor(1.0)])
-    @pytest.mark.parametrize("cut_size", [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
+    # Every beta meets every cut_size, which clamps the lambda beta draws; p runs a Latin square over the two, so it
+    # meets each of them, and num_mix alternates. Nine cases instead of the 54 of the full product.
+    @pytest.mark.parametrize(
+        "beta,cut_size,p,num_mix",
+        [
+            (beta, cut_size, (0, 0.5, 1.0)[(i + j) % 3], (1, 3)[(3 * i + j) % 2])
+            for i, beta in enumerate([None, torch.tensor(1e-2), torch.tensor(1.0)])
+            for j, cut_size in enumerate([None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
+        ],
+    )
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
         self,

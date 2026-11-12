@@ -22,7 +22,7 @@ import kornia
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError
 
-from testing.base import BaseTester
+from testing.base import BaseTester, raises_cuda_device_assert
 
 
 def _tolerances(dtype):
@@ -94,16 +94,21 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(actual[0], gaussian, **_tolerances(dtype))
 
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])
-    def test_zero_std_raises(self, device: torch.device, dtype: torch.dtype, std: list[float]) -> None:
+    def test_zero_std_raises(
+        self, device: torch.device, dtype: torch.dtype, std: list[float], capfd: pytest.CaptureFixture[str]
+    ) -> None:
         # A zero std used to render an all-NaN map: the inverse variance is infinite and 0 * inf is NaN.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
         mean = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         std_t = torch.tensor([std], device=device, dtype=dtype)
 
-        # From torch 2.13 the MPS assert raises at the next synchronization; elsewhere the host read raises at once.
-        if device.type == "mps" and torch_version_ge(2, 13):
+        # On CUDA, and on MPS from torch 2.13, the assert raises at the next synchronization; elsewhere the host read
+        # raises at once.
+        if device.type == "cuda":
+            with raises_cuda_device_assert("std should be nonzero", capfd):
+                kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
+        elif device.type == "mps" and torch_version_ge(2, 13):
             kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
             with pytest.raises(RuntimeError, match="std should be nonzero"):
                 torch.mps.synchronize()

@@ -42,7 +42,7 @@ class TestNormalize(BaseTester):
         std = torch.tensor([0.5, 2.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
 
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         mean = [0.5]
         std = [0.1]
         repr = "Normalize(mean=[0.5], std=[0.1])"
@@ -216,7 +216,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             "Rescale": kornia.enhance.Rescale(torch.tensor(2.0)),
         }
 
-    def test_constants_are_registered_buffers(self, device, dtype):
+    def test_constants_are_registered_buffers(self):
         for name, module in self._modules().items():
             assert list(module.buffers()), f"{name} registered no buffers"
 
@@ -228,7 +228,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             ("Rescale", ("factor",)),
         ],
     )
-    def test_to_moves_the_constants(self, name, attrs, device, dtype):
+    def test_to_moves_the_constants(self, name, attrs):
         """dtype stands in for device, so the check runs on CPU-only CI.
 
         Asserted on the attributes by name rather than by iterating buffers:
@@ -241,7 +241,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             assert isinstance(value, torch.Tensor), f"{name}.{attr} is not a tensor"
             assert value.dtype == torch.float64, f"{name}.{attr} stayed {value.dtype} after .to(float64)"
 
-    def test_the_constants_stay_out_of_the_state_dict(self, device, dtype):
+    def test_the_constants_stay_out_of_the_state_dict(self):
         """They are constructor arguments, not learned state.
 
         Registering them persistently would make every existing checkpoint
@@ -250,7 +250,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
         for name, module in self._modules().items():
             assert module.state_dict() == {}, f"{name} state_dict is not empty"
 
-    def test_denormalize_coerces_scalars(self, device, dtype):
+    def test_denormalize_coerces_scalars(self):
         """Scalar arguments stay as Python values and are materialized per input."""
         module = kornia.enhance.Denormalize(0.0, 255.0)
         assert module.mean == 0.0
@@ -307,24 +307,6 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             kornia.enhance.denormalize(x, mean, std),
         )
         self.assert_close(kornia.enhance.Rescale(2.0)(x), x * 2.0)
-
-    def test_smoke(self, device, dtype):
-        pass
-
-    def test_cardinality(self, device, dtype):
-        pass
-
-    def test_exception(self, device, dtype):
-        pass
-
-    def test_gradcheck(self, device):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass
 
 
 @pytest.mark.parametrize(
@@ -386,7 +368,7 @@ class TestEnhanceConstructorParameters(BaseTester):
 
 
 class TestDenormalize(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         mean = [0.5]
         std = [0.1]
         repr = "Denormalize(mean=[0.5], std=[0.1])"

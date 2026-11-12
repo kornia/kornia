@@ -323,7 +323,7 @@ class TestDepthTo3d(BaseTester):
             depth_to_3d_v2(depth, camera_matrix[0])
 
     @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
-    def test_half_depth_with_float32_intrinsics_keeps_pixel_precision_6148(self, half_dtype, device, dtype):
+    def test_half_depth_with_float32_intrinsics_keeps_pixel_precision_6148(self, half_dtype, device):
         # kornia#6148: a half-precision depth map with float32 intrinsics built its pixel grid in the depth's
         # dtype, so the integer column indices were rounded (bfloat16 holds integers only to 256) and X drifted
         # by up to 2 px at 640 px wide. The grid is now built in the promoted dtype, so the points match the
@@ -369,7 +369,7 @@ class TestDepthTo3d(BaseTester):
         assert torch.equal(depth_to_3d(depth, camera_matrix), depth_to_3d(reference, camera_matrix))
         assert torch.equal(depth_to_3d_v2(depth[:, 0], camera_matrix), depth_to_3d_v2(reference[:, 0], camera_matrix))
 
-    def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device, dtype):
+    def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device):
         # Both inputs integer: promote_types does not support the unsigned/signed pair, so the grid falls back
         # to the default floating dtype instead of raising. MPS cannot compute in float64.
         if device.type == "mps":
@@ -386,7 +386,7 @@ class TestDepthTo3d(BaseTester):
         finally:
             torch.set_default_dtype(previous_dtype)
 
-    def test_all_half_inputs_keep_the_half_grid_6148(self, device, dtype):
+    def test_all_half_inputs_keep_the_half_grid_6148(self, device):
         # An all-bfloat16 call keeps its bfloat16 grid, whose points are this function's output, so
         # only the mixed case changes. With fx = 1 and cx = 1, column 257 unprojects to x = 256 in exact
         # arithmetic, which a bfloat16 grid stores as 255 while a float32 computation cast back gives 256:
@@ -402,7 +402,7 @@ class TestDepthTo3d(BaseTester):
         assert points_v1[0, 0, 0, 257].item() == 255.0
         assert points_v2[0, 0, 257, 0].item() == 255.0
 
-    def test_real_depth_with_complex_intrinsics_promotes_through_the_grid_6148(self, device, dtype):
+    def test_real_depth_with_complex_intrinsics_promotes_through_the_grid_6148(self, device):
         # A complex promotion keeps a real grid (arange has no complex kernels); the arithmetic still
         # promotes to complex, which also unblocks complex inputs that failed on main during grid
         # construction.
@@ -416,7 +416,7 @@ class TestDepthTo3d(BaseTester):
         expected = torch.tensor([0.0, 0.0, 2.0], device=device, dtype=torch.complex64)
         self.assert_close(points_v2[0, 0, 0], expected)
 
-    def test_complex32_depth_with_half_intrinsics_unprojects_6148(self, device, dtype):
+    def test_complex32_depth_with_half_intrinsics_unprojects_6148(self, device):
         # complex32 depth promotes with float16 intrinsics to complex32, which also has no arange kernel:
         # the grid stays real (float16) and only the final multiplication sees the complex depth. The
         # imaginary part reaches the output: at pixel (u=2, v=1) an identity camera unprojects z = 2+1j
@@ -433,7 +433,7 @@ class TestDepthTo3d(BaseTester):
         self.assert_close(points[0, :, 1, 2].to(torch.complex64), expected)
         self.assert_close(points_v2[0, 1, 2].to(torch.complex64), expected)
 
-    def test_all_complex32_inputs_get_a_real_grid_6148(self, device, dtype):
+    def test_all_complex32_inputs_get_a_real_grid_6148(self, device):
         # Two complex32 inputs cannot run through torch (no ComplexHalf division kernel), but the grid
         # dtype itself is well defined: the real component of the promotion, float16.
         from kornia.geometry.depth import _depth_grid_dtype
@@ -703,7 +703,7 @@ class TestDepthToNormals(BaseTester):
 
 class TestWarpFrameDepth(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
-    def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device, dtype):
+    def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device):
         # kornia#6148 on the wrapper path: warp_frame_depth reaches the mixed-dtype fix through
         # depth_to_3d_v2, so an identity warp with half-precision depth and float32 intrinsics and
         # transform reproduces the float32-depth image instead of sampling off-by-pixels. float16 holds the

@@ -1188,7 +1188,7 @@ class TestAdaptiveQuadInterp3d(BaseTester):
             assert coords.shape == (1, 1, 3, 3, 8, 8)
             assert vals.shape == (1, 1, 3, 8, 8)
 
-    def test_invalid_mode(self, device, dtype):
+    def test_invalid_mode(self):
         with pytest.raises(ValueError, match="mode must be one of"):
             kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="bogus")
 

@@ -348,54 +348,68 @@ def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_i(n: int, x: torch.Tensor, scaled: bool = False, max_order: Optional[int] = None) -> torch.Tensor:
-    """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
+def _modified_bessel_i_orders(max_order: int, x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
+    """Return ``I_2(x), ..., I_{max_order - 1}(x)`` for ``x`` of shape ``(B, 1)``, as a ``(B, max_order - 2)`` tensor.
+
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+
+    The backward (Miller) recurrence starts from a point set by ``max_order`` alone and passes through every lower
+    order on its way down, so one pass collects all the orders instead of one pass per order. Each value goes
+    through the same operations as in a pass of its own, so the results are identical, and the number of
+    recurrence steps is linear instead of quadratic in ``max_order``.
+    """
+    KORNIA_CHECK(max_order >= 3, "max_order must be at least 3.")
 
     # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
     # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    order = n if max_order is None else max_order
     # A ~1e-7 approximation mismatch here can make finite-difference gradcheck fail exactly at the branch switch.
-    use_forward = x.abs() > order * order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
+    use_forward = x.abs() > max_order * max_order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
     x_nz = torch.where(is_zero_mask | use_forward, torch.ones_like(x), x)
+    orders = torch.arange(2, max_order, device=x.device)
+    flip_odd = (orders % 2 == 1) & (x_nz < 0.0)
 
     tox = 2.0 / x_nz.abs()
 
-    ans = torch.zeros_like(x)
     bip = torch.zeros_like(x)
     bi = torch.ones_like(x)
+    # The orders j + 1 .. max_order - 1 collected so far, lowest first; a placeholder until j = max_order - 1.
+    ans = torch.zeros_like(x)
 
-    m = int(2 * (order + int(math.sqrt(40.0 * order))))
+    m = int(2 * (max_order + int(math.sqrt(40.0 * max_order))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
 
         # Rescale only the lanes that grow past 1e10; the other lanes pass through unchanged.
         scale_mask = bi.abs() > 1.0e10
-        ans = torch.where(scale_mask, ans * 1e-10, ans)
+        if j < max_order - 1:
+            ans = torch.where(scale_mask, ans * 1e-10, ans)
         bi = torch.where(scale_mask, bi * 1e-10, bi)
         bip = torch.where(scale_mask, bip * 1e-10, bip)
 
-        if j == n:
+        if j == max_order - 1:
             ans = bip
+        elif 2 <= j < max_order - 1:
+            ans = torch.cat([bip, ans], -1)
 
     out = ans * _modified_bessel_0(x_nz, scaled=scaled) / bi
-    if (n % 2) == 1:
-        out = torch.where(x_nz < 0.0, -out, out)
+    out = torch.where(flip_odd, -out, out)
 
     if scaled:
         # Upward recurrence is stable when all requested orders are small relative to sqrt(x).
-        x_up = torch.where(use_forward, x.abs(), torch.full_like(x, order * order / 4))
+        x_up = torch.where(use_forward, x.abs(), torch.full_like(x, max_order * max_order / 4))
         previous = _modified_bessel_0(x_up, scaled=True)
         current = _modified_bessel_1(x_up, scaled=True)
-        for k in range(1, n):
+        upward = []
+        for k in range(1, max_order - 1):
             previous, current = current, previous - (2.0 * k / x_up) * current
-        if (n % 2) == 1:
-            current = torch.where(x < 0, -current, current)
-        out = torch.where(use_forward, current, out)
+            upward.append(current)
+        up = torch.cat(upward, -1)
+        up = torch.where((orders % 2 == 1) & (x < 0), -up, up)
+        out = torch.where(use_forward, up, out)
 
-    return torch.where(is_zero_mask, torch.zeros_like(x), out)
+    return torch.where(is_zero_mask, torch.zeros_like(out), out)
 
 
 def gaussian_discrete(
@@ -446,9 +460,11 @@ def gaussian_discrete(
     bessels = [_modified_bessel_0(sigma2, scaled=True)]
     if tail > 1:
         bessels.append(_modified_bessel_1(sigma2, scaled=True))
-    bessels.extend(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail))
+    if tail > 2:
+        bessels.append(_modified_bessel_i_orders(tail, sigma2, scaled=True))
     # The exp(-sigma²) factor is already included in the scaled Bessel terms.
-    out = torch.cat(bessels[:0:-1] + bessels, -1)
+    half = torch.cat(bessels, -1)
+    out = torch.cat([half[..., 1:].flip(-1), half], -1)
 
     return (out / out.sum(-1, keepdim=True)).to(output_dtype)
 

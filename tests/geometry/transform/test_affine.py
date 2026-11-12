@@ -1340,7 +1340,7 @@ class TestAffine2d(BaseTester):
         tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
         self.assert_close(actual, expected, atol=tol, rtol=tol)
 
-    def test_compose_affine_matrix_3x3(self, device, dtype):
+    def test_compose_affine_matrix_3x3(self):
         """To get parameters:
         import torchvision as tv
         from PIL import Image

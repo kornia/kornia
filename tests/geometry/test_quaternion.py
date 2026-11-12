@@ -61,7 +61,7 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
-    def test_from_coeffs_integer_and_types(self, device: torch.device, dtype: torch.dtype) -> None:
+    def test_from_coeffs_integer_and_types(self) -> None:
         # 1. Normal Python float coefficients produce (4,)
         q_float = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
         assert q_float.data.is_floating_point()
@@ -123,7 +123,7 @@ class TestQuaternion(BaseTester):
         assert isinstance(q2, Quaternion)
         self.assert_close(q1, q2)
 
-    def test_init_fail(self, device, dtype):
+    def test_init_fail(self):
         with pytest.raises(TypeError):
             _ = Quaternion("q")
 

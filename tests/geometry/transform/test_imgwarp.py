@@ -2121,8 +2121,8 @@ class TestWarpOnePixelSourceAxis6433(BaseTester):
 
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
-    @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
-    @pytest.mark.parametrize("strict", [False, True])
+    # "fill" pads its source as "zeros" does, and its mask too: the strict tracer runs it alone.
+    @pytest.mark.parametrize(("padding_mode", "strict"), [("zeros", False), ("fill", False), ("fill", True)])
     def test_dynamic_export_rejects_an_empty_axis(self, op_name, padding_mode, strict, device):
         warp = getattr(kornia.geometry.transform, op_name)
         matrix = self._matrix(op_name, [0.2], [0.6], device, torch.float32)
@@ -2247,8 +2247,19 @@ class TestWarpOnePixelSourceAxis6433(BaseTester):
 
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
-    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "fill"])
-    @pytest.mark.parametrize("strict", [False, True])
+    # The strict tracer runs once per path of _pad_one_pixel_axes: "fill" pads its source as "zeros" does, and its mask
+    # too, and "border" returns the source as "reflection" does.
+    @pytest.mark.parametrize(
+        ("padding_mode", "strict"),
+        [
+            ("zeros", False),
+            ("border", False),
+            ("reflection", False),
+            ("fill", False),
+            ("fill", True),
+            ("border", True),
+        ],
+    )
     def test_dynamic_export_has_no_guard_on_the_size(self, op_name, padding_mode, strict, device):
         # A Python test of the size would be a guard of the exported program, which would reject the other side of it.
         warp = getattr(kornia.geometry.transform, op_name)

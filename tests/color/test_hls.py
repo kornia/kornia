@@ -225,7 +225,7 @@ class TestRgbToHls(BaseTester):
         self.assert_close(actual, expected.to(dtype))
         self.assert_close(image.grad, reference.grad.to(dtype))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hls, (img,), raise_exception=True, fast_mode=True)
@@ -376,7 +376,7 @@ class TestHlsToRgb(BaseTester):
         data[:, 0] -= 4 * math.pi
         self.assert_close(f(data), expected, low_tolerance=True)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hls_to_rgb, (img,), raise_exception=True, fast_mode=True)

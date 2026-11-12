@@ -30,7 +30,7 @@ class TestRandomHorizontalFlip3D(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device):
+    def test_smoke(self):
         f = RandomHorizontalFlip3D(0.5)
         repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=None)"
         assert str(f) == repr

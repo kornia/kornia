@@ -108,7 +108,7 @@ class TestNullVector3x4(BaseTester):
         with pytest.raises(ShapeError):
             solvers.null_vector_3x4(torch.rand(4, device=device, dtype=dtype))
 
-    def test_exception_not_tensor(self, device, dtype):
+    def test_exception_not_tensor(self):
         with pytest.raises(TypeCheckError):
             solvers.null_vector_3x4([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
 
