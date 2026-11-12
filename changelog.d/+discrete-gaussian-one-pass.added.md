@@ -1,0 +1,1 @@
+`get_gaussian_discrete_kernel1d` computes all its modified Bessel orders in one backward recurrence instead of one recurrence per order, so its cost grows linearly instead of quadratically with the kernel size: about 14x faster at 31 taps and 60x faster at 121 taps on CPU and CUDA, with bitwise identical kernels.
