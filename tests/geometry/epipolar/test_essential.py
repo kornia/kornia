@@ -25,7 +25,13 @@ from kornia.geometry.epipolar.essential import _refine_essential_lm
 
 from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
-from testing.two_view import calibrated_two_view_scene, two_view_scene
+from testing.two_view import (
+    ONE_ROUNDING_EPS,
+    calibrated_two_view_scene,
+    max_relative_error,
+    pixel_two_view_batch,
+    two_view_scene,
+)
 
 
 def test_generate_two_view_random_scene_is_deterministic():
@@ -567,6 +573,18 @@ class TestEssentialFromFundamental(BaseTester):
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
         self.assert_close(F_mat_norm, F_hat_norm)
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with focal lengths near 1000 px. Multiplying in half precision rounds K2^T F as well, and leaves
+        # E off by 0.81 eps of its largest entry in float16 and 0.88 eps in bfloat16.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        F_mat, K1, K2 = (scene[key].to(dtype) for key in ("F", "K1", "K2"))
+        expected = epi.essential_from_fundamental(F_mat.double(), K1.double(), K2.double())
+        actual = epi.essential_from_fundamental(F_mat.to(device), K1.to(device), K2.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
     def test_gradcheck(self, device):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -1267,9 +1285,12 @@ class TestConventionEssential(BaseTester):
         assert R1.shape == (3, 3)
         assert R2.shape == (3, 3)
         assert t.shape == (3, 1)
+        # A half-precision E is decomposed in float32 and the factors are returned in its dtype.
+        assert R1.dtype == R2.dtype == t.dtype == dtype
         Rs, ts = epi.motion_from_essential(E[0])
         assert Rs.shape == (4, 3, 3)
         assert ts.shape == (4, 3, 1)
+        assert Rs.dtype == ts.dtype == dtype
         R1b, R2b, tb = epi.decompose_essential_matrix(E)
         self.assert_close(R1, R1b[0])
         self.assert_close(R2, R2b[0])

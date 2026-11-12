@@ -111,6 +111,8 @@ class TestSolvePnpDlt(BaseTester):
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
+        # A half-precision pose is solved in float32 and returned in the input dtype.
+        assert pred_world_to_cam.dtype == dtype
 
     @pytest.mark.parametrize("num_points", [6])
     def test_gradcheck(self, num_points, device):

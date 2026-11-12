@@ -94,6 +94,58 @@ def calibrated_two_view_scene(
     return {"x1": x1, "x2": x2, "E": E / E.norm(), "R": R, "t": t}
 
 
+# A result computed in float32 and rounded once to a half dtype is within half a unit in the last place of the float64
+# result of the same rounded inputs, so within 0.5 eps of its largest entry; 1/64 eps covers the float32 arithmetic.
+ONE_ROUNDING_EPS = 0.5 + 2**-6
+
+
+def max_relative_error(actual: torch.Tensor, expected: torch.Tensor) -> float:
+    """Return the largest error of any batch element, relative to that element's largest ``expected`` entry.
+
+    ``actual`` may be on any device and in any dtype; ``expected`` is a float64 CPU tensor of the same shape.
+    """
+    error = (actual.cpu().double() - expected).abs().flatten(1).amax(-1)
+    return (error / expected.abs().flatten(1).amax(-1)).max().item()
+
+
+def pixel_two_view_batch(batch: int, num_points: int, seed: int) -> Dict[str, torch.Tensor]:
+    """Seeded batch of two-view geometries in pixels, built on the CPU in float64.
+
+    Each element has a rotation with axis-angle components of standard deviation 0.2 rad, a unit translation,
+    ``E = [t]_x R``, two cameras with focal lengths of 900 to 1100 px and principal points within 20 px of (640, 360),
+    ``F = K2^{-T} E K1^{-1}``, and ``num_points`` first-image points ``x1`` spread uniformly over a 1280 x 720 image.
+    For accuracy tests that round these inputs to a lower-precision dtype.
+    """
+    f64 = torch.float64
+    generator = torch.Generator().manual_seed(seed)
+    R = axis_angle_to_rotation_matrix(0.2 * torch.randn(batch, 3, generator=generator, dtype=f64))
+    t = torch.nn.functional.normalize(torch.randn(batch, 3, generator=generator, dtype=f64), dim=-1)
+    zero = torch.zeros(batch, dtype=f64)
+    tx = torch.stack(
+        [
+            torch.stack([zero, -t[:, 2], t[:, 1]], -1),
+            torch.stack([t[:, 2], zero, -t[:, 0]], -1),
+            torch.stack([-t[:, 1], t[:, 0], zero], -1),
+        ],
+        -2,
+    )
+    E = tx @ R
+
+    def camera() -> torch.Tensor:
+        focal = 900.0 + 200.0 * torch.rand(batch, 2, generator=generator, dtype=f64)
+        center = torch.tensor([640.0, 360.0], dtype=f64) + 40.0 * torch.rand(batch, 2, generator=generator, dtype=f64)
+        center = center - 20.0
+        K = torch.zeros(batch, 3, 3, dtype=f64)
+        K[:, 0, 0], K[:, 1, 1], K[:, 0, 2], K[:, 1, 2], K[:, 2, 2] = focal[:, 0], focal[:, 1], *center.unbind(-1), 1.0
+        return K
+
+    K1, K2 = camera(), camera()
+    F = torch.linalg.inv(K2).mT @ E @ torch.linalg.inv(K1)
+    image = torch.tensor([1280.0, 720.0], dtype=f64)
+    x1 = torch.rand(batch, num_points, 2, generator=generator, dtype=f64) * image
+    return {"E": E, "F": F, "K1": K1, "K2": K2, "x1": x1}
+
+
 def affine_two_view_scene(device: torch.device, dtype: torch.dtype) -> Dict[str, torch.Tensor]:
     """Two affine cameras and twelve correspondences, built in ``dtype`` from literals.
 

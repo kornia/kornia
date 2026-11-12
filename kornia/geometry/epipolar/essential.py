@@ -658,6 +658,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           compares OpenCV's labels.
         - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
           float32 rotations.
+        - A float16 or bfloat16 ``E_mat`` is decomposed in float32, and the rotations and the translation are
+          returned in its dtype.
         - First and second derivatives at an exact essential matrix are finite and correct, also where its two largest
           singular values are equal and the backward of :func:`torch.linalg.svd` divides by zero; a third derivative
           is not correct. They are those of the labeling the call returned. They need the smallest singular value to
@@ -899,6 +901,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         - The candidates are stacked on dim ``-3``; which index is the true pose is not fixed.
         - A caller's autocast region does not change the result, and the derivatives at an exact essential matrix are
           finite and correct, as for :func:`decompose_essential_matrix`.
+        - A float16 or bfloat16 ``E_mat`` is decomposed in float32, and the candidates are returned in its dtype.
 
     Args:
         E_mat: The essential matrix in the form of ``(*, 3, 3)``.

@@ -37,7 +37,13 @@ from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, script_uncached
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
-from testing.two_view import affine_two_view_scene, two_view_scene
+from testing.two_view import (
+    ONE_ROUNDING_EPS,
+    affine_two_view_scene,
+    max_relative_error,
+    pixel_two_view_batch,
+    two_view_scene,
+)
 
 
 class TestNormalizePoints(BaseTester):
@@ -754,6 +760,30 @@ class TestComputeCorrespondEpilines(BaseTester):
         with pytest.raises(ShapeError, match=r"points must have shape \(\*, N, 2\) or \(\*, N, 3\), got \["):
             epi.get_closest_point_on_epipolar_line(points, pts2, F_mat)
 
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with F = K2^-T E K1^-1 and 100 points each in a 1280 x 720 image. Projecting and scaling in half
+        # precision leaves the lines off by 1.0 of their largest entry in float16 and by 1.5 eps in bfloat16, and
+        # rounding F x to the dtype before the scaling by 3.9 eps and 1.04 eps.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        points, F_mat = scene["x1"].to(dtype), scene["F"].to(dtype)
+        expected = epi.compute_correspond_epilines(points.double(), F_mat.double())
+        actual = epi.compute_correspond_epilines(points.to(device), F_mat.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
+
+    def test_integer_input_returns_float32(self, device):
+        if device.type == "cuda":
+            pytest.skip("CUDA has no integer matmul kernel")
+        # torch promotes the integer line to float32 for the scaling, and the scaled line is not cast back.
+        points = torch.tensor([[1, 1]], device=device)
+        F_mat = torch.tensor([[0, 0, 1], [0, 0, 1], [1, 1, -3]], device=device)
+        lines = epi.compute_correspond_epilines(points, F_mat)
+        assert lines.dtype == torch.float32
+        # F (1, 1, 1) = (1, 1, -1), scaled to a unit normal.
+        self.assert_close(lines, torch.tensor([[1.0, 1.0, -1.0]], device=device) / 2**0.5)
+
 
 class TestFundamentlFromEssential(BaseTester):
     def test_smoke(self, device, dtype):
@@ -822,6 +852,18 @@ class TestFundamentlFromEssential(BaseTester):
             r"got \[1, 3, 3\], \[3, 3\] and \[1, 3, 3\]\.",
         ):
             epi.fundamental_from_essential(E_mat, K, E_mat)
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with focal lengths near 1000 px. Multiplying in half precision leaves F off by 0.33 of its
+        # largest entry in float16 and by 1.1 in bfloat16.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        E_mat, K1, K2 = (scene[key].to(dtype) for key in ("E", "K1", "K2"))
+        expected = epi.fundamental_from_essential(E_mat.double(), K1.double(), K2.double())
+        actual = epi.fundamental_from_essential(E_mat.to(device), K1.to(device), K2.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
 
 class TestFundamentalFromProjections(BaseTester):
