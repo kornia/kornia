@@ -870,12 +870,14 @@ class TestAppliesToSelection:
             """
             import pytest
 
-            @pytest.mark.uses_accelerator
             @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronization")
             def test_cuda_only():
                 assert True
             """
         )
         self._run(pytester, test_file, "--device=cpu", "--dtype=float32").assert_outcomes(deselected=1)
-        result = self._run(pytester, test_file, "--device=cpu,cuda", "--dtype=float32", "--collect-only", "-q")
-        result.stdout.fnmatch_lines(["*test_cuda_only*"])
+        for devices in ("--device=cpu,cuda", "--device=cuda"):
+            # Without uses_accelerator too, an accelerator-only mark keeps the test on an accelerator-only leg, where
+            # a device-less test is otherwise deselected as device-agnostic.
+            result = self._run(pytester, test_file, devices, "--dtype=float32", "--collect-only", "-q")
+            result.stdout.fnmatch_lines(["*test_cuda_only*"])

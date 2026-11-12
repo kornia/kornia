@@ -452,6 +452,12 @@ def _is_device_agnostic(item) -> bool:
     """
     if item.get_closest_marker("uses_accelerator") is not None:
         return False
+    # A test that applies only to accelerators (``applies_to(devices=("cuda",))``) has nothing to do on the CPU leg.
+    if any(
+        mark.kwargs.get("devices") is not None and "cpu" not in mark.kwargs["devices"]
+        for mark in item.iter_markers(APPLIES_TO_MARKER)
+    ):
+        return False
     if item.get_closest_marker("device_agnostic") is not None:
         return True
     fixturenames = getattr(item, "fixturenames", None)
