@@ -370,6 +370,25 @@ def _apply_device_skips(items) -> None:
             item.add_marker(skip_mps_autocast)
 
 
+def _is_device_agnostic(item) -> bool:
+    """Return whether an accelerator-only run may deselect ``item`` because a CPU job runs the same code.
+
+    ``uses_accelerator`` keeps a test: it reaches an accelerator without the ``device`` fixture (a hard-coded
+    ``"cuda"`` tensor, a ``torch.cuda.is_available()`` guard, an MPS probe), so the accelerator leg is where it does
+    its work. Otherwise a test marked ``device_agnostic`` goes, and so does one whose fixture closure has no
+    ``device``: nothing hands it the selected device, so it repeats on the accelerator leg exactly what the CPU leg
+    did. An item without a fixture closure (not a Python test function) is kept.
+    """
+    if item.get_closest_marker("uses_accelerator") is not None:
+        return False
+    if item.get_closest_marker("device_agnostic") is not None:
+        return True
+    fixturenames = getattr(item, "fixturenames", None)
+    if fixturenames is None:
+        return False
+    return "device" not in fixturenames and "device_name" not in fixturenames
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
@@ -378,7 +397,7 @@ def pytest_collection_modifyitems(config, items):
     # still cover the whole suite when that is what the caller wants.
     selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
     if "cpu" not in selected_devices and not config.getoption("--run-device-agnostic"):
-        device_agnostic_items = [item for item in items if item.get_closest_marker("device_agnostic") is not None]
+        device_agnostic_items = [item for item in items if _is_device_agnostic(item)]
         if device_agnostic_items:
             config.hook.pytest_deselected(items=device_agnostic_items)
             device_agnostic_ids = {id(item) for item in device_agnostic_items}
@@ -389,9 +408,9 @@ def pytest_collection_modifyitems(config, items):
             reporter = config.pluginmanager.get_plugin("terminalreporter")
             if reporter is not None:
                 reporter.write_line(
-                    f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
-                    "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
-                    "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    f"deselected {len(device_agnostic_items)} device-agnostic test(s): they are marked "
+                    "device_agnostic or take no device fixture, and CPU is not in --device. Pass "
+                    "--run-device-agnostic (or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
                     yellow=True,
                 )
 
@@ -564,7 +583,8 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_RUN_DEVICE_AGNOSTIC", "false").lower() == "true",
         help=(
-            "Run tests marked device_agnostic even when CPU is not part of the device matrix. "
+            "Run device-agnostic tests (marked device_agnostic, or taking no device fixture and not "
+            "marked uses_accelerator) even when CPU is not part of the device matrix. "
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
@@ -823,7 +843,7 @@ def pytest_runtest_protocol(item, nextitem):
         f"--dtype={dtype_name}",
     ]
     # The parent already decided this node runs, so the child must not re-apply a selection rule
-    # and collect nothing: it is handed a single --device=cuda, under which the device_agnostic
+    # and collect nothing: it is handed a single --device=cuda, under which the device-agnostic
     # deselection would fire. Exit code 5 is reported back as an ordinary skip, which would hide
     # a test that never executed.
     cmd.append("--run-device-agnostic")

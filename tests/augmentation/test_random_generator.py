@@ -50,16 +50,16 @@ from testing.base import BaseTester, assert_close
 
 
 class RandomGeneratorBaseTests:
-    def test_valid_param_combinations(self, device, dtype):
+    def test_valid_param_combinations(self):
         raise NotImplementedError
 
-    def test_invalid_param_combinations(self, device, dtype):
+    def test_invalid_param_combinations(self):
         raise NotImplementedError
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self):
         raise NotImplementedError
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         raise NotImplementedError
 
 
@@ -90,14 +90,14 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
             (1.0, [True] * 8),
         ],
     )
-    def test_random_gen(self, p, expected, device, dtype):
+    def test_random_gen(self, p, expected):
         torch.manual_seed(42)
         batch_size = 8
         res = ProbabilityGenerator(p)(torch.Size([batch_size]))
         assert (res["probs"] == torch.tensor(expected)).long().sum() == batch_size
 
     @pytest.mark.parametrize("seed,expected", [(42, [False] * 8), (0, [True] * 8)])
-    def test_same_on_batch(self, seed, expected, device, dtype):
+    def test_same_on_batch(self, seed, expected):
         torch.manual_seed(seed)
         batch_size = 8
         res = ProbabilityGenerator(0.5)(torch.Size([batch_size]), True)
@@ -1365,7 +1365,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [200])
     @pytest.mark.parametrize("size", [(100, 100)])
-    def test_valid_param_combinations(self, batch_size, height, width, size, device, dtype):
+    def test_valid_param_combinations(self, batch_size, height, width, size):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     @pytest.mark.parametrize(
@@ -1378,12 +1378,12 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
             (100, 150, (120, 120)),
         ],
     )
-    def test_invalid_param_combinations(self, height, width, size, device, dtype):
+    def test_invalid_param_combinations(self, height, width, size):
         batch_size = 2
         with pytest.raises(AssertionError):
             center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
-    def test_random_gen(self, device, dtype):
+    def test_random_gen(self, device):
         torch.manual_seed(42)
         res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
         expected = {
@@ -1410,7 +1410,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         assert_close(res["src"].to(device=device), expected["src"])
         assert_close(res["dst"].to(device=device), expected["dst"])
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         pass
 
 
@@ -1561,7 +1561,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("bits", [torch.tensor([0, 8])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
+    def test_valid_param_combinations(self, batch_size, bits, same_on_batch):
         PosterizeGenerator(bits)(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(

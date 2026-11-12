@@ -68,7 +68,7 @@ class TestSSIMLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(*args[:2]))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # input data
         window_size = 3
         img1 = torch.rand(1, 1, 5, 4, device=device, dtype=torch.float64)
@@ -469,7 +469,7 @@ class TestMS_SSIMLoss(BaseTester):
         self.assert_close(criterion(img1, img2.to(dtype)), expected)
         self.assert_close(criterion(img1.to(dtype), img2), expected)
 
-    def test_integer_images_follow_the_module_dtype_5351(self, device, dtype):
+    def test_integer_images_follow_the_module_dtype_5351(self, device):
         # The masks follow the module dtype, so a float64 module computes uint8 images in float64.
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
@@ -600,7 +600,7 @@ class TestSSIM3DLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(*args[:2]))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # input data
         img = torch.rand(1, 1, 5, 4, 3, device=device)
 

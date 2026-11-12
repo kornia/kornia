@@ -88,7 +88,7 @@ class TestRgbToBgr(BaseTester):
         f = kornia.color.rgb_to_bgr
         self.assert_close(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_bgr, (img,), raise_exception=True, fast_mode=True)
@@ -300,12 +300,12 @@ class TestRgbToRgba(BaseTester):
         aval = torch.full_like(data[:, :1], aval)  # Bx1xHxW
         self.assert_close(kornia.color.rgb_to_rgba(data, aval), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_rgba, (img, 1.0), raise_exception=True, fast_mode=True)
 
-    def test_gradcheck_th(self, device, dtype):
+    def test_gradcheck_th(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         aval = torch.ones(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -446,7 +446,7 @@ class TestLinearRgb(BaseTester):
         f = kornia.color.linear_rgb_to_rgb
         self.assert_close(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_linear_rgb, (img,), raise_exception=True, fast_mode=True)
@@ -556,7 +556,7 @@ class TestRgb255Normals(BaseTester):
         normals_restored = kornia.color.rgb255_to_normals(rgb255_normals)
         self.assert_close(data_normals, normals_restored)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.full((B, C, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_rgb255, (img,), raise_exception=True, fast_mode=True)

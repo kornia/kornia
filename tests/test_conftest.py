@@ -28,12 +28,13 @@ from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 pytest_plugins = ["pytester"]
-# Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
-# several of them guard accelerator-only entry points -- `test_isolated_skip_is_reported_with_
-# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`. Marking the module would
-# deselect exactly the tests that command needs. They take no device fixture, so they run once
-# per session on any device matrix. `test_half_precision_isolation_probe` below is the one
-# exception, and is marked deliberately -- see its docstring.
+# These are the runner's own regression tests. Most take no device fixture: their pytester children
+# pick their own --device, so an accelerator-only run deselects them as device-agnostic and the CPU
+# job runs them. The two whose child takes a different path on a CUDA machine are marked
+# uses_accelerator so accelerator-only runs keep them -- `test_isolated_skip_is_reported_with_
+# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`.
+# `test_half_precision_isolation_probe` below is marked device_agnostic deliberately -- see its
+# docstring.
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
 
@@ -271,18 +272,22 @@ class TestIntegrationLocalHalfPrecision:
                 ]
             """,
         )
+        # test_normal and test_next_module take no device fixture, so the CUDA-only parent would
+        # deselect them as device-agnostic; the event sequence needs both.
         result = pytester.runpytest_subprocess(
             "test_first.py",
             "test_next.py",
             "--device=cuda",
             "--dtype=float16",
             "--isolate-half-precision",
+            "--run-device-agnostic",
             "-q",
         )
         result.assert_outcomes(passed=3, errors=int(teardown_error))
         if teardown_error:
             result.stdout.fnmatch_lines(["*ERROR at teardown of test_isolated*", "*parent finalizer failed*"])
 
+    @pytest.mark.uses_accelerator
     def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
         """Integration test: verify real pytest execution with local half_dtype."""
         test_file = pytester.makepyfile(
@@ -320,6 +325,7 @@ class TestIntegrationLocalHalfPrecision:
         )
         result_cpu.assert_outcomes(passed=1)
 
+    @pytest.mark.uses_accelerator
     def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester, monkeypatch):
         """The isolation parent must not turn a child's skip into a pass when addopts is quiet.
 
@@ -352,6 +358,8 @@ class TestIntegrationLocalHalfPrecision:
 
 
 class TestDeviceAgnosticSelection:
+    # The children request device_name rather than device: the device fixture skips an unavailable
+    # device, and these outcomes must not depend on whether the machine has CUDA.
     def test_device_agnostic_tests_run_once_in_cpu_containing_matrix(self, pytester):
         test_file = pytester.makepyfile(
             """
@@ -361,7 +369,7 @@ class TestDeviceAgnosticSelection:
             def test_device_agnostic():
                 assert True
 
-            def test_unmarked():
+            def test_unmarked(device_name):
                 assert True
             """
         )
@@ -397,7 +405,10 @@ class TestDeviceAgnosticSelection:
             def test_device_agnostic():
                 assert True
 
-            def test_unmarked():
+            def test_without_device():
+                assert True
+
+            def test_unmarked(device_name):
                 assert True
             """
         )
@@ -412,7 +423,58 @@ class TestDeviceAgnosticSelection:
             "--dtype=float32",
             "--run-device-agnostic",
         )
-        result.assert_outcomes(passed=2)
+        result.assert_outcomes(passed=3)
+
+    def test_tests_without_the_device_fixture_are_device_agnostic(self, pytester):
+        """A test that nothing hands the selected device repeats the CPU job's work on an accelerator leg."""
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            def test_without_device():
+                assert True
+
+            def test_with_dtype_only(dtype):
+                assert True
+
+            @pytest.fixture
+            def tensor_on_device(device_name):
+                return device_name
+
+            def test_device_through_a_fixture(tensor_on_device):
+                assert True
+
+            def test_with_device(device_name):
+                assert True
+
+            @pytest.mark.uses_accelerator
+            def test_reaches_the_accelerator_itself():
+                assert True
+
+            @pytest.mark.uses_accelerator
+            @pytest.mark.device_agnostic
+            def test_uses_accelerator_overrides_device_agnostic():
+                assert True
+            """
+        )
+        args = ("-p", "conftest", str(test_file), "-o", "testpaths=.", "--dtype=float32,float64", "-v")
+
+        result_cpu = pytester.runpytest_subprocess(*args, "--device=cpu")
+        result_cpu.assert_outcomes(passed=7)
+
+        result_cuda = pytester.runpytest_subprocess(*args, "--device=cuda")
+        # test_without_device (1) and test_with_dtype_only (2 dtypes) go; the other four stay.
+        result_cuda.assert_outcomes(passed=4, deselected=3)
+        result_cuda.stdout.fnmatch_lines(["*deselected 3 device-agnostic test(s)*"])
+        for kept in (
+            "test_device_through_a_fixture*PASSED*",
+            "test_with_device*PASSED*",
+            "test_reaches_the_accelerator_itself PASSED*",
+            "test_uses_accelerator_overrides_device_agnostic PASSED*",
+        ):
+            result_cuda.stdout.fnmatch_lines([f"*{kept}"])
+        result_cuda.stdout.no_fnmatch_line("*test_without_device*")
+        result_cuda.stdout.no_fnmatch_line("*test_with_dtype_only*")
 
 
 class TestSkipOnnxSelection:

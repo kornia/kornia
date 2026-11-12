@@ -857,6 +857,7 @@ class TestIntensityColourConventions(BaseTester):
         assert int(drawn.min()) >= 1
         assert int(drawn.max()) <= 5
 
+    @pytest.mark.uses_accelerator
     def test_convention_random_posterize_generator_supports_mps_device_6334(self):
         """Check that PosterizeGenerator avoids float64 conversion on MPS device."""
         if not torch.backends.mps.is_available():

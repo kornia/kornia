@@ -285,7 +285,7 @@ class TestElasticTransform(BaseTester):
         self.assert_close(output, image)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
-    def test_gradcheck(self, device, dtype, requires_grad):
+    def test_gradcheck(self, device, requires_grad):
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
         assert self.gradcheck(

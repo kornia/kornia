@@ -545,7 +545,7 @@ class TestDilate(BaseTester):
 
         assert torch.equal(actual, expected)
 
-    def test_shift_engine_jit_save(self, device, dtype):
+    def test_shift_engine_jit_save(self):
         import io
 
         scripted = torch.jit.script(dilation)

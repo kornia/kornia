@@ -1322,7 +1322,7 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -1940,7 +1940,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2395,7 +2395,7 @@ class TestRandomBrightness(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomBrightness(brightness=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2509,7 +2509,7 @@ class TestRandomContrast(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomContrast(contrast=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2631,7 +2631,7 @@ class TestRandomHue(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2748,7 +2748,7 @@ class TestRandomSaturation(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomSaturation(saturation=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2974,7 +2974,7 @@ class TestRandomGamma(BaseTester):
         )
         assert str(f) == repr
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomGamma(gamma=(0.5, 2.0), gain=(0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -4319,7 +4319,7 @@ class TestRandomEqualize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = RandomEqualize(p=0.5)
         repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
@@ -4657,7 +4657,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
@@ -4840,7 +4840,7 @@ class TestRandomGaussianIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomGaussianIllumination(sign=3)
 
@@ -4893,7 +4893,7 @@ class TestRandomGaussianIllumination(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("param", ["gain", "center", "sigma", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomGaussianIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -4938,7 +4938,7 @@ class TestRandomLinearIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomLinearIllumination(sign=3)
 
@@ -4969,7 +4969,7 @@ class TestRandomLinearIllumination(BaseTester):
         self.assert_close(output_tensor[0], output_tensor[1])
 
     @pytest.mark.parametrize("param", ["gain", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomLinearIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -5014,7 +5014,7 @@ class TestRandomLinearCornerIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomLinearCornerIllumination(sign=3)
 
@@ -5045,7 +5045,7 @@ class TestRandomLinearCornerIllumination(BaseTester):
         self.assert_close(output_tensor[0], output_tensor[1])
 
     @pytest.mark.parametrize("param", ["gain", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomLinearCornerIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -5170,7 +5170,7 @@ class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
         repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
@@ -5248,7 +5248,7 @@ class TestDenormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
         repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
@@ -6533,6 +6533,7 @@ class TestRandomRain(BaseTester):
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.slow
     @pytest.mark.parametrize("context", ["spawn", "forkserver", "fork"] if os.name != "nt" else ["spawn"])
     def test_spawn_multiprocessing_context(self, context: str):
@@ -6562,19 +6563,19 @@ class TestRandomJPEG(BaseTester):
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
         aug = RandomJPEG(jpeg_quality=(1.0, 100.0), same_on_batch=True)
         images_aug = aug(images)
         self.assert_close(images_aug[0], images_aug[1])
 
-    def test_single_jpeg_quality(self, device, dtype):
+    def test_single_jpeg_quality(self):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomJPEG(jpeg_quality=19.04, p=1.0)
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_single_image(self, device, dtype):
+    def test_single_image(self):
         images = torch.rand(3, 16, 16)
         aug = RandomJPEG(jpeg_quality=19.04, p=1.0, keepdim=True)
         images_aug = aug(images)
@@ -6653,13 +6654,13 @@ class TestRandomDissolving(BaseTester):
         # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader's ImportError under --runslow.
         pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
-    def test_batch_proc(self, device, dtype):
+    def test_batch_proc(self):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_single_proc(self, device, dtype):
+    def test_single_proc(self):
         images = torch.rand(3, 16, 16)
         aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)

@@ -150,7 +150,7 @@ class TestRRDBNet(BaseTester):
         with torch.no_grad():
             self.assert_close(source(x), target(x))
 
-    def test_num_in_ch_is_widened_for_small_scales(self, device, dtype):
+    def test_num_in_ch_is_widened_for_small_scales(self):
         """``scale`` 2 and 1 unshuffle by 2 and 4, so ``conv_first`` takes 4x and 16x the channels."""
         assert tiny_rrdbnet(scale=4).conv_first.in_channels == 3
         assert tiny_rrdbnet(scale=2).conv_first.in_channels == 3 * 4
@@ -289,7 +289,7 @@ class TestRRDBNet(BaseTester):
         self.assert_close(out[0, :, 0, 0], torch.tensor(expected_first, device=device, dtype=dtype))
         self.assert_close(out[0, :, -1, -1], torch.tensor(expected_last, device=device, dtype=dtype))
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self):
         pytest.skip("RRDBNet is a deep convolutional generator; gradcheck is prohibitively slow.")
 
     def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):

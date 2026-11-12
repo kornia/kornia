@@ -1400,14 +1400,14 @@ class TestALIKEDStateDict(BaseTester):
         assert aliked.dkd.hw_grid.device == device
         assert aliked.dkd.hw_grid.dtype == dtype
 
-    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, dtype, monkeypatch):
+    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, monkeypatch):
         weights = ALIKED(model_name="aliked-t16").state_dict()
         weights["desc_head.sf.weight"] = weights.pop("desc_head.sf_conv.weight")
         monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
         with pytest.raises(RuntimeError, match=r"Missing key.*desc_head\.sf_conv\.weight"):
             ALIKED.from_pretrained("aliked-t16", device=device)
 
-    def test_state_dict_with_hw_grid_loads(self, device, dtype, monkeypatch):
+    def test_state_dict_with_hw_grid_loads(self, device, monkeypatch):
         saved = ALIKED(model_name="aliked-t16")
         weights = {**saved.state_dict(), "dkd.hw_grid": saved.dkd.hw_grid.clone()}
         aliked = ALIKED(model_name="aliked-t16")

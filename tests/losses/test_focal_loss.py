@@ -183,7 +183,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
             op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(4, device=device, dtype=dtype), None)
 
     @pytest.mark.parametrize("gamma", [0.5, 2.0])
-    def test_gradcheck(self, device, dtype, gamma):
+    def test_gradcheck(self, device, gamma):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
 
@@ -191,7 +191,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
 
-    def test_gradcheck_ignore_index(self, device, dtype):
+    def test_gradcheck_ignore_index(self, device):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         ignore = torch.rand(2, 3, 2, device=device) > 0.8
@@ -663,7 +663,7 @@ class TestFocalLoss(BaseTester):
         with pytest.raises(Exception, match="weight must hold one value per class of pred"):
             op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(num_classes + 1, device=device, dtype=dtype))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(num_classes, (2, 3, 2), device=device).long()

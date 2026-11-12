@@ -328,7 +328,7 @@ class TestTverskyLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)

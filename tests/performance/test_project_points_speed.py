@@ -28,7 +28,7 @@ points_shapes = [(64, 1024**2, 3), (8192, 8192, 3), (1024**2, 64, 3)]
 
 
 @pytest.mark.xfail(reason="May cause memory issues.")
-def test_performance_speed(device, dtype):
+def test_performance_speed(device):
     if device.type != "cuda" or not torch.cuda.is_available():
         pytest.skip("Cuda not available in system,")
 
