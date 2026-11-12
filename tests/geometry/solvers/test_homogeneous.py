@@ -367,6 +367,10 @@ class TestNullSpaceLU(BaseTester):
         grad = torch.func.grad(lambda a: _null_space_lu(a).sum())(A)
         self.assert_close(grad, torch.func.grad(lambda a: _null_space_lu(a, rank_deficient_basis=True).sum())(A))
         assert torch.isfinite(grad).all()
+        # vmap's batching wrapper hides requires_grad: the vmapped call still has to keep the non-square call.
+        leaf = A.clone().requires_grad_()
+        (vmapped_grad,) = torch.autograd.grad(torch.func.vmap(_null_space_lu)(leaf[:, None]).sum(), leaf)
+        self.assert_close(vmapped_grad, grad)
 
         factorized = []
         lu_factor_ex = torch.linalg.lu_factor_ex
