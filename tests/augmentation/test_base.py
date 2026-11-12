@@ -117,6 +117,19 @@ class TestBasicAugmentationBase(BaseTester):
         assert batch_prob.shape == (8,)
         assert ((batch_prob == 0) | (batch_prob == 1)).all()
 
+    @pytest.mark.parametrize("aug_dtype", [torch.float32, torch.float64])
+    def test_batch_prob_keeps_the_default_dtype_stream(self, aug_dtype, device):
+        # Outside float64 on MPS, the gate still draws in the default dtype, so a seed gives the same gate for an
+        # augmentation moved to another dtype.
+        if device.type == "mps" and aug_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        augmentation = _BasicAugmentationBase(0.5, 1.0, False).to(device=device, dtype=aug_dtype)
+        torch.manual_seed(0)
+        expected = (torch.rand(8, device=device) < 0.5).to(aug_dtype)
+        torch.manual_seed(0)
+        batch_prob = augmentation.__batch_prob_generator__((8,), 0.5, 1.0, False)
+        self.assert_close(batch_prob, expected)
+
     @pytest.mark.parametrize("keepdim", [True, False])
     def test_forward(self, device, dtype, keepdim):
         torch.manual_seed(42)

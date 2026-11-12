@@ -229,9 +229,11 @@ class _BasicAugmentationBase(nn.Module):
         p_batch: float,
         same_on_batch: bool,
     ) -> torch.Tensor:
-        # Draw in the augmentation's dtype rather than the default one: a float64 default would put a float64 draw on
-        # MPS, which has none. Half precision draws in float32, as the parameter generators do.
-        rand_dtype = torch.float32 if self.dtype in (torch.float16, torch.bfloat16) else self.dtype
+        # Draw in the default dtype, so a seed gives the same gate whatever the augmentation's dtype. MPS has no
+        # float64, so a float64 default draws in float32 there; that case used to raise.
+        rand_dtype = torch.get_default_dtype()
+        if rand_dtype == torch.float64 and self.device.type == "mps":
+            rand_dtype = torch.float32
         batch_prob: torch.Tensor
         if p_batch == 1:
             batch_prob = torch.ones(1, device=self.device, dtype=self.dtype)
