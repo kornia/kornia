@@ -452,9 +452,9 @@ Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** 
 **Tests that fail a device-side assert on purpose.** A value check on CUDA is `torch._assert_async` (see
 `kornia.core.check._check_async`), so a test that pins it ends the CUDA context of its process. Mark such a test
 `@pytest.mark.cuda_device_assert`, or only the affected cases with `pytest.param(..., marks=...)`. Its CUDA items
-then always run through the same per-test subprocess runner, with or without `--isolate-half-precision` and on every
-dtype, under xdist too; CPU, MPS and other items run in place, so the CPU-half known-failure profiles see them as
-before. Do not set `KORNIA_TEST_IN_SUBPROCESS` yourself on a selection that holds such a test: the marked test then
+then always run through the same per-test subprocess runner, with or without `--isolate-half-precision`, on the one
+dtype it is collected for (below), under xdist too; CPU, MPS and other items run in place, so the CPU-half
+known-failure profiles see them as before. Do not set `KORNIA_TEST_IN_SUBPROCESS` yourself on a selection that holds such a test: the marked test then
 runs in place and `cuda_device_assert_guard` skips every later CUDA test of the process.
 
 On CUDA the failure surfaces at the next synchronization as a `RuntimeError` (`torch.AcceleratorError` where torch

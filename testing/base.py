@@ -96,8 +96,8 @@ def raises_cuda_device_assert(match: str, capfd: pytest.CaptureFixture[str]) -> 
     else:
         pytest.fail("the block failed no CUDA device-side assert")
     err = capfd.readouterr().err
-    if sys.platform != "win32":
-        assert re.search(match, err), f"the device-side assert printed no message matching {match!r}:\n{err}"
+    if sys.platform != "win32" and not re.search(match, err):
+        pytest.fail(f"the device-side assert printed no message matching {match!r}:\n{err}")
 
 
 def raises_value_check(

@@ -428,7 +428,7 @@ class TestCudaDeviceAssertMarker:
         with raises_cuda_device_assert("the check under test", capfd):
             device_assert(b"the check under test")
         if sys.platform != "win32":  # torch's Windows builds print no message, so only the assert is checked there
-            wrong_message = pytest.raises(AssertionError, match="printed no message matching")
+            wrong_message = pytest.raises(pytest.fail.Exception, match="printed no message matching")
             with wrong_message, raises_cuda_device_assert("the check under test", capfd):
                 device_assert(b"another check")
         no_assert = pytest.raises(pytest.fail.Exception, match="no CUDA device-side assert")
