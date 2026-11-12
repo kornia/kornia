@@ -774,8 +774,8 @@ class TestComputeCorrespondEpilines(BaseTester):
         assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
     def test_integer_input_returns_float32(self, device):
-        if device.type == "cuda":
-            pytest.skip("CUDA has no integer matmul kernel")
+        if device.type != "cpu":
+            pytest.skip("CUDA has no integer matmul kernel, nor MPS on torch 2.5.1")
         # torch promotes the integer line to float32 for the scaling, and the scaled line is not cast back.
         points = torch.tensor([[1, 1]], device=device)
         F_mat = torch.tensor([[0, 0, 1], [0, 0, 1], [1, 1, -3]], device=device)
