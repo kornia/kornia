@@ -1549,11 +1549,6 @@ _HALF_DLT = (
     "the homography DLTs form the normalised points, the design and normal matrices and the denormalisation in the "
     "input dtype, so in float16/bfloat16 an exact fit misses by up to several pixels"
 )
-_F16_LU = (
-    "find_homography_dlt's solver='lu' path casts its unnormalised float32 solution back to float16, where the "
-    "denormalisation can overflow to inf/NaN depending on rounding (the float16 manifest carries test_clean_points_lu "
-    "for the same reason, #4153)"
-)
 _HALF_POINTS = (
     "kornia evaluates the transfer errors in the input dtype, and the fixture's pixel coordinates carry up to 2 px "
     "of rounding in bfloat16 (0.25 px in float16), the size of the offsets these pins measure"
@@ -1665,6 +1660,39 @@ class TestHomographyDLTAutocast(BaseTester):
             assert actual.dtype == torch.bfloat16
             self.assert_close(actual, expected, atol=0, rtol=0)
 
+    @pytest.mark.parametrize(
+        "solve",
+        [
+            pytest.param(find_homography_dlt, id="dlt-lu"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1, p2, w, solver="svd"), id="dlt-svd"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt_iterated(p1, p2, w, 5.0), id="dlt-iterated"),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt(_segments(p1), _segments(p2), w[:, ::2]), id="lines-dlt"
+            ),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt_iterated(_segments(p1), _segments(p2), w[:, ::2], 5.0),
+                id="lines-dlt-iterated",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_preserves_dtype_and_improves_accuracy(self, solve, half_dtype):
+        # Solvers promote half precision internally to float32 and round once at exit (#6615).
+        generator = torch.Generator().manual_seed(0)
+        H = torch.tensor([[1.05, 0.03, 4.0], [-0.02, 0.98, 6.0], [1e-4, 2e-5, 1.0]])
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([600.0, 450.0])
+        points2 = transform_points(H[None], points1)
+        weights = torch.ones(1, 100)
+
+        p1_half, p2_half = points1.to(half_dtype), points2.to(half_dtype)
+        H_half = solve(p1_half, p2_half, weights.to(half_dtype))
+        assert H_half.dtype == half_dtype
+        assert torch.isfinite(H_half).all()
+
+        projected = transform_points(H_half.float(), points1)
+        median_error = (projected - points2).norm(dim=-1).median()
+        assert median_error < 1.0
+
     def test_meta_device_infers_the_shape(self):
         # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
         points = torch.empty(2, 8, 2, device="meta")
@@ -1678,8 +1706,6 @@ class TestHomographyDLTAutocast(BaseTester):
 
 class TestConventionHomography(BaseTester):
     def test_convention_find_homography_dlt_maps_p1_to_p2(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip(_F16_LU)
         p1, p2, H_true = _planar(device, dtype)
         H = find_homography_dlt(p1, p2)
         # points2 ~ H @ points1 (OpenCV's findHomography(src, dst) order). The control: applying H to points2 misses
@@ -1827,8 +1853,6 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_n_iter_counts_solves(self, model, device, dtype, monkeypatch):
-        if model == "points" and dtype == torch.float16:
-            pytest.skip(_F16_LU)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
             # Count the point polisher's DLT solves across iterations.
@@ -1899,10 +1923,7 @@ class TestConventionHomography(BaseTester):
 
     @pytest.mark.parametrize("model", ["points", "lines"])
     def test_convention_find_homography_dlt_iterated_gaussian_weights_4870(self, model, device, dtype, monkeypatch):
-        if model == "points" and dtype == torch.float16:
-            pytest.skip(_F16_LU)
-        if model == "lines":
-            _skip_half(dtype, _HALF_LINES)
+        _skip_half(dtype, _HALF_LINES if model == "lines" else _HALF_POINTS)
         p1, p2, _ = _planar(device, dtype)
         if model == "points":
             p2_off = p2.clone()

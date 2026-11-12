@@ -1,0 +1,2 @@
+`find_homography_dlt`, `find_homography_dlt_iterated`, `find_homography_lines_dlt`, and `find_homography_lines_dlt_iterated` promote `float16` and `bfloat16` inputs to `float32` internally during Hartley normalization, transfer error computation, and DLT solves before returning in the input dtype (#6615).
+
