@@ -311,7 +311,8 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
     @pytest.mark.parametrize(
         "model_type, options",
         [
-            # "fundamental_7pt" is "fundamental" on every code path, so the seven-point case runs once.
+            # "fundamental_7pt" is "fundamental" on every code path, so the seven-point case runs once here.
+            # test_verify_counts_no_inliers_for_a_rank_one_pixel_model pins that the alias stays rank-tested.
             ("fundamental", {}),
             ("fundamental_8pt", {}),
             ("fundamental", {"degensac": True}),
@@ -438,14 +439,16 @@ class TestRANSACFundamentalNearRankOne(BaseTester):
             ransac.verify(kp1, kp2, model, 1.0)
             assert len(calls) == 1
 
-    def test_verify_counts_no_inliers_for_a_rank_one_pixel_model(self, device, dtype):
+    # The scene test below runs "fundamental" only; this one pins that every fundamental name is rank-tested.
+    @pytest.mark.parametrize("model_type", ["fundamental", "fundamental_7pt", "fundamental_8pt"])
+    def test_verify_counts_no_inliers_for_a_rank_one_pixel_model(self, device, dtype, model_type):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("RANSAC scores models in at least float32")
         kp1, kp2 = (kp.to(device, dtype) for kp in _line_mismatch_scene(0, 2))
         # l m^T for the mismatches' line, l = (0.3, -1, 100), and a line m through image 1.
         line = torch.tensor([0.3, -1.0, 100.0], device=device, dtype=dtype)
         rank_one = torch.outer(line, torch.tensor([1.0, 1.0, -500.0], device=device, dtype=dtype))
-        ransac = RANSAC("fundamental", inl_th=1.0)
+        ransac = RANSAC(model_type, inl_th=1.0)
         errors = sampson_epipolar_distance(kp1, kp2, rank_one, squared=False)
         assert (errors <= 1.0).sum() >= 30
         _, inliers, _, support = ransac.verify(kp1, kp2, rank_one[None], 1.0)
