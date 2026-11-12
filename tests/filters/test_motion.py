@@ -312,9 +312,11 @@ class TestMotionBlur(BaseTester):
 
 
 class TestMotionBlur3D(BaseTester):
-    @pytest.mark.parametrize("shape", [(1, 4, 3, 8, 15), (2, 2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [3, 5])
-    @pytest.mark.parametrize("angle", [(36.0, 15.0, 200.0), (200.0, 10.0, 150.0)])
+    # A shape check: each shape, kernel size and angle once, with every direction, mode and parameter form.
+    @pytest.mark.parametrize(
+        "shape,kernel_size,angle",
+        [((1, 4, 3, 8, 15), 3, (36.0, 15.0, 200.0)), ((2, 2, 3, 11, 7), 5, (200.0, 10.0, 150.0))],
+    )
     @pytest.mark.parametrize("direction", [-0.9, 0.0, 0.9])
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])

@@ -822,11 +822,12 @@ class TestGuidedBlur(BaseTester):
         """``numpy`` integers are accepted and give the result of the equal Python ``int``.
 
         ``guided_blur`` continues with ``int(subsample)``: ``(301 - 1) // numpy.uint8(2)`` is 300, which does not fit
-        the ``uint8`` the window arithmetic would otherwise stay in (``OverflowError``). The size, 66, is a multiple of
-        every ``subsample`` here, so these cases pin the integer types, not the handling of other sizes.
+        the ``uint8`` the window arithmetic would otherwise stay in (``OverflowError``). The size, 12, is a multiple of
+        every ``subsample`` here, so these cases pin the integer types, not the handling of other sizes; it is small
+        because a 151-tap window over a larger image is seconds of float64 convolution on the CPU.
         """
-        guide = torch.rand(1, guide_dim, 66, 66, device=device, dtype=dtype)
-        inp = torch.rand(1, 2, 66, 66, device=device, dtype=dtype)
+        guide = torch.rand(1, guide_dim, 12, 12, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, 12, 12, device=device, dtype=dtype)
 
         actual = guided_blur(guide, inp, kernel_size, 0.01, border_type="constant", subsample=subsample)
 
