@@ -779,8 +779,11 @@ class TestDoGHardNet(BaseTester):
         dog_lafs, dog_responses = self._dog_frames(image, 16)
         self.assert_close(responses, dog_responses)
         self.assert_close(get_laf_center(lafs), get_laf_center(dog_lafs))
-        # Orientations are estimated on the 6-sigma detections; only the returned frames are twice as large.
-        self.assert_close(get_laf_orientation(lafs), get_laf_orientation(dog_lafs))
+        # Orientations are estimated on the 6-sigma detections; only the returned frames are twice as large. The
+        # orienter computes in float32 but returns the angle in the patch dtype, so it is compared at that dtype's
+        # tolerance: on CUDA float16 the sampled patches differ slightly with and without cuDNN, and in some processes
+        # that moves an angle near 38 degrees by one float16 ulp (0.03125) between the two calls.
+        self.assert_close(get_laf_orientation(lafs).to(dtype), get_laf_orientation(dog_lafs).to(dtype))
         self.assert_close(get_laf_scale(lafs), 2.0 * get_laf_scale(dog_lafs))
         self.assert_close(descriptors, feature.descriptor(image, lafs))
 
