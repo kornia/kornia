@@ -6547,14 +6547,13 @@ class TestHalfPrecisionRotationConversions(BaseTester):
             ("quaternion_to_rotation_matrix", "quaternion"),
         ],
     )
-    def test_half_precision_is_the_rounded_float64_map(self, op_name, input_name, device, dtype):
-        # A float16 or bfloat16 input is converted in float32 and rounded once, so the result is the float64 map of
-        # the same rounded input, rounded to the dtype: on this set at most 0.01 eps off (one small entry of
-        # axis_angle_to_rotation_matrix in float16). Half-precision arithmetic is 0.5 to 2.5 eps off here, and so is
-        # a conversion that skips one float32 step (rotation_matrix_to_axis_angle with its own step removed: 2 eps),
-        # so 0.25 eps absolute tells them apart. The inputs are a fixed seeded set: over 4096 random inputs,
-        # quaternion_to_rotation_matrix in float16 is the rounded float64 map for 99.9% of the entries, so a fresh
-        # draw could land on a double rounding.
+    def test_half_precision_is_within_half_an_ulp_of_float64(self, op_name, input_name, device, dtype):
+        # A float16 or bfloat16 input is converted in float32 and rounded once, so the result is within half an ulp of
+        # the float64 map of the same rounded input. The reference is not rounded: a float32 result that lies on a
+        # half-precision rounding tie (one axis_angle_to_rotation_matrix entry in float16 on x86) rounds the other way
+        # than the rounded float64 value would. On this seeded set the fix is at most 0.497 eps (relative to the
+        # reference) off on CPU and CUDA, while half-precision arithmetic is 1.2 to 1024 eps off (closest:
+        # rotation_matrix_to_axis_angle, 1.78), so half an eps tells them apart. 2**-24 absolute covers entries near 0.
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("only float16 and bfloat16 inputs are computed in float32")
         generator = torch.Generator().manual_seed(0)
@@ -6567,10 +6566,12 @@ class TestHalfPrecisionRotationConversions(BaseTester):
         x = inputs[input_name].to(device=device, dtype=dtype)
         op = getattr(kornia.geometry.conversions, op_name)
         # the reference runs on the CPU, since MPS has no float64
-        expected = op(x.cpu().double()).to(device=device, dtype=dtype)
+        expected = op(x.cpu().double())
         actual = op(x)
         assert actual.dtype == dtype
-        self.assert_close(actual, expected, rtol=0.0, atol=0.25 * torch.finfo(dtype).eps)
+        err = (actual.cpu().double() - expected).abs()
+        bound = 0.5 * torch.finfo(dtype).eps * expected.abs() * (1 + 2**-10) + 2**-24
+        assert (err <= bound).all(), f"max error / bound: {(err / bound).max().item():.3f}"
 
 
 class TestAxisAngleToRotationMatrix:
