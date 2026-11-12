@@ -201,11 +201,12 @@ def _null_space_lu(A: torch.Tensor, *, rank_deficient_basis: bool = False) -> to
     stopped = None
     differentiated = (torch.is_grad_enabled() and A.requires_grad) or forward_ad.unpack_dual(A).tangent is not None
     if A.device.type == "cuda" and not rank_deficient_basis and not differentiated:
-        # PyTorch factorizes a batch of non-square matrices on CUDA one matrix at a time (looped cuSOLVER), but a
-        # square batch in one batched cuBLAS kernel: 300 ms against 0.02 ms for 8192 (9, 8) matrices on an RTX 4090
-        # (torch 2.15), and 0.3 ms for this whole function. Zero columns appended on the right make A^T square and
-        # leave its first m columns and their pivots unchanged, since partial pivoting never reads a column before
-        # eliminating it; the two kernels agree to the bit there. CPU keeps the non-square call, which is faster.
+        # Since torch 2.15, a batch of non-square matrices on CUDA is factorized one matrix at a time (looped
+        # cuSOLVER, a regression from dropping MAGMA: pytorch/pytorch#200581), and a square batch still in one
+        # batched cuBLAS kernel. On an RTX 4090, 8192 (9, 8) matrices take 920 ms on torch 2.15 and 8 ms on 2.14,
+        # against 0.02 ms square, and 0.3 ms for this whole function. Zero columns appended on the right make A^T
+        # square and leave its first m columns and their pivots unchanged, since partial pivoting never reads a column
+        # before eliminating it; the two kernels agree to the bit there. CPU keeps the non-square call, which is faster.
         # The batched kernel stops at the first exactly zero pivot, where LAPACK skips that column and goes on: a
         # zero pivot before column m leaves the rest of L unfinished, so that matrix's basis is reported as NaN
         # (info, the first zero pivot, is always at most m + 1 here, as the padding is zero). A zero pivot at
@@ -214,7 +215,7 @@ def _null_space_lu(A: torch.Tensor, *, rank_deficient_basis: bool = False) -> to
         # one) or a forward-mode tangent (dual tensors, torch.func.jvp and jacfwd) keeps the non-square call.
         # Forward mode fails in torch.lu_unpack on both paths on torch 2.15; the check keeps it off this one if
         # that is fixed. torch.func.vmap takes this path and agrees to the bit. Retire this branch once
-        # torch.linalg.lu_factor_ex batches non-square matrices on CUDA.
+        # pytorch/pytorch#200581 is fixed and no supported torch release has the regression.
         padded = torch.cat([A.mT, A.new_zeros(batch, n, n - m)], -1)
         lu, pivots, info = torch.linalg.lu_factor_ex(padded)
         lu, pivots = lu[..., :m], pivots[..., :m]
