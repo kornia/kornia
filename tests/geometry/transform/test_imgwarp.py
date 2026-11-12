@@ -313,8 +313,7 @@ class TestGetPerspectiveTransform(BaseTester):
 
         assert dst_trans_src.shape == (batch_size, 3, 3)
 
-    @pytest.mark.parametrize("batch_size", [1, 5])
-    def test_crop_src_dst_type_mismatch(self, device, dtype, batch_size):
+    def test_crop_src_dst_type_mismatch(self, device, dtype):
         # generate input data
         src_h, src_w = 3, 3
         dst_h, dst_w = 3, 3

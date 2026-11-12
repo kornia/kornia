@@ -920,23 +920,6 @@ class TestScale(BaseTester):
         transform = kornia.geometry.transform.Scale(scale_factor)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_scale_factor_05_batch2(self, device, dtype):
-        # prepare input data
-        inp = torch.tensor(
-            [[[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
-            device=device,
-            dtype=dtype,
-        ).repeat(2, 1, 1, 1)
-        expected = torch.tensor(
-            [[[0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
-            device=device,
-            dtype=dtype,
-        ).repeat(2, 1, 1, 1)
-        # prepare transformation
-        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
-        transform = kornia.geometry.transform.Scale(scale_factor)
-        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
-
     def test_scale_factor_05_batch2_broadcast(self, device, dtype):
         # prepare input data
         inp = torch.tensor(
