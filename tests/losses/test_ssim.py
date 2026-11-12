@@ -119,8 +119,9 @@ class TestMS_SSIMLoss(BaseTester):
         repeated = single.expand_as(img)
         # Equal only up to rounding: the CPU ``conv2d`` of a batch of one and of a batch of two may sum in a different
         # order, depending on the thread count (up to 2 eps relative seen over 200 seeds). A wrong broadcast changes
-        # the loss, which the default compensation of 200 scales to tens, by orders of magnitude more.
-        rtol = 16 * torch.finfo(dtype).eps
+        # the loss, which the default compensation of 200 scales to tens, by orders of magnitude more. The tolerance
+        # comes from float32 at least: half results agree bit for bit, and 16 bfloat16 eps would hide a wrong broadcast.
+        rtol = 16 * torch.finfo(torch.promote_types(dtype, torch.float32)).eps
         self.assert_close(criterion(img, single), criterion(img, repeated), rtol=rtol, atol=0)
         self.assert_close(criterion(single, img), criterion(repeated, img), rtol=rtol, atol=0)
 
