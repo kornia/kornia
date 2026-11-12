@@ -33,6 +33,10 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
 
 from testing.base import BaseTester, deterministic_algorithms_on_cuda
 
+# A logit that saturates the softmax to an exact one-hot in every dtype (exp(-1e4) is 0 even in float64) and, unlike
+# 1e16, is finite in float16, where an infinite logit turns the softmax into nan.
+_PEAK = 1e4
+
 
 class TestStridedSubpixel(BaseTester):
     @pytest.mark.parametrize(
@@ -181,7 +185,7 @@ class TestSpatialSoftArgmax2d(BaseTester):
 
     def test_top_left_normalized(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
-        sample[..., 0, 0] = 1e16
+        sample[..., 0, 0] = _PEAK
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=True)
         self.assert_close(coord[..., 0].item(), -1.0, atol=1e-4, rtol=1e-4)
@@ -189,7 +193,7 @@ class TestSpatialSoftArgmax2d(BaseTester):
 
     def test_top_left(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
-        sample[..., 0, 0] = 1e16
+        sample[..., 0, 0] = _PEAK
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=False)
         self.assert_close(coord[..., 0].item(), 0.0, atol=1e-4, rtol=1e-4)
@@ -197,7 +201,7 @@ class TestSpatialSoftArgmax2d(BaseTester):
 
     def test_bottom_right_normalized(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
-        sample[..., -1, -1] = 1e16
+        sample[..., -1, -1] = _PEAK
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=True)
         self.assert_close(coord[..., 0].item(), 1.0, atol=1e-4, rtol=1e-4)
@@ -205,7 +209,7 @@ class TestSpatialSoftArgmax2d(BaseTester):
 
     def test_bottom_right(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
-        sample[..., -1, -1] = 1e16
+        sample[..., -1, -1] = _PEAK
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=False)
         self.assert_close(coord[..., 0].item(), 2.0, atol=1e-4, rtol=1e-4)
@@ -213,10 +217,10 @@ class TestSpatialSoftArgmax2d(BaseTester):
 
     def test_batch2_n2(self, device, dtype):
         sample = torch.zeros(2, 2, 2, 3, device=device, dtype=dtype)
-        sample[0, 0, 0, 0] = 1e16  # top-left
-        sample[0, 1, 0, -1] = 1e16  # top-right
-        sample[1, 0, -1, 0] = 1e16  # bottom-left
-        sample[1, 1, -1, -1] = 1e16  # bottom-right
+        sample[0, 0, 0, 0] = _PEAK  # top-left
+        sample[0, 1, 0, -1] = _PEAK  # top-right
+        sample[1, 0, -1, 0] = _PEAK  # bottom-left
+        sample[1, 1, -1, -1] = _PEAK  # bottom-right
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample)
         self.assert_close(coord[0, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # top-left
@@ -1010,8 +1014,14 @@ class TestConvQuadInterp3dModule(BaseTester):
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The blurred values (< 1) and the 4-digit expected literals each round by eps / 2 relative, and the
+            # refined peak by one more: within the default half-precision tolerances.
+            self.assert_close(val, expected_val)
+            self.assert_close(coords, expected_coord)
+        else:
+            self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+            self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
 class TestConvQuadInterp3d(BaseTester):

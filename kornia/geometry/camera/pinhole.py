@@ -729,6 +729,9 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
           block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
         - the batch of ``dst_proj_src`` is that of ``cam_coords_src`` or 1. A point behind the camera is divided
           like any other and is not flagged.
+        - ``float16`` and ``bfloat16`` points return their dtype. Half-precision points and matrices are
+          projected and divided in ``float32`` and the pixels rounded once, so a numerator ``fx * x + cx * z``
+          beyond the ``float16`` range does not overflow.
 
     .. warning::
         The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives
@@ -757,6 +760,14 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         raise ValueError(f"Input cam_coords_src has to be in the shape of BxHxWx3. Got {cam_coords_src.shape}")
     if not (len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_proj_src has to be in the shape of Bx4x4. Got {dst_proj_src.shape}")
+    # The homogeneous numerators ``fx * x + cx * z`` overflow float16 long before the pixels do (a 500 px focal
+    # length at a depth of 132 reaches 65504), and ``eps`` underflows to 0 there. Half-precision points and matrices
+    # are therefore projected and divided in float32, and the pixels rounded once to the points' dtype.
+    out_dtype = cam_coords_src.dtype
+    if out_dtype in (torch.float16, torch.bfloat16):
+        cam_coords_src = cam_coords_src.float()
+    if dst_proj_src.dtype in (torch.float16, torch.bfloat16):
+        dst_proj_src = dst_proj_src.float()
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
     x_coord: torch.Tensor = point_coords[..., 0]
@@ -769,4 +780,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
 
     # torch.stack and return the coordinates, that's the actual flow
     pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
+    # only half-precision points are rounded back; integer points keep the floating result
+    if out_dtype in (torch.float16, torch.bfloat16):
+        pixel_coords_dst = pixel_coords_dst.to(out_dtype)
     return pixel_coords_dst  # BxHxWx2

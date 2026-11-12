@@ -132,7 +132,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **190 float16 and 194 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **64 float16 and 63 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. [#4153](https://github.com/kornia/kornia/issues/4153) tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -144,19 +144,19 @@ measurement of the whole test suite is [below](#cuda-test-suite-measurement).
 | `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and FFT convolution compute half inputs in float32 and return the input dtype |
 | `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
-| `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 30 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
-| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
+| `kornia.augmentation` | ⚠️ | ⚠️ | 52 / 46 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
+| `kornia.geometry.transform` | ✅ | ✅ | 0 / 0 | Warps, rotation matrices, homography normalization and `crop_and_resize` compute half inputs in float32 and return the input dtype |
+| `kornia.geometry.camera` | ⚠️ | ✅ | 1 / 0 | float16: an affine round trip to pixels beyond 65504; `cam2pixel` and Kannala-Brandt distortion compute half inputs in float32, and a half-precision stereo rig keeps `Q` in float32 |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 7 / 7 | solve_pnp_dlt, distort_points and undistort_points compute half inputs in float32; the remaining entries are solve_pnp_dlt pose checks on a scene whose pixel coordinates, up to 8e4, overflow float16 or round by many pixels in both half dtypes |
 | `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 4 / 3 | Essential-matrix decomposition/motion, KRt_from_projection and the fundamental-matrix estimators compute half inputs in float32; the remaining entries are Sampson residuals of a pixel-unit F, whose entries span eight decades, and float16 projection matrices with entries above 65504 |
 | `kornia.geometry.homography` | ✅ | ✅ | 0 / 0 | The point and line DLTs, iterated or not, compute half inputs in float32 and return the input dtype |
 | `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
 | `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py |
+| `kornia.geometry.subpix` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.geometry.conversions` | ✅ | ⚠️ | 0 / 3 | Rotation conversions compute half inputs in float32 and return the input dtype; bfloat16: the log quaternion of a -179.9 degree turn rounds to the other side of the half turn. Includes tests/integration/test_conversions.py |
 | `kornia.geometry.ransac` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.geometry (other)` | ⚠️ | ⚠️ | 3 / 10 | Box-transform and depth accuracy |
-| `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision |
+| `kornia.geometry (other)` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.image` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16: total-variation accuracy |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |

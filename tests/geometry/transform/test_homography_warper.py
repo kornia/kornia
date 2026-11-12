@@ -258,7 +258,11 @@ class TestHomographyWarper(BaseTester):
         # instantiate warper and from source to destination
         warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
-        self.assert_close(patch_src[..., 1:], patch_dst[..., :-1], atol=1e-4, rtol=1e-4)
+        # A half dtype rounds the normalized shift 2 / (width - 1) (0.4 and 1 / 3 here) by up to eps / 2, which moves
+        # the samples by that fraction of a pixel, and rounds each sample by up to eps / 2 of a value below 1: the
+        # default half tolerances (one eps) hold both. A one-pixel misalignment is off by the pixel differences, ~0.3.
+        tol = None if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(patch_src[..., 1:], patch_dst[..., :-1], atol=tol, rtol=tol)
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3)])
     def test_rotation(self, batch_shape, device, dtype):
@@ -1038,7 +1042,7 @@ class TestHomographyWarper3D(BaseTester):
             dst_homo_src, input_shape, (input_shape[0] // 2, input_shape[1] * 2, input_shape[2] // 2)
         ).to(device=device, dtype=dtype)
         res = torch.tensor(
-            [[[4.0, 0.0, 0.0, 3.0], [0.0, 0.4667, 0.0, -0.5333], [0.0, 0.0, 3.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
+            [[[4.0, 0.0, 0.0, 3.0], [0.0, 7 / 15, 0.0, -8 / 15], [0.0, 0.0, 3.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
             device=device,
             dtype=dtype,
         ).repeat(batch_size, 1, 1)

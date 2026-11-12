@@ -78,7 +78,7 @@ class TestStereoReconstructionValidity(BaseTester):
             torch.zeros(1, 1, 1, 1, device=device, dtype=dtype), q, return_mask=True
         )
         assert valid.all()
-        self.assert_close(points.flatten(), q.new_tensor([-2, -1.5, 50]))
+        self.assert_close(points.flatten(), points.new_tensor([-2, -1.5, 50]))
 
     def test_infinite_w_is_invalid_even_with_finite_xyz(self, device, dtype):
         q = _camera(device, dtype).Q.clone()

@@ -32,6 +32,18 @@ from testing.base import (
 )
 
 
+def _quaternion_arithmetic_tol(dtype: torch.dtype) -> dict:
+    """Return the tolerance of a short chain of Quaternion products and powers, which run in the data dtype.
+
+    A product rounds each of its sums of four products and a power its norm, angle, sine and cosine, so in float16 and
+    bfloat16 such a chain is a few eps off on unit-norm entries (up to 3 eps over 5000 random quaternions); 4 eps
+    absolute holds that, while a wrong sign or factor misses by a sizeable fraction of 1. Other dtypes get no override.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"rtol": 0.0, "atol": 4 * torch.finfo(dtype).eps}
+    return {}
+
+
 class TestQuaternion(BaseTester):
     def _make_rand_data(self, device, dtype, batch_size):
         shape = [] if batch_size is None else [batch_size]
@@ -219,13 +231,14 @@ class TestQuaternion(BaseTester):
     def test_pow(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         q1 = Quaternion.identity(batch_size, device, dtype)
-        self.assert_close(q**0, q1)
-        self.assert_close(q**1, q)
-        self.assert_close(q**2, q * q)
-        self.assert_close(q**-1, q.inv())
-        self.assert_close((q**0.5) * (q**0.5), q)
-        self.assert_close((q1**1), q1)
-        self.assert_close((q1**2), q1)
+        tol = _quaternion_arithmetic_tol(dtype)
+        self.assert_close(q**0, q1, **tol)
+        self.assert_close(q**1, q, **tol)
+        self.assert_close(q**2, q * q, **tol)
+        self.assert_close(q**-1, q.inv(), **tol)
+        self.assert_close((q**0.5) * (q**0.5), q, **tol)
+        self.assert_close((q1**1), q1, **tol)
+        self.assert_close((q1**2), q1, **tol)
 
     def test_pow_non_unit(self, device, dtype):
         # issue #4926: q**t keeps the norm, |q**t| == |q|**t, so it agrees with * and inv() for non-unit q
@@ -405,7 +418,7 @@ class TestQuaternion(BaseTester):
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         q2 = Quaternion.identity(batch_size, device, dtype)
-        self.assert_close(q1 * q1.inv(), q2, rtol=1e-4, atol=1e-4)
+        self.assert_close(q1 * q1.inv(), q2, **(_quaternion_arithmetic_tol(dtype) or {"rtol": 1e-4, "atol": 1e-4}))
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_conjugate(self, device, dtype, batch_size):
@@ -474,9 +487,16 @@ class TestQuaternion(BaseTester):
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_axis_angle(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
-        angle = 2 * q1.scalar.arccos()[..., None]
-        axis = q1.vec / (angle / 2).sin()
-        axis_angle = axis * angle
+        # The reference axis-angle vector is derived in float64 from the stored coefficients, so that only the
+        # conversion under test runs in the dtype: arccos near w = 1 amplifies a half-precision rounding of w. A
+        # half-precision random quaternion is unit norm only to about eps, and axis = vec / sin(angle / 2) inflates
+        # that error near w = -1, so the coefficients are normalized first. The reference runs on the CPU, since MPS
+        # has no float64.
+        q64 = q1.data.cpu().double()
+        q64 = q64 / q64.norm(dim=-1, keepdim=True)
+        angle = 2 * q64[..., :1].arccos()
+        axis = q64[..., 1:] / (angle / 2).sin()
+        axis_angle = (axis * angle).to(device=device, dtype=dtype)
         q2 = Quaternion.from_axis_angle(axis_angle)
         q2 = q2.to(device, dtype)
         self.assert_close(q1, q2)
@@ -512,7 +532,11 @@ class TestQuaternion(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(axis_angle_expected, axis_angle_actual, 1e-4, 1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # the 4-decimal literals and the result each round to the dtype, half an ULP of up to 2.6: the defaults
+            self.assert_close(axis_angle_expected, axis_angle_actual)
+        else:
+            self.assert_close(axis_angle_expected, axis_angle_actual, 1e-4, 1e-4)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_slerp(self, device, dtype, batch_size):
@@ -627,7 +651,21 @@ class TestQuaternion(BaseTester):
         euler = q.to_euler()
         euler = torch.stack(euler, -1)
 
-        self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Once the angles and the quaternion round to the dtype, each row is within about eps of its triple, except
+            # that roll and yaw of the third row, at cos(pitch) = 0.17, amplify the eps / 2 rounding of the quaternion
+            # about 6x. In bfloat16 that row is inside the gimbal-lock snap of euler_from_quaternion,
+            # cos(pitch) < 2 * sqrt(eps) = 0.177, which returns roll 0 and pitch -pi / 2 instead of the triple.
+            eps = torch.finfo(dtype).eps
+            near_pole = 2
+            if dtype == torch.bfloat16:
+                snapped = torch.tensor([0.0, -math.pi / 2], device=device, dtype=dtype)
+                self.assert_close(euler[near_pole, :2], snapped, rtol=0.0, atol=0.0)
+                keep = [i for i in range(euler.shape[0]) if i != near_pole]
+                euler, euler_expected = euler[keep], euler_expected[keep]
+            self.assert_close(euler, euler_expected, rtol=0.0, atol=3 * eps)
+        else:
+            self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
     def test_deepcopy_with_autograd_history_4923(self, device, dtype):
         # Data with a grad_fn is registered as a buffer, which torch cannot deep-copy; the copy holds it as a new
@@ -801,7 +839,11 @@ class TestQuaternionAverage(BaseTester):
         q_t = _to_tensor(q)
 
         out_t = _align_sign(out_t, q_t)
-        self.assert_close(out_t, q_t, rtol=1e-6, atol=1e-6)
+        if dtype in (torch.float16, torch.bfloat16):
+            # the mean is normalised and rounded back to the dtype, up to an ULP of each entry: the defaults
+            self.assert_close(out_t, q_t)
+        else:
+            self.assert_close(out_t, q_t, rtol=1e-6, atol=1e-6)
 
     def test_opposite_quaternions(self, device, dtype):
         """Opposite quaternions should average to something consistent (sign ambiguity)"""

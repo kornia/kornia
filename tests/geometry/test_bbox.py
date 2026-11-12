@@ -43,6 +43,17 @@ from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
+def _coordinate_tolerances(dtype, scale):
+    """Return the float32/float64 tolerance of the box-transform pins, or a half-precision one at coordinate ``scale``.
+
+    In half precision each coordinate goes through up to four roundings of at most ``eps / 2 * scale``: the input
+    literal, the ``xywh`` conversion, the transform and the expected literal.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"atol": 2 * torch.finfo(dtype).eps * scale, "rtol": 0.0}
+    return {"atol": 1e-4, "rtol": 1e-4}
+
+
 class TestBbox2D(BaseTester):
     def test_wart_infer_bbox_shape_is_inclusive_3934(self, device, dtype):
         # Wart pin for kornia#3934: a raw box spanning x=1..4 and y=1..2 reports
@@ -434,7 +445,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
 
     def test_transform_multiple_boxes(self, device, dtype):
         boxes = torch.tensor(
@@ -479,7 +490,7 @@ class TestTransformBoxes2D(BaseTester):
         )
 
         out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
 
     @pytest.mark.parametrize(
         "matrix_batch,boxes_shape",
@@ -577,7 +588,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         out = transform_bbox(trans_mat, boxes, mode="xywh", restore_coordinates=True)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, **_coordinate_tolerances(dtype, 512))
         assert torch.equal(boxes, boxes_before)
 
     def test_gradcheck(self, device):

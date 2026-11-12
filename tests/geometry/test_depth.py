@@ -232,7 +232,12 @@ class TestDepthTo3d(BaseTester):
         )
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points=True)
-        self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The unit rays and the 4-digit expected literals (<= 2) each round by eps / 2 relative: one ulp apart at
+            # most, within the default half-precision tolerances.
+            self.assert_close(points3d, points3d_expected)
+        else:
+            self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
         depth = 2 * torch.tensor(
@@ -1230,8 +1235,6 @@ class TestDepthWarperConventions(BaseTester):
     def test_convention_warp_frame_depth_matches_depth_warper(self, device, dtype):
         # The two APIs compute the same warp through different arithmetic (depth_to_3d_v2 + project_points versus
         # pixel2cam + cam2pixel) and agree to the dtype tolerance on the seeded random camera pairs.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision: the two paths diverge beyond the half-precision tolerances")
         for seed, rotate in ((11, True), (7, False)):
             img, dep, transform, k3, k4, batch_h, batch_w = self._random_warp_inputs(device, dtype, 2, seed, rotate)
             batch_identity = torch.eye(4, device=device, dtype=dtype)[None].repeat(2, 1, 1).contiguous()
@@ -1429,8 +1432,8 @@ class TestDepthFromDisparity(BaseTester):
     def test_convention_zero_disparity_warps_as_a_point_at_infinity_4272(self, device, dtype):
         # kornia#4272 (kept by ruling): the far depth of a zero disparity sends warp_frame_depth along the
         # rotation-only homography K R K^-1, the limit for a point at infinity; an inf depth would give NaN.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half-precision pixel coordinates round across the image border in this comparison")
+        if dtype == torch.float16:
+            pytest.skip("float16: the far depth of a zero disparity, 0.5 * 100 / 2**-24, is past the float16 range")
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
