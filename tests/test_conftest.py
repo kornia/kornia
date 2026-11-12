@@ -806,3 +806,76 @@ class TestKeepDistributionValidation:
             "--dtype=float32",
         )
         result.assert_outcomes(passed=2)
+
+
+class TestAppliesToSelection:
+    """``applies_to`` deselects the cases a test is not written for, so they are not reported as skipped."""
+
+    # The children request device_name and dtype_name rather than device and dtype: the device fixture skips an
+    # unavailable device, and these outcomes must not depend on whether the machine has CUDA.
+    @staticmethod
+    def _run(pytester, test_file, *options):
+        return pytester.runpytest_subprocess("-p", "conftest", str(test_file), "-o", "testpaths=.", *options)
+
+    def test_devices_and_dtypes_select_the_matching_cases(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32",), reason="CPU float32 path")
+            def test_cpu_float32(device_name, dtype_name):
+                assert (device_name, dtype_name) == ("cpu", "float32")
+
+            def test_unmarked(device_name, dtype_name):
+                assert True
+            """
+        )
+        result = self._run(pytester, test_file, "--device=cpu,cuda", "--dtype=float32,float64")
+        result.assert_outcomes(passed=5, deselected=3)
+
+    def test_when_receives_the_parameters(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.applies_to(when=lambda p: p["dtype_name"] == "float64" or p["scale"] < 10, reason="range")
+            @pytest.mark.parametrize("scale", [1, 100])
+            def test_scale(device_name, dtype_name, scale):
+                assert dtype_name == "float64" or scale < 10
+            """
+        )
+        result = self._run(pytester, test_file, "--device=cpu", "--dtype=float32,float64")
+        result.assert_outcomes(passed=3, deselected=1)
+
+    def test_class_and_function_marks_both_apply(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.applies_to(devices=("cpu",), reason="CPU path")
+            class TestCpu:
+                @pytest.mark.applies_to(dtypes=("float64",), reason="float64 check")
+                def test_float64(self, device_name, dtype_name):
+                    assert (device_name, dtype_name) == ("cpu", "float64")
+
+                def test_any_dtype(self, device_name, dtype_name):
+                    assert device_name == "cpu"
+            """
+        )
+        result = self._run(pytester, test_file, "--device=cpu,cuda", "--dtype=float32,float64")
+        result.assert_outcomes(passed=3, deselected=5)
+
+    def test_tests_without_the_device_fixture_follow_the_device_selection(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.uses_accelerator
+            @pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronization")
+            def test_cuda_only():
+                assert True
+            """
+        )
+        self._run(pytester, test_file, "--device=cpu", "--dtype=float32").assert_outcomes(deselected=1)
+        result = self._run(pytester, test_file, "--device=cpu,cuda", "--dtype=float32", "--collect-only", "-q")
+        result.stdout.fnmatch_lines(["*test_cuda_only*"])
