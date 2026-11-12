@@ -19,6 +19,8 @@ import math
 import subprocess
 import sys
 import textwrap
+import typing
+from typing import List, Tuple
 
 import pytest
 import torch
@@ -690,6 +692,23 @@ class TestLAF2pts(BaseTester):
         model = kornia.feature.laf_to_boundary_points
         model_jit = torch.jit.script(kornia.feature.laf_to_boundary_points)
         self.assert_close(model(laf), model_jit(laf))
+
+
+class TestGetLAFPtsToDraw(BaseTester):
+    def test_returns_lists_of_float_lists_6720(self, device, dtype):
+        # The return was annotated Tuple[List[int], List[int]], but x and y are 50 lists of N float coordinates, one
+        # boundary point of every LAF per inner list, as the docstring says.
+        laf = torch.tensor(
+            [[[[2.0, 0.0, 5.0], [0.0, 1.0, 6.0]], [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
+        )
+        x, y = kornia.feature.laf.get_laf_pts_to_draw(laf)
+        pts = kornia.feature.laf_to_boundary_points(laf)[0].permute(1, 0, 2).cpu()
+        assert len(x) == len(y) == 50
+        assert all(len(row) == 2 and all(type(v) is float for v in row) for row in x + y)
+        assert x == pts[..., 0].tolist()
+        assert y == pts[..., 1].tolist()
+        hint = typing.get_type_hints(kornia.feature.laf.get_laf_pts_to_draw)["return"]
+        assert hint == Tuple[List[List[float]], List[List[float]]]
 
 
 class TestDenormalizeLAF(BaseTester):
