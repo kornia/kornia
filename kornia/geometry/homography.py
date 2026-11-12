@@ -836,8 +836,9 @@ def _homography_from_dlt_system(
             # One batched LU factorization on every backend: torch.linalg.qr has no batched CUDA kernel
             # (one cusolver call per matrix, ~250 ms for a 2048-sample RANSAC batch), and a batched SVD or
             # QR costs about three times the LU on CPU. A zero-weight correspondence leaves the null vector
-            # finite, since the unit triangular factor the basis is solved from is never singular.
-            null = _null_space_lu(design)[..., 0]
+            # finite, since the unit triangular factor the basis is solved from is never singular; asking for
+            # that basis keeps it finite on CUDA too, where the fast path reports rank deficiency as NaN.
+            null = _null_space_lu(design, rank_deficient_basis=True)[..., 0]
             null = null / null.norm(dim=-1, keepdim=True)
             gauge = null.abs().argmax(dim=-1)
             retained = torch.arange(8, device=device).expand(A.shape[0], -1)
