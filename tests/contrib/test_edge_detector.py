@@ -247,6 +247,11 @@ class TestEdgeDetector(BaseTester):
             pytest.importorskip("onnxscript")
         torch.manual_seed(0)
         det = EdgeDetectorBuilder.build(pretrained=False, image_size=32)
+        if (interpolation, image_size) != ("bilinear", None):
+            # DexiNed runs at the pre-processor's fixed 32 x 32, so it exports the same graph in every case and is
+            # most of an export's cost: the builder's default case keeps it, the other modes and sizes resize back
+            # around one convolution in its place, behind the same BGR step and sigmoid.
+            det.model[1] = nn.Conv2d(3, 1, 3, padding=1)
         det.post_processor = ResizePostProcessor(interpolation)
         op = det.to_onnx(image_size=image_size, save=False, **export_kwargs)
 

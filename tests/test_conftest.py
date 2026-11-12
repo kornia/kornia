@@ -223,15 +223,20 @@ class TestSkipHalfPrecisionOnCuda:
 
 
 class TestIntegrationLocalHalfPrecision:
-    @pytest.mark.parametrize("teardown_error", [False, True])
-    def test_isolated_item_tears_down_previous_module(self, pytester, monkeypatch, teardown_error):
-        """An isolated item must release parent fixtures before the next module runs (#4149)."""
+    def test_isolated_item_tears_down_previous_module(self, pytester, monkeypatch):
+        """An isolated item must release parent fixtures before the next module runs (#4149).
+
+        One session runs both cases, each a module with an isolated item followed by a module that reads its events:
+        a parent finalizer that passes, which must report no error, and one that raises after it ran, whose error is
+        reported at the isolated item's teardown.
+        """
         # Load the real isolation plugin in both the parent and its child. The test requests
         # device_name rather than device, so the protocol runs without requiring a CUDA kernel.
         monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
-        events = pytester.path / "events.txt"
-        pytester.makepyfile(
-            test_first=f"""
+        modules = {}
+        for case, teardown_error in (("passes", False), ("raises", True)):
+            events = pytester.path / f"events_{case}.txt"
+            modules[f"test_first_{case}"] = f"""
             import os
             from pathlib import Path
             import pytest
@@ -261,8 +266,8 @@ class TestIntegrationLocalHalfPrecision:
             def test_isolated(device_name, dtype_name, isolated_fixture):
                 assert child
                 record("isolated")
-            """,
-            test_next=f"""
+            """
+            modules[f"test_next_{case}"] = f"""
             from pathlib import Path
 
             def test_next_module():
@@ -270,22 +275,27 @@ class TestIntegrationLocalHalfPrecision:
                     "setup parent", "normal", "setup child", "isolated",
                     "teardown child", "teardown parent",
                 ]
-            """,
-        )
+            """
+        pytester.makepyfile(**modules)
         # test_normal and test_next_module take no device fixture, so the CUDA-only parent would
         # deselect them as device-agnostic; the event sequence needs both.
         result = pytester.runpytest_subprocess(
-            "test_first.py",
-            "test_next.py",
+            *(f"{name}.py" for name in modules),
             "--device=cuda",
             "--dtype=float16",
             "--isolate-half-precision",
             "--run-device-agnostic",
             "-q",
         )
-        result.assert_outcomes(passed=3, errors=int(teardown_error))
-        if teardown_error:
-            result.stdout.fnmatch_lines(["*ERROR at teardown of test_isolated*", "*parent finalizer failed*"])
+        result.assert_outcomes(passed=6, errors=1)
+        # The one error is the raising module's: the summary names its node, and the count leaves none for the other.
+        result.stdout.fnmatch_lines(
+            [
+                "*ERROR at teardown of test_isolated*",
+                "*parent finalizer failed*",
+                "ERROR test_first_raises.py::test_isolated*",
+            ]
+        )
 
     @pytest.mark.uses_accelerator
     def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
