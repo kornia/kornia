@@ -26,6 +26,7 @@ from contextlib import contextmanager
 from functools import partial
 from itertools import product
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 import pytest
@@ -459,6 +460,52 @@ def _is_device_agnostic(item) -> bool:
     return "device" not in fixturenames and "device_name" not in fixturenames
 
 
+APPLIES_TO_MARKER = "applies_to"
+
+
+def _applies_to_selection(item, selected_devices: Sequence[str]) -> bool:
+    """Return whether every ``applies_to`` mark of ``item`` accepts its device, dtype and parameters.
+
+    ``@pytest.mark.applies_to(devices=..., dtypes=..., when=..., reason=...)`` declares the cases a test is written
+    for. ``devices`` and ``dtypes`` name the accepted ``device_name`` and ``dtype_name`` values; a test without the
+    ``device`` fixture is accepted when one of ``devices`` is in the run's ``--device`` selection. ``when`` receives
+    the item's parameters (``device_name``, ``dtype_name`` and every ``parametrize`` argument) as a dict and returns
+    whether the case applies. Marks stack: a class mark and a function mark must both accept.
+    """
+    params = getattr(getattr(item, "callspec", None), "params", {})
+    for mark in item.iter_markers(APPLIES_TO_MARKER):
+        devices = mark.kwargs.get("devices")
+        if devices is not None:
+            device_name = params.get("device_name")
+            if device_name is None:
+                if not set(devices) & set(selected_devices):
+                    return False
+            elif device_name not in devices:
+                return False
+        dtypes = mark.kwargs.get("dtypes")
+        if dtypes is not None and params.get("dtype_name") not in (None, *dtypes):
+            return False
+        when = mark.kwargs.get("when")
+        if when is not None and not when(params):
+            return False
+    return True
+
+
+def _deselect_inapplicable(config, items, selected_devices: Sequence[str]) -> None:
+    """Deselect the cases that an ``applies_to`` mark excludes, so they are not reported as skipped.
+
+    A case outside a test's declared device, dtype or parameter scope is not a test that could not run: there is
+    nothing to run. Deselecting it at collection keeps "skipped" for tests that could run in another environment
+    (a missing optional package, a torch release, ``--runslow``).
+    """
+    inapplicable = [item for item in items if not _applies_to_selection(item, selected_devices)]
+    if not inapplicable:
+        return
+    config.hook.pytest_deselected(items=inapplicable)
+    inapplicable_ids = {id(item) for item in inapplicable}
+    items[:] = [item for item in items if id(item) not in inapplicable_ids]
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
@@ -485,6 +532,7 @@ def pytest_collection_modifyitems(config, items):
                 )
 
     _deselect_cuda_device_assert_dtypes(config, items)
+    _deselect_inapplicable(config, items, selected_devices)
 
     # ONNX tests depend on the torch release (its exporters) and the onnx packages, not on the Python version or the
     # test dtype, so CI runs them on one CPU leg per torch release and passes --skip-onnx to the others. They are
