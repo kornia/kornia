@@ -1,0 +1,1 @@
+`find_fundamental`, `run_8point`, and `run_7point` promote `float16` and `bfloat16` inputs to `float32` internally during Hartley normalization, constraint matrix construction, and linear/polynomial solves before returning in the input dtype (#6615).

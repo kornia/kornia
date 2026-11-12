@@ -396,6 +396,45 @@ class TestFindFundamental(BaseTester):
             with pytest.raises(ShapeError, match=r"weights must have shape \(B, N\) = \[1, 8\], got \["):
                 fundamental_module.run_8point(points, points, weights)
 
+    @pytest.mark.parametrize("method", ["8POINT", "7POINT", "AFFINE"])
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_preserves_dtype_and_improves_accuracy(self, method, half_dtype):
+        # Solvers promote half precision internally to float32 and round once at exit (#6615).
+        torch.manual_seed(0)
+        if method == "AFFINE":
+            scene = affine_two_view_scene(torch.device("cpu"), torch.float32)
+            x1, x2 = scene["x1"], scene["x2"]
+        else:
+            scene = two_view_scene(torch.device("cpu"), torch.float32)
+            x1, x2 = scene["x1"], scene["x2"]
+            if method == "7POINT":
+                x1, x2 = x1[:, :7], x2[:, :7]
+
+        x1_h, x2_h = x1.to(half_dtype), x2.to(half_dtype)
+        F_h = epi.find_fundamental(x1_h, x2_h, method=method)
+        assert F_h.dtype == half_dtype
+        assert torch.isfinite(F_h).all()
+
+        if method == "8POINT":
+            err = epi.sampson_epipolar_distance(x1, x2, F_h.float())
+            assert err.median() < 0.1
+            # Minimal sample N=8
+            x1_8, x2_8 = x1[:, :8], x2[:, :8]
+            F_8 = epi.find_fundamental(x1_8.to(half_dtype), x2_8.to(half_dtype), method=method)
+            assert F_8.dtype == half_dtype
+            assert torch.isfinite(F_8).all()
+            # Weighted solve
+            w_h = torch.rand(x1_h.shape[:2], dtype=half_dtype) + 0.1
+            F_w = epi.find_fundamental(x1_h, x2_h, weights=w_h, method=method)
+            assert F_w.dtype == half_dtype
+            assert torch.isfinite(F_w).all()
+        elif method == "7POINT":
+            errors = [epi.sampson_epipolar_distance(x1, x2, F_h[:, i].float()).median() for i in range(3)]
+            assert min(errors) < 0.1
+        elif method == "AFFINE":
+            self.assert_close(F_h[..., :2, :2], torch.zeros_like(F_h[..., :2, :2]))
+            self.assert_close(F_h[..., 2, 2], torch.ones_like(F_h[..., 2, 2]))
+
 
 class TestFindFundamentalAffine(BaseTester):
     """``method="AFFINE"``: the affine fundamental matrix, Hartley and Zisserman's algorithm 14.1."""
