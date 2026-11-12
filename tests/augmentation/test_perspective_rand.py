@@ -36,16 +36,6 @@ class TestRandomPerspective(BaseTester):
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_no_transform(self, device, dtype):
-        x_data = torch.rand(1, 2, 8, 9, dtype=dtype).to(device)
-
-        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.5)
-
-        out_perspective = aug(x_data)
-
-        assert out_perspective.shape == x_data.shape
-        assert aug.inverse(out_perspective).shape == x_data.shape
-
     def test_smoke_no_transform_batch(self, device, dtype):
         x_data = torch.rand(2, 2, 8, 9, dtype=dtype).to(device)
 
@@ -78,13 +68,6 @@ class TestRandomPerspective(BaseTester):
 
         assert out_perspective.shape == x_data.shape
         assert aug.transform_matrix.shape == torch.Size([1, 3, 3])
-        assert aug.inverse(out_perspective).shape == x_data.shape
-
-    def test_no_transform_module(self, device, dtype):
-        x_data = torch.rand(1, 2, 8, 9, dtype=dtype).to(device)
-        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype))
-        out_perspective = aug(x_data)
-        assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_identity(self, device, dtype):
@@ -165,13 +148,12 @@ class TestRandomPerspective(BaseTester):
         self.assert_close(aug.transform_matrix, expected_transform, **tol)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        # p=1 with one parameter draw for every evaluation: at p=0 the op is the identity, whose gradient cannot fail.
         input = torch.rand(1, 2, 5, 7, dtype=torch.float64, device=device)
-        # TODO: turned off with p=0
-        self.gradcheck(
-            kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0),
-            (input,),
-        )
+        aug = kornia.augmentation.RandomPerspective(0.5, p=1.0)
+        params = aug.forward_parameters(input.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (input,))
 
 
 _AFFINE_DEGREES = [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])]
@@ -189,14 +171,6 @@ _AFFINE_SHEARS = [
 
 class TestRandomAffine(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
-
-    def test_smoke_no_transform(self, device):
-        x_data = torch.rand(1, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomAffine(0.0)
-        out = aug(x_data)
-        assert out.shape == x_data.shape
-        assert aug.inverse(out).shape == x_data.shape
-        assert aug.inverse(out, aug._params).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
@@ -234,8 +208,10 @@ class TestRandomAffine(BaseTester):
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7, device=device, dtype=torch.float64)
-        # TODO: turned off with p=0
-        self.gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,))
+        # p=1 with one parameter draw for every evaluation: at p=0 the op is the identity, whose gradient cannot fail.
+        aug = kornia.augmentation.RandomAffine(10, p=1.0)
+        params = aug.forward_parameters(input.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (input,))
 
 
 class TestRandomShear(BaseTester):

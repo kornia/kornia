@@ -750,6 +750,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="center cropping draws no random parameters")
     def test_same_on_batch(self):
         pass
 

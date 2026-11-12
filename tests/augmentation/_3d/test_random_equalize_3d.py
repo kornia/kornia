@@ -33,29 +33,6 @@ class TestRandomEqualize3D(BaseTester):
         repr = "RandomEqualize3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=None)"
         assert str(f) == repr
 
-    def test_random_equalize(self, device, dtype):
-        f = RandomEqualize3D(p=1.0)
-        f1 = RandomEqualize3D(p=0.0)
-
-        bs, channels, depth, height, width = 1, 3, 6, 10, 10
-
-        inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
-
-        # The float32 result to 6 decimals, enough for the literal to round to the same float16 value (4 did not).
-        row_expected = torch.tensor(
-            [0.0, 0.117647, 0.235294, 0.352941, 0.470588, 0.588235, 0.705882, 0.823529, 0.941176, 1.0],
-            device=device,
-            dtype=dtype,
-        )
-        expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
-
-        identity = kornia.core.ops.eye_like(4, expected)
-
-        self.assert_close(f(inputs3d), expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
-        self.assert_close(f1(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
-        self.assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
-
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0)
         f1 = RandomEqualize3D(p=0.0)

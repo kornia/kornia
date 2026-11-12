@@ -61,16 +61,12 @@ class TestRandomRotation3DBackward:
 
         if not isinstance(degrees, (int, float, list, tuple)):
             assert isinstance(aug._param_generator.degrees, torch.Tensor)
-            # Assert if param not updated
-            if resample == "nearest" and aug._param_generator.degrees.is_cuda:
-                # grid_sample in nearest mode and cuda device returns nan than 0
-                pass
-            elif resample == "nearest" or torch.all(aug._param_generator.degrees._grad == 0.0):
-                # grid_sample will return grad = 0 for resample nearest
-                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() == 0
-            else:
-                assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
+            # Bilinear sampling reaches the range: a zero gradient (which the test used to accept with an unchanged
+            # range, as nearest sampling gives) is a failure, and the SGD step must move the range.
+            grad = aug._param_generator.degrees.grad
+            assert torch.isfinite(grad).all()
+            assert torch.count_nonzero(grad) > 0
+            assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
 
 
 class TestRandomPerspective3DBackward:
@@ -102,20 +98,14 @@ class TestRandomPerspective3DBackward:
 
         if not isinstance(distortion_scale, (float, int)):
             assert isinstance(aug._param_generator.distortion_scale, torch.Tensor)
-            # Assert if param not updated
-            if resample == "nearest" and aug._param_generator.distortion_scale.is_cuda:
-                # grid_sample in nearest mode and cuda device returns nan than 0
-                pass
-            elif resample == "nearest" or torch.all(aug._param_generator.distortion_scale._grad == 0.0):
-                # grid_sample will return grad = 0 for resample nearest
-                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (
-                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
-                ).sum() == 0
-            else:
-                assert (
-                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
-                ).sum() != 0
+            # Bilinear sampling reaches the scale: a zero gradient (which the test used to accept with an unchanged
+            # scale, as nearest sampling gives) is a failure, and the SGD step must move the scale.
+            grad = aug._param_generator.distortion_scale.grad
+            assert torch.isfinite(grad).all()
+            assert torch.count_nonzero(grad) > 0
+            assert (
+                distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
+            ).sum() != 0
 
 
 class TestRandomMotionBlur3DBackward:
@@ -152,14 +142,10 @@ class TestRandomMotionBlur3DBackward:
 
         if not isinstance(angle, (float, int, list, tuple)):
             assert isinstance(aug._param_generator.angle, torch.Tensor)
-            if resample == "nearest" and aug._param_generator.angle.is_cuda:
-                # grid_sample in nearest mode and cuda device returns nan than 0
-                pass
-            elif resample == "nearest" or torch.all(aug._param_generator.angle._grad == 0.0):
-                # grid_sample will return grad = 0 for resample nearest
-                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() == 0
-            elif dtype in (torch.float16, torch.bfloat16):
+            # Bilinear kernel resampling reaches the angle: a zero gradient (which the test used to accept with an
+            # unchanged angle, as nearest resampling gives) is a failure.
+            assert torch.count_nonzero(aug._param_generator.angle.grad) > 0
+            if dtype in (torch.float16, torch.bfloat16):
                 # The step lr * grad, about 0.006 degrees (the float32 gradient is 6e-4), is under half an ulp of 20 in
                 # float16 (0.0078) and bfloat16 (0.0625), so SGD leaves the angle as it was. The nonzero gradient
                 # checked above is what reaches it; it must be finite too.
@@ -169,10 +155,7 @@ class TestRandomMotionBlur3DBackward:
                 assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() != 0
         if not isinstance(direction, (list, tuple)):
             assert isinstance(aug._param_generator.direction, torch.Tensor)
-            if torch.all(aug._param_generator.direction._grad == 0.0):
-                # grid_sample will return grad = 0 for resample nearest
-                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() == 0
-            else:
-                # Assert if param not updated
-                assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() != 0
+            # The direction weights the kernel taps, so it always has a gradient; a zero one is a failure.
+            assert torch.isfinite(aug._param_generator.direction.grad).all()
+            assert torch.count_nonzero(aug._param_generator.direction.grad) > 0
+            assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() != 0
