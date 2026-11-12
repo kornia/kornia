@@ -967,15 +967,22 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         assert X.shape == (B, N, 3)
 
     def test_masking(self, device, dtype):
-        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K1 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K2 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        x1 = torch.rand(2, 10, 2, device=device, dtype=dtype)
-        x2 = torch.rand(2, 10, 2, device=device, dtype=dtype)
+        # A seeded CPU generator gives every device the same batch; the suite seeds only the CPU default generator,
+        # so draws on CUDA were unseeded. Triangulated in half precision, some of these points come back NaN and the
+        # masked and unmasked calls disagree (in both half dtypes on CPU and CUDA at this seed, bfloat16 at most
+        # seeds); the choice runs in float32 instead and agrees.
+        generator = torch.Generator().manual_seed(3)
+
+        def draw(*shape: int) -> torch.Tensor:
+            return torch.rand(*shape, generator=generator, dtype=dtype).to(device)
+
+        B = 64
+        E_mat, K1, K2 = draw(B, 3, 3), draw(B, 3, 3), draw(B, 3, 3)
+        x1, x2 = draw(B, 10, 2), draw(B, 10, 2)
 
         R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[:, 1:-1, :], x2[:, 1:-1, :])
 
-        mask = torch.zeros(2, 10, dtype=torch.bool, device=device)
+        mask = torch.zeros(B, 10, dtype=torch.bool, device=device)
         mask[:, 1:-1] = True
         Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
