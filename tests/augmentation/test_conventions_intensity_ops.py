@@ -337,8 +337,8 @@ class TestBlurConventions(BaseTester):
     @pytest.mark.parametrize(
         ("kernel_size", "drawn"),
         [
+            # Odd bounds from the smallest size and from above it, an even upper and lower bound, and one size.
             ((3, 5), [3, 5]),
-            ((3, 7), [3, 5, 7]),
             ((5, 11), [5, 7, 9, 11]),
             ((3, 20), [3, 5, 7, 9, 11, 13, 15, 17, 19]),
             ((4, 7), [5, 7]),
@@ -963,19 +963,16 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # painted, for a single pixel and for drops slanting either way (#4604).
     @pytest.mark.parametrize("drop_height, drop_width", [(1, 0), (2, 2), (2, -2)])
     def test_convention_random_rain_paints_every_row_and_column_4604(self, device, dtype, drop_height, drop_width):
-        image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        # 300 images in one call: every sample draws its own drops, as 300 calls of one image did.
+        image = torch.zeros(300, 3, 6, 10, device=device, dtype=dtype)
         # `.to` so the coordinate sampler runs in the test's dtype, where a half `rand` can return 1.0 (#4553).
         aug = K.RandomRain(
             number_of_drops=(20, 20), drop_height=(drop_height, drop_height), drop_width=(drop_width, drop_width), p=1.0
         ).to(device=device, dtype=dtype)
-        rows, cols = set(), set()
-        for seed in range(300):
-            torch.manual_seed(seed)
-            lit = (aug(image)[0, 0] != 0).nonzero()
-            rows |= set(lit[:, 0].tolist())
-            cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == list(range(6))
-        assert sorted(cols) == list(range(10))
+        torch.manual_seed(0)
+        lit = (aug(image)[:, 0] != 0).nonzero()
+        assert sorted(set(lit[:, 1].tolist())) == list(range(6))
+        assert sorted(set(lit[:, 2].tolist())) == list(range(10))
 
     # A single drop paints a bounding box of exactly ``(h, max(|w|, 1))`` inside the image for every legal start
     # (#4604); a drop wrapped across opposite edges by a negative index would still satisfy the union pin.

@@ -67,7 +67,7 @@ class TestGetLAFScale(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.get_laf_scale, (img,))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_scale
@@ -100,7 +100,7 @@ class TestGetLAFCenter(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.get_laf_center, (img,))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_center
@@ -126,7 +126,7 @@ class TestGetLAFOri(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.get_laf_orientation, (img,))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_orientation
@@ -439,7 +439,7 @@ class TestELL2LAF(BaseTester):
         return inp
 
     @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height = 1, 2, 5
         img = torch.rand(batch_size, channels, height, device=device).abs()
         img[:, :, 2] = img[:, :, 3].abs() + 0.3
@@ -554,7 +554,7 @@ class TestLAFIsFilled(BaseTester):
 
 
 class TestNormalizeLAF(BaseTester):
-    def test_shape(self, device):
+    def test_shape(self):
         inp = torch.rand(5, 3, 2, 3)
         img = torch.rand(5, 3, 10, 10)
         assert inp.shape == kornia.feature.normalize_laf(inp, img).shape
@@ -576,7 +576,7 @@ class TestNormalizeLAF(BaseTester):
         laf_back = kornia.feature.denormalize_laf(laf_norm, img)
         self.assert_close(laf_back, laf)
 
-    def test_conversion(self, device):
+    def test_conversion(self):
         w, h = 9, 5
         laf = torch.tensor([[1, 0, 1], [0, 1, 1]]).float()
         laf = laf.view(1, 1, 2, 3)
@@ -592,7 +592,7 @@ class TestNormalizeLAF(BaseTester):
         img = torch.rand(batch_size, 3, 10, 32, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.normalize_laf, (laf, img))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self):
         batch_size, channels, height, width = 1, 2, 2, 3
 
         laf = torch.rand(batch_size, channels, height, width)
@@ -684,7 +684,7 @@ class TestLAF2pts(BaseTester):
         op = torch_optimizer(kornia.feature.laf_to_boundary_points)
         self.assert_close(op(laf), expected)
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_to_boundary_points
@@ -714,7 +714,7 @@ class TestDenormalizeLAF(BaseTester):
         img = torch.rand(batch_size, 3, 10, 32, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.denormalize_laf, (laf, img))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self):
         batch_size, channels, height, width = 1, 2, 2, 3
 
         laf = torch.rand(batch_size, channels, height, width)
@@ -942,7 +942,9 @@ class TestExtractPatchesSimple(BaseTester):
     def test_gradcheck(self, device):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]], device=device, dtype=torch.float64)
         nlaf = nlaf.view(1, 1, 2, 3)
-        img = torch.rand(1, 3, 20, 30, device=device, dtype=torch.float64)
+        # Two channels and a 12 x 18 image keep the channel layout and the normalized frame: the full Jacobian has a
+        # column per pixel, 1800 of them for three channels of 20 x 30, 9 s on CUDA.
+        img = torch.rand(1, 2, 12, 18, device=device, dtype=torch.float64)
         PS = 11
         self.gradcheck(kornia.feature.extract_patches_simple, (img, nlaf, PS, False), fast_mode=False)
 
@@ -1746,7 +1748,7 @@ class TestLAFIsTouchingBoundary(BaseTester):
         torch._dynamo.reset()
         assert torch.equal(torch.compile(kornia.feature.laf_is_inside_image, fullgraph=True)(laf, img, 0), expected)
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         w, h = 10, 5
         img = torch.rand(1, 3, h, w, device=device)
         laf = torch.tensor([[[[10, 0, 3], [0, 10, 3]], [[1, 0, 5], [0, 1, 2]]]], device=device).float()
@@ -1820,7 +1822,7 @@ class TestGetLAF3pts(BaseTester):
         inp = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_three_points, (inp,))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
         inp = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_to_three_points
@@ -1862,7 +1864,7 @@ class TestGetLAFFrom3pts(BaseTester):
         inp = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_from_three_points, (inp,))
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
         inp = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_from_three_points

@@ -193,8 +193,9 @@ class TestEfficientViT:
     def test_smoke_slow(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
-    @pytest.mark.parametrize("model_name", ["b0", "b1", "b2"])
-    @pytest.mark.parametrize("img_size,expected_resolution", [(64, 2), (96, 3), (128, 4)])
+    # The final resolution is the input's over the stride of 32 whatever the width and depth, so each variant runs at
+    # one of the sizes, the odd 3 x 3 grid included, rather than every variant at every size.
+    @pytest.mark.parametrize("model_name,img_size,expected_resolution", [("b0", 128, 4), ("b1", 96, 3), ("b2", 64, 2)])
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 

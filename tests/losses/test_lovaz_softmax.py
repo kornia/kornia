@@ -284,7 +284,7 @@ class TestLovaszSoftmaxLoss(BaseTester):
         self.assert_close(loss, expected.to(device), rtol=1e-12, atol=1e-12)
         self.assert_close(torch.autograd.grad(loss, logits)[0], expected_grad.to(device), rtol=1e-12, atol=1e-15)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)

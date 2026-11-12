@@ -228,7 +228,7 @@ class TestTotalVariation(BaseTester):
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize("pred", [1, [1, 2]])
-    def test_tv_on_invalid_types(self, device, dtype, pred):
+    def test_tv_on_invalid_types(self, pred):
         with pytest.raises(TypeError):
             kornia.losses.total_variation(pred)
 

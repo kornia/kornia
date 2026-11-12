@@ -54,7 +54,7 @@ class TestConfusionMatrix(BaseTester):
         assert not target.is_contiguous()
         self.assert_close(kornia.metrics.confusion_matrix(pred, target, 3, normalized), expected)
 
-    def test_two_classes(self, device, dtype):
+    def test_two_classes(self, device):
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
         predicted = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 1]], device=device, dtype=torch.long)
@@ -63,7 +63,7 @@ class TestConfusionMatrix(BaseTester):
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]]], device=device, dtype=torch.float32)
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_two_classes_batch2(self, device, dtype):
+    def test_two_classes_batch2(self, device):
         batch_size = 2
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long).repeat(batch_size, 1)
@@ -73,7 +73,7 @@ class TestConfusionMatrix(BaseTester):
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]], [[3, 1], [0, 4]]], device=device, dtype=torch.float32)
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_three_classes(self, device, dtype):
+    def test_three_classes(self, device):
         num_classes = 3
         actual = torch.tensor([[2, 2, 0, 0, 1, 0, 0, 2, 1, 1, 0, 0, 1, 2, 1, 0]], device=device, dtype=torch.long)
         predicted = torch.tensor([[2, 1, 0, 0, 0, 0, 0, 1, 0, 2, 2, 1, 0, 0, 2, 2]], device=device, dtype=torch.long)
@@ -82,7 +82,7 @@ class TestConfusionMatrix(BaseTester):
         conf_mat_real = torch.tensor([[[4, 1, 2], [3, 0, 2], [1, 2, 1]]], device=device, dtype=torch.float32)
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_four_classes_one_missing(self, device, dtype):
+    def test_four_classes_one_missing(self, device):
         num_classes = 4
         actual = torch.tensor([[3, 3, 1, 1, 2, 1, 1, 3, 2, 2, 1, 1, 2, 3, 2, 1]], device=device, dtype=torch.long)
         predicted = torch.tensor([[3, 2, 1, 1, 1, 1, 1, 2, 1, 3, 3, 2, 1, 1, 3, 3]], device=device, dtype=torch.long)
@@ -93,7 +93,7 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_three_classes_normalized(self, device, dtype):
+    def test_three_classes_normalized(self, device):
         num_classes = 3
         normalized = True
         actual = torch.tensor([[2, 2, 0, 0, 1, 0, 0, 2, 1, 1, 0, 0, 1, 2, 1, 0]], device=device, dtype=torch.long)
@@ -109,7 +109,7 @@ class TestConfusionMatrix(BaseTester):
 
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_normalized_target_rows_batch(self, device, dtype):
+    def test_normalized_target_rows_batch(self, device):
         pred = torch.tensor([[0, 0, 1, 1, 1, 2, 2, 0], [0, 1, 1, 2, 2, 2, 2, 2]], device=device, dtype=torch.long)
         target = torch.tensor([[0, 0, 0, 1, 1, 2, 2, 2], [0, 0, 0, 0, 0, 2, 2, 2]], device=device, dtype=torch.long)
         counts = torch.tensor(
@@ -134,7 +134,7 @@ class TestConfusionMatrix(BaseTester):
         assert normalized.dtype == torch.float32
         assert normalized.device == pred.device
 
-    def test_four_classes_2d_perfect(self, device, dtype):
+    def test_four_classes_2d_perfect(self, device):
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 1, 1], [0, 0, 1, 1], [2, 2, 3, 3], [2, 2, 3, 3]]], device=device, dtype=torch.long
@@ -149,7 +149,7 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_four_classes_2d_one_class_nonperfect(self, device, dtype):
+    def test_four_classes_2d_one_class_nonperfect(self, device):
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 1, 1], [0, 0, 1, 1], [2, 2, 3, 3], [2, 2, 3, 3]]], device=device, dtype=torch.long
@@ -164,7 +164,7 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_four_classes_2d_one_class_missing(self, device, dtype):
+    def test_four_classes_2d_one_class_missing(self, device):
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 1, 1], [0, 0, 1, 1], [2, 2, 3, 3], [2, 2, 3, 3]]], device=device, dtype=torch.long
@@ -179,7 +179,7 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_four_classes_2d_one_class_no_predicted(self, device, dtype):
+    def test_four_classes_2d_one_class_no_predicted(self, device):
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 0, 0], [0, 0, 0, 0], [2, 2, 3, 3], [2, 2, 3, 3]]], device=device, dtype=torch.long
@@ -194,7 +194,7 @@ class TestConfusionMatrix(BaseTester):
         )
         self.assert_close(conf_mat, conf_mat_real)
 
-    def test_empty_batch(self, device, dtype):
+    def test_empty_batch(self, device):
         num_classes = 3
         pred = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
         target = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
@@ -204,13 +204,13 @@ class TestConfusionMatrix(BaseTester):
         assert conf_mat.dtype == torch.float32
         assert conf_mat.device == pred.device
 
-    def test_exception_shape_mismatch(self, device, dtype):
+    def test_exception_shape_mismatch(self, device):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
         target = torch.zeros(1, 5, dtype=torch.long, device=device)
         with pytest.raises(ValueError, match="same shape"):
             kornia.metrics.confusion_matrix(pred, target, num_classes=2)
 
-    def test_exception_num_classes_too_small(self, device, dtype):
+    def test_exception_num_classes_too_small(self, device):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
         with pytest.raises(ValueError, match="at least two"):
             kornia.metrics.confusion_matrix(pred, pred, num_classes=1)
@@ -223,7 +223,7 @@ class TestConfusionMatrix(BaseTester):
         with pytest.raises(BaseError, match="target must have an integer dtype"):
             kornia.metrics.confusion_matrix(labels, labels.to(dtype), num_classes=3)
 
-    def test_exception_out_of_range(self, device, dtype):
+    def test_exception_out_of_range(self, device):
         # An out-of-range prediction landed in another cell and an out-of-range target in a raw torch error (#5549).
         for pred, target, name, span in (
             ([0, 3, 2], [0, 1, 2], "pred", r"\[0, 3\]"),
@@ -238,7 +238,7 @@ class TestConfusionMatrix(BaseTester):
                 )
 
     @pytest.mark.parametrize("label_dtype, num_classes", [(torch.uint8, 21), (torch.int16, 182), (torch.int32, 21)])
-    def test_small_integer_dtypes_match_int64(self, label_dtype, num_classes, device, dtype):
+    def test_small_integer_dtypes_match_int64(self, label_dtype, num_classes, device):
         # The cell index was formed in the label dtype and wrapped, for uint8 from num_classes = 17 (#5549).
         labels = torch.tensor([[[num_classes - 1, 0, 5], [5, num_classes - 1, 0]]], device=device, dtype=label_dtype)
         actual = kornia.metrics.confusion_matrix(labels, labels, num_classes)
@@ -247,13 +247,13 @@ class TestConfusionMatrix(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
         assert actual[0].nonzero().tolist() == [[0, 0], [5, 5], [num_classes - 1, num_classes - 1]]
 
-    def test_bool_masks_count_as_binary_labels(self, device, dtype):
+    def test_bool_masks_count_as_binary_labels(self, device):
         pred = torch.tensor([[True, False, True, True]], device=device)
         target = torch.tensor([[True, False, False, True]], device=device)
         expected = torch.tensor([[[1, 1], [0, 2]]], device=device, dtype=torch.float32)
         self.assert_close(kornia.metrics.confusion_matrix(pred, target, num_classes=2), expected)
 
-    def test_zero_pixel_samples_give_zero_matrices(self, device, dtype):
+    def test_zero_pixel_samples_give_zero_matrices(self, device):
         # The range check reads the label minimum, which a sample without pixels does not have: it is skipped there.
         for shape in ((2, 0), (2, 3, 0)):
             labels = torch.zeros(shape, device=device, dtype=torch.long)
@@ -274,7 +274,7 @@ class TestConfusionMatrix(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_export_counts_like_eager(self, device, dtype):
+    def test_export_counts_like_eager(self, device):
         # The range check reads the data, which torch.export cannot capture, so it is skipped under export.
         class _ConfusionMatrix(torch.nn.Module):
             def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -302,7 +302,7 @@ class TestConfusionMatrix(BaseTester):
         self.assert_close(exported(pred, target), kornia.metrics.confusion_matrix(pred, target, 3, True))
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_trace_counts_like_eager(self, device, dtype):
+    def test_trace_counts_like_eager(self, device):
         # The range check reads the data, so any capture has to skip it, not only export (#5037).
         pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
         target = torch.tensor([[0, 2, 2, 1], [1, 0, 0, 2]], device=device)
@@ -320,7 +320,7 @@ class TestConventionsConfusionMatrix(BaseTester):
     PRED = [[[0, 0, 1, 2], [1, 1, 2, 2], [0, 2, 2, 1]], [[2, 2, 2, 2], [0, 1, 1, 0], [0, 0, 1, 2]]]
     TARGET = [[[0, 1, 1, 2], [1, 1, 1, 2], [0, 0, 2, 2]], [[2, 2, 1, 1], [0, 0, 1, 0], [1, 0, 1, 2]]]
 
-    def test_convention_confusion_matrix_rows_are_targets_per_sample(self, device, dtype):
+    def test_convention_confusion_matrix_rows_are_targets_per_sample(self, device):
         """confusion_matrix returns one float32 count matrix per sample, cm[b, target, prediction]."""
         pred = torch.tensor(self.PRED, device=device)
         target = torch.tensor(self.TARGET, device=device)

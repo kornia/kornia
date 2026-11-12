@@ -39,6 +39,8 @@ from testing.base import (
 
 
 class TestXFeatModel(BaseTester):
+    # No gradcheck: InstanceNorm2d runs under torch.no_grad(), which breaks an end-to-end gradcheck.
+
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch keeps every non-batch dimension of the three maps."""
         model = XFeatModel().to(device, dtype).eval()
@@ -63,12 +65,6 @@ class TestXFeatModel(BaseTester):
         assert feats.shape == (B, 64, 12, 16)
         assert kpts.shape == (B, 65, 12, 16)
         assert heatmap.shape == (B, 1, 12, 16)
-
-    def test_exception(self, device, dtype):
-        pass  # XFeatModel has no checked exceptions on forward
-
-    def test_gradcheck(self, device):
-        pass  # InstanceNorm2d inside torch.no_grad() breaks end-to-end gradcheck
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = XFeatModel().to(device, dtype)
@@ -129,9 +125,6 @@ class TestInterpolateSparse2d(BaseTester):
         out = interp(x, pos, H, W)
         assert out.shape == (B, N, C)
 
-    def test_exception(self, device, dtype):
-        pass
-
     def test_gradcheck(self, device):
         interp = InterpolateSparse2d("bilinear")
         x = torch.rand(1, 4, 8, 8, device=device, dtype=torch.float64, requires_grad=True)
@@ -190,7 +183,10 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
 
 
 class TestXFeat(BaseTester):
-    def test_empty_batch_6266(self, device, dtype):
+    # No gradcheck or torch.compile test: detectAndCompute runs under inference_mode, and its NMS is data-dependent
+    # control flow.
+
+    def test_empty_batch_6266(self, device):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
         model = XFeat().to(device).eval()
         x = torch.rand(0, 3, 64, 64, device=device)
@@ -222,7 +218,7 @@ class TestXFeat(BaseTester):
             assert torch.equal(idx0, keep.nonzero()[:, 0])
             assert torch.equal(idx1, best12[keep])
 
-    def test_smoke(self, device, dtype):
+    def test_smoke(self, device):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
@@ -232,7 +228,7 @@ class TestXFeat(BaseTester):
         assert "scores" in out[0]
         assert "descriptors" in out[0]
 
-    def test_cardinality(self, device, dtype):
+    def test_cardinality(self, device):
         model = XFeat().to(device).eval()
         B = 2
         x = torch.rand(B, 3, 64, 64, device=device)
@@ -243,7 +239,7 @@ class TestXFeat(BaseTester):
             assert item["scores"].shape == (N,)
             assert item["descriptors"].shape == (N, 64)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self, device):
         model = XFeat().to(device).eval()
         with pytest.raises(Exception):
             model.detectAndCompute(torch.rand(3, 64, 64, device=device))  # missing batch dim
@@ -311,13 +307,7 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].dtype == torch.float16
         assert (out["descriptors"] == 0).all()
 
-    def test_gradcheck(self, device):
-        pass  # inference_mode on detectAndCompute; gradcheck not applicable
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # inference_mode and dynamic NMS control flow; not torch.compile compatible
-
-    def test_descriptors_normalized(self, device, dtype):
+    def test_descriptors_normalized(self, device):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
@@ -326,14 +316,14 @@ class TestXFeat(BaseTester):
         norms = out[0]["descriptors"].norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms), atol=1e-5, rtol=1e-5)
 
-    def test_top_k_respected(self, device, dtype):
+    def test_top_k_respected(self, device):
         top_k = 16
         model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 128, 128, device=device)
         out = model.detectAndCompute(x, top_k=top_k)
         assert out[0]["keypoints"].shape[0] <= top_k
 
-    def test_keypoint_coordinates_in_image(self, device, dtype):
+    def test_keypoint_coordinates_in_image(self, device):
         H, W = 64, 96
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, H, W, device=device)
@@ -346,7 +336,7 @@ class TestXFeat(BaseTester):
         assert (kpts[:, 1] >= 0).all()
         assert (kpts[:, 1] < H).all()
 
-    def test_dense_output_shapes(self, device, dtype):
+    def test_dense_output_shapes(self, device):
         top_k = 32
         model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
@@ -356,7 +346,7 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].shape[-1] == 64
         assert out["keypoints"].shape[1] == out["descriptors"].shape[1]
 
-    def test_match_xfeat_returns_paired_keypoints(self, device, dtype):
+    def test_match_xfeat_returns_paired_keypoints(self, device):
         model = XFeat().to(device).eval()
         img1 = torch.rand(1, 3, 64, 64, device=device)
         img2 = torch.rand(1, 3, 64, 64, device=device)
@@ -364,7 +354,7 @@ class TestXFeat(BaseTester):
         assert mkpts0.shape == mkpts1.shape
         assert mkpts0.shape[-1] == 2
 
-    def test_match_xfeat_batch_matches_each_pair(self, device, dtype):
+    def test_match_xfeat_batch_matches_each_pair(self, device):
         torch.manual_seed(0)
         model = XFeat(top_k=256, detection_threshold=0.0).to(device).eval()  # random weights score below 0.05
         img1 = torch.rand(3, 3, 64, 96, device=device)
@@ -383,12 +373,12 @@ class TestXFeat(BaseTester):
             expected = torch.cat([out1[b]["keypoints"][idx0], out2[b]["keypoints"][idx1]], dim=-1)
             self.assert_close(batched[b], expected, rtol=0, atol=0)
 
-    def test_match_xfeat_empty_batch(self, device, dtype):
+    def test_match_xfeat_empty_batch(self, device):
         model = XFeat().to(device).eval()
         img = torch.rand(0, 3, 64, 64, device=device)
         assert model.match_xfeat(img, img) == []
 
-    def test_match_xfeat_batch_size_mismatch(self, device, dtype):
+    def test_match_xfeat_batch_size_mismatch(self, device):
         model = XFeat().to(device).eval()
         with pytest.raises(BaseError, match="same number of images"):
             model.match_xfeat(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
@@ -813,12 +803,11 @@ class TestConventionsXFeat(BaseTester):
         reliability[0, 0, 112, 175] = 1.0
         outputs = tuple(t.to(device, weights_dtype) for t in (feats, logits, reliability))
         image = torch.zeros(1, 3, 1000, 1500, device=device, dtype=weights_dtype)
-        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: outputs)
-        try:
-            (sparse,) = xfeat.detectAndCompute(image, top_k=1)
-            dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
-        finally:
-            handle.remove()
+        # The designed outputs replace the network's: skip its half-precision pass over the 992 x 1472 image too, 8 s
+        # of each case on the CPU. The input still goes through the resize and normalization in the weights' dtype.
+        xfeat.net.forward = lambda image: outputs
+        (sparse,) = xfeat.detectAndCompute(image, top_k=1)
+        dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
         expected = torch.tensor([[1427.65897, 908.27016]], device=device)
         self.assert_close(sparse["keypoints"], expected, rtol=0, atol=1e-3)
         expected_dense = torch.tensor([[[1426.63995, 903.22984]]], device=device)
@@ -1077,7 +1066,7 @@ class TestConventionsXFeat(BaseTester):
         xfeat.detectAndComputeDense(image, 5)
         assert len(sizes) == 2
 
-    def test_convention_xfeat_random_init_is_training_and_eval_inference_keeps_batchnorm_stats(self, device, dtype):
+    def test_convention_xfeat_random_init_is_training_and_eval_inference_keeps_batchnorm_stats(self, device):
         # XFeat() builds random weights and stays in PyTorch's training mode, where BatchNorm would use batch
         # statistics (each keypoint depends on the rest of the batch), update its running statistics on every
         # inference call, and raise on a single match. XFeat.from_pretrained returns evaluation mode; .eval() on the
@@ -1096,7 +1085,7 @@ class TestConventionsXFeat(BaseTester):
             assert torch.equal(v, before[k]), k
         assert xfeat.train().training  # .train() stays the explicit opt-in
 
-    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device, dtype):
+    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device):
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)

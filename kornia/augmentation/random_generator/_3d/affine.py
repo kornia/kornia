@@ -28,7 +28,7 @@ from kornia.augmentation.utils import (
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.param_validation import _as_range_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _as_tensor_nonblocking, _extract_device_dtype
 
 
 class AffineGenerator3D(RandomGeneratorBase):
@@ -245,14 +245,14 @@ class AffineGenerator3D(RandomGeneratorBase):
             sxy = sxz = syx = syz = szx = szy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 
         return {
-            "translations": torch.as_tensor(translations, device=_device, dtype=_dtype),
-            "center": torch.as_tensor(center, device=_device, dtype=_dtype),
-            "scale": torch.as_tensor(scale, device=_device, dtype=_dtype),
-            "angles": torch.as_tensor(angles, device=_device, dtype=_dtype),
-            "sxy": torch.as_tensor(sxy, device=_device, dtype=_dtype),
-            "sxz": torch.as_tensor(sxz, device=_device, dtype=_dtype),
-            "syx": torch.as_tensor(syx, device=_device, dtype=_dtype),
-            "syz": torch.as_tensor(syz, device=_device, dtype=_dtype),
-            "szx": torch.as_tensor(szx, device=_device, dtype=_dtype),
-            "szy": torch.as_tensor(szy, device=_device, dtype=_dtype),
+            "translations": _as_tensor_nonblocking(translations, _device, _dtype),
+            "center": _as_tensor_nonblocking(center, _device, _dtype),
+            "scale": _as_tensor_nonblocking(scale, _device, _dtype),
+            "angles": _as_tensor_nonblocking(angles, _device, _dtype),
+            "sxy": _as_tensor_nonblocking(sxy, _device, _dtype),
+            "sxz": _as_tensor_nonblocking(sxz, _device, _dtype),
+            "syx": _as_tensor_nonblocking(syx, _device, _dtype),
+            "syz": _as_tensor_nonblocking(syz, _device, _dtype),
+            "szx": _as_tensor_nonblocking(szx, _device, _dtype),
+            "szy": _as_tensor_nonblocking(szy, _device, _dtype),
         }

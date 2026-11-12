@@ -114,7 +114,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
     def test_matches_unfold_path(self, border_type, color_distance_type, channels, monkeypatch, device, dtype):
         _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
-        image = torch.rand(2, channels, 181, 183, device=device, dtype=dtype)
+        # test_threshold_and_odd_shapes pins the size threshold; a lower one lets small images take the tap loop.
+        monkeypatch.setattr(bilateral_module, "_BILATERAL_CPU_MIN_NUMEL", 1)
+        image = torch.rand(2, channels, 19, 23, device=device, dtype=dtype)
 
         actual = bilateral_blur(image, (5, 7), 0.1, (1.5, 2.0), border_type, color_distance_type)
         expected = _unfold_reference(image, None, (5, 7), 0.1, (1.5, 2.0), border_type, color_distance_type)
@@ -141,8 +143,10 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
     ):
         _require_native_cpu(device, dtype)
         calls = _counting(monkeypatch)
-        image = torch.rand(2, channels, 131, 257, device=device, dtype=dtype)
-        guidance = torch.rand(2, guidance_channels, 131, 257, device=device, dtype=dtype)
+        # As in test_matches_unfold_path, a lower size threshold lets small images take the tap loop.
+        monkeypatch.setattr(bilateral_module, "_BILATERAL_CPU_MIN_NUMEL", 1)
+        image = torch.rand(2, channels, 17, 29, device=device, dtype=dtype)
+        guidance = torch.rand(2, guidance_channels, 17, 29, device=device, dtype=dtype)
 
         actual = joint_bilateral_blur(image, guidance, 5, 0.2, (1.5, 1.5), "reflect", color_distance_type)
         expected = _unfold_reference(image, guidance, 5, 0.2, (1.5, 1.5), "reflect", color_distance_type)

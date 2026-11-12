@@ -284,12 +284,19 @@ class TestLoFTR(BaseTester):
             with pytest.raises(ValueError, match="exactly one of `image1` and `features1`"):
                 model({"image0": image})
 
-    @pytest.mark.parametrize("batch_sizes", [(1, 2), (2, 1)])
+    # The check compares the two batch sizes, so their order matters only where two images of one size are split
+    # from one backbone pass at the first image's batch size.
     @pytest.mark.parametrize(
-        "input_keys",
-        [("image0", "image1"), ("features0", "features1"), ("image0", "features1"), ("features0", "image1")],
+        "input_keys, batch_sizes",
+        [
+            (("image0", "image1"), (1, 2)),
+            (("image0", "image1"), (2, 1)),
+            (("features0", "features1"), (1, 2)),
+            (("image0", "features1"), (1, 2)),
+            (("features0", "image1"), (1, 2)),
+        ],
     )
-    def test_mismatched_batch_sizes(self, device, dtype, batch_sizes, input_keys):
+    def test_mismatched_batch_sizes(self, device, dtype, input_keys, batch_sizes):
         model = _loftr_matching_every_cell(device, dtype)
         with torch.no_grad():
             data = {}
@@ -1227,9 +1234,20 @@ class TestConventionsLoFTR(BaseTester):
         model.fine_matching.register_forward_pre_hook(fine_features)
         return model
 
-    @pytest.mark.parametrize("masked_sides", [(), (0,), (1,), (0, 1)])
-    @pytest.mark.parametrize("padded", [False, True])
-    @pytest.mark.parametrize("mask_value", [1, 255])
+    # Without a mask, padded and mask_value do not apply. Both sides masked covers every padding and mask value, as
+    # each side converts its mask alike; one side masked alone pins the all-valid mask built for the other side.
+    @pytest.mark.parametrize(
+        "masked_sides, padded, mask_value",
+        [
+            ((), False, 1),
+            ((0, 1), False, 1),
+            ((0, 1), False, 255),
+            ((0, 1), True, 1),
+            ((0, 1), True, 255),
+            ((0,), True, 1),
+            ((1,), True, 1),
+        ],
+    )
     def test_convention_border_follows_each_samples_valid_region_5888(
         self, device, dtype, masked_sides, padded, mask_value
     ):
