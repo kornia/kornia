@@ -2,7 +2,7 @@ CUDA, float16 and bfloat16 support
 ==================================
 
 .. meta::
-   :description: Kornia CUDA and half-precision support, CPU known failures, CI xfail and xpass outcomes, and a local CUDA test-suite measurement with its CUDA-only failures.
+   :description: Kornia CUDA and half-precision support: CPU known failures by module, CPU and CUDA test-suite totals measured on one revision, and the CUDA-only failures.
 
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
@@ -10,8 +10,8 @@ The module table below counts entries in the Linux CPU known-failure manifests
 There are **12 float16 and 17 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
-No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
-measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
+No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. CPU and CUDA
+totals of the whole test suite, measured together on one revision, are in :ref:`measured-test-suite-totals`.
 
 .. list-table:: Known failures by module (Linux CPU)
    :header-rows: 1
@@ -147,42 +147,6 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
 Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside
 these counts. Some operators compute internally in float32 or float64 and return the input dtype.
 
-**Observed CPU CI outcomes:**
-
-The `scheduled run at 93f1376e, 2026-10-21 <https://github.com/kornia/kornia/actions/runs/39524889979>`_
-used Linux x86_64, Python 3.11 and PyTorch 2.14.0, without slow or compile tests:
-
-.. list-table::
-   :header-rows: 1
-
-   * - Run
-     - Passed
-     - Failed
-     - Skipped
-     - XFAIL (all)
-     - XPASS
-     - Strict manifest entries
-   * - `CPU float16 <https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300500>`_
-     - 23905
-     - 0
-     - 5132
-     - 284
-     - 4
-     - 250
-   * - `CPU bfloat16 <https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300410>`_
-     - 23726
-     - 0
-     - 5286
-     - 309
-     - 4
-     - 274
-
-Each job also deselected 3 ONNX conformance tests. XFAIL totals include both the strict manifest entries and
-source-level expected failures. The 4 XPASSes in each successful job are non-strict expected failures that passed;
-a passing **manifest** entry makes verification fail, as do a changed exception, a skipped entry or a stale node ID.
-A green job therefore means the recorded baseline reproduced, even though known failures and skips remain.
-These totals describe the linked revision; the module table describes the checked-in manifests.
-
 Verify the complete CPU profiles in the pinned environment with:
 
 .. code-block:: bash
@@ -194,111 +158,164 @@ Verify the complete CPU profiles in the pinned environment with:
 ``pixi run test-half`` is an unseeded CPU sweep, without the strict profile baseline. See
 `TESTING.md <https://github.com/kornia/kornia/blob/main/TESTING.md#7-half-precision-dtypes-float16--bfloat16>`_ for focused checks and baseline maintenance.
 
+.. _measured-test-suite-totals:
 .. _cuda-test-suite-measurement:
 
-CUDA test-suite measurement
----------------------------
+Measured test-suite totals
+--------------------------
 
-Kornia accepts CUDA tensors for GPU acceleration, subject to each operator's dtype and backend limitations.
-There is no CUDA CI job or checked-in CUDA known-failure manifest, so the totals below are a local measurement of
-one revision, not a guarantee for later ones: ``e4a444e9b`` (2026-11-04), an RTX 4090, Python 3.11 and PyTorch
-2.15.0+cu132 with TF32 off, over ``tests/`` with ``--device=cuda``. That option deselects the 1673 device-agnostic
-tests, which exercise CPU-only code. The half run executed in one process (``KORNIA_TEST_IN_SUBPROCESS=1``), and
-every failure without a CPU manifest entry was re-run with ``--isolate-half-precision``. The compile run set
-``KORNIA_TEST_OPTIMIZER=inductor`` and selected the directories and ``-k "dynamo or compile"`` of the CI ``dynamo``
-job.
+Every total in this section comes from one revision, measured on one machine on one day, so the rows can be compared
+with each other and with the module table above: ``26e866e54`` (2026-11-12, main ``43e84eabd`` plus this page's
+consistency test), Linux x86_64 (WSL2), an RTX 4090, Python 3.11 and PyTorch 2.15.0+cu132 with TF32 off. They are a
+local measurement, not a guarantee for later revisions. When any row is re-measured, re-measure all of them on the same
+revision and replace the whole table.
 
 .. list-table::
    :header-rows: 1
 
-   * - CUDA run
+   * - Run
      - Passed
      - Failed
+     - Errors
      - Skipped
      - XFAIL
      - XPASS
-   * - float32 + float64
-     - 46079
+   * - CPU float16, strict ``cpu-float16`` profile
+     - 31341
      - 0
-     - 9198
+     - 0
+     - 1864
      - 46
-     - 11
-   * - float16 + bfloat16
-     - 45024
-     - 440
-     - 9813
-     - 50
-     - 7
-   * - float32, ``torch.compile`` (inductor) tests
-     - 853
-     - 6
-     - 80
+     - 4
+   * - CPU bfloat16, strict ``cpu-bfloat16`` profile
+     - 31122
+     - 0
+     - 0
+     - 2078
+     - 51
+     - 4
+   * - CUDA float32 + float64
+     - 41745
+     - 0
+     - 0
+     - 2569
+     - 19
+     - 5
+   * - CUDA float32 with ``--runslow``
+     - 22819
+     - 0
+     - 0
+     - 1461
+     - 10
+     - 5
+   * - CUDA float16 + bfloat16
+     - 41269
+     - 33
+     - 3
+     - 2991
+     - 23
      - 1
+   * - CUDA float32, ``torch.compile`` (inductor) tests
+     - 920
+     - 0
+     - 0
+     - 76
+     - 3
      - 1
 
-**float32 and float64.** No failures.
+**How each row was run.** Each row is one command below, run from the repository root of the measured revision. The
+CPU rows are the CI half-precision job's command, with one thread and no slow or compile tests; CUDA is hidden from the
+process, and the 7 opt-in ONNX and ``torch.compile`` conformance tests are deselected. Pillow was 13.0.0 rather than the
+manifests' recorded 12.3.0, a provenance difference that verification reports and accepts. XFAIL counts both the strict
+manifest entries and source-level expected failures; XPASS counts non-strict expected failures that passed. A manifest
+entry that passes, changes its exception, is skipped or names a stale node ID fails verification, so a clean CPU row
+means the checked-in baseline reproduced, even though known failures and skips remain. ``--device=cuda`` deselects the
+device-agnostic tests that exercise CPU-only code. The half-precision CUDA row runs in one process, and every failure
+without a CPU manifest entry was re-run with ``--isolate-half-precision``. The compile row uses the directories and
+``-k`` filter of the CI ``dynamo`` job.
 
-**float16 and bfloat16.** 408 of the 440 failures are the CUDA counterparts of entries in the CPU manifests. Of the
-other 32, 21 pass when re-run in an isolated process, and 2 draw unseeded inputs that fail on CPU too
-(``TestFindHomographyFromLinesDLT::test_clean_points_iter[float16-5]`` and
-``TestQuaternion::test_axis_angle[bfloat16-5]``). 9 fail on CUDA only:
+.. code-block:: bash
 
-- 5 because CUDA picks kernels by batch size, so a half-precision model gives an image slightly different outputs in
-  a batch than alone; on CPU the batched and single outputs are bitwise equal. With cuDNN disabled, SmallSR's are
-  bitwise equal on CUDA too. LightGlue has no convolutions, so there the batch-dependent kernels are its matrix
-  multiplications or attention. The tests are ``TestLoFTR::test_extract_features_shapes_and_batching`` (float16 and bfloat16),
-  ``TestSmallSRNetWrapper::test_feature_consistency_across_batch_sizes`` (float16 and bfloat16) and
-  ``TestLightGlueBatchedPairs::test_convention_lightglue_batch_below_the_pruning_threshold_runs_together_5898``
-  (bfloat16). With pretrained weights on Photo Tourism images, the change between a batch and a single image is
-  smaller than the error of half precision itself, which the "vs float32" columns show:
+   # CPU float16 and CPU bfloat16 (replace float16 with bfloat16 in both places)
+   MKL_NUM_THREADS=1 OMP_NUM_THREADS=1 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cpu KORNIA_TEST_DTYPE=float16 \
+     python -m pytest tests/ --verify-known-failures --known-failure-profile=cpu-float16 \
+     --timeout=600 --timeout-method=thread -o faulthandler_timeout=300
+   # CUDA float32 + float64
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32,float64 \
+     python -m pytest tests/ -n 4
+   # CUDA float32 with --runslow
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 \
+     python -m pytest tests/ --runslow -n 4
+   # CUDA float16 + bfloat16, in one process
+   OMP_NUM_THREADS=2 KORNIA_TEST_IN_SUBPROCESS=1 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda \
+     KORNIA_TEST_DTYPE=float16,bfloat16 python -m pytest tests/ -n 4 -m "not cuda_device_assert"
+   # CUDA float32, torch.compile (inductor) tests
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER=inductor KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 \
+     python -m pytest tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry \
+     tests/losses tests/morphology tests/models tests/core tests/utils -k "dynamo or compile" -n 2
 
-  .. list-table::
-     :header-rows: 1
+**Why tests are skipped.** Most skips are tests written for another dtype or device: checks that hold only in float32 or
+float64, CPU-only code paths in a CUDA run, CUDA-only checks in a CPU run, and bfloat16 ``So2``/``Se2``, which PyTorch
+cannot store without a complex bfloat16 dtype. A CUDA run without ``--isolate-half-precision`` also skips the tests that
+pin a half dtype themselves: 649 in each of the CUDA float32 + float64 and float32 ``--runslow`` rows. Slow tests run
+only with ``--runslow``: they are 263 of the skips in each CPU row, 398 in each of the CUDA float32 + float64 and
+float16 + bfloat16 rows, and 28 in the compile row; in the float32 ``--runslow`` row, all of them pass. A few
+dozen skips need an optional package or tool, such as OpenCV or ``uv``.
 
-     * - Model (CUDA)
-       - float16: batch vs single
-       - float16 vs float32
-       - bfloat16: batch vs single
-       - bfloat16 vs float32
-     * - ``SmallSRNetWrapper`` ×3, 4 images of 160 by 214 pixels: PSNR
-       - 88.4 dB
-       - 68.7 dB
-       - 82.9 dB
-       - 50.3 dB
-     * - ``LoFTR("outdoor")``, 4 pairs of 480 by 640 pixels: matches identical
-       - 99.6 %
-       - 79.2 %
-       - 95.5 %
-       - 91.7 %
-     * - ``ALIKED`` (float32, 1024 keypoints) + ``LightGlue("aliked")``, same pairs, early stopping and pruning off:
-         matches identical
-       - 99.9 %
-       - 99.1 %
-       - 98.3 %
-       - 93.1 %
+**CUDA float32 and float64.** No failures.
 
-  The batch held two pairs (LoFTR, LightGlue) or four images (SmallSR). In float32, with TF32 off, the batched and
-  single matches and SmallSR outputs were identical, and LoFTR's features differed by at most 3e-5. In half precision,
-  SmallSR's batched outputs changed by at most 0.002 (float16) and 0.008 (bfloat16) of the ``[0, 1]`` range.
+**CUDA float16 and bfloat16.** Of the 33 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
+manifest entries pass on CUDA). One failure and the 3 errors are in ``tests/test_conftest.py``, the harness's own tests,
+which assume they do not already run inside a half-precision subprocess; they pass in a normal ``--device=cuda`` run.
+One is flaky: ``TestDoGHardNet::test_lafs_are_twice_the_dog_frames`` in float16 failed in 1 of 3 isolated runs and
+passed in the first full run. The last 4 fail on CUDA only, also in an isolated process:
+``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU
+manifest entries are its ``(10, 20)`` range parameter). This is a bfloat16 limit rather than a CUDA one. The test takes
+one SGD step with learning rate 10. On CUDA the steps are at most 0.054 degrees, each under half a bfloat16 ulp of its
+angle (0.031 at 10 degrees, 0.0625 at 20 and 30 degrees), so no angle changes; the bfloat16 steps match the float32 ones
+within 2 %, apart from one of 7e-5 degrees. On CPU the sampled rotations differ, and the step at 10 degrees (0.032 to
+0.036 degrees) passes half an ulp. The test checks the sum of the changes, so it passes on CPU, although the other two
+angles do not move there either.
 
-- 4 are ``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30
-  degrees. This is a bfloat16 limit rather than a CUDA one. The test takes one SGD step with learning rate 10. On
-  CUDA the steps are at most 0.054 degrees, each under half a bfloat16 ulp of its angle (0.031 at 10 degrees, 0.0625
-  at 20 and 30 degrees), so no angle changes; the bfloat16 steps match the float32 ones within 2 %, apart from one
-  of 7e-5 degrees. On CPU the sampled rotations differ, and the step at 10 degrees (0.032 to 0.036 degrees) passes
-  half an ulp. The test checks the sum of the changes, so it passes on CPU, although the other two angles do not move
-  there either.
+**Batch-dependent CUDA kernels.** CUDA picks convolution and matrix-multiply kernels by batch size, so a half-precision
+LoFTR, SmallSR or LightGlue gives an image slightly different outputs in a batch than alone; on CPU the batched and
+single outputs are bitwise equal. Their batch-consistency tests therefore use a CUDA-only tolerance in half precision
+(`#6584 <https://github.com/kornia/kornia/pull/6584>`_). With cuDNN disabled, SmallSR's outputs are bitwise equal on
+CUDA too; LightGlue has no convolutions, so there the batch-dependent kernels are its matrix multiplications or
+attention. With pretrained weights on Photo Tourism images, the change between a batch and a single image is smaller
+than the error of half precision itself, which the "vs float32" columns show (measured on ``e4a444e9b``):
 
-**torch.compile.** 6 compiled tests fail on CUDA and pass on CPU. Each also fails when run on its own and on
-PyTorch 2.14.0:
+.. list-table::
+   :header-rows: 1
 
-- ``TestAugmentationCompile::test_compile_resized_crop_replay[size1-nearest-None]``: 12 of 1080 values differ from
-  eager by up to 0.97.
-- ``TestOtsuThreshold::test_dynamo_bin_edge_pixels_match_eager_5425``: 2 of 5140 labels differ from eager by one.
-- ``TestFitLine::test_dynamo_fit_line_2d_large_offsets``: differs from eager by 1.2e-3 (tolerance 1e-5).
-- ``TestHyperplane::test_dynamo_skips_degenerate_checks``: differs from eager by 0.023.
-- ``TestKeypointsIndexing::test_dynamo_scalar`` for ``Keypoints`` and ``Keypoints3D``: Dynamo raises
-  ``PendingUnbackedSymbolNotFound``.
+   * - Model (CUDA)
+     - float16: batch vs single
+     - float16 vs float32
+     - bfloat16: batch vs single
+     - bfloat16 vs float32
+   * - ``SmallSRNetWrapper`` ×3, 4 images of 160 by 214 pixels: PSNR
+     - 88.4 dB
+     - 68.7 dB
+     - 82.9 dB
+     - 50.3 dB
+   * - ``LoFTR("outdoor")``, 4 pairs of 480 by 640 pixels: matches identical
+     - 99.6 %
+     - 79.2 %
+     - 95.5 %
+     - 91.7 %
+   * - ``ALIKED`` (float32, 1024 keypoints) + ``LightGlue("aliked")``, same pairs, early stopping and pruning off:
+       matches identical
+     - 99.9 %
+     - 99.1 %
+     - 98.3 %
+     - 93.1 %
+
+The batch held two pairs (LoFTR, LightGlue) or four images (SmallSR). In float32, with TF32 off, the batched and
+single matches and SmallSR outputs were identical, and LoFTR's features differed by at most 3e-5. In half precision,
+SmallSR's batched outputs changed by at most 0.002 (float16) and 0.008 (bfloat16) of the ``[0, 1]`` range.
+
+**CUDA torch.compile.** No failures. The 6 CUDA-only compile failures measured on ``e4a444e9b`` were fixed by `#6585
+<https://github.com/kornia/kornia/pull/6585>`_ and `#6586 <https://github.com/kornia/kornia/pull/6586>`_.
 
 **Open CUDA-only issues that the test suite does not exercise:**
 
