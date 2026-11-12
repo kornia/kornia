@@ -1,2 +1,1 @@
 `decompose_essential_matrix` and `motion_from_essential` promote `float16` and `bfloat16` inputs to `float32` during internal SVD and candidate pose reconstruction before returning candidates in the input dtype, avoiding a CPU LU `NotImplementedError`.
-
