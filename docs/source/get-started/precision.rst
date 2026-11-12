@@ -165,9 +165,10 @@ Measured test-suite totals
 --------------------------
 
 Every total in this section comes from one revision, measured on one machine on one day, so the rows can be compared
-with each other and with the module table above: ``43e84eabd`` (2026-11-12), Linux x86_64 (WSL2), an RTX 4090, Python
-3.11 and PyTorch 2.15.0+cu132 with TF32 off. They are a local measurement, not a guarantee for later revisions. When any
-row is re-measured, re-measure all of them on the same revision and replace the whole table.
+with each other and with the module table above: ``26e866e54`` (2026-11-12, main ``43e84eabd`` plus this page's
+consistency test), Linux x86_64 (WSL2), an RTX 4090, Python 3.11 and PyTorch 2.15.0+cu132 with TF32 off. They are a
+local measurement, not a guarantee for later revisions. When any row is re-measured, re-measure all of them on the same
+revision and replace the whole table.
 
 .. list-table::
    :header-rows: 1
@@ -179,13 +180,13 @@ row is re-measured, re-measure all of them on the same revision and replace the 
      - XFAIL
      - XPASS
    * - CPU float16, strict ``cpu-float16`` profile
-     - 31333
+     - 31341
      - 0
      - 1864
      - 46
      - 4
    * - CPU bfloat16, strict ``cpu-bfloat16`` profile
-     - 31114
+     - 31122
      - 0
      - 2078
      - 51
@@ -196,9 +197,15 @@ row is re-measured, re-measure all of them on the same revision and replace the 
      - 2569
      - 19
      - 5
+   * - CUDA float32 with ``--runslow``
+     - 22819
+     - 0
+     - 1461
+     - 10
+     - 5
    * - CUDA float16 + bfloat16
-     - 41270
-     - 32 (+3 errors)
+     - 41269
+     - 33 (+3 errors)
      - 2991
      - 23
      - 1
@@ -216,23 +223,33 @@ provenance difference that verification reports and accepts. XFAIL counts both t
 source-level expected failures; XPASS counts non-strict expected failures that passed. A manifest entry that passes,
 changes its exception, is skipped or names a stale node ID fails verification, so a clean CPU row means the checked-in
 baseline reproduced, even though known failures and skips remain. The CUDA rows ran over ``tests/`` with
-``--device=cuda``, which deselects the device-agnostic tests that exercise CPU-only code. The half run executed in one
-process (``KORNIA_TEST_IN_SUBPROCESS=1``, ``-m "not cuda_device_assert"``), and every failure without a CPU manifest
-entry was re-run with ``--isolate-half-precision``. The compile run set ``KORNIA_TEST_OPTIMIZER=inductor`` and selected
-the directories and ``-k "dynamo or compile"`` of the CI ``dynamo`` job.
+``--device=cuda``, which deselects the device-agnostic tests that exercise CPU-only code; only the ``--runslow`` row
+includes the slow tests. The half run executed in one process (``KORNIA_TEST_IN_SUBPROCESS=1``,
+``-m "not cuda_device_assert"``), and every failure without a CPU manifest entry was re-run with
+``--isolate-half-precision``. The compile run set ``KORNIA_TEST_OPTIMIZER=inductor`` and selected the directories and
+``-k "dynamo or compile"`` of the CI ``dynamo`` job.
+
+**Why tests are skipped.** Most skips are tests written for another dtype or device: checks that hold only in float32 or
+float64, CPU-only code paths in a CUDA run, CUDA-only checks in a CPU run, and bfloat16 ``So2``/``Se2``, which PyTorch
+cannot store without a complex bfloat16 dtype. A CUDA run without ``--isolate-half-precision`` also skips the tests that
+pin a half dtype themselves (649 in each non-half CUDA row). Slow tests run only with ``--runslow``: they are 263 of the
+skips in each CPU row and 398 in each CUDA row without it; in the float32 ``--runslow`` row, all of them pass. A few
+dozen skips need an optional package or tool, such as OpenCV or ``uv``.
 
 **CUDA float32 and float64.** No failures.
 
-**CUDA float16 and bfloat16.** Of the 32 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
+**CUDA float16 and bfloat16.** Of the 33 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
 manifest entries pass on CUDA). One failure and the 3 errors are in ``tests/test_conftest.py``, the harness's own tests,
 which assume they do not already run inside a half-precision subprocess; they pass in a normal ``--device=cuda`` run.
-The last 4 fail on CUDA only, also in an isolated process: ``TestRandomRotation3DBackward::test_param`` in bfloat16,
-with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU manifest entries are its ``(10, 20)`` range parameter). This
-is a bfloat16 limit rather than a CUDA one. The test takes one SGD step with learning rate 10. On CUDA the steps are at
-most 0.054 degrees, each under half a bfloat16 ulp of its angle (0.031 at 10 degrees, 0.0625 at 20 and 30 degrees), so
-no angle changes; the bfloat16 steps match the float32 ones within 2 %, apart from one of 7e-5 degrees. On CPU the
-sampled rotations differ, and the step at 10 degrees (0.032 to 0.036 degrees) passes half an ulp. The test checks the
-sum of the changes, so it passes on CPU, although the other two angles do not move there either.
+One is flaky: ``TestDoGHardNet::test_lafs_are_twice_the_dog_frames`` in float16 failed in 1 of 3 isolated runs and
+passed in the first full run. The last 4 fail on CUDA only, also in an isolated process:
+``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU
+manifest entries are its ``(10, 20)`` range parameter). This is a bfloat16 limit rather than a CUDA one. The test takes
+one SGD step with learning rate 10. On CUDA the steps are at most 0.054 degrees, each under half a bfloat16 ulp of its
+angle (0.031 at 10 degrees, 0.0625 at 20 and 30 degrees), so no angle changes; the bfloat16 steps match the float32 ones
+within 2 %, apart from one of 7e-5 degrees. On CPU the sampled rotations differ, and the step at 10 degrees (0.032 to
+0.036 degrees) passes half an ulp. The test checks the sum of the changes, so it passes on CPU, although the other two
+angles do not move there either.
 
 **Batch-dependent CUDA kernels.** CUDA picks convolution and matrix-multiply kernels by batch size, so a half-precision
 LoFTR, SmallSR or LightGlue gives an image slightly different outputs in a batch than alone; on CPU the batched and
