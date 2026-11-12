@@ -246,7 +246,7 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         assert mod.gk.dtype == torch.float16
         assert mod.gk.device == torch.empty(0, device=device).device
 
-    def test_kernel_stays_out_of_state_dict(self, device):
+    def test_kernel_stays_out_of_state_dict(self):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "gk" not in SIFTDescriptor(32).state_dict()
 
@@ -489,7 +489,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         out = DenseSIFTDescriptor(**kwargs).to(device, dtype)(torch.rand(1, 1, h, w, device=device, dtype=dtype))
         assert out.shape[-2:] == torch.Size(expected)
 
-    def test_print(self, device):
+    def test_print(self):
         sift = DenseSIFTDescriptor()
         sift.__repr__()
 
@@ -552,7 +552,7 @@ class TestDenseSIFTDescriptor(BaseTester):
         assert mod.bin_pooling_kernel.weight.device == torch.device("cpu")
         assert mod.PoolingConv.weight.device == torch.device("cpu")
 
-    def test_instances_do_not_share_buffer_storage(self, device):
+    def test_instances_do_not_share_buffer_storage(self):
         """Instances must not share storage for `_poolingconv_weight` (see #4068).
 
         `_get_reshape_kernel` used to memoise `torch.eye(numel)` and hand out a view of it, so
@@ -565,7 +565,7 @@ class TestDenseSIFTDescriptor(BaseTester):
             b._poolingconv_weight.untyped_storage().data_ptr()
         )
 
-    def test_load_state_dict_does_not_leak_into_other_instances(self, device):
+    def test_load_state_dict_does_not_leak_into_other_instances(self):
         """`load_state_dict` copies into buffers in place; that must stay local to one module."""
         a = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
         b = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)

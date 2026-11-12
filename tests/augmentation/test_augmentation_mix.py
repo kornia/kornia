@@ -124,7 +124,7 @@ class TestMixValidation(BaseTester):
 
 
 class TestRandomMixUpV2(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = RandomMixUpV2()
         repr = "RandomMixUpV2(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr, str(f)

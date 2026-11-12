@@ -172,10 +172,11 @@ filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
 ]
 markers = [
-  "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
+  "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix (a test without the device fixture is treated as marked)",
   "compile_conformance: torch.compile conformance of the promised operators (#5819); deselected unless --compile-conformance selects packages",
   "onnx_conformance: ONNX conformance of the promised operators (#5819); deselected unless --onnx-conformance selects packages",
   "slow: mark test as slow to run",
+  "uses_accelerator: the test reaches an accelerator without the device fixture; keep it in accelerator-only runs",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul and cuDNN precision; xfail by default, run with --tf32 to activate",
 ]
 testpaths = ["tests"]

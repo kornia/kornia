@@ -66,7 +66,7 @@ class TestWelschLoss(BaseTester):
         with pytest.raises(BaseError, match=r"reduction is not supported. Got: invalid"):
             kornia.losses.welsch_loss(img, img, "invalid")
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
         img2 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
 

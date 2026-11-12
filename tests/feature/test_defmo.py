@@ -40,7 +40,7 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
         assert mod.times.dtype == torch.float16
         assert mod.times.device == torch.empty(0, device=device).device
 
-    def test_times_stays_out_of_state_dict(self, device):
+    def test_times_stays_out_of_state_dict(self):
         # non-persistent: `times` is fully determined by `tsr_steps`, not learned, so
         # existing checkpoints keep loading with strict=True.
         assert "times" not in RenderingDeFMO().state_dict()

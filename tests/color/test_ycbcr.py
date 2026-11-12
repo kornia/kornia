@@ -118,7 +118,7 @@ class TestRgbToYcbcr(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_ycbcr(data), expected, low_tolerance=True)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_ycbcr, (img,), raise_exception=True, fast_mode=True)
@@ -235,7 +235,7 @@ class TestYcbcrToRgb(BaseTester):
         rgb = kornia.color.ycbcr_to_rgb(ycbcr)
         self.assert_close(rgb, data, low_tolerance=True)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.ycbcr_to_rgb, (img,), raise_exception=True, fast_mode=True)

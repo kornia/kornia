@@ -172,7 +172,7 @@ class TestPatchAffineShapeEstimator(BaseTester):
         ang = ori(inp)
         assert ang.shape == torch.Size([2, 1, 3])
 
-    def test_print(self, device):
+    def test_print(self):
         sift = PatchAffineShapeEstimator(32)
         sift.__repr__()
 
@@ -234,7 +234,7 @@ class TestAffineShapeKernelBuffer(BaseTester):
         assert mod.weighting.dtype == torch.float16
         assert mod.weighting.device == torch.empty(0, device=device).device
 
-    def test_kernel_stays_out_of_state_dict(self, device):
+    def test_kernel_stays_out_of_state_dict(self):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "weighting" not in PatchAffineShapeEstimator(19).state_dict()
 
@@ -262,7 +262,7 @@ class TestLAFAffineShapeEstimator(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    def test_print(self):
         sift = LAFAffineShapeEstimator()
         sift.__repr__()
 
@@ -603,7 +603,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    def test_print(self):
         sift = LAFAffNetShapeEstimator(pretrained=False)
         sift.__repr__()
 

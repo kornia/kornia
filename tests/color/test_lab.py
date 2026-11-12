@@ -120,7 +120,7 @@ class TestRgbToLab(BaseTester):
         else:
             self.assert_close(data_out, data)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_lab, (img,), raise_exception=True, fast_mode=True)
@@ -271,7 +271,7 @@ class TestLabToRgb(BaseTester):
         else:
             self.assert_close(unclipped_data_out, data)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         img = kornia.color.rgb_to_lab(img)

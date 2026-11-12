@@ -36,7 +36,7 @@ class TestMeanIoU(BaseTester):
         assert not target.is_contiguous()
         self.assert_close(kornia.metrics.mean_iou(pred, target, 3), expected)
 
-    def test_two_classes_perfect(self, device, dtype):
+    def test_two_classes_perfect(self, device):
         batch_size = 1
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
@@ -47,7 +47,7 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
-    def test_two_classes_perfect_batch2(self, device, dtype):
+    def test_two_classes_perfect_batch2(self, device):
         batch_size = 2
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long).repeat(batch_size, 1)
@@ -58,7 +58,7 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
-    def test_two_classes(self, device, dtype):
+    def test_two_classes(self, device):
         batch_size = 1
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
@@ -70,7 +70,7 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
-    def test_four_classes_2d_perfect(self, device, dtype):
+    def test_four_classes_2d_perfect(self, device):
         batch_size = 1
         num_classes = 4
         actual = torch.tensor(
@@ -85,7 +85,7 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
-    def test_four_classes_one_missing(self, device, dtype):
+    def test_four_classes_one_missing(self, device):
         batch_size = 1
         num_classes = 4
         actual = torch.tensor(
@@ -100,25 +100,25 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
-    def test_exception_shape_mismatch(self, device, dtype):
+    def test_exception_shape_mismatch(self, device):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
         target = torch.zeros(1, 5, dtype=torch.long, device=device)
         with pytest.raises(ValueError, match="same shape"):
             kornia.metrics.mean_iou(pred, target, num_classes=2)
 
-    def test_exception_num_classes_too_small(self, device, dtype):
+    def test_exception_num_classes_too_small(self, device):
         pred = torch.zeros(1, 4, dtype=torch.long, device=device)
         with pytest.raises(ValueError, match="at least two"):
             kornia.metrics.mean_iou(pred, pred, num_classes=1)
 
-    def test_exception_out_of_range(self, device, dtype):
+    def test_exception_out_of_range(self, device):
         # A prediction of num_classes was counted in another cell and gave an IoU for it (#5549).
         pred = torch.tensor([[0, 3]], device=device, dtype=torch.long)
         target = torch.tensor([[0, 0]], device=device, dtype=torch.long)
         with pytest.raises(BaseError, match=r"Input pred must contain values in \[0, 3\)"):
             kornia.metrics.mean_iou(pred, target, num_classes=3)
 
-    def test_uint8_labels_match_int64(self, device, dtype):
+    def test_uint8_labels_match_int64(self, device):
         # The confusion matrix index wrapped in uint8 from num_classes = 17, so a perfect uint8 prediction reported
         # an IoU of about 5e-7 for two classes that do not occur (#5549).
         labels = torch.tensor([[[20, 0, 5], [5, 20, 0]]], device=device, dtype=torch.uint8)
@@ -126,7 +126,7 @@ class TestMeanIoU(BaseTester):
         self.assert_close(actual, kornia.metrics.mean_iou(labels.long(), labels.long(), num_classes=21), rtol=0, atol=0)
         self.assert_close(actual, torch.ones(1, 21, device=device, dtype=torch.float32))
 
-    def test_empty_batch(self, device, dtype):
+    def test_empty_batch(self, device):
         num_classes = 3
         pred = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
         target = torch.zeros(0, 4, 4, device=device, dtype=torch.long)
@@ -139,7 +139,7 @@ class TestMeanIoU(BaseTester):
     @pytest.mark.skipif(
         torch_version_lt(2, 14, 0), reason="fullgraph tracing cannot capture the bincount before torch 2.14"
     )
-    def test_trace_counts_like_eager(self, device, dtype):
+    def test_trace_counts_like_eager(self, device):
         # mean_iou counts through confusion_matrix, whose range check reads the data (#5037).
         pred = torch.tensor([[0, 1, 2, 2], [1, 1, 0, 2]], device=device)
         target = torch.tensor([[0, 2, 2, 1], [1, 0, 0, 2]], device=device)
@@ -370,7 +370,7 @@ class TestConventionsMeanIoU(BaseTester):
     PRED = [[[0, 0, 1, 2], [1, 1, 2, 2], [0, 2, 2, 1]], [[2, 2, 2, 2], [0, 1, 1, 0], [0, 0, 1, 2]]]
     TARGET = [[[0, 1, 1, 2], [1, 1, 1, 2], [0, 0, 2, 2]], [[2, 2, 1, 1], [0, 0, 1, 0], [1, 0, 1, 2]]]
 
-    def test_convention_mean_iou_is_per_sample_per_class(self, device, dtype):
+    def test_convention_mean_iou_is_per_sample_per_class(self, device):
         """mean_iou returns the IoU of every class in every sample, (B, K) float32; it averages neither axis."""
         pred = torch.tensor(self.PRED, device=device)
         target = torch.tensor(self.TARGET, device=device)
@@ -384,7 +384,7 @@ class TestConventionsMeanIoU(BaseTester):
         perm = torch.tensor([2, 0, 1], device=device)
         self.assert_close(kornia.metrics.mean_iou(perm[pred], perm[target], 3), expected[:, torch.argsort(perm)])
 
-    def test_convention_mean_iou_absent_class_scores_one(self, device, dtype):
+    def test_convention_mean_iou_absent_class_scores_one(self, device):
         """A class in neither map scores (0 + eps) / (0 + eps) = 1; a class only predicted scores about 0."""
         pred = torch.tensor([[0, 0, 1, 1]], device=device)
         target = torch.tensor([[0, 1, 1, 1]], device=device)

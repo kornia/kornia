@@ -110,7 +110,7 @@ class TestKMeans(BaseTester):
         assert out2.shape == (num_clusters, D)
 
     @pytest.mark.parametrize("num_clusters", [-1, -2])
-    def test_negative_num_clusters_is_rejected_6442(self, num_clusters, device, dtype):
+    def test_negative_num_clusters_is_rejected_6442(self, num_clusters):
         # A negative count used to pass __init__ and fail in fit inside one_hot ("Class values must be smaller than
         # num_classes"), without naming num_clusters.
         with pytest.raises(BaseError, match=f"num_clusters must be a positive int, got {num_clusters}"):

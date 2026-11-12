@@ -752,11 +752,11 @@ class TestRANSACSeed:
         # Seeded should be reproducible
         assert torch.allclose(H_s1, H_s2)
 
-    def test_seed_stored_as_attribute(self, device, dtype):
+    def test_seed_stored_as_attribute(self):
         ransac = RANSAC("homography", seed=7)
         assert ransac.seed == 7
 
-    def test_none_seed_stored(self, device, dtype):
+    def test_none_seed_stored(self):
         ransac = RANSAC("homography")
         assert ransac.seed is None
 
@@ -1106,7 +1106,7 @@ class TestConventionRANSAC(BaseTester):
         assert bool(mask[:16].all())
         assert not bool(mask[16:].any())
 
-    def test_convention_ransac_prosac_sampling_4869(self, device, dtype):
+    def test_convention_ransac_prosac_sampling_4869(self):
         # PROSAC draws its first sample from the four top-ranked correspondences and then grows the prefix it samples
         # from, one newest correspondence per sample, so its first samples differ from uniform ones. #4869 stored
         # prosac_sampling and never read it.
@@ -2278,7 +2278,7 @@ class TestRANSACLevenbergMarquardtKernels(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the kernels run in float32 or float64")
 
-    def test_normalize_correspondences(self, device, dtype):
+    def test_normalize_correspondences(self, dtype):
         self._skip_half(dtype)
         kp1, kp2, _, _, _ = _two_view_scene(50, 0, 0.0, seed=14)
         kp1[3] = float("nan")
