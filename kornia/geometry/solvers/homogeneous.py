@@ -216,9 +216,11 @@ def _null_space_lu(A: torch.Tensor, *, rank_deficient_basis: bool = False) -> to
         # torch.func.jvp and jacfwd) keeps the non-square call. _needs_derivatives also sees both through
         # torch.func.vmap, whose batching wrapper hides them. Forward mode fails in torch.lu_unpack on both paths
         # on torch 2.15; the check keeps it off this one if that is fixed. torch.func.vmap without a derivative
-        # takes this path and agrees to the bit. Retire this branch once
-        # pytorch/pytorch#200581 is fixed and no supported torch release has the regression.
-        padded = torch.cat([A.mT, A.new_zeros(batch, n, n - m)], -1)
+        # takes this path and agrees to the bit. Retire this branch once pytorch/pytorch#200581 is fixed and no
+        # supported torch release has the regression.
+        # Copying into one zero tensor writes the result once; a cat also materializes the zero block first.
+        padded = A.new_zeros(batch, n, n)
+        padded[..., :m] = A.mT
         lu, pivots, info = torch.linalg.lu_factor_ex(padded)
         lu, pivots = lu[..., :m], pivots[..., :m]
         stopped = (info > 0) & (info < m)
