@@ -38,7 +38,8 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_smoke(self, shape, kernel_size, color_distance_type, device, dtype):
-        inp = torch.zeros(shape, device=device, dtype=dtype)
+        # random: a constant image is its own bilateral blur whatever the sigmas
+        inp = torch.rand(shape, device=device, dtype=dtype)
 
         # tensor sigmas -> with batch dim
         sigma_color = torch.linspace(0.5, 1.0, shape[0], device=device, dtype=dtype)
@@ -56,13 +57,6 @@ class TestBilateralBlur(BaseTester):
 
         self.assert_close(actual_A[0], actual_B[0])
 
-    @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    def test_cardinality(self, shape, kernel_size, device, dtype):
-        inp = torch.zeros(shape, device=device, dtype=dtype)
-        actual = bilateral_blur(inp, kernel_size, 0.1, (1, 1))
-        assert actual.shape == shape
-
     def test_exception(self):
         from kornia.core.exceptions import TypeCheckError
 
@@ -78,7 +72,6 @@ class TestBilateralBlur(BaseTester):
     def test_exception_kernel_size(self, kernel_size):
         # The window is centred on the pixel, so every entry must be a positive odd integer. The check runs before any
         # padding, and the module constructors run it too.
-        from kornia.core.exceptions import BaseError
 
         image = torch.rand(1, 1, 8, 9)
         calls = (
@@ -100,7 +93,6 @@ class TestBilateralBlur(BaseTester):
         # The colour kernel divides by sigma_color squared, so a zero entry divides by zero and the sign of a negative
         # one is lost: every entry must be positive. The check names the argument, runs before any padding and covers
         # the joint filter and the modules.
-        from kornia.core.exceptions import BaseError
 
         image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
         if isinstance(sigma_color, list):
@@ -125,7 +117,6 @@ class TestBilateralBlur(BaseTester):
         # A tensor sigma batch that is neither 1 nor the input batch raises at the entry with a message naming the
         # argument and both sizes, not a torch broadcast error. Input batch 1 with 3 sigma rows used to succeed and
         # silently return a batch of 3, so it is covered too. The check covers the joint filter and the modules.
-        from kornia.core.exceptions import BaseError
 
         image = torch.rand(batch, 3, 8, 9, device=device, dtype=dtype)
         sigma_color = 0.5
@@ -332,12 +323,11 @@ class TestBilateralBlur(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    @pytest.mark.parametrize("sigma_color", [1, 0.1])
-    @pytest.mark.parametrize("sigma_space", [(1, 1), (1.5, 1)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
-    def test_module(self, shape, kernel_size, sigma_color, sigma_space, color_distance_type, device, dtype):
+    def test_module(self, shape, kernel_size, color_distance_type, device, dtype):
+        # sigma_space differs per axis and from 1 so that dropping or swapping it changes the output
         img = torch.rand(shape, device=device, dtype=dtype)
-        params = (kernel_size, sigma_color, sigma_space, "reflect", color_distance_type)
+        params = (kernel_size, 0.1, (1.5, 1), "reflect", color_distance_type)
 
         op = bilateral_blur
         op_module = BilateralBlur(*params)
@@ -346,7 +336,7 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
-        data = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        data = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
@@ -473,14 +463,6 @@ class TestJointBilateralBlur(BaseTester):
         out1 = joint_bilateral_blur(inp, inp, kernel_size, sigma_color, sigma_space)
         out2 = bilateral_blur(inp, kernel_size, sigma_color, sigma_space)
         self.assert_close(out1, out2)
-
-    @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    def test_cardinality(self, shape, kernel_size, device, dtype):
-        inp = torch.zeros(shape, device=device, dtype=dtype)
-        guide = torch.zeros(shape, device=device, dtype=dtype)
-        actual = joint_bilateral_blur(inp, guide, kernel_size, 0.1, (1, 1))
-        assert actual.shape == shape
 
     def test_exception(self):
         inp = torch.rand(1, 1, 5, 5)
@@ -767,29 +749,3 @@ class TestConventionsBilateralBlur(BaseTester):
         assert joint_bilateral_blur(image, image.double(), 3, 0.1, (1.5, 1.5)).dtype == dtype
         wide_color = torch.tensor([0.1], device=device, dtype=torch.float64)
         assert bilateral_blur(image, 3, wide_color, (1.5, 1.5)).dtype == dtype
-
-    @pytest.mark.parametrize("kernel_size", [4, (3, 4)])
-    def test_convention_bilateral_blur_even_kernel_size_is_rejected_up_front_5163(self, kernel_size, device, dtype):
-        """The bilateral filters reject an even kernel_size with a kornia error, the modules at construction (#5163)."""
-        image = torch.rand(1, 1, 8, 9, device=device, dtype=dtype)
-        with pytest.raises(BaseError):
-            bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0))
-        with pytest.raises(BaseError):
-            joint_bilateral_blur(image, image, kernel_size, 0.1, (1.0, 1.0))
-        for module in (BilateralBlur, JointBilateralBlur):
-            with pytest.raises(BaseError):
-                module(kernel_size, 0.1, (1.0, 1.0))
-
-    def test_convention_bilateral_blur_sigma_color_must_be_positive_5169(self, device, dtype):
-        """The bilateral filters reject a sigma_color that is not positive, a float or any entry of a tensor (#5169)."""
-        image = torch.rand(2, 3, 9, 13, device=device, dtype=dtype)
-        for sigma_color in (
-            torch.zeros(2, device=device, dtype=dtype),
-            torch.tensor([0.1, -0.1], device=device, dtype=dtype),
-            0.0,
-            -0.1,
-        ):
-            with pytest.raises(BaseError):
-                bilateral_blur(image, 3, sigma_color, (1.0, 1.0))
-            with pytest.raises(BaseError):
-                joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0))

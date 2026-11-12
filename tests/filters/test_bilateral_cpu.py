@@ -112,8 +112,8 @@ def _assert_same_nonfinite(actual: torch.Tensor, expected: torch.Tensor) -> None
 class TestBilateralBlurCpuTapLoop(BaseTester):
     @NATIVE_CPU
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
-    @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
-    @pytest.mark.parametrize("channels", [1, 2, 3])
+    # one channel takes the single-channel branch, which never reads the distance type; 2 and 3 channels share one
+    @pytest.mark.parametrize("channels, color_distance_type", [(1, "l1"), (3, "l1"), (3, "l2")])
     def test_matches_unfold_path(self, border_type, color_distance_type, channels, monkeypatch, device, dtype):
         calls = _counting(monkeypatch)
         # test_threshold_and_odd_shapes pins the size threshold; a lower one lets small images take the tap loop.

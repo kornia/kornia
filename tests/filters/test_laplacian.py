@@ -159,22 +159,6 @@ class TestLaplacian(BaseTester):
         actual = torch.vmap(lambda image: laplacian(image, 3))(data)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("slices", [True, False])
-    @pytest.mark.parametrize("kernel_size", [1, (1, 1), [1, 1]])
-    @pytest.mark.parametrize("normalized", [True, False])
-    def test_kernel_size_one_is_rejected(self, monkeypatch, kernel_size, normalized, slices, device, dtype):
-        # The 1x1 Laplacian is the all-zero kernel: zeros unnormalized, 0 / 0 = NaN normalized. The size is rejected
-        # up front, whichever of the slice and convolution paths would have run.
-        monkeypatch.setattr(laplacian_module, "_laplacian_slices_eligible", lambda _input: slices)
-        data = torch.rand(1, 1, 3, 5, device=device, dtype=dtype)
-        with pytest.raises(BaseError, match="size of at least 3 along one axis"):
-            laplacian(data, kernel_size, normalized=normalized)
-
-    @pytest.mark.parametrize("kernel_size", [1, (1, 1), [1, 1]])
-    def test_module_rejects_kernel_size_one(self, kernel_size):
-        with pytest.raises(BaseError, match="size of at least 3 along one axis"):
-            Laplacian(kernel_size)
-
     @pytest.mark.parametrize(
         "kernel_size, message",
         [
@@ -209,22 +193,6 @@ class TestLaplacian(BaseTester):
         if normalized:
             expected = expected / 4.0  # the kernel [1, -2, 1] has an absolute sum of 4
         self.assert_close(laplacian(data, kernel_size, normalized=normalized), expected)
-
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])
-    @pytest.mark.parametrize("normalized", [True, False])
-    def test_smoke(self, shape, kernel_size, normalized, device, dtype):
-        data = torch.rand(shape, device=device, dtype=dtype)
-        actual = laplacian(data, kernel_size, "reflect", normalized)
-        assert isinstance(actual, torch.Tensor)
-        assert actual.shape == shape
-
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [5, (11, 7), 3])
-    def test_cardinality(self, shape, kernel_size, device, dtype):
-        sample = torch.rand(shape, device=device, dtype=dtype)
-        actual = laplacian(sample, kernel_size)
-        assert actual.shape == shape
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -323,10 +291,11 @@ class TestConventionsLaplacian(BaseTester):
         """kernel_size needs 3 or more taps along one axis: 1 and (1, 1) raise, (1, 3) is accepted."""
         self._require_reflect_padding(device, dtype)
         data = torch.rand(1, 1, 5, 6, device=device, dtype=dtype)
-        for kernel_size in (1, (1, 1)):
-            with pytest.raises(BaseError):
+        # the size is rejected before the slice or convolution path is chosen
+        for kernel_size in (1, (1, 1), [1, 1]):
+            with pytest.raises(BaseError, match="size of at least 3 along one axis"):
                 laplacian(data, kernel_size)
-            with pytest.raises(BaseError):
+            with pytest.raises(BaseError, match="size of at least 3 along one axis"):
                 Laplacian(kernel_size)
         # a 1 x 3 kernel is the 1-D stencil [1, -2, 1] along x, divided by its absolute sum 4
         ramp = (torch.arange(6, device=device, dtype=dtype) ** 2).expand(1, 1, 5, 6)

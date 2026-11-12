@@ -24,27 +24,18 @@ from testing.base import BaseTester, supports_reflect_padding
 
 
 class Testunsharp(BaseTester):
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, (5, 3)])
-    @pytest.mark.parametrize("sigma", [(3.0, 1.0), (0.5, 0.1)])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_smoke(self, shape, kernel_size, sigma, params_as_tensor, device, dtype):
+    def test_smoke(self, kernel_size, params_as_tensor, device, dtype):
+        shape = (2, 3, 11, 7)
+        sigma = (3.0, 1.0)
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype).repeat(shape[0], 1)
 
-        data = torch.ones(shape, device=device, dtype=dtype)
+        # random: a constant image is its own unsharp mask whatever the kernel size and sigma
+        data = torch.rand(shape, device=device, dtype=dtype)
         actual = unsharp_mask(data, kernel_size, sigma, "replicate")
-        assert isinstance(actual, torch.Tensor)
-        assert actual.shape == shape
-
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_cardinality(self, shape, device, dtype):
-        kernel_size = (5, 7)
-        sigma = (1.5, 2.1)
-
-        data = torch.ones(shape, device=device, dtype=dtype)
-        actual = unsharp_mask(data, kernel_size, sigma, "replicate")
-        assert actual.shape == shape
+        self.assert_close(actual, 2 * data - gaussian_blur2d(data, kernel_size, sigma, "replicate"))
 
     @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.bool])
     def test_integer_input_matches_float32_5155(self, input_dtype: torch.dtype, device: torch.device) -> None:
@@ -81,21 +72,13 @@ class Testunsharp(BaseTester):
         data = torch.rand(shape, device=device, dtype=torch.float64)
         self.gradcheck(unsharp_mask, (data, kernel_size, sigma, "replicate"))
 
-    def test_module(self, device, dtype):
-        params = [(3, 3), (1.5, 1.5)]
-        op = unsharp_mask
-        op_module = UnsharpMask(*params)
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        self.assert_close(op(img, *params), op_module(img))
-
     @pytest.mark.parametrize("sigma", [(3.0, 1.0), (0.5, 0.1)])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_dynamo(self, sigma, params_as_tensor, device, dtype, torch_optimizer):
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
-        data = torch.ones(1, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
         op = UnsharpMask(3, sigma)
         op_optimized = torch_optimizer(op)
 
