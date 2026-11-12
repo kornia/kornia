@@ -101,7 +101,7 @@
 ## CUDA 与半精度支持
 
 下表按模块统计 Linux CPU 已知失败清单中的条目（[`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt)、[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)），对应固定的 Python 3.11 和 PyTorch 2.15.0 环境。
-清单记录了 **239 个 float16 失败和 251 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
+清单记录了 **190 个 float16 失败和 194 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
 没有 CI 任务覆盖 CUDA 或 MPS 半精度；CPU 结果不能证明这些后端的支持情况。完整测试套件的一次本地 CUDA 测量见[下文](#cuda-测试套件测量)。
 
 | 模块 | float16 | bfloat16 | 已知失败（fp16 / bf16） | 说明 |
@@ -113,21 +113,21 @@
 | `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16：容器 autocast／运行时错误和精度问题；两种 dtype：三维反向传播和随机生成器精度问题 |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 30 | 旋转矩阵、仿射／透视变换和单应性变换器的精度问题 |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | 投影、畸变往返变换和双目重投影；包括测试中的 dtype 断言 |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt 拒绝半精度输入；undistort_points 精度问题 |
-| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | 本质矩阵分解／运动恢复和 KRt_from_projection 缺少 CPU 半精度内核；基础矩阵精度问题 |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT 求解器精度问题，包括迭代版本和基于直线的版本 |
+| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 7 / 7 | solve_pnp_dlt、distort_points 和 undistort_points 对半精度输入使用 float32 计算；其余条目是 solve_pnp_dlt 在一个场景上的位姿检查，该场景的像素坐标高达 8e4，在 float16 中溢出，在两种半精度 dtype 中都会舍入许多像素 |
+| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 4 / 3 | 本质矩阵分解／运动恢复、KRt_from_projection 和基础矩阵估计器对半精度输入使用 float32 计算；其余条目是像素单位 F（其元素跨越八个数量级）的 Sampson 残差，以及元素超过 65504 的 float16 投影矩阵 |
+| `kornia.geometry.homography` | ✅ | ✅ | 0 / 0 | 基于点和基于直线的 DLT（无论是否迭代）对半精度输入使用 float32 计算，并返回输入 dtype |
 | `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 拒绝用 bfloat16 构造旋转：PyTorch 没有复数 bfloat16 dtype；这些预期错误／跳过项不计入清单 |
 | `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d 和 ConvQuadInterp3d 精度问题；bfloat16：render_gaussian2d 精度问题 |
 | `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | 轴角、四元数和旋转矩阵的精度问题；包括 tests/integration/test_conversions.py |
-| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | 本质矩阵模型拟合在对极几何求解器中抛出异常 |
+| `kornia.geometry.ransac` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.geometry (other)` | ⚠️ | ⚠️ | 3 / 10 | 边界框变换和深度的精度问题 |
 | `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | 圆／椭圆多边形填充的比较使用半精度计算的顶点和参考掩码 |
 | `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16：总变分精度问题 |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | 特征匹配在半精度 dtype 下使用手动实现的 cdist 回退路径；LightGlue 的 float16 测试被跳过 |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16：RT-DETR RepVGG 融合精度问题 |
-| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16：直方图匹配和 _torch_svd_cast 精度问题 |
+| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 1 | bfloat16：直方图匹配精度问题 |
 
 ✅ CPU 已知失败清单中没有条目 &nbsp; ⚠️ 存在已记录的 CPU 失败。
 这两个符号都不承诺完整的 dtype 支持：跳过的测试、预期异常以及源码中的 xfail 不在这些计数内。一些算子内部使用 float32 或 float64 计算，再返回输入 dtype。
