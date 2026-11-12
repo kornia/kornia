@@ -31,15 +31,6 @@ from testing.base import BaseTester
 
 
 class TestSOLD2_detector(BaseTester):
-    @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size, dtype):
-        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2_detector(pretrained=False).to(device, dtype).eval()
-        out = sold2(inp)
-        assert out["junction_heatmap"].shape == (batch_size, 64, 64)
-        assert out["line_heatmap"].shape == (batch_size, 64, 64)
-
     def test_has_no_descriptor_head(self, device, dtype):
         # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does
         detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
@@ -194,14 +185,6 @@ class TestJunctionsAndSegments(BaseTester):
 
 
 class TestSOLD2(BaseTester):
-    @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size, dtype):
-        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
-        out = sold2(inp)
-        assert out["dense_desc"].shape == (batch_size, 128, 16, 16)
-
     def test_config_is_not_modified_5722(self):
         cfg = DetectorCfg()
         assert cfg.use_descriptor is False

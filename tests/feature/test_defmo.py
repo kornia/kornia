@@ -89,20 +89,12 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
 
 class TestDeFMO(BaseTester):
     @pytest.mark.slow
-    def test_shape(self, device, dtype):
-        inp = torch.ones(1, 6, 128, 160, device=device, dtype=dtype)
-        defmo = DeFMO(pretrained=False).to(device, dtype)
-        defmo.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = defmo(inp)
-        assert out.shape == (1, 24, 4, 128, 160)
-
-    @pytest.mark.slow
     def test_shape_batch(self, device, dtype):
         inp = torch.ones(2, 6, 128, 160, device=device, dtype=dtype)
         defmo = DeFMO(pretrained=False).to(device, dtype).eval()
-        out = defmo(inp)
         with torch.no_grad():
-            assert out.shape == (2, 24, 4, 128, 160)
+            out = defmo(inp)
+        assert out.shape == (2, 24, 4, 128, 160)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):

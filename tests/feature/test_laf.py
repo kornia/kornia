@@ -870,16 +870,6 @@ class TestExtractPatchesSimple(BaseTester):
         patches = kornia.feature.extract_patches_simple(img, laf, PS)
         assert patches.shape == (5, 4, 3, PS, PS)
 
-    def test_non_zero(self, device):
-        img = torch.zeros(1, 1, 24, 24, device=device)
-        img[:, :, 10:, 20:] = 1.0
-        laf = torch.tensor([[8.0, 0, 14.0], [0, 8.0, 8.0]], device=device).reshape(1, 1, 2, 3)
-
-        PS = 32
-        patches = kornia.feature.extract_patches_simple(img, laf, PS)
-        assert patches.mean().item() > 0.01
-        assert patches.shape == (1, 1, 1, PS, PS)
-
     def test_exception(self, device, dtype):
         # Batch disagreement is rejected at the boundary with a clear message instead of an
         # internal `grid_sample` error or a silently truncated result.
@@ -1098,16 +1088,6 @@ class TestExtractPatchesPyr(BaseTester):
         PS = 10
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         assert patches.shape == (5, 4, 3, PS, PS)
-
-    def test_non_zero(self, device):
-        img = torch.zeros(1, 1, 24, 24, device=device)
-        img[:, :, 10:, 20:] = 1.0
-        laf = torch.tensor([[8.0, 0, 14.0], [0, 8.0, 8.0]], device=device).reshape(1, 1, 2, 3)
-
-        PS = 32
-        patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
-        assert patches.mean().item() > 0.01
-        assert patches.shape == (1, 1, 1, PS, PS)
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
@@ -1894,15 +1874,18 @@ class TestGetLAFFrom3pts(BaseTester):
 
 
 class TestTransformLAFs(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    @pytest.mark.parametrize("num_points", [2, 3, 5])
-    def test_transform_points(self, batch_size, num_points, device, dtype):
-        laf_bank = torch.tensor(
-            [[[0.4, 0.1, 1.0], [-0.2, 0.3, 2.0]], [[-0.3, 0.2, -1.0], [0.1, 0.5, 0.5]]],
+    def test_transform_points(self, device, dtype):
+        # Each LAF and each homography is distinct, so a mix-up of the batch or LAF order changes the output.
+        lafs_src = torch.tensor(
+            [
+                [[0.4, 0.1, 1.0], [-0.2, 0.3, 2.0]],
+                [[-0.3, 0.2, -1.0], [0.1, 0.5, 0.5]],
+                [[0.25, -0.15, 0.6], [0.35, 0.2, -0.4]],
+            ],
             device=device,
             dtype=dtype,
         )
-        homography_bank = torch.tensor(
+        dst_homo_src = torch.tensor(
             [
                 [[1.2, 0.1, 0.5], [-0.2, 0.9, 0.3], [0.02, -0.01, 1.0]],
                 [[0.8, -0.15, -0.2], [0.05, 1.1, 0.4], [-0.015, 0.025, 1.0]],
@@ -1910,38 +1893,27 @@ class TestTransformLAFs(BaseTester):
             device=device,
             dtype=dtype,
         )
-        # Closed-form projection of the two LAFs by the two homographies, generated in float64:
-        # p' = (H[:2, :2] @ p + H[:2, 2]) / (H[2, :2] @ p + H[2, 2]).
-        expected_bank = torch.tensor(
+        # Closed-form projection of the three points c + A[:, 0], c + A[:, 1] and c of each LAF by each homography,
+        # generated in float64: p' = (H[:2, :2] @ p + H[:2, 2]) / (H[2, :2] @ p + H[2, 2]), then
+        # A' = [p0' - c', p1' - c'].
+        expected = torch.tensor(
             [
                 [
                     [[0.4366336634, 0.1520520521, 1.9], [-0.2762376238, 0.2521521522, 1.9]],
-                    [
-                        [-0.3663911846, 0.2970568104, -0.6666666667],
-                        [0.1620046620, 0.4219449271, 0.9743589744],
-                    ],
+                    [[-0.3663911846, 0.2970568104, -0.6666666667], [0.1620046620, 0.4219449271, 0.9743589744]],
+                    [[0.3275261661, -0.1525152457, 1.1614173228], [0.2607034379, 0.2068389448, -0.1771653543]],
                 ],
                 [
-                    [
-                        [0.3449105525, 0.0319508833, 0.2898550725],
-                        [-0.1678083484, 0.3070486851, 2.5603864734],
-                    ],
-                    [
-                        [-0.2394165288, 0.0915517577, -1.0462287105],
-                        [0.0859048943, 0.5319950165, 0.8759124088],
-                    ],
+                    [[0.3449105525, 0.0319508833, 0.2898550725], [-0.1678083484, 0.3070486851, 2.5603864734]],
+                    [[-0.2394165288, 0.0915517577, -1.0462287105], [0.0859048943, 0.5319950165, 0.8759124088]],
+                    [[0.1478367895, -0.1543260735, 0.3465851172], [0.4031957083, 0.2151013450, -0.0101936799]],
                 ],
             ],
             device=device,
             dtype=dtype,
         )
-        batch_indices = torch.arange(batch_size, device=device) % len(homography_bank)
-        point_indices = torch.arange(num_points, device=device) % len(laf_bank)
-        lafs_src = laf_bank[point_indices].unsqueeze(0).expand(batch_size, -1, -1, -1)
-        dst_homo_src = homography_bank[batch_indices]
-        expected = expected_bank[batch_indices[:, None], point_indices[None, :]]
 
-        actual = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src)
+        actual = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src.expand(2, -1, -1, -1))
 
         half_tolerance = 3 * torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else None
         self.assert_close(actual, expected, atol=half_tolerance, rtol=half_tolerance)

@@ -97,7 +97,7 @@ class TestCornerHarris(BaseTester):
             ],
             device=device,
             dtype=dtype,
-        ).float()
+        )
 
         expected = torch.tensor(
             [
@@ -115,8 +115,8 @@ class TestCornerHarris(BaseTester):
             ],
             device=device,
             dtype=dtype,
-        ).float()
-        harris = kornia.feature.CornerHarris(k=0.04).to(device)
+        )
+        harris = kornia.feature.CornerHarris(k=0.04).to(device, dtype)
         scores = harris(inp)
         self.assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
@@ -258,16 +258,6 @@ class TestCornerGFTT(BaseTester):
         assert scaled.shape == plain.shape
         self.assert_close(scaled, plain * sigmas.pow(4).view(-1, 1, 1, 1))
 
-    def test_shape(self, device):
-        inp = torch.ones(1, 3, 4, 4, device=device)
-        shi_tomasi = kornia.feature.CornerGFTT().to(device)
-        assert shi_tomasi(inp).shape == (1, 3, 4, 4)
-
-    def test_shape_batch(self, device):
-        inp = torch.zeros(2, 6, 4, 4, device=device)
-        shi_tomasi = kornia.feature.CornerGFTT().to(device)
-        assert shi_tomasi(inp).shape == (2, 6, 4, 4)
-
     def test_corners(self, device, dtype):
         inp = torch.tensor(
             [
@@ -394,16 +384,6 @@ class TestCornerGFTT(BaseTester):
 
 
 class TestBlobHessian(BaseTester):
-    def test_shape(self, device):
-        inp = torch.ones(1, 3, 4, 4, device=device)
-        shi_tomasi = kornia.feature.BlobHessian().to(device)
-        assert shi_tomasi(inp).shape == (1, 3, 4, 4)
-
-    def test_shape_batch(self, device):
-        inp = torch.zeros(2, 6, 4, 4, device=device)
-        shi_tomasi = kornia.feature.BlobHessian().to(device)
-        assert shi_tomasi(inp).shape == (2, 6, 4, 4)
-
     def test_blobs_batch(self, device, dtype):
         inp = torch.tensor(
             [
@@ -464,16 +444,6 @@ class TestBlobHessian(BaseTester):
 
 
 class TestBlobDoGSingle(BaseTester):
-    def test_shape(self, device):
-        inp = torch.ones(1, 3, 9, 9, device=device)
-        shi_tomasi = kornia.feature.BlobDoGSingle().to(device)
-        assert shi_tomasi(inp).shape == (1, 3, 9, 9)
-
-    def test_shape_batch(self, device):
-        inp = torch.zeros(2, 6, 9, 9, device=device)
-        shi_tomasi = kornia.feature.BlobHessian().to(device)
-        assert shi_tomasi(inp).shape == (2, 6, 9, 9)
-
     def test_blobs_batch(self, device, dtype):
         inp = torch.tensor(
             [

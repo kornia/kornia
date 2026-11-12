@@ -32,25 +32,6 @@ from testing.casts import dict_to
 
 
 class TestDisk(BaseTester):
-    def test_smoke(self, dtype, device):
-        disk = DISK().to(device, dtype)
-        inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
-        output = disk(inp)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert all(isinstance(e, DISKFeatures) for e in output)
-
-    def test_smoke_n_detections(self, dtype, device):
-        """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
-        to really match the limit.
-        """
-        disk = DISK().to(device, dtype)
-        inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
-        output = disk(inp, n=100)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert all(isinstance(e, DISKFeatures) for e in output)
-
     @pytest.mark.slow
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint="depth", device=device)

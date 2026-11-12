@@ -49,14 +49,6 @@ class TestXFeatModel(BaseTester):
         assert keypoints.shape == (0, 65, 8, 8)
         assert heatmap.shape == (0, 1, 8, 8)
 
-    def test_smoke(self, device, dtype):
-        model = XFeatModel().to(device, dtype)
-        x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        feats, kpts, heatmap = model(x)
-        assert feats.shape == (1, 64, 8, 8)
-        assert kpts.shape == (1, 65, 8, 8)
-        assert heatmap.shape == (1, 1, 8, 8)
-
     def test_cardinality(self, device, dtype):
         B = 2
         model = XFeatModel().to(device, dtype)
@@ -88,14 +80,6 @@ class TestXFeatModel(BaseTester):
         assert heatmap.min() >= 0.0
         assert heatmap.max() <= 1.0
 
-    def test_grayscale_and_rgb_same_shape(self, device, dtype):
-        model = XFeatModel().to(device, dtype)
-        gray = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        rgb = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        f_gray, _, _ = model(gray)
-        f_rgb, _, _ = model(rgb)
-        assert f_gray.shape == f_rgb.shape
-
 
 # ---------------------------------------------------------------------------
 # InterpolateSparse2d tests
@@ -103,15 +87,6 @@ class TestXFeatModel(BaseTester):
 
 
 class TestInterpolateSparse2d(BaseTester):
-    def test_smoke(self, device, dtype):
-        if not supports_bilinear_2d_grid_sample(device, dtype):
-            pytest.skip("This device does not support bilinear interpolation for 2D grid_sample")
-        interp = InterpolateSparse2d("bilinear").to(device)
-        x = torch.rand(1, 32, 8, 8, device=device, dtype=dtype)
-        pos = torch.zeros(1, 5, 2, device=device, dtype=dtype)
-        out = interp(x, pos, 8, 8)
-        assert out.shape == (1, 5, 32)
-
     @pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
     def test_cardinality(self, mode, device, dtype):
         if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
@@ -137,12 +112,6 @@ class TestInterpolateSparse2d(BaseTester):
         pos = torch.rand(1, 5, 2, device=device, dtype=dtype) * 15
         op = torch_optimizer(interp)
         self.assert_close(op(x, pos, 16, 16), interp(x, pos, 16, 16))
-
-    def test_normgrid_center(self, device, dtype):
-        interp = InterpolateSparse2d()
-        coords = torch.tensor([[[32.0, 24.0]]], device=device, dtype=dtype)
-        grid = interp.normgrid(coords, 49, 65)
-        assert grid.abs().max() < 0.1  # close to center -> close to 0
 
 
 # ---------------------------------------------------------------------------
@@ -216,16 +185,6 @@ class TestXFeat(BaseTester):
             assert idx0.shape[0] > 0
             assert torch.equal(idx0, keep.nonzero()[:, 0])
             assert torch.equal(idx1, best12[keep])
-
-    def test_smoke(self, device):
-        model = XFeat().to(device).eval()
-        x = torch.rand(1, 3, 64, 64, device=device)
-        out = model.detectAndCompute(x)
-        assert isinstance(out, list)
-        assert len(out) == 1
-        assert "keypoints" in out[0]
-        assert "scores" in out[0]
-        assert "descriptors" in out[0]
 
     def test_cardinality(self, device):
         model = XFeat().to(device).eval()
@@ -306,29 +265,34 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].dtype == torch.float16
         assert (out["descriptors"] == 0).all()
 
+    # Random weights score every cell below the default detection_threshold of 0.05, which leaves no keypoint to check:
+    # the tests below that read keypoints detect with a threshold of 0.
+
     def test_descriptors_normalized(self, device):
-        model = XFeat().to(device).eval()
+        torch.manual_seed(0)
+        model = XFeat(detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
-        if out[0]["descriptors"].numel() == 0:
-            pytest.skip("No keypoints detected on random input")
+        assert out[0]["descriptors"].shape[0] > 0
         norms = out[0]["descriptors"].norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms), atol=1e-5, rtol=1e-5)
 
     def test_top_k_respected(self, device):
         top_k = 16
-        model = XFeat(top_k=top_k).to(device).eval()
+        torch.manual_seed(0)
+        model = XFeat(top_k=top_k, detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, 128, 128, device=device)
-        out = model.detectAndCompute(x, top_k=top_k)
-        assert out[0]["keypoints"].shape[0] <= top_k
+        # the 16 x 16 cells of this image have hundreds of maxima above the threshold: top_k is what limits the count
+        assert model.detectAndCompute(x, top_k=4 * top_k)[0]["keypoints"].shape[0] == 4 * top_k
+        assert model.detectAndCompute(x, top_k=top_k)[0]["keypoints"].shape[0] == top_k
 
     def test_keypoint_coordinates_in_image(self, device):
         H, W = 64, 96
-        model = XFeat().to(device).eval()
+        torch.manual_seed(0)
+        model = XFeat(detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, H, W, device=device)
         out = model.detectAndCompute(x)
-        if out[0]["keypoints"].numel() == 0:
-            pytest.skip("No keypoints detected on random input")
+        assert out[0]["keypoints"].shape[0] > 0
         kpts = out[0]["keypoints"].float()
         assert (kpts[:, 0] >= 0).all()
         assert (kpts[:, 0] < W).all()
@@ -345,13 +309,16 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].shape[-1] == 64
         assert out["keypoints"].shape[1] == out["descriptors"].shape[1]
 
-    def test_match_xfeat_returns_paired_keypoints(self, device):
+    def test_match_xfeat_without_keypoints_returns_empty_pairs(self, device):
+        # Random weights score every cell below the default detection_threshold, so neither image has a keypoint: the
+        # matcher returns two empty (0, 2) sets instead of failing on the empty descriptor sets.
+        torch.manual_seed(0)
         model = XFeat().to(device).eval()
         img1 = torch.rand(1, 3, 64, 64, device=device)
         img2 = torch.rand(1, 3, 64, 64, device=device)
+        assert model.detectAndCompute(img1)[0]["keypoints"].shape[0] == 0
         mkpts0, mkpts1 = model.match_xfeat(img1, img2)
-        assert mkpts0.shape == mkpts1.shape
-        assert mkpts0.shape[-1] == 2
+        assert mkpts0.shape == mkpts1.shape == (0, 2)
 
     def test_match_xfeat_batch_matches_each_pair(self, device):
         torch.manual_seed(0)

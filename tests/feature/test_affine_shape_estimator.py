@@ -158,21 +158,14 @@ class TestPatchAffineShapeEstimator(BaseTester):
 
         assert torch.equal(out, expected)
 
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = PatchAffineShapeEstimator(32).to(device)
-        ang = ori(inp)
-        assert ang.shape == torch.Size([1, 1, 3])
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([2, 1, 3])
 
-    def test_print(self):
-        sift = PatchAffineShapeEstimator(32)
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(PatchAffineShapeEstimator(19, eps=1e-6)) == "PatchAffineShapeEstimator(patch_size=19, eps=1e-06)"
 
     def test_toy(self, device):
         aff = PatchAffineShapeEstimator(19).to(device)
@@ -244,13 +237,6 @@ class TestAffineShapeKernelBuffer(BaseTester):
 
 
 class TestLAFAffineShapeEstimator(BaseTester):
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffineShapeEstimator().to(device)
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
@@ -258,9 +244,11 @@ class TestLAFAffineShapeEstimator(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self):
-        sift = LAFAffineShapeEstimator()
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(LAFAffineShapeEstimator(19, preserve_orientation=False)) == (
+            "LAFAffineShapeEstimator(patch_size=19, affine_shape_detector=PatchAffineShapeEstimator(patch_size=19, "
+            "eps=1e-10), preserve_orientation=False)"
+        )
 
     def test_toy(self, device, dtype):
         aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device, dtype)
@@ -571,31 +559,12 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         assert laf.grad is not None
         assert torch.isfinite(laf.grad).all()
 
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator(False).to(device).eval()
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
-    @pytest.mark.slow
-    def test_pretrained(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator(True).to(device).eval()
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 5, 2, 3, device=device)
         ori = LAFAffNetShapeEstimator(pretrained=False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
-
-    def test_print(self):
-        sift = LAFAffNetShapeEstimator(pretrained=False)
-        sift.__repr__()
 
     def test_toy(self, device, dtype):
         aff = LAFAffNetShapeEstimator(True).to(device, dtype).eval()
