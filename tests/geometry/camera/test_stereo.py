@@ -31,6 +31,11 @@ def batch_size(request):
     return request.param
 
 
+def _q_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Q of a float16 or bfloat16 rig is float32; other floating rigs keep their dtype."""
+    return torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+
+
 class _TestParams:
     """Collection of test parameters for smoke test."""
 
@@ -375,7 +380,7 @@ class TestStereoCamera(BaseTester):
         _assert_all(stereo_camera.tx, -tx_fx / _TestParams.fx)
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
-        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.dtype == _q_dtype(dtype)
 
     def test_empty_batch_4281(self, device, dtype):
         # Regression for kornia#4281: an empty stereo rig is vacuously valid.
@@ -386,7 +391,7 @@ class TestStereoCamera(BaseTester):
 
         assert stereo_camera.batch_size == 0
         assert stereo_camera.Q.shape == (0, 4, 4)
-        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.dtype == _q_dtype(dtype)
         assert stereo_camera.Q.device == device
 
     @pytest.mark.parametrize("size", [(4, 5), (0, 5), (0, 0)])
@@ -420,7 +425,7 @@ class TestStereoCamera(BaseTester):
         self.assert_close(stereo_camera.cy, left_rectified_camera[..., 1, 2])
         self.assert_close(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
-        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.dtype == _q_dtype(dtype)
 
     def test_reproject_disparity_to_3D_smoke(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for smoke data."""
@@ -448,10 +453,10 @@ class TestStereoCamera(BaseTester):
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        if dtype == torch.bfloat16:
-            # The cameras, the disparity, Q and the result each round by eps / 2 relative, with no cancellation in
-            # X / W, Y / W or Z / W for this rig: within 2 eps relative, observed 1.1 eps. In float16 this rig's
-            # Q[2, 3] = fx * fy * tx = -5.4e6 is past the float16 range, so float16 stays a known failure.
+        if dtype in (torch.float16, torch.bfloat16):
+            # The cameras, the disparity and the result each round by eps / 2 relative; Q and the reprojection are
+            # float32 (this rig's Q[2, 3] = fx * fy * tx = -5.4e6 is past the float16 range), with no cancellation
+            # in X / W, Y / W or Z / W: within 2 eps relative.
             self.assert_close(xyz, xyz_gt, rtol=2 * torch.finfo(dtype).eps, atol=0.0)
         else:
             self.assert_close(xyz, xyz_gt)
@@ -557,21 +562,21 @@ class TestStereoCamera(BaseTester):
         # row that scales the first output coordinate carries fy, so the fy = 50 arm fails a reading with fx
         # there. Q[3, 3] = fy * (cx_left - cx_right) is 0 on this equal-cx fixture (#4270, below).
         cam = self._asymmetric_stereo(device, dtype)
-        assert cam.Q.dtype == dtype
+        assert cam.Q.dtype == _q_dtype(dtype)
         assert cam.Q.device == device
         self.assert_close(cam.tx, torch.tensor([0.5], device=device, dtype=dtype))
         self.assert_close(cam.tx, -cam.rectified_right_camera[..., 0, 3] / cam.fx)
         symmetric_q = torch.tensor(
             [[[-50.0, 0.0, 0.0, 200.0], [0.0, -50.0, 0.0, 150.0], [0.0, 0.0, 0.0, -5000.0], [0.0, 0.0, -100.0, 0.0]]],
             device=device,
-            dtype=dtype,
+            dtype=_q_dtype(dtype),
         )
         self.assert_close(cam.Q, symmetric_q)
         assert cam.Q[0, 3, 3].item() == 0.0
         asymmetric_q = torch.tensor(
             [[[-25.0, 0.0, 0.0, 100.0], [0.0, -50.0, 0.0, 150.0], [0.0, 0.0, 0.0, -2500.0], [0.0, 0.0, -50.0, 0.0]]],
             device=device,
-            dtype=dtype,
+            dtype=_q_dtype(dtype),
         )
         self.assert_close(self._asymmetric_stereo(device, dtype, fy=50.0).Q, asymmetric_q)
         assert (symmetric_q - asymmetric_q).abs().max().item() > 1.0
@@ -620,7 +625,7 @@ class TestStereoCamera(BaseTester):
         # CALIB_ZERO_DISPARITY.
         cam = self._asymmetric_stereo(device, dtype, cx_right=5.0)
         assert not torch.equal(cam.cx_left, cam.cx_right)
-        self.assert_close(cam.Q[0, 3, 3], cam.fy[0] * (cam.cx_left[0] - cam.cx_right[0]))
+        self.assert_close(cam.Q[0, 3, 3], (cam.fy[0] * (cam.cx_left[0] - cam.cx_right[0])).to(cam.Q.dtype))
 
     @pytest.mark.parametrize("row, col", [(0, 0), (1, 1), (1, 2)], ids=["fx", "fy", "cy"])
     def test_convention_stereo_rejects_differing_fx_fy_or_cy_4270(self, row, col, device, dtype):
@@ -667,14 +672,14 @@ class TestStereoCamera(BaseTester):
                 [0.0, 0.0, 8.333333333333334, 166.66666666666669],
             ],
             device=device,
-            dtype=dtype,
+            dtype=_q_dtype(dtype),
         )
         point_opencv = torch.tensor(
             [-0.7608000040054321, -0.5771999955177307, 1.697948694229126], device=device, dtype=dtype
         )
         cam = StereoCamera(p1, p2)
-        # In half precision the cameras, Q, the ratios and the expected literals each round by eps / 2 relative, so
-        # Q / Q[3, 2] and the point land within 2 eps relative of OpenCV, and a wrong Q is off by O(1).
+        # In half precision the cameras and the expected point round by eps / 2 relative (Q and the reprojection are
+        # float32), so Q / Q[3, 2] and the point land within 2 eps relative of OpenCV, and a wrong Q is off by O(1).
         half = dtype in (torch.float16, torch.bfloat16)
         tolerances = {"rtol": 2 * torch.finfo(dtype).eps, "atol": 0.0} if half else {}
         self.assert_close(cam.Q[0] / cam.Q[0, 3, 2], q_opencv / q_opencv[3, 2], **tolerances)
