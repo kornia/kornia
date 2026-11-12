@@ -52,3 +52,6 @@ def test_random_plasma_patch_sequential_4445(augmentation_cls, patchwise_apply, 
     output = seq(input)
 
     assert output.shape == input.shape
+    # The noise is drawn with the parameters (#4445), so a replay under another seed reproduces the output.
+    torch.manual_seed(1)
+    assert torch.equal(seq(input, params=seq._params), output)
