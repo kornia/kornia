@@ -374,10 +374,10 @@ class TestQuaternion(BaseTester):
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
         # Create a quaternion with parameters to test gradient flow
-        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
+        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             q_data = q_data.repeat(batch_size, 1)
-        q = Quaternion(Parameter(q_data))
+        q = Quaternion(Parameter(q_data))  # the Parameter is the leaf that requires grad
 
         # This should not raise a TypeError
         result = q * q * 5

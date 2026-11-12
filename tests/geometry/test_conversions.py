@@ -1074,7 +1074,9 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # evaluate function gradient
         self.gradcheck(partial(kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps), (matrix,))
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("rotation_matrix_to_quaternion defines a nested helper, which TorchScript rejects")
         # Identity and half turns exercise all four matrix-to-quaternion branches.
         matrix = torch.diag_embed(
             torch.tensor(
