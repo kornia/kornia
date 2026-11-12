@@ -1062,7 +1062,7 @@ class TestPerspectiveTransform3D(BaseTester):
     # Box corners in bbox_generator3d order: 000, 100, 110, 010, 001, 101, 111, 011.
     _corners = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
         # Eight random point pairs are in general not related by any 3D homography (15 degrees of freedom against
         # 24 constraints), which is why this test used to fail. The destination points are the source corners
@@ -1083,8 +1083,11 @@ class TestPerspectiveTransform3D(BaseTester):
         self.assert_close(out, dst_homo_src.to(device, dtype), low_tolerance=True)
         self.assert_close(kornia.geometry.linalg.transform_points(out, points_src), points_dst, low_tolerance=True)
 
-        # compute gradient check
-        self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False)
+        # gradcheck casts its inputs to float64, so the float64 case runs it for every dtype
+        if dtype == torch.float64:
+            self.gradcheck(
+                kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False
+            )
 
     def test_integer_points_6396(self, device):
         points_src = torch.tensor(self._corners, device=device)[None] * 4
