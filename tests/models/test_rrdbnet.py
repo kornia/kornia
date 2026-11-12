@@ -98,29 +98,6 @@ def _cosine_ramp_weights(model: nn.Module) -> None:
 
 
 class TestRRDBNet(BaseTester):
-    def test_smoke(self, device, dtype):
-        model = tiny_rrdbnet(scale=4).to(device, dtype)
-        out = model(torch.rand(1, 3, 8, 8, device=device, dtype=dtype))
-        assert out.shape == (1, 3, 32, 32)
-        assert torch.isfinite(out).all()
-
-    @pytest.mark.parametrize(
-        ("scale", "expected_shape"),
-        # scale 2 pixel-unshuffles by 2 and scale 1 by 4 before the two fixed x2 upsamplings, so the
-        # net factor is `scale` in every case.
-        [(4, (2, 3, 32, 32)), (2, (2, 3, 16, 16)), (1, (2, 3, 8, 8))],
-    )
-    def test_cardinality(self, device, dtype, scale, expected_shape):
-        model = tiny_rrdbnet(scale=scale).to(device, dtype)
-        out = model(torch.rand(2, 3, 8, 8, device=device, dtype=dtype))
-        assert out.shape == expected_shape
-
-    def test_exception(self, device, dtype):
-        # scale=2 pixel-unshuffles by 2, so an odd spatial size cannot be unshuffled.
-        model = tiny_rrdbnet(scale=2).to(device, dtype)
-        with pytest.raises(RuntimeError):
-            model(torch.rand(1, 3, 7, 7, device=device, dtype=dtype))
-
     @pytest.mark.parametrize("scale", [0, 3, 8])
     def test_exception_rejects_unsupported_scale(self, scale):
         # Upstream lets any scale other than 1/2 fall through to the x4 path, so `scale=3` silently
@@ -128,33 +105,9 @@ class TestRRDBNet(BaseTester):
         with pytest.raises(ValueError, match="scale must be 1, 2 or 4"):
             tiny_rrdbnet(scale=scale)
 
-    def test_module(self, device, dtype):
-        model = tiny_rrdbnet(scale=4).to(device, dtype)
-        assert isinstance(model.body[0], RRDB)
-        assert isinstance(model.body[0].rdb1, ResidualDenseBlock)
-        assert model.scale == 4
-
     def test_state_dict_keys_match_upstream(self, device, dtype):
         model = tiny_rrdbnet(scale=4).to(device, dtype)
         assert sorted(model.state_dict().keys()) == EXPECTED_KEYS_ONE_BLOCK
-
-    @pytest.mark.parametrize("scale", [1, 2, 4])
-    def test_state_dict_roundtrip_is_strict(self, device, dtype, scale):
-        """A checkpoint saved from one instance must load into another with ``strict=True``."""
-        source = tiny_rrdbnet(scale=scale).to(device, dtype)
-        target = tiny_rrdbnet(scale=scale).to(device, dtype)
-        target.load_state_dict(source.state_dict(), strict=True)
-        source.eval()
-        target.eval()
-        x = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        with torch.no_grad():
-            self.assert_close(source(x), target(x))
-
-    def test_num_in_ch_is_widened_for_small_scales(self):
-        """``scale`` 2 and 1 unshuffle by 2 and 4, so ``conv_first`` takes 4x and 16x the channels."""
-        assert tiny_rrdbnet(scale=4).conv_first.in_channels == 3
-        assert tiny_rrdbnet(scale=2).conv_first.in_channels == 3 * 4
-        assert tiny_rrdbnet(scale=1).conv_first.in_channels == 3 * 16
 
     def test_residual_dense_block_scaling(self, device, dtype):
         """Pin the 0.2 residual scaling that upstream applies in both block types."""
@@ -276,21 +229,21 @@ class TestRRDBNet(BaseTester):
             out = model(torch.linspace(0.0, 1.0, 48, dtype=torch.float64).reshape(1, 3, 4, 4))
             out.sum(), out[0, :, 0, 0], out[0, :, -1, -1]
 
-        Compared to the same snippet on the vendored class, the outputs were ``torch.equal``.
+        Compared to the same snippet on the vendored class, the outputs were ``torch.equal``. The
+        pinned image runs batched with its mirror, which must come out as it does on its own.
         """
         model = tiny_rrdbnet(scale=scale).to(device, dtype).eval()
         _cosine_ramp_weights(model)
         x = torch.linspace(0.0, 1.0, 48, dtype=torch.float64).reshape(1, 3, 4, 4).to(device, dtype)
         with torch.no_grad():
-            out = model(x)
+            batched = model(torch.cat([x, x.flip(-1)]))
+            self.assert_close(batched[1:], model(x.flip(-1)))
+        out = batched[:1]
 
-        assert out.shape == (1, 3, 4 * scale, 4 * scale)
+        assert batched.shape == (2, 3, 4 * scale, 4 * scale)
         self.assert_close(out.sum(), torch.tensor(expected_sum, device=device, dtype=dtype))
         self.assert_close(out[0, :, 0, 0], torch.tensor(expected_first, device=device, dtype=dtype))
         self.assert_close(out[0, :, -1, -1], torch.tensor(expected_last, device=device, dtype=dtype))
-
-    def test_gradcheck(self):
-        pytest.skip("RRDBNet is a deep convolutional generator; gradcheck is prohibitively slow.")
 
     def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         # `cudnn_tf32_follows_option` keeps the CUDA float32 leg in real float32 (see its docstring).

@@ -43,12 +43,12 @@ class TestVisualPrompter(BaseTester):
         assert not prompter.is_image_set
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 4])
-    @pytest.mark.parametrize("N", [2, 5])
     @pytest.mark.parametrize("multimask_output", [True, False])
-    def test_cardinality(self, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
+        # The prompt count and the points per prompt take no branch; ``multimask_output`` picks the masks.
+        batch_size, N = 4, 2
         data = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
 

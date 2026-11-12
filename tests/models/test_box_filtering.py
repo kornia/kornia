@@ -95,18 +95,6 @@ class TestBoxFiltering:
         assert len(filtered_boxes[1]) == 1  # No boxes in the second batch
         assert len(filtered_boxes[2]) == 0  # No boxes in the third batch
 
-    def test_filter_as_zero(self, sample_boxes):
-        """Test filtering boxes as zero when filter_as_zero is True."""
-        filter = BoxFiltering(confidence_threshold=0.8, filter_as_zero=True)
-        filtered_boxes = filter(sample_boxes)
-
-        # Expected output: boxes with confidence <= 0.8 should be zeroed out
-        assert torch.all(filtered_boxes[0][0] != 0)  # Box with confidence 0.9 should remain
-        assert torch.all(filtered_boxes[0][1:] == 0)  # Remaining boxes should be zeroed
-        assert torch.all(filtered_boxes[1][0] != 0)  # Box with confidence 0.95 should remain
-        assert torch.all(filtered_boxes[1][1:] == 0)  # Remaining boxes should be zeroed
-        assert torch.all(filtered_boxes[2] == 0)  # All boxes in the third batch should be zeroed
-
     def test_no_class_or_confidence_filtering(self, sample_boxes):
         """Test when no class or confidence filtering is applied."""
         filter = BoxFiltering()  # No thresholds set

@@ -42,9 +42,8 @@ def _pad_rb(x, size):
 
 class TestSam(BaseTester):
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
-    def test_smoke(self, device, model_type):
-        model = Sam.from_config(SamConfig(model_type)).to(device)
+    def test_smoke(self, device):
+        model = Sam.from_config(SamConfig("mobile_sam")).to(device)
         assert isinstance(model, Sam)
 
         img_size = model.image_encoder.img_size
@@ -55,12 +54,12 @@ class TestSam(BaseTester):
         model(data, [{"points": (keypoints, labels)}], False)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("N", [2, 5])
     @pytest.mark.parametrize("multimask_output", [True, False])
-    def test_cardinality(self, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
+        # The prompt count and the points per prompt take no branch; ``multimask_output`` picks the masks.
+        batch_size, N = 3, 2
         data = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
         model = Sam.from_config(SamConfig("vit_b"))
         model = model.to(device=device, dtype=dtype)
@@ -90,7 +89,8 @@ class TestSam(BaseTester):
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "vit_l", "vit_h", "mobile_sam"])
+    # vit_b is built by test_cardinality, mobile_sam by test_smoke.
+    @pytest.mark.parametrize("model_type", ["vit_l", "vit_h"])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
         model = model.to(device=device)

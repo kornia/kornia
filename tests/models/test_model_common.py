@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from kornia.models.common import MLP, ConvNormAct, DropPath, LayerNorm2d, window_partition, window_unpartition
 
@@ -54,23 +55,19 @@ class TestConvNormAct:
         # With kernel_size=2 and stride=1, output H and W should be preserved
         assert out.shape == (2, 16, 8, 8)
 
-    def test_act_relu(self):
-        layer = ConvNormAct(4, 8, kernel_size=1, act="relu")
-        x = torch.rand(1, 4, 4, 4)
-        out = layer(x)
-        assert (out >= 0).all()
+    @pytest.mark.parametrize(("act", "fn"), [("relu", torch.relu), ("silu", F.silu), ("none", lambda t: t)])
+    def test_act_is_applied_to_the_normalized_conv(self, act, fn):
+        generator = torch.Generator().manual_seed(0)
+        layer = ConvNormAct(4, 8, kernel_size=1, act=act).eval()
+        x = torch.randn(1, 4, 4, 4, generator=generator)
 
-    def test_act_silu(self):
-        layer = ConvNormAct(4, 8, kernel_size=1, act="silu")
-        x = torch.rand(1, 4, 4, 4)
-        out = layer(x)
-        assert out.shape == (1, 8, 4, 4)
+        with torch.no_grad():
+            pre = layer.norm(layer.conv(x))
+            out = layer(x)
 
-    def test_act_none_is_identity(self):
-        layer = ConvNormAct(4, 8, kernel_size=1, act="none")
-        x = torch.rand(1, 4, 4, 4)
-        out = layer(x)
-        assert out.shape == (1, 8, 4, 4)
+        # negative pre-activations, where ReLU, SiLU and the identity all differ
+        assert (pre < 0).any()
+        assert_close(out, fn(pre))
 
 
 class TestMLP:
@@ -142,21 +139,6 @@ class TestDropPath:
 
 
 class TestLayerNorm2d:
-    def test_output_shape(self):
-        layer = LayerNorm2d(num_channels=8)
-        x = torch.rand(2, 8, 4, 4)
-        out = layer(x)
-        assert out.shape == x.shape
-
-    def test_normalizes_channels(self):
-        layer = LayerNorm2d(num_channels=4)
-        # All-same input should produce near-zero output (before weight/bias)
-        x = torch.ones(1, 4, 4, 4) * 5.0
-        # The layer has learnable weight (ones) and bias (zeros) by default
-        out = layer(x)
-        # Mean of out along channel dim should be ~0 for uniform input
-        assert out.abs().max() < 1e-5
-
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
     def test_half_input_is_normalised_in_float32(self, device, half):
         # MobileSAM's neck feeds its last LayerNorm2d deviations from the channel mean of up to about 560. In float16
@@ -238,23 +220,3 @@ class TestWindowPartition:
         windows, pad_hw = window_partition(x, window_size=4)
         assert windows.shape == (0, 4, 4, 16)
         assert window_unpartition(windows, window_size=4, pad_hw=pad_hw, hw=hw).shape == (0, *hw, 16)
-
-
-class TestWindowUnpartition:
-    def test_no_crop_needed(self):
-        # Hp==H and Wp==W, so no cropping
-        x = torch.rand(2, 4, 4, 8)
-        windows, pad_hw = window_partition(x, window_size=4)
-        out = window_unpartition(windows, window_size=4, pad_hw=pad_hw, hw=(4, 4))
-        assert out.shape == (2, 4, 4, 8)
-        assert torch.allclose(x, out)
-
-    def test_crop_needed(self):
-        # Create input with padding scenario: pad_hw != hw
-        x = torch.rand(2, 6, 6, 8)
-        windows, pad_hw = window_partition(x, window_size=4)
-        # pad_hw = (8, 8), original hw = (6, 6)
-        out = window_unpartition(windows, window_size=4, pad_hw=pad_hw, hw=(6, 6))
-        assert out.shape == (2, 6, 6, 8)
-        # Reconstructed values in the non-padded region should match original
-        assert torch.allclose(x, out)

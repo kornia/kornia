@@ -69,26 +69,23 @@ def _image(batch_size: int = 1, seed: int = 0) -> torch.Tensor:
 
 
 class TestTinyViT(BaseTester):
-    # 128 is not a multiple of the 7-pixel attention window at any stage, so it takes the padded
-    # window-attention path; 224 divides evenly and takes the unpadded one. Both belong here: the
-    # only other coverage of the exact-multiple path is marked slow, which PR CI skips.
-    @pytest.mark.parametrize("img_size", [128, 224])
-    def test_smoke(self, device, dtype, img_size):
-        model = TinyViT(img_size=img_size).to(device=device, dtype=dtype)
-        data = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)
+    def test_smoke(self, device, dtype):
+        # 128 is not a multiple of the 7-pixel attention window at any stage, so it takes the padded
+        # window-attention path. The default 224 divides evenly and takes the unpadded one, which
+        # test_dynamo, test_forward_takes_sizes_of_its_token_grid and the eval-mode tests run.
+        model = TinyViT(img_size=128).to(device=device, dtype=dtype)
+        data = torch.randn(1, 3, 128, 128, device=device, dtype=dtype)
 
         out = model(data)
         assert isinstance(out, torch.Tensor)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("num_classes", [10, 100])
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_cardinality(self, device, dtype, batch_size, num_classes):
-        model = TinyViT(num_classes=num_classes).to(device=device, dtype=dtype)
-        data = torch.rand(batch_size, 3, model.img_size, model.img_size, device=device, dtype=dtype)
+    def test_cardinality(self, device, dtype):
+        model = TinyViT(num_classes=10).to(device=device, dtype=dtype)
+        data = torch.rand(3, 3, model.img_size, model.img_size, device=device, dtype=dtype)
 
         out = model(data)
-        assert out.shape == (batch_size, num_classes)
+        assert out.shape == (3, 10)
 
     @pytest.mark.applies_to(
         when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),

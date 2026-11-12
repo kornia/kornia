@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -32,10 +30,9 @@ _EXPORTERS = onnx_exporter_params("default-exporter", "legacy-exporter")
 
 
 class TestObjectDetector(BaseTester):
-    @pytest.mark.parametrize("num_detections", [0, 1, 2])
-    @pytest.mark.parametrize("as_list", [False, True])
+    @pytest.mark.parametrize("num_detections", [0, 2])
     @pytest.mark.parametrize("method", ["visualize", "save"])
-    def test_supplied_detections(self, device, dtype, num_detections, as_list, method, monkeypatch, tmp_path):
+    def test_supplied_detections(self, device, dtype, num_detections, method, monkeypatch, tmp_path):
         detector = kornia.contrib.object_detection.ObjectDetector(
             torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
         )
@@ -46,14 +43,15 @@ class TestObjectDetector(BaseTester):
             2, -1, -1
         )[:, :num_detections]
         expected = images.clone()
-        if num_detections >= 1:
+        if num_detections == 2:
             expected[:, :, 1, 1:4] = expected[:, :, 3, 1:4] = 0
             expected[:, :, 1:4, 1] = expected[:, :, 1:4, 3] = 0
-        if num_detections == 2:
             expected[:, :, 4, 4:7] = expected[:, :, 6, 4:7] = 0
             expected[:, :, 4:7, 4] = expected[:, :, 4:7, 6] = 0
 
-        detections = list(detections) if as_list else detections
+        # visualize and save iterate a (B, D, 6) tensor and a list of (D, 6) tensors alike; the list is what a
+        # confidence-filtering post-processor returns.
+        detections = list(detections)
         if method == "save":
             detector.save(images, detections, directory=str(tmp_path))
             files = sorted(tmp_path.glob("*.png"))
@@ -129,33 +127,42 @@ class TestObjectDetector(BaseTester):
 
     @pytest.mark.slow
     @pytest.mark.timeout(120)
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
-    def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
-        config = RTDETRConfig(variant, 1)
-        model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
+    def test_onnx(self, variant):
+        """The detector's model-only export of the ResNet-50 and HGNetV2 backbones matches eager in ONNX Runtime."""
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if not torch_version_lt(2, 9, 0):
+            pytest.importorskip("onnxscript")  # the default exporter from torch 2.9 is the dynamo one, which needs it
+
+        torch.manual_seed(0)
+        # Two decoder layers and 4 queries keep the export short; the backbone is the part only this test exports.
+        config = RTDETRConfig(variant, 1, head_num_queries=4, head_num_decoder_layers=2)
+        model = RTDETR.from_config(config).eval()
         pre_processor = kornia.models.processors.ResizePreProcessor(640, 640)
         post_processor = DETRPostProcessor(0.3, num_top_queries=3)
         detector = kornia.contrib.object_detection.ObjectDetector(model, pre_processor, post_processor)
+        exported = detector.to_onnx(image_size=None, include_pre_and_post_processor=False, save=False)
+        session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
 
-        data = torch.rand(1, 3, 400, 640, device=device, dtype=dtype)
+        # A batch and a size other than the traced (1, 3, 352, 352). Seed 84 keeps the encoder scores of the 4 kept
+        # queries and the next one at least 2e-4 apart for both backbones.
+        images = torch.rand(2, 3, 96, 128, generator=torch.Generator().manual_seed(84))
+        scores: list[torch.Tensor] = []
+        hook = model.decoder.enc_score_head.register_forward_hook(lambda m, i, out: scores.append(out.max(-1).values))
+        with torch.no_grad():
+            expected = model(images)
+        hook.remove()
+        # RT-DETR keeps the queries of the highest encoder scores; a near tie there would let a rounding difference
+        # between ONNX Runtime and eager swap two whole boxes.
+        kept = scores[0].topk(config.head_num_queries + 1, dim=1).values
+        assert (kept[:, :-1] - kept[:, 1:]).min() > 1e-4, "near tie between kept encoder scores: pick another seed"
 
-        model_path = tmp_path / "rtdetr.onnx"
-
-        dynamic_axes = {"images": {0: "N"}}
-        # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
-            torch.onnx.export(
-                detector,
-                data,
-                model_path,
-                input_names=["images"],
-                output_names=["detections"],
-                dynamic_axes=dynamic_axes,
-                opset_version=17,
-            )
-
-        assert model_path.is_file()
+        actual = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+        assert [o.name for o in session.get_outputs()] == ["pred_logits", "pred_boxes"]
+        for got, want in zip(actual, expected):
+            self.assert_close(torch.from_numpy(got), want, rtol=1e-4, atol=1e-4)
 
     def test_output_check_keeps_an_image_module_cache(self):
         # ObjectDetector.to_onnx first runs the detector once to tell a per-image list from one tensor. That run, like

@@ -39,11 +39,6 @@ pytestmark = pytest.mark.device_agnostic
 _EXPORTERS = onnx_exporter_params()
 
 
-def test_sam_has_to_onnx():
-    """Sam exposes a to_onnx() method via ONNXExportMixin."""
-    assert hasattr(Sam, "to_onnx")
-
-
 @pytest.mark.timeout(120)
 @pytest.mark.xfail(
     torch_version_ge(2, 14) and torch_version_lt(2, 16, 0),

@@ -133,11 +133,16 @@ def test_rtdetr_legacy_onnx_ties_the_callers_output_names_to_the_input_batch():
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
 def test_detector_model_only_onnx_names_both_outputs(export_kwargs):
-    """Without pre- and post-processing, the detector exports RT-DETR's two outputs by name, at a dynamic size."""
+    """Without pre- and post-processing, the detector exports RT-DETR's two outputs by name, at a dynamic size.
+
+    ``output_names=None``, the default of ``torch.onnx.export``, keeps the declared names.
+    """
     _importorskip_exporter(export_kwargs)
     model = _small_rtdetr()
     detector = ObjectDetector(model, ResizePreProcessor(96, 96), _post_processor())
-    op = detector.to_onnx(image_size=None, include_pre_and_post_processor=False, save=False, **export_kwargs)
+    op = detector.to_onnx(
+        image_size=None, include_pre_and_post_processor=False, save=False, output_names=None, **export_kwargs
+    )
 
     assert [o.name for o in op.graph.output] == ["pred_logits", "pred_boxes"]
     # each output's batch is the input's dynamic batch
@@ -226,23 +231,15 @@ def test_resize_preprocessor_onnx_dynamic_sizes():
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.parametrize(
-    ("output_names", "expected_names"),
-    [(["a", "b"], ["a", "b"]), (None, ["pred_logits", "pred_boxes"])],
-    ids=["callers_names", "none"],
-)
-def test_detector_model_only_legacy_onnx_ties_the_callers_output_names_to_the_input_batch(output_names, expected_names):
-    """A caller's ``output_names`` win over ``ONNX_OUTPUT_NAMES``, and each still gets the input's dynamic batch.
-
-    ``output_names=None``, the default of ``torch.onnx.export``, keeps the declared names.
-    """
+def test_detector_model_only_legacy_onnx_ties_the_callers_output_names_to_the_input_batch():
+    """A caller's ``output_names`` win over ``ONNX_OUTPUT_NAMES``, and each still gets the input's dynamic batch."""
     _importorskip_exporter({"dynamo": False})
     detector = ObjectDetector(_small_rtdetr(), ResizePreProcessor(96, 96), _post_processor())
     op = detector.to_onnx(
-        image_size=None, include_pre_and_post_processor=False, save=False, dynamo=False, output_names=output_names
+        image_size=None, include_pre_and_post_processor=False, save=False, dynamo=False, output_names=["a", "b"]
     )
 
-    assert [o.name for o in op.graph.output] == expected_names
+    assert [o.name for o in op.graph.output] == ["a", "b"]
     batch = _dims(op.graph.input[0])[0]
     assert [_dims(output)[0] for output in op.graph.output] == [batch, batch]
 
