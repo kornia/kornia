@@ -119,8 +119,9 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        # Cast the scale first: a half scale times a Python extent would round the offsets in half precision.
-        distortion_scale = self._distortion_scale.to(_cdtype)
+        # Widen only a half-precision sampler scale: a half scale times a Python extent would round the offsets in half
+        # precision. float32 and float64 samplers keep their own dtype, which need not be the input dtype.
+        distortion_scale = self._distortion_scale.to(torch.promote_types(self._distortion_scale.dtype, torch.float32))
         fx = distortion_scale * x_extent / 2
         fy = distortion_scale * y_extent / 2
         fz = distortion_scale * z_extent / 2

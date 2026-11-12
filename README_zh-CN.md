@@ -101,7 +101,7 @@
 ## CUDA 与半精度支持
 
 下表按模块统计 Linux CPU 已知失败清单中的条目（[`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt)、[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)），对应固定的 Python 3.11 和 PyTorch 2.15.0 环境。
-清单记录了 **239 个 float16 失败和 251 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
+清单记录了 **180 个 float16 失败和 204 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
 没有 CI 任务覆盖 CUDA 或 MPS 半精度；CPU 结果不能证明这些后端的支持情况。完整测试套件的一次本地 CUDA 测量见[下文](#cuda-测试套件测量)。
 
 | 模块 | float16 | bfloat16 | 已知失败（fp16 / bf16） | 说明 |
@@ -110,7 +110,7 @@
 | `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny、高斯核／模糊和 FFT 卷积对半精度输入使用 float32 计算，并返回输入 dtype |
 | `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA 对半精度输入保留 float32 拟合状态；白化和 JPEG 以 float32 计算后返回输入 dtype |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16：容器 autocast／运行时错误和精度问题；两种 dtype：三维反向传播和随机生成器精度问题 |
+| `kornia.augmentation` | ✅ | ⚠️ | 0 / 4 | 裁剪和透视生成器以及色调／饱和度调整对半精度输入使用 float32 计算；bfloat16：`RandomRotation3D` 反向传播，其学习率步长小于角度的半个 ulp |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 30 | 旋转矩阵、仿射／透视变换和单应性变换器的精度问题 |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | 投影、畸变往返变换和双目重投影；包括测试中的 dtype 断言 |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt 拒绝半精度输入；undistort_points 精度问题 |
@@ -123,11 +123,11 @@
 | `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | 本质矩阵模型拟合在对极几何求解器中抛出异常 |
 | `kornia.geometry (other)` | ⚠️ | ⚠️ | 3 / 10 | 边界框变换和深度的精度问题 |
 | `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | 圆／椭圆多边形填充的比较使用半精度计算的顶点和参考掩码 |
-| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16：总变分精度问题 |
+| `kornia.losses` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | 特征匹配在半精度 dtype 下使用手动实现的 cdist 回退路径；LightGlue 的 float16 测试被跳过 |
 | `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16：RT-DETR RepVGG 融合精度问题 |
-| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16：直方图匹配和 _torch_svd_cast 精度问题 |
+| `kornia.models` | ✅ | ✅ | 0 / 0 |  |
+| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 1 | bfloat16：_torch_svd_cast 精度问题 |
 
 ✅ CPU 已知失败清单中没有条目 &nbsp; ⚠️ 存在已记录的 CPU 失败。
 这两个符号都不承诺完整的 dtype 支持：跳过的测试、预期异常以及源码中的 xfail 不在这些计数内。一些算子内部使用 float32 或 float64 计算，再返回输入 dtype。

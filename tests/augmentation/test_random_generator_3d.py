@@ -270,6 +270,26 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         factor = float(scale) * torch.tensor([411.0, 300.0, 40.0], device=device) / 2
         assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
 
+    def test_perspective3d_offsets_in_the_sampler_dtype(self, device):
+        # A float64 scale with the default float32 sampler scales in float32, as before the half fix.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64.")
+        gen = PerspectiveGenerator3D(torch.tensor(0.3, device=device, dtype=torch.float64))
+        gen.set_rng_device_and_dtype(device, torch.float32)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 1, 7, 37, 1001]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 8, 3, device=device, dtype=torch.float32).double()
+        sampler_scale = torch.tensor(0.3, device=device, dtype=torch.float32)
+        factor = torch.stack([sampler_scale * 1001 / 2, sampler_scale * 37 / 2, sampler_scale * 7 / 2]).double()
+        sign = torch.tensor(
+            [[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]],
+            device=device,
+            dtype=torch.float64,
+        )
+        start = torch.where(sign > 0, 0.0, torch.tensor([1000.0, 36.0, 6.0], device=device, dtype=torch.float64))
+        assert torch.equal(res["end_points"], start + factor * draw * sign)
+
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_shape", [(0, 200, 300, 400), (1, 200, 300, 400), (8, 200, 300, 400)])

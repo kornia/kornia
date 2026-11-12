@@ -798,6 +798,31 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         factor = float(scale) * torch.tensor([411.0, 300.0], device=device) / 2
         assert torch.equal(res["end_points"], (start + factor * draw * sign).to(dtype))
 
+    @pytest.mark.parametrize(
+        ("scale_dtype", "sampler_dtype"),
+        [(None, torch.float64), (torch.float64, torch.float32)],
+        ids=["py-f64", "f64-f32"],
+    )
+    def test_perspective_offsets_in_the_sampler_dtype(self, device, scale_dtype, sampler_dtype):
+        # Only a half-precision sampler widens the scale: a float32 or float64 sampler scales in its own dtype, which
+        # need not be the input dtype, and the factor is then cast to the input dtype, as before the half fix.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64.")
+        scale = 0.3 if scale_dtype is None else torch.tensor(0.3, device=device, dtype=scale_dtype)
+        out_dtype = torch.float32 if scale_dtype is None else scale_dtype
+        gen = PerspectiveGenerator(scale)
+        gen.set_rng_device_and_dtype(device, sampler_dtype)
+        torch.manual_seed(0)
+        res = gen(torch.Size([16, 3, 37, 1001]))
+        torch.manual_seed(0)
+        draw = torch.rand(16, 4, 2, device=device, dtype=sampler_dtype).to(out_dtype)
+        sampler_scale = torch.tensor(0.3, device=device, dtype=sampler_dtype)
+        factor = torch.stack([sampler_scale * 1001 / 2, sampler_scale * 37 / 2]).to(out_dtype)
+        sign = torch.tensor([[1, 1], [-1, 1], [-1, -1], [1, -1]], device=device, dtype=out_dtype)
+        start = torch.tensor([[0, 0], [1000, 0], [1000, 36], [0, 36]], device=device, dtype=out_dtype)
+        # A Python scale puts the corners on the default device.
+        assert torch.equal(res["end_points"].to(device), start + factor * draw * sign)
+
 
 class TestRandomAffineGen(RandomGeneratorBaseTests, BaseTester):
     def test_float64_constant_angle_is_not_rounded_via_float32_4426(self, device):
