@@ -176,11 +176,13 @@ revision and replace the whole table.
    * - Run
      - Passed
      - Failed
+     - Errors
      - Skipped
      - XFAIL
      - XPASS
    * - CPU float16, strict ``cpu-float16`` profile
      - 31341
+     - 0
      - 0
      - 1864
      - 46
@@ -188,11 +190,13 @@ revision and replace the whole table.
    * - CPU bfloat16, strict ``cpu-bfloat16`` profile
      - 31122
      - 0
+     - 0
      - 2078
      - 51
      - 4
    * - CUDA float32 + float64
      - 41745
+     - 0
      - 0
      - 2569
      - 19
@@ -200,40 +204,62 @@ revision and replace the whole table.
    * - CUDA float32 with ``--runslow``
      - 22819
      - 0
+     - 0
      - 1461
      - 10
      - 5
    * - CUDA float16 + bfloat16
      - 41269
-     - 33 (+3 errors)
+     - 33
+     - 3
      - 2991
      - 23
      - 1
    * - CUDA float32, ``torch.compile`` (inductor) tests
      - 920
      - 0
+     - 0
      - 76
      - 3
      - 1
 
-**How each row was run.** The CPU rows use the CI half-precision job's command (``--verify-known-failures`` with the
-profile, one thread, no slow or compile tests), with CUDA hidden from the process; as there, the 7 opt-in ONNX and
-``torch.compile`` conformance tests were deselected. Pillow was 13.0.0 rather than the manifests' recorded 12.3.0, a
-provenance difference that verification reports and accepts. XFAIL counts both the strict manifest entries and
-source-level expected failures; XPASS counts non-strict expected failures that passed. A manifest entry that passes,
-changes its exception, is skipped or names a stale node ID fails verification, so a clean CPU row means the checked-in
-baseline reproduced, even though known failures and skips remain. The CUDA rows ran over ``tests/`` with
-``--device=cuda``, which deselects the device-agnostic tests that exercise CPU-only code; only the ``--runslow`` row
-includes the slow tests. The half run executed in one process (``KORNIA_TEST_IN_SUBPROCESS=1``,
-``-m "not cuda_device_assert"``), and every failure without a CPU manifest entry was re-run with
-``--isolate-half-precision``. The compile run set ``KORNIA_TEST_OPTIMIZER=inductor`` and selected the directories and
-``-k "dynamo or compile"`` of the CI ``dynamo`` job.
+**How each row was run.** Each row is one command below, run from the repository root of the measured revision. The
+CPU rows are the CI half-precision job's command, with one thread and no slow or compile tests; CUDA is hidden from the
+process, and the 7 opt-in ONNX and ``torch.compile`` conformance tests are deselected. Pillow was 13.0.0 rather than the
+manifests' recorded 12.3.0, a provenance difference that verification reports and accepts. XFAIL counts both the strict
+manifest entries and source-level expected failures; XPASS counts non-strict expected failures that passed. A manifest
+entry that passes, changes its exception, is skipped or names a stale node ID fails verification, so a clean CPU row
+means the checked-in baseline reproduced, even though known failures and skips remain. ``--device=cuda`` deselects the
+device-agnostic tests that exercise CPU-only code. The half-precision CUDA row runs in one process, and every failure
+without a CPU manifest entry was re-run with ``--isolate-half-precision``. The compile row uses the directories and
+``-k`` filter of the CI ``dynamo`` job.
+
+.. code-block:: bash
+
+   # CPU float16 and CPU bfloat16 (replace float16 with bfloat16 in both places)
+   MKL_NUM_THREADS=1 OMP_NUM_THREADS=1 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cpu KORNIA_TEST_DTYPE=float16 \
+     python -m pytest tests/ --verify-known-failures --known-failure-profile=cpu-float16 \
+     --timeout=600 --timeout-method=thread -o faulthandler_timeout=300
+   # CUDA float32 + float64
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32,float64 \
+     python -m pytest tests/ -n 4
+   # CUDA float32 with --runslow
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 \
+     python -m pytest tests/ --runslow -n 4
+   # CUDA float16 + bfloat16, in one process
+   OMP_NUM_THREADS=2 KORNIA_TEST_IN_SUBPROCESS=1 KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DEVICE=cuda \
+     KORNIA_TEST_DTYPE=float16,bfloat16 python -m pytest tests/ -n 4 -m "not cuda_device_assert"
+   # CUDA float32, torch.compile (inductor) tests
+   OMP_NUM_THREADS=2 KORNIA_TEST_OPTIMIZER=inductor KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 \
+     python -m pytest tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry \
+     tests/losses tests/morphology tests/models tests/core tests/utils -k "dynamo or compile" -n 2
 
 **Why tests are skipped.** Most skips are tests written for another dtype or device: checks that hold only in float32 or
 float64, CPU-only code paths in a CUDA run, CUDA-only checks in a CPU run, and bfloat16 ``So2``/``Se2``, which PyTorch
 cannot store without a complex bfloat16 dtype. A CUDA run without ``--isolate-half-precision`` also skips the tests that
-pin a half dtype themselves (649 in each non-half CUDA row). Slow tests run only with ``--runslow``: they are 263 of the
-skips in each CPU row and 398 in each CUDA row without it; in the float32 ``--runslow`` row, all of them pass. A few
+pin a half dtype themselves: 649 in each of the CUDA float32 + float64 and float32 ``--runslow`` rows. Slow tests run
+only with ``--runslow``: they are 263 of the skips in each CPU row, 398 in each of the CUDA float32 + float64 and
+float16 + bfloat16 rows, and 28 in the compile row; in the float32 ``--runslow`` row, all of them pass. A few
 dozen skips need an optional package or tool, such as OpenCV or ``uv``.
 
 **CUDA float32 and float64.** No failures.

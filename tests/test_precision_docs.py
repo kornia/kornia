@@ -68,15 +68,19 @@ def _manifest_paths(dtype: str) -> list[str]:
 def _module_table() -> dict[str, tuple[str, str, int, int]]:
     """Parse the guide's known-failure list-table into ``{module: (fp16 mark, bf16 mark, fp16 count, bf16 count)}``."""
     text = GUIDE.read_text(encoding="utf-8")
-    start = text.index(".. list-table:: Known failures by module (Linux CPU)")
-    end = text.index("\n\n", text.index("   * - ", start + 1) + 1)
-    table = text[start:end]
+    # The directive and its indented body, up to the first line that is neither blank nor indented.
+    match = re.search(
+        r"^\.\. list-table:: Known failures by module \(Linux CPU\)\n((?:[ \t]*\n|[ \t]+\S.*\n)+)", text, re.MULTILINE
+    )
+    assert match, f"{GUIDE}: the 'Known failures by module (Linux CPU)' list-table is missing"
     rows: dict[str, tuple[str, str, int, int]] = {}
-    for block in table.split("\n   * - ")[2:]:
-        cells = [cell.strip() for cell in re.split(r"\n     - ?", block)]
-        name = cells[0].strip("`")
-        fp16, bf16 = (int(value) for value in cells[3].split("/"))
-        rows[name] = (cells[1], cells[2], fp16, bf16)
+    for block in re.split(r"^   \* - ", match.group(1), flags=re.MULTILINE)[2:]:
+        cells = [" ".join(cell.split()) for cell in re.split(r"\n     - ?", block.rstrip())]
+        assert len(cells) >= 4, f"{GUIDE}: module row {cells[0]!r} has {len(cells)} cells, expected 5"
+        counts = re.fullmatch(r"(\d+) / (\d+)", cells[3])
+        assert counts, f"{GUIDE}: module row {cells[0]!r} has known failures {cells[3]!r}, expected 'N / M'"
+        rows[cells[0].strip("`")] = (cells[1], cells[2], int(counts.group(1)), int(counts.group(2)))
+    assert rows, f"{GUIDE}: the module table has no rows"
     return rows
 
 
@@ -85,7 +89,9 @@ def test_module_table_counts_match_the_manifests() -> None:
     expected = {name: [0, 0] for name in table}
     for index, dtype in enumerate(DTYPES):
         for path in _manifest_paths(dtype):
-            expected[_module_row(path, set(table))][index] += 1
+            row = _module_row(path, set(table))
+            assert row in expected, f"{path} counts towards module row {row!r}, which the guide's table lacks"
+            expected[row][index] += 1
     actual = {name: [row[2], row[3]] for name, row in table.items()}
     assert actual == expected
 
