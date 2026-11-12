@@ -352,7 +352,13 @@ class TestGetPerspectiveTransform(BaseTester):
         # compute transform from source to target
         dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
         points_dst_hat = kornia.geometry.transform_points(dst_trans_src, points_src)
-        self.assert_close(points_dst, points_dst_hat)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The solved matrix comes back rounded to the half dtype (eps / 2 per entry), and mapping a point sums three
+            # such products and divides: about 2 eps of the coordinate, which reaches 64 px, i.e. 1 ULP of 64 = 0.5 px
+            # in bfloat16. A wrong homography misses by whole pixels.
+            self.assert_close(points_dst, points_dst_hat, rtol=2 * torch.finfo(dtype).eps, atol=torch.finfo(dtype).eps)
+        else:
+            self.assert_close(points_dst, points_dst_hat)
 
     def test_hflip(self, device, dtype):
         points_src = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
@@ -603,9 +609,8 @@ class TestRotationMatrix2d(BaseTester):
     def test_convention_center_xy_order(self, device, dtype):
         # get_rotation_matrix2d's center is (x, y): using an asymmetric center (cx=3, cy=1) with 90deg
         # rotation and unit scale numerically distinguishes x-first from y-first ordering, since
-        # swapping cx/cy would flip the sign/magnitude of M[..., 0, 2] and M[..., 1, 2].
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # swapping cx/cy would flip the sign/magnitude of M[..., 0, 2] and M[..., 1, 2]. Every entry is exact in
+        # float16 and bfloat16 too, whose rotation is computed in float32 and rounded once.
         # Snippet used to generate expected:
         # center = torch.tensor([[3.0, 1.0]])
         # angle = torch.tensor([90.0])
@@ -697,12 +702,6 @@ class TestWarpAffine(BaseTester):
 
     @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
     def test_singleton_identity_survives_tracing(self, dsize, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            # ``torch.jit.trace`` hands ``F.affine_grid`` tensor sizes, and ``affine_grid_generator``
-            # has no cpu Half/BFloat16 kernel, so tracing a singleton warp raises
-            # ``NotImplementedError: "tensor_cpu" not implemented for 'Half'`` before reaching any
-            # kornia code. A non-singleton ``dsize`` traces fine at the same dtype.
-            pytest.skip("traced affine_grid has no cpu half-precision kernel")
         src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
         affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
         expected = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)

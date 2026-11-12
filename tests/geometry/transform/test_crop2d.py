@@ -209,6 +209,29 @@ class TestCropAndResize(BaseTester):
         )
         self.assert_close(out_default, expected_zeros, rtol=1e-2, atol=1e-2)
 
+    def test_float32_box_on_a_half_image_keeps_its_far_corner(self, device, dtype):
+        # A float32 full-image box with an output of the image size is an identity crop in every dtype. The
+        # destination corners follow the box dtype: built in the image dtype, the far corner n - 1 rounded (bfloat16
+        # 257 -> 256, float16 2049 -> 2048) on the destination side only, which stretched the crop by n - 1 : n - 2
+        # and moved the last columns by up to 15. 2050 is the first float16 size whose far corner rounds.
+        n = 2050 if dtype == torch.float16 else 258
+        image = (torch.arange(n, device=device, dtype=torch.float32) % 16).expand(1, 1, n, n).to(dtype)
+        box = torch.tensor([[[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]]], device=device, dtype=torch.float32)
+        out = kornia.geometry.transform.crop_and_resize(image, box, (n, n))
+        assert out.dtype == dtype
+        self.assert_close(out, image)
+
+    def test_float32_box_on_a_half_image_keeps_its_fraction(self, device, dtype):
+        # The source corners keep a float32 box's precision for a half image. Rounded to bfloat16 (271.6 -> 272,
+        # 261.3 -> 262) the box moved, and the crop of a random image was 0.60 off the float32 crop of the same image;
+        # kept in float32 the two differ by the output rounding only (0.002 in bfloat16).
+        image = torch.rand(1, 1, 300, 300, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        box = torch.tensor([[[10.3, 20.7], [261.3, 20.7], [261.3, 271.6], [10.3, 271.6]]], device=device)
+        out = kornia.geometry.transform.crop_and_resize(image, box, (64, 64))
+        expected = kornia.geometry.transform.crop_and_resize(image.float(), box, (64, 64))
+        assert out.dtype == dtype
+        self.assert_close(out.float(), expected, rtol=0.0, atol=1e-2)
+
 
 class TestCenterCrop(BaseTester):
     def test_invalid_size_type(self):

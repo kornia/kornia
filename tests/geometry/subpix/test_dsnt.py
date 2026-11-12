@@ -25,6 +25,15 @@ from kornia.core.exceptions import AsyncCheckError
 from testing.base import BaseTester, raises_cuda_device_assert
 
 
+def _tolerances(dtype):
+    """Return the float32/float64 tolerance of the rendered-Gaussian pins, or the half-precision defaults.
+
+    In half precision the fixture's outer product and normalisation round the expected map by a few eps / 2 relative,
+    as the rendered map does, which the dtype's default tolerances cover.
+    """
+    return {} if dtype in (torch.float16, torch.bfloat16) else {"rtol": 1e-5, "atol": 1e-5}
+
+
 class TestRenderGaussian2d(BaseTester):
     @pytest.mark.parametrize("normalized", [False, True])
     @pytest.mark.parametrize("sigma", [1e-3, 1e-4])
@@ -75,7 +84,7 @@ class TestRenderGaussian2d(BaseTester):
 
         actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1, 2), std.view(1, 2), (5, 5), True)
 
-        self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
+        self.assert_close(actual[0], gaussian, **_tolerances(dtype))
 
     def test_pixel_coordinates(self, gaussian, device, dtype):
         mean = torch.tensor([2.0, 2.0], dtype=dtype, device=device)
@@ -83,7 +92,7 @@ class TestRenderGaussian2d(BaseTester):
 
         actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1, 2), std.view(1, 2), (5, 5), False)
 
-        self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
+        self.assert_close(actual[0], gaussian, **_tolerances(dtype))
 
     @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])

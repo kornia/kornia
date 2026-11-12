@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **131 float16 and 147 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **12 float16 and 17 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -50,15 +50,17 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      - Crop and perspective generators and hue/saturation adjustment compute half inputs in float32; bfloat16:
        ``RandomRotation3D`` backward, where a learning-rate step is below half an ulp of the angle
    * - ``kornia.geometry.transform``
-     - ⚠️
-     - ⚠️
-     - 31 / 30
-     - Rotation matrices, affine/perspective warps and homography-warper accuracy
+     - ✅
+     - ✅
+     - 0 / 0
+     - Warps, rotation matrices, homography normalization and ``crop_and_resize`` compute half inputs in float32 and
+       return the input dtype
    * - ``kornia.geometry.camera``
      - ⚠️
-     - ⚠️
-     - 13 / 23
-     - Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions
+     - ✅
+     - 1 / 0
+     - float16: an affine round trip to pixels beyond 65504; ``cam2pixel`` and Kannala-Brandt distortion compute
+       half inputs in float32, and a half-precision stereo rig keeps ``Q`` in float32
    * - ``kornia.geometry.calibration``
      - ⚠️
      - ⚠️
@@ -90,30 +92,31 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      - 0 / 0
      -
    * - ``kornia.geometry.subpix``
-     - ⚠️
-     - ⚠️
-     - 6 / 3
-     - SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy
+     - ✅
+     - ✅
+     - 0 / 0
+     -
    * - ``kornia.geometry.conversions``
+     - ✅
      - ⚠️
-     - ⚠️
-     - 65 / 65
-     - Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py
+     - 0 / 3
+     - Rotation conversions compute half inputs in float32 and return the input dtype; bfloat16: the log quaternion
+       of a -179.9 degree turn rounds to the other side of the half turn. Includes tests/integration/test_conversions.py
    * - ``kornia.geometry.ransac``
      - ✅
      - ✅
      - 0 / 0
      -
    * - ``kornia.geometry (other)``
-     - ⚠️
-     - ⚠️
-     - 3 / 10
-     - Box-transform and depth accuracy
+     - ✅
+     - ✅
+     - 0 / 0
+     -
    * - ``kornia.image``
-     - ⚠️
-     - ⚠️
-     - 2 / 2
-     - Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision
+     - ✅
+     - ✅
+     - 0 / 0
+     -
    * - ``kornia.losses``
      - ✅
      - ✅

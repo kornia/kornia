@@ -50,7 +50,7 @@ from torch import nn
 from kornia.constants import Resample
 from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _samples_half_in_float32, is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.transform._crop import _compiled_slice_resize
 
@@ -86,9 +86,10 @@ def crop_and_resize(
     :func:`crop_and_resize3d`.
 
     Convention:
-        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
-        defaults and sampling rules.
-
+        - see :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+          defaults and sampling rules
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32``, its homography solved and kept in
+          ``float32``, and the patches rounded once to the image dtype; ``float32`` boxes keep their precision
         - input: ``(B, C, H, W)``; ``size`` is ``(h, w)``
         - ``boxes``: ``(B, 4, 2)`` corner points in ``(x, y)`` order
           top-left, top-right, bottom-right, bottom-left; coordinates are
@@ -160,14 +161,16 @@ def crop_and_resize(
 
     # [x, y] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src = boxes.to(input_tensor)
+    # float32 boxes keep their precision for a float16/bfloat16 image, which _crop_by_boxes_to_size warps in float32
+    points_src = boxes.to(device=input_tensor.device, dtype=torch.promote_types(input_tensor.dtype, torch.float32))
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
     points_dst = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        # the source dtype: a half-precision destination corner rounds (bfloat16 257 -> 256) and stretches the crop
+        dtype=points_src.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
     return _crop_by_boxes_to_size(
@@ -346,6 +349,8 @@ def crop_by_boxes(
         - a box axis of one pixel in one box but not in the other returns NaN (a meaningless finite value with
           ``mode='nearest'``), as in :func:`crop_and_resize`
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32``, its homography solved and kept in
+          ``float32``, and the patches rounded once to the image dtype
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -439,6 +444,13 @@ def _crop_by_boxes_to_size(
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
+    # The warp samples a float16/bfloat16 image in float32 and returns its dtype. The homography is solved and kept in
+    # float32 too: rounding it to the half dtype first moved the samples, up to 0.875 off at a value of 30 for a
+    # bfloat16 trapezoid crop. Other dtypes run unchanged.
+    out_dtype = input_tensor.dtype
+    if _samples_half_in_float32(input_tensor):
+        input_tensor = input_tensor.float()
+
     # compute transformation between points and warp
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     src_box = src_box.to(input_tensor)
@@ -475,7 +487,7 @@ def _crop_by_boxes_to_size(
 
     return crop_by_transform_mat(
         input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
+    ).to(out_dtype)
 
 
 def crop_by_transform_mat(

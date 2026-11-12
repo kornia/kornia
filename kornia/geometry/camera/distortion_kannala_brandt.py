@@ -48,8 +48,7 @@ def _distort_points_kannala_brandt_impl(
     # Their radius is moved to about 1 and their angle zeroed. The active lanes add 0 and multiply by 1,
     # so they are unchanged, and this avoids two torch.where calls (slow on MPS).
     radius = (radius_sq + ~nonlinear_mask).sqrt()
-    # The reciprocal's backward squares its value, which can overflow float16.
-    radius_inverse = (1.0 / radius.float()).to(radius.dtype) if radius.dtype == torch.float16 else 1.0 / radius
+    radius_inverse = 1.0 / radius
     theta = radius.atan2(torch.ones_like(radius)) * nonlinear_mask
     theta2 = theta**2
     theta4 = theta2**2
@@ -91,6 +90,9 @@ def distort_points_kannala_brandt(
         - a point with squared radius ``<= 1e-8`` takes the affine branch, ``(fx x + cx, fy y + cy)``.
         - the leading dimensions of the points and of ``params`` broadcast as in :func:`distort_points_affine`:
           per-camera ``params`` for ``(B, N, 2)`` points are ``(B, 1, 8)``.
+        - the result has the promoted dtype of the points and ``params``; ``float16`` and ``bfloat16`` are
+          computed in ``float32`` and rounded once, so a normalized radius beyond 256 does not overflow
+          ``float16``.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape
@@ -120,22 +122,35 @@ def distort_points_kannala_brandt(
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
 
-    x = projected_points_in_camera_z1_plane[..., 0]
-    y = projected_points_in_camera_z1_plane[..., 1]
+    # Half-precision points and params are evaluated in float32 and a half-precision result is rounded once, as in
+    # dx_distort_points_kannala_brandt: the squared radius overflows float16 beyond a normalized radius of 256, and
+    # the polynomial and the reciprocal radius lose several float16 or bfloat16 ulps when evaluated in that dtype.
+    output_dtype = torch.promote_types(projected_points_in_camera_z1_plane.dtype, params.dtype)
+    points = projected_points_in_camera_z1_plane
+    if points.dtype in (torch.float16, torch.bfloat16):
+        points = points.float()
+    if params.dtype in (torch.float16, torch.bfloat16):
+        params = params.float()
+
+    x = points[..., 0]
+    y = points[..., 1]
 
     radius_sq = x**2 + y**2
     nonlinear_mask = radius_sq > 1e-8
 
-    return torch.where(
+    distorted = torch.where(
         nonlinear_mask[..., None],
         _distort_points_kannala_brandt_impl(
-            projected_points_in_camera_z1_plane,
+            points,
             params,
             radius_sq,
             nonlinear_mask,
         ),
-        distort_points_affine(projected_points_in_camera_z1_plane, params[..., :4]),
+        distort_points_affine(points, params[..., :4]),
     )
+    if output_dtype in (torch.float16, torch.bfloat16):
+        distorted = distorted.to(output_dtype)
+    return distorted
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
