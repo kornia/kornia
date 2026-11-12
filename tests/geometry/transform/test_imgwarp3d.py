@@ -710,8 +710,13 @@ class TestWarpAffine3d(BaseTester):
 
     def test_forth_back(self, device, dtype):
         out_shape = (3, 4, 5)
-        sample = torch.rand(2, 5, 3, 4, 5, device=device, dtype=dtype)
-        P = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        # A seeded, well-conditioned affine: the identity plus at most 0.2 per entry. torch.rand's 3 x 3 part reaches
+        # condition numbers in the hundreds, and then the bfloat16 round trip P^-1 P moves nearest samples to a
+        # neighbouring voxel (29 of 300 seeds in bfloat16, 4 in float16; from a condition number of 61).
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.rand(2, 5, 3, 4, 5, generator=generator).to(device, dtype)
+        linear = torch.eye(3) + 0.2 * (2 * torch.rand(2, 3, 3, generator=generator) - 1)
+        P = torch.cat([linear, torch.rand(2, 3, 1, generator=generator)], dim=-1).to(device, dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (_torch_inverse_cast(P) @ P)[:, :3]
         output = proj.warp_affine3d(sample, P_hat, out_shape, flags="nearest")
