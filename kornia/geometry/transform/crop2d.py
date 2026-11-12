@@ -169,7 +169,8 @@ def crop_and_resize(
     points_dst = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        # the source dtype: a half-precision destination corner rounds (bfloat16 257 -> 256) and stretches the crop
+        dtype=points_src.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
     return _crop_by_boxes_to_size(

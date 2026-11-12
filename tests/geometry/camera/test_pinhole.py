@@ -252,6 +252,14 @@ class TestCam2Pixel(BaseTester):
             expected = torch.tensor([[[[1.0e14, 2.0e14], [5.0e13, 1.0e14]]]], device=device, dtype=dtype)
             self.assert_close(uv, expected)
 
+    def test_integer_points_return_a_floating_result(self, device):
+        # Only float16 and bfloat16 points are rounded back to their dtype; integer points keep the floating
+        # result of the projection rather than being truncated to [0, 0].
+        cam_coords = torch.tensor([[[[1, 2, 4]]]], device=device)
+        uv = kornia.geometry.camera.cam2pixel(cam_coords, torch.eye(4, device=device)[None])
+        assert uv.dtype == torch.float32
+        self.assert_close(uv, torch.tensor([[[[0.25, 0.5]]]], device=device))
+
     @pytest.mark.parametrize("shape", [(), (4, 4), (3, 3), (1, 3, 3), (1, 3, 4), (1, 5, 4), (1, 1, 4, 4)])
     def test_invalid_projection_shape_4266(self, shape, device, dtype):
         cam_coords = torch.tensor([[[[1.0, 2.0, 4.0]]]], device=device, dtype=dtype)

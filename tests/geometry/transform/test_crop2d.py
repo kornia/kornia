@@ -209,6 +209,18 @@ class TestCropAndResize(BaseTester):
         )
         self.assert_close(out_default, expected_zeros, rtol=1e-2, atol=1e-2)
 
+    def test_float32_box_on_a_half_image_keeps_its_far_corner(self, device, dtype):
+        # A float32 full-image box with an output of the image size is an identity crop in every dtype. The
+        # destination corners follow the box dtype: built in the image dtype, the far corner n - 1 rounded (bfloat16
+        # 257 -> 256, float16 2049 -> 2048) on the destination side only, which stretched the crop by n - 1 : n - 2
+        # and moved the last columns by up to 15. 2050 is the first float16 size whose far corner rounds.
+        n = 2050 if dtype == torch.float16 else 258
+        image = (torch.arange(n, device=device, dtype=torch.float32) % 16).expand(1, 1, n, n).to(dtype)
+        box = torch.tensor([[[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]]], device=device, dtype=torch.float32)
+        out = kornia.geometry.transform.crop_and_resize(image, box, (n, n))
+        assert out.dtype == dtype
+        self.assert_close(out, image)
+
 
 class TestCenterCrop(BaseTester):
     def test_invalid_size_type(self):

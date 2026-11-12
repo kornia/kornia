@@ -729,7 +729,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
           block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
         - the batch of ``dst_proj_src`` is that of ``cam_coords_src`` or 1. A point behind the camera is divided
           like any other and is not flagged.
-        - the result has the dtype of ``cam_coords_src``. ``float16`` and ``bfloat16`` points and matrices are
+        - ``float16`` and ``bfloat16`` points return their dtype. Half-precision points and matrices are
           projected and divided in ``float32`` and the pixels rounded once, so a numerator ``fx * x + cx * z``
           beyond the ``float16`` range does not overflow.
 
@@ -780,4 +780,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
 
     # torch.stack and return the coordinates, that's the actual flow
     pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst.to(out_dtype)  # BxHxWx2
+    # only half-precision points are rounded back; integer points keep the floating result
+    if out_dtype in (torch.float16, torch.bfloat16):
+        pixel_coords_dst = pixel_coords_dst.to(out_dtype)
+    return pixel_coords_dst  # BxHxWx2
