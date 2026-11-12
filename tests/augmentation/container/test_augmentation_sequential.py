@@ -860,8 +860,9 @@ class TestAugmentationSequential:
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
         # Values below the fill value, so that ``out[0] == fill_value`` marks only erased pixels: a half-precision
-        # ``randn`` holds 0.5 itself in a few of these 90000 pixels.
-        input = 0.5 * torch.rand(3, 3, 100, 100, device=device, dtype=dtype)
+        # ``randn`` holds 0.5 itself in a few of these 90000 pixels. The bound is 0.25, not 0.5, because
+        # half-precision torch.rand on MPS can return exactly 1.0 (#4553).
+        input = 0.25 * torch.rand(3, 3, 100, 100, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["image", "mask"])
 
         reproducibility_test((input, input), aug)
