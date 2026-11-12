@@ -25,7 +25,13 @@ from kornia.geometry.epipolar.essential import _refine_essential_lm
 
 from testing.base import BaseTester
 from testing.geometry.create import generate_two_view_random_scene
-from testing.two_view import calibrated_two_view_scene, two_view_scene
+from testing.two_view import (
+    ONE_ROUNDING_EPS,
+    calibrated_two_view_scene,
+    max_relative_error,
+    pixel_two_view_batch,
+    two_view_scene,
+)
 
 
 def test_generate_two_view_random_scene_is_deterministic():
@@ -325,6 +331,11 @@ class TestFindEssential(BaseTester):
         )
         best = torch.nan_to_num(err, nan=1.0).min(dim=-1).values
         tol, at_least = (1e-8, 60) if dtype == torch.float64 else (1e-3, 48)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The five-point solve amplifies the rounding of the coordinates about 30-fold, in float32 as well: the
+            # 48th best of these samples is 28 eps off in float32, 28 eps in float16 and 25 eps in bfloat16, the same
+            # as the float64 solve of the rounded points. In half precision eps itself is that coarse.
+            tol = 64 * torch.finfo(dtype).eps
         assert int((best < tol).sum()) >= at_least
 
         # The roots of a polynomial do not depend on its sign or scale, and IEEE division makes that exact
@@ -562,6 +573,18 @@ class TestEssentialFromFundamental(BaseTester):
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
         self.assert_close(F_mat_norm, F_hat_norm)
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with focal lengths near 1000 px. Multiplying in half precision rounds K2^T F as well, and leaves
+        # E off by 0.81 eps of its largest entry in float16 and 0.88 eps in bfloat16.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        F_mat, K1, K2 = (scene[key].to(dtype) for key in ("F", "K1", "K2"))
+        expected = epi.essential_from_fundamental(F_mat.double(), K1.double(), K2.double())
+        actual = epi.essential_from_fundamental(F_mat.to(device), K1.to(device), K2.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
     def test_gradcheck(self, device):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -838,7 +861,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         )
 
     def test_consistency(self, device, dtype):
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
+        _skip_half(dtype, _HALF_LABELS)
         scene = generate_two_view_random_scene(device, dtype)
 
         R1, t1 = scene["R1"], scene["t1"]
@@ -900,6 +923,9 @@ class TestMotionFromEssential(BaseTester):
         vec_error = (ts - t).abs().sum(-1)
 
         rtol: float = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # E and the reference R each round to the dtype: the summed difference is one eps on this scene.
+            rtol = 4 * torch.finfo(dtype).eps
         assert (rot_error < rtol).any() & (vec_error < rtol).any()
 
     def test_gradcheck(self, device):
@@ -941,15 +967,22 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         assert X.shape == (B, N, 3)
 
     def test_masking(self, device, dtype):
-        E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K1 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        K2 = torch.rand(2, 3, 3, device=device, dtype=dtype)
-        x1 = torch.rand(2, 10, 2, device=device, dtype=dtype)
-        x2 = torch.rand(2, 10, 2, device=device, dtype=dtype)
+        # A seeded CPU generator gives every device the same batch; the suite seeds only the CPU default generator,
+        # so draws on CUDA were unseeded. Triangulated in half precision, some of these points come back NaN and the
+        # masked and unmasked calls disagree (in both half dtypes on CPU and CUDA at this seed, bfloat16 at most
+        # seeds); the choice runs in float32 instead and agrees.
+        generator = torch.Generator().manual_seed(3)
+
+        def draw(*shape: int) -> torch.Tensor:
+            return torch.rand(*shape, generator=generator, dtype=dtype).to(device)
+
+        B = 64
+        E_mat, K1, K2 = draw(B, 3, 3), draw(B, 3, 3), draw(B, 3, 3)
+        x1, x2 = draw(B, 10, 2), draw(B, 10, 2)
 
         R, t, X, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[:, 1:-1, :], x2[:, 1:-1, :])
 
-        mask = torch.zeros(2, 10, dtype=torch.bool, device=device)
+        mask = torch.zeros(B, 10, dtype=torch.bool, device=device)
         mask[:, 1:-1] = True
         Rm, tm, Xm, _ = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
@@ -995,7 +1028,9 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         )
 
         self.assert_close(t, t_hat)
-        self.assert_close(R, R_hat, rtol=1e-4, atol=1e-4)
+        # In half precision E and the reference R each round to the dtype: compared at the dtype's tolerance.
+        tol = {} if dtype in (torch.float16, torch.bfloat16) else {"rtol": 1e-4, "atol": 1e-4}
+        self.assert_close(R, R_hat, **tol)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -1011,7 +1046,11 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         )
 
 
-_NO_HALF_LU = "{} calls torch.det (LU), which has no float16/bfloat16 kernel"
+_HALF_LABELS = (
+    "the closed-form and the SVD decompositions of the rounded half-precision E label the two rotations differently"
+)
+_HALF_POSE = "the pins compare poses at 1e-4, below the half-precision rounding of the rotation and the translation"
+_HALF_SCALES = "a scale of 1e6 overflows float16, and the 1e-3 comparison is below the resolution of bfloat16"
 _NO_HALF_FIND_ESSENTIAL = (
     "find_essential solves in float64, but float16/bfloat16 correspondences are too coarse for these tolerances and "
     "the reference helpers call torch.linalg.inv, which has no half kernel"
@@ -1139,7 +1178,7 @@ class TestConventionEssential(BaseTester):
 
     def test_convention_motion_from_essential_candidate_order(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential"))
+        _skip_half(dtype, _HALF_POSE)
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
         E = _gt_essential(two_view)
@@ -1184,7 +1223,7 @@ class TestConventionEssential(BaseTester):
 
     def test_convention_choose_solution_recovers_relative_motion(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        _skip_half(dtype, _HALF_POSE)
         R, t, X = two_view["R"], two_view["t"], two_view["X"]
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         t_norm = t.norm(dim=-2, keepdim=True)
@@ -1246,7 +1285,6 @@ class TestConventionEssential(BaseTester):
 
     def test_decompose_unbatched_keeps_input_dims_4878(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
         # #4878 (fixed): the constant W was built with a batch dim, so a (3, 3) input returned rotations of shape
         # (1, 3, 3) next to t of shape (3, 1). All outputs now keep the leading dims of the input.
         E = _gt_essential(two_view)
@@ -1254,9 +1292,12 @@ class TestConventionEssential(BaseTester):
         assert R1.shape == (3, 3)
         assert R2.shape == (3, 3)
         assert t.shape == (3, 1)
+        # A half-precision E is decomposed in float32 and the factors are returned in its dtype.
+        assert R1.dtype == R2.dtype == t.dtype == dtype
         Rs, ts = epi.motion_from_essential(E[0])
         assert Rs.shape == (4, 3, 3)
         assert ts.shape == (4, 3, 1)
+        assert Rs.dtype == ts.dtype == dtype
         R1b, R2b, tb = epi.decompose_essential_matrix(E)
         self.assert_close(R1, R1b[0])
         self.assert_close(R2, R2b[0])
@@ -1267,7 +1308,7 @@ class TestConventionEssential(BaseTester):
 
     def test_convention_choose_solution_reports_valid_count_4879(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        _skip_half(dtype, _HALF_POSE)
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
         E = _gt_essential(two_view)
@@ -1318,7 +1359,7 @@ class TestConventionEssential(BaseTester):
 
     def test_convention_choose_solution_batch_independent_2198(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        _skip_half(dtype, _NO_HALF_LU.format("motion_from_essential_choose_solution"))
+        _skip_half(dtype, _HALF_POSE)
         K1, K2, x1, x2 = two_view["K1"], two_view["K2"], two_view["x1"], two_view["x2"]
         R, t = two_view["R"], two_view["t"]
         t_unit = t / t.norm(dim=-2, keepdim=True)
@@ -1526,8 +1567,6 @@ class TestEssentialDecompositionAutocast(BaseTester):
             ),
             torch.tensor([[[0.5], [0.1], [0.0]]], device=device, dtype=dtype),
         )
-        if dtype in (torch.float16, torch.bfloat16) and fn is not epi.decompose_essential_matrix_no_svd:
-            pytest.skip("calls torch.det or torch.linalg.svd, which have no half-precision CPU kernel")
         scripted = torch.jit.script(fn)
         expected = fn(E_mat)
         actual = scripted(E_mat)
@@ -1592,8 +1631,6 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
     def test_backward_is_finite_6251(self, device, dtype, name):
         # torch.linalg.svd's backward divides by the difference of the squares of those two values, here exactly 0.
-        if name != "project_to_essential":
-            _skip_half(dtype, _NO_HALF_LU.format(name))
         E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
         outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
         outputs = outputs if isinstance(outputs, tuple) else (outputs,)
@@ -1695,8 +1732,6 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
     @pytest.mark.parametrize("pose", [None, 4, "generic"])
     def test_requires_grad_leaves_the_value_bitwise_unchanged_6251(self, device, dtype, name, pose):
-        if name != "project_to_essential":
-            _skip_half(dtype, _NO_HALF_LU.format(name))
         if pose == "generic":
             generator = torch.Generator().manual_seed(6251)
             E_mat = torch.randn(1, 3, 3, generator=generator, dtype=torch.float64).to(device=device, dtype=dtype)
@@ -1803,7 +1838,7 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
         # R1, R2 and t do not depend on the scale or sign of E, so their Jacobian scales as 1 / scale; the projection is
         # linear in the scale, so its Jacobian does not change. A negated or rescaled matrix can flip the labeling. The
         # squares of the entries of the last two scales are out of range, and the result must not depend on them.
-        _skip_half(dtype, _NO_HALF_LU.format("decompose_essential_matrix"))
+        _skip_half(dtype, _HALF_SCALES)
         if dtype == torch.float64 and device.type == "mps":
             pytest.skip("MPS has no float64")
         if isinstance(scale, str):
@@ -1843,8 +1878,6 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
     def test_convention_no_derivative_gradient_is_finite_6251(self, device, dtype, name, diagonal):
         # With s2 == s3 the singular vector u3 is not unique, so no derivative exists. The choice is a finite gradient
         # instead of NaN; its value is not part of the convention, as it depends on the basis the SVD returns.
-        if name != "project_to_essential":
-            _skip_half(dtype, _NO_HALF_LU.format(name))
         E_mat = torch.diag(torch.tensor(diagonal, device=device, dtype=dtype))[None].requires_grad_()
         outputs = _SVD_DECOMPOSITIONS_6251[name](E_mat)
         outputs = outputs if isinstance(outputs, tuple) else (outputs,)
@@ -1889,8 +1922,6 @@ class TestEssentialGradientAtEqualSingularValues(BaseTester):
 
     @pytest.mark.parametrize("name", list(_SVD_DECOMPOSITIONS_6251))
     def test_dynamo_gradient_at_equal_singular_values_6251(self, device, dtype, torch_optimizer, name):
-        if name != "project_to_essential":
-            _skip_half(dtype, _NO_HALF_LU.format(name))
         fn = _SVD_DECOMPOSITIONS_6251[name]
         E_mat = _exact_essential_6251(None, device, dtype).requires_grad_()
         compiled = torch_optimizer(fn, fullgraph=True)

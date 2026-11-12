@@ -25,6 +25,7 @@ import torch
 from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
+    _at_least_float32,
     _autocast_disabled,
     _closed_form_inverse,
     _deepcopy_module_state,
@@ -582,6 +583,21 @@ class TestInverse3x3ClosedForm(BaseTester):
         self.assert_close(inverse.cpu().double(), expected, rtol=4 * eps, atol=0.0)
 
 
+class TestAtLeastFloat32(BaseTester):
+    def test_half_becomes_float32_and_full_precision_is_the_same_tensor(self, device, dtype):
+        x = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
+        out = _at_least_float32(x)
+        if dtype in (torch.float16, torch.bfloat16):
+            assert out.dtype == torch.float32
+            self.assert_close(out.to(dtype), x, rtol=0.0, atol=0.0)
+            out.sum().backward()
+            assert x.grad is not None
+            assert x.grad.dtype == dtype
+        else:
+            # float32 and float64 pass through as the same tensor, so the callers' results keep their bits.
+            assert out is x
+
+
 class TestSvdCast:
     @pytest.mark.parametrize("shape", [(2, 5, 3), (2, 3, 5), (3, 32, 128)])
     @pytest.mark.parametrize("full_matrices", [False, True])
@@ -602,7 +618,8 @@ class TestSvdCast:
         a = torch.randn(5, 3, 3, device=device, dtype=dtype)
         u, s, v = _torch_svd_cast(a)
 
-        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-3
+        # The factors round to the dtype and the product rounds again: bfloat16 is as coarse as float16, or coarser.
+        tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
         assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 
     def test_batch_above_mps_ceiling(self, device, dtype):

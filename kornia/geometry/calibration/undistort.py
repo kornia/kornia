@@ -25,6 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _at_least_float32
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -66,6 +67,7 @@ def undistort_points(
           coefficients included.
         - the skew entries ``K[0, 1]`` and ``new_K[0, 1]`` are ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
+        - float16 and bfloat16 inputs are iterated in float32 and the result is returned in their dtype.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
@@ -129,6 +131,13 @@ def undistort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    # Half-precision inputs are iterated in float32: each step would otherwise round the normalized coordinates and
+    # the polynomials to the input dtype, and the pixel result is rounded once at the end.
+    out_dtype = torch.promote_types(
+        torch.promote_types(points.dtype, K.dtype), torch.promote_types(dist.dtype, new_K.dtype)
+    )
+    points, K, new_K, dist = (_at_least_float32(t) for t in (points, K, new_K, dist))
+
     has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
@@ -190,7 +199,9 @@ def undistort_points(
     new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
-    return torch.stack([x, y], -1)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287

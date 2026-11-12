@@ -365,3 +365,33 @@ class TestDistortPoints(BaseTester):
         op = distort_points
         op_jit = torch.jit.script(op)
         self.assert_close(op(*inputs), op_jit(*inputs))
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # f = 1000 px and 64 x 100 points over a 1280 x 720 image. Distorted in float32 and rounded once, every
+        # coordinate is within half a unit in the last place (ulp) of the float64 result of the same rounded inputs,
+        # plus about 2e-4 px of float32 arithmetic (1e-3 px allowed). Distorting in half precision leaves the result off
+        # by up to 1.5 px in float16 and 10.5 px in bfloat16, where half an ulp is at most 0.5 px and 4 px.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.tensor([1280.0, 720.0], dtype=torch.float64)
+        points = (torch.rand(64, 100, 2, generator=generator, dtype=torch.float64) * image).to(dtype)
+        K = torch.tensor([[1000.0, 0.0, 640.0], [0.0, 1000.0, 360.0], [0.0, 0.0, 1.0]], dtype=dtype).expand(64, 3, 3)
+        dist = torch.tensor([-0.2, 0.05, 1e-3, -1e-3, 0.01], dtype=dtype).expand(64, 5)
+        expected = distort_points(points.double(), K.double(), dist.double())
+        actual = distort_points(points.to(device), K.to(device), dist.to(device))
+        assert actual.dtype == dtype
+        _, exponent = torch.frexp(expected)
+        half_ulp = 0.5 * torch.finfo(dtype).eps * torch.exp2(exponent.double() - 1)
+        assert ((actual.cpu().double() - expected).abs() <= half_ulp + 1e-3).all()
+
+    def test_integer_input_returns_float32(self, device):
+        # torch promotes integer pixels and intrinsics to float32 in the division, and the result is not cast back.
+        points = torch.tensor([[1, 3]], device=device)
+        K = torch.eye(3, dtype=torch.int64, device=device)
+        new_K = torch.tensor([[2, 0, 0], [0, 2, 0], [0, 0, 1]], device=device)
+        dist = torch.zeros(4, dtype=torch.int64, device=device)
+        distorted = distort_points(points, K, dist, new_K)
+        assert distorted.dtype == torch.float32
+        # Normalized by new_K to (0.5, 1.5), undistorted by zero coefficients, and K is the identity.
+        self.assert_close(distorted, torch.tensor([[0.5, 1.5]], device=device))

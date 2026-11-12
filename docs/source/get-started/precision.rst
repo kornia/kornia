@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **239 float16 and 251 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **190 float16 and 194 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. A local CUDA
@@ -61,18 +61,22 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
    * - ``kornia.geometry.calibration``
      - ⚠️
      - ⚠️
-     - 12 / 12
-     - solve_pnp_dlt rejects half inputs; undistort_points accuracy
+     - 7 / 7
+     - solve_pnp_dlt, distort_points and undistort_points compute half inputs in float32; the remaining entries are
+       solve_pnp_dlt pose checks on a scene whose pixel coordinates, up to 8e4, overflow float16 or round by many
+       pixels in both half dtypes
    * - ``kornia.geometry.epipolar``
      - ⚠️
      - ⚠️
-     - 36 / 36
-     - Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy
+     - 4 / 3
+     - Essential-matrix decomposition/motion, KRt_from_projection and the fundamental-matrix estimators compute half
+       inputs in float32; the remaining entries are Sampson residuals of a pixel-unit F, whose entries span eight
+       decades, and float16 projection matrices with entries above 65504
    * - ``kornia.geometry.homography``
-     - ⚠️
-     - ⚠️
-     - 10 / 16
-     - DLT solver accuracy, including iterated and line-based variants
+     - ✅
+     - ✅
+     - 0 / 0
+     - The point and line DLTs, iterated or not, compute half inputs in float32 and return the input dtype
    * - ``kornia.geometry.liegroup``
      - ✅
      - ✅
@@ -95,10 +99,10 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
      - 65 / 65
      - Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py
    * - ``kornia.geometry.ransac``
-     - ⚠️
-     - ⚠️
-     - 2 / 2
-     - Essential-model fitting raises in epipolar solvers
+     - ✅
+     - ✅
+     - 0 / 0
+     -
    * - ``kornia.geometry (other)``
      - ⚠️
      - ⚠️
@@ -132,8 +136,8 @@ measurement of the whole test suite is in :ref:`cuda-test-suite-measurement`.
    * - ``contrib, core, io, onnx, sensors, tracking, utils``
      - ✅
      - ⚠️
-     - 0 / 2
-     - bfloat16: histogram matching and _torch_svd_cast accuracy
+     - 0 / 1
+     - bfloat16: histogram matching accuracy
 
 ✅ No entries in the CPU known-failure manifest   ⚠️ Has recorded CPU failures.
 Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside

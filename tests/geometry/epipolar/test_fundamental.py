@@ -37,7 +37,13 @@ from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, script_uncached
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
-from testing.two_view import affine_two_view_scene, two_view_scene
+from testing.two_view import (
+    ONE_ROUNDING_EPS,
+    affine_two_view_scene,
+    max_relative_error,
+    pixel_two_view_batch,
+    two_view_scene,
+)
 
 
 class TestNormalizePoints(BaseTester):
@@ -241,7 +247,12 @@ class TestFindFundamental(BaseTester):
         )
 
         F_mat = epi.find_fundamental(points1, points2, weights)
-        self.assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
+        rtol = atol = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # The four-decimal points round to the dtype, which moves F by about one unit in the last place of its
+            # largest entry (the float64 fit of the rounded points does the same), and the small entries by as much.
+            rtol, atol = torch.finfo(dtype).eps, 2 * torch.finfo(dtype).eps * Fm_expected.abs().max().item()
+        self.assert_close(F_mat, Fm_expected, rtol=rtol, atol=atol)
 
     def test_7point_opencv(self, device, dtype):
         points1 = torch.tensor(
@@ -318,7 +329,13 @@ class TestFindFundamental(BaseTester):
                     min_index = i
             ordering.append(min_index)
         F_mat[0] = F_mat[0][ordering]
-        self.assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
+        rtol = atol = 1e-3
+        if dtype in (torch.float16, torch.bfloat16):
+            # The points round to the dtype, and the roots of the seven-point cubic carry that rounding into each
+            # candidate: up to 3 units in the last place of the largest entry, as for the float64 fit of the rounded
+            # points.
+            rtol, atol = torch.finfo(dtype).eps, 4 * torch.finfo(dtype).eps * Fm_expected.abs().max().item()
+        self.assert_close(F_mat, Fm_expected, rtol=rtol, atol=atol)
 
     def test_synthetic_sampson_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
@@ -722,7 +739,9 @@ class TestComputeCorrespondEpilines(BaseTester):
         )
 
         lines_est = epi.compute_correspond_epilines(point, F_mat)
-        self.assert_close(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
+        # The lines are computed in float32 for a half dtype and rounded once: half a unit in the last place.
+        tol = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(lines_est, lines_expected, rtol=tol, atol=tol)
 
     def test_gradcheck(self, device):
         point = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -740,6 +759,30 @@ class TestComputeCorrespondEpilines(BaseTester):
         pts2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
         with pytest.raises(ShapeError, match=r"points must have shape \(\*, N, 2\) or \(\*, N, 3\), got \["):
             epi.get_closest_point_on_epipolar_line(points, pts2, F_mat)
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with F = K2^-T E K1^-1 and 100 points each in a 1280 x 720 image. Projecting and scaling in half
+        # precision leaves the lines off by 1.0 of their largest entry in float16 and by 1.5 eps in bfloat16, and
+        # rounding F x to the dtype before the scaling by 3.9 eps and 1.04 eps.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        points, F_mat = scene["x1"].to(dtype), scene["F"].to(dtype)
+        expected = epi.compute_correspond_epilines(points.double(), F_mat.double())
+        actual = epi.compute_correspond_epilines(points.to(device), F_mat.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
+
+    def test_integer_input_returns_float32(self, device):
+        if device.type != "cpu":
+            pytest.skip("CUDA has no integer matmul kernel, nor MPS on torch 2.5.1")
+        # torch promotes the integer line to float32 for the scaling, and the scaled line is not cast back.
+        points = torch.tensor([[1, 1]], device=device)
+        F_mat = torch.tensor([[0, 0, 1], [0, 0, 1], [1, 1, -3]], device=device)
+        lines = epi.compute_correspond_epilines(points, F_mat)
+        assert lines.dtype == torch.float32
+        # F (1, 1, 1) = (1, 1, -1), scaled to a unit normal.
+        self.assert_close(lines, torch.tensor([[1.0, 1.0, -1.0]], device=device) / 2**0.5)
 
 
 class TestFundamentlFromEssential(BaseTester):
@@ -789,7 +832,9 @@ class TestFundamentlFromEssential(BaseTester):
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        self.assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        # E and F_hat each round to the dtype once: about one unit in the last place in half precision.
+        tol = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(F_mat_norm, F_hat_norm, atol=tol, rtol=tol)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -807,6 +852,18 @@ class TestFundamentlFromEssential(BaseTester):
             r"got \[1, 3, 3\], \[3, 3\] and \[1, 3, 3\]\.",
         ):
             epi.fundamental_from_essential(E_mat, K, E_mat)
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # 256 scenes with focal lengths near 1000 px. Multiplying in half precision leaves F off by 0.33 of its
+        # largest entry in float16 and by 1.1 in bfloat16.
+        scene = pixel_two_view_batch(256, 100, seed=0)
+        E_mat, K1, K2 = (scene[key].to(dtype) for key in ("E", "K1", "K2"))
+        expected = epi.fundamental_from_essential(E_mat.double(), K1.double(), K2.double())
+        actual = epi.fundamental_from_essential(E_mat.to(device), K1.to(device), K2.to(device))
+        assert actual.dtype == dtype
+        assert max_relative_error(actual, expected) <= ONE_ROUNDING_EPS * torch.finfo(dtype).eps
 
 
 class TestFundamentalFromProjections(BaseTester):

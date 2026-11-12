@@ -53,6 +53,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import (
+    _at_least_float32,
     _autocast_disabled,
     _extract_device_dtype,
     _symmetric_eigenvector,
@@ -663,13 +664,15 @@ def find_homography_dlt(
     device, dtype = _extract_device_dtype([points1, points2])
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
-        weights = weights.to(points1.dtype)
+        weights = _at_least_float32(weights.to(points1.dtype))
+    # Half-precision correspondences are fitted in float32 and the homography is rounded once, on return.
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
     with _autocast_disabled(points1.device.type):
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
         return _homography_from_dlt_system(
-            A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
-        )
+            A, weights, transform1, _inverse_normalization(transform2), solver, device, points1.dtype
+        ).to(dtype)
 
 
 def _inverse_normalization(transform: torch.Tensor) -> torch.Tensor:
@@ -906,20 +909,23 @@ def find_homography_dlt_iterated(
     device, dtype = _extract_device_dtype([points1, points2])
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
-        weights = weights.to(points1.dtype)
+        weights = _at_least_float32(weights.to(points1.dtype))
+    # Half-precision correspondences are fitted and re-weighted in float32, and the homography is rounded once.
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
+    work = points1.dtype
     # Autocast would run the solves and the re-weighting errors in half precision.
     with _autocast_disabled(points1.device.type):
         # Weighted Hartley normalization changes with each set of IRLS weights.
         A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
         transform2_inv = _inverse_normalization(transform2)
-        H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
+        H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, work)
         for _ in range(n_iter - 1):
             squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
             weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
             A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
             transform2_inv = _inverse_normalization(transform2)
-            H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
-    return H
+            H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, work)
+    return H.to(dtype)
 
 
 def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
@@ -1040,7 +1046,12 @@ def find_homography_lines_dlt(
     if N < 4:
         raise ShapeError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
     # Raises unless both segment sets share a device and a dtype.
-    _extract_device_dtype([ls1, ls2])
+    _, dtype = _extract_device_dtype([ls1, ls2])
+    # Weights take the segments' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = _at_least_float32(weights.to(dtype))
+    # Half-precision segments are fitted in float32 and the homography is rounded once, on return.
+    ls1, ls2 = _at_least_float32(ls1), _at_least_float32(ls2)
 
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
@@ -1051,9 +1062,6 @@ def find_homography_lines_dlt(
             actual_shape=list(weights.shape),
             expected_shape=["B", "N"],
         )
-    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
-    if weights is not None:
-        weights = weights.to(ls1.dtype)
     # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
     with _autocast_disabled(ls1.device.type):
         endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
@@ -1100,7 +1108,7 @@ def find_homography_lines_dlt(
 
         H = _svd_null_vector(A).view(-1, 3, 3)
         H = _inverse_normalization(transform2) @ (H @ transform1)
-        return normalize_transformation(H, eps)
+        return normalize_transformation(H, eps).to(dtype)
 
 
 def find_homography_lines_dlt_iterated(
@@ -1149,6 +1157,11 @@ def find_homography_lines_dlt_iterated(
         ls1 = ls1[None]
     if len(ls2.shape) == 3:
         ls2 = ls2[None]
+    # Half-precision segments are fitted and re-weighted in float32, and the homography is rounded once, on return.
+    dtype = ls1.dtype
+    if weights is not None:
+        weights = weights.to(dtype)
+    ls1, ls2 = _at_least_float32(ls1), _at_least_float32(ls2)
     # Autocast would run the re-weighting distances in half precision.
     with _autocast_disabled(ls1.device.type):
         H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
@@ -1156,4 +1169,4 @@ def find_homography_lines_dlt_iterated(
             squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)
             weights_new: torch.Tensor = torch.exp(-squared_distances / (2.0 * (soft_inl_th**2)))
             H = find_homography_lines_dlt(ls1, ls2, weights_new)
-    return H
+    return H.to(dtype)

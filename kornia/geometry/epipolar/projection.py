@@ -25,7 +25,7 @@ from torch.linalg import qr as linalg_qr
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.core.ops import eye_like, vec_like
-from kornia.core.utils import _autocast_disabled, _torch_svd_cast
+from kornia.core.utils import _at_least_float32, _autocast_disabled, _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -215,7 +215,8 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
           every nonzero ``s`` and ``|s| * K``. So :math:`K [R|t]` is ``P`` when ``P[:, :3, :3]`` has positive
           determinant and ``-P`` when it has negative determinant (``-P`` gives the factors of ``P``). ``K`` is
           not normalised to ``K[2, 2] = 1``; divide by ``K[..., 2:, 2:]`` to normalise.
-        - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
+        - ``P`` must have exactly one batch dimension. A float16 or bfloat16 ``P`` is decomposed in float32 and the
+          factors are returned in its dtype.
         - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
@@ -237,10 +238,14 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     KORNIA_CHECK_SHAPE(P, ["B", "3", "4"], "P must have shape (B, 3, 4).")
     # A caller's autocast region would run the products below in half precision, which torch.linalg.det (CPU) and
     # qr (MPS) have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    # No backend factorizes half precision: a half-precision P is decomposed in float32 and the factors rounded once.
+    dtype = P.dtype
     if torch.jit.is_scripting():
-        return _KRt_from_projection(P)
-    with _autocast_disabled(P.device.type):
-        return _KRt_from_projection(P)
+        K, R, t = _KRt_from_projection(_at_least_float32(P))
+    else:
+        with _autocast_disabled(P.device.type):
+            K, R, t = _KRt_from_projection(_at_least_float32(P))
+    return K.to(dtype), R.to(dtype), t.to(dtype)
 
 
 def _KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
