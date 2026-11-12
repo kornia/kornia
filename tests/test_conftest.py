@@ -434,7 +434,10 @@ class TestCpuOnlyRunsHideCuda:
                 assert not torch.cuda.is_available()
 
         def test_cpu_graph_capture_leaves_cuda_untouched():
-            if os.environ["EXPECTED_VISIBLE_DEVICES"] != "":
+            from testing.base import dynamo_is_available
+
+            # Dynamo is unavailable on some supported legs, such as Python 3.13 with torch 2.5.1.
+            if os.environ["EXPECTED_VISIBLE_DEVICES"] != "" or not dynamo_is_available():
                 return
             torch.compile(lambda x: x + 1, backend="eager", fullgraph=True)(torch.ones(2))
             assert not torch.cuda.is_initialized()
