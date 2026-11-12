@@ -270,8 +270,9 @@ class TestAngleOfRotations(BaseTester):
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m, eps=eps)
         # The angle is read off the quaternion in float64: in bfloat16, -179.9 degrees rounds to a turn 9.7e-4 short of
         # pi, which the quaternion holds (w = -4.8e-4), but a bfloat16 atan2 and pi (3.140625) cannot tell from pi.
-        quaternion = quaternion.double()
-        pi = torch.full_like(angle, math.pi, dtype=torch.float64)
+        # It is read on the CPU, since MPS has no float64.
+        quaternion = quaternion.cpu().double()
+        pi = torch.full_like(angle, math.pi, dtype=torch.float64, device="cpu")
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
         angle_hat = 2.0 * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True), quaternion[..., 0:1])
@@ -281,8 +282,8 @@ class TestAngleOfRotations(BaseTester):
             angle_hat = torch.where(mask, angle_hat - 2.0 * math.pi, angle_hat)
             mask = pi < angle_hat
         # invert angle, if quaternion axis points in the opposite direction of the original axis
-        dots = (quaternion[..., 1:4] * axis.double()).sum(dim=-1, keepdim=True)
-        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat).to(dtype)
+        dots = (quaternion[..., 1:4] * axis.cpu().double()).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat).to(device=device, dtype=dtype)
         # quaternion angle should match input angle
         self.assert_close(angle_hat, angle, atol=atol, rtol=rtol)
         # magnitude of angle should match matrix rotation angle

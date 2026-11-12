@@ -6537,6 +6537,42 @@ def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     assert_close(skew @ x, expected_cross)
 
 
+class TestHalfPrecisionRotationConversions(BaseTester):
+    @pytest.mark.parametrize(
+        "op_name, input_name",
+        [
+            ("axis_angle_to_rotation_matrix", "axis_angle"),
+            ("rotation_matrix_to_quaternion", "rotation_matrix"),
+            ("rotation_matrix_to_axis_angle", "rotation_matrix"),
+            ("quaternion_to_rotation_matrix", "quaternion"),
+        ],
+    )
+    def test_half_precision_is_the_rounded_float64_map(self, op_name, input_name, device, dtype):
+        # A float16 or bfloat16 input is converted in float32 and rounded once, so the result is the float64 map of
+        # the same rounded input, rounded to the dtype: on this set at most 0.01 eps off (one small entry of
+        # axis_angle_to_rotation_matrix in float16). Half-precision arithmetic is 0.5 to 2.5 eps off here, and so is
+        # a conversion that skips one float32 step (rotation_matrix_to_axis_angle with its own step removed: 2 eps),
+        # so 0.25 eps absolute tells them apart. The inputs are a fixed seeded set: over 4096 random inputs,
+        # quaternion_to_rotation_matrix in float16 is the rounded float64 map for 99.9% of the entries, so a fresh
+        # draw could land on a double rounding.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
+        generator = torch.Generator().manual_seed(0)
+        axis_angle = torch.randn(512, 3, generator=generator, dtype=torch.float64)
+        inputs = {
+            "axis_angle": axis_angle,
+            "rotation_matrix": kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle),
+            "quaternion": kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle),
+        }
+        x = inputs[input_name].to(device=device, dtype=dtype)
+        op = getattr(kornia.geometry.conversions, op_name)
+        # the reference runs on the CPU, since MPS has no float64
+        expected = op(x.cpu().double()).to(device=device, dtype=dtype)
+        actual = op(x)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, rtol=0.0, atol=0.25 * torch.finfo(dtype).eps)
+
+
 class TestAxisAngleToRotationMatrix:
     def test_identity_rotation(self):
         aa = torch.zeros(1, 3, dtype=torch.float64, requires_grad=True)

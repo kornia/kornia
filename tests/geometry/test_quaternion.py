@@ -488,11 +488,15 @@ class TestQuaternion(BaseTester):
     def test_axis_angle(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
         # The reference axis-angle vector is derived in float64 from the stored coefficients, so that only the
-        # conversion under test runs in the dtype: arccos near w = 1 amplifies a half-precision rounding of w.
-        q64 = q1.data.double()
+        # conversion under test runs in the dtype: arccos near w = 1 amplifies a half-precision rounding of w. A
+        # half-precision random quaternion is unit norm only to about eps, and axis = vec / sin(angle / 2) inflates
+        # that error near w = -1, so the coefficients are normalized first. The reference runs on the CPU, since MPS
+        # has no float64.
+        q64 = q1.data.cpu().double()
+        q64 = q64 / q64.norm(dim=-1, keepdim=True)
         angle = 2 * q64[..., :1].arccos()
         axis = q64[..., 1:] / (angle / 2).sin()
-        axis_angle = (axis * angle).to(dtype)
+        axis_angle = (axis * angle).to(device=device, dtype=dtype)
         q2 = Quaternion.from_axis_angle(axis_angle)
         q2 = q2.to(device, dtype)
         self.assert_close(q1, q2)
