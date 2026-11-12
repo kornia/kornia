@@ -15,8 +15,11 @@
 # limitations under the License.
 #
 
+import contextlib
+
 import pytest
 import torch
+from torch.autograd import forward_ad
 
 from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry import solvers
@@ -328,7 +331,82 @@ class TestNullSpaceLU(BaseTester):
         A[0, 6:] = 0
         A[1, 4:] = 0
         A[2] = 0
-        basis = _null_space_lu(A)
+        basis = _null_space_lu(A, rank_deficient_basis=True)
         assert torch.isfinite(basis).all()
         basis = basis / basis.norm(dim=1, keepdim=True)
         assert (A @ basis).abs().amax() < 1e-5
+
+    @pytest.mark.parametrize("rows", [7, 8])
+    def test_square_cuda_factorization_matches_non_square(self, device, dtype, rows):
+        # Without a gradient, CUDA factorizes A^T padded with zero columns to a square matrix in one batched kernel
+        # instead of the looped non-square one, which rank_deficient_basis keeps: on full-rank matrices, including
+        # badly scaled columns and a repeated row, the two give the same basis to the bit.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("no backend factorizes half precision; callers promote to float32")
+        generator = torch.Generator().manual_seed(rows)
+        A = torch.randn(256, rows, 9, generator=generator, dtype=torch.float64)
+        A[64:128] *= torch.logspace(-6, 6, 9, dtype=torch.float64)
+        A[128:192, 3] = A[128:192, 1]
+        A = A.to(device, dtype)
+        expected = _null_space_lu(A, rank_deficient_basis=True)
+        assert torch.equal(_null_space_lu(A), expected)
+        # A gradient keeps the non-square factorization: the padded square matrix is singular.
+        assert torch.equal(_null_space_lu(A.requires_grad_()).detach(), expected)
+
+    def test_square_cuda_factorization_under_function_transforms(self, device, dtype, monkeypatch):
+        # torch.func.vmap takes the square factorization and gives the same basis; torch.func.grad, whose inputs
+        # require a gradient, and every forward-mode tangent keep the non-square one, since the padded square
+        # matrix is singular and its derivatives are not finite.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("no backend factorizes half precision; callers promote to float32")
+        generator = torch.Generator().manual_seed(1)
+        A = torch.randn(6, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
+        tangent = torch.randn(6, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
+        expected = _null_space_lu(A, rank_deficient_basis=True)
+        assert torch.equal(torch.func.vmap(_null_space_lu)(A[:, None]), expected[:, None])
+        grad = torch.func.grad(lambda a: _null_space_lu(a).sum())(A)
+        self.assert_close(grad, torch.func.grad(lambda a: _null_space_lu(a, rank_deficient_basis=True).sum())(A))
+        assert torch.isfinite(grad).all()
+        # vmap's batching wrapper hides requires_grad: the vmapped call still has to keep the non-square call.
+        leaf = A.clone().requires_grad_()
+        (vmapped_grad,) = torch.autograd.grad(torch.func.vmap(_null_space_lu)(leaf[:, None]).sum(), leaf)
+        self.assert_close(vmapped_grad, grad)
+
+        factorized = []
+        lu_factor_ex = torch.linalg.lu_factor_ex
+
+        def record_shape(matrix, *args, **kwargs):
+            factorized.append(tuple(matrix.shape[-2:]))
+            return lu_factor_ex(matrix, *args, **kwargs)
+
+        monkeypatch.setattr(torch.linalg, "lu_factor_ex", record_shape)
+        with forward_ad.dual_level():
+            dual = forward_ad.make_dual(A, tangent)
+            # torch.lu_unpack has no working forward derivative on torch 2.15; only the factorization is pinned.
+            with contextlib.suppress(RuntimeError):
+                _null_space_lu(dual)
+        with contextlib.suppress(RuntimeError):
+            torch.func.jvp(_null_space_lu, (A,), (tangent,))
+        assert factorized == [(9, 8), (9, 8)]
+
+    def test_square_cuda_factorization_rank_deficient(self, device, dtype):
+        # The batched square kernel stops at the first exactly zero pivot, where the non-square factorization skips
+        # the column: a zero pivot before the last column (zero rows above the last) reports the matrix as NaN on
+        # CUDA without a gradient, and a zero last row, the last pivot, still gives the same basis.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("no backend factorizes half precision; callers promote to float32")
+        generator = torch.Generator().manual_seed(0)
+        A = torch.randn(5, 8, 9, generator=generator, dtype=torch.float64).to(device, dtype)
+        A[0, 0] = 0
+        A[1, 3] = 0
+        A[2] = 0
+        A[3, 7] = 0
+        expected = _null_space_lu(A, rank_deficient_basis=True)
+        assert torch.isfinite(expected).all()
+        actual = _null_space_lu(A)
+        if device.type == "cuda":
+            assert torch.isnan(actual[:3]).all()
+            assert torch.equal(actual[3:], expected[3:])
+        else:
+            assert torch.equal(actual, expected)
+        assert torch.equal(_null_space_lu(A.requires_grad_()).detach(), expected)

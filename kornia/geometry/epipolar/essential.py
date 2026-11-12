@@ -24,6 +24,7 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import (
+    _at_least_float32,
     _autocast_disabled,
     _needs_derivatives,
     _right_singular_vector,
@@ -498,7 +499,10 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
-    return K2.transpose(-2, -1) @ F_mat @ K1
+    # Outside an autocast region, half-precision matrices are multiplied in float32 and the product is rounded once.
+    # Only a half-precision result is cast back, so a float32 input keeps the dtype that autocast gives it.
+    E_mat = _at_least_float32(K2).transpose(-2, -1) @ _at_least_float32(F_mat) @ _at_least_float32(K1)
+    return E_mat.to(F_mat.dtype) if F_mat.dtype in (torch.float16, torch.bfloat16) else E_mat
 
 
 def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
@@ -654,6 +658,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           compares OpenCV's labels.
         - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
           float32 rotations.
+        - A float16 or bfloat16 ``E_mat`` is decomposed in float32, and the rotations and the translation are
+          returned in its dtype.
         - First and second derivatives at an exact essential matrix are finite and correct, also where its two largest
           singular values are equal and the backward of :func:`torch.linalg.svd` divides by zero; a third derivative
           is not correct. They are those of the labeling the call returned. They need the smallest singular value to
@@ -676,17 +682,26 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A half-precision input is decomposed in float32 and the factors are rounded once at the end: torch.det has no
+    # half-precision CPU kernel, and the products below would round the rotations again. float32 and float64 inputs
+    # take the cast as a no-op.
+    dtype = E_mat.dtype
+    E_work = _at_least_float32(E_mat)
     # A caller's autocast region would run the products below in half precision: half-precision rotations, no longer
     # orthogonal, next to a translation in the input dtype. TorchScript has no context managers.
     if torch.jit.is_scripting():
-        return _decompose_essential_matrix(E_mat)
-    with _autocast_disabled(E_mat.device.type):
-        # The SVD backward is NaN or wrong where the two largest singular values are equal, so a call that records a
-        # derivative takes it from _pair_invariant_terms: about 3x, forward and backward (batch 64, x86 CPU and CUDA). A
-        # call that records none skips those terms, which would cost it 1.8x (x86 CPU), and RANSAC polishing runs here.
-        if _needs_derivatives(E_mat):
-            return _decompose_essential_matrix_differentiable(E_mat)
-        return _decompose_essential_matrix(E_mat)
+        R1, R2, t = _decompose_essential_matrix(E_work)
+    else:
+        with _autocast_disabled(E_mat.device.type):
+            # The SVD backward is NaN or wrong where the two largest singular values are equal, so a call that records
+            # a derivative takes it from _pair_invariant_terms: about 3x, forward and backward (batch 64, x86 CPU and
+            # CUDA). A call that records none skips those terms, which would cost it 1.8x (x86 CPU), and RANSAC
+            # polishing runs here.
+            if _needs_derivatives(E_work):
+                R1, R2, t = _decompose_essential_matrix_differentiable(E_work)
+            else:
+                R1, R2, t = _decompose_essential_matrix(E_work)
+    return R1.to(dtype), R2.to(dtype), t.to(dtype)
 
 
 def _decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -886,6 +901,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         - The candidates are stacked on dim ``-3``; which index is the true pose is not fixed.
         - A caller's autocast region does not change the result, and the derivatives at an exact essential matrix are
           finite and correct, as for :func:`decompose_essential_matrix`.
+        - A float16 or bfloat16 ``E_mat`` is decomposed in float32, and the candidates are returned in its dtype.
 
     Args:
         E_mat: The essential matrix in the form of ``(*, 3, 3)``.
@@ -938,7 +954,8 @@ def motion_from_essential_choose_solution(
           candidate. A count of ``0`` means no point passed, and the returned pose is then candidate 0 of
           :func:`motion_from_essential`, not a recovered motion.
         - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
-          ``E_mat``.
+          ``E_mat``. A float16 or bfloat16 ``E_mat`` is decomposed, triangulated and tested in float32, and the
+          rotation, translation and points are returned in its dtype.
         - The first and second derivatives with respect to ``E_mat`` are finite and correct as for
           :func:`motion_from_essential`, while the selected candidate stays the same and the points triangulate to
           finite positions, which a point at infinity does not; a third derivative is not correct.
@@ -995,6 +1012,12 @@ def motion_from_essential_choose_solution(
     # Autocast is off below, so the intrinsics are cast to the dtype of ``E_mat`` here, as autocast casts
     # half-precision intrinsics and a float32 ``E_mat`` to one dtype.
     K1, K2 = K1.to(E_mat.dtype), K2.to(E_mat.dtype)
+    # A half-precision choice runs in float32: triangulated in half precision, a point a few tens of units away
+    # already has a homogeneous w at roundoff and comes back NaN, and the depths near zero round. The pose and the
+    # points are rounded once, on return; float32 and float64 inputs are unchanged.
+    dtype = E_mat.dtype
+    E_mat, K1, K2 = _at_least_float32(E_mat), _at_least_float32(K1), _at_least_float32(K2)
+    x1, x2 = _at_least_float32(x1), _at_least_float32(x2)
 
     # A caller's autocast region would build the projection matrices and the depths in half precision, which moves
     # the triangulated points and can change the chosen candidate, and would return a half-precision rotation.
@@ -1036,9 +1059,9 @@ def motion_from_essential_choose_solution(
 
         # get pose and points 3d and return
         batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
-        R_out = Rs[batch_idx, mask_indices]
-        t_out = ts[batch_idx, mask_indices]
-        points3d_out = X[batch_idx, mask_indices]
+        R_out = Rs[batch_idx, mask_indices].to(dtype)
+        t_out = ts[batch_idx, mask_indices].to(dtype)
+        points3d_out = X[batch_idx, mask_indices].to(dtype)
 
     if unbatched:
         R_out = R_out[0]

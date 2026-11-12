@@ -52,6 +52,17 @@ def _ramp_image(batch, channels, height, width, device, dtype):
     return (ramp / 17.0).reshape(batch, channels, height, width).to(dtype)
 
 
+def _opencv_tolerance(dtype: torch.dtype) -> dict:
+    """Return the tolerance of the comparisons with OpenCV.
+
+    In half precision the result and the reference each round to the dtype, so they can differ by a unit in the last
+    place of pixel coordinates up to about 1000; the float64 result of the same rounded inputs differs as much.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"rtol": 2 * torch.finfo(dtype).eps, "atol": 0.0}
+    return {"rtol": 1e-4, "atol": 1e-4}
+
+
 class TestUndistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
@@ -177,7 +188,7 @@ class TestUndistortPoints(BaseTester):
             [[1030.5992, 790.65533], [1027.3059, 718.10020], [1024.0700, 645.90600]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, **_opencv_tolerance(dtype))
 
         new_K = K * 2
         new_K[2, 2] = 1
@@ -191,7 +202,7 @@ class TestUndistortPoints(BaseTester):
         )
         print(ptsu_expected)
         ptsu = undistort_points(pts, K, dist, new_K)
-        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, **_opencv_tolerance(dtype))
 
     def test_opencv_all_coeff(self, device, dtype):
         # Test using 14 distortion coefficients
@@ -234,10 +245,10 @@ class TestUndistortPoints(BaseTester):
             [[1030.8245, 786.3807], [1027.5505, 715.0732], [1024.2753, 644.0319]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, **_opencv_tolerance(dtype))
 
         # Forward distortion of the independent OpenCV values must recover the input (#4276).
-        self.assert_close(distort_points(ptsu_expected, K, dist), pts, rtol=1e-4, atol=1e-4)
+        self.assert_close(distort_points(ptsu_expected, K, dist), pts, **_opencv_tolerance(dtype))
 
         new_K = K * 2
         new_K[2, 2] = 1
@@ -251,7 +262,7 @@ class TestUndistortPoints(BaseTester):
         )
         print(ptsu_expected)
         ptsu = undistort_points(pts, K, dist, new_K)
-        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, **_opencv_tolerance(dtype))
 
     def test_opencv_stereo(self, device, dtype):
         # Udistort stereo points with data given in two batches using 14 distortion coefficients
@@ -335,8 +346,8 @@ class TestUndistortPoints(BaseTester):
         )
 
         ptsu = undistort_points(pts, K, dist)
-        self.assert_close(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
-        self.assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu[0], ptsu_expected1, **_opencv_tolerance(dtype))
+        self.assert_close(ptsu[1], ptsu_expected2, **_opencv_tolerance(dtype))
 
     def test_convention_undistort_points_inverts_distort_points(self, device, dtype):
         # undistort_points is the iterative (5-step fixed point by default) inverse of distort_points on pixel
@@ -436,6 +447,36 @@ class TestUndistortPoints(BaseTester):
         op = undistort_points
         op_optimized = torch_optimizer(op)
         self.assert_close(op(*inputs), op_optimized(*inputs))
+
+    def test_half_precision_rounds_once(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision accuracy check")
+        # f = 1000 px and 64 x 100 points over a 1280 x 720 image. Iterated in float32 and rounded once, every
+        # coordinate is within half a unit in the last place (ulp) of the float64 result of the same rounded inputs,
+        # plus about 2e-4 px of float32 arithmetic (1e-3 px allowed). Iterating in half precision leaves the result off
+        # by up to 1.6 px in float16 and 13.8 px in bfloat16, where half an ulp is at most 0.5 px and 4 px.
+        generator = torch.Generator().manual_seed(0)
+        image = torch.tensor([1280.0, 720.0], dtype=torch.float64)
+        points = (torch.rand(64, 100, 2, generator=generator, dtype=torch.float64) * image).to(dtype)
+        K = torch.tensor([[1000.0, 0.0, 640.0], [0.0, 1000.0, 360.0], [0.0, 0.0, 1.0]], dtype=dtype).expand(64, 3, 3)
+        dist = torch.tensor([-0.2, 0.05, 1e-3, -1e-3, 0.01], dtype=dtype).expand(64, 5)
+        expected = undistort_points(points.double(), K.double(), dist.double())
+        actual = undistort_points(points.to(device), K.to(device), dist.to(device))
+        assert actual.dtype == dtype
+        _, exponent = torch.frexp(expected)
+        half_ulp = 0.5 * torch.finfo(dtype).eps * torch.exp2(exponent.double() - 1)
+        assert ((actual.cpu().double() - expected).abs() <= half_ulp + 1e-3).all()
+
+    def test_integer_input_returns_float32(self, device):
+        # torch promotes integer pixels and intrinsics to float32 in the division, and the result is not cast back.
+        points = torch.tensor([[1, 3]], device=device)
+        K = torch.tensor([[2, 0, 0], [0, 2, 0], [0, 0, 1]], device=device)
+        new_K = torch.eye(3, dtype=torch.int64, device=device)
+        dist = torch.zeros(4, dtype=torch.int64, device=device)
+        undistorted = undistort_points(points, K, dist, new_K)
+        assert undistorted.dtype == torch.float32
+        # Normalized by K to (0.5, 1.5), unchanged by zero coefficients, and new_K is the identity.
+        self.assert_close(undistorted, torch.tensor([[0.5, 1.5]], device=device))
 
 
 class TestUndistortImage(BaseTester):
