@@ -19,6 +19,8 @@ r"""Losses based on the divergence between probability distributions."""
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -50,16 +52,30 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     return unsummed_kl.sum(-1).view(batch, chans)
 
 
+def _kl_div_to_mixture_2d(p: torch.Tensor, total: torch.Tensor) -> torch.Tensor:
+    # D_KL(P || M) with M = total / 2, using the same empty-cell convention as _kl_div_2d. The logarithm is taken of
+    # ``total = p + q`` and shifted by log 2, so the halved mixture is never formed: in the input dtype it would round
+    # to zero where one input is the smallest positive subnormal and the other is zero, giving inf and NaN gradients.
+    batch, chans, height, width = p.shape
+    p = p.reshape(batch * chans, height * width)
+    total = total.reshape(batch * chans, height * width)
+    empty = (p == 0) & (total >= 0) & torch.isfinite(total)
+    p = p.masked_fill(empty, 1.0)
+    total = total.masked_fill(empty, 2.0)
+    log_m = total.log() - math.log(2.0)
+    return F.kl_div(log_m, p, reduction="none").sum(-1).view(batch, chans)
+
+
 def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # JSD(P || Q)
     output_dtype = torch.promote_types(p.dtype, q.dtype)
-    # Halving a positive subnormal in the input dtype can make the mixture zero.
+    # Half-precision inputs are evaluated in float32 for the range of the logarithm.
     if p.dtype in (torch.float16, torch.bfloat16):
         p = p.float()
     if q.dtype in (torch.float16, torch.bfloat16):
         q = q.float()
-    m = 0.5 * (p + q)
-    return (0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)).to(output_dtype)
+    total = p + q
+    return (0.5 * _kl_div_to_mixture_2d(p, total) + 0.5 * _kl_div_to_mixture_2d(q, total)).to(output_dtype)
 
 
 # TODO: add this to the main module

@@ -92,6 +92,22 @@ class TestDivergenceLoss(BaseTester):
         self.assert_close(pred.grad[0, 0, 0, [0, 2, 3]], expected_grad)
         self.assert_close(target.grad[0, 0, 0, [1, 3, 2]], expected_grad)
 
+    @pytest.mark.parametrize("native", [torch.float32, torch.float64])
+    def test_js_div_loss_2d_smallest_subnormal(self, native, device):
+        """A cell holding the smallest positive subnormal in one input and zero in the other stays finite."""
+        tiny = torch.nextafter(torch.zeros((), dtype=native), torch.ones((), dtype=native)).item()
+        pred = torch.tensor([[[[tiny, 0.0, 0.25, 0.75]]]], device=device, dtype=native, requires_grad=True)
+        target = torch.tensor([[[[0.0, tiny, 0.75, 0.25]]]], device=device, dtype=native, requires_grad=True)
+
+        loss = kornia.losses.js_div_loss_2d(pred, target)
+        expected = 0.25 * math.log(0.5) + 0.75 * math.log(1.5)
+        self.assert_close(loss, torch.tensor(expected, device=device, dtype=native))
+        assert loss.dtype == native
+
+        loss.backward()
+        assert torch.isfinite(pred.grad).all()
+        assert torch.isfinite(target.grad).all()
+
     @pytest.mark.parametrize(
         "pred,target,expected",
         [
