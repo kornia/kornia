@@ -144,10 +144,11 @@ class TestBoxBlur(BaseTester):
                 for has_mkldnn in (False, True)
                 for kernel_size in (5, (3, 7), 9)
             ),
-            # The 1 << 22 element threshold only matters with oneDNN. On the large input, 5 and (3, 7) fall on either
-            # side of the window limit of a 2D pass, and 9 dispatches as (3, 7) does in both modes.
+            # The 1 << 22 element threshold only matters with oneDNN. On the large input, 5 and (3, 9) fall on either
+            # side of the window limit of a 2D pass (5), and (3, 9) stays inside the separable limit (15), so a
+            # separable 9-tap window must still pool.
             (True, 5, (1, 4, 1024, 1024)),
-            (True, (3, 7), (1, 4, 1024, 1024)),
+            (True, (3, 9), (1, 4, 1024, 1024)),
         ],
     )
     def test_pooling_dispatch(self, monkeypatch, has_mkldnn, kernel_size, separable, shape, device, dtype):

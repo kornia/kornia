@@ -237,7 +237,8 @@ class TestRandomShear(BaseTester):
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomShear((10.0, 10.0))
+        # p=1.0: with the default p=0.5, whether inverse() runs depends on the RNG state that other tests leave.
+        aug = kornia.augmentation.RandomShear((10.0, 10.0), p=1.0)
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
