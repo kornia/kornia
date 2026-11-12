@@ -714,6 +714,11 @@ class TestDecomposeEssentialMatrix(BaseTester):
         assert t.shape == (2, 3, 1)
         assert t.dtype == dtype
 
+        # candidate rotation orthogonality: R @ R.T = I
+        eye = torch.eye(3, device=device, dtype=dtype).expand_as(R1)
+        self.assert_close(R1 @ R1.transpose(-2, -1), eye)
+        self.assert_close(R2 @ R2.transpose(-2, -1), eye)
+
         # unbatched (3, 3)
         R1_u, R2_u, t_u = epi.decompose_essential_matrix(E_mat[0])
         assert R1_u.shape == (3, 3)
