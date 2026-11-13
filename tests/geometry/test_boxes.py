@@ -674,8 +674,13 @@ class TestBoxes2D(BaseTester):
         assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
         assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.get_default_dtype()
 
-        # Large integer coordinates must retain precision when merged with float64 boxes.
-        float64_boxes = floating.to(torch.float64)
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test merges float64 boxes",
+    )
+    def test_large_integer_coordinates_merge_with_float64_4012(self, device):
+        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
+        float64_boxes = vertices.to(torch.float64)
         integer_boxes = vertices.clone()
         integer_boxes[0, 0, 0] = 16777217
 
@@ -686,6 +691,18 @@ class TestBoxes2D(BaseTester):
         boxes = Boxes([integer_boxes, float64_boxes], raise_if_not_floating_point=False)
         assert boxes.dtype == torch.float64
         assert boxes.data[0, 0, 0, 0].item() == 16777217
+
+    def test_integer_list_uses_at_least_float32_4012(self, device):
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float16)
+            vertices = torch.tensor([[[2049, 2], [4, 2], [4, 3], [1, 3]]], device=device)
+            boxes = Boxes([vertices, vertices.clone()], raise_if_not_floating_point=False)
+
+            assert boxes.dtype == torch.float32
+            assert boxes.data[0, 0, 0, 0].item() == 2049
+        finally:
+            torch.set_default_dtype(original_dtype)
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))
