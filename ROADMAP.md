@@ -193,6 +193,12 @@ not approval for a new API; establish the concrete need and check reservations f
   error messages, and hardware benchmark contributions, especially CUDA. Use the
   benchmark suite's `--contribute` workflow.
 - **Code health:** compile/export coverage for existing operators.
+- **Faster existing operators:** speed-ups of at least 20% on a common workload,
+  achieved in the general code path rather than through a new special path for
+  particular shapes, dtypes, or devices. Behavior must not change: outputs and
+  gradients stay within the existing test tolerances, and dtype/device handling and
+  compile/ONNX support stay as they are. Measure base and branch on the same hardware
+  and workloads following [the benchmark methodology](benchmarks/README.md).
 - **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
   distortions, weather/noise, and compression effects; the differentiated core remains
   differentiability, batching, and annotation consistency.
