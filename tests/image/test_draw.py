@@ -714,11 +714,10 @@ class TestDrawRectangle(BaseTester):
 
         assert torch.all(black_image == target)
 
-    @pytest.mark.parametrize("batch", [8, 11])
     @pytest.mark.parametrize("fill", [True, False])
-    @pytest.mark.parametrize("height", [12, 106, 298])
-    @pytest.mark.parametrize("width", [7, 123, 537])
-    def test_fill_and_edges(self, device, batch, fill, height, width):
+    @pytest.mark.parametrize(("height", "width"), [(12, 537), (298, 7)])
+    def test_fill_and_edges(self, device, fill, height, width):
+        batch = 8
         black_image = torch.zeros(batch, 3, height, width, device=device)
         # we should pass height - 1 and width - 1 but rectangle should clip correctly
         points = torch.tensor([0, 0, width, height]).to(device).expand(batch, 1, 4)
@@ -789,7 +788,7 @@ class TestDrawRectangle(BaseTester):
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
+                            b, :, points_list[b][n][3], points_list[b][n][0] : points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )

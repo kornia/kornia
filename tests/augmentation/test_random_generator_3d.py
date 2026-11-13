@@ -686,7 +686,8 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
 
-class TestCenterCropGen3D(RandomGeneratorBaseTests):
+# A centre crop draws nothing, so it has no same_on_batch behaviour to pin and does not take the generator base.
+class TestCenterCropGen3D:
     @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("depth,height,width", [(200, 200, 200)])
     @pytest.mark.parametrize("size", [(100, 100, 100)])
@@ -749,9 +750,6 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
-
-    def test_same_on_batch(self):
-        pass
 
 
 class TestRandomMotionBlur3D(RandomGeneratorBaseTests):

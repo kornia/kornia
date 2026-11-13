@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import gc
 import io
+import math
 import pickle
 import weakref
 from functools import wraps
@@ -206,8 +207,9 @@ class TestLazyMatrixState(BaseTester):
     @pytest.mark.parametrize("shape", [(4, 6), (1, 4, 6), (0, 1, 4, 6)])
     def test_unbatched_and_empty_input(self, shape, device, dtype):
         augmentation = K.RandomHorizontalFlip(p=1.0, keepdim=True)
-        input = torch.zeros(shape, device=device, dtype=dtype)
-        self.assert_close(augmentation(input), input)
+        # A zero image is its own flip; a ramp shows that the unbatched input is flipped, not passed through.
+        input = torch.arange(math.prod(shape), device=device, dtype=dtype).reshape(shape)
+        self.assert_close(augmentation(input), input.flip(-1))
         batch = 0 if len(shape) == 4 else 1
         expected = torch.tensor([[-1, 0, 5], [0, 1, 0], [0, 0, 1]], device=device, dtype=dtype).expand(batch, 3, 3)
         self.assert_close(augmentation.transform_matrix, expected)

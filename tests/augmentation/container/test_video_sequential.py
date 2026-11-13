@@ -26,13 +26,6 @@ from testing.base import autocast_for
 
 
 class TestVideoSequential:
-    def test_smoke(self, device, dtype):
-        input_1 = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
-        input_2 = torch.randn(4, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
-        aug_list = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1))
-        aug_list(input_1)
-        aug_list(input_2)
-
     @pytest.mark.parametrize("shape", [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
@@ -80,9 +73,8 @@ class TestVideoSequential:
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
-            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
-            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0)],
-            [K.RandomAffine(360, p=0.0)],
+            # p=0 leaves every frame alone, which no frame comparison can tell from same_on_frame: see
+            # test_zero_probability_passes_through.
             # NOTE: RandomMixUpV2 failed occasionally but always passed in the debugger. Unable to debug now.
             # [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUpV2(p=1.0)],
         ],
@@ -108,6 +100,19 @@ class TestVideoSequential:
             assert_close(output[:, 1], output[:, 2])
             assert_close(output[:, 2], output[:, 3])
         reproducibility_test(input, aug_list)
+
+    @pytest.mark.parametrize("same_on_frame", [True, False])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_zero_probability_passes_through(self, data_format, same_on_frame, device, dtype):
+        aug_list = K.VideoSequential(
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0),
+            K.RandomAffine(360, p=0.0),
+            data_format=data_format,
+            same_on_frame=same_on_frame,
+        )
+        shape = (2, 3, 4, 5, 6) if data_format == "BCTHW" else (2, 4, 3, 5, 6)
+        input = torch.rand(*shape, device=device, dtype=dtype)
+        assert_close(aug_list(input), input, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
         "augmentations",
@@ -529,11 +534,6 @@ class TestVideoSequential:
             assert torch.equal(pairs[..., frame] % frame_num, torch.full_like(pairs[..., frame], frame))
             assert torch.equal(pairs[..., frame] // frame_num, pairs[..., 0] // frame_num)
             assert torch.equal(boxes[:, :, frame], boxes[:, :, 0])
-
-    def test_cutmix_not_same_on_frame_still_runs(self, device, dtype):
-        aug = K.VideoSequential(K.RandomCutMixV2(p=1.0, use_correct_lambda=True), same_on_frame=False)
-        video = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
-        assert aug(video).shape == video.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("frame_num", [1, 4])

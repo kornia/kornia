@@ -1433,7 +1433,8 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             assert torch.equal(params[name][0], params[name][1]), name
 
 
-class TestCenterCropGen(RandomGeneratorBaseTests):
+# A centre crop draws nothing, so it has no same_on_batch behaviour to pin and does not take the generator base.
+class TestCenterCropGen:
     @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [200])
@@ -1482,9 +1483,6 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_close(res["src"].to(device=device), expected["src"])
         assert_close(res["dst"].to(device=device), expected["dst"])
-
-    def test_same_on_batch(self):
-        pass
 
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):

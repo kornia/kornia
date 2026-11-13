@@ -220,19 +220,21 @@ class TestAugmentationBase2D(BaseTester):
             # output = augmentation((input, input_transform))
             # assert output is expected_output
 
-    def test_gradcheck(self, device):
+    # p=1.0 takes the static path that returns apply_transform's output; p=0.5 blends it with the skipped sample.
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_gradcheck(self, p, device):
         torch.manual_seed(42)
 
-        input = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
-        output = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
-        input_transform = torch.rand((1, 3, 3), device=device, dtype=torch.float64)
+        input = torch.rand((2, 1, 3, 3), device=device, dtype=torch.float64)
+        input_transform = torch.rand((2, 3, 3), device=device, dtype=torch.float64)
 
-        input_param = {"batch_prob": torch.tensor([True]), "x": input_transform, "y": {}}
+        input_param = {"batch_prob": torch.tensor([True, False]), "x": input_transform, "y": {}}
 
-        augmentation = AugmentationBase2D(p=1.0)
+        augmentation = AugmentationBase2D(p=p)
 
+        # The patched transform depends on its input, so a gradient that does not reach the input is caught.
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
-            apply_transform.return_value = output
+            apply_transform.side_effect = lambda input, params, flags, transform=None: 2 * input.flip(-1)
             self.gradcheck(augmentation, ((input, input_param)))
 
 

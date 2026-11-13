@@ -57,28 +57,12 @@ import kornia.augmentation as K
 from kornia.core._compat import torch_version_ge
 
 
-def _hflip() -> torch.nn.Module:
-    return K.RandomHorizontalFlip(p=1.0)
-
-
-def _vflip() -> torch.nn.Module:
-    return K.RandomVerticalFlip(p=1.0)
-
-
 def _color_jiggle() -> torch.nn.Module:
     return K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)
 
 
 def _brightness() -> torch.nn.Module:
     return K.RandomBrightness(brightness=(0.5, 1.5), p=1.0)
-
-
-def _grayscale() -> torch.nn.Module:
-    return K.RandomGrayscale(p=1.0)
-
-
-def _invert() -> torch.nn.Module:
-    return K.RandomInvert(p=1.0)
 
 
 def _gaussian_blur() -> torch.nn.Module:
@@ -117,10 +101,6 @@ def _solarize() -> torch.nn.Module:
     return K.RandomSolarize(0.1, p=1.0)
 
 
-def _normalize() -> torch.nn.Module:
-    return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
-
-
 def _affine() -> torch.nn.Module:
     return K.RandomAffine(degrees=10.0, p=1.0)
 
@@ -143,19 +123,16 @@ def _augmentation_sequential() -> torch.nn.Module:
     )
 
 
-# Augmentations that export today through the legacy TorchScript tracer at opset 20.
+# Augmentations that export today through the legacy TorchScript tracer at opset 20. The parameter-free ones
+# (RandomHorizontalFlip, RandomVerticalFlip, RandomGrayscale, RandomInvert, Normalize) export the same module in
+# ``ONNX_NUMERICAL_EQUIVALENT`` below, which also checks the exported numbers, so they are listed only there.
 EXPORTABLE_OPS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
-    ("RandomHorizontalFlip", _hflip),
-    ("RandomVerticalFlip", _vflip),
     ("ColorJiggle", _color_jiggle),
     ("RandomBrightness", _brightness),
-    ("RandomGrayscale", _grayscale),
-    ("RandomInvert", _invert),
     ("RandomGaussianBlur", _gaussian_blur),
     ("RandomErasing", _erasing),
     ("RandomPosterize", _posterize),
     ("RandomSolarize", _solarize),
-    ("Normalize", _normalize),
     # Geometric augmentations enabled by:
     #   - bumping opset to 20 (for ``affine_grid_generator``)
     #   - the closed-form 3x3 inverse in ``kornia.core.utils._inverse_3x3_closed_form``
@@ -263,7 +240,8 @@ def _invert_det() -> torch.nn.Module:
 
 
 def _normalize_det() -> torch.nn.Module:
-    return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
+    # A zero mean and a unit std are the identity, which an export that dropped the op would also reproduce.
+    return K.Normalize(mean=torch.tensor([0.1, -0.2, 0.3]), std=torch.tensor([0.5, 2.0, 0.25]))
 
 
 def _brightness_det() -> torch.nn.Module:

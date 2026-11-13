@@ -404,7 +404,8 @@ class TestPatchSequentialRegression(BaseTester):
             same_on_batch=same_on_batch,
             padding=padding,
         )
-        x = torch.full((2, 3, 5, 7), 0.5, device=device, dtype=dtype)
+        # A constant image would hide whether the replay applies the saved flips.
+        x = torch.rand(2, 3, 5, 7, generator=torch.Generator().manual_seed(0)).to(device, dtype)
         out = seq(x)
         params = seq._params
         monkeypatch.setattr(seq, "forward_parameters", lambda _: pytest.fail("Replay must not draw parameters"))

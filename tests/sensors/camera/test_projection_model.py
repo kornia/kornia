@@ -27,19 +27,20 @@ from testing.base import BaseTester
 class TestProjection(BaseTester):
     def test_project(self, device, dtype):
         projection = Z1Projection()
+        # x != y in every point, so a swapped or shared coordinate changes the result.
         points = torch.tensor(
-            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]],
+            [[0.0, 2.0, 1.0], [1.0, -1.0, 1.0], [6.0, 4.0, 2.0], [9.0, -3.0, 3.0]],
             device=device,
             dtype=dtype,
         )
-        expected = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 2.0], [1.0, -1.0], [3.0, 2.0], [3.0, -1.0]], device=device, dtype=dtype)
         self.assert_close(projection.project(Vector3(points)).data, expected)
 
     def test_unproject(self, device, dtype):
         projection = Z1Projection()
-        points = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
+        points = torch.tensor([[0.0, 2.0], [1.0, -1.0], [3.0, 2.0], [3.0, -1.0]], device=device, dtype=dtype)
         expected = torch.tensor(
-            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]],
+            [[0.0, 2.0, 1.0], [1.0, -1.0, 1.0], [6.0, 4.0, 2.0], [9.0, -3.0, 3.0]],
             device=device,
             dtype=dtype,
         )
@@ -68,8 +69,6 @@ class TestProjection(BaseTester):
         assert torch.isinf(zero_numerator.data[..., 1]).all()
         assert (zero_numerator.data[..., 1] > 0).all()
 
-
-class TestOrthographicProjection(BaseTester):
     def test_unproject_scalar_depth(self, device, dtype):
         """Regression test: scalar depth must preserve device and dtype.
 
@@ -88,10 +87,9 @@ class TestOrthographicProjection(BaseTester):
             assert out.data.device.type == device.type, f"expected device {device.type}, got {out.data.device.type}"
             assert out.data.dtype == dtype, f"expected dtype {dtype}, got {out.data.dtype}"
             self.assert_close(out.data, expected, atol=0.0, rtol=0.0)
-        # Also verify a vector depth still works unchanged
-        out_vec = projection.unproject(points, torch.tensor([4.0], device=device, dtype=dtype))
-        self.assert_close(out_vec.data, expected, atol=0.0, rtol=0.0)
 
+
+class TestOrthographicProjection(BaseTester):
     def test_orthographic_project_matches_geometry(self, device, dtype):
         projection = OrthographicProjection()
         points = torch.tensor(

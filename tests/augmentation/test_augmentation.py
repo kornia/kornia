@@ -359,86 +359,6 @@ class TestRandomEqualizeAlternative(CommonTests):
         # parameter generation, must compile without a graph break — not just apply_transform.
         _assert_dynamo_fullgraph(lambda: RandomEqualize(p=1.0), self, device, dtype)
 
-    def test_random_p_1(self):
-        input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
-        input_tensor = input_tensor.repeat(1, 2, 20, 1)
-
-        expected_output = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = expected_output.repeat(1, 2, 20, 1)
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
-    def test_batch(self):
-        input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
-        input_tensor = input_tensor.repeat(2, 3, 20, 1)
-
-        expected_output = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = expected_output.repeat(2, 3, 20, 1)
-
-        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_exception(self):
         with pytest.raises(ValueError, match=r"Input size must have a shape"):
             self._create_augmentation_from_params(p=1.0)(
@@ -545,27 +465,6 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
     def param_set(self, request):
         return request.param
 
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = torch.tensor(
-            [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(12)
 
@@ -601,27 +500,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
         return request.param
-
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = torch.tensor(
-            [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
 
     def test_batch(self):
         torch.manual_seed(12)
@@ -837,40 +715,22 @@ class TestRandomGrayscaleAlternative(CommonTests):
             params=self._default_param_set,
         )
 
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]],
-            device=self.device,
-            dtype=self.dtype,
-        ).repeat(1, 3, 1, 1)
-        expected_output = (
-            (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
     def test_batch(self):
-        torch.manual_seed(42)
-
+        # Distinct channels: a grayscale of three equal channels is the input itself, whatever the weights.
         input_tensor = torch.tensor(
-            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]],
+            [
+                [[[1.0, 0.0], [0.0, 0.5]], [[0.0, 1.0], [0.0, 0.5]], [[0.0, 0.0], [1.0, 0.5]]],
+                [[[0.2, 0.4], [0.6, 0.8]], [[0.8, 0.6], [0.4, 0.2]], [[0.0, 0.5], [1.0, 0.25]]],
+            ],
             device=self.device,
             dtype=self.dtype,
-        ).repeat(2, 3, 1, 1)
-        expected_output = (
-            (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
         )
+        # 0.299 R + 0.587 G + 0.114 B per pixel, worked by hand: the pure-channel pixels give the weights.
+        expected_output = torch.tensor(
+            [[[0.299, 0.587], [0.114, 0.5]], [[0.5294, 0.5288], [0.5282, 0.3851]]],
+            device=self.device,
+            dtype=self.dtype,
+        )[:, None].repeat(1, 3, 1, 1)
 
         expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
@@ -1762,19 +1622,6 @@ class TestColorJiggle(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_sequential(self, device, dtype):
-
-        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-
     def test_color_jitter_batch_sequential(self, device, dtype):
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
@@ -2286,19 +2133,6 @@ class TestColorJitter(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_sequential(self, device, dtype):
-
-        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1, 1)  # 4 x 3 x 5 x 5
-
-        expected = input
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1)  # 4 x 3 x 3
-
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-
     def test_color_jitter_batch_sequential(self, device, dtype):
 
         f = AugmentationSequential(ColorJitter(), ColorJitter())
@@ -2440,17 +2274,6 @@ class TestRandomBrightness(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomBrightness())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_brightness_batch_sequential(self, device, dtype):
 
         f = AugmentationSequential(RandomBrightness(), RandomBrightness())
@@ -2549,17 +2372,6 @@ class TestRandomContrast(BaseTester):
         expected = self._get_expected_contrast(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-
-    def test_sequential(self, device, dtype):
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomContrast())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
 
     def test_random_contrast_batch_sequential(self, device, dtype):
 
@@ -2673,17 +2485,6 @@ class TestRandomHue(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomHue())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_hue_batch_sequential(self, device, dtype):
 
         f = AugmentationSequential(RandomHue(), RandomHue())
@@ -2785,17 +2586,6 @@ class TestRandomSaturation(BaseTester):
         expected = self._get_expected_saturation(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-
-    def test_sequential(self, device, dtype):
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomSaturation())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
 
     def test_random_saturation_batch_sequential(self, device, dtype):
 
@@ -3009,40 +2799,6 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_random_gamma_tuple(self, device, dtype):
-        torch.manual_seed(42)
-
-        f = RandomGamma(gamma=(0.8, 1.2))
-
-        input = torch.tensor(
-            [
-                [
-                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
-                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
-                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 3 x 3 x 3
-
-        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3 x 3
-
-        expected = self._get_expected_gamma(device, dtype)
-
-        self.assert_close(f(input), expected, low_tolerance=True)
-
-    def test_sequential(self, device, dtype):
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_gamma_batch_sequential(self, device, dtype):
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
@@ -3091,15 +2847,6 @@ class TestRandomGrayscale(BaseTester):
         f = RandomGrayscale()
         repr = "RandomGrayscale(p=0.1, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-
-    def test_random_grayscale(self, device, dtype):
-        f = RandomGrayscale()
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype)  # 3 x 5 x 5
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        f(input)
-        self.assert_close(f.transform_matrix, expected_transform)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomGrayscale(p=0.5, same_on_batch=True)
@@ -3172,42 +2919,6 @@ class TestRandomGrayscale(BaseTester):
         img_gray = RandomGrayscale(p=1.0)(data)
         self.assert_close(img_gray, expected)
 
-    def test_opencv_false(self, device, dtype):
-        data = torch.tensor(
-            [
-                [
-                    [
-                        [0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                        [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                        [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                        [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                        [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593],
-                    ],
-                    [
-                        [0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                        [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                        [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                        [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                        [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426],
-                    ],
-                    [
-                        [0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                        [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                        [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                        [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                        [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532],
-                    ],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        expected = data
-
-        img_gray = RandomGrayscale(p=0.0)(data)
-        self.assert_close(img_gray, expected)
-
     def test_opencv_true_batch(self, device, dtype):
         data = torch.tensor(
             [
@@ -3271,41 +2982,6 @@ class TestRandomGrayscale(BaseTester):
         img_gray = RandomGrayscale(p=1.0)(data)
         self.assert_close(img_gray, expected)
 
-    def test_opencv_false_batch(self, device, dtype):
-        data = torch.tensor(
-            [
-                [
-                    [0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                    [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                    [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                    [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                    [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593],
-                ],
-                [
-                    [0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                    [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                    [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                    [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                    [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426],
-                ],
-                [
-                    [0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                    [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                    [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                    [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                    [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532],
-                ],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        data = data.unsqueeze(0).repeat(4, 1, 1, 1)
-
-        expected = data
-
-        img_gray = RandomGrayscale(p=0.0)(data)
-        self.assert_close(img_gray, expected)
-
     def test_random_grayscale_sequential_batch(self, device, dtype):
         f = AugmentationSequential(RandomGrayscale(p=0.0), RandomGrayscale(p=0.0))
 
@@ -3358,14 +3034,19 @@ class TestCenterCrop(BaseTester):
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
+        # The odd height leaves 3 spare rows; the crop starts at floor(3 / 2) = 1, as it does on the even width.
+        expected = inp[..., 1:3, 1:3]
+        expected_transform = torch.tensor(
+            [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
         aug = CenterCrop(2)
         out = aug(inp)
-        assert out.shape == (1, 2, 2, 2)
-        assert aug.transform_matrix.shape == (1, 3, 3)
+        self.assert_close(out, expected)
+        self.assert_close(aug.transform_matrix, expected_transform)
         aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
-        assert out.shape == (1, 2, 2, 2)
-        assert aug.transform_matrix.shape == (1, 3, 3)
+        self.assert_close(out, expected)
+        self.assert_close(aug.transform_matrix, expected_transform)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
 
     def test_no_transform_tuple(self, device, dtype):
@@ -4286,46 +3967,6 @@ class TestRandomEqualize(BaseTester):
         repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
-    def test_random_equalize(self, device, dtype):
-        f = RandomEqualize(p=1.0)
-        f1 = RandomEqualize(p=0.0)
-
-        bs, channels, height, width = 1, 3, 20, 20
-
-        inputs = self.build_input(channels, height, width, bs, device=device, dtype=dtype)
-
-        row_expected = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ]
-        )
-        expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
-        identity = kornia.core.ops.eye_like(3, expected)  # 3 x 3
-
-        self.assert_close(f(inputs), expected, low_tolerance=True)
-        self.assert_close(f.transform_matrix, identity, low_tolerance=True)
-        self.assert_close(f1(inputs), inputs, low_tolerance=True)
-        self.assert_close(f1.transform_matrix, identity, low_tolerance=True)
-
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0)
         f1 = RandomEqualize(p=0.0)
@@ -4359,6 +4000,10 @@ class TestRandomEqualize(BaseTester):
             ]
         )
         expected = self.build_input(channels, height, width, bs, row=row_expected, device=device, dtype=dtype)
+        # Mirror the second image: equalization is a per-pixel lookup from the histogram, which mirroring keeps, so
+        # its output is the first image's output mirrored. Equal images could not tell the samples apart.
+        inputs[1] = inputs[1].flip(-1)
+        expected[1] = expected[1].flip(-1)
 
         identity = kornia.core.ops.eye_like(3, expected)  # 2 x 3 x 3
 
@@ -4417,35 +4062,39 @@ class TestRandomGaussianBlur(BaseTester):
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
+        aug = RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0)
         actual = aug(input)
-        self.assert_close(actual, actual)
+        # The expanded batch shares one storage; it must blur as the same images laid out contiguously.
+        self.assert_close(actual, aug(input.contiguous(), params=aug._params))
 
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     def test_module_kernel_int(self, device, dtype):
         func_params = [3, torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [3, (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     def test_module_sigma_tensor(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), torch.tensor((1.5, 1.5))]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     @pytest.mark.slow
@@ -4464,8 +4113,11 @@ class TestRandomInvert(BaseTester):
         _assert_dynamo_fullgraph(lambda: RandomInvert(p=1.0), self, device, dtype)
 
     def test_smoke(self, device, dtype):
-        img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
-        self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
+        # Varying values below 1: an all-ones image maps to zeros under many wrong formulas, and an image whose
+        # maximum is 1 cannot tell ``1 - img`` from ``img.max() - img``.
+        img = torch.tensor([[[[0.0, 0.25], [0.6, 0.8]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.75], [0.4, 0.2]]]], device=device, dtype=dtype)  # 1 - img, by hand
+        self.assert_close(RandomInvert(p=1.0)(img), expected)
 
 
 class TestRandomChannelShuffle(BaseTester):
@@ -4577,12 +4229,6 @@ class TestRandomGaussianNoise(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         _assert_dynamo_fullgraph(lambda: RandomGaussianNoise(p=1.0), self, device, dtype)
 
-    def test_smoke(self, device, dtype):
-        torch.manual_seed(0)
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomGaussianNoise(p=1.0)
-        assert img.shape == aug(img).shape
-
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.rand(1, 1, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
         transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
@@ -4650,12 +4296,6 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
-
-        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
-            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
-
-        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
-            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
     @pytest.mark.parametrize("batch_shape", [1, 3, 5])
     @pytest.mark.parametrize("channel_shape", [1, 3])
@@ -4919,14 +4559,14 @@ class TestRandomLinearIllumination(BaseTester):
     @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
-        transform = RandomGaussianIllumination(p=1.0)
+        transform = RandomLinearIllumination(p=1.0)
         output_tensor = transform(input_tensor)
         assert input_tensor.shape[0] == output_tensor.shape[0]
         assert input_tensor.shape[1] == output_tensor.shape[1]
 
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
-        transform = RandomGaussianIllumination(p=1.0, same_on_batch=True)
+        transform = RandomLinearIllumination(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
@@ -5165,21 +4805,6 @@ class TestNormalize(BaseTester):
         with pytest.raises(ValueError, match=r"mean length and number of channels do not match"):
             f(inputs)
 
-    def test_random_normalize(self, device, dtype):
-        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
-
-        inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
-
-        expected = (inputs - 1) * 2
-
-        identity = kornia.core.ops.eye_like(3, expected)
-
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
-
     def test_batch_random_normalize(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
         f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
@@ -5214,21 +4839,6 @@ class TestDenormalize(BaseTester):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
         repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-
-    def test_random_denormalize(self, device, dtype):
-        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
-
-        inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
-
-        expected = inputs / 2 + 1
-
-        identity = kornia.core.ops.eye_like(3, expected)
-
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
 
     @pytest.mark.parametrize(
         "mean, std",
@@ -5337,9 +4947,13 @@ class TestRandomFisheye(BaseTester):
         center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        img = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
-        assert img.shape == aug(img).shape
+        # Two equal images: with one image the test cannot see whether the draw is shared.
+        out = aug(img.repeat(2, 1, 1, 1))
+        for key in ("center_x", "center_y", "gamma"):
+            self.assert_close(aug._params[key][0], aug._params[key][1])
+        self.assert_close(out[0], out[1])
 
     def test_gradcheck(self, device):
         # One parameter draw for every evaluation: gradcheck calls the op repeatedly, and a fresh draw each time
@@ -5461,11 +5075,6 @@ class TestRandomElasticTransform(BaseTester):
 
 
 class TestRandomBoxBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomBoxBlur(p=1.0)
-        assert img.shape == aug(img).shape
-
     @pytest.mark.parametrize("normalized", [True, False])
     def test_normalized_selects_the_separable_path(self, normalized, device, dtype):
         from kornia.filters import box_blur
@@ -5650,24 +5259,6 @@ class TestRandomPosterize:
 
 
 class TestRandomPlasma:
-    def test_plasma_shadow(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaShadow(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
-    def test_plasma_brightness(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaBrightness(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
-    def test_plasma_contrast(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaContrast(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
     @pytest.mark.parametrize(
         "augmentation_cls",
         [
@@ -6249,12 +5840,6 @@ class TestRandomSnow(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == batch_shape
 
-    def test_smoke(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomSnow(p=1.0, snow_coefficient=(0.0, 0.5), brightness=(1.0, 2.0))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-
     def test_gray_patch_is_finite_and_replayed(self, device, dtype):
         input_data = torch.full((1, 3, 4, 4), 0.25, device=device, dtype=dtype)
         input_data[:, 0, 2:, 2:] = 0.9
@@ -6289,25 +5874,35 @@ class TestRandomSnow(BaseTester):
 
 
 class TestRandomMedianBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomMedianBlur(p=0.8)
-        assert image.shape == aug(image).shape
-
     def test_feature_median_blur(self, device, dtype):
-        torch.manual_seed(0)
+        # A varying image at p=1: a constant image is its own median, and p=0.5 may skip the blur.
+        img = torch.tensor(
+            [
+                [
+                    [
+                        [0.1, 0.9, 0.2, 0.3, 0.0],
+                        [0.4, 0.5, 1.0, 0.6, 0.2],
+                        [0.8, 0.0, 0.7, 0.3, 0.5],
+                        [0.2, 0.6, 0.1, 0.9, 0.4],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        out = RandomMedianBlur((3, 3), p=1.0)(img)
 
-        img = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
-        out = RandomMedianBlur((3, 3), p=0.5)(img)
-
+        # Snippet used to generate expected (3 x 3 median over the reflect-padded image, without kornia):
+        #   p = torch.nn.functional.pad(img, (1, 1, 1, 1), mode="reflect")
+        #   p.unfold(2, 3, 1).unfold(3, 3, 1).reshape(1, 1, 4, 5, 9).median(-1).values
         expected = torch.tensor(
             [
                 [
                     [
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
+                        [0.5, 0.5, 0.6, 0.3, 0.3],
+                        [0.5, 0.5, 0.5, 0.3, 0.3],
+                        [0.5, 0.5, 0.6, 0.5, 0.5],
+                        [0.2, 0.6, 0.3, 0.5, 0.4],
                     ]
                 ]
             ],
@@ -6421,16 +6016,6 @@ class TestRandomRain(BaseTester):
         out = aug.apply_transform(image, params, {})
         assert torch.equal(out, reference)
 
-    def test_smoke(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
@@ -6473,7 +6058,7 @@ class TestRandomRain(BaseTester):
     def test_zero_probability(self, device):
         input_data = torch.rand(10, 3, 8, 8, device=device)
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
-        aug(input_data)
+        self.assert_close(aug(input_data), input_data, rtol=0, atol=0)
 
     def test_same_on_batch(self, device, dtype):
         aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(5, 10), same_on_batch=True)

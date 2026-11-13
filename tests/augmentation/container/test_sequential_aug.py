@@ -46,23 +46,24 @@ class TestSequential:
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
 
+    # The setters never read random_apply; test_forward constructs the container with every random_apply value.
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 20, True, False])
-    def test_construction(self, same_on_batch, keepdim, random_apply):
+    def test_construction(self, same_on_batch, keepdim):
         aug = K.ImageSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUpV2(p=1.0),
             same_on_batch=same_on_batch,
             keepdim=keepdim,
-            random_apply=random_apply,
         )
-        aug.same_on_batch = True
-        aug.keepdim = True
-        for m in aug.children():
-            assert m.same_on_batch is True, m.same_on_batch
-            assert m.keepdim is True, m.keepdim
+        # Set each value in turn, so a setter that leaves the constructor's value in place cannot pass.
+        for value in (True, False):
+            aug.same_on_batch = value
+            aug.keepdim = value
+            for m in aug.children():
+                assert m.same_on_batch is value, m.same_on_batch
+                assert m.keepdim is value, m.keepdim
 
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, random_apply, device, dtype):
