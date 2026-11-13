@@ -519,8 +519,8 @@ def adjust_gamma(
     if isinstance(gain, float):
         gain = torch.tensor([gain], device=input.device, dtype=input.dtype)
 
-    gamma = gamma.to(input.device).to(input.dtype)
-    gain = gain.to(input.device).to(input.dtype)
+    gamma = _to_device_nonblocking(gamma, input.device, input.dtype)
+    gain = _to_device_nonblocking(gain, input.device, input.dtype)
 
     _check_async(
         (gamma >= 0.0).all(),
@@ -926,14 +926,14 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         # One threshold serves the whole batch, as documented, whatever its shape (#6547). It is
         # moved and cast as the per-sample path below does, which a (1,) tensor with a batch of 1 took before.
         if len(thresholds.shape) != 0:
-            thresholds = _to_device_nonblocking(thresholds, input.device).to(input.dtype)
+            thresholds = _to_device_nonblocking(thresholds, input.device, input.dtype)
         thresholds = thresholds.reshape(())
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # Reshape the per-sample threshold to broadcast over (C, H, W) rather than iterating the
         # tensor (`for x in thresholds` breaks torch.compile); the `where` below broadcasts identically.
-        thresholds = _to_device_nonblocking(thresholds, input.device).to(input.dtype)
+        thresholds = _to_device_nonblocking(thresholds, input.device, input.dtype)
         thresholds = thresholds.view([-1] + [1] * (input.ndim - 1))
 
     return torch.where(input < thresholds, input, 1.0 - input)
@@ -1022,14 +1022,14 @@ def solarize(
             # One addition serves the whole batch, as documented, whatever its shape (#6547). It is
             # moved and cast as the per-sample path below does, which a (1,) tensor with a batch of 1 took before.
             if len(additions.shape) != 0:
-                additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
+                additions = _to_device_nonblocking(additions, input.device, input.dtype)
             additions = additions.reshape(())
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # Broadcast the per-sample scalar over (C, H, W) by reshaping instead of iterating the
             # tensor (`for x in additions` breaks the graph); numerically identical.
-            additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
+            additions = _to_device_nonblocking(additions, input.device, input.dtype)
             additions = additions.view([-1] + [1] * (input.ndim - 1))
         input = _clamp_unit_range(input + additions)
 

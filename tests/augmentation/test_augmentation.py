@@ -2718,6 +2718,26 @@ class TestRectangleRandomErasing(BaseTester):
         input = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(rand_rec, (input, rect_params))
 
+    def test_float64_default_with_input_on_device(self, device):
+        # The augmentation is not moved, so its parameters stay on the CPU in the default dtype and the boxes cross to
+        # the input's device. With a float64 default they crossed as float64, which MPS does not have.
+        image = torch.rand(2, 3, 11, 7, device=device)
+        mask = torch.ones(2, 1, 11, 7, device=device)
+        seq = kornia.augmentation.AugmentationSequential(
+            RandomErasing(scale=(0.1, 0.3), p=1.0), data_keys=["input", "mask"]
+        )
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            out_image, out_mask = seq(image, mask)
+            expected_image, expected_mask = seq(image.cpu(), mask.cpu(), params=seq._params)
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert out_image.device == device
+        assert (out_mask == 0).any()
+        self.assert_close(out_image.cpu(), expected_image, rtol=0, atol=0)
+        self.assert_close(out_mask.cpu(), expected_mask, rtol=0, atol=0)
+
 
 class TestRandomGamma(BaseTester):
     # return values such a Tensor variable.
