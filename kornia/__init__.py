@@ -132,4 +132,4 @@ def __getattr__(name: str) -> Any:
 
 
 # Version variable
-__version__ = "0.9.1.dev"
+__version__ = "0.9.1"
