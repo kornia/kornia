@@ -24,21 +24,14 @@ from testing.base import BaseTester
 
 
 class TestRescale(BaseTester):
-    def test_smoke(self, device, dtype):
-        r = Rescale(0.5).to(device, dtype)
-        x = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
-        assert isinstance(r(x), torch.Tensor)
-
-    def test_cardinality(self, device, dtype):
-        r = Rescale(2.0).to(device, dtype)
-        x = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
-        assert r(x).shape == x.shape
-
-    def test_float_factor(self, device, dtype):
-        r = Rescale(0.5).to(device, dtype)
-        x = torch.ones(1, 1, 2, 2, device=device, dtype=dtype) * 4.0
-        expected = torch.ones(1, 1, 2, 2, device=device, dtype=dtype) * 2.0
-        self.assert_close(r(x), expected)
+    @pytest.mark.parametrize("factor, shape", [(0.5, (1, 3, 4, 4)), (2.0, (2, 3, 5, 5))])
+    def test_float_factor(self, device, dtype, factor, shape):
+        r = Rescale(factor).to(device, dtype)
+        x = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
+        actual = r(x)
+        assert isinstance(actual, torch.Tensor)
+        assert actual.shape == x.shape
+        self.assert_close(actual, x * factor)
 
     def test_tensor_factor(self, device, dtype):
         factor = torch.tensor(3.0, device=device, dtype=dtype)
@@ -68,11 +61,6 @@ class TestRescale(BaseTester):
         r = Rescale(factor)
         x = torch.rand(1, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(r, (x,))
-
-    def test_module(self, device, dtype):
-        r1 = Rescale(2.0).to(device, dtype)
-        x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
-        self.assert_close(r1(x), x * 2.0)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         r = Rescale(0.5).to(device, dtype)

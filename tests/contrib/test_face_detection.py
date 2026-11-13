@@ -34,10 +34,6 @@ class TestFaceDetection(BaseTester):
         return kornia.contrib.FaceDetector().to(device, dtype)
 
     @pytest.mark.slow
-    def test_smoke(self, device, dtype):
-        assert kornia.contrib.FaceDetector().to(device, dtype) is not None
-
-    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
@@ -47,7 +43,6 @@ class TestFaceDetection(BaseTester):
         assert isinstance(dets, list)
         assert len(dets) == batch_size  # same as the number of images
         assert isinstance(dets[0], torch.Tensor)
-        assert dets[0].shape[0] >= 0  # number of detections
         assert dets[0].shape[1] == 15  # dims of each detection
 
     @pytest.mark.slow

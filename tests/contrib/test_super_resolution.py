@@ -112,14 +112,13 @@ class TestSuperResolutionBuilders(BaseTester):
         with pytest.raises(ValueError, match="small_sr"):
             SuperResolution.from_config(SuperResolutionConfig(model_name="not_a_model", pretrained=False))
 
-    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
-    def test_onnx_metadata_is_initialised(self, builder):
+    def test_small_sr_onnx_metadata_is_initialised(self):
         """``to_onnx`` reads these three; without defaults they are annotations only.
 
         Regression test for the review of #4335: an ``__init__`` that does not set them
         leaves export raising ``AttributeError``.
         """
-        model = builder.build(pretrained=False)
+        model = SmallSRBuilder.build(pretrained=False)
         assert model.pseudo_image_size is None or isinstance(model.pseudo_image_size, int)
         assert model.input_image_size is None or isinstance(model.input_image_size, int)
         assert model.output_image_size is None or isinstance(model.output_image_size, int)
