@@ -4884,11 +4884,15 @@ class TestNormalize(BaseTester):
         actual = torch.stack([scalar(img)[0, 0, 0, 0], per_channel(img)[0, 2, 1, 2]])
         expected = torch.tensor([-0.8965517241379312, -0.026666666666665208], device=device, dtype=torch.float64)
         self.assert_close(actual, expected, rtol=1e-12, atol=0.0)
+        # The expected values divide by a float64 tensor, as Normalize does: CUDA computes a tensor divided by a Python
+        # number as a product with its reciprocal, which can miss the correctly rounded quotient by 1 ulp.
+        std = torch.tensor(0.29, device=device, dtype=torch.float64)
         scalar.flags["mean"] = torch.tensor([0.5])
-        self.assert_close(scalar(img), (img - 0.5) / 0.29, rtol=0.0, atol=0.0)
-        self.assert_close(scalar(img, mean=0.25), (img - 0.25) / 0.29, rtol=0.0, atol=0.0)
+        self.assert_close(scalar(img), (img - 0.5) / std, rtol=0.0, atol=0.0)
+        self.assert_close(scalar(img, mean=0.25), (img - 0.25) / std, rtol=0.0, atol=0.0)
         del scalar._mean_numbers, scalar._std_numbers
-        self.assert_close(scalar(img), (img - 0.5) / float(torch.tensor(0.29)), rtol=0.0, atol=0.0)
+        std_rounded_to_float32 = torch.tensor(0.29).to(device=device, dtype=torch.float64)
+        self.assert_close(scalar(img), (img - 0.5) / std_rounded_to_float32, rtol=0.0, atol=0.0)
 
     def test_float64_statistics_keep_their_gradient(self, device):
         # The exact numbers pass the gradient on to the flags they stand for, as the flags themselves do in float32.
