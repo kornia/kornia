@@ -1008,11 +1008,13 @@ class TestRandomMosaic(BaseTester):
         assert out_boxes.shape == (2, 8 if any(applied) else 2, 4)
         for b in (b for b, selected in enumerate(applied) if not selected):
             # A skipped sample sits unscaled in the top-left corner of the zero canvas and keeps its boxes,
-            # followed by zero padding up to the mosaic box count.
+            # followed by zero padding up to the mosaic box count. Sample 1's [0, 0, 0, 0] placeholder is left out:
+            # it comes back as [-1, -1, 1, 1], which is not pinned here.
             self.assert_close(out_image[b, :, :224, :224], input[b], rtol=0, atol=0)
             assert out_image[b, :, 224:].count_nonzero() == 0
             assert out_image[b, :, :, 224:].count_nonzero() == 0
-            self.assert_close(out_boxes[b, :1], boxes[b, :1], rtol=0, atol=0)
+            num_real_boxes = 2 if b == 0 else 1
+            self.assert_close(out_boxes[b, :num_real_boxes], boxes[b, :num_real_boxes], rtol=0, atol=0)
             assert out_boxes[b, 2:].count_nonzero() == 0
 
 
