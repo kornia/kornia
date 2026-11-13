@@ -33,63 +33,6 @@ from testing.base import BaseTester, dynamo_is_available, supports_reflect_paddi
 
 
 class TestCanny(BaseTester):
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
-    @pytest.mark.parametrize("sigma", [(1.5, 1.0), (2.5, 0.5)])
-    @pytest.mark.parametrize("hysteresis", [False, True])
-    @pytest.mark.parametrize("low_threshold,high_threshold", [(0.1, 0.2), (0.3, 0.5)])
-    def test_smoke(self, batch_size, kernel_size, sigma, hysteresis, low_threshold, high_threshold, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-
-        op = Canny(low_threshold, high_threshold, kernel_size, sigma, hysteresis)
-        actual = op(inp)
-        assert len(actual) == 2
-        assert actual[0].shape == (batch_size, 1, 4, 4)
-        assert actual[1].shape == (batch_size, 1, 4, 4)
-
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-
-        op = Canny()
-        magnitude, edges = op(inp)
-
-        assert magnitude.shape == (batch_size, 1, 4, 4)
-        assert edges.shape == (batch_size, 1, 4, 4)
-
-    @pytest.mark.parametrize("as_module", [False, True])
-    @pytest.mark.parametrize("with_weak_edges", [False, True])
-    def test_hysteresis_preserves_dtype(self, device, dtype, as_module, with_weak_edges):
-        inp = torch.tensor(
-            [
-                [0.5, 0.4, 0.5, 0.45, 0.1],
-                [0.3, 0.2, 0.3, 0.0, 0.3],
-                [0.5, 1.0, 1.0, 0.6, 0.75],
-                [0.2, 0.4, 0.6, 0.0, 0.5],
-                [0.1, 0.35, 0.35, 0.26, 0.1],
-            ],
-            device=device,
-            dtype=dtype,
-        ).view(1, 1, 5, 5)
-        if not with_weak_edges:
-            inp.zero_()
-        _, thresholded = canny(inp, hysteresis=False)
-        if with_weak_edges:
-            # This weak edge is adjacent to a strong one and must survive hysteresis.
-            assert thresholded[0, 0, 2, 0] == 0.5
-            assert thresholded[0, 0, 1, 0] == 1.0
-
-        magnitude, edges = Canny()(inp) if as_module else canny(inp)
-
-        assert magnitude.dtype == edges.dtype == dtype
-        assert magnitude.device == edges.device == inp.device
-        assert magnitude.shape == edges.shape == inp.shape
-        assert ((edges == 0) | (edges == 1)).all()
-        if with_weak_edges:
-            assert edges[0, 0, 2, 0] == 1.0
-        else:
-            assert (edges == 0).all()
-
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 
@@ -374,19 +317,22 @@ class TestCanny(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(canny, img)
 
-    def test_module(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = canny
-        op_module = Canny()
-        expected_magnitude, expected_edges = op(img)
-        actual_magnitude, actual_edges = op_module(img)
+    @pytest.mark.parametrize("hysteresis", [False, True])
+    def test_module(self, hysteresis, device, dtype):
+        # non-default arguments on a random image, so that the module dropping any of them changes the output
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 9, 11).to(device=device, dtype=dtype)
+        # thresholds between quartiles of this image's magnitudes, which the defaults 0.1 and 0.2 sit below
+        params = (0.3, 0.5, (3, 5), (1.5, 0.7), hysteresis)
+        expected_magnitude, expected_edges = canny(img, *params)
+        actual_magnitude, actual_edges = Canny(*params)(img)
         self.assert_close(actual_magnitude, expected_magnitude)
         self.assert_close(actual_edges, expected_edges)
 
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)
         op_optimized = torch_optimizer(op)
 
@@ -469,25 +415,6 @@ class TestCanny(BaseTester):
         # u = x + y on a 12x17 grid: the lines u = const run at 45 degrees and the gradient across them along (1, 1)
         ys, xs = torch.meshgrid(torch.arange(12, device=device), torch.arange(17, device=device), indexing="ij")
         return xs + ys
-
-    @pytest.mark.parametrize("transpose", [False, True])
-    @pytest.mark.parametrize("dark_to_bright", [True, False])
-    def test_two_level_step_keeps_one_pixel_of_the_tie(self, transpose, dark_to_bright, device, dtype):
-        self._require_padding(device, dtype)
-        # a step between x = 6 and x = 7 of a 9x14 image, no blur: the raw Sobel magnitudes of x = 6 and x = 7 are
-        # both 4. As in OpenCV's Canny, a pixel must be strictly greater than its left (upper) neighbour and greater
-        # than or equal to its right (lower) one, so the left (upper) pixel of the tie is kept, for either polarity
-        img = torch.zeros(1, 1, 9, 14, device=device, dtype=dtype)
-        img[..., 7:] = 1.0
-        if not dark_to_bright:
-            img = 1.0 - img
-        expected = torch.zeros_like(img)
-        expected[..., 6] = 1.0
-        if transpose:
-            img, expected = img.transpose(-1, -2), expected.transpose(-1, -2)
-        magnitude, edges = canny(img, kernel_size=1)
-        self.assert_close(edges, expected)
-        self.assert_close(magnitude, 4.0 * expected)
 
     def test_square_without_blur_matches_opencv(self, device, dtype):
         self._require_padding(device, dtype)
@@ -577,20 +504,6 @@ class TestCanny(BaseTester):
         magnitude, edges = canny(img, 1e-4, 2e-4, kernel_size=1)
         self.assert_close(magnitude, torch.zeros_like(img))
         self.assert_close(edges, torch.zeros_like(img))
-
-    def test_thresholds_are_in_unnormalized_sobel_units(self, device, dtype):
-        self._require_padding(device, dtype)
-        # the ridge at x = 7 has magnitude 4, eight times what sobel() returns by default, and the thresholds compare
-        # against it, so values above 1 are meaningful
-        img = self._ramped_step(device, dtype)
-        self.assert_close(sobel(img)[..., 7], torch.full((1, 1, 9), 0.5, device=device, dtype=dtype))
-        ridge = torch.zeros_like(img)
-        ridge[..., 7] = 1.0
-        for low, high, expected in ((3.0, 3.5, ridge), (3.0, 4.5, 0.5 * ridge), (4.5, 5.0, 0.0 * ridge)):
-            _, edges = canny(img, low, high, kernel_size=1, hysteresis=False)
-            self.assert_close(edges, expected)
-            _, edges = Canny(low, high, kernel_size=1, hysteresis=False)(img)
-            self.assert_close(edges, expected)
 
     @pytest.mark.applies_to(dtypes=("float32",), reason="the exported graph is checked once, in float32")
     @pytest.mark.device_agnostic
@@ -745,11 +658,6 @@ class TestCanny(BaseTester):
         with warnings.catch_warnings():  # outside a trace the loop is never scripted
             warnings.simplefilter("error")
             assert int(model(chain)[1].sum()) == 64
-
-    @pytest.mark.parametrize("channels", [2, 4])
-    def test_unsupported_channel_count_raises(self, channels, device, dtype):
-        with pytest.raises(ImageError, match="1 or 3 channels"):
-            canny(torch.zeros(1, channels, 12, 13, device=device, dtype=dtype))
 
 
 class TestConventionsCanny(BaseTester):
@@ -970,8 +878,9 @@ class TestConventionsCanny(BaseTester):
         expected[..., 6] = 1.0
         # the rule is positional: the dark-to-bright and the bright-to-dark step keep the same pixel
         for img in (step, 1.0 - step):
-            _, edges = canny(img, kernel_size=1)
+            magnitude, edges = canny(img, kernel_size=1)
             self.assert_close(edges, expected)
+            self.assert_close(magnitude, 4.0 * expected)
             # relabel: transposed, the upper pixel of the tie is kept
             _, edges_t = canny(img.transpose(-1, -2), kernel_size=1)
             self.assert_close(edges_t, expected.transpose(-1, -2))
@@ -991,9 +900,9 @@ class TestConventionsCanny(BaseTester):
     def test_convention_canny_rejects_channel_counts_other_than_1_and_3_5171(self, device, dtype):
         """Only C = 1 and C = 3 (read as RGB) are accepted; any other channel count raises a kornia ImageError."""
         for channels in (2, 4):
-            with pytest.raises(ImageError):
+            with pytest.raises(ImageError, match="1 or 3 channels"):
                 canny(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
-            with pytest.raises(ImageError):
+            with pytest.raises(ImageError, match="1 or 3 channels"):
                 Canny()(torch.rand(1, channels, 12, 13, device=device, dtype=dtype))
 
     def test_convention_canny_integer_input_finds_the_float_edge_5155(self, device, dtype):

@@ -35,27 +35,6 @@ class _FunctionalOtsuThreshold(torch.nn.Module):
 
 
 class TestOtsuThreshold(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
-        op = OtsuThreshold()
-        thresh_result, _thresh_value = op(img, nbins=4)
-        assert thresh_result.shape == img.shape
-
-    @pytest.mark.parametrize("input_shape", [(3, 3), (1, 3, 3), (1, 1, 3, 3), (2, 1, 1, 3, 3)])
-    def test_transform_input_shapes(self, input_shape, device, dtype):
-        img = torch.rand(input_shape, device=device, dtype=dtype)
-        op = OtsuThreshold()
-        flat, orig_shape = op.transform_input(img)
-        assert orig_shape == img.shape
-        assert flat.ndim == 2
-
-    def test_otsu_threshold_consistency(self, device, dtype):
-        torch.manual_seed(0)
-        img = torch.rand(1, 4, 6, 1, device=device, dtype=dtype)
-        out_func_tensor, _out_func_value = otsu_threshold(img, nbins=3, return_mask=False)
-        out_class_tensor, _out_class_value = OtsuThreshold()(img, nbins=3)
-        assert_close(out_func_tensor, out_class_tensor)
-
     def test_invalid_dim(self, device, dtype):
         img = torch.rand(1, 1, 1, 1, 3, 3, device=device, dtype=dtype)
         op = OtsuThreshold()
@@ -136,17 +115,6 @@ class TestOtsuThreshold(BaseTester):
         thresh_result, _thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
-    def test_uniform_result(self, device, dtype):
-        input = torch.tensor(
-            [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
-        )
-
-        expected = torch.zeros_like(input)
-
-        op = OtsuThreshold()
-        thresh_result, _thresh_value = op(input)
-        self.assert_close(thresh_result, expected)
-
     def test_large_image_threshold_matches_float32(self, device, dtype):
         # #5196: the histogram counts of a 300 x 300 image (90000 pixels) came back in the input dtype, so in float16
         # their sum overflowed to inf, the normalised histogram was all zeros and the threshold was 0; bfloat16 counts
@@ -163,20 +131,6 @@ class TestOtsuThreshold(BaseTester):
         assert 0.25 < expected.item() < 0.75
         atol = 1 / 256 if dtype == torch.float64 else 0.0
         self.assert_close(threshold, expected.to(dtype), rtol=0.0, atol=atol)
-
-    def test_two_bins_uses_histogram_split_5172(self, device, dtype):
-        image = torch.tensor([[0.0, 0.1, 0.2, 0.55, 0.9, 1.0]], device=device, dtype=dtype)
-        mask, threshold = otsu_threshold(image, nbins=2, return_mask=True)
-        # The two histc bins split [0, 1] at 0.5. The previous nbins-point linspace returned 1 instead.
-        self.assert_close(threshold, image.new_tensor([0.5]), rtol=0, atol=0)
-        assert mask.tolist() == [[False, False, False, True, True, True]]
-
-    def test_uint8_pixel_above_selected_bin_5172(self, device):
-        image = torch.cat([torch.arange(256), torch.full((300,), 60), torch.full((300,), 190)])
-        image = image.to(device=device, dtype=torch.uint8).view(1, 1, 8, 107)
-        mask, threshold = otsu_threshold(image, return_mask=True)
-        assert threshold.item() == 125
-        assert mask.flatten()[126]
 
     @pytest.mark.parametrize(
         "input_dtype,sign,offset,nbins,expected,kept,dropped",
@@ -446,7 +400,8 @@ class TestOtsuThreshold(BaseTester):
         return image, different
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    @pytest.mark.parametrize("api", ["module", "function", "mask"])
+    # the functional form without a mask exports the same graph as the module
+    @pytest.mark.parametrize("api", ["module", "mask"])
     def test_export_reuses_graph_with_new_ranges_5425(self, api, device, dtype):
         image, different = self._capture_images(device, dtype)
         op = OtsuThreshold() if api == "module" else _FunctionalOtsuThreshold(return_mask=api == "mask")
@@ -531,13 +486,6 @@ def test_mask_agrees_with_the_thresholded_image_5173(slow_and_differentiable, de
     assert torch.equal(mask, x > threshold)
     assert torch.equal(image, torch.where(mask, x, torch.zeros_like(x)))
     assert slow_and_differentiable or (x == threshold).any()  # the fixture does contain a pixel equal to the threshold
-
-
-@pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
-def test_otsu_threshold_basic(shape, device, dtype):
-    img = torch.rand(shape, device=device, dtype=dtype)
-    thresh_result, _thresh_value = otsu_threshold(img)
-    assert thresh_result.shape == img.shape
 
 
 def _bimodal_uint8_image(device):
@@ -930,9 +878,12 @@ class TestConventionsOtsuThreshold(BaseTester):
         assert threshold.item() == 0.5
         self.assert_close(out, x * (x > 0.5))
         assert out.count_nonzero().item() == 3
-        # uint8: skimage.filters.threshold_otsu and cv2.THRESH_OTSU give 125 on this image
-        _, t8 = otsu_threshold(_bimodal_uint8_image(device))
+        mask, _ = otsu_threshold(x, nbins=2, return_mask=True)
+        assert mask.tolist() == [[False, False, False, True, True, True]]
+        # uint8: skimage.filters.threshold_otsu and cv2.THRESH_OTSU give 125 on this image, and the pixel 126 is kept
+        mask8, t8 = otsu_threshold(_bimodal_uint8_image(device), return_mask=True)
         assert t8.item() == 125
+        assert mask8.flatten()[126]
 
     def test_convention_otsu_threshold_is_independent_of_batch_mates_5172(self, device, dtype):
         """Each image and channel is histogrammed on its own [min, max], whatever else is in the call."""

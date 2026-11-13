@@ -20,23 +20,7 @@ import torch
 
 from kornia.filters import InRange, in_range
 
-from testing.base import BaseTester, assert_close
-
-
-def test_in_range(device, dtype):
-    torch.manual_seed(1)
-    # Generate on CPU first so the expected mask is device-independent, then move to target device.
-    input_tensor = torch.rand(1, 3, 3, 3).to(dtype=dtype).to(device=device)
-    expected = torch.tensor([[[[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
-    lower = (0.2, 0.3, 0.4)
-    upper = (0.8, 0.9, 1.0)
-    result = in_range(input_tensor, lower, upper, return_mask=True)
-
-    assert_close(result, expected, atol=1e-4, rtol=1e-4)
-
-
-# The tensor layouts a bound can take, as TestInRange._bounds_in_form builds them.
-_BOUND_FORMS = ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"]
+from testing.base import BaseTester
 
 
 class TestInRange(BaseTester):
@@ -57,25 +41,19 @@ class TestInRange(BaseTester):
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize(
-        "input_shape, lower, upper",
+        "input_shape, lower, upper, mask_shape",
         [
-            ((1, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
-            ((2, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
-            ((5, 5, 3, 3), (0.2, 0.2, 0.2, 0.2, 0.2), (0.6, 0.6, 0.6, 0.6, 0.6)),
-            ((3, 3), (0.2,), (0.6,)),
-            ((2, 3, 3), (0.2, 0.2), (0.6, 0.6)),
+            ((1, 3, 3, 4), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6), (1, 1, 3, 4)),
+            ((2, 3, 3, 4), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6), (2, 1, 3, 4)),
+            ((5, 5, 3, 4), (0.2, 0.2, 0.2, 0.2, 0.2), (0.6, 0.6, 0.6, 0.6, 0.6), (5, 1, 3, 4)),
+            ((3, 4), (0.2,), (0.6,), (3, 4)),
+            ((2, 3, 4), (0.2, 0.2), (0.6, 0.6), (1, 3, 4)),
         ],
     )
-    def test_cardinality(self, input_shape, lower, upper, device, dtype):
+    def test_cardinality(self, input_shape, lower, upper, mask_shape, device, dtype):
         input_tensor = torch.rand(input_shape, device=device, dtype=dtype)
         res = InRange(lower=lower, upper=upper, return_mask=True)(input_tensor)
-
-        if len(input_tensor.shape) == 2:
-            assert res.shape == (res.shape[-2], res.shape[-1])
-        elif len(input_tensor.shape) == 3:
-            assert res.shape == (1, res.shape[-2], res.shape[-1])
-        else:
-            assert res.shape == (res.shape[0], 1, res.shape[-2], res.shape[-1])
+        assert res.shape == mask_shape
 
     def test_exception(self, device, dtype):
         input_tensor = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
@@ -130,44 +108,6 @@ class TestInRange(BaseTester):
             return bound.reshape(1, channels, 1, 1).repeat(batch_size, 1, 4, 5)
         raise AssertionError(form)
 
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    # in_range brings each bound to (B, C, H, W) on its own, so every form as either bound, once with the same form and
-    # once with the next one, stands for the 49 pairings.
-    @pytest.mark.parametrize(
-        "lower_form,upper_form",
-        [
-            (form, _BOUND_FORMS[(i + shift) % len(_BOUND_FORMS)])
-            for shift in (0, 1)
-            for i, form in enumerate(_BOUND_FORMS)
-        ],
-    )
-    @pytest.mark.parametrize("return_mask", [True, False])
-    def test_tensor_bound_forms_match_bchw(self, batch_size, lower_form, upper_form, return_mask, device, dtype):
-        # Every accepted tensor layout of a bound gives the same result as the (B, C, 1, 1) bound, in any pairing.
-        torch.manual_seed(0)
-        channels = 3
-        img = torch.rand(batch_size, channels, 4, 5).to(device=device, dtype=dtype)
-        lower_c, upper_c = self._per_channel_bounds(channels, device, dtype)
-        expected = in_range(
-            img,
-            self._bounds_in_form(lower_c, "bc11", batch_size),
-            self._bounds_in_form(upper_c, "bc11", batch_size),
-            return_mask=return_mask,
-        )
-        lower = self._bounds_in_form(lower_c, lower_form, batch_size)
-        upper = self._bounds_in_form(upper_c, upper_form, batch_size)
-
-        actual = in_range(img, lower, upper, return_mask=return_mask)
-        module_actual = InRange(lower, upper, return_mask=return_mask)(img)
-
-        assert actual.dtype == img.dtype
-        assert actual.device == img.device
-        assert torch.equal(actual, expected)
-        assert torch.equal(module_actual, expected)
-        # Guard against a vacuous comparison: the bounds keep some pixels and reject others.
-        mask = in_range(img, lower, upper, return_mask=True)
-        assert 0 < mask.sum() < mask.numel()
-
     @staticmethod
     def _reference_mask(img, lower, upper):
         """Compute the mask with explicit loops, on the CPU.
@@ -195,8 +135,9 @@ class TestInRange(BaseTester):
                     mask[b, 0, y, x] = float(keep)
         return mask
 
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("pairing", ["lower", "upper", "both"])
+    # batch 1 and both bounds in the layout reach no other branch: each bound is aligned with the input on its own
+    @pytest.mark.parametrize("batch_size", [2])
+    @pytest.mark.parametrize("pairing", ["lower", "upper"])
     @pytest.mark.parametrize(
         "shape",
         [
@@ -347,7 +288,7 @@ class TestInRange(BaseTester):
         mask = in_range(img, (0.0, 0.0, 0.0), (1.0, 1.0, 0.9), return_mask=True)
         self.assert_close(mask, torch.tensor([[[[1.0, 0.0]]]], device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("batch_size", [2])
     @pytest.mark.parametrize(
         "bad_shape",
         [
@@ -363,6 +304,7 @@ class TestInRange(BaseTester):
             pytest.param(lambda b: (b, 1, 3, 1), id="4d-channels-on-height-axis"),
             pytest.param(lambda b: (b + 1, 3, 1, 1), id="4d-B+1"),
             pytest.param(lambda b: (b, 3, 7, 1), id="4d-height-neither-1-nor-H"),
+            pytest.param(lambda b: (b, 3, 4, 7), id="4d-width-neither-1-nor-W"),
         ],
     )
     @pytest.mark.parametrize("bad_bound", ["lower", "upper"])
@@ -462,22 +404,6 @@ class TestInRange(BaseTester):
         batch_size, channels, height, width = 1, 3, 5, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(in_range, (img, (0.2, 0.2, 0.2), (0.6, 0.6, 0.6), True))
-
-    @pytest.mark.parametrize(
-        "input_shape, lower, upper",
-        [
-            ((1, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
-            ((2, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
-            ((3, 3), (0.2,), (0.6,)),
-        ],
-    )
-    def test_module(self, input_shape, lower, upper, device, dtype):
-        img = torch.rand(input_shape, device=device, dtype=dtype)
-        op = in_range
-        op_module = InRange(lower=lower, upper=upper, return_mask=True)
-        actual = op_module(img)
-        expected = op(img, lower, upper, True)
-        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):

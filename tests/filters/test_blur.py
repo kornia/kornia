@@ -30,14 +30,6 @@ blur_module = importlib.import_module("kornia.filters.blur")
 
 class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    def test_smoke(self, kernel_size, device, dtype):
-        data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
-
-        bb = BoxBlur(kernel_size, "reflect")
-        actual = bb(data)
-        assert actual.shape == (1, 1, 10, 10)
-
-    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_separable(self, batch_size, kernel_size, device, dtype):
         data = torch.randn(batch_size, 3, 10, 10, device=device, dtype=dtype)
@@ -48,7 +40,9 @@ class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("kernel_size", [(2, 4), (4, 3), (3, 5), (1, 5), (5, 1), (1, 1)])
     @pytest.mark.parametrize("separable", [False, True])
-    def test_pooling_matches_convolution(self, border_type, kernel_size, separable, device, dtype):
+    def test_pooling_matches_convolution(self, border_type, kernel_size, separable, monkeypatch, device, dtype):
+        # with oneDNN, small CPU inputs skip pooling for convolution; without the patch this compares filter2d to itself
+        monkeypatch.setattr(blur_module, "_HAS_MKLDNN", False)
         data = torch.randn(2, 3, 8, 9, device=device, dtype=dtype).transpose(-1, -2)
 
         actual = box_blur(data, kernel_size, border_type, separable=separable)
@@ -65,7 +59,9 @@ class TestBoxBlur(BaseTester):
 
     @pytest.mark.parametrize("separable", [False, True])
     @pytest.mark.parametrize("border_type", ["reflect", "constant"])
-    def test_pooling_nonfinite(self, separable, border_type, device):
+    def test_pooling_nonfinite(self, separable, border_type, monkeypatch, device):
+        # with oneDNN, small CPU inputs skip pooling for convolution; without the patch this compares filter2d to itself
+        monkeypatch.setattr(blur_module, "_HAS_MKLDNN", False)
         data = torch.zeros(1, 1, 7, 8, device=device)
         data[0, 0, 1, 1] = float("inf")
         data[0, 0, 3, 4] = float("nan")
@@ -81,7 +77,9 @@ class TestBoxBlur(BaseTester):
     @pytest.mark.applies_to(devices=("cpu",), reason="The data-dependent fallback is specific to eager CPU execution")
     @pytest.mark.parametrize("separable", [False, True])
     @pytest.mark.parametrize("value", ["large", "inf", "nan"])
-    def test_extreme_cpu_values_match_convolution(self, separable, value, device, dtype):
+    def test_extreme_cpu_values_match_convolution(self, separable, value, monkeypatch, device, dtype):
+        # with oneDNN, small CPU inputs skip pooling for convolution; without the patch this compares filter2d to itself
+        monkeypatch.setattr(blur_module, "_HAS_MKLDNN", False)
         fill = torch.finfo(dtype).max / 2 if value == "large" else float(value)
         data = torch.full((1, 1, 7, 9), fill, device=device, dtype=dtype)
         if separable:
@@ -241,15 +239,6 @@ class TestBoxBlur(BaseTester):
             box_blur(data, (1,))
         assert "2D Kernel size should have a length of 2." in str(errinfo)
 
-    @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_cardinality(self, batch_size, kernel_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-        blur = BoxBlur(kernel_size)
-        actual = blur(inp)
-        expected = (batch_size, 3, 4, 4)
-        assert actual.shape == expected
-
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_kernel_3x3(self, batch_size, device, dtype):
         inp = torch.tensor(
@@ -348,7 +337,7 @@ class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("border_type", ["reflect", "constant"])
     def test_dynamo(self, batch_size, kernel_size, separable, border_type, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = BoxBlur(kernel_size, border_type, separable=separable)
         op_optimized = torch_optimizer(op)
 
