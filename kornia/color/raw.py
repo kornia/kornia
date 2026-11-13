@@ -179,7 +179,8 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # This is done on all samples but result for the known green samples is then overwritten by the input
     g_up = F.conv2d(gpadded, kernel)
     # Keep the output's promoted dtype when copying measured samples into an autocast result.
-    g_up = g_up.to(torch.promote_types(image.dtype, g_up.dtype))
+    if g_up.dtype != image.dtype:
+        g_up = g_up.to(torch.promote_types(image.dtype, g_up.dtype))
 
     # overwrite the already known samples which otherwise have values from r/b
     # this depends on the CFA configuration
