@@ -33,22 +33,6 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dy
 
 
 class TestOneHot:
-    def test_smoke(self, device, dtype):
-        num_classes = 4
-        labels = torch.zeros(2, 2, 1, dtype=torch.int64, device=device)
-        labels[0, 0, 0] = 0
-        labels[0, 1, 0] = 1
-        labels[1, 0, 0] = 2
-        labels[1, 1, 0] = 3
-
-        # convert labels to one hot tensor
-        one_hot_tensor = one_hot(labels, num_classes, device, dtype)
-
-        assert_close(one_hot_tensor[0, labels[0, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot_tensor[0, labels[0, 1, 0], 1, 0].item(), 1.0)
-        assert_close(one_hot_tensor[1, labels[1, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot_tensor[1, labels[1, 1, 0], 1, 0].item(), 1.0)
-
     def test_exact_values(self, device, dtype):
         labels = torch.tensor([[[0, 2, 1], [1, 0, 0]]], device=device)
         expected = F.one_hot(labels, 3).movedim(-1, 1).to(dtype)

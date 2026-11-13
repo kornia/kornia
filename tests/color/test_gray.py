@@ -25,11 +25,6 @@ from testing.base import BaseTester, assert_close
 
 
 class TestGrayscaleToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 1, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.grayscale_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
@@ -107,7 +102,7 @@ class TestGrayscaleToRgb(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.grayscale_to_rgb
         op_optimized = torch_optimizer(op)
         assert_close(op(img), op_optimized(img))
@@ -121,26 +116,12 @@ class TestGrayscaleToRgb(BaseTester):
 
 
 class TestRgbToGrayscale(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_grayscale(img)
-        assert out.device == img.device
-        assert out.dtype == img.dtype
-
     def test_jit_script(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op_jit = torch.jit.script(kornia.color.rgb_to_grayscale)
         self.assert_close(op_jit(img), kornia.color.rgb_to_grayscale(img))
         module_jit = torch.jit.script(kornia.color.RgbToGrayscale())
         self.assert_close(module_jit(img), kornia.color.rgb_to_grayscale(img))
-
-    def test_smoke_byte(self, device):
-        C, H, W = 3, 4, 5
-        img = torch.randint(0, 255, (C, H, W), device=device, dtype=torch.uint8)
-        out = kornia.color.rgb_to_grayscale(img)
-        assert out.device == img.device
-        assert out.dtype == img.dtype
 
     def test_uint8_primaries(self, device):
         white = torch.full((3, 1, 1), 255, device=device, dtype=torch.uint8)
@@ -246,13 +227,14 @@ class TestRgbToGrayscale(BaseTester):
         assert_close(img_gray, expected)
 
     def test_custom_rgb_weights(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        # Pure red, green and blue pixels read back the three weights; a grey pixel would hide which weight goes
+        # with which channel.
+        img = torch.eye(3, device=device, dtype=dtype).view(3, 1, 3).expand(2, 3, 1, 3)
 
-        rgb_weights = torch.tensor([0.5, 0.25, 0.25])
+        rgb_weights = torch.tensor([0.5, 0.25, 0.125])
         img_gray = kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
-        assert img_gray.device == device
-        assert img_gray.dtype == dtype
+        expected = torch.tensor([0.5, 0.25, 0.125], device=device, dtype=dtype).view(1, 1, 1, 3).expand(2, 1, 1, 3)
+        self.assert_close(img_gray, expected)
 
     def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
@@ -263,17 +245,10 @@ class TestRgbToGrayscale(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
         op_optimized = torch_optimizer(op)
         assert_close(op(img), op_optimized(img))
-
-    def test_module(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        gray_ops = kornia.color.RgbToGrayscale().to(device, dtype)
-        gray_fcn = kornia.color.rgb_to_grayscale
-        assert_close(gray_ops(img), gray_fcn(img))
 
     def test_module_default_weights_are_the_functional_defaults_5109(self, device, dtype):
         # The module stored float32 default weights and passed them explicitly, so rgb_to_grayscale cast them to the
@@ -302,11 +277,6 @@ class TestRgbToGrayscale(BaseTester):
 
 
 class TestBgrToGrayscale(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert kornia.color.bgr_to_grayscale(img) is not None
-
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
@@ -382,14 +352,14 @@ class TestBgrToGrayscale(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = kornia.color.rgb_to_grayscale
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.bgr_to_grayscale
         op_optimized = torch_optimizer(op)
         assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         gray_ops = kornia.color.BgrToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.bgr_to_grayscale
         assert_close(gray_ops(img), gray_fcn(img))

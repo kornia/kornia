@@ -25,11 +25,6 @@ from testing.base import BaseTester
 
 
 class TestRgbToLab(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_lab(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -101,9 +96,7 @@ class TestRgbToLab(BaseTester):
 
         if dtype in (torch.float16, torch.bfloat16):
             # The literal reference above predates input quantization; isolate arithmetic error on half inputs.
-            expected = kornia.color.rgb_to_lab(data.to(device="cpu", dtype=torch.float64)).to(
-                device=device, dtype=dtype
-            )
+            expected = kornia.color.rgb_to_lab(data.cpu().double()).to(device=device, dtype=dtype)
         self.assert_close(kornia.color.rgb_to_lab(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
@@ -114,7 +107,7 @@ class TestRgbToLab(BaseTester):
         data_out = lab(rgb(data, clip=False))
         if dtype in (torch.float16, torch.bfloat16):
             # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
-            wide = data.to(device="cpu", dtype=torch.float64)
+            wide = data.cpu().double()
             reference = lab(rgb(wide, clip=False).to(dtype).double()).to(device=device, dtype=dtype)
             self.assert_close(data_out, reference)
         else:
@@ -127,7 +120,7 @@ class TestRgbToLab(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_lab
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -141,11 +134,6 @@ class TestRgbToLab(BaseTester):
 
 
 class TestLabToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.lab_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -247,14 +235,10 @@ class TestLabToRgb(BaseTester):
         )
 
         if dtype in (torch.float16, torch.bfloat16):
-            expected = kornia.color.lab_to_rgb(data.to(device="cpu", dtype=torch.float64)).to(
-                device=device, dtype=dtype
-            )
+            expected = kornia.color.lab_to_rgb(data.cpu().double()).to(device=device, dtype=dtype)
         self.assert_close(kornia.color.lab_to_rgb(data), expected)
         if dtype in (torch.float16, torch.bfloat16):
-            expected_unclipped = kornia.color.lab_to_rgb(data.to(device="cpu", dtype=torch.float64), clip=False).to(
-                device=device, dtype=dtype
-            )
+            expected_unclipped = kornia.color.lab_to_rgb(data.cpu().double(), clip=False).to(device=device, dtype=dtype)
         self.assert_close(kornia.color.lab_to_rgb(data, clip=False), expected_unclipped)
 
     def test_forth_and_back(self, device, dtype):
@@ -265,7 +249,7 @@ class TestLabToRgb(BaseTester):
         unclipped_data_out = rgb(lab(data), clip=False)
         if dtype in (torch.float16, torch.bfloat16):
             # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
-            wide = data.to(device="cpu", dtype=torch.float64)
+            wide = data.cpu().double()
             reference = rgb(lab(wide).to(dtype).double(), clip=False).to(device=device, dtype=dtype)
             self.assert_close(unclipped_data_out, reference)
         else:
@@ -279,7 +263,7 @@ class TestLabToRgb(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.lab_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))

@@ -29,21 +29,6 @@ from testing.base import BaseTester, supports_topk
 
 
 class TestAccuracy:
-    def test_smoke(self, device):
-        logits = torch.tensor([[0.0, 1.0, 2.0]], device=device)
-        target = torch.tensor([2], device=device)
-        assert accuracy(logits, target)[0].item() == 100.0
-
-    def test_smoke_with_batch(self, device):
-        logits = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], device=device)
-        target = torch.tensor([2, 0], device=device)
-        assert accuracy(logits, target)[0].item() == 100.0
-
-    def test_smoke_with_target_shape_b_1(self, device):
-        logits = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], device=device)
-        target = torch.tensor([[2], [0]], device=device)
-        assert accuracy(logits, target)[0].item() == 100.0
-
     def test_topk(self, device):
         logits = torch.tensor([[0.0, 3.0, 1.0, 2.0]], device=device)
         target = torch.tensor([1], device=device)

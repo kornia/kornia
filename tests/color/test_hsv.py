@@ -27,11 +27,6 @@ from testing.base import BaseTester
 
 
 class TestRgbToHsv(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_hsv(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -169,7 +164,7 @@ class TestRgbToHsv(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_hsv
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -189,11 +184,6 @@ class TestRgbToHsv(BaseTester):
 
 
 class TestHsvToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.hsv_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -359,7 +349,7 @@ class TestHsvToRgb(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.hsv_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))

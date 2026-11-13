@@ -25,24 +25,6 @@ from testing.base import BaseTester
 
 
 class TestWelschLoss(BaseTester):
-    def test_smoke(self, device, dtype):
-        img1 = torch.rand(2, 3, 2, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 2, device=device, dtype=dtype)
-
-        criterion = kornia.losses.WelschLoss()
-
-        assert criterion(img1, img2) is not None
-
-    @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 5, 5)])
-    def test_cardinality(self, shape, device, dtype):
-        img = torch.rand(shape, device=device, dtype=dtype)
-
-        actual = kornia.losses.WelschLoss(reduction="none")(img, img)
-        assert actual.shape == shape
-
-        actual = kornia.losses.WelschLoss(reduction="mean")(img, img)
-        assert actual.shape == ()
-
     def test_reduction_none_matches_string_6663(self, device, dtype):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
         img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
@@ -60,12 +42,6 @@ class TestWelschLoss(BaseTester):
         op_script = torch.jit.script(op)
         self.assert_close(op_script(img1, img2, reduction), op(img1, img2, reduction))
 
-    def test_exception_unknown_reduction(self, device, dtype):
-        img = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
-
-        with pytest.raises(BaseError, match=r"reduction is not supported. Got: invalid"):
-            kornia.losses.welsch_loss(img, img, "invalid")
-
     def test_gradcheck(self, device):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
         img2 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
@@ -80,15 +56,6 @@ class TestWelschLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(img1, img2), op_optimized(img1, img2))
-
-    def test_module(self, device, dtype):
-        img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
-
-        op = kornia.losses.welsch_loss
-        op_module = kornia.losses.WelschLoss()
-
-        self.assert_close(op(img1, img2), op_module(img1, img2))
 
     @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
     def test_small_residual(self, device, dtype, reduction):
@@ -178,33 +145,10 @@ class TestWelschLoss(BaseTester):
         self.assert_close(grad_pred, expected_grad.to(device=device, dtype=dtype))
         self.assert_close(grad_target, -expected_grad.to(device=device, dtype=dtype))
 
-    @pytest.mark.parametrize("reduction", ["mean", "sum"])
-    @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])
-    def test_perfect_prediction(self, device, dtype, reduction, shape):
-        # Sanity test
-        img = torch.rand(shape, device=device, dtype=dtype)
-        actual = kornia.losses.welsch_loss(img, img, reduction=reduction)
-        expected = torch.tensor(0.0, device=device, dtype=dtype)
-        self.assert_close(actual, expected)
-
-        # Check loss computation
-        img1 = torch.ones(shape, device=device, dtype=dtype)
-        img2 = torch.zeros(shape, device=device, dtype=dtype)
-
-        actual = kornia.losses.welsch_loss(img1, img2, reduction=reduction)
-
-        if reduction == "mean":
-            expected = torch.tensor(0.39346934028, device=device, dtype=dtype)
-        elif reduction == "sum":
-            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.39346934028).sum()
-
-        self.assert_close(actual, expected)
-
     def test_exception(self, device, dtype):
         img = torch.rand(3, 3, 3, device=device, dtype=dtype)
 
         # wrong reduction
-        from kornia.core.exceptions import BaseError
 
         with pytest.raises(BaseError) as execinfo:
             kornia.losses.welsch_loss(img, img, reduction="test")

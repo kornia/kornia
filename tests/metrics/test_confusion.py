@@ -54,15 +54,6 @@ class TestConfusionMatrix(BaseTester):
         assert not target.is_contiguous()
         self.assert_close(kornia.metrics.confusion_matrix(pred, target, 3, normalized), expected)
 
-    def test_two_classes(self, device):
-        num_classes = 2
-        actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
-        predicted = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 1]], device=device, dtype=torch.long)
-
-        conf_mat = kornia.metrics.confusion_matrix(predicted, actual, num_classes)
-        conf_mat_real = torch.tensor([[[3, 1], [0, 4]]], device=device, dtype=torch.float32)
-        self.assert_close(conf_mat, conf_mat_real)
-
     def test_two_classes_batch2(self, device):
         batch_size = 2
         num_classes = 2

@@ -88,15 +88,6 @@ class TestLovaszSoftmaxLoss(BaseTester):
         loss.backward()
         assert logits.grad.shape == logits.shape
 
-    def test_smoke(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 1) * num_classes
-        labels = labels.to(device).long()
-
-        criterion = kornia.losses.LovaszSoftmaxLoss()
-        assert criterion(logits, labels) is not None
-
     def test_exception(self):
         from kornia.core.exceptions import ShapeError
 
@@ -311,17 +302,6 @@ class TestLovaszSoftmaxLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(logits, labels), op_optimized(logits, labels))
-
-    def test_module(self, device, dtype):
-        num_classes = 5
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
-
-        op = kornia.losses.lovasz_softmax_loss
-        op_module = kornia.losses.LovaszSoftmaxLoss()
-
-        self.assert_close(op(logits, labels), op_module(logits, labels))
 
 
 class TestConventionsLovaszSoftmaxLoss(BaseTester):

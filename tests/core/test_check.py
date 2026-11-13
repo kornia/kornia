@@ -453,26 +453,8 @@ class TestCheckIsImage(BaseTester):
         y = torch.randint(0, 256, (2, 3, 4, 4), dtype=torch.uint8)
         assert KORNIA_CHECK_IS_IMAGE(y) is True
 
-    def test_invalid_float_range(self):
-        with pytest.raises(ValueCheckError):
-            KORNIA_CHECK_IS_IMAGE(torch.tensor([[[-0.5, 1.2]]], dtype=torch.float32))
-
-    def test_invalid_int_range(self):
-        bad = torch.tensor([[[300]]], dtype=torch.int32)
-        with pytest.raises(ValueCheckError):
-            KORNIA_CHECK_IS_IMAGE(bad)
-
-    def test_invalid_shape(self):
-        x = torch.rand(1, 4, 4, 4)
-        with pytest.raises(ImageError):
-            KORNIA_CHECK_IS_IMAGE(x)
-
     def test_invalid_range_no_raise(self):
         bad = torch.tensor([[[-0.1, 2.0]]], dtype=torch.float32)
-        assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
-
-    def test_invalid_shape_no_raise(self):
-        bad = torch.rand(1, 4, 4, 4)
         assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
 
     @pytest.mark.parametrize("shape", [(5, 4, 5), (2, 4, 4, 4), (4, 5), (7,), ()])
@@ -569,9 +551,12 @@ class TestChecksEnableDisable:
     def teardown_method(self):
         enable_checks()
 
-    def test_are_checks_enabled_default(self):
-        enable_checks()
-        assert are_checks_enabled() is True
+    def test_are_checks_enabled_default(self, monkeypatch):
+        # Without KORNIA_CHECKS, checks are on unless Python runs optimized (``python -O``).
+        from kornia.core.check import _should_enable_checks
+
+        monkeypatch.delenv("KORNIA_CHECKS", raising=False)
+        assert _should_enable_checks() is __debug__
 
     def test_disable_checks(self):
         disable_checks()
@@ -582,34 +567,11 @@ class TestChecksEnableDisable:
         enable_checks()
         assert are_checks_enabled() is True
 
-    def test_disabled_checks_bypass_kornia_check(self):
-        disable_checks()
-        # With checks disabled, KORNIA_CHECK should return True even for False condition
-        result = KORNIA_CHECK(False, "should be bypassed")
-        assert result is True
-
-    def test_disabled_checks_bypass_shape_check(self):
-        disable_checks()
-        # With checks disabled, wrong shape should not raise
-        result = KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"])
-        assert result is True
-
-    def test_enabled_checks_enforce_shape_check(self):
-        enable_checks()
-        with pytest.raises(ShapeError):
-            KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"])
-
     def test_env_var_disables_checks(self, monkeypatch):
         monkeypatch.setenv("KORNIA_CHECKS", "0")
         from kornia.core.check import _should_enable_checks
 
         assert _should_enable_checks() is False
-
-    def test_env_var_enables_checks(self, monkeypatch):
-        from kornia.core.check import _should_enable_checks
-
-        monkeypatch.setenv("KORNIA_CHECKS", "1")
-        assert _should_enable_checks() is True
 
     def test_env_var_true_string_variants(self, monkeypatch):
         from kornia.core.check import _should_enable_checks

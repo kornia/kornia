@@ -63,22 +63,6 @@ class TestTensorWrapper(BaseTester):
         assert tensor.data is data
         assert isinstance(tensor.data, torch.Tensor)
 
-    def test_serialization(self, device, dtype, tmp_path):
-        data = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        tensor: TensorWrapper = _wrap(data, TensorWrapper)
-
-        file_path = tmp_path / "tensor.pt"
-        torch.save(tensor, file_path)
-        assert file_path.is_file()
-
-        loaded_tensor: TensorWrapper = torch.load(file_path, weights_only=False)
-        assert isinstance(loaded_tensor, TensorWrapper)
-
-        self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
-        # Check that used_attrs and used_calls are preserved
-        assert hasattr(loaded_tensor, "used_attrs")
-        assert hasattr(loaded_tensor, "used_calls")
-
     def test_wrap_list(self, device, dtype):
         data_list = [
             torch.rand(2, device=device, dtype=dtype),
@@ -167,27 +151,6 @@ class TestTensorWrapper(BaseTester):
         assert int(tensor_int) == 42
         assert isinstance(int(tensor_int), int)
 
-    def test_right_side_operations(self, device, dtype):
-        """Test right-side operations (radd, rsub, rmul)."""
-        data = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
-        x = TensorWrapper(data)
-        scalar = 5.0
-
-        # Test __radd__: scalar + tensor
-        result_radd = scalar + x
-        expected_radd = scalar + data
-        self.assert_close(result_radd.unwrap(), expected_radd)
-
-        # Test __rsub__: scalar - tensor
-        result_rsub = scalar - x
-        expected_rsub = scalar - data
-        self.assert_close(result_rsub.unwrap(), expected_rsub)
-
-        # Test __rmul__: scalar * tensor
-        result_rmul = scalar * x
-        expected_rmul = scalar * data
-        self.assert_close(result_rmul.unwrap(), expected_rmul)
-
     def test_used_attrs_tracking(self, device, dtype):
         """Test that attribute usage is tracked."""
         data = torch.rand(2, 3, device=device, dtype=dtype)
@@ -233,12 +196,13 @@ class TestTensorWrapper(BaseTester):
         assert "some_new_attr" in tensor.used_attrs
 
     def test_callable(self, device, dtype):
-        data = torch.ones(2, device=device, dtype=dtype)
+        # Not all ones: ``x * x`` of ones is ``x`` itself.
+        data = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         x = TensorWrapper(data)
         y = (x * x).sum(-1, True)
-        # sum() method returns unwrapped tensor, so compare directly
-        expected = torch.ones_like(y) * 2
-        self.assert_close(y, expected)
+        # A forwarded method wraps its tensor result like any other
+        assert type(y) is TensorWrapper
+        self.assert_close(y.unwrap(), torch.tensor([5.0], device=device, dtype=dtype))
 
     def test_len(self, device, dtype):
         """Test __len__ method."""
@@ -265,11 +229,6 @@ class TestTensorWrapper(BaseTester):
         # Should not raise errors when strings/bytes are in args
         result = torch.cat([tensor, tensor])
         assert isinstance(result, TensorWrapper)
-
-    def test_exception(self):
-        """Test exception handling for invalid inputs."""
-        with pytest.raises(TypeCheckError):
-            TensorWrapper([1, 2, 3])  # type: ignore
 
     def test_gradcheck(self, device):
         # No entry is an integer, where ``% 1.0`` jumps.

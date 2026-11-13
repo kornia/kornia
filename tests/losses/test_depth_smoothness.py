@@ -26,14 +26,6 @@ from testing.base import BaseTester
 
 
 class TestDepthSmoothnessLoss(BaseTester):
-    @pytest.mark.parametrize("data_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_smoke(self, device, dtype, data_shape):
-        image = torch.rand(data_shape, device=device, dtype=dtype)
-        depth = torch.rand(data_shape, device=device, dtype=dtype)
-
-        criterion = kornia.losses.InverseDepthSmoothnessLoss()
-        assert criterion(depth, image) is not None
-
     def test_exception(self):
         with pytest.raises(TypeError) as errinf:
             kornia.losses.InverseDepthSmoothnessLoss()(1, 1)
@@ -73,15 +65,6 @@ class TestDepthSmoothnessLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(image, depth), op_optimized(image, depth))
-
-    def test_module(self, device, dtype):
-        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-
-        op = kornia.losses.inverse_depth_smoothness_loss
-        op_module = kornia.losses.InverseDepthSmoothnessLoss()
-
-        self.assert_close(op(image, depth), op_module(image, depth))
 
     def test_gradcheck(self, device):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)

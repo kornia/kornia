@@ -316,7 +316,7 @@ class TestApplyColorMap(BaseTester):
         op_script = torch_optimizer(op)
 
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
-        img = torch.ones(1, 3, 3, device=device, dtype=dtype)
+        img = torch.arange(9, device=device, dtype=dtype).view(1, 3, 3) / 8
 
         self.assert_close(op(img, cm), op_script(img, cm))
 

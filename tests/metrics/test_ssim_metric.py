@@ -129,15 +129,6 @@ class TestSsim(BaseTester):
         assert out.shape == img.shape
         assert (out > 0.99).all()
 
-    def test_padding_valid(self, device, dtype):
-        img1 = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
-        out_same = ssim(img1, img2, window_size=5, padding="same")
-        out_valid = ssim(img1, img2, window_size=5, padding="valid")
-        # valid crops the border — output is smaller than 'same'
-        assert out_valid.shape[2] < out_same.shape[2]
-        assert out_valid.shape[3] < out_same.shape[3]
-
     @pytest.mark.parametrize("padding", ["VALID", "Valid"])
     def test_padding_case_insensitive(self, device, dtype, padding):
         # Case variants select their branch as the filters do since #5156 (#5537).
@@ -204,12 +195,12 @@ class TestSsim(BaseTester):
                 SSIM(window_size=3)(img1, img2)
 
     def test_ssim_module(self, device, dtype):
+        # Every argument differs from the defaults, so the module has to forward each one.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        module = SSIM(window_size=5)
-        out_module = module(img1, img2)
-        out_fn = ssim(img1, img2, window_size=5)
-        assert out_module.shape == out_fn.shape
+        module = SSIM(5, max_val=2.0, eps=0.01, padding="valid")
+        out_fn = ssim(img1, img2, 5, max_val=2.0, eps=0.01, padding="valid")
+        self.assert_close(module(img1, img2), out_fn)
 
 
 class TestConventionsSSIM(BaseTester):

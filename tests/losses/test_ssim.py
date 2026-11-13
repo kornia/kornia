@@ -30,17 +30,6 @@ from testing.base import BaseTester
 
 
 class TestSSIMLoss(BaseTester):
-    def test_ssim_equal_none(self, device, dtype):
-        # input data
-        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
-
-        ssim1 = kornia.losses.ssim_loss(img1, img1, window_size=5, reduction="none")
-        ssim2 = kornia.losses.ssim_loss(img2, img2, window_size=5, reduction="none")
-
-        self.assert_close(ssim1, torch.zeros_like(img1), low_tolerance=True)  # rtol=tol_val, atol=tol_val)
-        self.assert_close(ssim2, torch.zeros_like(img2), low_tolerance=True)  # rtol=tol_val, atol=tol_val)
-
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
@@ -58,10 +47,11 @@ class TestSSIMLoss(BaseTester):
         self.assert_close(loss, expected)
 
     def test_module(self, device, dtype):
-        img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        # Every argument differs from the defaults, so the module has to forward each one.
+        img1 = torch.rand(1, 2, 7, 8, device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 7, 8, device=device, dtype=dtype)
 
-        args = (img1, img2, 5, 1.0, 1e-12, "mean")
+        args = (img1, img2, 5, 2.0, 0.01, "none", "valid")
 
         op = kornia.losses.ssim_loss
         op_module = kornia.losses.SSIMLoss(*args[2:])
@@ -256,18 +246,6 @@ class TestMS_SSIMLoss(BaseTester):
             actual = criterion(img1, img2)
 
         self.assert_close(actual, expected)
-
-    def test_msssim_equal_none(self, device, dtype):
-        # input data
-        img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
-
-        msssim = kornia.losses.MS_SSIMLoss().to(device, dtype)
-        msssim1 = msssim(img1, img1)
-        msssim2 = msssim(img2, img2)
-
-        self.assert_close(msssim1.item(), 0.0)
-        self.assert_close(msssim2.item(), 0.0)
 
     def test_exception(self):
         criterion = kornia.losses.MS_SSIMLoss()
@@ -519,17 +497,6 @@ class TestMS_SSIMLoss(BaseTester):
 
 
 class TestSSIM3DLoss(BaseTester):
-    def test_smoke(self, device, dtype):
-        # input data
-        img1 = torch.rand(1, 1, 2, 4, 3, device=device, dtype=dtype)
-        img2 = torch.rand(1, 1, 2, 4, 4, device=device, dtype=dtype)
-
-        ssim1 = kornia.losses.ssim3d_loss(img1, img1, window_size=3, reduction="none")
-        ssim2 = kornia.losses.ssim3d_loss(img2, img2, window_size=3, reduction="none")
-
-        self.assert_close(ssim1, torch.zeros_like(img1))
-        self.assert_close(ssim2, torch.zeros_like(img2))
-
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     # The reflect padding of 'same' needs every spatial size to be larger than window_size // 2.
@@ -592,25 +559,13 @@ class TestSSIM3DLoss(BaseTester):
         assert loss.min() >= 0
         assert loss.max() <= 1
 
-    def test_module(self, device, dtype):
-        img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
-        img2 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
-
-        args = (img1, img2, 5, 1.0, 1e-12, "mean")
-
-        op = kornia.losses.ssim3d_loss
-        op_module = kornia.losses.SSIM3DLoss(*args[2:])
-
-        self.assert_close(op(*args), op_module(*args[:2]))
-
     def test_gradcheck(self, device):
-        # input data
-        img = torch.rand(1, 1, 5, 4, 3, device=device)
-
-        # evaluate function gradient
+        # Two different volumes: at img1 == img2 the loss is at its minimum, where the gradient is zero.
+        img1 = torch.rand(1, 1, 5, 4, 3, device=device, dtype=torch.float64)
+        img2 = torch.rand(1, 1, 5, 4, 3, device=device, dtype=torch.float64)
 
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
-        self.gradcheck(kornia.losses.ssim3d_loss, (img, img, 3), nondet_tol=1e-8)
+        self.gradcheck(kornia.losses.ssim3d_loss, (img1, img2, 3), nondet_tol=1e-8)
 
     @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 3, 5, 5)])
     def test_cardinality(self, shape, device, dtype):

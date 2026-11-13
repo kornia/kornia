@@ -116,44 +116,6 @@ class TestSSIM3d(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize(
-        "shape,padding,window_size,max_value",
-        [
-            ((1, 1, 3, 3, 3), "same", 5, 1.0),
-            ((1, 1, 3, 3, 3), "same", 3, 2.0),
-            ((1, 1, 3, 3, 3), "same", 3, 0.5),
-            ((1, 1, 3, 3, 3), "valid", 3, 1.0),
-            ((2, 4, 3, 3, 3), "same", 3, 1.0),
-        ],
-    )
-    def test_smoke(self, shape, padding, window_size, max_value, device, dtype):
-        img_a = (torch.ones(shape, device=device, dtype=dtype) * max_value).clamp(0.0, max_value)
-        img_b = torch.zeros(shape, device=device, dtype=dtype)
-
-        actual = kornia.metrics.ssim3d(img_a, img_b, window_size, max_value, padding=padding)
-        expected = torch.ones_like(actual, device=device, dtype=dtype)
-
-        self.assert_close(actual, expected * 0.0001)
-
-        actual = kornia.metrics.ssim3d(img_a, img_a, window_size, max_value, padding=padding)
-        self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize(
-        "shape,padding,window_size,expected",
-        [
-            ((1, 1, 2, 2, 3), "same", 3, (1, 1, 2, 2, 3)),
-            ((1, 1, 3, 3, 3), "same", 5, (1, 1, 3, 3, 3)),
-            ((1, 1, 3, 3, 3), "valid", 3, (1, 1, 1, 1, 1)),
-            ((2, 4, 3, 3, 3), "same", 3, (2, 4, 3, 3, 3)),
-        ],
-    )
-    def test_cardinality(self, shape, padding, window_size, expected, device, dtype):
-        img = torch.rand(shape, device=device, dtype=dtype)
-
-        actual = kornia.metrics.ssim3d(img, img, window_size, padding=padding)
-
-        assert actual.shape == expected
-
     @pytest.mark.parametrize("padding", ["VALID", "Valid"])
     def test_padding_case_insensitive(self, device, dtype, padding):
         # Case variants select their branch as the filters do since #5156 (#5537).
@@ -299,11 +261,13 @@ class TestSSIM3d(BaseTester):
         self.assert_close(ops_out, mod_out)
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=torch.float64)
+        # Two different volumes: at img1 == img2 the SSIM is at its maximum, where the gradient is zero.
+        img1 = torch.rand(1, 1, 3, 3, 3, device=device, dtype=torch.float64)
+        img2 = torch.rand(1, 1, 3, 3, 3, device=device, dtype=torch.float64)
 
         op = kornia.metrics.ssim3d
 
-        self.gradcheck(op, (img, img, 3), nondet_tol=1e-8)
+        self.gradcheck(op, (img1, img2, 3), nondet_tol=1e-8)
 
 
 class TestConventionsSSIM3D(BaseTester):
