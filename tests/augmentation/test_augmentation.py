@@ -5221,6 +5221,73 @@ class TestResize:
         torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
         assert counter.frame_count == 1
 
+    @pytest.mark.parametrize(
+        "size, src_size",
+        [((1, 4), (6, 7)), ((4, 1), (6, 7)), ((1, 1), (6, 7)), ((4, 8), (1, 8)), ((5, 3), (6, 7))],
+        ids=["one_row_out", "one_col_out", "one_pixel_out", "one_row_in", "no_one_pixel_axis"],
+    )
+    def test_convention_one_pixel_axis_matrix_follows_corner_aligned_output_6644(self, size, src_size, device, dtype):
+        # The default align_corners=True has no scale along a one-pixel axis, and the solved matrix was NaN (#6644).
+        # F.interpolate samples the first pixel there, so that axis is a translation onto output pixel 0.
+        h, w = src_size
+        ys, xs = torch.meshgrid(
+            torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+        )
+        # Bilinear interpolation of a linear ramp is exact: each output pixel holds the source (x, y) it sampled.
+        img = torch.stack((xs, ys))[None]
+        aug = Resize(size)
+        out = aug(img)
+        matrix = aug.transform_matrix
+        assert torch.isfinite(matrix).all()
+        inverse = aug.inverse(out)
+        assert inverse.shape == img.shape
+        assert torch.isfinite(inverse).all()
+
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        sampled = out[0].flatten(1).T  # (N, 2) source (x, y) of every output pixel
+        out_ys, out_xs = torch.meshgrid(
+            torch.arange(size[0], device=device, dtype=dtype),
+            torch.arange(size[1], device=device, dtype=dtype),
+            indexing="ij",
+        )
+        # A one-pixel source axis is repeated along the output; the matrix sends that pixel to output index 0.
+        expected = torch.stack((out_xs * (w > 1), out_ys * (h > 1)), -1).flatten(0, 1)
+        mapped = kornia.geometry.transform_points(matrix, sampled[None])[0]
+        torch.testing.assert_close(mapped, expected, rtol=tol, atol=tol)
+        # Keypoints and box corners mapped through the matrix come back through its inverse.
+        # MPS has no float64, so the reference inverse is built on the CPU.
+        inv = torch.linalg.inv(matrix.cpu().double()).to(device, dtype)
+        back = kornia.geometry.transform_points(inv, mapped[None])[0]
+        torch.testing.assert_close(back, sampled, rtol=tol, atol=tol)
+
+    def test_inverse_one_row_output_restores_its_source_row_6644(self, device, dtype):
+        # The one-pixel output row goes back to source row 0, which it sampled; the other rows are padding.
+        img = torch.rand(1, 2, 6, 7, device=device, dtype=dtype) + 1
+        aug = Resize((1, 7))
+        inverse = aug.inverse(aug(img))
+        torch.testing.assert_close(inverse[..., 0, :], img[..., 0, :])
+        assert (inverse[..., 1:, :] == 0).all()
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_matrix_unchanged_without_one_pixel_axis_6644(self, align_corners, device, dtype):
+        aug = Resize((100, 37), align_corners=align_corners)
+        aug(torch.rand(2, 1, 6, 7, device=device, dtype=dtype))
+        src, dst = aug._params["src"], aug._params["dst"]
+        if align_corners:
+            expected = kornia.geometry.get_perspective_transform(src, dst)
+        else:
+            expected = kornia.geometry.transform._crop._half_pixel_resize_transform(src.to(dtype), dst.to(dtype))
+        assert torch.equal(aug.transform_matrix, expected.to(device, dtype).expand(2, -1, -1))
+
+    def test_align_corners_false_one_pixel_axis_unchanged_6644(self, device, dtype):
+        # The half-pixel matrix was already finite for one-pixel axes: x' = (x + 0.5) * W'/W - 0.5, likewise for y.
+        aug = Resize((1, 4), align_corners=False)
+        out = aug(torch.rand(1, 1, 6, 7, device=device, dtype=dtype))
+        sx, sy = 4 / 7, 1 / 6
+        expected = torch.tensor([[[sx, 0.0, (sx - 1) / 2], [0.0, sy, (sy - 1) / 2], [0.0, 0.0, 1.0]]])
+        torch.testing.assert_close(aug.transform_matrix, expected.to(device, dtype))
+        assert torch.isfinite(aug.inverse(out)).all()
+
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
