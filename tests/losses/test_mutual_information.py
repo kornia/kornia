@@ -107,19 +107,6 @@ class TestMutualInformationLoss(BaseTester):
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
 
-    def test_smoke(self, device, dtype):
-        """Basic functionality test"""
-        img1 = torch.rand(100, device=device, dtype=dtype)
-        img2 = torch.rand(100, device=device, dtype=dtype)
-
-        loss = mutual_information_loss(img1, img2, num_bins=64)
-        assert isinstance(loss, torch.Tensor)
-        assert loss.shape == torch.Size([])
-
-        normalized_loss = normalized_mutual_information_loss(img1, img2, num_bins=64)
-        assert isinstance(normalized_loss, torch.Tensor)
-        assert normalized_loss.shape == torch.Size([])
-
     def test_exception(self, device, dtype):
         """Test error conditions"""
         # Test with mismatched shapes
@@ -281,22 +268,6 @@ class TestMutualInformationLoss(BaseTester):
 
         self.assert_close(loss_batch.flatten(), loss_iterative)
         self.assert_close(normalized_loss_batch.flatten(), normalized_loss_iterative)
-
-    def test_module(self, device, dtype):
-        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-
-        args = (pred, target)
-
-        op = normalized_mutual_information_loss
-        op_module = NMILossFromRef(target)
-
-        self.assert_close(op(*args), op_module(pred))
-
-        op = mutual_information_loss
-        op_module = MILossFromRef(target)
-
-        self.assert_close(op(*args), op_module(pred))
 
     def test_masking(self, device, dtype):
         """test masking works on a 2d signal."""

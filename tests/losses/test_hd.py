@@ -34,18 +34,6 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
-    @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
-    @pytest.mark.parametrize(
-        "hd,shape", [(kornia.losses.HausdorffERLoss, (10, 10)), (kornia.losses.HausdorffERLoss3D, (10, 10, 10))]
-    )
-    def test_smoke_none(self, hd, shape, reduction, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
-        labels = (torch.rand(2, 1, *shape, dtype=dtype, device=device) * (num_classes - 1)).long()
-        loss = hd(reduction=reduction)
-
-        loss(logits, labels)
-
     @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
     def test_input_type_validation(self, loss_cls):
         with pytest.raises(TypeError) as errinf:

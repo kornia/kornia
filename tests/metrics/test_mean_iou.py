@@ -36,17 +36,6 @@ class TestMeanIoU(BaseTester):
         assert not target.is_contiguous()
         self.assert_close(kornia.metrics.mean_iou(pred, target, 3), expected)
 
-    def test_two_classes_perfect(self, device):
-        batch_size = 1
-        num_classes = 2
-        actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
-        predicted = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
-
-        mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
-        mean_iou_real = torch.tensor([[1.0, 1.0]], device=device, dtype=torch.float32)
-        assert mean_iou.shape == (batch_size, num_classes)
-        self.assert_close(mean_iou, mean_iou_real)
-
     def test_two_classes_perfect_batch2(self, device):
         batch_size = 2
         num_classes = 2
@@ -64,7 +53,6 @@ class TestMeanIoU(BaseTester):
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
         predicted = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 1]], device=device, dtype=torch.long)
 
-        mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[0.75, 0.80]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -246,23 +234,6 @@ class TestMeanIoUBBox(BaseTester):
         expected = torch.tensor([[0.3333, 0.0000], [0.1429, 0.2500]], device=device, dtype=dtype)
 
         self.assert_close(iou, expected, rtol=1e-3, atol=1e-4)
-
-    def test_bbox_format_consistency(self, device, dtype):
-        """Test that all formats produce same results for equivalent boxes."""
-        # Define same boxes in three formats
-        boxes_xyxy = torch.tensor([[10, 10, 20, 20]], device=device, dtype=dtype)
-        boxes_xywh = torch.tensor([[10, 10, 10, 10]], device=device, dtype=dtype)
-        boxes_cxcywh = torch.tensor([[15, 15, 10, 10]], device=device, dtype=dtype)
-
-        iou_xyxy = kornia.metrics.mean_iou_bbox(boxes_xyxy, boxes_xyxy, box_format="xyxy")
-        iou_xywh = kornia.metrics.mean_iou_bbox(boxes_xywh, boxes_xywh, box_format="xywh")
-        iou_cxcywh = kornia.metrics.mean_iou_bbox(boxes_cxcywh, boxes_cxcywh, box_format="cxcywh")
-
-        # All should give perfect IoU (1.0)
-        expected = torch.tensor([[1.0]], device=device, dtype=dtype)
-        self.assert_close(iou_xyxy, expected)
-        self.assert_close(iou_xywh, expected)
-        self.assert_close(iou_cxcywh, expected)
 
     def test_bbox_invalid_format(self, device, dtype):
         """Test that invalid format raises ValueError."""

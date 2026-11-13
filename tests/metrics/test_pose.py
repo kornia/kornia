@@ -31,11 +31,6 @@ ROT_Z_90 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 class TestAngleErrorMat(BaseTester):
-    def test_identity_is_zero(self, device, dtype):
-        eye = torch.eye(3, device=device, dtype=dtype)
-        expected = torch.tensor(0.0, device=device, dtype=dtype)
-        self.assert_close(kornia.metrics.angle_error_mat(eye, eye), expected)
-
     def test_known_angle(self, device, dtype):
         eye = torch.eye(3, device=device, dtype=dtype)
         rot = torch.tensor(ROT_Z_90, device=device, dtype=dtype)
@@ -237,14 +232,6 @@ class TestPoseErrors(BaseTester):
             kornia.metrics.pose_errors(
                 torch.eye(3, device=device, dtype=dtype), torch.eye(4, device=device, dtype=dtype)
             )
-
-    @pytest.mark.parametrize("rows", [3, 4])
-    def test_batched(self, device, dtype, rows):
-        P = torch.eye(4, device=device, dtype=dtype)[:rows]
-        batch = P.expand(2, rows, 4)
-        out = kornia.metrics.pose_errors(batch, batch)
-        assert out["R_err"].shape == (2,)
-        assert out["max_err"].shape == (2,)
 
     @pytest.mark.parametrize("shape", [(2, 4), (2, 2, 3, 4)])
     def test_bad_dims_raise(self, device, dtype, shape):

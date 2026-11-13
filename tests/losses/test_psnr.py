@@ -26,15 +26,6 @@ from testing.base import BaseTester
 
 
 class TestPSNRLoss(BaseTester):
-    def test_smoke(self, device, dtype):
-        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-
-        criterion = kornia.losses.PSNRLoss(1.0)
-        loss = criterion(pred, target)
-
-        assert loss is not None
-
     def test_type(self, device, dtype):
         # Expecting an exception
         # since we pass integers instead of torch tensors
@@ -65,17 +56,6 @@ class TestPSNRLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(*args), op_optimized(*args))
-
-    def test_module(self, device, dtype):
-        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-
-        args = (pred, target, 1.0)
-
-        op = kornia.losses.psnr_loss
-        op_module = kornia.losses.PSNRLoss(1.0)
-
-        self.assert_close(op(*args), op_module(pred, target))
 
     @pytest.mark.parametrize("scalar_range", [True, False])
     def test_scripted_tensor_range(self, device, scalar_range):

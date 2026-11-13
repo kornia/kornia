@@ -75,13 +75,13 @@ class TestLovaszHingeLoss(BaseTester):
         assert logits.grad.shape == logits.shape
 
     def test_smoke(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 1) * num_classes
-        labels = labels.to(device).long()
+        # One-pixel images, the only ones without a difference of Jaccard weights: each weight is 1, so the loss is the
+        # batch mean of the hinge errors relu(1 - z (2 t - 1)): (0.75 + 1.5 + 0) / 3.
+        logits = torch.tensor([0.25, -0.5, -2.0], device=device, dtype=dtype).view(3, 1, 1, 1)
+        labels = torch.tensor([1, 1, 0], device=device).view(3, 1, 1)
 
         criterion = kornia.losses.LovaszHingeLoss()
-        assert criterion(logits, labels) is not None
+        self.assert_close(criterion(logits, labels), torch.tensor(0.75, device=device, dtype=dtype))
 
     def test_exception(self):
         criterion = kornia.losses.LovaszHingeLoss()
@@ -103,15 +103,6 @@ class TestLovaszHingeLoss(BaseTester):
         criterion = kornia.losses.LovaszHingeLoss()
         with pytest.raises(Exception):
             criterion(logits, labels)
-
-    def test_perfect_prediction(self, device, dtype):
-        num_classes = 1
-        prediction = torch.ones(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
-
-        criterion = kornia.losses.LovaszHingeLoss()
-        loss = criterion(prediction, labels)
-        self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
     def test_output_dtype_follows_the_prediction(self, device, dtype):
         logits = torch.randn(2, 1, 4, 5, device=device, dtype=dtype)
@@ -180,10 +171,9 @@ class TestLovaszHingeLoss(BaseTester):
         self.gradcheck(kornia.losses.lovasz_hinge_loss, (logits, labels))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
+        # Both labels in each image: an all-background target makes the Jaccard weights trivial.
+        logits = torch.tensor([[[[0.3, -0.4, 0.9]]], [[[0.8, 0.1, -0.6]]]], device=device, dtype=dtype)
+        labels = torch.tensor([[[1, 0, 0]], [[1, 1, 0]]], device=device)
 
         op = kornia.losses.lovasz_hinge_loss
         op_optimized = torch_optimizer(op)

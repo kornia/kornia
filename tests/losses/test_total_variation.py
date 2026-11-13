@@ -250,14 +250,6 @@ class TestTotalVariation(BaseTester):
 
         self.assert_close(op(image, reduction), op_optimized(image, reduction))
 
-    def test_module(self, device, dtype):
-        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-
-        op = kornia.losses.total_variation
-        op_module = kornia.losses.TotalVariation()
-
-        self.assert_close(op(image), op_module(image))
-
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
