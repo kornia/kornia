@@ -4113,9 +4113,10 @@ class TestRandomInvert(BaseTester):
         _assert_dynamo_fullgraph(lambda: RandomInvert(p=1.0), self, device, dtype)
 
     def test_smoke(self, device, dtype):
-        # Varying values: an all-ones image maps to zeros under many wrong formulas (e.g. ``img.max() - img``).
-        img = torch.tensor([[[[0.0, 0.25], [0.6, 1.0]]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[[1.0, 0.75], [0.4, 0.0]]]], device=device, dtype=dtype)  # 1 - img, by hand
+        # Varying values below 1: an all-ones image maps to zeros under many wrong formulas, and an image whose
+        # maximum is 1 cannot tell ``1 - img`` from ``img.max() - img``.
+        img = torch.tensor([[[[0.0, 0.25], [0.6, 0.8]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.75], [0.4, 0.2]]]], device=device, dtype=dtype)  # 1 - img, by hand
         self.assert_close(RandomInvert(p=1.0)(img), expected)
 
 
