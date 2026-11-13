@@ -2,7 +2,7 @@
 
 > Kornia is a differentiable computer vision library for PyTorch. Classic CV operations (color, filtering, geometric transforms, camera/epipolar geometry, augmentation) are implemented as batched, GPU-ready, autograd-friendly tensor operations. Everything is `torch.Tensor` in, `torch.Tensor` out; OpenCV is not a dependency.
 
-Install: `pip install kornia`. Kornia 0.9.0 requires Python ≥ 3.11 and PyTorch ≥ 2.5.1; its other runtime dependencies are NumPy ≥ 1.21 and `kornia_rs` ≥ 0.2.0 (image I/O). `RANSAC(compile=True)` needs PyTorch ≥ 2.14. What exports to ONNX and compiles in one graph: <https://kornia.readthedocs.io/en/latest/get-started/export-support.html>. Half precision and devices: <https://kornia.readthedocs.io/en/latest/get-started/precision.html>.
+Install: `pip install kornia`. Kornia 0.9.1 requires Python ≥ 3.11 and PyTorch ≥ 2.5.1; its other runtime dependencies are NumPy ≥ 1.21 and `kornia_rs` ≥ 0.2.0 (image I/O). `RANSAC(compile=True)` needs PyTorch ≥ 2.14. What exports to ONNX and compiles in one graph: <https://kornia.readthedocs.io/en/latest/get-started/export-support.html>. Half precision and devices: <https://kornia.readthedocs.io/en/latest/get-started/precision.html>.
 
 ## When to use Kornia
 
