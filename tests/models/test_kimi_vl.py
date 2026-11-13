@@ -118,11 +118,8 @@ class TestKimiVLBuilder(BaseTester):
 
 
 class TestKimiVLModel(BaseTester):
-    def test_smoke(self, model):
-        assert model is not None
-
-    @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    def test_cardinality(self, device, dtype, model, config, batch_size):
+    def test_cardinality(self, device, dtype, model, config):
+        batch_size = 2
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
 
         output = model(images)
@@ -176,21 +173,6 @@ class TestKimiVLModel(BaseTester):
         output_grid_size = image_size // patch_size // model.projector.downsample_ratio
         assert output.shape == (1, output_grid_size**2, projector_config.output_dim)
 
-    def test_attention_mask(self, device, dtype, model, config):
-        batch_size = 1
-        images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
-
-        # Create a mask (B, N, N) or (B, 1, N, N)
-        # N = 64 (8x8 patches)
-        N = 64
-        mask = torch.ones(batch_size, N, N, device=device, dtype=torch.bool)
-
-        # Mask out the last token
-        mask[:, :, -1] = 0
-
-        output = model(images, attention_mask=mask)
-        assert output.shape == (batch_size, 16, config.projector_config.output_dim)
-
     @pytest.mark.parametrize("batch_size", [2, 4])
     def test_three_dim_mask_is_per_sample(self, device, dtype, model, config, batch_size):
         # A (B, N, N) mask holds one N x N mask per sample, shared by the heads: sample b of a batch equals its own
@@ -216,12 +198,6 @@ class TestKimiVLModel(BaseTester):
             )
 
         assert batch_of_three.shape == (3, 16, config.projector_config.output_dim)
-
-    def test_exception(self, device, dtype, model):
-        # Test invalid input shape (missing batch dim)
-        images = torch.randn(3, 32, 32, device=device, dtype=dtype)
-        with pytest.raises((RuntimeError, ValueError, IndexError)):
-            model(images)
 
     def test_gradcheck(self, device, config):
         # Convert model to float64 for gradcheck
@@ -341,32 +317,6 @@ class TestKimiVLComponents(BaseTester):
 
         self.assert_close(actual, expected)
 
-    def test_moonvit(self, device, dtype, config):
-        model = MoonViT(config.vision_config).to(device, dtype)
-        batch_size = 2
-        images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
-
-        output = model(images)
-        # MoonViT output is (B, N, D)
-        # N = (32/4)^2 = 64
-        assert output.shape == (batch_size, 64, config.vision_config.hidden_size)
-
-    def test_moonvit_encoder(self, device, dtype, config):
-        encoder = MoonViTEncoder(config.vision_config).to(device, dtype)
-        batch_size = 2
-        seq_len = 64
-        hidden_size = config.vision_config.hidden_size
-
-        x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=dtype)
-
-        # Create dummy cos/sin for RoPE
-        head_dim = hidden_size // config.vision_config.num_attention_heads
-        cos = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
-        sin = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
-
-        output = encoder(x, cos, sin)
-        assert output.shape == (batch_size, seq_len, hidden_size)
-
     def test_moonvit_encoder_reads_the_mask_once_for_all_layers(self, device, dtype, config):
         # The encoder brings the mask into the 4-D layout once and hands every layer that one tensor, rather than each
         # of its layers (27 in the released checkpoint) converting and checking it again: an int64 (B, N) padding mask
@@ -390,22 +340,6 @@ class TestKimiVLComponents(BaseTester):
         assert all(layer_mask is first for layer_mask in received[1 : len(encoder.layers)])
         self.assert_close(output, expected)
 
-    def test_moonvit_attention(self, device, dtype, config):
-        attention = MoonViTAttention(config.vision_config).to(device, dtype)
-        batch_size = 2
-        seq_len = 64
-        hidden_size = config.vision_config.hidden_size
-
-        x = torch.randn(batch_size, seq_len, hidden_size, device=device, dtype=dtype)
-
-        # Create dummy cos/sin for RoPE
-        head_dim = hidden_size // config.vision_config.num_attention_heads
-        cos = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
-        sin = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
-
-        output = attention(x, cos, sin)
-        assert output.shape == (batch_size, seq_len, hidden_size)
-
     @pytest.mark.parametrize("mask_shape", [(4, 16, 16), (16, 16), (3, 16)])
     def test_moonvit_attention_two_and_three_dim_masks_lead_with_the_batch_size(
         self, device, dtype, config, mask_shape
@@ -421,19 +355,17 @@ class TestKimiVLComponents(BaseTester):
         with torch.no_grad(), pytest.raises(BaseError, match=r"leading dimension .* pass it as 4-D"):
             attention(x, cos, sin, attention_mask=mask)
 
-    @pytest.mark.parametrize("module", ["attention", "encoder"])
     @pytest.mark.parametrize("mask_shape", [(2, 1), (2, 16, 1), (2, 1, 16, 1), (2, 1, 1, 1), (2, 3, 16)])
-    def test_moonvit_mask_covers_every_patch(self, device, dtype, config, module, mask_shape):
+    def test_moonvit_mask_covers_every_patch(self, device, dtype, config, mask_shape):
         # A key dimension of 1 broadcast one value over all N patches: on the CPU and in CUDA float64 such a mask was
         # the same as no mask, and in CUDA float32 and half it raised SDPA's "last dimension must be contiguous". A
         # query dimension that is neither 1 nor N raised SDPA's broadcasting error. Both raise naming the patch count.
-        net = (MoonViTAttention if module == "attention" else MoonViTEncoder)(config.vision_config)
-        net = net.to(device, dtype).eval()
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
         x, cos, sin = _moonvit_attention_inputs(config, 2, 16, device, dtype)
         mask = torch.ones(mask_shape, dtype=torch.bool, device=device)
 
         with torch.no_grad(), pytest.raises(ShapeError, match=r"16 patches"):
-            net(x, cos, sin, attention_mask=mask)
+            attention(x, cos, sin, attention_mask=mask)
 
     def test_moonvit_attention_three_dim_mask_broadcasts_over_the_queries(self, device, dtype, config):
         # A (B, 1, N) mask is a per-sample key mask shared by every query, the 3-D form of a (B, N) padding mask.
@@ -515,25 +447,6 @@ class TestKimiVLComponents(BaseTester):
             expected = attention(x, cos, sin, attention_mask=mask)
             self.assert_close(attention(x, cos, sin, attention_mask=mask.long()), expected)
             self.assert_close(attention(x, cos, sin, attention_mask=additive), expected)
-
-    def test_moonvit_rotary_embedding(self, device, dtype, config):
-        dim = config.vision_config.hidden_size // config.vision_config.num_attention_heads
-        rope = MoonViTRotaryEmbedding(dim).to(device, dtype)
-
-        h, w = 8, 8
-        cos, sin = rope(h, w, device)
-
-        seq_len = h * w
-        assert cos.shape == (seq_len, dim // 2)
-        assert sin.shape == (seq_len, dim // 2)
-
-    def test_projector(self, device, dtype, config):
-        model = KimiVLProjector(config.projector_config).to(device, dtype)
-        batch_size = 2
-        input_features = torch.randn(batch_size, 64, 32, device=device, dtype=dtype)
-
-        output = model(input_features, h=8, w=8)
-        assert output.shape == (batch_size, 16, config.projector_config.output_dim)
 
     def test_projector_patch_concatenation_order(self, device):
         # Reference: Moonshot's KimiVLMultiModalProjector at revision

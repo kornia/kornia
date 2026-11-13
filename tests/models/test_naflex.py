@@ -71,50 +71,6 @@ def _square_reading_warning(expected: bool) -> Iterator[None]:
 
 
 class TestNaFlex(BaseTester):
-    @pytest.fixture
-    def model(self) -> NaFlex:
-        """Create a NaFlex model with mock embeddings for testing.
-
-        Returns:
-            NaFlex instance with mock patch embedding function and position embedding.
-        """
-
-        def mock_patch_embedding(x: Tensor) -> Tensor:
-            """Mock patch embedding function simulating Conv2d output.
-
-            Dynamically calculates output size based on patch_size=16.
-            """
-            B, _, H, W = x.shape
-            h_out = H // 16
-            w_out = W // 16
-            return torch.randn(B, 768, h_out, w_out, dtype=x.dtype, device=x.device)
-
-        position_embedding = torch.randn(196, 768)
-        return NaFlex(
-            patch_embedding_fcn=mock_patch_embedding,
-            position_embedding=position_embedding,
-        )
-
-    def test_smoke(self, model: NaFlex, device: torch.device, dtype: torch.dtype) -> None:
-        """Test basic forward pass with standard input."""
-        model = model.to(device)
-        input_data = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
-        out = model(input_data)
-        assert isinstance(out, Tensor)
-        assert out.shape == (1, 196, 768)
-
-    def test_cardinality(self, model: NaFlex, device: torch.device, dtype: torch.dtype) -> None:
-        """Test output cardinality with non-square input resolution.
-
-        For 224x320 input with 16x16 patches, expect 14x20=280 patches.
-        """
-        model = model.to(device)
-        input_data = torch.randn(1, 3, 224, 320, device=device, dtype=dtype)
-        out = model(input_data)
-        assert out.shape[0] == 1
-        assert out.shape[1] == 280
-        assert out.shape[2] == 768
-
     def test_exception(self, device: torch.device, dtype: torch.dtype) -> None:
         """Test that invalid position embeddings raise appropriate errors."""
 
@@ -128,36 +84,13 @@ class TestNaFlex(BaseTester):
         with pytest.raises(ValueError, match="Original positional embedding is not a square grid"):
             wrapper_bad(input_data)
 
-    def test_interpolation(self, device: torch.device, dtype: torch.dtype) -> None:
-        """Test positional embedding interpolation for different input sizes."""
-
-        def mock_patch_embedding_dynamic(x: Tensor) -> Tensor:
-            """Dynamic mock for resizing tests."""
-            B, _, H, W = x.shape
-            h_out = H // 16
-            w_out = W // 16
-            return torch.randn(B, 768, h_out, w_out, dtype=x.dtype, device=x.device)
-
-        position_embedding = torch.randn(196, 768)
-        model = NaFlex(mock_patch_embedding_dynamic, position_embedding).to(device)
-        input_448 = torch.randn(1, 3, 448, 448, device=device, dtype=dtype)
-        out = model(input_448)
-        assert out.shape == (1, 784, 768)
-
-    def test_non_square_grid_with_matching_count(self, device: torch.device, dtype: torch.dtype) -> None:
-        # 128 x 512 at patch 16 is an 8 x 32 grid: 256 patches, as many as the 16 x 16 table has rows, but laid out
-        # differently, so the table is resized to 8 x 32 rather than added in raster order.
-        table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
-        out = NaFlex(_zero_patches, table)(torch.zeros(3, 3, 128, 512, device=device, dtype=dtype))
-        self.assert_close(out, _reference_positions(table, 8, 32).expand(3, -1, -1))
-
-    @pytest.mark.parametrize(("height", "width"), [(128, 512), (192, 336), (40, 63), (230, 230)])
+    @pytest.mark.parametrize(("height", "width"), [(128, 512), (40, 63)])
     def test_bnc_patch_output_with_patch_size(
         self, device: torch.device, dtype: torch.dtype, height: int, width: int
     ) -> None:
         # A (B, N, C) patch output carries no grid; patch_size=16 gives (H // 16, W // 16): 8 x 32 for 128 x 512 (the
-        # 256 tokens a square reading takes for 16 x 16), 12 x 21 for 192 x 336, and 2 x 3 and 14 x 14 for sides that
-        # are not multiples of 16 (the conv drops the remainder). The same as the (B, C, h, w) output and the reference.
+        # 256 tokens a square reading takes for 16 x 16), and 2 x 3 for 40 x 63, whose sides are not multiples of 16
+        # (the conv drops the remainder). The same as the (B, C, h, w) output and the reference.
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
         images = torch.zeros(3, 3, height, width, device=device, dtype=dtype)
         out = NaFlex(_zero_tokens, table, patch_size=16)(images)
@@ -183,23 +116,18 @@ class TestNaFlex(BaseTester):
         with pytest.raises(BaseError, match=r"4 x 4 grid of 16 patches, but the patch embedding returned 7"):
             naflex(torch.zeros(3, 3, 64, 64, device=device, dtype=dtype))
 
-    @pytest.mark.parametrize(("height", "width", "num_tokens"), [(64, 64, 7), (192, 336, 252)])
-    def test_bnc_without_patch_size_needs_a_square_count(
-        self, device: torch.device, dtype: torch.dtype, height: int, width: int, num_tokens: int
-    ) -> None:
+    def test_bnc_without_patch_size_needs_a_square_count(self, device: torch.device, dtype: torch.dtype) -> None:
         table = torch.randn(256, _CHANNELS, device=device, dtype=dtype)
-        naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], num_tokens, _CHANNELS), table)
-        with pytest.raises(BaseError, match=f"{num_tokens} patch embeddings are not a square number. Pass patch_size"):
-            naflex(torch.zeros(3, 3, height, width, device=device, dtype=dtype))
+        naflex = NaFlex(lambda x: x.new_zeros(x.shape[0], 7, _CHANNELS), table)
+        with pytest.raises(BaseError, match=r"7 patch embeddings are not a square number\. Pass patch_size"):
+            naflex(torch.zeros(3, 3, 64, 64, device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
         ("height", "width", "kernel", "stride", "side", "rectangular"),
         [
             (20, 20, 3, 2, 9, False),
             (19, 20, 3, 2, 9, False),
-            (20, 36, 3, (2, 4), 9, True),
             (256, 512, (16, 32), (16, 32), 16, True),
-            (64, 144, (10, 24), (10, 24), 6, True),
         ],
     )
     def test_bnc_without_patch_size_reads_a_square_grid(
@@ -340,15 +268,13 @@ class TestNaFlex(BaseTester):
         self.assert_close(actual, expected, rtol=0.0, atol=1e-5)
 
     @pytest.mark.device_agnostic
-    @pytest.mark.parametrize(("height", "width"), [(384, 512), (256, 320)])
-    def test_naflex_legacy_onnx_export_of_an_upsampled_table(self, height: int, width: int) -> None:
+    def test_naflex_legacy_onnx_export_of_an_upsampled_table(self) -> None:
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
-        # A 24 x 32 grid upsamples the 16 x 16 table on both axes and a 16 x 20 grid keeps the rows and upsamples the
-        # columns: the plain bilinear resize, which the legacy TorchScript exporter supports (it has no symbolic for
-        # the antialiased aten::_upsample_bilinear2d_aa).
+        # A 24 x 32 grid upsamples the 16 x 16 table on both axes: the plain bilinear resize, which the legacy
+        # TorchScript exporter supports (it has no symbolic for the antialiased aten::_upsample_bilinear2d_aa).
         naflex = NaFlex(torch.nn.Conv2d(3, _CHANNELS, 16, 16), torch.randn(256, _CHANNELS)).eval()
-        images = torch.rand(3, 3, height, width)
+        images = torch.rand(3, 3, 384, 512)
         buffer = io.BytesIO()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

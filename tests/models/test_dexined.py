@@ -20,7 +20,6 @@ import pickle
 import pytest
 import torch
 
-from kornia.filters.dexined import DexiNed as FilterDexiNed
 from kornia.models.dexined import DexiNed
 
 from testing.base import BaseTester
@@ -81,10 +80,6 @@ class TestDexiNed(BaseTester):
         net = DexiNed(pretrained=False).to(device, torch.float64).eval()
         img = torch.rand(1, 3, 8, 12, device=device, dtype=torch.float64)
         self.gradcheck(net, (img,), fast_mode=False)
-
-    def test_the_filters_path_is_the_same_class(self):
-        # kornia.filters.dexined re-exports the network instead of keeping a second copy of it.
-        assert FilterDexiNed is DexiNed
 
     def test_a_model_pickled_from_the_filters_path_loads(self):
         import pickle

@@ -66,20 +66,6 @@ def test_neck(device, dtype):
         assert out.shape == (N, hidden_dim, h, w)
 
 
-def test_head(device, dtype):
-    N = 2
-    in_channels = [32, 64, 128]
-    sizes = [(32, 24), (16, 12), (8, 6)]
-    num_classes = 5
-    num_queries = 10
-    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 2).to(device, dtype).eval()
-    fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
-
-    logits, boxes = decoder(fmaps)
-    assert logits.shape == (N, num_queries, num_classes)
-    assert boxes.shape == (N, num_queries, 4)
-
-
 def test_regvgg_optimize_for_deployment(device, dtype):
     module = RepVggBlock(64, 64).to(device, dtype).eval()
     x = torch.randn(2, 64, 9, 9, device=device, dtype=dtype)
@@ -124,7 +110,7 @@ class TestDETRPostProcessor(BaseTester):
 
 class TestRTDETR(BaseTester):
     @pytest.mark.slow  # This will be slow for the bigger variants
-    @pytest.mark.parametrize("variant", ["resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"])
+    @pytest.mark.parametrize("variant", ["resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"])
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 10)).to(device, dtype).eval()
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)

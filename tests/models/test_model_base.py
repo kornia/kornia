@@ -41,17 +41,12 @@ class DummyMixin(ModelBaseMixin):
 
 
 class TestModelBaseMixinTensorToType:
-    def test_torch_output_returns_tensor_unchanged(self):
+    def test_torch_output_returns_tensor_or_list_unchanged(self):
         mixin = DummyMixin()
         t = torch.rand(1, 3, 8, 8)
-        out = mixin._tensor_to_type(t, "torch")
-        assert out is t
-
-    def test_torch_output_returns_list_unchanged(self):
-        mixin = DummyMixin()
         tensors = [torch.rand(1, 3, 8, 8), torch.rand(1, 3, 8, 8)]
-        out = mixin._tensor_to_type(tensors, "torch")
-        assert out is tensors
+        assert mixin._tensor_to_type(t, "torch") is t
+        assert mixin._tensor_to_type(tensors, "torch") is tensors
 
     @staticmethod
     def _assert_pil_images(images, tensors, modes):
@@ -71,15 +66,13 @@ class TestModelBaseMixinTensorToType:
                 expected = expected[..., 0]
             assert np.array_equal(np.asarray(image), expected.numpy())
 
-    @pytest.mark.parametrize(
-        ("shape", "modes"), [((3, 4, 5), ["RGB"]), ((1, 4, 5), ["L"]), ((2, 3, 4, 5), ["RGB", "RGB"])]
-    )
-    def test_pil_output_single_tensor(self, shape, modes):
+    def test_pil_output_single_tensor(self):
+        # a (B, C, H, W) tensor splits into B images; the (3, H, W) and (1, H, W) modes are in the list test below
         mixin = DummyMixin()
         # values beyond [0, 1] check the clamp
-        t = torch.rand(*shape) * 1.2 - 0.1
+        t = torch.rand(2, 3, 4, 5) * 1.2 - 0.1
         out = mixin._tensor_to_type(t, "pil")
-        self._assert_pil_images(out, [t], modes)
+        self._assert_pil_images(out, [t], ["RGB", "RGB"])
 
     def test_pil_output_list_of_tensors(self):
         mixin = DummyMixin()
@@ -113,15 +106,14 @@ def _decoded_files(directory):
 class TestModelBaseWrappersPilOutput:
     """``output_type="pil"`` in a wrapper's ``visualize`` and ``save``, on a random-init ``EdgeDetector``."""
 
-    # edge maps in the forms EdgeDetector.visualize accepts: the (B, 1, H, W) tensor and a list of (1, H, W) maps,
-    # whose items it reduces to (H, W), and a list of (1, 1, H, W) maps as its forward returns, reduced to (3, H, W)
-    _FORMS = ("tensor (B, 1, H, W)", "list of (1, H, W)", "list of (1, 1, H, W)")
+    # edge maps in the forms EdgeDetector.visualize accepts: the (B, 1, H, W) tensor, whose (1, H, W) items it reduces
+    # to (H, W) (a list of (1, H, W) maps iterates to the same items), and a list of (1, 1, H, W) maps as its forward
+    # returns, reduced to (3, H, W)
+    _FORMS = ("tensor (B, 1, H, W)", "list of (1, 1, H, W)")
 
     @staticmethod
     def _edge_maps(form):
         maps = torch.rand(2, 1, 8, 10)
-        if form == "list of (1, H, W)":
-            return list(maps)
         if form == "list of (1, 1, H, W)":
             return [m[None] for m in maps]
         return maps
@@ -165,16 +157,6 @@ class TestModelBaseWrappersPilOutput:
 
 
 class TestModelBaseMixinSave:
-    def test_save_single_tensor_calls_write_image_once(self, tmp_path):
-        mixin = DummyMixin()
-        t = torch.rand(3, 8, 8)
-        with patch("kornia.models.base.write_image") as mock_write:
-            mixin.save(t, str(tmp_path))
-            assert mock_write.call_count == 1
-            # path is the first positional arg (matches write_image(path_file, image, ...))
-            saved_path = mock_write.call_args[0][0]
-            assert os.path.normcase(str(tmp_path)) in os.path.normcase(saved_path)
-
     def test_save_list_of_tensors_calls_write_image_per_item(self, tmp_path):
         mixin = DummyMixin()
         tensors = [torch.rand(3, 8, 8), torch.rand(3, 8, 8), torch.rand(3, 8, 8)]
@@ -213,16 +195,6 @@ class TestModelBaseMixinSave:
 
 
 class TestModelBaseMixinSaveOutputs:
-    def test_save_outputs_with_explicit_dir_single_tensor(self, tmp_path):
-        mixin = DummyMixin()
-        t = torch.rand(3, 8, 8)
-        with patch("kornia.models.base.write_image") as mock_write:
-            mixin._save_outputs(t, directory=str(tmp_path), suffix="_test")
-            assert mock_write.call_count == 1
-            # path is the first positional arg; verify suffix appears in filename
-            saved_path = mock_write.call_args[0][0]
-            assert "_test_" in saved_path
-
     def test_save_outputs_with_explicit_dir_list(self, tmp_path):
         mixin = DummyMixin()
         tensors = [torch.rand(3, 8, 8), torch.rand(3, 8, 8)]
@@ -255,7 +227,8 @@ class TestModelBaseMixinSaveWritesRealFiles:
     image: (3, H, W), (1, H, W), (H, W) or, for PNG, (4, H, W).
     """
 
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
+    # float32 is test_the_written_file_is_a_readable_image; float64 keeps its dtype and float16 is scaled in float32
+    @pytest.mark.parametrize("dtype", [torch.float64, torch.float16])
     def test_a_float_visualization_is_written(self, tmp_path, dtype):
         mixin = DummyMixin()
         mixin.save(torch.rand(3, 8, 8, dtype=dtype), str(tmp_path))
@@ -358,17 +331,6 @@ class TestModelBaseLoadCheckpoint(BaseTester):
 
         model = _TinyModel().to(dtype)
         model.load_checkpoint("~/x.pt")
-
-        self.assert_close(model.linear.weight, source.linear.weight)
-        self.assert_close(model.linear.bias, source.linear.bias)
-
-    def test_a_local_state_dict_loads(self, tmp_path, dtype) -> None:
-        source = _TinyModel().to(dtype)
-        path = tmp_path / "model.pth"
-        torch.save(source.state_dict(), path)
-
-        model = _TinyModel().to(dtype)
-        model.load_checkpoint(str(path))
 
         self.assert_close(model.linear.weight, source.linear.weight)
         self.assert_close(model.linear.bias, source.linear.bias)

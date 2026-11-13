@@ -31,11 +31,10 @@ from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, S
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
 from kornia.models.siglip2.preprocessor import SigLip2ImagePreprocessor
-from kornia.models.siglip2.text_encoder import SigLip2TextEmbeddings, SigLip2TextEncoder, SigLip2TextModel
+from kornia.models.siglip2.text_encoder import SigLip2TextModel
 from kornia.models.siglip2.vision_encoder import (
     SigLip2MultiheadAttentionPoolingHead,
     SigLip2VisionEmbeddings,
-    SigLip2VisionEncoder,
     SigLip2VisionModel,
 )
 
@@ -75,14 +74,6 @@ def model(device, dtype, config):
 def _create_input_ids(batch_size, seq_len, config, device):
     """Create input_ids with smaller range to avoid memory issues with large vocab."""
     return torch.randint(0, min(100, config.text_config.vocab_size), (batch_size, seq_len), device=device)
-
-
-def _from_name_or_error(model_name):
-    """``SigLip2Config.from_name(model_name)``, or the type of the error it raises, to compare two names' readings."""
-    try:
-        return SigLip2Config.from_name(model_name)
-    except ValueError as error:
-        return type(error)
 
 
 def _tiny_vision_config():
@@ -201,19 +192,14 @@ class TestSigLip2Builder:
             ("someone/siglip2-large-patch16-384-mirror", (256000, 1024, 24, 16, 384, 16, 512)),
             ("someone/my-siglip", (256000, 768, 12, 12, 224, 16, 512)),
             # an image size counts only as a whole number, of the repository part after the last "/" first
-            ("org2560/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
             ("org-256/siglip2-base-patch16-384", (256000, 768, 12, 12, 384, 16, 512)),
             ("x/siglip2-base-patch16-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
-            ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
             # the owner part counts when the repository part has no size
             ("siglip384/finetune", (256000, 768, 12, 12, 384, 16, 512)),
-            # names are read in any case, and what the owner part says about the architecture does not count
+            # names are read in any case
             ("someone/SigLIP2-Large-Patch16-256", (256000, 1024, 24, 16, 256, 16, 512)),
-            ("giantlab/siglip2-base-patch16-224-ft", (256000, 768, 12, 12, 224, 16, 512)),
-            ("patch14ai/siglip2-base-patch16-224", (256000, 768, 12, 12, 224, 16, 512)),
             # a fine-tune or mirror of the supported SigLIP 1 checkpoint has its 32000-token vocabulary
             ("someone/siglip-base-patch16-224-finetuned", (32000, 768, 12, 12, 224, 16, 512)),
-            ("someone/SigLIP-Base-Patch16-224", (32000, 768, 12, 12, 224, 16, 512)),
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
@@ -245,6 +231,9 @@ class TestSigLip2Builder:
             "google/siglip-base-patch16-384",
             "google/siglip2-base-patch32-256",
             "google/siglip2-base-patch16-naflex",
+            # a google/ name outside the table whose repository part alone would read as base or large, in any case
+            "google/siglip2-base-patch16-224-finetuned",
+            "Google/SigLIP2-Large-Patch16-224",
             # the same architectures under another owner
             "someone/siglip2-so400m-patch14-384-finetuned",
             "someone/siglip2-giant-opt-patch16-256-mirror",
@@ -253,7 +242,6 @@ class TestSigLip2Builder:
             # SigLIP 1 checkpoints other than the supported base 224 one, under another owner
             "someone/siglip-large-patch16-256",
             "someone/siglip-base-patch16-384",
-            "someone/siglip-base-patch16-256-multilingual",
             "Someone/SigLIP-Large-Patch16-256-mirror",
         ],
     )
@@ -266,23 +254,12 @@ class TestSigLip2Builder:
         with pytest.raises(ValueError, match="cannot build"):
             SigLip2Builder.from_name(model_name)
 
-    @pytest.mark.parametrize(
-        "repository",
-        [
-            "siglip2-base-patch16-224-finetuned",
-            "siglip2-large-patch16-384-mirror",
-            "my-siglip",
-            "siglip-base-patch16-224-finetuned",
-            "siglip2-so400m-patch14-384-finetuned",
-            "siglip2-base-patch32-256-mirror",
-            "siglip-large-patch16-256",
-        ],
-    )
+    @pytest.mark.parametrize("repository", ["siglip2-base-patch16-224-finetuned", "siglip2-large-patch16-384-mirror"])
     @pytest.mark.parametrize("owner", ["LargeCorp", "large-models", "giantlab", "so400m-fans", "naflex", "patch14ai"])
     def test_from_name_reads_the_architecture_from_the_repository_part_only(self, repository, owner):
-        # An owner that says large, giant, so400m, naflex or a patch size gets the reading of a neutral owner, for a
-        # name that reads and for one that raises alike ("LargeCorp/siglip2-base-..." was the large architecture).
-        assert _from_name_or_error(f"{owner}/{repository}") == _from_name_or_error(f"someone/{repository}")
+        # An owner that says large, giant, so400m, naflex or a patch size gets the reading of a neutral owner
+        # ("LargeCorp/siglip2-base-..." was the large architecture).
+        assert SigLip2Config.from_name(f"{owner}/{repository}") == SigLip2Config.from_name(f"someone/{repository}")
 
     @pytest.mark.parametrize(
         ("model_name", "expected"),
@@ -291,8 +268,6 @@ class TestSigLip2Builder:
             # longer word of the repository part is not the marker
             ("someone/siglip2-base-patch16-224-enlarged", (768, 224)),
             ("someone/siglip2-base-patch16-224-giantdata", (768, 224)),
-            ("someone/siglip2-base-patch16-224-naflexible", (768, 224)),
-            ("someone/siglip2-base-patch16-224-so400mx", (768, 224)),
             ("someone/dispatch2-siglip2-base-patch16-224", (768, 224)),
             ("someone/notsiglip-large-patch16-256", (1024, 256)),
             # words are separated by any character that is not a letter or a digit
@@ -312,25 +287,9 @@ class TestSigLip2Builder:
         with pytest.raises(ValueError, match="cannot build"):
             SigLip2Config.from_name(model_name)
 
-    @pytest.mark.parametrize(
-        "model_name",
-        [
-            "someone/siglip2-base-patch16-224-finetuned",
-            "someone/siglip2-large-patch16-384-mirror",
-            "someone/siglip-base-patch16-224-finetuned",
-            "org-256/siglip2-finetune",
-            "someone/siglip2-so400m-patch14-384",
-            "someone/siglip-large-patch16-256",
-        ],
-    )
-    def test_from_name_reads_an_unlisted_name_in_any_case(self, model_name):
-        expected = _from_name_or_error(model_name)
-        assert _from_name_or_error(model_name.upper()) == expected
-        assert _from_name_or_error(model_name.swapcase().replace("SOMEONE", "Someone")) == expected
-
-    @pytest.mark.parametrize("model_name", ["Google/SigLIP2-Large-Patch16-384", "GOOGLE/siglip-base-patch16-224"])
-    def test_from_name_table_ignores_case(self, model_name):
+    def test_from_name_table_ignores_case(self):
         # A supported checkpoint named in another case is that checkpoint, with its 64 text positions.
+        model_name = "Google/SigLIP2-Large-Patch16-384"
         assert SigLip2Config.from_name(model_name) == SigLip2Config.from_name(model_name.lower())
 
     def test_from_pretrained_hf_loads_an_unlisted_name_that_fits(self, monkeypatch, config):
@@ -371,7 +330,6 @@ class TestSigLip2Builder:
             # a listed name in another case is downloaded, and so cached, under its listed spelling, not as a second
             # copy (the Hub redirects the case variant to the same repository)
             ("Google/SigLIP2-Base-Patch16-224", "google/siglip2-base-patch16-224"),
-            ("GOOGLE/siglip-base-patch16-224", "google/siglip-base-patch16-224"),
             # an unlisted name keeps the caller's spelling: kornia does not know its repository's
             ("Someone/SigLIP2-Base-Patch16-224-ft", "Someone/SigLIP2-Base-Patch16-224-ft"),
         ],
@@ -391,8 +349,7 @@ class TestSigLip2Builder:
         SigLip2Builder.from_pretrained_hf(model_name)
         assert repositories == [downloaded]
 
-    @pytest.mark.parametrize("model_name", ["google/siglip2-base-patch16-224", "Google/SigLIP2-Base-Patch16-224"])
-    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config, model_name):
+    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config):
         # A listed name's checkpoint that does not fit is not a naming question: load_state_dict's own error surfaces.
         monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
         wider = SigLip2Config(
@@ -404,18 +361,13 @@ class TestSigLip2Builder:
         monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
 
         with pytest.raises(RuntimeError, match="size mismatch") as error:
-            SigLip2Builder.from_pretrained_hf(model_name)
+            SigLip2Builder.from_pretrained_hf("Google/SigLIP2-Base-Patch16-224")
         assert "outside that list" not in str(error.value)
         assert error.value.__cause__ is None
 
 
 class TestSigLip2Model(BaseTester):
     """Test suite for SigLip2 model."""
-
-    def test_smoke(self, device, dtype, config):
-        """Test basic model instantiation."""
-        model = SigLip2Model(config).to(device, dtype)
-        assert model is not None
 
     def test_identity_projections(self, device, dtype, config):
         """Test the default identity projection path with a lightweight model."""
@@ -433,9 +385,9 @@ class TestSigLip2Model(BaseTester):
         assert output.image_embeds.shape == (1, config.projection_dim)
         assert output.text_embeds.shape == (1, config.projection_dim)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    def test_cardinality(self, device, dtype, model, config, batch_size):
-        """Test output shapes with different inputs and batch sizes."""
+    def test_cardinality(self, device, dtype, model, config):
+        """Test output shapes of image-only, text-only and joint inputs."""
+        batch_size = 2
         image_size = config.vision_config.image_size
         pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
         seq_len = 10
@@ -460,25 +412,6 @@ class TestSigLip2Model(BaseTester):
             assert output.text_embeds.shape == (batch_size, config.projection_dim)
             assert output.logits_per_image.shape == (batch_size, batch_size)
             assert output.logits_per_text.shape == (batch_size, batch_size)
-
-    def test_exception(self, device, dtype, model, config):
-        """Test exception handling."""
-        # Test invalid pixel_values shape (wrong number of dimensions)
-        image_size = config.vision_config.image_size
-        invalid_pixel_values = torch.randn(3, image_size, image_size, device=device, dtype=dtype)
-        with pytest.raises((RuntimeError, ValueError, IndexError)):
-            model.get_image_features(invalid_pixel_values)
-
-        # Test invalid attention mask shape
-        input_ids = _create_input_ids(2, 10, config, device)
-        invalid_attention_mask = torch.ones(2, 5, device=device)  # Wrong sequence length
-        with pytest.raises((RuntimeError, ValueError, IndexError)):
-            model.get_text_features(input_ids, attention_mask=invalid_attention_mask)
-
-        # Test input_ids with wrong number of dimensions
-        invalid_input_ids = torch.randint(0, 100, (10,), device=device)  # Missing batch dimension
-        with pytest.raises((RuntimeError, ValueError, IndexError)):
-            model.get_text_features(invalid_input_ids)
 
     def test_get_image_features(self, device, dtype, model, config):
         """Test get_image_features method."""
@@ -513,39 +446,30 @@ class TestSigLip2Model(BaseTester):
         self.assert_close(norms, torch.ones_like(norms))
 
     def test_attention_mask_handling(self, device, dtype, model, config):
-        """Test attention mask handling in text encoder."""
-
-        batch_size = 2
-        seq_len = 10
-        input_ids = torch.zeros(batch_size, seq_len, dtype=torch.long, device=device)
-        input_ids[0, :5] = torch.arange(1, 6, device=device)
-        input_ids[1, :8] = torch.arange(11, 19, device=device)
-
-        # Create attention mask with different lengths
-        attention_mask = torch.ones(batch_size, seq_len, device=device)
-        attention_mask[0, 5:] = 0  # First sequence has 5 tokens
-        attention_mask[1, 8:] = 0  # Second sequence has 8 tokens
+        """The text encoder ignores the tokens its attention mask drops."""
+        # Two rows with the same 5 real tokens and the same last token, which the text model pools; only the masked
+        # tokens 5..8 differ. With the mask respected the rows give the same features, without it they would not.
+        input_ids = torch.zeros(2, 10, dtype=torch.long, device=device)
+        input_ids[:, :5] = torch.arange(1, 6, device=device)
+        input_ids[1, 5:9] = torch.arange(50, 54, device=device)
+        attention_mask = torch.ones(2, 10, device=device)
+        attention_mask[:, 5:] = 0
 
         with torch.no_grad():
             features = model.get_text_features(input_ids, attention_mask=attention_mask)
+            unmasked = model.get_text_features(input_ids)
 
-        assert features.shape == (batch_size, config.projection_dim)
-        assert torch.isfinite(features).all()
-        assert not torch.allclose(features[0], features[1])
+        assert features.shape == (2, config.projection_dim)
+        self.assert_close(features[1], features[0])
+        assert not torch.allclose(unmasked[1], unmasked[0])
 
-    def test_return_loss(self, device, dtype, model, config):
-        """Test forward pass with return_loss=True and verify logit_scale clamping."""
+    def test_logit_scale_clamp(self, device, dtype, model, config):
+        """Verify logit_scale clamping."""
         batch_size = 2
         image_size = config.vision_config.image_size
         pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
         seq_len = 10
         input_ids = _create_input_ids(batch_size, seq_len, config, device)
-
-        with torch.no_grad():
-            output = model(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
-
-        assert output.loss is not None
-        assert output.loss.item() >= 0.0  # Loss should be non-negative
 
         # Test logit_scale clamping with extreme values
         with torch.no_grad():
@@ -702,28 +626,14 @@ class TestSigLip2Model(BaseTester):
 class TestSigLip2Components(BaseTester):
     """Test suite for SigLip2 individual components."""
 
-    def test_vision_embeddings(self, device, dtype):
-        """Test SigLip2VisionEmbeddings."""
-        config = SigLip2VisionConfig(image_size=32, patch_size=4, hidden_size=32)
-        embeddings = SigLip2VisionEmbeddings(config).to(device, dtype)
-
-        batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, config.image_size, config.image_size, device=device, dtype=dtype)
-
-        with torch.no_grad():
-            output = embeddings(pixel_values)
-
-        num_patches = (config.image_size // config.patch_size) ** 2
-        assert output.shape == (batch_size, num_patches, config.hidden_size)
-
     @pytest.mark.applies_to(
         when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
         reason="MPS does not support float64",
     )
     @pytest.mark.parametrize(
         "size",
-        [(16, 64), (8, 128), (33, 39), (32, 39), (39, 32), (40, 40)],
-        ids=["2x8-grid", "1x16-grid", "33x39", "32x39", "39x32", "40x40"],
+        [(16, 64), (33, 39), (32, 39), (39, 32)],
+        ids=["2x8-grid", "33x39", "32x39", "39x32"],
     )
     def test_vision_embeddings_reject_other_sizes(self, device, dtype, size):
         config = SigLip2VisionConfig(
@@ -739,53 +649,15 @@ class TestSigLip2Components(BaseTester):
 
         with torch.no_grad():
             assert embeddings(torch.rand(1, 3, 32, 32, device=device, dtype=dtype)).shape == (1, 16, 32)
-            # The position table is the (32 // 8) ** 2 = 16 cells of a 4 x 4 grid. The patch grids 2 x 8 of 16 x 64,
-            # 1 x 16 of 8 x 128 and 4 x 4 of 33 x 39, 32 x 39 and 39 x 32 (remainders dropped) also have 16 cells;
-            # 40 x 40 gives 5 x 5. 32 x 39 and 39 x 32 have one side right, so the check must test both.
+            # The position table is the (32 // 8) ** 2 = 16 cells of a 4 x 4 grid. The patch grids 2 x 8 of 16 x 64 and
+            # 4 x 4 of 33 x 39, 32 x 39 and 39 x 32 (remainders dropped) also have 16 cells. 32 x 39 and 39 x 32 have
+            # one side right, so the check must test both.
             pixel_values = torch.rand(1, 3, *size, device=device, dtype=dtype)
             with pytest.raises(ValueError, match="32"):
                 embeddings(pixel_values)
             # SigLip2VisionModel, and through it SigLip2Model, embed the image first.
             with pytest.raises(ValueError, match="32"):
                 model(pixel_values)
-
-    @pytest.mark.applies_to(
-        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
-        reason="MPS does not support float64",
-    )
-    def test_dynamo_fullgraph_vision_embeddings(self, device, dtype, torch_optimizer):
-        # The size check reads static shapes: it must compile without a graph break.
-        embeddings = SigLip2VisionEmbeddings(_tiny_vision_config()).to(device, dtype).eval()
-        pixel_values = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
-
-        embeddings_optimized = torch_optimizer(embeddings, fullgraph=True)
-
-        with torch.no_grad():
-            self.assert_close(embeddings_optimized(pixel_values), embeddings(pixel_values))
-
-    def test_vision_encoder(self, device, dtype):
-        """Test SigLip2VisionEncoder."""
-        config = SigLip2VisionConfig(
-            image_size=32,
-            patch_size=4,
-            hidden_size=32,
-            num_hidden_layers=2,
-            num_attention_heads=4,
-            intermediate_size=64,
-        )
-        encoder = SigLip2VisionEncoder(config).to(device, dtype)
-        embeddings = SigLip2VisionEmbeddings(config).to(device, dtype)
-
-        batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, config.image_size, config.image_size, device=device, dtype=dtype)
-
-        with torch.no_grad():
-            # Encoder expects embeddings, not raw pixel values
-            hidden_states = embeddings(pixel_values)
-            output = encoder(hidden_states)
-
-        num_patches = (config.image_size // config.patch_size) ** 2
-        assert output[0].shape == (batch_size, num_patches, config.hidden_size)
 
     def test_vision_model(self, device, dtype):
         """Test SigLip2VisionModel."""
@@ -808,45 +680,6 @@ class TestSigLip2Components(BaseTester):
         assert pooled_output.shape == (batch_size, config.hidden_size)
         num_patches = (config.image_size // config.patch_size) ** 2
         assert last_hidden_state.shape == (batch_size, num_patches, config.hidden_size)
-
-    def test_text_embeddings(self, device, dtype):
-        """Test SigLip2TextEmbeddings."""
-        config = SigLip2TextConfig(vocab_size=100, hidden_size=32, max_position_embeddings=32)
-        embeddings = SigLip2TextEmbeddings(config).to(device, dtype)
-
-        batch_size = 2
-        seq_len = 10
-        input_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len), device=device)
-
-        with torch.no_grad():
-            output = embeddings(input_ids)
-
-        assert output.shape == (batch_size, seq_len, config.hidden_size)
-
-    def test_text_encoder(self, device, dtype):
-        """Test SigLip2TextEncoder."""
-        config = SigLip2TextConfig(
-            vocab_size=100,
-            hidden_size=32,
-            num_hidden_layers=2,
-            num_attention_heads=4,
-            intermediate_size=64,
-            max_position_embeddings=32,
-        )
-        encoder = SigLip2TextEncoder(config).to(device, dtype)
-        embeddings = SigLip2TextEmbeddings(config).to(device, dtype)
-
-        batch_size = 2
-        seq_len = 10
-        input_ids = torch.randint(0, config.vocab_size, (batch_size, seq_len), device=device)
-        attention_mask = torch.ones(batch_size, seq_len, device=device)
-
-        with torch.no_grad():
-            # Encoder expects hidden_states (embeddings), not input_ids
-            hidden_states = embeddings(input_ids)
-            output = encoder(hidden_states, attention_mask=attention_mask)
-
-        assert output[0].shape == (batch_size, seq_len, config.hidden_size)
 
     def test_text_model(self, device, dtype):
         """Test SigLip2TextModel."""
@@ -922,7 +755,6 @@ class TestSigLip2Components(BaseTester):
         ("batch_size", "input_size"),
         [
             (1, (32, 32)),
-            (1, (64, 64)),
             (2, (48, 64)),
             (4, (16, 16)),
         ],

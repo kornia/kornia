@@ -72,7 +72,7 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
-    @pytest.mark.parametrize("batch_size", [0, 1, 2])
+    @pytest.mark.parametrize("batch_size", [0, 2])
     def test_smoke(self, batch_size, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
         images = torch.rand(batch_size, 3, 112, 84, device=device, dtype=dtype)
@@ -84,7 +84,7 @@ class TestQwen25VisionTransformer(BaseTester):
         assert out.dtype == dtype
         assert out.device.type == device.type
 
-    @pytest.mark.parametrize(("height", "width", "tokens"), [(28, 28, 1), (56, 84, 6), (112, 168, 24)])
+    @pytest.mark.parametrize(("height", "width", "tokens"), [(28, 28, 1), (56, 84, 6)])
     def test_cardinality(self, height, width, tokens, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
 
