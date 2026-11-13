@@ -664,8 +664,8 @@ class TestBoxes2D(BaseTester):
         boxes_int_first = Boxes([vertices, floating], raise_if_not_floating_point=False)
         assert boxes_float_first.dtype == torch.float32
         assert boxes_int_first.dtype == torch.float32
-        torch.testing.assert_close(boxes_float_first.data[0, 0], floating[0])
-        torch.testing.assert_close(boxes_int_first.data[1, 0], floating[0])
+        self.assert_close(boxes_float_first.data[0, 0], floating[0])
+        self.assert_close(boxes_int_first.data[1, 0], floating[0])
 
         # from_tensor converts each list element independently before the same
         # first-element dtype merge, so reversing mixed float16/integer inputs
@@ -673,6 +673,19 @@ class TestBoxes2D(BaseTester):
         half = vertices.to(torch.float16)
         assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
         assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.get_default_dtype()
+
+        # Large integer coordinates must retain precision when merged with float64 boxes.
+        float64_boxes = floating.to(torch.float64)
+        integer_boxes = vertices.clone()
+        integer_boxes[0, 0, 0] = 16777217
+
+        boxes = Boxes([float64_boxes, integer_boxes], raise_if_not_floating_point=False)
+        assert boxes.dtype == torch.float64
+        assert boxes.data[1, 0, 0, 0].item() == 16777217
+
+        boxes = Boxes([integer_boxes, float64_boxes], raise_if_not_floating_point=False)
+        assert boxes.dtype == torch.float64
+        assert boxes.data[0, 0, 0, 0].item() == 16777217
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))

@@ -364,8 +364,12 @@ class Boxes:
                 )
                 if invalid_box is not None:
                     raise ValueError(f"Coordinates must be in floating point. Got {invalid_box.dtype}")
-            else:
-                boxes = [box if torch.is_floating_point(box) else _cast_to_floating_point(box) for box in boxes]
+            elif any(not box.is_floating_point() for box in boxes):
+                merged_dtype = torch.get_default_dtype()
+                for box in boxes:
+                    if box.is_floating_point():
+                        merged_dtype = torch.promote_types(merged_dtype, box.dtype)
+                boxes = [box.to(dtype=merged_dtype) for box in boxes]
             boxes, padding_counts = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):
