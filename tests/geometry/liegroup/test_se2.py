@@ -365,11 +365,18 @@ class TestSe2(BaseTester):
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_matrix(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
-        t = self._make_rand_data(device, dtype, (batch_size, 2))
-        s = So2.exp(theta)
-        p1 = s * t
-        p2 = s.matrix() @ t[..., None]
-        self.assert_close(p1, p2.squeeze(-1))
+        translation = self._make_rand_data(device, dtype, (batch_size, 2)) + 1.0
+        point = self._make_rand_data(device, dtype, (batch_size, 2))
+        pose = Se2(So2.exp(theta), translation)
+        matrix = pose.matrix()
+        expected_shape = (3, 3) if batch_size is None else (batch_size, 3, 3)
+        assert matrix.shape == expected_shape
+        self.assert_close(matrix[..., :2, 2], translation)
+        expected_bottom = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(matrix[..., 2, :], expected_bottom.expand_as(matrix[..., 2, :]))
+        homogeneous_point = torch.cat((point, torch.ones_like(point[..., :1])), dim=-1)
+        transformed = (matrix @ homogeneous_point[..., None]).squeeze(-1)
+        self.assert_close(transformed[..., :2], pose * point)
 
     @NO_COMPLEX_BFLOAT16
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])

@@ -374,13 +374,17 @@ class TestQuaternion(BaseTester):
     def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
         """Test scalar multiplication for issue #3101."""
         # Create a quaternion with parameters to test gradient flow
-        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
-        q = Quaternion(Parameter(q_data))
+        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        if batch_size is not None:
+            q_data = q_data.repeat(batch_size, 1)
+        q = Quaternion(Parameter(q_data))  # the Parameter is the leaf that requires grad
 
         # This should not raise a TypeError
         result = q * q * 5
 
         # Verify the result has proper gradient tracking
+        assert result.data.shape == q_data.shape
+        self.assert_close(result.data, 5 * q_data)
         assert result.data.requires_grad
 
         # Backward pass should work
@@ -503,8 +507,6 @@ class TestQuaternion(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_to_axis_angle(self, device, dtype, batch_size):
-        # batch_s = 5
-        # random_coefs = Quaternion.random(batch_s).data
         random_coefs = torch.tensor(
             [
                 [2.5398e-04, -2.2677e-01, -8.3897e-01, 4.9467e-01],
@@ -517,6 +519,7 @@ class TestQuaternion(BaseTester):
             dtype=dtype,
         )
 
+        random_coefs = random_coefs[0] if batch_size is None else random_coefs[:batch_size]
         q = Quaternion(random_coefs)
         axis_angle_actual = q.to_axis_angle()
 
@@ -531,6 +534,9 @@ class TestQuaternion(BaseTester):
             device=device,
             dtype=dtype,
         )
+
+        axis_angle_expected = axis_angle_expected[0] if batch_size is None else axis_angle_expected[:batch_size]
+        assert axis_angle_actual.shape == axis_angle_expected.shape
 
         if dtype in (torch.float16, torch.bfloat16):
             # the 4-decimal literals and the result each round to the dtype, half an ULP of up to 2.6: the defaults

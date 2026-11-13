@@ -1076,15 +1076,20 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # evaluate function gradient
         self.gradcheck(partial(kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps), (matrix,))
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        op = kornia.geometry.conversions.quaternion_log_to_exp
+    def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("rotation_matrix_to_quaternion defines a nested helper, which TorchScript rejects")
+        # Identity and half turns exercise all four matrix-to-quaternion branches.
+        matrix = torch.diag_embed(
+            torch.tensor(
+                [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]],
+                device=device,
+                dtype=dtype,
+            )
+        )
+        op = kornia.geometry.conversions.rotation_matrix_to_quaternion
         op_optimized = torch_optimizer(op)
-
-        actual = op_optimized(quaternion)
-        expected = op(quaternion)
-
-        self.assert_close(actual, expected)
+        self.assert_close(op_optimized(matrix), op(matrix))
 
     def test_float16_gradient_eye3_4623(self, device):
         # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at eye(3) must be finite and value-correct.

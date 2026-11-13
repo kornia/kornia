@@ -1027,11 +1027,6 @@ class TestHomographyWarper3D(BaseTester):
         )
         self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
 
-        norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
-            device=device, dtype=dtype
-        )
-        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
-
         # change output scale
         norm_homo = kornia.geometry.conversions.normalize_homography3d(
             dst_homo_src, input_shape, (input_shape[0] // 2, input_shape[1] * 2, input_shape[2] // 2)
