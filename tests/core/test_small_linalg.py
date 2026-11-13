@@ -142,12 +142,6 @@ def _well_conditioned(n, device, dtype, batch=()):
 
 class TestAdjugateKernels(BaseTester):
     @pytest.mark.parametrize("n", [2, 3, 4])
-    def test_smoke(self, device, dtype, n):
-        adj, det = ADJUGATE[n](_well_conditioned(n, device, dtype))
-        assert adj.shape == (n, n)
-        assert det.shape == ()
-
-    @pytest.mark.parametrize("n", [2, 3, 4])
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, n, batch):
         adj, det = ADJUGATE[n](_well_conditioned(n, device, dtype, batch))
@@ -255,19 +249,13 @@ def _permanent_of_abs(x):
 
 class TestDetPermKernels(BaseTester):
     @pytest.mark.parametrize("n", [2, 3, 4])
-    def test_smoke(self, device, dtype, n):
-        det, perm = DET_PERM[n](_well_conditioned(n, device, dtype))
-        assert det.shape == ()
-        assert perm.shape == ()
-        assert det.dtype == dtype
-        assert perm.dtype == dtype
-
-    @pytest.mark.parametrize("n", [2, 3, 4])
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, n, batch):
         det, perm = DET_PERM[n](_well_conditioned(n, device, dtype, batch))
         assert det.shape == batch
         assert perm.shape == batch
+        assert det.dtype == dtype
+        assert perm.dtype == dtype
 
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_matches_linalg_det_and_the_permanent_of_the_absolute_values(self, device, dtype, n):
@@ -360,11 +348,6 @@ class _DetPermModule(torch.nn.Module):
 
 
 class TestInverse3x3Kernels(BaseTester):
-    def test_smoke(self, device, dtype):
-        x = _well_conditioned(3, device, dtype)
-        assert _inverse_3x3_cross(x).shape == (3, 3)
-        assert _inverse_3x3_scalar(x).shape == (3, 3)
-
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, batch):
         x = _well_conditioned(3, device, dtype, batch)

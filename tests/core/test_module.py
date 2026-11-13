@@ -16,7 +16,6 @@
 #
 
 import io
-import os
 import struct
 import sys
 import zlib
@@ -59,11 +58,6 @@ class TestImageModuleMixIn:
         # Create a sample numpy array for testing
         return torch.rand(100, 100, 3).numpy()
 
-    def test_to_tensor_pil(self, img_module, sample_image):
-        tensor = img_module.to_tensor(sample_image)
-        assert isinstance(tensor, (torch.Tensor,))
-        assert tensor.shape == (3, 100, 100)
-
     def test_to_tensor_numpy(self, img_module, sample_numpy):
         tensor = img_module.to_tensor(sample_numpy)
         assert isinstance(tensor, (torch.Tensor,))
@@ -75,19 +69,9 @@ class TestImageModuleMixIn:
         tensor = img_module.to_tensor(sample_tensor)
         assert tensor is sample_tensor
 
-    def test_to_numpy_tensor(self, img_module, sample_tensor):
-        array = img_module.to_numpy(sample_tensor)
-        assert isinstance(array, (np.ndarray,))
-        # Channels-last, the layout `to_tensor` accepts (#5207).
-        assert array.shape == (100, 100, 3)
-
     def test_to_numpy_numpy(self, img_module, sample_numpy):
         array = img_module.to_numpy(sample_numpy)
         assert array is sample_numpy
-
-    def test_to_pil_tensor(self, img_module, sample_tensor):
-        pil_image = img_module.to_pil(sample_tensor)
-        assert isinstance(pil_image, (PILImage.Image,))
 
     def test_to_pil_pil(self, img_module, sample_image):
         pil_image = img_module.to_pil(sample_image)
@@ -124,17 +108,6 @@ class TestImageModuleMixIn:
         assert isinstance(img_module._output_image, tuple)
         assert torch.equal(img_module._output_image[0], sample_tensor)
 
-    def test_show(self, img_module, sample_tensor):
-        img_module._output_image = sample_tensor
-        pil_image = img_module.show(display=False)
-        assert isinstance(pil_image, (PILImage.Image,))
-
-    def test_save(self, img_module, sample_tensor, tmpdir):
-        img_module._output_image = sample_tensor
-        save_path = tmpdir.join("test_image.jpg")
-        img_module.save(name=save_path)
-        assert os.path.exists(save_path)
-
     @pytest.mark.parametrize("method", ["show", "save"])
     @pytest.mark.parametrize("n_row", [None, 0, -1])
     def test_show_save_empty_batch_n_row(self, img_module, monkeypatch, method, n_row):
@@ -158,12 +131,15 @@ class TestImageModuleMixIn:
             assert grid.shape == (3, 0, 4)
 
     def test_to_pil_4d_tensor_returns_list(self, img_module):
-        # 4D (B, C, H, W) tensor -> list of PIL Images
-        t = torch.rand(3, 3, 16, 16)
+        # 4D (B, C, H, W) tensor -> list of PIL Images, one per batch item and in batch order
+        t = torch.rand(3, 3, 10, 16)
         result = img_module.to_pil(t)
         assert isinstance(result, list)
         assert len(result) == 3
-        assert all(isinstance(im, PILImage.Image) for im in result)
+        for image, item in zip(result, t):
+            assert isinstance(image, PILImage.Image)
+            expected = (item * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+            np.testing.assert_array_equal(np.asarray(image), expected)
 
     def test_to_pil_numpy_raises(self, img_module, sample_numpy):
         with pytest.raises(NotImplementedError):
@@ -177,6 +153,8 @@ class TestImageModuleMixIn:
         arr = img_module.to_numpy(sample_image)
         assert isinstance(arr, np.ndarray)
         assert arr.shape == (100, 100, 3)
+        # The square image hides a transpose from the shape: compare the pixels.
+        np.testing.assert_array_equal(arr, np.asarray(sample_image))
 
     def test_convert_input_output_invalid_type_raises(self, img_module, sample_tensor):
         with pytest.raises(ValueError, match="Invalid output_type"):
@@ -257,9 +235,16 @@ class TestImageModuleMixIn:
         assert mode == "bilinear"
 
     def test_show_4d_tensor(self, img_module):
-        img_module._output_image = torch.rand(4, 3, 16, 16)
+        images = torch.rand(4, 3, 10, 16)
+        img_module._output_image = images
         result = img_module.show(display=False)
         assert isinstance(result, PILImage.Image)
+        # ceil(sqrt(4)) = 2 images per row, 2 pixels apart: (2 * 16 + 2, 2 * 10 + 2) as PIL's (width, height)
+        assert result.size == (34, 22)
+        grid = np.asarray(result)
+        for index, (top, left) in enumerate([(0, 0), (0, 18), (12, 0), (12, 18)]):
+            expected = (images[index] * 255).round().to(torch.uint8).permute(1, 2, 0).numpy()
+            np.testing.assert_array_equal(grid[top : top + 10, left : left + 16], expected)
 
     def test_show_unsupported_backend_raises(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor

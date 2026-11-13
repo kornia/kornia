@@ -615,14 +615,6 @@ class TestSvdCast:
         tol_val = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
         assert_close(a, u[..., :rank] @ torch.diag_embed(s) @ v[..., :rank].mT, atol=tol_val, rtol=tol_val)
 
-    def test_smoke(self, device, dtype):
-        a = torch.randn(5, 3, 3, device=device, dtype=dtype)
-        u, s, v = _torch_svd_cast(a)
-
-        # The factors round to the dtype and the product rounds again: bfloat16 is as coarse as float16, or coarser.
-        tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
-        assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
-
     def test_batch_above_mps_ceiling(self, device, dtype):
         # torch 2.14's MPS SVD raises at 8192 input elements or more (#4201), far below the hypothesis
         # count RANSAC's batched minimal solvers use; 1000 * 3 * 3 = 9000 elements clears it.
