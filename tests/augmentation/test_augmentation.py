@@ -5746,7 +5746,7 @@ class TestResize:
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_matrix_unchanged_without_one_pixel_axis_6644(self, align_corners, device, dtype):
-        aug = Resize((5, 3), align_corners=align_corners)
+        aug = Resize((100, 37), align_corners=align_corners)
         aug(torch.rand(2, 1, 6, 7, device=device, dtype=dtype))
         src, dst = aug._params["src"], aug._params["dst"]
         if align_corners:
