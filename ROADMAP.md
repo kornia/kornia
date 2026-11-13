@@ -11,11 +11,12 @@ This document owns strategy and correctness policy. [CONTRIBUTING.md](CONTRIBUTI
 is the contribution entry point; [AGENTS.md](AGENTS.md) guides agent execution, and
 [TESTING.md](TESTING.md) describes validation. Dates are intentions, not commitments.
 
-## Release status — 2026-10-23
+## Release status — 2026-11-13
 
-[Kornia 0.9.0](https://github.com/kornia/kornia/releases/tag/v0.9.0) shipped and its
-published artifacts were verified. The repair/deprecation window is open under the
-existing [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html).
+[Kornia 0.9.1](https://github.com/kornia/kornia/releases/tag/v0.9.1), a bug-fix, documentation and
+`kornia.feature` speed-up release, shipped and its published artifacts were verified. The repair/deprecation
+window stays open under the existing
+[stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html).
 Use [#4620](https://github.com/kornia/kornia/issues/4620) for the current release sequence,
 evidence, and follow-ups. Patch releases prioritize confirmed regressions and compatible fixes.
 
