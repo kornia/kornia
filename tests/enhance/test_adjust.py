@@ -2284,10 +2284,11 @@ class TestClipUnitFreshBuffer(BaseTester):
         self.assert_close(out, self._REFERENCE[op](image, factor.to(torch.uint8)))
 
     # adjust_gamma clamps its fresh result in place too, on the Python-scalar path and on the tensor path. Its input
-    # stays in (0, 1]: a negative pixel has no real power, and a black one has its own gradient pins elsewhere.
+    # stays positive (a negative pixel has no real power, and a black one has its own gradient pins elsewhere) and
+    # reaches above 1, so a clamp of the caller's tensor would show.
     @pytest.mark.parametrize("gamma", [0.5, 2.2, "per-image"])
     def test_adjust_gamma_input_unmodified_and_values_match_with_and_without_a_gradient(self, device, dtype, gamma):
-        image = torch.linspace(0.05, 1.0, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
+        image = torch.linspace(0.05, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
         original = image.clone()
         if gamma == "per-image":
             gamma = torch.tensor([0.5, 2.2], device=device, dtype=dtype)
@@ -2312,19 +2313,32 @@ class TestClipUnitFreshBuffer(BaseTester):
         reference(ref_leaf).sum().backward()
         out_grad.sum().backward()
         assert leaf.grad is not None
-        self.assert_close(leaf.grad, ref_leaf.grad)
+        # A product that rounds onto the bound keeps its gradient here but not in torch.clamp; the gradient at the
+        # bounds is pinned in TestUnitRangeClampGradient.
+        away = out_no_grad != 1.0
+        self.assert_close(leaf.grad[away], ref_leaf.grad[away])
 
+    # A Python-scalar gamma takes the scalar path in float32 and float64; a per-sample gamma takes the tensor path.
+    @pytest.mark.parametrize("gamma", ["scalar", "per-sample"])
     @pytest.mark.parametrize("batch", [0, 3])
-    def test_adjust_gamma_vmap_keeps_the_batching_rule(self, device, dtype, batch):
+    def test_adjust_gamma_vmap_keeps_the_batching_rule(self, device, dtype, batch, gamma):
         image = torch.rand(batch, 3, 4, 4, device=device, dtype=dtype)
+        if gamma == "scalar":
+            gammas = torch.full((batch,), 2.2, device=device, dtype=dtype)
+        else:
+            gammas = torch.rand(batch, device=device, dtype=dtype) + 0.5
+
+        def per_frame(frame, frame_gamma):
+            return enhance.adjust_gamma(frame, 2.2 if gamma == "scalar" else frame_gamma, 1.5)
+
         functorch = torch._C._functorch
         fallback_enabled = functorch._is_vmap_fallback_enabled()
         functorch._set_vmap_fallback_enabled(False)
         try:
-            out = torch.vmap(lambda frame: enhance.adjust_gamma(frame, 2.2, 1.5))(image)
+            out = torch.vmap(per_frame)(image, gammas)
         finally:
             functorch._set_vmap_fallback_enabled(fallback_enabled)
-        self.assert_close(out, enhance.adjust_gamma(image, 2.2, 1.5))
+        self.assert_close(out, enhance.adjust_gamma(image, gammas, 1.5))
 
 
 def _black_grey_white(device, dtype) -> Tensor:

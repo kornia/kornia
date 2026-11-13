@@ -546,8 +546,8 @@ def adjust_gamma(
     else:
         power = torch.pow(input, gamma)
     # Truncate between pixel values. ``power`` is still alive here, so an out-of-place clamp would hold a fourth
-    # image-sized buffer: at batch 32 (25 MB at 256 x 256) that pushed the working set out of the RTX 4090's L2 and
-    # made the call twice as slow as in 0.9.0 (110 vs 50 us). The in-place clamp brings it back to 55 us.
+    # image-sized buffer. Once that working set outgrows the GPU's L2 cache (batch 32 at 256 x 256 on a 72 MB L2),
+    # the call takes about twice as long; clamping the fresh product in place avoids the extra buffer.
     return _clip_unit_fresh(gain * power)
 
 
