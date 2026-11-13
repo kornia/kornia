@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 from kornia.color.utils import _apply_linear_transformation
@@ -41,6 +42,32 @@ class TestApplyLinearTransformation(BaseTester):
         assert actual.dtype == torch.float32
         assert actual.is_contiguous()
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("shape", [(1, 3, 224, 224), (2, 3, 48, 64), (8, 3, 64, 64)])
+    def test_float32_with_cudnn_tf32_enabled(self, device, shape):
+        # PyTorch's defaults: cuDNN TF32 on, matmul TF32 off (the test session sets both from --tf32).
+        # The transform must compute in float32 there: on CUDA the former 1x1 conv2d gave 3.6e-4 for
+        # (1, 3, 224, 224).
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(shape, generator=generator, dtype=torch.float64)
+        kernel = torch.tensor(
+            [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]],
+            dtype=torch.float64,
+        )
+        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image).to(device=device, dtype=torch.float32)
+
+        cudnn, matmul = torch.backends.cudnn, torch.backends.cuda.matmul
+        matmul_tf32 = matmul.allow_tf32
+        matmul.allow_tf32 = False
+        try:
+            with cudnn.flags(
+                enabled=cudnn.enabled, benchmark=cudnn.benchmark, deterministic=cudnn.deterministic, allow_tf32=True
+            ):
+                actual = _apply_linear_transformation(image.to(device=device, dtype=torch.float32), kernel)
+        finally:
+            matmul.allow_tf32 = matmul_tf32
+
+        self.assert_close(actual, expected, atol=1e-6, rtol=1e-6)
 
     def test_empty_input_autograd(self, device):
         for shape in ((0, 3, 4, 4), (2, 3, 0, 4), (2, 0, 3, 4, 4)):

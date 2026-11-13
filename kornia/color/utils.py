@@ -18,7 +18,6 @@
 from typing import Optional
 
 import torch
-from torch.nn import functional as F
 
 
 def _apply_linear_transformation(
@@ -43,25 +42,19 @@ def _apply_linear_transformation(
     bias_compute = bias.to(dtype=image_compute.dtype, device=image_compute.device) if bias is not None else None
     input_shape = image_compute.shape
 
-    # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
-    # while conv2d offers significant speedups on GPU/CUDA.
-    # We branch to ensure optimal performance on both devices.
-    # BRANCH 1: CPU and empty tensors (Einsum)
-    # Einsum handles every empty shape and keeps image, kernel, and bias in the graph.
-    if image_compute.device.type == "cpu" or image_compute.numel() == 0:
-        out = torch.einsum("oi, ...ihw -> ...ohw", kernel_compute, image_compute)
+    # One matmul over the flattened pixels on every device. It replaces a 1x1 conv2d off the cpu, which
+    # followed cuDNN's TF32 switch (on by default in PyTorch) with the precision chosen per shape: on CUDA
+    # a single (1, 3, 224, 224) float32 image, and every shape under torch.compile, came back with a
+    # 10-bit mantissa (3.6e-4 error in rgb_to_xyz, 5.9e-2 in rgb_to_lab). A matmul follows
+    # torch.backends.cuda.matmul.allow_tf32 (off by default) like every other matrix product. It also
+    # replaces the einsum on the cpu, where it gives bitwise the same result about 2x faster.
+    # The leading size is spelled out rather than -1 so that empty shapes reshape too.
+    batch = 1
+    for size in input_shape[:-3]:
+        batch *= size
+    out = torch.matmul(kernel_compute, image_compute.reshape(batch, 3, input_shape[-2] * input_shape[-1]))
 
-        if bias_compute is not None:
-            out = out + bias_compute.view(-1, 1, 1)
+    if bias_compute is not None:
+        out = out + bias_compute.view(-1, 1)
 
-        return out.contiguous()
-
-    # BRANCH 2: GPU/Accelerators (Conv2d)
-    # Reshape for conv2d: (B*..., C, H, W)
-    input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
-
-    weight = kernel_compute.view(3, 3, 1, 1)
-    out_flat = F.conv2d(input_flat, weight, bias=bias_compute)
-
-    # Unflatten back to original shape
-    return out_flat.reshape(input_shape)
+    return out.reshape(input_shape)
