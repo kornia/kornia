@@ -178,10 +178,10 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
-        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
-        if mean.dim() == 1:
+        # Scalar and per-channel statistics broadcast from a leading batch dimension of one.
+        if mean.dim() <= 1:
             mean = mean.view(1, -1)
-        if std.dim() == 1:
+        if std.dim() <= 1:
             std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError(
@@ -203,8 +203,8 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
-        std = _as_tensor_nonblocking(std, data.device, data.dtype)
+    mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+    std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     mean = mean[..., None]
     std = std[..., None]
@@ -351,10 +351,10 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
-        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
-        if mean.dim() == 1:
+        # Scalar and per-channel statistics broadcast from a leading batch dimension of one.
+        if mean.dim() <= 1:
             mean = mean.view(1, -1)
-        if std.dim() == 1:
+        if std.dim() <= 1:
             std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
@@ -373,8 +373,8 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
-        std = _as_tensor_nonblocking(std, data.device, data.dtype)
+    mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+    std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     if mean.dim() == 1:
         mean = mean.view(1, -1, *([1] * (data.dim() - 2)))

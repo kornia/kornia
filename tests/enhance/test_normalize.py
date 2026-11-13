@@ -15,12 +15,54 @@
 # limitations under the License.
 #
 
+import io
+
 import pytest
 import torch
 
 import kornia
 
 from testing.base import BaseTester
+
+
+class TestNormalizeOnnx(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("module_name", ["Normalize", "Denormalize"])
+    @pytest.mark.parametrize("stat_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("scalar_mean,scalar_std", [(True, True), (True, False), (False, True), (False, False)])
+    def test_scalar_tensor_statistics_onnx(self, module_name, stat_dtype, scalar_mean, scalar_std):
+        """Export scalar or per-channel statistics and run the graph on another batch and spatial size."""
+        onnx = pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        mean = torch.tensor(0.5 if scalar_mean else [0.25, 0.5, 0.75], dtype=stat_dtype)
+        std = torch.tensor(0.25 if scalar_std else [0.25, 0.5, 1.0], dtype=stat_dtype)
+        module = getattr(kornia.enhance, module_name)(mean, std)
+        image = torch.linspace(0, 1, 180).reshape(2, 3, 5, 6)
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            module,
+            (image,),
+            buffer,
+            dynamo=False,
+            opset_version=17,
+            input_names=["image"],
+            output_names=["output"],
+            dynamic_axes={name: {0: "batch", 2: "height", 3: "width"} for name in ("image", "output")},
+        )
+        onnx.checker.check_model(buffer.getvalue())
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        session = ort.InferenceSession(buffer.getvalue(), options, providers=["CPUExecutionProvider"])
+        for data in (image, torch.linspace(0, 1, 84).reshape(1, 3, 4, 7)):
+            broadcast_mean = mean.to(data).reshape(1, -1, 1, 1)
+            broadcast_std = std.to(data).reshape(1, -1, 1, 1)
+            expected = (
+                (data - broadcast_mean) / broadcast_std
+                if module_name == "Normalize"
+                else data * broadcast_std + broadcast_mean
+            )
+            actual = torch.from_numpy(session.run(None, {"image": data.numpy()})[0])
+            self.assert_close(actual, expected)
 
 
 class TestNormalize(BaseTester):
