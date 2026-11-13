@@ -651,12 +651,21 @@ class TestBoxes2D(BaseTester):
         coordinates = torch.tensor([[1, 2, 5, 4]], device=device)
         assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.get_default_dtype()
 
-        # A list is padded into a tensor of its first element's dtype before the
-        # check, so a mixed-dtype list is judged by its first box alone.
+        # Every list element is checked for floating-point dtype before merging.
         floating = vertices.to(torch.float32)
-        assert Boxes([floating, vertices]).dtype == torch.float32
+        floating[..., 0] += 0.5
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes([floating, vertices])
         with pytest.raises(ValueError, match="floating point"):
             Boxes([vertices, floating])
+
+        # Integer boxes are cast when raise_if_not_floating_point=False.
+        boxes_float_first = Boxes([floating, vertices], raise_if_not_floating_point=False)
+        boxes_int_first = Boxes([vertices, floating], raise_if_not_floating_point=False)
+        assert boxes_float_first.dtype == torch.float32
+        assert boxes_int_first.dtype == torch.float32
+        torch.testing.assert_close(boxes_float_first.data[0, 0], floating[0])
+        torch.testing.assert_close(boxes_int_first.data[1, 0], floating[0])
 
         # from_tensor converts each list element independently before the same
         # first-element dtype merge, so reversing mixed float16/integer inputs

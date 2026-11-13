@@ -357,6 +357,15 @@ class Boxes:
         padding_counts: Optional[list[int]] = None
 
         if isinstance(boxes, list):
+            if raise_if_not_floating_point:
+                invalid_box = next(
+                    (box for box in boxes if not box.is_floating_point()),
+                    None,
+                )
+                if invalid_box is not None:
+                    raise ValueError(f"Coordinates must be in floating point. Got {invalid_box.dtype}")
+            else:
+                boxes = [box if torch.is_floating_point(box) else _cast_to_floating_point(box) for box in boxes]
             boxes, padding_counts = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):
