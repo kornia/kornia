@@ -81,6 +81,7 @@ class TestCornerHarris(BaseTester):
         self.assert_close(scores, kornia.feature.harris_response(inp, k), rtol=0, atol=0)
 
     def test_corners(self, device, dtype):
+        _skip_without_half_padding(device, dtype)
         inp = torch.tensor(
             [
                 [
