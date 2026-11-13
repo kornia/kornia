@@ -4777,10 +4777,32 @@ class TestRandomChannelDropout(BaseTester):
         moved = aug.to(device=device, dtype=dtype)
         assert moved.fill_value.device.type == torch.device(device).type
         assert moved.fill_value.dtype == dtype
-        # the moved buffer is the value the forward actually fills with
+        # the moved buffer is the value the forward actually fills with, except that a float64 image gets the number
+        # itself while the buffer still holds it as built
         out = moved(torch.zeros(1, 3, 8, 8, device=device, dtype=dtype))
-        assert (out == moved.fill_value).any()
-        assert out.max() == moved.fill_value
+        fill = 0.3 if dtype == torch.float64 else moved.fill_value
+        assert (out == fill).any()
+        assert out.max() == fill
+
+    def test_float64_fill_is_the_exact_number(self, device):
+        # A float64 image is filled with fill_value itself, not the float32 buffer's 0.3700000047683716, while the
+        # buffer still holds it as built; a value changed in place is used as it is, and so is the buffer of a
+        # module pickled before the number was kept. MPS has no float64, so there the image stays on the CPU.
+        image_device = torch.device("cpu") if device.type == "mps" else device
+        img = torch.rand(2, 3, 4, 4, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(image_device)
+        aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.37, p=1.0).to(device)
+        for fill in (0.37, 0.5):
+            if fill == 0.5:
+                aug.fill_value.fill_(0.5)
+            out = aug(img)
+            dropped = (out != img).flatten(2).any(-1)
+            assert int(dropped.sum()) == 2
+            self.assert_close(out[dropped], torch.full_like(out[dropped], fill), rtol=0.0, atol=0.0)
+        del aug._fill_numbers
+        aug.fill_value.fill_(0.37)
+        out = aug(img)
+        dropped = (out != img).flatten(2).any(-1)
+        self.assert_close(out[dropped], torch.full_like(out[dropped], float(torch.tensor(0.37))), rtol=0.0, atol=0.0)
 
 
 class TestNormalize(BaseTester):
@@ -4849,6 +4871,46 @@ class TestNormalize(BaseTester):
             Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0),
             (input,),
         )
+
+    def test_float64_matches_the_numpy_reference(self, device):
+        # A float64 image is normalized with the numbers themselves, not with the float32 tensors the flags hold; the
+        # expected values come from plain NumPy (snippet in the PR). A mean set in the flags afterwards, or given as a
+        # number for one call, is used as it is, and so are the flags of a module pickled before the numbers were kept.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(18, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 3, 2, 3).to(device)
+        scalar = Normalize(0.37, 0.29)
+        per_channel = Normalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        actual = torch.stack([scalar(img)[0, 0, 0, 0], per_channel(img)[0, 2, 1, 2]])
+        expected = torch.tensor([-0.8965517241379312, -0.026666666666665208], device=device, dtype=torch.float64)
+        self.assert_close(actual, expected, rtol=1e-12, atol=0.0)
+        scalar.flags["mean"] = torch.tensor([0.5])
+        self.assert_close(scalar(img), (img - 0.5) / 0.29, rtol=0.0, atol=0.0)
+        self.assert_close(scalar(img, mean=0.25), (img - 0.25) / 0.29, rtol=0.0, atol=0.0)
+        del scalar._mean_numbers, scalar._std_numbers
+        self.assert_close(scalar(img), (img - 0.5) / float(torch.tensor(0.29)), rtol=0.0, atol=0.0)
+
+    def test_float64_statistics_keep_their_gradient(self, device):
+        # The exact numbers pass the gradient on to the flags they stand for, as the flags themselves do in float32.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=torch.float64)
+        aug = Normalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        aug.flags["mean"].requires_grad_(True)
+        aug(img).sum().backward()
+        # The gradient of sum((x - mean) / std) for each channel's mean is -N / std, with N = 2 * 4 * 5 values.
+        expected = -40.0 / torch.tensor([0.229, 0.224, 0.225], dtype=torch.float64)
+        self.assert_close(aug.flags["mean"].grad, expected.float())
+
+    def test_float64_infinite_statistics_give_no_nan(self, device):
+        # An infinite mean or std, or a number the float32 flag rounds to infinity, held as built: the exact
+        # number still applies to a float64 image, and the gradient term (``inf - inf``) does not turn it into NaN.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 3, 2, 3, device=device, dtype=torch.float64)
+        self.assert_close(Normalize(0.0, float("inf"))(img), torch.zeros_like(img), rtol=0.0, atol=0.0)
+        self.assert_close(Normalize(1e39, 1.0)(img), torch.full_like(img, -1e39), rtol=0.0, atol=0.0)
+        self.assert_close(Denormalize(float("inf"), 1.0)(img), torch.full_like(img, float("inf")), rtol=0.0, atol=0.0)
 
 
 class TestDenormalize(BaseTester):
@@ -4922,6 +4984,25 @@ class TestDenormalize(BaseTester):
             (input,),
         )
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # A float64 image is denormalized with the numbers themselves, not with the float32 tensors the flags hold; the
+        # expected values come from plain NumPy (snippet in the PR). A mean set in the flags afterwards is used as
+        # it is, and so are the flags of a module pickled before the numbers were kept; each matches a module given
+        # those values as tensors.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(18, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 3, 2, 3).to(device)
+        scalar = Denormalize(0.37, 0.29)
+        per_channel = Denormalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        actual = torch.stack([scalar(img)[0, 0, 0, 0], per_channel(img)[0, 2, 1, 2]])
+        expected = torch.tensor([0.4019, 0.4960000000000001], device=device, dtype=torch.float64)
+        self.assert_close(actual, expected, rtol=1e-12, atol=0.0)
+        scalar.flags["mean"] = torch.tensor([0.5])
+        expected = Denormalize(torch.tensor([0.5]), torch.tensor([0.29], dtype=torch.float64))(img)
+        self.assert_close(scalar(img), expected, rtol=0.0, atol=0.0)
+        del scalar._mean_numbers, scalar._std_numbers
+        self.assert_close(scalar(img), Denormalize(torch.tensor([0.5]), torch.tensor([0.29]))(img), rtol=0.0, atol=0.0)
+
 
 class TestRandomFisheye(BaseTester):
     @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
@@ -4985,6 +5066,51 @@ class TestRandomFisheye(BaseTester):
         aug = RandomFisheye(center_x, center_y, gamma, p=1.0)
         params = aug.forward_parameters(img.shape)
         self.gradcheck(lambda x: aug(x, params=params), (img,))
+
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The sampling grid is built in float64 for a float64 image; the expected values come from plain NumPy (snippet
+        # in the PR), and a grid built in float32 misses them by far more than 1e-12.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(42, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 6, 7).to(device)
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+        params = {
+            "center_x": torch.tensor([0.23], device=device, dtype=torch.float64),
+            "center_y": torch.tensor([-0.17], device=device, dtype=torch.float64),
+            "gamma": torch.tensor([0.9], device=device, dtype=torch.float64),
+            "batch_prob": img.new_ones(1),
+        }
+        out = aug(img, params=params)[0, 0]
+        expected = torch.tensor([0.5205761288578419, 0.03817829207170546], device=device, dtype=torch.float64)
+        self.assert_close(torch.stack([out[1, 2], out[4, 5]]), expected, rtol=1e-12, atol=0.0)
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_grid_dtype_changes_only_for_a_float64_image(self, device, default_dtype, monkeypatch):
+        # Only a float64 image gets a float64 grid. A float32 image keeps the grid built in the default dtype, so its
+        # result under a float64 default is unchanged; a grid built in the image's dtype would change it.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        from kornia.augmentation._2d.geometric import fisheye as fisheye_module
+
+        grid_dtypes = []
+
+        def spy(*args, **kwargs):
+            grid = create_meshgrid(*args, **kwargs)
+            grid_dtypes.append(grid.dtype)
+            return grid
+
+        monkeypatch.setattr(fisheye_module, "create_meshgrid", spy)
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            for image_dtype in (torch.float32, torch.float64):
+                aug(torch.rand(1, 1, 4, 5, device=device, dtype=image_dtype))
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert grid_dtypes == [default_dtype, torch.float64]
 
 
 class TestRandomElasticTransform(BaseTester):
