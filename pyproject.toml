@@ -66,6 +66,7 @@ docs = [
 ]
 image = ["pillow"]
 onnx = ["onnx", "onnxruntime", "onnxscript"]
+profiler = ["pandas"]
 sd = ["diffusers", "transformers"]
 
 [build-system]
