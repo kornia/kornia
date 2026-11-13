@@ -72,7 +72,6 @@ class TestBilateralBlur(BaseTester):
     def test_exception_kernel_size(self, kernel_size):
         # The window is centred on the pixel, so every entry must be a positive odd integer. The check runs before any
         # padding, and the module constructors run it too.
-
         image = torch.rand(1, 1, 8, 9)
         calls = (
             lambda: bilateral_blur(image, kernel_size, 0.1, (1.0, 1.0)),
@@ -93,7 +92,6 @@ class TestBilateralBlur(BaseTester):
         # The colour kernel divides by sigma_color squared, so a zero entry divides by zero and the sign of a negative
         # one is lost: every entry must be positive. The check names the argument, runs before any padding and covers
         # the joint filter and the modules.
-
         image = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
         if isinstance(sigma_color, list):
             sigma_color = torch.tensor(sigma_color, device=device, dtype=dtype)
@@ -117,7 +115,6 @@ class TestBilateralBlur(BaseTester):
         # A tensor sigma batch that is neither 1 nor the input batch raises at the entry with a message naming the
         # argument and both sizes, not a torch broadcast error. Input batch 1 with 3 sigma rows used to succeed and
         # silently return a batch of 3, so it is covered too. The check covers the joint filter and the modules.
-
         image = torch.rand(batch, 3, 8, 9, device=device, dtype=dtype)
         sigma_color = 0.5
         sigma_space = (1.0, 1.0)
