@@ -1,6 +1,6 @@
 # Kornia
 
-> Kornia is a differentiable computer vision library for PyTorch: classic CV operations (color conversion, filtering, geometric transforms, camera/epipolar geometry, augmentation) implemented as batched, GPU-ready, autograd-friendly tensor ops, plus curated local-feature and vision models. Every op is `torch.Tensor` in, `torch.Tensor` out; OpenCV is not a dependency. Kornia 0.9.0 requires Python ≥ 3.11 and PyTorch ≥ 2.5.1, with NumPy ≥ 1.21 and `kornia_rs` ≥ 0.2.0 (image I/O) as its other runtime dependencies; `RANSAC(compile=True)` needs PyTorch ≥ 2.14.
+> Kornia is a differentiable computer vision library for PyTorch: classic CV operations (color conversion, filtering, geometric transforms, camera/epipolar geometry, augmentation) implemented as batched, GPU-ready, autograd-friendly tensor ops, plus curated local-feature and vision models. Every op is `torch.Tensor` in, `torch.Tensor` out; OpenCV is not a dependency. Kornia 0.9.1 requires Python ≥ 3.11 and PyTorch ≥ 2.5.1, with NumPy ≥ 1.21 and `kornia_rs` ≥ 0.2.0 (image I/O) as its other runtime dependencies; `RANSAC(compile=True)` needs PyTorch ≥ 2.14.
 
 Conventions every code generator must know before writing Kornia code:
 
@@ -28,7 +28,7 @@ essential, DLT homography and PnP) and `RANSAC` (device-side sampling and scorin
 distortion, Lie groups); 2D augmentation that moves images, masks, boxes and keypoints together and inverts (on CUDA
 with no avoidable host synchronization); GPU local features and matchers (DISK, ALIKED, XFeat, LoFTR, LightGlue,
 SIFT); nearly all probed operator configurations compile with `torch.compile`, and over 1,000 export to ONNX. In the
-published 0.9.0 flagship benchmarks (RTX 4090, batch 32), many filters, warps, matching steps and metrics run about
+published 0.9.1 flagship benchmarks (RTX 4090, batch 32), many filters, warps, matching steps and metrics run about
 10× to 70× faster in eager mode than per-image CPU OpenCV or scikit-image, and several pass 100× under
 `torch.compile`; on the small overlap with torchvision, eager Kornia is slower and compiled Kornia wins hue, color
 jitter and Gaussian blur but not flips, crops or brightness. `RANSAC` and learned-feature extraction run without
