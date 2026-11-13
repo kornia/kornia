@@ -30,6 +30,33 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
 
+def _float_numbers(value: Any) -> Optional[List[float]]:
+    """Return a Python number or a sequence of numbers as a list of floats, or ``None`` for anything else."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return [float(value)]
+    if isinstance(value, (tuple, list)) and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+        return [float(v) for v in value]
+    return None
+
+
+def _exact_in_float64(stored: Any, numbers: Optional[List[float]], device: torch.device) -> Any:
+    """Return ``stored`` in float64 on ``device``, with the numbers it was built from wherever it still holds them.
+
+    A Python number kept in a float32 tensor is rounded to float32; a float64 input uses the number itself. A value
+    changed after construction, by assignment or in place, is used as it is, and anything but a floating tensor is
+    returned unchanged. A gradient still reaches ``stored``.
+    """
+    if numbers is None or not isinstance(stored, torch.Tensor) or not stored.is_floating_point():
+        return stored
+    if stored.numel() != len(numbers):
+        return stored
+    stored = stored.to(device)  # the input's device: MPS, where a module may live, has no float64
+    built = torch.tensor(numbers).to(device=device, dtype=stored.dtype).reshape(stored.shape)
+    exact = torch.tensor(numbers, dtype=torch.float64, device=device).reshape(stored.shape)
+    stored64 = stored.to(torch.float64)
+    return torch.where(stored == built, exact + (stored64 - stored64.detach()), stored64)
+
+
 def _pad_with_fill(
     input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float]], mode: str
 ) -> torch.Tensor:
