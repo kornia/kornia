@@ -511,7 +511,7 @@ def adjust_gamma(
                     )
                 else:
                     power = input.pow(gamma)
-                return _clamp_unit_range(power * gain)
+                return _clip_unit_fresh(power * gain)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -545,12 +545,10 @@ def adjust_gamma(
         )
     else:
         power = torch.pow(input, gamma)
-    x_adjust: torch.Tensor = gain * power
-
-    # Truncate between pixel values
-    out: torch.Tensor = _clamp_unit_range(x_adjust)
-
-    return out
+    # Truncate between pixel values. ``power`` is still alive here, so an out-of-place clamp would hold a fourth
+    # image-sized buffer. Once that working set outgrows the GPU's L2 cache (batch 32 at 256 x 256 on a 72 MB L2),
+    # the call takes about twice as long; clamping the fresh product in place avoids the extra buffer.
+    return _clip_unit_fresh(gain * power)
 
 
 def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True) -> torch.Tensor:
