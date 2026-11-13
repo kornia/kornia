@@ -28,7 +28,7 @@ essential, DLT homography and PnP) and `RANSAC` (device-side sampling and scorin
 distortion, Lie groups); 2D augmentation that moves images, masks, boxes and keypoints together and inverts (on CUDA
 with no avoidable host synchronization); GPU local features and matchers (DISK, ALIKED, XFeat, LoFTR, LightGlue,
 SIFT); nearly all probed operator configurations compile with `torch.compile`, and over 1,000 export to ONNX. In the
-published 0.9.0 flagship benchmarks (RTX 4090, batch 32), many filters, warps, matching steps and metrics run about
+published 0.9.1 flagship benchmarks (RTX 4090, batch 32), many filters, warps, matching steps and metrics run about
 10× to 70× faster in eager mode than per-image CPU OpenCV or scikit-image, and several pass 100× under
 `torch.compile`; on the small overlap with torchvision, eager Kornia is slower and compiled Kornia wins hue, color
 jitter and Gaussian blur but not flips, crops or brightness. `RANSAC` and learned-feature extraction run without
