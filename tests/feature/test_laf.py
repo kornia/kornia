@@ -1913,7 +1913,11 @@ class TestTransformLAFs(BaseTester):
             dtype=dtype,
         )
 
-        actual = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src.expand(2, -1, -1, -1))
+        # the second image holds the same LAFs in reverse order, so taking the LAFs of the other image also fails
+        lafs_src = torch.stack([lafs_src, lafs_src.flip(0)])
+        expected = torch.stack([expected[0], expected[1].flip(0)])
+
+        actual = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src)
 
         half_tolerance = 3 * torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else None
         self.assert_close(actual, expected, atol=half_tolerance, rtol=half_tolerance)
