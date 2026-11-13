@@ -49,9 +49,12 @@ class TestSOLD2_detector(BaseTester):
         weights = sold2.model.state_dict()
         detector.model.load_state_dict(weights)
         assert any(key.startswith("descriptor_decoder.") for key in weights)  # the caller's dict is left as it was
-        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # two images: SOLD2_detector.forward is separate from SOLD2.forward, and must keep every image of the batch
+        img = torch.rand(2, 1, 64, 64, device=device, dtype=dtype)
         with torch.no_grad():
             expected, actual = sold2(img), detector(img)
+        assert actual["junction_heatmap"].shape == actual["line_heatmap"].shape == (2, 64, 64)
+        assert len(actual["line_segments"]) == 2
         self.assert_close(actual["junction_heatmap"], expected["junction_heatmap"])
         self.assert_close(actual["line_heatmap"], expected["line_heatmap"])
         assert len(actual["line_segments"]) == len(expected["line_segments"])
