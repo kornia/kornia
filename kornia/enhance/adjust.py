@@ -435,7 +435,8 @@ def adjust_gamma(
 
     Convention:
         For ``0 < gamma < 1`` the derivative of ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the
-        gradient there is 0 instead.
+        gradient there is 0 instead. A graph captured by ``torch.jit.trace`` keeps the plain power, whose gradient
+        there is not finite.
 
     Args:
         input: image with shape ``(*, H, W)``.
@@ -538,7 +539,9 @@ def adjust_gamma(
     # below would pass on. Black pixels then take the power of a safe base, keep their value 0 ** gamma = 0 and get a
     # zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the masking only runs when
     # autograd can ask for a derivative through the input. The mask costs 5 times or more without a derivative.
-    if _needs_derivatives(input):
+    # torch.jit.trace keeps the plain power, as the [0, 1] clamp does: its check traces again under no_grad, and a
+    # mask that follows the grad mode records two different graphs (TracingCheckError, which 0.9.0 did not raise).
+    if _needs_derivatives(input) and not torch.jit.is_tracing():
         black = (input == 0) & (gamma > 0) & (gamma < 1)
         power = torch.where(
             black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
