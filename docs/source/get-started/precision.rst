@@ -10,8 +10,12 @@ The module table below counts entries in the Linux CPU known-failure manifests
 There are **12 float16 and 17 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
-No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends. CPU and CUDA
-totals of the whole test suite, measured together on one revision, are in :ref:`measured-test-suite-totals`.
+
+CUDA is tested on maintainer hardware rather than in hosted CI, whose runners have no GPU. The whole test suite runs
+on an NVIDIA GPU in float32, float64, float16 and bfloat16 and under ``torch.compile`` (totals in
+:ref:`measured-test-suite-totals`). It is re-run before releases, and pull requests that touch device-dependent code
+are reviewed with their CUDA tests on that GPU. CUDA-only failures are fixed or listed on this page. MPS runs float32
+in CI; MPS half precision is not part of CI, and CPU results alone do not establish it.
 
 .. list-table:: Known failures by module (Linux CPU)
    :header-rows: 1
@@ -166,10 +170,10 @@ Measured test-suite totals
 --------------------------
 
 Every total in this section comes from one revision, measured on one machine on one day, so the rows can be compared
-with each other and with the module table above: ``26e866e54`` (2026-11-12, main ``43e84eabd`` plus this page's
-consistency test), Linux x86_64 (WSL2), an RTX 4090, Python 3.11 and PyTorch 2.15.0+cu132 with TF32 off. They are a
-local measurement, not a guarantee for later revisions. When any row is re-measured, re-measure all of them on the same
-revision and replace the whole table.
+with each other and with the module table above: main ``254d58112`` (2026-11-13), Linux x86_64 (WSL2), an RTX 4090,
+Python 3.11 and PyTorch 2.15.0+cu132 with TF32 off. The totals describe that revision; later changes are checked on
+the same GPU before release and in review, as described above. When any row is re-measured, re-measure all of them on
+the same revision and replace the whole table.
 
 .. list-table::
    :header-rows: 1
@@ -179,48 +183,55 @@ revision and replace the whole table.
      - Failed
      - Errors
      - Skipped
+     - Out of scope
      - XFAIL
      - XPASS
    * - CPU float16, strict ``cpu-float16`` profile
-     - 31341
+     - 29665
      - 0
      - 0
-     - 1864
-     - 46
+     - 252
+     - 1605
+     - 45
      - 4
    * - CPU bfloat16, strict ``cpu-bfloat16`` profile
-     - 31122
+     - 29444
      - 0
      - 0
-     - 2078
-     - 51
+     - 253
+     - 1820
+     - 50
      - 4
    * - CUDA float32 + float64
-     - 41745
+     - 39007
      - 0
      - 0
-     - 2569
+     - 934
+     - 1622
      - 19
      - 5
    * - CUDA float32 with ``--runslow``
-     - 22819
+     - 21317
      - 0
      - 0
-     - 1461
+     - 636
+     - 867
      - 10
      - 5
    * - CUDA float16 + bfloat16
-     - 41269
+     - 38546
      - 33
      - 3
-     - 2991
+     - 315
+     - 2685
      - 23
      - 1
    * - CUDA float32, ``torch.compile`` (inductor) tests
-     - 920
+     - 910
      - 0
      - 0
-     - 76
+     - 38
+     - 749
      - 3
      - 1
 
@@ -230,10 +241,14 @@ process, and the 7 opt-in ONNX and ``torch.compile`` conformance tests are desel
 manifests' recorded 12.3.0, a provenance difference that verification reports and accepts. XFAIL counts both the strict
 manifest entries and source-level expected failures; XPASS counts non-strict expected failures that passed. A manifest
 entry that passes, changes its exception, is skipped or names a stale node ID fails verification, so a clean CPU row
-means the checked-in baseline reproduced, even though known failures and skips remain. ``--device=cuda`` deselects the
-device-agnostic tests that exercise CPU-only code. The half-precision CUDA row runs in one process, and every failure
-without a CPU manifest entry was re-run with ``--isolate-half-precision``. The compile row uses the directories and
-``-k`` filter of the CI ``dynamo`` job.
+means the checked-in baseline reproduced, even though known failures and skips remain. "Out of scope" counts the cases
+deselected because they fall outside a test's declared device, dtype or parameter scope
+(``@pytest.mark.applies_to``, `#6750 <https://github.com/kornia/kornia/pull/6750>`_); they are neither run nor
+skipped, and pytest-xdist does not report them, so they were counted by collecting each row's selection without
+``-n``. ``--device=cuda`` also deselects the device-agnostic tests that exercise CPU-only code (8849 in the CUDA
+float32 + float64 row), and runs without an optimizer drop the ``torch.compile`` tests, which the compile row runs. The
+half-precision CUDA row runs in one process, and every failure without a CPU manifest entry was re-run three times with
+``--isolate-half-precision``. The compile row uses the directories and ``-k`` filter of the CI ``dynamo`` job.
 
 .. code-block:: bash
 
@@ -255,27 +270,28 @@ without a CPU manifest entry was re-run with ``--isolate-half-precision``. The c
      python -m pytest tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry \
      tests/losses tests/morphology tests/models tests/core tests/utils -k "dynamo or compile" -n 2
 
-**Why tests are skipped.** Most skips are tests written for another dtype or device: checks that hold only in float32 or
-float64, CPU-only code paths in a CUDA run, CUDA-only checks in a CPU run, and bfloat16 ``So2``/``Se2``, which PyTorch
-cannot store without a complex bfloat16 dtype. A CUDA run without ``--isolate-half-precision`` also skips the tests that
-pin a half dtype themselves: 649 in each of the CUDA float32 + float64 and float32 ``--runslow`` rows. Slow tests run
-only with ``--runslow``: they are 263 of the skips in each CPU row, 398 in each of the CUDA float32 + float64 and
-float16 + bfloat16 rows, and 28 in the compile row; in the float32 ``--runslow`` row, all of them pass. A few dozen
-skips need an optional package or tool, such as OpenCV or ``uv``. Since `#6750
-<https://github.com/kornia/kornia/pull/6750>`_, a case outside a test's declared device, dtype or parameter scope
-(``@pytest.mark.applies_to``) is deselected instead of skipped, so most of the dtype- and device-specific skips above no
-longer appear; the totals in this section predate it.
+**Why tests are skipped.** Slow tests run only with ``--runslow``: they are 208 and 207 of the skips in the CPU
+float16 and bfloat16 rows, 304 in the CUDA float32 + float64 row, 305 in the float16 + bfloat16 row and 28 in the
+compile row; in the float32 ``--runslow`` row, all of them pass. A CUDA run without ``--isolate-half-precision`` skips
+the tests that pin a half dtype themselves: 623 in each of the CUDA float32 + float64 and float32 ``--runslow`` rows,
+and 6 in the compile row. 34 skips in each CPU row need an optional package, tool or local weights, such as OpenCV,
+scikit-image or ``uv``; a few do in the CUDA rows. The rest are a handful per row, among them bfloat16 ``So2``/``Se2``,
+which PyTorch cannot store without a complex bfloat16 dtype, and two compiled color-conversion checks where CUDA
+inductor rounds one pixel below its bound.
 
-**CUDA float32 and float64.** No failures.
+**CUDA float32 and float64.** No failures, with and without ``--runslow``.
 
 **CUDA float16 and bfloat16.** Of the 33 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
 manifest entries pass on CUDA). One failure and the 3 errors are in ``tests/test_conftest.py``, the harness's own tests,
 which assume they do not already run inside a half-precision subprocess; they pass in a normal ``--device=cuda`` run.
-One is flaky: ``TestDoGHardNet::test_lafs_are_twice_the_dog_frames`` in float16 failed in 1 of 3 isolated runs and
-passed in the first full run. The last 4 fail on CUDA only, also in an isolated process:
+One is a flaky test rather than a CUDA failure: ``TestHyperplane::test_through_three`` in bfloat16 draws unseeded random
+points, and about 2 % of random bfloat16 triples, on CPU and CUDA alike, fall within the collinearity check (a
+singular-value ratio of 8 bfloat16 epsilons, 0.0625), so ``Hyperplane.through`` rightly rejects them; it passed in all
+three isolated re-runs. The last 4 fail on CUDA only, in every isolated re-run:
 ``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU
 manifest entries are its ``(10, 20)`` range parameter). This is a bfloat16 limit rather than a CUDA one. The test takes
-one SGD step with learning rate 10. On CUDA the steps are at most 0.054 degrees, each under half a bfloat16 ulp of its
+one SGD step with learning rate 10; its gradient is finite and nonzero, but the range must also move. On CUDA (step
+sizes measured on ``26e866e54``) the steps are at most 0.054 degrees, each under half a bfloat16 ulp of its
 angle (0.031 at 10 degrees, 0.0625 at 20 and 30 degrees), so no angle changes; the bfloat16 steps match the float32 ones
 within 2 %, apart from one of 7e-5 degrees. On CPU the sampled rotations differ, and the step at 10 degrees (0.032 to
 0.036 degrees) passes half an ulp. The test checks the sum of the changes, so it passes on CPU, although the other two

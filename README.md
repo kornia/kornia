@@ -135,8 +135,10 @@ operator's limits; some operators compute half inputs in float32 and return the 
 - **CPU float16 and bfloat16** run in CI against strict known-failure manifests
   ([`testing/half_precision_xfails/`](testing/half_precision_xfails/)): a new failure, or a recorded failure that
   starts passing, fails the job.
-- **CUDA** has no CI job, and no CI job covers CUDA or MPS half precision. CPU results do not establish support on
-  those backends.
+- **CUDA** is tested on maintainer hardware rather than in hosted CI, whose runners have no GPU: the whole suite runs
+  on an NVIDIA GPU in float32, float64, float16 and bfloat16 and under `torch.compile`, before releases and in the
+  review of pull requests that touch device-dependent code. CUDA-only failures are fixed or listed in the guide below.
+- **MPS** runs float32 in CI; MPS half precision is not part of CI, and CPU results alone do not establish it.
 
 The [precision guide](https://kornia.readthedocs.io/en/latest/get-started/precision.html) has the numbers: known
 failures by module, CPU and CUDA test-suite totals measured together on one revision, the CUDA-only failures, and the

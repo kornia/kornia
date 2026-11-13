@@ -103,7 +103,8 @@
 Kornia 算子接受 CPU、CUDA 和 MPS 张量。float16 和 bfloat16 输入受各算子自身限制约束；一些算子对半精度输入使用 float32 计算，并返回输入 dtype。
 
 - **CPU float16 和 bfloat16** 在 CI 中按严格的已知失败清单（[`testing/half_precision_xfails/`](testing/half_precision_xfails/)）运行：出现新的失败，或已记录的失败开始通过，都会使任务失败。
-- **CUDA** 没有 CI 任务，也没有 CI 任务覆盖 CUDA 或 MPS 半精度。CPU 结果不能证明这些后端的支持情况。
+- **CUDA** 在维护者的硬件上测试，而不是在托管 CI 中测试（托管 CI 的运行器没有 GPU）：完整测试套件在 NVIDIA GPU 上以 float32、float64、float16 和 bfloat16 以及 `torch.compile` 运行，在发布前以及审查涉及设备相关代码的拉取请求时执行。仅在 CUDA 上出现的失败会被修复，或列在下方的指南中。
+- **MPS** 在 CI 中运行 float32；MPS 半精度不在 CI 范围内，仅凭 CPU 结果不能证明其支持情况。
 
 [精度指南](https://kornia.readthedocs.io/en/latest/get-started/precision.html)给出了具体数字：按模块统计的已知失败、在同一版本上一起测得的 CPU 和 CUDA 测试套件总数、仅在 CUDA 上出现的失败，以及复现这些结果的命令。CUDA 半精度测试只有在每个测试都于新进程中运行时才会执行，否则会被跳过：
 
