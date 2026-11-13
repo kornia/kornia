@@ -264,8 +264,19 @@ def canny(
         else:
             # A tensor loop condition, not `if not bool(...): break`: Dynamo resumes after a graph break on the
             # condition, while a break inside the loop body makes it run the whole of canny eagerly.
-            strong_old = ~high
-            strong = high
+            # The loop carries uint8, not bool. Inductor's CPU code (seen on torch 2.5.1 through 2.16.0.dev20261113)
+            # reads a bool input of the step's pad with an unmasked vector load starting one pixel before the image
+            # (and ending one after): SIGBUS on macOS arm64 or SIGSEGV on Linux x86 when the mask borders an unmapped
+            # page, as large allocations on macOS can. A uint8 input gets a masked load. Casting inside the step is not
+            # enough, since Inductor folds the cast into the bool load; the TorchScript, trace and export paths keep
+            # bool, as the legacy ONNX exporter rejects a uint8 OR. Retire once the supported torch range has a fixed
+            # Inductor; test_dynamo_hysteresis_reads_inside_the_image pins it. Cost at 1 or 32 x 256 x 256: compiled
+            # CPU canny +18% / +44% on an M1 Pro (the masked load) but 8-13% faster on an x86 i7-14700K; eager CPU,
+            # MPS and compiled MPS within 2%; eager CUDA +0.03-0.1 ms for the casts. Compiled CPU is still faster than
+            # 0.9.0's convolution.
+            low = low.to(torch.uint8)
+            strong = high.to(torch.uint8)
+            strong_old = strong ^ 1
             while (strong_old != strong).any():
                 strong_old = strong
                 strong = _hysteresis_step(strong, low)

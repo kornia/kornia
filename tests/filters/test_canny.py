@@ -17,7 +17,10 @@
 
 import importlib
 import io
+import subprocess
+import sys
 import warnings
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,6 +33,36 @@ from kornia.core.exceptions import ImageError
 from kornia.filters import Canny, canny, gaussian_blur2d, sobel, spatial_gradient
 
 from testing.base import BaseTester, dynamo_is_available, supports_reflect_padding, supports_replicate_padding
+
+# Run in a fresh interpreter, since a faulting read kills it. An eager canny call records the dtypes its hysteresis loop
+# hands _hysteresis_step; a 32 x 1 x 256 x 256 edge mask of that dtype then starts right after (start) or ends right
+# before (end) a PROT_NONE page, and the compiled step must read neither page.
+_GUARDED_HYSTERESIS_STEP = """
+import ctypes, importlib, mmap, sys, warnings
+warnings.filterwarnings("ignore")
+import torch
+module = importlib.import_module("kornia.filters.canny")
+step, seen = module._hysteresis_step, set()
+module._hysteresis_step = lambda strong, low: seen.add((strong.dtype, low.dtype)) or step(strong, low)
+module.canny(torch.rand(1, 1, 16, 16, generator=torch.Generator().manual_seed(0)))
+module._hysteresis_step = step
+((dtype, low_dtype),) = seen
+shape, n, page = (32, 1, 256, 256), 32 * 256 * 256, mmap.PAGESIZE
+pages = -(-n // page)
+buffer = mmap.mmap(-1, page * (pages + 2), prot=mmap.PROT_READ | mmap.PROT_WRITE)
+base = ctypes.addressof(ctypes.c_char.from_buffer(buffer))
+libc = ctypes.CDLL(None)
+libc.mprotect.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+assert libc.mprotect(base, page, 0) == 0 and libc.mprotect(base + page * (pages + 1), page, 0) == 0
+address = base + page if sys.argv[1] == "start" else base + page * (pages + 1) - n
+strong = torch.frombuffer((ctypes.c_char * n).from_address(address), dtype=torch.uint8).view(dtype).view(shape)
+generator = torch.Generator().manual_seed(0)
+low = torch.rand(shape, generator=generator) > 0.5
+strong.copy_((torch.rand(shape, generator=generator) > 0.9) & low)
+low = low.to(low_dtype)
+expected = step(strong.clone(), low)
+print("equal" if torch.equal(torch.compile(step)(strong, low), expected) else "differs")
+"""
 
 
 class TestCanny(BaseTester):
@@ -394,6 +427,29 @@ class TestCanny(BaseTester):
         img = torch.rand(1, 3, 32, 32, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
         self.assert_close(compiled(img)[1], Canny()(img)[1])
         assert any("atan2" in target for target in targets)
+
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="Inductor's CPU code reads the boolean edge mask; one fresh-process compile, dtype-independent",
+    )
+    @pytest.mark.skipif(sys.platform == "win32", reason="places the input against mprotect guard pages (POSIX)")
+    @pytest.mark.parametrize("side", ["start", "end"])
+    def test_dynamo_hysteresis_reads_inside_the_image(self, side, device, dtype, optimizer_backend):
+        # A read past either end of the edge mask faults on the PROT_NONE page beside it, instead of depending on what
+        # the allocator placed there. A bool mask fails here (SIGBUS, torch 2.14.0): canny's loop must hand over uint8.
+        root = Path(importlib.import_module("kornia.filters.canny").__file__).resolve().parents[2]
+        result = subprocess.run(  # noqa: S603 - this interpreter and a literal program; no shell or external input.
+            [sys.executable, "-c", _GUARDED_HYSTERESIS_STEP, side],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr[-2000:]}"
+        assert result.stdout.strip() == "equal", result.stdout
 
     @staticmethod
     def _require_padding(device, dtype):
