@@ -268,11 +268,11 @@ class Profiler:
     def print(self) -> None:
         """Print the computed results, or indicate that none are available."""
         if self.results is None:
-            print("No results computed yet.") # noqa: T201
+            print("No results computed yet.")  # noqa: T201
         elif self._df is not None:
-            print(self._df) # noqa: T201
+            print(self._df)  # noqa: T201
         else:
-            print(self.results) # noqa: T201
+            print(self.results)  # noqa: T201
 
     def save_as_report(self, path: str) -> None:
         """Save computed results as a CSV or JSON report.
