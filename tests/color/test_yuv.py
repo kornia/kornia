@@ -190,11 +190,6 @@ def _color_image(names, height, width):
 
 
 class TestRgbToYuv(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv(img)
-        assert isinstance(out, torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -299,7 +294,7 @@ class TestRgbToYuv(BaseTester):
         assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -317,12 +312,6 @@ class TestRgbToYuv(BaseTester):
 
 
 class TestRgbToYuv420(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 6, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv420(img)
-        assert isinstance(out[0], torch.Tensor)
-        assert isinstance(out[1], torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -421,7 +410,7 @@ class TestRgbToYuv420(BaseTester):
         assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv420
         op_jit = torch.jit.script(op)
         self.assert_close(op(img)[0], op_jit(img)[0])
@@ -443,12 +432,6 @@ class TestRgbToYuv420(BaseTester):
 
 
 class TestRgbToYuv422(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 6, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv422(img)
-        assert isinstance(out[0], torch.Tensor)
-        assert isinstance(out[1], torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -544,7 +527,7 @@ class TestRgbToYuv422(BaseTester):
         assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv422
         op_jit = torch.jit.script(op)
         self.assert_close(op(img)[0], op_jit(img)[0])
@@ -566,10 +549,6 @@ class TestRgbToYuv422(BaseTester):
 
 
 class TestYuvToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -656,7 +635,7 @@ class TestYuvToRgb(BaseTester):
         assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.yuv_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -674,11 +653,6 @@ class TestYuvToRgb(BaseTester):
 
 
 class TestYuv420ToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        imgy = torch.rand(1, 4, 6, device=device, dtype=dtype)
-        imguv = torch.rand(2, 2, 3, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv420_to_rgb(imgy, imguv), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
     def test_cardinality(self, device, dtype, shape):
         shapey = list(shape)
@@ -800,8 +774,8 @@ class TestYuv420ToRgb(BaseTester):
         assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 2, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 2, 2, device=device, dtype=dtype)
         op = kornia.color.yuv420_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
@@ -821,11 +795,6 @@ class TestYuv420ToRgb(BaseTester):
 
 
 class TestYuv422ToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        imgy = torch.rand(1, 4, 6, device=device, dtype=dtype)
-        imguv = torch.rand(2, 4, 3, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv422_to_rgb(imgy, imguv), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
     def test_cardinality(self, device, dtype, shape):
         shapey = list(shape)
@@ -943,8 +912,8 @@ class TestYuv422ToRgb(BaseTester):
         assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 4, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 4, 2, device=device, dtype=dtype)
         op = kornia.color.yuv422_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
