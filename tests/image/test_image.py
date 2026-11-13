@@ -119,9 +119,9 @@ class TestImage(BaseTester):
         assert img3.device == device
 
     @staticmethod
-    def _pixel(values, order):
+    def _pixel(values, order, device, dtype):
         """Build a one-pixel image tensor in the given channels order."""
-        data = torch.tensor(values, dtype=torch.float32)
+        data = torch.tensor(values, device=device, dtype=dtype)
         return data.view(3, 1, 1) if order == ChannelsOrder.CHANNELS_FIRST else data.view(1, 1, 3)
 
     # BT.601 luma of RGB (0.5, 0.2, 0.1): 0.299 * 0.5 + 0.587 * 0.2 + 0.114 * 0.1. Reading the BGR pixel
@@ -129,33 +129,33 @@ class TestImage(BaseTester):
     _GRAY = 0.2783
 
     @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
-    def test_rgb_gray_rgb(self, order):
-        img_rgb = make_image(self._pixel([0.5, 0.2, 0.1], order), ColorSpace.RGB, order)
+    def test_rgb_gray_rgb(self, order, device, dtype):
+        img_rgb = make_image(self._pixel([0.5, 0.2, 0.1], order, device, dtype), ColorSpace.RGB, order)
 
         gray = img_rgb.to_gray()
         rgb_back = gray.to_rgb()
 
-        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY))
+        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY, device=device, dtype=dtype))
         # RGB reconstructed from gray repeats the luminance across channels
-        self.assert_close(rgb_back.data.squeeze(), torch.full((3,), self._GRAY))
+        self.assert_close(rgb_back.data.squeeze(), torch.full((3,), self._GRAY, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
-    def test_bgr_gray_bgr(self, order):
-        img_bgr = make_image(self._pixel([0.1, 0.2, 0.5], order), ColorSpace.BGR, order)
+    def test_bgr_gray_bgr(self, order, device, dtype):
+        img_bgr = make_image(self._pixel([0.1, 0.2, 0.5], order, device, dtype), ColorSpace.BGR, order)
 
         gray = img_bgr.to_gray()
         bgr_back = gray.to_bgr()
 
-        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY))
-        self.assert_close(bgr_back.data.squeeze(), torch.full((3,), self._GRAY))
+        self.assert_close(gray.data.squeeze(), torch.tensor(self._GRAY, device=device, dtype=dtype))
+        self.assert_close(bgr_back.data.squeeze(), torch.full((3,), self._GRAY, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
-    def test_rgb_bgr_swap(self, order):
-        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+    def test_rgb_bgr_swap(self, order, device, dtype):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
         bgr_val = rgb_val.flip(0)
 
-        img_rgb = make_image(self._pixel(rgb_val.tolist(), order), ColorSpace.RGB, order)
-        img_bgr = make_image(self._pixel(bgr_val.tolist(), order), ColorSpace.BGR, order)
+        img_rgb = make_image(self._pixel(rgb_val.tolist(), order, device, dtype), ColorSpace.RGB, order)
+        img_bgr = make_image(self._pixel(bgr_val.tolist(), order, device, dtype), ColorSpace.BGR, order)
 
         self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
         self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
