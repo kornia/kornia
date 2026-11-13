@@ -285,6 +285,7 @@ class TestXFeat(BaseTester):
         # the 16 x 16 cells of this image have hundreds of maxima above the threshold: top_k is what limits the count
         assert model.detectAndCompute(x, top_k=4 * top_k)[0]["keypoints"].shape[0] == 4 * top_k
         assert model.detectAndCompute(x, top_k=top_k)[0]["keypoints"].shape[0] == top_k
+        assert model.detectAndCompute(x)[0]["keypoints"].shape[0] == top_k  # the top_k given at construction
 
     def test_keypoint_coordinates_in_image(self, device):
         H, W = 64, 96
