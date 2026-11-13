@@ -4891,8 +4891,8 @@ class TestNormalize(BaseTester):
         self.assert_close(scalar(img), (img - 0.5) / std, rtol=0.0, atol=0.0)
         self.assert_close(scalar(img, mean=0.25), (img - 0.25) / std, rtol=0.0, atol=0.0)
         del scalar._mean_numbers, scalar._std_numbers
-        std_float32 = torch.tensor(0.29).to(device=device, dtype=torch.float64)
-        self.assert_close(scalar(img), (img - 0.5) / std_float32, rtol=0.0, atol=0.0)
+        std_rounded_to_float32 = torch.tensor(0.29).to(device=device, dtype=torch.float64)
+        self.assert_close(scalar(img), (img - 0.5) / std_rounded_to_float32, rtol=0.0, atol=0.0)
 
     def test_float64_statistics_keep_their_gradient(self, device):
         # The exact numbers pass the gradient on to the flags they stand for, as the flags themselves do in float32.
