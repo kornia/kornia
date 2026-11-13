@@ -95,6 +95,19 @@ class TestRawToRgb(BaseTester):
             data_out = raw(rgb(data, cfa=x), cfa=x)
             assert_close(data_out, data)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float32",), reason="autocast sample preservation")
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("cfa", list(kornia.color.CFA))
+    def test_autocast_preserves_sensor_samples(self, device, dtype, autocast_dtype, cfa):
+        """Keep the measured mosaic values when green interpolation uses autocast."""
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16 autocast")
+        image = torch.linspace(0, 1, 256, device=device, dtype=dtype).reshape(1, 1, 16, 16)
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            rgb = kornia.color.raw_to_rgb(image, cfa)
+            actual = kornia.color.rgb_to_raw(rgb, cfa)
+        self.assert_close(actual, image, rtol=0, atol=0)
+
     # make sure different cfas are actually different
     def test_cfas_not_the_same(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 16, 16, device=device, dtype=dtype)
