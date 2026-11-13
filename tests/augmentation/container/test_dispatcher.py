@@ -68,7 +68,8 @@ class TestDispatcher(BaseTester):
     def test_many_to_one(self, strict, device, dtype):
         # Each container gets the same bundle and returns its own result, so the two flips must both show.
         input = torch.arange(60, device=device, dtype=dtype).reshape(2, 1, 5, 6)
-        mask = input.remainder(3)
+        # Modulo 7, as rows advance by 6: modulo 3 gives equal rows, which hides a skipped vertical mask flip.
+        mask = input.remainder(7)
         aug_list = K.ManyToOneAugmentationDispather(
             K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"]),
             K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), data_keys=["input", "mask"]),
