@@ -5257,6 +5257,16 @@ class TestNormalize(BaseTester):
         expected = -40.0 / torch.tensor([0.229, 0.224, 0.225], dtype=torch.float64)
         self.assert_close(aug.flags["mean"].grad, expected.float())
 
+    def test_float64_infinite_statistics_give_no_nan(self, device):
+        # An infinite mean or std, or a number the float32 flag rounds to infinity, held as built: the exact
+        # number still applies to a float64 image, and the gradient term (``inf - inf``) does not turn it into NaN.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 3, 2, 3, device=device, dtype=torch.float64)
+        self.assert_close(Normalize(0.0, float("inf"))(img), torch.zeros_like(img), rtol=0.0, atol=0.0)
+        self.assert_close(Normalize(1e39, 1.0)(img), torch.full_like(img, -1e39), rtol=0.0, atol=0.0)
+        self.assert_close(Denormalize(float("inf"), 1.0)(img), torch.full_like(img, float("inf")), rtol=0.0, atol=0.0)
+
 
 class TestDenormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent

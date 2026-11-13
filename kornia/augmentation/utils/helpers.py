@@ -54,7 +54,11 @@ def _exact_in_float64(stored: Any, numbers: Optional[List[float]], device: torch
     built = torch.tensor(numbers).to(device=device, dtype=stored.dtype).reshape(stored.shape)
     exact = torch.tensor(numbers, dtype=torch.float64, device=device).reshape(stored.shape)
     stored64 = stored.to(torch.float64)
-    return torch.where(stored == built, exact + (stored64 - stored64.detach()), stored64)
+    # ``stored64 - stored64.detach()`` is zero, so the value stays exact while the gradient reaches ``stored``. It is
+    # NaN for an infinite entry (``inf - inf``), so an infinite statistic, or a number beyond the float32 range
+    # that the float32 tensor rounds to infinity, takes no gradient term.
+    residual = torch.where(torch.isfinite(stored64), stored64 - stored64.detach(), 0.0)
+    return torch.where(stored == built, exact + residual, stored64)
 
 
 def _pad_with_fill(
