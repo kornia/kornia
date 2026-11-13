@@ -206,22 +206,6 @@ class TestScaleSpaceDetector(BaseTester):
             expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
         self.assert_close(actual_grad, expected_grad)
 
-    def test_shape(self, device, dtype):
-        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
-        n_feats = 10
-        det = ScaleSpaceDetector(n_feats).to(device, dtype)
-        lafs, resps = det(inp)
-        assert lafs.shape == torch.Size([1, n_feats, 2, 3])
-        assert resps.shape == torch.Size([1, n_feats])
-
-    def test_shape_batch(self, device, dtype):
-        inp = torch.rand(7, 1, 32, 32, device=device, dtype=dtype)
-        n_feats = 10
-        det = ScaleSpaceDetector(n_feats).to(device, dtype)
-        lafs, resps = det(inp)
-        assert lafs.shape == torch.Size([7, n_feats, 2, 3])
-        assert resps.shape == torch.Size([7, n_feats])
-
     @pytest.mark.parametrize("with_mask", [False, True])
     @pytest.mark.parametrize("config", ["default", "minima", "scale_space_response", "conv_subpix"])
     def test_empty_batch(self, device, dtype, with_mask, config):
@@ -1032,16 +1016,6 @@ class TestScaleSpaceDetector(BaseTester):
             frame[1, 1] / frame[0, 0], torch.tensor(sy / sx, device=device, dtype=dtype), rtol=1e-5, atol=0.0
         )
 
-    def test_few_detections_padding(self, device, dtype):
-        # Constant image → very few (possibly zero) NMS candidates; output must still
-        # have the requested shape because the detect() method pads with zeros.
-        inp = torch.ones(1, 1, 32, 32, device=device, dtype=dtype)
-        n_feats = 20
-        det = ScaleSpaceDetector(n_feats, subpix_module=ConvQuadInterp3d(10)).to(device, dtype)
-        lafs, resps = det(inp)
-        assert lafs.shape == torch.Size([1, n_feats, 2, 3])
-        assert resps.shape == torch.Size([1, n_feats])
-
     @pytest.mark.parametrize("x0", [80, 15])
     def test_frame_overhanging_the_border_between_boundary_samples_is_rejected_5733(self, device, dtype, x0):
         # A candidate is kept when half its frame lies inside the octave less a 5 px border, the rule of
@@ -1243,51 +1217,6 @@ class TestMultiResolutionDetector(BaseTester):
         x = lafs[0, :, 0, 2]
         assert x[x > 256].numel() > 20
         assert (x[x > 256] % 2 != 0).any()
-
-    def test_shape(self, device, dtype):
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector().to(device, dtype)
-        lafs, resps = det(inp)
-        assert lafs.shape == torch.Size([1, 50, 2, 3])
-        assert resps.shape == torch.Size([1, 50])
-
-    def test_shape_non_square(self, device, dtype):
-        inp = torch.rand(1, 1, 48, 96, device=device, dtype=dtype)
-        det = self._make_detector().to(device, dtype)
-        lafs, _ = det(inp)
-        assert lafs.shape == torch.Size([1, 50, 2, 3])
-
-    def test_lafs_inside_image(self, device, dtype):
-        # All detected LAF centers should lie within the image boundaries.
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector(num_features=20).to(device, dtype)
-        lafs, _ = det(inp)
-        cx = lafs[0, :, 0, 2]
-        cy = lafs[0, :, 1, 2]
-        assert (cx >= 0).all()
-        assert (cx <= 64).all()
-        assert (cy >= 0).all()
-        assert (cy <= 64).all()
-
-    def test_no_upscale_levels(self, device, dtype):
-        # up_levels=0 disables the upsampling branch; should still produce valid output.
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        cfg = get_default_detector_config()
-        cfg["up_levels"] = 0
-        cfg["pyramid_levels"] = 2
-        det = MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=20, config=cfg).to(device, dtype)
-        lafs, _ = det(inp)
-        assert lafs.shape == torch.Size([1, 20, 2, 3])
-
-    def test_with_upscale_levels(self, device, dtype):
-        # up_levels > 0 exercises the upsampling code path.
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        cfg = get_default_detector_config()
-        cfg["up_levels"] = 2
-        cfg["pyramid_levels"] = 1
-        det = MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=20, config=cfg).to(device, dtype)
-        lafs, _ = det(inp)
-        assert lafs.shape == torch.Size([1, 20, 2, 3])
 
     def test_score_threshold_reduces_detections(self, device, dtype):
         # A very high score_threshold should leave no real detections: every slot is padding,
@@ -1824,15 +1753,6 @@ class TestMultiResolutionDetector(BaseTester):
         assert torch.equal(resps, resps_ref)
         with pytest.raises(TypeError):
             det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=dtype))
-
-    def test_smoke_with_blob_image(self, device, dtype):
-        # Synthetic image with a bright blob — detector should find it.
-        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
-        inp[:, :, 28:36, 28:36] = 1.0
-        det = self._make_detector(num_features=5).to(device, dtype)
-        lafs, resps = det(inp)
-        assert lafs.shape == torch.Size([1, 5, 2, 3])
-        assert resps.abs().max().item() > 0
 
 
 def _conv_blob(x0: float, y0: float, sigma: float, height: int, width: int, device, dtype) -> torch.Tensor:

@@ -99,13 +99,6 @@ def test_lightglue_pruning_removes_all():
     assert out["matches1"].shape == (B, M)
 
 
-def test_normalize_keypoints_smoke():
-    kpts = torch.zeros(1, 5, 2)
-    size = torch.tensor([[100, 200]])
-    out = normalize_keypoints(kpts, size)
-    assert out.shape == kpts.shape
-
-
 def test_normalize_keypoints_center():
     size = torch.tensor([[100, 100]])
     kpts = size.float().unsqueeze(0) / 2  # center pixel
@@ -150,12 +143,6 @@ def test_pad_to_length_pads():
     assert mask.shape[-2] == 10
     assert mask[..., :5, :].all()
     assert not mask[..., 5:, :].any()
-
-
-def test_rotate_half_shape():
-    x = torch.rand(2, 8, 4)
-    out = rotate_half(x)
-    assert out.shape == x.shape
 
 
 def test_rotate_half_double_gives_negation():
@@ -375,11 +362,6 @@ class TestLearnableFourierPositionalEncoding(BaseTester):
         op = torch_optimizer(enc)
         self.assert_close(op(x), enc(x))
 
-    def test_module(self, device, dtype):
-        enc = LearnableFourierPositionalEncoding(2, 32).to(device, dtype)
-        x = torch.rand(1, 1, 5, 2, device=device, dtype=dtype)
-        assert enc(x).shape[0] == 2
-
 
 class TestTokenConfidence(BaseTester):
     # No gradcheck: TokenConfidence detaches its inputs, so it is not differentiable with respect to them.
@@ -420,13 +402,6 @@ class TestTokenConfidence(BaseTester):
         s0, s1 = tc(d0, d1)
         self.assert_close(s0_jit, s0)
         self.assert_close(s1_jit, s1)
-
-    def test_module(self, device, dtype):
-        tc = TokenConfidence(32).to(device, dtype)
-        d0 = torch.rand(1, 5, 32, device=device, dtype=dtype)
-        d1 = torch.rand(1, 5, 32, device=device, dtype=dtype)
-        s0, _ = tc(d0, d1)
-        assert s0.shape == (1, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -476,21 +451,13 @@ class TestLightGlue(BaseTester):
     # test: its pruning and early stopping are data-dependent control flow.
 
     @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
-    def test_smoke(self, device, dtype):
-        lg = _make_lightglue(device, dtype)
-        data = _make_data(device, dtype)
-        with torch.no_grad():
-            out = lg(data)
-        assert "matches0" in out
-        assert "matching_scores0" in out
-
-    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_cardinality(self, device, dtype):
         B, M, N = 1, 20, 15
         lg = _make_lightglue(device, dtype)
         data = _make_data(device, dtype, B=B, M=M, N=N)
         with torch.no_grad():
             out = lg(data)
+        assert isinstance(out, dict)
         assert out["matches0"].shape == (B, M)
         assert out["matches1"].shape == (B, N)
         assert out["matching_scores0"].shape == (B, M)
@@ -546,14 +513,6 @@ class TestLightGlue(BaseTester):
     def test_exception_wrong_features(self):
         with pytest.raises(Exception):
             LightGlue(features="nonexistent_feature_type")
-
-    @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
-    def test_module(self, device, dtype):
-        lg = _make_lightglue(device, dtype)
-        data = _make_data(device, dtype)
-        with torch.no_grad():
-            out = lg(data)
-        assert isinstance(out, dict)
 
     @pytest.mark.applies_to(when=lambda p: p["dtype_name"] != "float16", reason="LightGlue requires float32 or float64")
     def test_mp_forward_uses_input_device_type(self, device, dtype):

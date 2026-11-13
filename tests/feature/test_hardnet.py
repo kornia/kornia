@@ -25,14 +25,6 @@ from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
 
 class TestHardNet(BaseTester):
-    @pytest.mark.slow
-    def test_shape(self, device):
-        inp = torch.ones(1, 1, 32, 32, device=device)
-        hardnet = HardNet(pretrained=False).to(device)
-        hardnet.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = hardnet(inp)
-        assert out.shape == (1, 128)
-
     def test_empty_batch(self, device, dtype):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
         model = HardNet(pretrained=False).to(device, dtype).eval()
@@ -42,34 +34,22 @@ class TestHardNet(BaseTester):
         assert out.dtype == one.dtype
         assert out.device == one.device
 
-    @pytest.mark.slow
-    def test_shape_batch(self, device):
-        inp = torch.ones(4, 1, 32, 32, device=device)
-        hardnet = HardNet(pretrained=False).to(device).eval()
-        out = hardnet(inp)
-        assert out.shape == (4, 128)
-
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         hardnet = HardNet(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     def test_jit(self, device, dtype):
+        # `torch.ones` is standardised to an all-zero patch, which any weights map to the constant 1/sqrt(128): random
+        # patches and scripting the same instance make the comparison depend on the weights (see TestSOSNet::test_jit).
         B, C, H, W = 2, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = HardNet(pretrained=False).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(HardNet(pretrained=False).to(patches.device, patches.dtype).eval())
+        model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))
 
 
 class TestHardNet8(BaseTester):
-    def test_shape(self, device):
-        inp = torch.ones(1, 1, 32, 32, device=device)
-        hardnet = HardNet8(pretrained=False).to(device)
-        hardnet.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = hardnet(inp)
-        assert out.shape == (1, 128)
-
     def test_empty_batch(self, device, dtype):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
         model = HardNet8(pretrained=False).to(device, dtype).eval()
@@ -79,17 +59,11 @@ class TestHardNet8(BaseTester):
         assert out.dtype == one.dtype
         assert out.device == one.device
 
-    def test_shape_batch(self, device):
-        inp = torch.ones(4, 1, 32, 32, device=device)
-        hardnet = HardNet8(pretrained=False).to(device).eval()
-        out = hardnet(inp)
-        assert out.shape == (4, 128)
-
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)  # see TestHardNet::test_jit
         model = HardNet8(pretrained=False).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(HardNet8(pretrained=False).to(patches.device, patches.dtype).eval())
+        model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))
 
     def test_untrained_descriptors_are_distinct_5692(self, device, dtype):

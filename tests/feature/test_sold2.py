@@ -31,15 +31,6 @@ from testing.base import BaseTester
 
 
 class TestSOLD2_detector(BaseTester):
-    @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size, dtype):
-        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2_detector(pretrained=False).to(device, dtype).eval()
-        out = sold2(inp)
-        assert out["junction_heatmap"].shape == (batch_size, 64, 64)
-        assert out["line_heatmap"].shape == (batch_size, 64, 64)
-
     def test_has_no_descriptor_head(self, device, dtype):
         # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does
         detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
@@ -58,9 +49,12 @@ class TestSOLD2_detector(BaseTester):
         weights = sold2.model.state_dict()
         detector.model.load_state_dict(weights)
         assert any(key.startswith("descriptor_decoder.") for key in weights)  # the caller's dict is left as it was
-        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # two images: SOLD2_detector.forward is separate from SOLD2.forward, and must keep every image of the batch
+        img = torch.rand(2, 1, 64, 64, device=device, dtype=dtype)
         with torch.no_grad():
             expected, actual = sold2(img), detector(img)
+        assert actual["junction_heatmap"].shape == actual["line_heatmap"].shape == (2, 64, 64)
+        assert len(actual["line_segments"]) == 2
         self.assert_close(actual["junction_heatmap"], expected["junction_heatmap"])
         self.assert_close(actual["line_heatmap"], expected["line_heatmap"])
         assert len(actual["line_segments"]) == len(expected["line_segments"])
@@ -194,14 +188,6 @@ class TestJunctionsAndSegments(BaseTester):
 
 
 class TestSOLD2(BaseTester):
-    @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size, dtype):
-        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
-        out = sold2(inp)
-        assert out["dense_desc"].shape == (batch_size, 128, 16, 16)
-
     def test_config_is_not_modified_5722(self):
         cfg = DetectorCfg()
         assert cfg.use_descriptor is False

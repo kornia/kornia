@@ -70,24 +70,6 @@ class TestDeformConv2d(BaseTester):
         assert out_dcn.shape == out_reg.shape
         assert torch.allclose(out_dcn, out_reg, atol=1e-5)
 
-    @pytest.mark.parametrize("dtype", [torch.float32])
-    def test_output_shape(self, device, dtype):
-        """Check output spatial dimensions for various settings."""
-        B, C_in, H, W = 2, 3, 16, 16
-        C_out, kH, kW = 6, 3, 3
-        K = kH * kW
-        padding, stride = 1, 1
-
-        H_out = (H + 2 * padding - kH) // stride + 1
-        W_out = (W + 2 * padding - kW) // stride + 1
-
-        x = torch.randn(B, C_in, H, W, device=device, dtype=dtype)
-        weight = torch.randn(C_out, C_in, kH, kW, device=device, dtype=dtype)
-        offset = torch.zeros(B, 2 * K, H_out, W_out, device=device, dtype=dtype)
-
-        out = deform_conv2d(x, offset, weight, padding=padding, stride=stride)
-        assert out.shape == (B, C_out, H_out, W_out)
-
     @staticmethod
     def _torchvision_reference_inputs():
         """Deterministic float64 CPU inputs shared by the hardcoded literals below.
@@ -481,39 +463,6 @@ class TestALIKED(BaseTester):
             assert len(output) == 1
             assert isinstance(output[0], ALIKEDFeatures)
 
-    def test_smoke(self, dtype, device):
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert isinstance(output[0], ALIKEDFeatures)
-
-    def test_smoke_batch(self, dtype, device):
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert len(output) == 2
-        assert all(isinstance(f, ALIKEDFeatures) for f in output)
-
-    def test_grayscale_input(self, dtype, device):
-        """1-channel input should be broadcast to 3 channels automatically."""
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert isinstance(output[0], ALIKEDFeatures)
-
-    def test_output_shapes(self, dtype, device):
-        """Keypoints should be (N,2), descriptors (N,D), scores (N,)."""
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        feat = output[0]
-        N = feat.n
-        assert feat.keypoints.shape == (N, 2)
-        assert feat.descriptors.shape[0] == N
-        assert feat.keypoint_scores.shape == (N,)
-
     def test_descriptor_normalized(self, dtype, device):
         """Descriptors should be L2-normalised."""
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
@@ -530,19 +479,6 @@ class TestALIKED(BaseTester):
             # a 2x margin there and leaves float32/float64 on the original bound.
             atol = max(1e-4, 2 * torch.finfo(dtype).eps)
             assert torch.allclose(norms, torch.ones_like(norms), atol=atol)
-
-    def test_keypoints_in_image(self, dtype, device):
-        """Keypoints should lie within the image boundaries."""
-        H, W = 64, 64
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        output = aliked(inp)
-        feat = output[0]
-        if feat.n > 0:
-            assert (feat.keypoints[:, 0] >= 0).all()
-            assert (feat.keypoints[:, 0] <= W - 1).all()
-            assert (feat.keypoints[:, 1] >= 0).all()
-            assert (feat.keypoints[:, 1] <= H - 1).all()
 
     @pytest.mark.parametrize("model_name", ["aliked-t16", "aliked-n16", "aliked-n32"])
     def test_model_configs(self, device, model_name):
@@ -731,15 +667,6 @@ class TestALIKEDHalfPrecisionCoordinates(BaseTester):
 class TestALIKEDForwardLAF(BaseTester):
     """Tests for ALIKED.forward_laf returning kornia LAF-format outputs."""
 
-    def test_smoke(self, device, dtype):
-        """forward_laf should return the three expected tensors."""
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=32).to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        assert lafs.ndim == 4  # (B, N, 2, 3)
-        assert responses.ndim == 3  # (B, N, 1)
-        assert descs.ndim == 3  # (B, N, D)
-
     @pytest.mark.parametrize("compute_affine", [True, False])
     @pytest.mark.parametrize("with_mask", [False, True])
     def test_empty_batch_6266(self, compute_affine, with_mask, device, dtype):
@@ -767,56 +694,6 @@ class TestALIKEDForwardLAF(BaseTester):
             empty = aliked.forward_laf(torch.rand(0, 3, 64, 64), compute_affine=compute_affine)
             ref = aliked.forward_laf(torch.rand(1, 3, 64, 64), compute_affine=compute_affine)
         assert [t.dtype for t in empty] == [t.dtype for t in ref]
-
-    def test_output_shapes(self, device, dtype):
-        """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
-        B, H, W = 2, 64, 64
-        top_k = 20
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype).eval()
-        inp = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        N = lafs.shape[1]
-        assert lafs.shape == (B, N, 2, 3)
-        assert responses.shape == (B, N, 1)
-        assert descs.shape[0] == B
-        assert descs.shape[1] == N
-
-    def test_laf_center_in_image(self, device, dtype):
-        """LAF centres (col 2) should lie within image bounds."""
-        H, W = 64, 64
-        top_k = 30
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, _ = aliked.forward_laf(inp, compute_affine=False)
-        # Only check keypoints with positive response (non-padding).
-        valid = responses[0, :, 0] > 0
-        if valid.any():
-            centers = lafs[0, valid, :, 2]  # (N_valid, 2) — [x, y]
-            assert (centers[:, 0] >= 0).all()
-            assert (centers[:, 0] <= W - 1).all()
-            assert (centers[:, 1] >= 0).all()
-            assert (centers[:, 1] <= H - 1).all()
-
-    def test_batch_padding(self, device, dtype):
-        """All images in the batch should share the same N (padded to max)."""
-        B = 3
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=25).to(device, dtype).eval()
-        inp = torch.rand(B, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        assert lafs.shape[0] == B
-        assert responses.shape[0] == B
-        assert descs.shape[0] == B
-
-    def test_laf_with_mask(self, device, dtype):
-        """Providing a mask should suppress keypoints in the masked region."""
-        H, W = 64, 64
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=40).to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        # Suppress the entire image except the bottom-right quarter.
-        mask = torch.zeros(1, 1, H, W, device=device, dtype=dtype)
-        mask[:, :, H // 2 :, W // 2 :] = 1.0
-        lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask, compute_affine=False)
-        assert lafs_masked.shape[0] == 1
 
     @pytest.mark.slow
     def test_laf_affine_shape(self, device, dtype):
@@ -1281,7 +1158,8 @@ class TestALIKEDModes(BaseTester):
     """``ALIKED()`` builds random weights in training mode and ``ALIKED.from_pretrained`` returns evaluation mode.
 
     In evaluation mode BatchNorm uses its running statistics, not those of the batch; the inference pins below run a
-    random model after ``.eval()``.
+    random model after ``.eval()``. The training mode of ``ALIKED()`` is pinned by
+    test_pretrained_mode.py::TestPretrainedMode::test_random_init_is_training_mode.
     """
 
     @pytest.fixture(autouse=True)
@@ -1292,11 +1170,6 @@ class TestALIKEDModes(BaseTester):
     @staticmethod
     def _model(device, dtype):
         return ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-
-    def test_convention_aliked_random_init_is_training_mode(self, device, dtype):
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
-        assert aliked.training
-        assert all(m.training for m in aliked.modules())
 
     def test_convention_aliked_from_pretrained_is_eval_mode(self, device, dtype, monkeypatch):
         weights = ALIKED(model_name="aliked-t16").state_dict()

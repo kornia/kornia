@@ -24,13 +24,6 @@ from testing.base import BaseTester, supports_conv2d
 
 
 class TestTFeat(BaseTester):
-    def test_shape(self, device):
-        inp = torch.ones(1, 1, 32, 32, device=device)
-        tfeat = TFeat(pretrained=False).to(device)
-        tfeat.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = tfeat(inp)
-        assert out.shape == (1, 128)
-
     def test_empty_batch(self, device, dtype):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
         model = TFeat(pretrained=False).to(device, dtype).eval()
@@ -47,12 +40,6 @@ class TestTFeat(BaseTester):
         tfeat.eval()  # batchnorm with size 1 is not allowed in train mode
         out = tfeat(inp)
         assert out.shape == (1, 128)
-
-    def test_shape_batch(self, device):
-        inp = torch.ones(4, 1, 32, 32, device=device)
-        tfeat = TFeat(pretrained=False).to(device).eval()
-        out = tfeat(inp)
-        assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)

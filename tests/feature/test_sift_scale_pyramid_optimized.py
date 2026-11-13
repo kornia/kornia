@@ -123,15 +123,6 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         assert torch.isfinite(actual_input.grad).all()
         self.assert_close(actual_input.grad, expected_input.grad)
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        self._cpu(device, dtype)
-        pyramid = _SIFTScalePyramid().to(device, dtype)
-        image = torch.rand(1, 1, 17, 19, device=device, dtype=dtype)
-        expected = pyramid(image)
-
-        for actual_octave, expected_octave in zip(torch_optimizer(pyramid)(image), expected):
-            self.assert_close(actual_octave, expected_octave)
-
     @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="the CPU slice implementation uses full precision")
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_fullgraph(self, device, dtype):

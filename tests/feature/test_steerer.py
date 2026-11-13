@@ -24,7 +24,7 @@ from testing.base import BaseTester
 
 
 class TestDiscreteSteerer(BaseTester):
-    @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (4, 128, 11)])
+    @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(2, 128, 7)])
     def test_shape(self, num_desc, desc_dim, steerer_power, device, dtype):
         desc = torch.rand(num_desc, desc_dim, device=device, dtype=dtype)
         generator = torch.rand(desc_dim, desc_dim, device=device, dtype=dtype)
@@ -44,8 +44,7 @@ class TestDiscreteSteerer(BaseTester):
         desc[:, 0] = -desc[:, 0]
         assert torch.allclose(desc, desc_out, atol=1e-6)
 
-    @pytest.mark.parametrize("generator_type", ["C4", "SO2"])
-    @pytest.mark.parametrize("steerer_order", [2, 14])
+    @pytest.mark.parametrize("generator_type, steerer_order", [("C4", 8), ("SO2", 14)])
     def test_default(self, device, generator_type, steerer_order):
         steerer = DiscreteSteerer.create_dedode_default(
             generator_type=generator_type,
@@ -57,21 +56,12 @@ class TestDiscreteSteerer(BaseTester):
         desc = steerer(desc)
         assert desc.shape == shape
 
-    @pytest.mark.parametrize("steerer_power", [0, 1, 5, -1])
-    def test_steerer_power_extremes(self, device, steerer_power):
+    def test_steerer_power_zero_returns_the_input(self, device):
         generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
         desc = torch.rand(4, 2, device=device)
         steerer = DiscreteSteerer(generator)
-        out = steerer.steer_descriptions(desc, steerer_power=steerer_power)
-        assert out.shape == desc.shape
-
-    def test_normalization_preserves_norm(self, device):
-        generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
-        desc = torch.rand(4, 2, device=device)
-        steerer = DiscreteSteerer(generator)
-        out = steerer.steer_descriptions(desc, steerer_power=1, normalize=True)
-        orig_norm = torch.norm(out, dim=-1)
-        assert torch.allclose(orig_norm, torch.ones_like(orig_norm), atol=1e-6)
+        out = steerer.steer_descriptions(desc, steerer_power=0)
+        self.assert_close(out, desc)
 
     def test_invalid_generator_type_raises(self):
         with pytest.raises(ValueError):

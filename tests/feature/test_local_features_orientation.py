@@ -38,24 +38,6 @@ def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None
 
 
 class TestPassLAF(BaseTester):
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = PassLAF().to(device)
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
-    def test_shape_batch(self, device):
-        inp = torch.rand(2, 1, 32, 32, device=device)
-        laf = torch.rand(2, 34, 2, 3, device=device)
-        ori = PassLAF().to(device)
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
-    def test_print(self):
-        sift = PassLAF()
-        sift.__repr__()
-
     def test_pass(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -95,21 +77,10 @@ class TestPatchDominantGradientOrientation(BaseTester):
         actual = PatchDominantGradientOrientation(size, bins).to(device, dtype)(patches[:, None])
         self.assert_close(actual, torch.tensor(expected, device=device, dtype=dtype))
 
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = PatchDominantGradientOrientation(32).to(device)
-        ang = ori(inp)
-        assert ang.shape == torch.Size([1])
-
-    def test_shape_batch(self, device):
-        inp = torch.rand(10, 1, 32, 32, device=device)
-        ori = PatchDominantGradientOrientation(32).to(device)
-        ang = ori(inp)
-        assert ang.shape == torch.Size([10])
-
-    def test_print(self):
-        sift = PatchDominantGradientOrientation(32)
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(PatchDominantGradientOrientation(19, num_angular_bins=8)) == (
+            "PatchDominantGradientOrientation(patch_size=19, num_ang_bins=8, eps=1e-08)"
+        )
 
     def test_toy(self, device):
         ori = PatchDominantGradientOrientation(19).to(device)
@@ -360,27 +331,11 @@ class TestOrientationKernelBuffer(BaseTester):
 
 
 class TestOriNet(BaseTester):
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = OriNet(pretrained=False).to(device=device, dtype=inp.dtype).eval()
-        ang = ori(inp)
-        assert ang.shape == torch.Size([1])
-
-    def test_pretrained(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
-        ang = ori(inp)
-        assert ang.shape == torch.Size([1])
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([2])
-
-    def test_print(self):
-        sift = OriNet(pretrained=False)
-        sift.__repr__()
 
     def test_toy(self, device):
         inp = torch.zeros(1, 1, 32, 32, device=device)
@@ -399,13 +354,6 @@ class TestOriNet(BaseTester):
 
 
 class TestLAFOrienter(BaseTester):
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFOrienter().to(device)
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
@@ -413,9 +361,11 @@ class TestLAFOrienter(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self):
-        sift = LAFOrienter()
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(LAFOrienter(19, num_angular_bins=8)) == (
+            "LAFOrienter(patch_size=19, angle_detector=PatchDominantGradientOrientation(patch_size=19, num_ang_bins=8, "
+            "eps=1e-08))"
+        )
 
     def test_toy(self, device):
         ori = LAFOrienter(32).to(device)

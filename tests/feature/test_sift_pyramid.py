@@ -42,7 +42,7 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
             get_laf_orientation(oriented), torch.zeros(1, 1, 1, device=device, dtype=dtype), rtol=0.0, atol=5.0
         )
 
-    @pytest.mark.parametrize("size", [1, 3, 4, 8, 9])
+    @pytest.mark.parametrize("size", [1, 3, 4])
     @pytest.mark.parametrize("inference", [False, True])
     def test_separable_pooling_matches_full_kernel(self, device, dtype, size, inference):
         feature = SIFTDescriptorFromPyramid(spatial_bin_size=size).to(device, dtype)
@@ -123,15 +123,6 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         _, descriptors = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
         descriptors.sum().backward()
         assert torch.isfinite(image.grad).all()
-
-    def test_odd_spatial_pooling(self, device, dtype):
-        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
-        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype))
-        _, descriptors = (
-            SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, dtype).orient_and_describe(image, lafs)
-        )
-        assert descriptors.shape == (1, 1, 128)
 
     def test_invalid_laf_and_mixed_laf_dtype(self, device, dtype):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)

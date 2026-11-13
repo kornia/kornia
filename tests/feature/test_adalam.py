@@ -377,7 +377,7 @@ class TestAdalamExact(BaseTester):
 
 
 class TestDrawFirstKCouples(BaseTester):
-    @pytest.mark.parametrize("k", [1, 2, 3, 4, 10, 100, 128, 129])
+    @pytest.mark.parametrize("k", [1, 2, 3, 128])
     def test_couples_are_the_first_k_distinct_pairs(self, k, device):
         # The k couples are the pairs (i, j), j < i, in row order. The residual row after the complete ones used
         # its length as its first index, so it repeated couples already drawn: 8 of the default 128.

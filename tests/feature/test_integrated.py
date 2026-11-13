@@ -559,12 +559,6 @@ class TestLocalFeature(BaseTester):
         assert responses.shape == (0, 7)
         assert descs.shape == (0, 7, 128)
 
-    def test_smoke(self, device, dtype):
-        det = ScaleSpaceDetector(10)
-        desc = SIFTDescriptor(32)
-        local_feature = LocalFeature(det, desc).to(device, dtype)
-        assert local_feature is not None
-
     def test_same(self, device, dtype):
         B, C, H, W = 1, 1, 64, 64
         PS = 16
@@ -607,17 +601,6 @@ class TestLocalFeature(BaseTester):
 
 class TestSIFTFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
-    def test_smoke(self):
-        sift = SIFTFeature()
-        assert sift is not None
-
-    def test_pyramid_sift_opt_in(self, device, dtype):
-        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descriptors = SIFTFeature(2, descriptor_backend="pyramid").to(device, dtype)(image)
-        assert lafs.shape == (1, 2, 2, 3)
-        assert responses.shape == (1, 2)
-        assert descriptors.shape == (1, 2, 128)
-
     @staticmethod
     def _blobs(h, w, blobs, device, dtype, background=0.5):
         # Gaussian blobs (x, y, sigma, amplitude) on a constant background, built in float64 on the CPU.
@@ -708,11 +691,15 @@ class TestSIFTFeatureHalfPrecision(BaseTester):
 class TestKeyNetHardNetFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
-        sift = KeyNetHardNet(2).to(device, dtype)
-        B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        out = sift(img)
-        assert out is not None
+        feature = KeyNetHardNet(2).to(device, dtype)
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        lafs, responses, descriptors = feature(img)
+        assert lafs.shape == (1, 2, 2, 3)
+        assert responses.shape == (1, 2)
+        assert descriptors.shape == (1, 2, 128)
+        assert torch.isfinite(lafs).all()
+        assert torch.isfinite(responses).all()
+        assert torch.isfinite(descriptors).all()
 
 
 class TestGFTTAffNetHardNet(BaseTester):
@@ -900,10 +887,6 @@ class TestLightGlueMatcherBatch(BaseTester):
 
 
 class TestLocalFeatureMatcher(BaseTester):
-    def test_smoke(self, device):
-        matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
-        assert matcher is not None
-
     @pytest.mark.parametrize("match_type", ["nn", "mnn"])
     def test_detector_padding_is_not_matched(self, device, dtype, match_type):
         # A fixed-shape detector with no maxima returns zero LAFs. Their descriptors are finite,

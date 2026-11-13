@@ -33,17 +33,11 @@ class TestHyNet(BaseTester):
         assert output.shape == (2, 4, 8, 8)
         assert layer.eps.requires_grad
 
-    def test_shape(self, device):
-        inp = torch.ones(1, 1, 32, 32, device=device)
-        hynet = HyNet(pretrained=False).to(device).eval()
-        out = hynet(inp)
-        assert out.shape == (1, 128)
-
-    @pytest.mark.parametrize("shape", [(2, 1, 40, 40), (2, 1, 32, 31), (2, 3, 32, 32), (1, 32, 32)])
-    def test_wrong_patch_shape_is_rejected_5724(self, device, shape):
-        # without the check a 40x40 patch silently produced a (2, 1152) descriptor
+    def test_wrong_patch_shape_is_rejected_5724(self, device):
+        # without the check a 40x40 patch silently produced a (2, 1152) descriptor. The wrong sizes and channel counts
+        # are pinned by test_hardnet.py::TestConventionsPatchDescriptors; this is the unbatched patch.
         with pytest.raises(ShapeError):
-            HyNet(pretrained=False).to(device).eval()(torch.ones(*shape, device=device))
+            HyNet(pretrained=False).to(device).eval()(torch.ones(1, 32, 32, device=device))
 
     @pytest.mark.device_agnostic
     def test_pretrained_rejects_is_bias_frn_false_6016(self, monkeypatch):
@@ -72,12 +66,6 @@ class TestHyNet(BaseTester):
         assert out.shape == (0, one.shape[1])
         assert out.dtype == one.dtype
         assert out.device == one.device
-
-    def test_shape_batch(self, device):
-        inp = torch.ones(4, 1, 32, 32, device=device)
-        hynet = HyNet(pretrained=False).to(device).eval()
-        out = hynet(inp)
-        assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)

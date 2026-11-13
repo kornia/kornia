@@ -97,12 +97,6 @@ def test_get_sift_bin_ksize_stride_pad_centres_the_grid_5691(ps, n_bins):
 
 
 class TestSIFTDescriptor(BaseTester):
-    def test_shape(self, device, dtype):
-        inp = torch.ones(1, 1, 32, 32, device=device, dtype=dtype)
-        sift = SIFTDescriptor(32).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (1, 128)
-
     @pytest.mark.parametrize("patch_size", [32, 15])
     def test_empty_batch(self, device, dtype, patch_size):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
@@ -112,18 +106,6 @@ class TestSIFTDescriptor(BaseTester):
         assert out.shape == (0, 128)
         assert out.dtype == one.dtype
         assert out.device == one.device
-
-    def test_batch_shape(self, device, dtype):
-        inp = torch.ones(2, 1, 15, 15, device=device, dtype=dtype)
-        sift = SIFTDescriptor(15).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (2, 128)
-
-    def test_batch_shape_non_std(self, device, dtype):
-        inp = torch.ones(3, 1, 19, 19, device=device, dtype=dtype)
-        sift = SIFTDescriptor(19, 5, 3).to(device, dtype)
-        out = sift(inp)
-        assert out.shape == (3, (3**2) * 5)
 
     def test_toy(self, device, dtype):
         patch = torch.ones(1, 1, 6, 6, device=device, dtype=dtype)
@@ -451,22 +433,6 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
 
 
 class TestDenseSIFTDescriptor(BaseTester):
-    def test_shape_default(self, device, dtype):
-        bs, h, w = 1, 20, 15
-        inp = torch.rand(1, 1, h, w, device=device, dtype=dtype)
-        sift = DenseSIFTDescriptor().to(device, dtype)
-        out = sift(inp)
-        # (20 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
-        assert out.shape == torch.Size([bs, 128, 11, 6])
-
-    def test_batch_shape(self, device, dtype):
-        bs, h, w = 2, 32, 15
-        inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
-        sift = DenseSIFTDescriptor().to(device, dtype)
-        out = sift(inp)
-        # (32 + 1 + 2 - 12 - 1) // 1 + 1 and (15 + 1 + 2 - 12 - 1) // 1 + 1
-        assert out.shape == torch.Size([bs, 128, 23, 6])
-
     def test_batch_shape_custom(self, device, dtype):
         bs, h, w = 2, 40, 30
         inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
@@ -488,9 +454,11 @@ class TestDenseSIFTDescriptor(BaseTester):
         out = DenseSIFTDescriptor(**kwargs).to(device, dtype)(torch.rand(1, 1, h, w, device=device, dtype=dtype))
         assert out.shape[-2:] == torch.Size(expected)
 
-    def test_print(self):
-        sift = DenseSIFTDescriptor()
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(DenseSIFTDescriptor(6, 3, 5, rootsift=False, stride=2)) == (
+            "DenseSIFTDescriptor(num_ang_bins=6, num_spatial_bins=3, spatial_bin_size=5, rootsift=False, stride=2, "
+            "clipval=0.2)"
+        )
 
     def test_pooling_kernel_accessor_is_isolated_and_tracks_to(self, device):
         """Dense SIFT's accessor must return a copy of the kernel used in forward (#4083)."""

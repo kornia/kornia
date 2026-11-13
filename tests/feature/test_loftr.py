@@ -51,16 +51,6 @@ def _loftr_matching_every_cell(device, dtype):
 
 class TestLoFTR(BaseTester):
     @pytest.mark.slow
-    def test_pretrained_outdoor_smoke(self, device, dtype):
-        loftr = LoFTR("outdoor").to(device, dtype)
-        assert loftr is not None
-
-    @pytest.mark.slow
-    def test_pretrained_indoor_smoke(self, device, dtype):
-        loftr = LoFTR("indoor").to(device, dtype)
-        assert loftr is not None
-
-    @pytest.mark.slow
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_pretrained_indoor(self, device, dtype, data):
@@ -102,16 +92,6 @@ class TestLoFTR(BaseTester):
         err = (transform_points(data["H_gt"].cpu().double()[None], kpts0[None])[0] - kpts1).norm(dim=-1)
         assert (err < 3).double().mean() > 0.85, err
         assert err.median() < 1.5, err
-
-    @pytest.mark.slow
-    def test_mask(self, device):
-        patches = torch.rand(1, 1, 32, 32, device=device)
-        mask = torch.rand(1, 32, 32, device=device)
-        loftr = LoFTR().to(patches.device, patches.dtype)
-        sample = {"image0": patches, "image1": patches, "mask0": mask, "mask1": mask}
-        with torch.no_grad():
-            out = loftr(sample)
-        assert out is not None
 
     def test_masked_cells_do_not_match_5740(self, device):
         """The whole-module view of #5740: with the same coarse cells masked on both sides,
