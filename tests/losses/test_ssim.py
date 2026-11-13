@@ -51,7 +51,7 @@ class TestSSIMLoss(BaseTester):
         img1 = torch.rand(1, 2, 7, 8, device=device, dtype=dtype)
         img2 = torch.rand(1, 2, 7, 8, device=device, dtype=dtype)
 
-        args = (img1, img2, 5, 2.0, 1e-6, "none", "valid")
+        args = (img1, img2, 5, 2.0, 0.01, "none", "valid")
 
         op = kornia.losses.ssim_loss
         op_module = kornia.losses.SSIMLoss(*args[2:])

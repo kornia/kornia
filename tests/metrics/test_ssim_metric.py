@@ -198,8 +198,8 @@ class TestSsim(BaseTester):
         # Every argument differs from the defaults, so the module has to forward each one.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        module = SSIM(5, max_val=2.0, eps=1e-6, padding="valid")
-        out_fn = ssim(img1, img2, 5, max_val=2.0, eps=1e-6, padding="valid")
+        module = SSIM(5, max_val=2.0, eps=0.01, padding="valid")
+        out_fn = ssim(img1, img2, 5, max_val=2.0, eps=0.01, padding="valid")
         self.assert_close(module(img1, img2), out_fn)
 
 
