@@ -139,7 +139,16 @@ class TestObjectDetector(BaseTester):
         torch.manual_seed(0)
         # Two decoder layers and 4 queries keep the export short; the backbone is the part only this test exports.
         config = RTDETRConfig(variant, 1, head_num_queries=4, head_num_decoder_layers=2)
-        model = RTDETR.from_config(config).eval()
+        model = RTDETR.from_config(config)
+        # At the default init the backbone's eval-mode features shrink with depth (HGNetV2's last stages to a standard
+        # deviation below 1e-4), so a wrong backbone export would move the outputs by less than the tolerance. Batch
+        # statistics of one calibration batch bring every stage to unit scale.
+        for module in model.backbone.modules():
+            if isinstance(module, torch.nn.BatchNorm2d):
+                module.momentum = None  # the running statistics become the calibration batch's
+        with torch.no_grad():
+            model.backbone(torch.rand(4, 3, 96, 128, generator=torch.Generator().manual_seed(1)))
+        model.eval()
         pre_processor = kornia.models.processors.ResizePreProcessor(640, 640)
         post_processor = DETRPostProcessor(0.3, num_top_queries=3)
         detector = kornia.contrib.object_detection.ObjectDetector(model, pre_processor, post_processor)
@@ -147,7 +156,7 @@ class TestObjectDetector(BaseTester):
         session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
 
         # A batch and a size other than the traced (1, 3, 352, 352). Seed 84 keeps the encoder scores of the 4 kept
-        # queries and the next one at least 2e-4 apart for both backbones.
+        # queries and the next one at least 3e-3 apart for both backbones.
         images = torch.rand(2, 3, 96, 128, generator=torch.Generator().manual_seed(84))
         scores: list[torch.Tensor] = []
         hook = model.decoder.enc_score_head.register_forward_hook(lambda m, i, out: scores.append(out.max(-1).values))
