@@ -2512,7 +2512,7 @@ class TestUnitRangeClampGradient(BaseTester):
 
     # adjust_brightness and adjust_contrast raised on the base as well: they reach _clip_unit_fresh, which took the
     # in-place clamp only in the check under no_grad. The other nine traced on the base. adjust_gamma raised from #6255
-    # until #PRNUM: its black-pixel mask followed the grad mode as well.
+    # until #6772: its black-pixel mask followed the grad mode as well.
     _CAPTURED = {
         "adjust_gamma": lambda x: enhance.adjust_gamma(x, 0.5, 1.5),
         "adjust_brightness": lambda x: enhance.adjust_brightness(x, 0.1),
