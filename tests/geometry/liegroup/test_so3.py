@@ -290,13 +290,44 @@ class TestSo3(BaseTester):
             v = (theta * axis).requires_grad_(True)
             assert torch.autograd.gradgradcheck(lambda x: So3.exp(x).q.data, (v,))
 
+    @pytest.mark.parametrize("jacobian", [So3.right_jacobian, So3.left_jacobian, So3.Jr, So3.Jl])
+    def test_jacobian_hessian_at_identity(self, device, dtype, jacobian):
+        # J(w) = I +/- [w]/2 + (w w^T - (w.w) I)/6 + O(|w|^3).
+        # Thus d_k d_l J_ij(0) = (delta_ik delta_jl + delta_il delta_jk - 2 delta_ij delta_kl)/6.
+        zero = torch.zeros(3, device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)
+        for i in range(3):
+            for j in range(3):
+                actual = torch.autograd.functional.hessian(lambda w, i=i, j=j: jacobian(w)[i, j], zero)
+                expected = (torch.outer(eye[i], eye[j]) + torch.outer(eye[j], eye[i]) - 2 * (i == j) * eye) / 6
+                self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("jacobian", [So3.right_jacobian, So3.left_jacobian])
+    @pytest.mark.parametrize("angle", [0.0, 1e-8, 0.1, 0.3, 1.0])
+    def test_jacobian_gradgradcheck(self, device, jacobian, angle):
+        # A mixed batch must not let an identity row poison the derivatives of other rotations.
+        vec = torch.tensor([[0.0, 0.0, 0.0], [0.48, 0.6, 0.64]], device=device, dtype=torch.float64) * angle
+        self.gradcheck(jacobian, (vec,))
+        assert torch.autograd.gradgradcheck(jacobian, (vec.requires_grad_(),), fast_mode=True)
+
+    @pytest.mark.parametrize("jacobian, expected", [(So3.right_jacobian, -0.25), (So3.left_jacobian, 0.25)])
+    def test_jacobian_third_derivative_at_identity(self, device, dtype, jacobian, expected):
+        # Along the z axis J_r[0,1] = (1-cos(z))/z = z/2 - z^3/24 + ...; J_l has the opposite sign.
+        # A constant angle substituted only at zero would repair the Hessian but lose this cubic term.
+        z = torch.zeros((), device=device, dtype=dtype, requires_grad=True)
+        zero = torch.zeros_like(z)
+        value = jacobian(torch.stack((zero, zero, z)))[0, 1]
+        for _ in range(3):
+            value = torch.autograd.grad(value, z, create_graph=True)[0]
+        self.assert_close(value, z.new_tensor(expected))
+
     def test_jit(self, device, dtype):
         # Scripting is not part of the contract, so the graph is traced. It is evaluated on another input, with an
         # identity row, so a branch taken while tracing would show up as a mismatch against eager.
         v = torch.tensor([[0.3, -0.4, 0.5], [0.1, 0.2, -0.3]], device=device, dtype=dtype)
         other = v * 0.5
         other[1] = 0.0
-        for fn in (lambda x: So3.exp(x).matrix(), lambda x: So3.exp(x).log()):
+        for fn in (lambda x: So3.exp(x).matrix(), lambda x: So3.exp(x).log(), So3.right_jacobian, So3.left_jacobian):
             traced = torch.jit.trace(fn, (v,))
             self.assert_close(traced(other), fn(other))
 
