@@ -31,7 +31,9 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
-def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _so3_small_angle_coefficients(
+    theta: torch.Tensor, theta_sq: Optional[torch.Tensor] = None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Evaluate the three angle coefficients of the SO(3) and SE(3) closed forms without cancellation.
 
     Returns :math:`(1 - \cos\theta) / \theta^2`, :math:`(\theta - \sin\theta) / \theta^3` and
@@ -47,6 +49,8 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
 
     Args:
         theta: rotation angles of any shape, non-negative.
+        theta_sq: optional squared angles computed directly from the rotation vector, with the shape of ``theta``.
+            Avoids differentiating a norm at zero in the Taylor series.
 
     Returns:
         the three coefficients, each with the shape of ``theta``.
@@ -57,8 +61,11 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     # where the other is used: 1 for the closed forms (0/0 at theta = 0) and 0 for the series, whose Horner
     # terms overflow float16 from about 50 rad and would put 0 * inf = nan into the gradient (kornia#4965).
     safe_theta = torch.where(small, torch.ones_like(theta), theta)
-    series_theta = torch.where(small, theta, torch.zeros_like(theta))
-    t2 = series_theta * series_theta
+    if theta_sq is None:
+        series_theta = torch.where(small, theta, torch.zeros_like(theta))
+        t2 = series_theta * series_theta
+    else:
+        t2 = torch.where(small, theta_sq, torch.zeros_like(theta_sq))
     a_series = 0.5 + t2 * (-1 / 24 + t2 * (1 / 720 + t2 * (-1 / 40320 + t2 * (1 / 3628800 - t2 / 479001600))))
     b_series = 1 / 6 + t2 * (-1 / 120 + t2 * (1 / 5040 + t2 * (-1 / 362880 + t2 * (1 / 39916800 - t2 / 6227020800))))
     c_series = 1 / 12 + t2 * (
@@ -69,6 +76,18 @@ def _so3_small_angle_coefficients(theta: torch.Tensor) -> tuple[torch.Tensor, to
     b = torch.where(small, b_series, (1 - torch.sin(safe_theta) / safe_theta) / safe_theta / safe_theta)
     c = torch.where(small, c_series, (1 - half * torch.cos(half) / torch.sin(half)) / safe_theta / safe_theta)
     return a, b, c
+
+
+def _so3_jacobian_coefficients(vec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Evaluate Jacobian coefficients without a singular norm backward at the identity."""
+    theta_sq = (vec * vec).sum(-1, keepdim=True)
+    nonzero = theta_sq > 0
+    # Even an unselected norm at zero produces NaNs in double backward. Substitute its input,
+    # and evaluate the series directly in vec.dot(vec) to retain derivatives of every Taylor term.
+    # Keep norm (rather than sqrt(theta_sq)) for the closed forms: the squared angle can overflow half.
+    safe_vec = torch.where(nonzero, vec, torch.ones_like(vec))
+    theta = torch.where(nonzero, safe_vec.norm(dim=-1, keepdim=True), torch.zeros_like(theta_sq))
+    return _so3_small_angle_coefficients(theta[..., None], theta_sq[..., None])
 
 
 def _computes_in_float32(dtype: torch.dtype) -> bool:
@@ -557,8 +576,7 @@ class So3(nn.Module):
         """
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
-        theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        a, b, _ = _so3_small_angle_coefficients(theta)
+        a, b, _ = _so3_jacobian_coefficients(vec)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         return I - a * R_skew + b * (R_skew @ R_skew)
 
@@ -589,8 +607,7 @@ class So3(nn.Module):
         """
         KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
-        theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        a, b, _ = _so3_small_angle_coefficients(theta)
+        a, b, _ = _so3_jacobian_coefficients(vec)
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         return I + a * R_skew + b * (R_skew @ R_skew)
 
