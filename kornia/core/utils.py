@@ -806,6 +806,10 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     therefore never sees a singular matrix, and the gradient with respect to the valid systems (and to
     any parameter they share with an invalid one) stays finite.
 
+    .. note::
+        On MPS this needs torch 2.10 or later, or ``PYTORCH_ENABLE_MPS_FALLBACK=1`` on an older torch; see
+        :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         B: right-hand side of shape ``(*, N, K)`` or ``(*, N)``.
         A: square matrices of shape ``(*, N, N)``.

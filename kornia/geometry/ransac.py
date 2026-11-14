@@ -399,8 +399,11 @@ class RANSAC(nn.Module):
           does not help: the next CUDA compile reads the same inductor cache and saves the CPU program again
           (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
         - A caller's autocast region does not change the estimate.
-        - On MPS, ``"homography"``, ``"fundamental"``, ``"fundamental_7pt"`` and ``"fundamental_8pt"`` need torch
-          2.7 or later, or ``PYTORCH_ENABLE_MPS_FALLBACK=1`` on an older torch; see
+        - On MPS with the default ``local_optimization="lm"``, ``"homography"``, ``"fundamental"``,
+          ``"fundamental_7pt"`` and ``"fundamental_8pt"`` need torch 2.7 or later. With ``local_optimization="dlt"``,
+          ``"homography"`` needs torch 2.10 or later, and ``"fundamental"``, ``"fundamental_7pt"``,
+          ``"fundamental_8pt"`` and ``"essential"`` need torch 2.14 or later, because their inlier refits use the
+          weighted eight-point solver. On an older torch, set ``PYTORCH_ENABLE_MPS_FALLBACK=1``; see
           :ref:`MPS linear algebra <mps-linear-algebra>`.
 
     Args:
