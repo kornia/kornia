@@ -43,3 +43,41 @@ implementation on CUDA, an x86 CPU and Apple silicon, including where kornia is 
 Apple silicon (``device="mps"``) is supported as well. PyTorch's MPS backend has no ``float64`` tensors, so keep
 inputs in ``float32`` (or half precision) there, and be aware that autocast on MPS can change the effective
 dtype of an operation.
+
+.. _mps-linear-algebra:
+
+Several geometry solvers need linear-algebra kernels that PyTorch's MPS backend gained in torch 2.7, 2.10 and 2.14.
+On an older torch they raise ``NotImplementedError`` on MPS. Each row gives the first torch that runs the call on
+MPS (Apple M1, ``PYTORCH_ENABLE_MPS_FALLBACK`` unset):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 60 25 15
+
+   * - Call
+     - Missing kernel
+     - Runs on MPS from
+   * - :class:`~kornia.geometry.ransac.RANSAC` with ``"homography"``, ``"fundamental"``, ``"fundamental_7pt"``
+       or ``"fundamental_8pt"`` and the default ``local_optimization="lm"``;
+       :func:`~kornia.geometry.epipolar.find_fundamental` with ``method="7POINT"``, or with ``method="8POINT"`` on
+       exactly eight points and no weights
+     - ``linalg_lu_factor_ex``
+     - torch 2.7
+   * - :func:`~kornia.geometry.homography.find_homography_dlt` with the default ``solver="lu"``,
+       :func:`~kornia.geometry.homography.find_homography_dlt_iterated`, ``kornia.core.utils.safe_solve_with_mask``,
+       and :class:`~kornia.geometry.ransac.RANSAC` with ``"homography"`` and ``local_optimization="dlt"``
+     - ``linalg_lu_factor_ex`` and ``linalg_lu_solve``
+     - torch 2.10
+   * - :func:`~kornia.geometry.epipolar.find_fundamental` with the default ``method="8POINT"`` on more than eight
+       points or with weights, and :class:`~kornia.geometry.ransac.RANSAC` with ``"fundamental"``,
+       ``"fundamental_7pt"``, ``"fundamental_8pt"`` or ``"essential"`` and ``local_optimization="dlt"``, whose
+       inlier refits use the weighted eight-point solver
+     - ``linalg_eigh``
+     - torch 2.14
+
+The other :class:`~kornia.geometry.ransac.RANSAC` models (``"affine"``, ``"fundamental_affine"`` and
+``"homography_from_linesegments"``), ``"essential"`` with the default ``local_optimization="lm"``,
+:func:`~kornia.geometry.epipolar.find_essential` and
+:func:`~kornia.geometry.homography.find_homography_dlt` with ``solver="svd"`` run on MPS from torch 2.5.1. On an older
+torch, set ``PYTORCH_ENABLE_MPS_FALLBACK=1`` in the environment that starts Python: PyTorch then runs the missing
+kernels on the CPU and copies their results back to MPS.

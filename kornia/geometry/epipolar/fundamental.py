@@ -757,6 +757,11 @@ def find_fundamental(
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
         - A caller's autocast region does not change the fit.
 
+    .. note::
+        On MPS, ``method="8POINT"`` needs torch 2.14 or later (2.7 for exactly eight correspondences without
+        weights), ``"7POINT"`` needs torch 2.7 or later, and ``"AFFINE"`` runs from torch 2.5.1; see
+        :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``: :math:`N \ge 8` for
             ``"8POINT"``, exactly 7 for ``"7POINT"``, :math:`N \ge 4` for ``"AFFINE"``.

@@ -630,6 +630,10 @@ def find_homography_dlt(
           conditioning of the system; on noisy data they solve different least-squares problems and differ.
         - A caller's autocast region does not change the fit.
 
+    .. note::
+        On MPS, the default ``solver="lu"`` needs torch 2.10 or later and ``solver="svd"`` runs from torch 2.5.1;
+        see :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``.
         points2: A set of points in the second image with a tensor shape ``(B, N, 2)``.
@@ -887,6 +891,9 @@ def find_homography_dlt_iterated(
           with the Gaussian kernel ``exp(-e**2 / (2 * soft_inl_th**2))`` of the symmetric transfer error ``e``
           (the root of the summed squared forward and backward transfer errors), so ``soft_inl_th`` is a
           standard deviation in pixels: a correspondence with ``e = soft_inl_th`` keeps weight ``exp(-1/2)``.
+
+    .. note::
+        On MPS this needs torch 2.10 or later; see :ref:`MPS linear algebra <mps-linear-algebra>`.
 
     Args:
         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``.
