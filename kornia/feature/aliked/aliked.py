@@ -528,9 +528,9 @@ class DeformableConv2d(nn.Module):
         max_offset = max(h, w) / 4.0
         out = self.offset_conv(x)
         if self.mask:
-            o1, o2, mask_w = torch.chunk(out, 3, dim=1)
-            offset = torch.cat((o1, o2), dim=1)
-            mask_w = torch.sigmoid(mask_w)
+            # the (o1, o2) offset chunks are the first two thirds of the channels: a slice, without copying them
+            n = out.shape[1] // 3
+            offset, mask_w = out[:, : 2 * n], torch.sigmoid(out[:, 2 * n :])
         else:
             offset = out
             mask_w = None

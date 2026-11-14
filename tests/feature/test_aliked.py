@@ -26,7 +26,7 @@ from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
 from kornia.feature.aliked import aliked as aliked_module
 from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
-from kornia.feature.aliked.deform_conv2d import _bilinear_sample, _grid_sample_bilinear, deform_conv2d
+from kornia.feature.aliked.deform_conv2d import _grid_sample_offsets, _sample_with_autograd, deform_conv2d
 
 from testing.base import (
     BaseTester,
@@ -331,16 +331,17 @@ class TestDeformConv2d(BaseTester):
         C, H, W, K = 8, 37, 53, 9
         n = K * H * W
         x = torch.sin(0.37 * torch.arange(C * H * W, dtype=torch.float64)).reshape(1, C, H, W)
-        rows = torch.arange(H, dtype=torch.float64).reshape(1, 1, 1, H, 1)
-        cols = torch.arange(W, dtype=torch.float64).reshape(1, 1, 1, 1, W)
-        sample_h = rows + 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        sample_w = cols + 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        x, sample_h, sample_w = (t.to(device, dtype) for t in (x, sample_h, sample_w))
+        # offsets of a 3x3 kernel with padding 1, interleaved (dy, dx) per tap
+        dy = 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        dx = 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        offset = torch.stack((dy, dx), dim=2).reshape(1, 2 * K, H, W)
+        x, offset = (t.to(device, dtype) for t in (x, offset))
+        conv = ((3, 3), (1, 1), (1, 1), (1, 1), (H, W), 1, C)  # kernel, stride, padding, dilation, output, groups
         # the reference of the inputs as rounded to `dtype`
-        expected = _bilinear_sample(*(t.cpu().double() for t in (x, sample_h, sample_w)), 1, C)
+        expected = _sample_with_autograd(x.cpu().double(), offset.cpu().double(), None, *conv)
 
-        inference = _grid_sample_bilinear(x, sample_h, sample_w, 1, C).cpu().double()
-        autograd = _bilinear_sample(x, sample_h, sample_w, 1, C).cpu().double()
+        inference = _grid_sample_offsets(x, offset, None, *conv).cpu().double()
+        autograd = _sample_with_autograd(x, offset, None, *conv).cpu().double()
         assert (inference - expected).abs().mean() <= (autograd - expected).abs().mean()
 
     @NO_MPS_FLOAT64

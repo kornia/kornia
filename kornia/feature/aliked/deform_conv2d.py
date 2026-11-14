@@ -82,13 +82,68 @@ def deform_conv2d(
     H_out = (H_in + 2 * pH - dH * (kH - 1) - 1) // sH + 1
     W_out = (W_in + 2 * pW - dW * (kW - 1) - 1) // sW + 1
 
+    # Without autograd one grid_sample samples every offset group, which makes ALIKED inference about 1.7x faster on
+    # MPS. Autograd keeps the absolute-coordinate sampler: normalized coordinates can round a sample at an integer
+    # position, such as any sample of a zero offset, onto the other side of the pixel, which changes its one-sided
+    # derivative.
+    if torch.is_grad_enabled():
+        sampled = _sample_with_autograd(
+            input, offset, mask, (kH, kW), stride, padding, dilation, (H_out, W_out), n_off_grps, c_per_off_grp
+        )
+    else:
+        sampled = _grid_sample_offsets(
+            input, offset, mask, (kH, kW), stride, padding, dilation, (H_out, W_out), n_off_grps, c_per_off_grp
+        )
+    # sampled: [B, n_off_grps, c_per_off_grp, K, H_out, W_out], modulated by the mask
+
+    if groups == 1:
+        # one batched matrix product, with the bias added in the same call
+        cols = sampled.reshape(B, C_in * K, H_out * W_out)
+        w = weight.reshape(1, C_out, C_in * K).expand(B, -1, -1)
+        if bias is None:
+            out = torch.bmm(w, cols)
+        else:
+            out = torch.baddbmm(bias.reshape(1, C_out, 1).expand(B, -1, -1), w, cols)
+        return out.reshape(B, C_out, H_out, W_out)
+
+    C_out_per_group = C_out // groups
+    sampled = sampled.reshape(B, groups, C_in_per_group, K, H_out * W_out)
+    weight_flat = weight.reshape(groups, C_out_per_group, C_in_per_group, K)
+
+    out = torch.einsum("bgckn,gock->bgon", sampled, weight_flat)
+    out = out.reshape(B, C_out, H_out, W_out)
+
+    if bias is not None:
+        out = out + bias.reshape(1, -1, 1, 1)
+
+    return out
+
+
+def _sample_with_autograd(
+    input: Tensor,
+    offset: Tensor,
+    mask: Optional[Tensor],
+    kernel_size: Tuple[int, int],
+    stride: Tuple[int, int],
+    padding: Tuple[int, int],
+    dilation: Tuple[int, int],
+    out_size: Tuple[int, int],
+    n_off_grps: int,
+    c_per_off_grp: int,
+) -> Tensor:
+    """Sample the deformable-convolution taps with :func:`_bilinear_sample` and modulate them by ``mask``.
+
+    Returns:
+        Sampled tensor ``(B, n_off_grps, c_per_off_grp, K, H_out, W_out)``.
+    """
+    B = input.shape[0]
+    (kH, kW), (sH, sW), (pH, pW), (dH, dW), (H_out, W_out) = kernel_size, stride, padding, dilation, out_size
+    K = kH * kW
+
     # parse offsets: interleaved (dy, dx) per kernel point per group
     offset = offset.reshape(B, n_off_grps, 2 * K, H_out, W_out)
     off_y = offset[:, :, 0::2, :, :]  # [B, n_off_grps, K, H_out, W_out]
     off_x = offset[:, :, 1::2, :, :]
-
-    if mask is not None:
-        mask = mask.reshape(B, n_off_grps, K, H_out, W_out)
 
     # base sampling grid
     grid_oh = torch.arange(H_out, device=input.device, dtype=input.dtype)
@@ -106,75 +161,72 @@ def deform_conv2d(
     sample_h = base_h + kern_h + off_y
     sample_w = base_w + kern_w + off_x
 
-    # bilinear interpolation with zero-padding. Without autograd one grid_sample samples every offset group, which
-    # makes ALIKED inference about 1.7x faster on MPS. Autograd keeps the absolute-coordinate sampler: normalized
-    # coordinates can round a sample at an integer position, such as any sample of a zero offset, onto the other
-    # side of the pixel, which changes its one-sided derivative.
-    if torch.is_grad_enabled():
-        sampled = _bilinear_sample(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
-    else:
-        sampled = _grid_sample_bilinear(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
-    # sampled: [B, n_off_grps, c_per_off_grp, K, H_out, W_out]
-
-    # apply mask (DCNv2 modulation)
+    sampled = _bilinear_sample(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
     if mask is not None:
-        sampled = sampled * mask.unsqueeze(2)  # broadcast over channels
-
-    # reshape for grouped matmul
-    sampled = sampled.reshape(B, C_in, K, H_out, W_out)
-
-    C_out_per_group = C_out // groups
-    sampled = sampled.reshape(B, groups, C_in_per_group, K, H_out * W_out)
-    weight_flat = weight.reshape(groups, C_out_per_group, C_in_per_group, K)
-
-    out = torch.einsum("bgckn,gock->bgon", sampled, weight_flat)
-    out = out.reshape(B, C_out, H_out, W_out)
-
-    if bias is not None:
-        out = out + bias.reshape(1, -1, 1, 1)
-
-    return out
+        sampled = sampled * mask.reshape(B, n_off_grps, 1, K, H_out, W_out)  # broadcast over channels
+    return sampled
 
 
-def _grid_sample_bilinear(
+def _normalized_base(
+    n_out: int, k: int, stride: int, pad: int, dil: int, size: int, device: torch.device, dtype: torch.dtype
+) -> Tensor:
+    """Return the ``grid_sample`` coordinate of each zero-offset tap along one axis, shape ``(k, n_out)``.
+
+    Tap ``j`` of output ``o`` reads pixel ``p = o * stride - pad + j * dil``, which ``grid_sample`` with
+    ``align_corners=False`` places at ``(2 p + 1) / size - 1``. Two ``linspace`` calls give the output and kernel
+    terms with exact end points and no host-to-device copy.
+    """
+    first = (1 - 2 * pad) / size - 1
+    outs = torch.linspace(first, first + (n_out - 1) * 2 * stride / size, n_out, device=device, dtype=dtype)
+    kern = torch.linspace(0.0, (k - 1) * 2 * dil / size, k, device=device, dtype=dtype)
+    return kern[:, None] + outs[None, :]
+
+
+def _grid_sample_offsets(
     input: Tensor,
-    sample_h: Tensor,
-    sample_w: Tensor,
+    offset: Tensor,
+    mask: Optional[Tensor],
+    kernel_size: Tuple[int, int],
+    stride: Tuple[int, int],
+    padding: Tuple[int, int],
+    dilation: Tuple[int, int],
+    out_size: Tuple[int, int],
     n_off_grps: int,
     c_per_off_grp: int,
 ) -> Tensor:
-    """Sample input at fractional (sample_h, sample_w) positions with zero-padding, using one ``grid_sample``.
+    """Sample the deformable-convolution taps with one ``grid_sample`` and modulate them by ``mask``.
 
-    Gives the values of :func:`_bilinear_sample`. Offset groups are folded into the batch of ``grid_sample`` and
-    kernel points into its output height. Half-precision inputs are sampled in float32: rounding the normalized
-    coordinates to half precision would add error that the absolute-coordinate sampler does not have.
-
-    Args:
-        input: ``(B, C_in, H_in, W_in)``
-        sample_h: ``(B, n_off_grps, K, H_out, W_out)``
-        sample_w: ``(B, n_off_grps, K, H_out, W_out)``
-        n_off_grps: number of offset groups.
-        c_per_off_grp: input channels per offset group.
+    Gives the values of :func:`_sample_with_autograd`. Offset groups are folded into the batch of ``grid_sample``
+    and kernel points into its output height. The normalized coordinates are built straight from the offsets, one
+    fused multiply-add per axis on a zero-offset base grid, which keeps the kernel launches that bound small-image
+    inference on CUDA few. Half-precision inputs are sampled in float32: rounding the normalized coordinates to half
+    precision would add error that the absolute-coordinate sampler does not have.
 
     Returns:
         Sampled tensor ``(B, n_off_grps, c_per_off_grp, K, H_out, W_out)``.
     """
     B, _C_in, H_in, W_in = input.shape
-    _B, _G, K, H_out, W_out = sample_h.shape
+    (kH, kW), (sH, sW), (pH, pW), (dH, dW), (H_out, W_out) = kernel_size, stride, padding, dilation, out_size
+    K = kH * kW
     dtype = torch.promote_types(input.dtype, torch.float32)
-    sample_h = sample_h.to(dtype)
-    sample_w = sample_w.to(dtype)
-    # Pixel p is at (2 * p + 1) / size - 1 with align_corners=False. Clamping keeps a huge finite position from
-    # overflowing; +-3 lies wholly in the zero padding for any size.
-    grid_x = ((2 * sample_w + 1) / W_in - 1).clamp(-3, 3)
-    grid_y = ((2 * sample_h + 1) / H_in - 1).clamp(-3, 3)
+    # (B, G, kH, kW, (dy, dx), H_out, W_out): the offsets of each tap, interleaved (dy, dx)
+    off = offset.reshape(B, n_off_grps, kH, kW, 2, H_out, W_out).to(dtype)
+    base_y = _normalized_base(H_out, kH, sH, pH, dH, H_in, input.device, dtype)  # (kH, H_out)
+    base_x = _normalized_base(W_out, kW, sW, pW, dW, W_in, input.device, dtype)  # (kW, W_out)
+    # Clamping keeps a huge finite position from overflowing; +-3 lies wholly in the zero padding for any size.
+    grid_y = torch.add(base_y[:, None, :, None], off[:, :, :, :, 0], alpha=2.0 / H_in).clamp_(-3, 3)
+    grid_x = torch.add(base_x[None, :, None, :], off[:, :, :, :, 1], alpha=2.0 / W_in).clamp_(-3, 3)
     grid = torch.stack((grid_x, grid_y), dim=-1).reshape(B * n_off_grps, K * H_out, W_out, 2)
     grouped = input.to(dtype).reshape(B * n_off_grps, c_per_off_grp, H_in, W_in)
     sampled = F.grid_sample(grouped, grid, mode="bilinear", padding_mode="zeros", align_corners=False)
     sampled = sampled.reshape(B, n_off_grps, c_per_off_grp, K, H_out, W_out)
-    # _bilinear_sample returns nan at a non-finite position, whereas grid_sample differs between devices there.
-    nonfinite = ~(torch.isfinite(sample_h) & torch.isfinite(sample_w))
-    return sampled.masked_fill(nonfinite.unsqueeze(2), float("nan")).to(input.dtype)
+    # _bilinear_sample returns nan at a non-finite offset, whereas grid_sample differs between devices there. The nan
+    # goes into the (channel-free) mask when there is one, which the samples are multiplied by anyway.
+    nonfinite = torch.isfinite(off).all(dim=4).logical_not_().reshape(B, n_off_grps, 1, K, H_out, W_out)
+    if mask is None:
+        return sampled.masked_fill(nonfinite, float("nan")).to(input.dtype)
+    modulation = mask.reshape(B, n_off_grps, 1, K, H_out, W_out).to(dtype).masked_fill(nonfinite, float("nan"))
+    return (sampled * modulation).to(input.dtype)
 
 
 def _bilinear_sample(
