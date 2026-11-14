@@ -220,7 +220,7 @@ class StableDiffusionDissolving(ImageModule):
           - SD XL
         * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
           - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-xl.png
 
     Convention:
         - ``input`` is an image in :math:`[0, 1]`, rescaled to :math:`[-1, 1]` before encoding and not clamped; the
