@@ -47,7 +47,8 @@ class TestApplyLinearTransformation(BaseTester):
     def test_float32_with_cudnn_tf32_enabled(self, device, shape):
         # PyTorch's defaults: cuDNN TF32 on, matmul TF32 off (the test session sets both from --tf32).
         # The transform must compute in float32 there: on CUDA the former 1x1 conv2d gave 3.6e-4 for
-        # (1, 3, 224, 224).
+        # (1, 3, 224, 224). That only discriminates with older cuDNN (torch 2.5.1's cuDNN 9.1); newer
+        # cuDNN kept that conv in float32 for these shapes, so on current torch this guards the floor.
         generator = torch.Generator().manual_seed(0)
         image = torch.rand(shape, generator=generator, dtype=torch.float64)
         kernel = torch.tensor(
@@ -68,6 +69,34 @@ class TestApplyLinearTransformation(BaseTester):
             matmul.allow_tf32 = matmul_tf32
 
         self.assert_close(actual, expected, atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.parametrize("layout", ["channels_last", "nhwc_permuted", "hwc_permuted", "5d_channel_innermost"])
+    @pytest.mark.parametrize("with_bias", [False, True])
+    def test_channel_innermost_layouts(self, device, dtype, layout, with_bias):
+        generator = torch.Generator().manual_seed(0)
+        if layout == "channels_last":
+            image = torch.rand(2, 3, 5, 7, generator=generator, dtype=torch.float64)
+            image = image.contiguous(memory_format=torch.channels_last)
+        elif layout == "nhwc_permuted":
+            image = torch.rand(2, 5, 7, 3, generator=generator, dtype=torch.float64).permute(0, 3, 1, 2)
+        elif layout == "hwc_permuted":
+            image = torch.rand(5, 7, 3, generator=generator, dtype=torch.float64).permute(2, 0, 1)
+        else:
+            image = torch.rand(2, 4, 5, 7, 3, generator=generator, dtype=torch.float64).movedim(-1, -3)
+        kernel = torch.tensor([[1.0, 0.5, -0.25], [-0.5, 1.0, 0.0], [0.0, 0.25, 1.0]], dtype=torch.float64)
+        bias = torch.tensor([0.5, -1.0, 2.0], dtype=torch.float64) if with_bias else None
+        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image)
+        if bias is not None:
+            expected = expected + bias.view(-1, 1, 1)
+
+        actual = _apply_linear_transformation(image.to(device=device, dtype=dtype), kernel, bias)
+
+        assert actual.shape == image.shape
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        if layout == "channels_last" and actual.device.type == "cuda":
+            # On CUDA a channels_last image stays channels_last, as the float32 conv2d this replaced kept it.
+            assert actual.is_contiguous(memory_format=torch.channels_last)
 
     def test_empty_input_autograd(self, device):
         for shape in ((0, 3, 4, 4), (2, 3, 0, 4), (2, 0, 3, 4, 4)):

@@ -42,12 +42,21 @@ def _apply_linear_transformation(
     bias_compute = bias.to(dtype=image_compute.dtype, device=image_compute.device) if bias is not None else None
     input_shape = image_compute.shape
 
-    # One matmul over the flattened pixels on every device. It replaces a 1x1 conv2d off the cpu, which
-    # followed cuDNN's TF32 switch (on by default in PyTorch) with the precision chosen per shape: on CUDA
-    # a single (1, 3, 224, 224) float32 image, and every shape under torch.compile, came back with a
-    # 10-bit mantissa (3.6e-4 error in rgb_to_xyz, 5.9e-2 in rgb_to_lab). A matmul follows
-    # torch.backends.cuda.matmul.allow_tf32 (off by default) like every other matrix product. It also
-    # replaces the einsum on the cpu, where it gives bitwise the same result about 2x faster.
+    # A matmul on every device, not a 1x1 conv2d off the cpu: a conv follows cuDNN's TF32 switch (on by
+    # default in PyTorch), and with older cuDNN (seen with torch 2.5.1's cuDNN 9.1) the conv picked TF32
+    # per shape, e.g. for a single (1, 3, 224, 224) float32 image and under torch.compile. A matmul follows
+    # torch.backends.cuda.matmul.allow_tf32 (off by default) like every other matrix product. On the cpu
+    # it gives bitwise the einsum's result, faster.
+    if image_compute.device.type == "cuda" and image_compute.stride(-3) == 1 and input_shape[-2] * input_shape[-1] > 1:
+        # Channel-innermost input (channels_last, or HWC permuted to CHW): cuBLAS takes a slow strided path
+        # for the flattened view below, 2-3x slower than the conv2d this replaced (#6768). Contract over the
+        # last axis instead, which keeps the caller's channels_last layout. Not on the cpu, where the view
+        # below is already fast and bitwise equal to the einsum.
+        out_cl = torch.matmul(image_compute.movedim(-3, -1), kernel_compute.t())
+        if bias_compute is not None:
+            out_cl = out_cl + bias_compute
+        return out_cl.movedim(-1, -3)
+
     # The leading size is spelled out rather than -1 so that empty shapes reshape too.
     batch = 1
     for size in input_shape[:-3]:
