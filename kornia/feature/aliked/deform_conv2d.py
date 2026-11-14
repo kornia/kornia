@@ -97,22 +97,17 @@ def deform_conv2d(
     # sampled: [B, n_off_grps, c_per_off_grp, K, H_out, W_out], modulated by the mask
 
     if groups == 1:
-        # one batched matrix product, with the bias added in the same call
+        # one batched matrix product
         cols = sampled.reshape(B, C_in * K, H_out * W_out)
-        w = weight.reshape(1, C_out, C_in * K).expand(B, -1, -1)
-        if bias is None:
-            out = torch.bmm(w, cols)
-        else:
-            out = torch.baddbmm(bias.reshape(1, C_out, 1).expand(B, -1, -1), w, cols)
-        return out.reshape(B, C_out, H_out, W_out)
-
-    C_out_per_group = C_out // groups
-    sampled = sampled.reshape(B, groups, C_in_per_group, K, H_out * W_out)
-    weight_flat = weight.reshape(groups, C_out_per_group, C_in_per_group, K)
-
-    out = torch.einsum("bgckn,gock->bgon", sampled, weight_flat)
+        out = torch.bmm(weight.reshape(1, C_out, C_in * K).expand(B, -1, -1), cols)
+    else:
+        C_out_per_group = C_out // groups
+        sampled = sampled.reshape(B, groups, C_in_per_group, K, H_out * W_out)
+        weight_flat = weight.reshape(groups, C_out_per_group, C_in_per_group, K)
+        out = torch.einsum("bgckn,gock->bgon", sampled, weight_flat)
     out = out.reshape(B, C_out, H_out, W_out)
 
+    # A separate addition, not baddbmm, keeps torch's type promotion of the bias, also under autocast.
     if bias is not None:
         out = out + bias.reshape(1, -1, 1, 1)
 
@@ -167,18 +162,18 @@ def _sample_with_autograd(
     return sampled
 
 
-def _normalized_base(
+def _doubled_base(
     n_out: int, k: int, stride: int, pad: int, dil: int, size: int, device: torch.device, dtype: torch.dtype
 ) -> Tensor:
-    """Return the ``grid_sample`` coordinate of each zero-offset tap along one axis, shape ``(k, n_out)``.
+    """Return ``2 p + 1 - size`` for the pixel each zero-offset tap reads along one axis, shape ``(k, n_out)``.
 
     Tap ``j`` of output ``o`` reads pixel ``p = o * stride - pad + j * dil``, which ``grid_sample`` with
-    ``align_corners=False`` places at ``(2 p + 1) / size - 1``. Two ``linspace`` calls give the output and kernel
-    terms with exact end points and no host-to-device copy.
+    ``align_corners=False`` places at ``(2 p + 1 - size) / size``. The values are integers, exact in float32, and two
+    integer ``arange`` calls keep the sizes symbolic under ``torch.compile``, without a host-to-device copy.
     """
-    first = (1 - 2 * pad) / size - 1
-    outs = torch.linspace(first, first + (n_out - 1) * 2 * stride / size, n_out, device=device, dtype=dtype)
-    kern = torch.linspace(0.0, (k - 1) * 2 * dil / size, k, device=device, dtype=dtype)
+    start = 1 - 2 * pad - size
+    outs = torch.arange(start, start + 2 * stride * n_out, 2 * stride, device=device, dtype=dtype)
+    kern = torch.arange(0, 2 * dil * k, 2 * dil, device=device, dtype=dtype)
     return kern[:, None] + outs[None, :]
 
 
@@ -198,9 +193,9 @@ def _grid_sample_offsets(
 
     Gives the values of :func:`_sample_with_autograd`. Offset groups are folded into the batch of ``grid_sample``
     and kernel points into its output height. The normalized coordinates are built straight from the offsets, one
-    fused multiply-add per axis on a zero-offset base grid, which keeps the kernel launches that bound small-image
-    inference on CUDA few. Half-precision inputs are sampled in float32: rounding the normalized coordinates to half
-    precision would add error that the absolute-coordinate sampler does not have.
+    fused multiply-add and one division per axis on a zero-offset base grid, which keeps the kernel launches that
+    bound small-image inference on CUDA few. Half-precision inputs are sampled in float32: rounding the normalized
+    coordinates to half precision would add error that the absolute-coordinate sampler does not have.
 
     Returns:
         Sampled tensor ``(B, n_off_grps, c_per_off_grp, K, H_out, W_out)``.
@@ -211,11 +206,12 @@ def _grid_sample_offsets(
     dtype = torch.promote_types(input.dtype, torch.float32)
     # (B, G, kH, kW, (dy, dx), H_out, W_out): the offsets of each tap, interleaved (dy, dx)
     off = offset.reshape(B, n_off_grps, kH, kW, 2, H_out, W_out).to(dtype)
-    base_y = _normalized_base(H_out, kH, sH, pH, dH, H_in, input.device, dtype)  # (kH, H_out)
-    base_x = _normalized_base(W_out, kW, sW, pW, dW, W_in, input.device, dtype)  # (kW, W_out)
+    base_y = _doubled_base(H_out, kH, sH, pH, dH, H_in, input.device, dtype)  # (kH, H_out)
+    base_x = _doubled_base(W_out, kW, sW, pW, dW, W_in, input.device, dtype)  # (kW, W_out)
+    # Dividing by the size, rather than scaling the offsets by a float, keeps the sizes symbolic under torch.compile.
     # Clamping keeps a huge finite position from overflowing; +-3 lies wholly in the zero padding for any size.
-    grid_y = torch.add(base_y[:, None, :, None], off[:, :, :, :, 0], alpha=2.0 / H_in).clamp_(-3, 3)
-    grid_x = torch.add(base_x[None, :, None, :], off[:, :, :, :, 1], alpha=2.0 / W_in).clamp_(-3, 3)
+    grid_y = torch.add(base_y[:, None, :, None], off[:, :, :, :, 0], alpha=2).div_(H_in).clamp_(-3, 3)
+    grid_x = torch.add(base_x[None, :, None, :], off[:, :, :, :, 1], alpha=2).div_(W_in).clamp_(-3, 3)
     grid = torch.stack((grid_x, grid_y), dim=-1).reshape(B * n_off_grps, K * H_out, W_out, 2)
     grouped = input.to(dtype).reshape(B * n_off_grps, c_per_off_grp, H_in, W_in)
     sampled = F.grid_sample(grouped, grid, mode="bilinear", padding_mode="zeros", align_corners=False)

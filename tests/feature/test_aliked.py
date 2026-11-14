@@ -305,6 +305,18 @@ class TestDeformConv2d(BaseTester):
             self.assert_close(actual, expected)
 
     @NO_MPS_FLOAT64
+    def test_dynamo_keeps_sizes_symbolic(self, device, dtype):
+        """Compiled with dynamic shapes, the grid_sample sampler serves a new image size without recompiling."""
+        op = torch.compile(deform_conv2d, fullgraph=True, dynamic=True, backend="eager")
+        weight = torch.ones(3, 2, 3, 3, device=device, dtype=dtype)
+        with torch.no_grad():
+            for i, (H, W) in enumerate(((13, 17), (21, 9))):
+                x = torch.ones(1, 2, H, W, device=device, dtype=dtype)
+                offset = torch.zeros(1, 18, H, W, device=device, dtype=dtype)
+                with torch._dynamo.config.patch(error_on_recompile=i > 0):
+                    assert op(x, offset, weight, padding=1).shape == (1, 3, H, W)
+
+    @NO_MPS_FLOAT64
     def test_inference_samples_with_grid_sample(self, device, dtype, monkeypatch):
         """Without autograd deform_conv2d does not call the absolute-coordinate sampler."""
 
@@ -345,7 +357,8 @@ class TestDeformConv2d(BaseTester):
         assert (inference - expected).abs().mean() <= (autograd - expected).abs().mean()
 
     @NO_MPS_FLOAT64
-    def test_inference_nonfinite_offsets_give_nan(self, device, dtype):
+    @pytest.mark.parametrize("use_mask", [False, True])
+    def test_inference_nonfinite_offsets_give_nan(self, device, dtype, use_mask):
         """A nan or infinite offset gives nan in both samplers, which grid_sample alone does not do on every device."""
         x = torch.arange(15, device=device, dtype=dtype).reshape(1, 1, 3, 5)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -353,10 +366,12 @@ class TestDeformConv2d(BaseTester):
         offset[0, 0, 0, 0] = float("nan")
         offset[0, 1, 0, 1] = float("inf")
         offset[0, 1, 0, 2] = float("-inf")
+        # with a mask the inference sampler puts the nan into the mask instead of the samples
+        mask = torch.full((1, 1, 3, 5), 0.5, device=device, dtype=dtype) if use_mask else None
 
-        expected = deform_conv2d(x, offset, weight)
+        expected = deform_conv2d(x, offset, weight, mask=mask)
         with torch.no_grad():
-            actual = deform_conv2d(x, offset, weight)
+            actual = deform_conv2d(x, offset, weight, mask=mask)
         nan = torch.isnan(expected)
         assert nan.sum() == 3
         assert torch.equal(torch.isnan(actual), nan)
@@ -376,6 +391,21 @@ class TestDeformConv2d(BaseTester):
         with torch.no_grad():
             actual = deform_conv2d(x, offset, weight)
         self.assert_close(actual, torch.zeros_like(actual))
+
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    def test_bias_keeps_type_promotion(self, grad_enabled):
+        """The bias is added after the product, so it promotes the output as torch does, also under autocast."""
+        x = torch.ones(1, 2, 1, 1)
+        offset = torch.zeros(1, 2, 1, 1)
+        weight = torch.zeros(1, 2, 1, 1)
+        with torch.set_grad_enabled(grad_enabled):
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                out = deform_conv2d(x, offset, weight, torch.tensor([1e5]))
+            mixed = deform_conv2d(x, offset, weight, torch.tensor([1.0], dtype=torch.float64))
+        # bfloat16 would round 1e5 to 99840
+        assert out.dtype == torch.float32
+        assert out.item() == 1e5
+        assert mixed.dtype == torch.float64
 
     @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
