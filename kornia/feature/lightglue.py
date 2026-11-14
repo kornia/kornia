@@ -446,7 +446,8 @@ _KEYPOINT_RANGE_MSG = (
 def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
     """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
     if not is_exporting():
-        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)
+        # one read of the device result: each read waits for the device's queued work
+        KORNIA_CHECK(bool(((kpts >= -1) & (kpts <= 1)).all()), _KEYPOINT_RANGE_MSG)
 
 
 def _select_pair(image: Dict[str, Any], k: int, b: int) -> Dict[str, Any]:

@@ -18,6 +18,7 @@
 import copy
 import sys
 import warnings
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -834,6 +835,7 @@ class TestDoGHardNet(BaseTester):
             # Stands in for the network, whose construction downloads weights; the matcher only prepares its inputs.
             def __init__(self, *args, **kwargs):
                 super().__init__()
+                self.conf = SimpleNamespace(add_scale_ori=True)  # as the weights of both presets
 
             def forward(self, data):
                 seen.update(data)
@@ -862,6 +864,7 @@ class TestLightGlueMatcherBatch(BaseTester):
             # both layouts return the same matches if they reach it.
             def __init__(self, *args, **kwargs):
                 super().__init__()
+                self.conf = SimpleNamespace(add_scale_ori=False)  # as DISK's weights: no keypoint scales/orientations
 
             def forward(self, data):
                 desc0 = data["image0"]["descriptors"]

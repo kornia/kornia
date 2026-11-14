@@ -16,6 +16,7 @@
 #
 
 import unittest.mock
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -917,6 +918,7 @@ class TestConventionsLightGlue(BaseTester):
             # Stands in for the network: a fixed assignment from image 0 to image 1 and its matching scores.
             def __init__(self, *args, **kwargs):
                 super().__init__()
+                self.conf = SimpleNamespace(add_scale_ori=False)  # as DISK's weights: no keypoint scales/orientations
 
             def forward(self, data):
                 calls.append(data)

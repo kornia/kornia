@@ -26,6 +26,7 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -78,8 +79,16 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     if feature_name == "sift":
         oris = -oris
         return scales / 6.0, torch.where(oris <= -math.pi, oris + 2.0 * math.pi, oris)
-    oris[oris < 0] += 2.0 * math.pi
-    return scales, oris
+    # torch.where, not an in-place masked add: the boolean-mask write synchronizes with the device
+    return scales, torch.where(oris < 0, oris + 2.0 * math.pi, oris)
+
+
+def _image_size_from_hw(hw: Tuple[int, int], device: torch.device) -> torch.Tensor:
+    """Return LightGlue's ``image_size`` ``[[W, H]]`` of an ``(H, W)`` pair, on ``device``.
+
+    The copy does not block: a blocking copy from host memory would wait for all the work queued on the device.
+    """
+    return _to_device_nonblocking(torch.tensor([[hw[1], hw[0]]]), device)
 
 
 def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
@@ -1394,28 +1403,17 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         if len(desc2.shape) == 2:
             desc2 = desc2.unsqueeze(0)
         dev = lafs1.device
-        hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0) if hw1 is None else torch.tensor(hw1, device=dev)
-        hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0) if hw2 is None else torch.tensor(hw2, device=dev)
-        scale0, ori0 = _lightglue_keypoint_scale_ori(lafs1, self.feature_name)
-        scale1, ori1 = _lightglue_keypoint_scale_ori(lafs2, self.feature_name)
+        size1 = keypoints1.max(dim=1)[0].reshape(-1, 2) if hw1 is None else _image_size_from_hw(hw1, dev)
+        size2 = keypoints2.max(dim=1)[0].reshape(-1, 2) if hw2 is None else _image_size_from_hw(hw2, dev)
         input_dict = {
-            "image0": {
-                "keypoints": keypoints1,
-                "scales": scale0,
-                "oris": ori0,
-                "lafs": lafs1,
-                "descriptors": desc1,
-                "image_size": hw1_.flip(0).reshape(-1, 2).to(dev),
-            },
-            "image1": {
-                "keypoints": keypoints2,
-                "lafs": lafs2,
-                "scales": scale1,
-                "oris": ori1,
-                "descriptors": desc2,
-                "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),
-            },
+            "image0": {"keypoints": keypoints1, "lafs": lafs1, "descriptors": desc1, "image_size": size1},
+            "image1": {"keypoints": keypoints2, "lafs": lafs2, "descriptors": desc2, "image_size": size2},
         }
+        # Only the weights trained with keypoint scales and orientations read them; the others skip their kernels.
+        if self.matcher.conf.add_scale_ori:
+            for image, lafs in (("image0", lafs1), ("image1", lafs2)):
+                scales, oris = _lightglue_keypoint_scale_ori(lafs, self.feature_name)
+                input_dict[image].update(scales=scales, oris=oris)
         pred = self.matcher(input_dict)
         matches0, mscores0 = pred["matches0"], pred["matching_scores0"]
         valid = matches0 > -1
