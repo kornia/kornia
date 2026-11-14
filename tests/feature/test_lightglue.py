@@ -599,10 +599,11 @@ class TestKeypointRangeMessage:
     def test_check_accepts_normalized_keypoints_5724(self):
         _check_keypoints_normalized(torch.tensor([[[-1.0, 1.0], [0.0, 0.5]]]))
 
-    def test_forward_with_a_too_small_image_size_5724(self, device):
+    @pytest.mark.parametrize("image", ["image0", "image1"])
+    def test_forward_with_a_too_small_image_size_5724(self, device, image):
         lg = _make_lightglue(device, torch.float32)
         data = _make_data(device, torch.float32)
-        data["image0"]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
+        data[image]["image_size"] = torch.tensor([[8.0, 8.0]], device=device)  # keypoints reach 64
         with pytest.raises(Exception, match="Keypoints must lie inside the image"):
             lg(data)
 
