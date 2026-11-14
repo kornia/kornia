@@ -840,7 +840,12 @@ class TestDoGHardNet(BaseTester):
             def forward(self, data):
                 seen.update(data)
                 matches = torch.full((1, data["image0"]["keypoints"].shape[1]), -1, device=device)
-                return {"matches0": matches, "matching_scores0": torch.zeros_like(matches, dtype=torch.float32)}
+                return {
+                    "matches0": matches,
+                    "matching_scores0": torch.zeros_like(matches, dtype=torch.float32),
+                    "matches": [torch.empty(0, 2, dtype=torch.long, device=device)],
+                    "scores": [torch.empty(0, device=device)],
+                }
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
         image = self._image(device, dtype)
@@ -872,7 +877,13 @@ class TestLightGlueMatcherBatch(BaseTester):
                 count = min(desc0.shape[1], desc1.shape[1])
                 matches0 = torch.full((desc0.shape[0], desc0.shape[1]), -1, device=desc0.device)
                 matches0[:, :count] = torch.arange(count, device=desc0.device)
-                return {"matches0": matches0, "matching_scores0": torch.ones_like(matches0, dtype=torch.float32)}
+                pairs = torch.arange(count, device=desc0.device)[:, None].expand(-1, 2)
+                return {
+                    "matches0": matches0,
+                    "matching_scores0": torch.ones_like(matches0, dtype=torch.float32),
+                    "matches": [pairs] * desc0.shape[0],
+                    "scores": [torch.ones(count, device=desc0.device)] * desc0.shape[0],
+                }
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
         matcher = LightGlueMatcher("disk")

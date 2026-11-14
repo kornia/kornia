@@ -925,7 +925,10 @@ class TestConventionsLightGlue(BaseTester):
                 # 0 -> 3, 2 -> 0, 3 -> 2: no pair is its own inverse, so swapped columns give other pairs
                 matches0 = torch.tensor([[3, -1, 0, 2]], device=device)
                 scores0 = torch.tensor([[0.9, 0.0, 0.35, 0.6]], device=device, dtype=dtype)
-                return {"matches0": matches0, "matching_scores0": scores0}
+                # LightGlue's compact form of the same assignment, one entry per pair of images
+                matches = [torch.tensor([[0, 3], [2, 0], [3, 2]], device=device)]
+                scores = [torch.tensor([0.9, 0.35, 0.6], device=device, dtype=dtype)]
+                return {"matches0": matches0, "matching_scores0": scores0, "matches": matches, "scores": scores}
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _FixedLightGlue)
         matcher = LightGlueMatcher("DISK")
@@ -951,6 +954,35 @@ class TestConventionsLightGlue(BaseTester):
         # A name outside known_modes is rejected.
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
+
+    @pytest.mark.parametrize(
+        "params",
+        [{}, {"depth_confidence": 0.5}, {"width_confidence": 0.5}],
+        ids=["plain", "early_stopping", "point_pruning"],
+    )
+    def test_convention_lightglue_matcher_pairs_are_the_matches0_assignment(self, device, dtype, monkeypatch, params):
+        # LightGlueMatcher returns LightGlue's compact "matches"/"scores": the pairs (i, matches0[i]) of every matched
+        # keypoint i of image 0, in increasing i, with matching_scores0[i], also when pruning re-indexes the points.
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        monkeypatch.setattr(
+            LightGlue, "pruning_keypoint_thresholds", dict.fromkeys(("cpu", "mps", "cuda", "flash"), -1)
+        )
+        torch.manual_seed(0)
+        conf = {"n_layers": 3, "filter_threshold": 0.0, "depth_confidence": -1, "width_confidence": -1, **params}
+        matcher = LightGlueMatcher("disk", conf).to(device, dtype).eval()
+        lafs0 = laf_from_center_scale_ori(100 * torch.rand(1, 40, 2, device=device, dtype=dtype))
+        lafs1 = laf_from_center_scale_ori(100 * torch.rand(1, 30, 2, device=device, dtype=dtype))
+        desc0 = torch.randn(40, 128, device=device, dtype=dtype)
+        desc1 = torch.randn(30, 128, device=device, dtype=dtype)
+        outputs = []
+        matcher.matcher.register_forward_hook(lambda module, args, out: outputs.append(out))
+        with torch.no_grad():
+            scores, idxs = matcher(desc0, desc1, lafs0, lafs1, hw1=(100, 100), hw2=(100, 100))
+        matches0, scores0 = outputs[0]["matches0"][0], outputs[0]["matching_scores0"][0]
+        valid = matches0 > -1
+        assert valid.any()
+        assert torch.equal(idxs, torch.stack([torch.where(valid)[0], matches0[valid]], -1))
+        self.assert_close(scores, scores0[valid].reshape(-1, 1))
 
     def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, monkeypatch):
         # the configuration of the features gives the defaults, and an explicit keyword argument always wins: "xfeat"

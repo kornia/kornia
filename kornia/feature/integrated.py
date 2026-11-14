@@ -1415,7 +1415,6 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
                 scales, oris = _lightglue_keypoint_scale_ori(lafs, self.feature_name)
                 input_dict[image].update(scales=scales, oris=oris)
         pred = self.matcher(input_dict)
-        matches0, mscores0 = pred["matches0"], pred["matching_scores0"]
-        valid = matches0 > -1
-        matches = torch.stack([torch.where(valid)[1], matches0[valid]], -1)
-        return mscores0[valid].reshape(-1, 1), matches
+        # LightGlue already lists the matched index pairs and their scores; deriving them again from ``matches0``
+        # would read the device three more times.
+        return pred["scores"][0].reshape(-1, 1), pred["matches"][0]
