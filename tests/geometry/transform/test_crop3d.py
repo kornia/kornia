@@ -25,6 +25,30 @@ from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_
 
 
 class TestCropAndResize3D(BaseTester):
+    @pytest.mark.parametrize("operation", ["resize", "boxes"])
+    def test_preserves_voxel_corners(self, device, dtype, operation):
+        """The output corners sample the eight specified source voxels, without rounding the crop matrix."""
+        volume = torch.zeros(1, 1, 16, 64, 64, device=device, dtype=dtype)
+        for z in (2, 13):
+            for y in (6, 50):
+                for x in (4, 57):
+                    volume[0, 0, z, y, x] = 1
+        box = torch.tensor(
+            [[[4, 6, 2], [57, 6, 2], [57, 50, 2], [4, 50, 2], [4, 6, 13], [57, 6, 13], [57, 50, 13], [4, 50, 13]]],
+            device=device,
+            dtype=dtype,
+        )
+        if operation == "resize":
+            actual = kornia.geometry.transform.crop_and_resize3d(volume, box, (2, 2, 2), align_corners=True)
+        else:
+            destination = torch.tensor(
+                [[[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]]],
+                device=device,
+                dtype=dtype,
+            )
+            actual = kornia.geometry.transform.crop_by_boxes3d(volume, box, destination, align_corners=True)
+        self.assert_close(actual, torch.ones(1, 1, 2, 2, 2, device=device, dtype=dtype))
+
     def test_crop(self, device, dtype):
         inp = torch.arange(0.0, 64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
 
