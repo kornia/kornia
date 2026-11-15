@@ -1059,6 +1059,72 @@ class TestResNetFPN(BaseTester):
 
 
 class TestLinearAttention(BaseTester):
+    @pytest.mark.parametrize("kv_len,heads,dim", [(1024, 8, 32), (32, 1, 1024)])
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_uniform_values_keep_their_normalized_average(self, device, dtype, kv_len, heads, dim, masked):
+        # ELU(1) + 1 = 2, so the normalizer is 4 * dim * valid_keys, above float16's range in both paths.
+        # Every value is one: the normalized output is one and each valid value receives valid_queries / valid_keys.
+        q = torch.ones(1, 3, heads, dim, device=device, dtype=dtype, requires_grad=True)
+        k = torch.ones(1, kv_len, heads, dim, device=device, dtype=dtype, requires_grad=True)
+        v = torch.ones_like(k, requires_grad=True)
+        q_mask = torch.ones(1, 3, device=device, dtype=torch.bool)
+        kv_mask = torch.ones(1, kv_len, device=device, dtype=torch.bool)
+        if masked:
+            q_mask[:, 1] = False
+            kv_mask[:, : kv_len // 4] = False
+        out = LinearAttention()(q, k, v, q_mask, kv_mask)
+        self.assert_close(out, q_mask[:, :, None, None].expand_as(out).to(dtype))
+        grads = torch.autograd.grad(out.sum(), (q, k, v))
+        for grad in grads:
+            assert bool(torch.isfinite(grad).all())
+        valid_queries, valid_keys = (2, 3 * kv_len // 4) if masked else (3, kv_len)
+        expected_grad = kv_mask[:, :, None, None].expand_as(v).to(dtype) * (valid_queries / valid_keys)
+        self.assert_close(grads[2], expected_grad)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
+    def test_uniform_average_under_autocast(self, device, dtype):
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, 1024, 8, 32, device=device, dtype=dtype)
+        v = torch.ones_like(k, requires_grad=True)
+        with torch.autocast(device.type, dtype=torch.float16):
+            out = LinearAttention()(q, k, v)
+        self.assert_close(out, torch.ones_like(q))
+        (grad,) = torch.autograd.grad(out.sum(), (v,))
+        self.assert_close(grad, torch.full_like(v, 3 / 1024))
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    def test_all_keys_masked_return_zero(self, device, dtype, kv_len):
+        q, k, v = (torch.ones(1, n, 2, 4, device=device, dtype=dtype, requires_grad=True) for n in (3, kv_len, kv_len))
+        kv_mask = torch.zeros(1, kv_len, device=device, dtype=torch.bool)
+        out = LinearAttention()(q, k, v, kv_mask=kv_mask)
+        self.assert_close(out, torch.zeros_like(out), rtol=0.0, atol=0.0)
+        for grad in torch.autograd.grad(out.sum(), (q, k, v)):
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("kv_len", [5, 1024])
+    def test_jit_uniform_average(self, device, dtype, kv_len):
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, kv_len, 8, 32, device=device, dtype=dtype)
+        out = torch.jit.script(LinearAttention())(q, k, k)
+        self.assert_close(out, torch.ones_like(q))
+
+    @pytest.mark.parametrize("autocast", [False, True])
+    def test_dynamo_uniform_average(self, device, dtype, torch_optimizer, autocast):
+        if autocast and device.type not in ("cpu", "cuda"):
+            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, 1024, 8, 32, device=device, dtype=dtype)
+        v = torch.ones_like(k, requires_grad=True)
+        op = torch_optimizer(LinearAttention())
+        if autocast:
+            with torch.autocast(device.type, dtype=torch.float16):
+                out = op(q, k, v)
+        else:
+            out = op(q, k, v)
+        self.assert_close(out, torch.ones_like(q))
+        (grad,) = torch.autograd.grad(out.sum(), (v,))
+        self.assert_close(grad, torch.full_like(v, 3 / 1024))
+
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("kv_len", [5, 40])  # 40 > heads * dim = 8: the dense block-diagonal GEMM path
     def test_padded_queries_stay_finite_5728(self, device, dtype, kv_len):
