@@ -105,7 +105,7 @@ def _compute_tensor_center(tensor: torch.Tensor, like: Optional[torch.Tensor] = 
     return _device_literal([center_x, center_y], device=tensor.device, dtype=dtype)
 
 
-def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
+def _compute_tensor_center3d(tensor: torch.Tensor, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
     """Compute the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     if not 3 <= len(tensor.shape) <= 5:
         raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
@@ -113,10 +113,11 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
+    dtype = tensor.dtype if dtype is None else dtype
     # Filled on the device in eager mode, as in ``_compute_tensor_center``.
     if torch.jit.is_scripting():
-        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
-    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
+        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=dtype)
+    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=dtype)
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
@@ -513,7 +514,11 @@ def rotate3d(
 
     # compute the rotation center
     if center is None:
-        center = _compute_tensor_center3d(tensor)
+        # The matrix builder combines the center with the concatenated angles, which promote their dtypes.
+        center_dtype: Optional[torch.dtype] = None
+        if yaw.is_floating_point() or pitch.is_floating_point() or roll.is_floating_point():
+            center_dtype = torch.promote_types(torch.promote_types(yaw.dtype, pitch.dtype), roll.dtype)
+        center = _compute_tensor_center3d(tensor, center_dtype)
 
     # compute the rotation matrix
     batch = tensor.shape[0] if tensor.dim() == 5 else 1

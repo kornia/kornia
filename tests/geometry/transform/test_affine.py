@@ -1474,6 +1474,32 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
 
     # Exact: in and out of the region run the same arithmetic on one device.
 
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("half_volume", [False, True])
+    def test_rotate3d_default_center_mixed_precision(self, device, half_dtype, half_volume):
+        """A default center and an explicit one describe the same clockwise quarter-turn under autocast."""
+        self._skip_unsupported(device, str(half_dtype).split(".")[-1])
+        volume_dtype, angle_dtype = (half_dtype, torch.float32) if half_volume else (torch.float32, half_dtype)
+        volume = torch.arange(75, device=device, dtype=volume_dtype).reshape(1, 1, 3, 5, 5) / 80
+        zero = torch.zeros(1, device=device, dtype=angle_dtype)
+        roll = torch.full_like(zero, 90)
+        center = torch.tensor([[2.0, 2.0, 1.0]], device=device, dtype=angle_dtype)
+        with torch.autocast(device.type, dtype=half_dtype):
+            expected = kornia.geometry.transform.rotate3d(volume, zero, zero, roll, center, align_corners=True)
+            actual = kornia.geometry.transform.rotate3d(volume, zero, zero, roll, align_corners=True)
+        assert actual.dtype == volume_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
+
+    def test_rotate3d_default_center_promotes_all_angles(self, device):
+        """A half yaw must not override the float32 dtype of the concatenated rotation vector."""
+        volume = torch.arange(75, device=device, dtype=torch.float32).reshape(1, 1, 3, 5, 5) / 80
+        yaw = torch.zeros(1, device=device, dtype=torch.float16)
+        pitch = torch.zeros(1, device=device, dtype=torch.float32)
+        roll = torch.full_like(yaw, 90)
+        actual = kornia.geometry.transform.rotate3d(volume, yaw, pitch, roll, align_corners=True)
+        self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
+
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
         if device.type not in ("cpu", "cuda", "mps"):
