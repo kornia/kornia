@@ -305,9 +305,9 @@ class TestDeformConv2d(BaseTester):
             self.assert_close(actual, expected)
 
     @NO_MPS_FLOAT64
-    def test_dynamo_keeps_sizes_symbolic(self, device, dtype):
+    def test_dynamo_keeps_sizes_symbolic(self, device, dtype, torch_optimizer):
         """Compiled with dynamic shapes, the grid_sample sampler serves a new image size without recompiling."""
-        op = torch.compile(deform_conv2d, fullgraph=True, dynamic=True, backend="eager")
+        op = torch_optimizer(deform_conv2d, fullgraph=True, dynamic=True)
         weight = torch.ones(3, 2, 3, 3, device=device, dtype=dtype)
         with torch.no_grad():
             for i, (H, W) in enumerate(((13, 17), (21, 9))):
