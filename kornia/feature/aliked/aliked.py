@@ -316,8 +316,9 @@ class DKD(nn.Module):
                 is_max[i, :, ih.item() - self.radius :, :] = False
                 is_max[i, :, :, iw.item() - self.radius :] = False
         else:
-            is_max[:, :, -self.radius :, :] = False
-            is_max[:, :, :, -self.radius :] = False
+            # from h - radius, not -radius: with radius 0, -0: would select every row and clear all the maxima (#6783)
+            is_max[:, :, h - self.radius :, :] = False
+            is_max[:, :, :, w - self.radius :] = False
 
         if self.top_k > 0:
             # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
@@ -372,7 +373,8 @@ class DKD(nn.Module):
 
                 hw_grid_dist2 = (
                     torch.norm(
-                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / self.radius,
+                        # a one-pixel window (radius 0) has no spread: divide by 1 there, not 0 (#6783)
+                        (self.hw_grid[None, :, :] - xy_residual[:, None, :]) / max(self.radius, 1),
                         dim=-1,
                     )
                     ** 2

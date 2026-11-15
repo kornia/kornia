@@ -1,0 +1,1 @@
+`ALIKED` with `nms_radius=0` returns its keypoints without `image_size`. The border removal sliced from `-nms_radius`, and `-0:` selects the whole map, so every keypoint was dropped. `DKD` with `radius=0` also returns a score dispersity of 0 instead of NaN.

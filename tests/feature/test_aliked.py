@@ -863,6 +863,36 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert (f.keypoints[:, 0] <= w - 3).all()
             assert (f.keypoints[:, 1] <= h - 3).all()
 
+    def test_zero_radius_keeps_the_maxima_without_image_size_6783(self, device, dtype):
+        # With nms_radius = 0 the window is one pixel, so every position is a maximum and the border is 0 px wide. The
+        # border removal sliced from -radius, and -0: is the whole map, so no keypoint survived unless image_size was
+        # passed. k = 3 returns the three peaks, one of them in the last row and column, with or without image_size.
+        peaks = [(0, 21, 13, 0.9), (0, 95, 63, 0.8), (0, 0, 50, 0.7)]
+        expected = torch.tensor(
+            [[21.0, 13.0], [95.0, 63.0], [0.0, 50.0]], device=device, dtype=torch.promote_types(dtype, torch.float32)
+        )
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=3, detection_threshold=0.0, nms_radius=0)
+        aliked = aliked.to(device, dtype).eval()
+        score_map = self._score_map(peaks, device, dtype)
+        for kwargs in ({}, {"image_size": torch.tensor([[96, 64]], device=device)}):
+            (feats,) = self._run(aliked, score_map, **kwargs)
+            assert feats.n == 3, kwargs
+            self.assert_close(feats.keypoints, expected, rtol=0.0, atol=self._tol(dtype))
+        lafs, _, _ = self._run(aliked, score_map, method="forward_laf")
+        assert lafs.shape == (1, 3, 2, 3)
+        self.assert_close(kornia.feature.get_laf_center(lafs)[0].to(expected.dtype), expected, rtol=0.0, atol=1e-3)
+
+    def test_zero_radius_dispersity_is_zero_6783(self, device, dtype):
+        # The sub-pixel step divided the window offsets by the radius for the score dispersity: 0 / 0 at radius 0.
+        # A one-pixel window has no spread, so the dispersity is 0 and the keypoint stays on its pixel.
+        score_map = self._score_map([(0, 21, 13, 0.9), (0, 60, 40, 0.8)], device, dtype)
+        dkd = aliked_module.DKD(radius=0, top_k=2).to(device, dtype)
+        keypoints, _, dispersity = dkd(score_map)
+        wh = torch.tensor([95.0, 63.0], device=device, dtype=keypoints[0].dtype)
+        expected = torch.tensor([[21.0, 13.0], [60.0, 40.0]], device=device, dtype=keypoints[0].dtype)
+        self.assert_close((keypoints[0] + 1) / 2 * wh, expected, rtol=0.0, atol=1e-3)
+        self.assert_close(dispersity[0], torch.zeros_like(dispersity[0]), rtol=0.0, atol=0.0)
+
     def test_forward_laf_top_k_pads_per_image_and_keeps_the_mask_5862(self, device, dtype):
         # forward_laf pads every image to the largest count of the batch with zero frames, zero responses and zero
         # descriptors. Image 0 has three maxima and image 1 one, with k = 5: three slots, two of them padding in
