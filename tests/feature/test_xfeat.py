@@ -197,6 +197,35 @@ class TestXFeat(BaseTester):
             assert item["scores"].shape == (N,)
             assert item["descriptors"].shape == (N, 64)
 
+    def test_detect_and_compute_selects_each_image_by_its_own_scores(self, device):
+        # Each image of a batch keeps the rows of its own positive scores: next to an image without a peak, one with
+        # two peaks keeps both, at either position in the batch, and the other keeps none. The network outputs are
+        # replaced through a forward hook: keypoint logits with the dustbin (channel 64) at 10 and a peak of logit v
+        # at pixel (x, y) in channel (y % 8) * 8 + x % 8 of cell (y // 8, x // 8), as in TestConventionsXFeat.
+        h, w = 64, 96
+        logits = torch.zeros(2, 65, h // 8, w // 8)
+        logits[:, 64] = 10.0
+        for x, y, logit in ((22, 13, 11.0), (70, 41, 12.0)):
+            logits[0, (y % 8) * 8 + x % 8, y // 8, x // 8] = logit
+        feats = torch.rand(2, 64, h // 8, w // 8, generator=torch.Generator().manual_seed(0))
+        reliability = torch.full((2, 1, h // 8, w // 8), 0.5)
+        xfeat = XFeat(top_k=8).to(device).eval()
+        for order in ([0, 1], [1, 0]):
+            outputs = (feats[order].to(device), logits[order].to(device), reliability.to(device))
+            handle = xfeat.net.register_forward_hook(lambda module, inputs, output, outputs=outputs: outputs)
+            try:
+                out = xfeat.detectAndCompute(torch.rand(2, 3, h, w, device=device))
+            finally:
+                handle.remove()
+            peaks, empty = out[order.index(0)], out[order.index(1)]
+            assert peaks["keypoints"].tolist() == [[70.0, 41.0], [22.0, 13.0]]
+            assert (peaks["scores"] > 0).all()
+            assert peaks["scores"].shape == (2,)
+            assert peaks["descriptors"].shape == (2, 64)
+            assert empty["keypoints"].shape == (0, 2)
+            assert empty["scores"].shape == (0,)
+            assert empty["descriptors"].shape == (0, 64)
+
     def test_exception(self, device):
         model = XFeat().to(device).eval()
         with pytest.raises(Exception):

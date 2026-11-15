@@ -635,6 +635,19 @@ class TestSDDH(BaseTester):
         for actual, reference in zip(grads, expected):
             self.assert_close(actual, reference)
 
+    def test_get_patches_reads_the_window_at_the_clamped_corner(self, device, dtype):
+        # get_patches(t, p, ps) is the ps x ps window of t whose top-left pixel is (p - ps / 2 + 1).long(), clamped
+        # to keep a one-pixel margin at the right and bottom, in t's device and dtype.
+        c, h, w, ps = 2, 9, 11, 3
+        t = torch.arange(c * h * w, device=device).reshape(c, h, w).to(dtype)
+        p = torch.tensor([[4, 3], [0, 0], [10, 8]], device=device)
+        corners = [(3, 2), (0, 0), (w - 1 - ps, h - 1 - ps)]
+        expected = torch.stack([t[:, y : y + ps, x : x + ps] for x, y in corners])
+        patches = get_patches(t, p, ps)
+        assert patches.device == t.device
+        assert patches.dtype == dtype
+        self.assert_close(patches, expected, rtol=0, atol=0)
+
 
 # ---------------------------------------------------------------------------
 # forward_laf tests
