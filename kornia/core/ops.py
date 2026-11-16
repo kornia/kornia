@@ -23,7 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 
 
 def _is_numpy_bool(n: Any) -> bool:
@@ -246,6 +246,24 @@ def _device_literal(
     if is_compiling() or (dtype == torch.float16 and not _fits_float16(data)):
         return torch.tensor(data, device=device, dtype=dtype)
     return _constant_tensor(data, device=device, dtype=dtype)
+
+
+def _copied_literal(
+    data: Union[float, List[Any], Tuple[Any, ...]], *, device: torch.device, dtype: torch.dtype
+) -> torch.Tensor:
+    """Return ``torch.tensor(data, device=device, dtype=dtype)`` for a literal of Python numbers, without a host sync.
+
+    An eager call builds the literal on the host and copies it with :func:`~kornia.core.utils._to_device_nonblocking`:
+    one copy that does not wait for queued kernels, where :func:`_device_literal` fills one kernel per distinct value,
+    so this suits a literal with many distinct values. Under ``torch.compile`` and ``torch.export`` the literal stays
+    ``torch.tensor(..., device=device)``, as in :func:`_device_literal`: a host tensor moved inside the graph is no
+    graph constant to Inductor. Moving it there made compiled CUDA ``extract_patches_from_pyramid`` 1.2-1.6x slower
+    than ``torch.tensor(..., device=device)`` (torch 2.14, RTX 4090). Both round the same Python numbers to ``dtype``,
+    so the values are the same.
+    """
+    if is_compiling():
+        return torch.tensor(data, device=device, dtype=dtype)
+    return _to_device_nonblocking(torch.tensor(data, dtype=dtype), device)
 
 
 def _fits_float16(data: Union[float, List[Any], Tuple[Any, ...]]) -> bool:

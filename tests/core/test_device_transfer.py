@@ -218,3 +218,47 @@ class TestDeviceLiteral(BaseTester):
             core_ops._device_literal(65505.0, device=device, dtype=torch.float16),
             torch.tensor(65505.0, device=device, dtype=torch.float16),
         )
+
+
+class TestCopiedLiteral(BaseTester):
+    # Distinct values that round differently in float16 and bfloat16, as a pyramid's level table has.
+    _DATA = [[-1.0 + 1.0 / 97.0, 1.0 / 3.0, 65.0 / 773.0], [0.1, -0.0, 2.0**-11 + 1.0]]
+
+    def test_values_equal_torch_tensor(self, device, dtype) -> None:
+        expected = torch.tensor(self._DATA, device=device, dtype=dtype)
+        out = core_ops._copied_literal(self._DATA, device=device, dtype=dtype)
+        assert out.device == expected.device
+        assert out.dtype == dtype
+        assert torch.equal(out, expected)
+
+    def test_graph_capture_keeps_a_device_literal(self, device, dtype) -> None:
+        # Captured, the literal stays torch.tensor(..., device=device): a host tensor moved inside the graph is no graph
+        # constant to Inductor, which made compiled CUDA extract_patches_from_pyramid 1.2-1.6x slower.
+        graphs = []
+
+        def backend(gm, example_inputs):
+            graphs.append(gm.graph)
+            return gm.forward
+
+        def fn(x):
+            return x + core_ops._copied_literal(self._DATA, device=x.device, dtype=x.dtype)
+
+        x = torch.zeros(2, 3, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        out = torch.compile(fn, backend=backend, fullgraph=True)(x)
+        assert torch.equal(out, torch.tensor(self._DATA, device=device, dtype=dtype))
+        (graph,) = graphs
+        targets = [node.target for node in graph.nodes if node.op in ("call_function", "call_method")]
+        assert torch.tensor in targets
+        assert "to" not in targets
+
+    @pytest.mark.uses_accelerator
+    @requires_cuda
+    def test_cuda_eager_does_not_sync(self) -> None:
+        torch.cuda.synchronize()
+        try:
+            torch.cuda.set_sync_debug_mode("error")
+            for dtype in (torch.float32, torch.float16, torch.float64):
+                core_ops._copied_literal(self._DATA, device=torch.device("cuda"), dtype=dtype)
+        finally:
+            torch.cuda.set_sync_debug_mode(0)
