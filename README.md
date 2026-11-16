@@ -290,7 +290,7 @@ See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for
 
 We take speed-ups of existing operators when they hold up under measurement: at least 20% on a common workload, in the general code path, with outputs, gradients, dtype/device handling and compile/ONNX support unchanged. Time base and branch on the same hardware following the [benchmark methodology](benchmarks/README.md#methodology-contract); the [Roadmap](ROADMAP.md#areas-seeking-contributors) has the full rules.
 
-- **Fewer host synchronizations on CUDA and MPS.** `.item()`, `if tensor:`, `nonzero` and boolean-mask indexing make the host wait for the GPU. Removing them made `match_smnn` 1.4–1.9× faster on CUDA ([#6501](https://github.com/kornia/kornia/pull/6501)). Sync removals do not need the 20% bar: a measured end-to-end gain above run-to-run noise is enough, as long as no other measured workload, CPU included, gets slower beyond noise. [SOLD2's heatmap refinement](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
+- **Fewer host synchronizations on CUDA and MPS.** `.item()`, `if tensor:`, `nonzero` and boolean-mask indexing make the host wait for the GPU. Removing them made `match_smnn` 1.4–1.9× faster on CUDA ([#6501](https://github.com/kornia/kornia/pull/6501)). Sync removals can qualify below the 20% bar; the Roadmap has the conditions. [SOLD2's heatmap refinement](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
 
 ### AI Models
 
