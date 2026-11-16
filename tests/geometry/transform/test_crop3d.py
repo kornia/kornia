@@ -631,6 +631,17 @@ class TestCrop3DAffineBoxes(BaseTester):
         with pytest.raises(AssertionError, match="affine map"):
             kornia.geometry.transform.crop_and_resize3d(volume, skewed, (4, 4, 4), align_corners=True)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="the float32 tolerance of the other dtypes refuses this skew"
+    )
+    def test_crop_and_resize3d_keeps_the_half_tolerance_for_a_half_volume(self, device, dtype):
+        # A half volume's boxes and matrix are solved in float32, but the check keeps the tolerance of the volume
+        # dtype it had when they were rounded to it, so a box such a crop took before is still taken.
+        volume = self._coordinate_volume(device, dtype)
+        skewed = self._skewed_box(device, torch.float32, shift=0.1)
+        patch = kornia.geometry.transform.crop_and_resize3d(volume, skewed, (4, 4, 4), align_corners=True)
+        assert patch.dtype == dtype
+
     def test_crop_and_resize3d_takes_a_sheared_parallelepiped_onto_the_patch_corners_6436(self, device, dtype):
         volume = self._coordinate_volume(device, dtype)
         # _validate_bbox3d takes a parallelepiped whose first edge has no y component
@@ -777,6 +788,26 @@ class TestCrop3DOneVoxelAxis(BaseTester):
         out = kornia.geometry.transform.center_crop3d(volume, (1, 2, 3), interpolation="nearest")
         assert out.dtype == dtype
         self.assert_close(out, volume[..., z : z + 1, :, :])
+
+    @pytest.mark.parametrize("z", [256, 257, 2048, 2049])
+    def test_box_crops_thick_box_far_from_origin(self, z, device, dtype):
+        # A two-voxel-deep box takes the same float32 solve. Rounded to a half type, its far face at z = 257
+        # (bfloat16) or 2049 (float16) would land on the near one, a singular solve, and a box from 257 would read
+        # slices 256 and 258.
+        self._skip_without_nearest(device, dtype)
+        volume = self._slice_index_volume(z + 3, device, dtype)
+        box = self._box((0, 0, z), (2, 2, 3), device, torch.float32)
+        expected = volume[..., z : z + 2, :, :]
+
+        out = kornia.geometry.transform.crop_and_resize3d(
+            volume, box, (2, 2, 3), interpolation="nearest", align_corners=True
+        )
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
+        out = kornia.geometry.transform.crop_by_boxes3d(
+            volume, box, box - box[:, :1], interpolation="nearest", align_corners=True
+        )
+        self.assert_close(out, expected)
 
     def test_thick_box_never_widens_4747(self, device, dtype, monkeypatch):
         # Computing both boxes pushes the fused solve kernel of compile(crop_by_boxes3d) past Metal's buffer limit at
