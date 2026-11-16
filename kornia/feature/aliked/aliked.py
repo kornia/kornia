@@ -65,6 +65,7 @@ from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.ops import _copied_literal
 from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.subpix import nms2d
 
@@ -353,7 +354,7 @@ class DKD(nn.Module):
         # Keypoints are formed in at least float32: a half-precision dtype holds no odd integer above 256 (bfloat16)
         # or 2048 (float16), not even ``w - 1``. The grid of the score lookup is cast to the map's dtype for the call.
         coord_dtype = torch.promote_types(scores_map.dtype, torch.float32)
-        wh = _to_device_nonblocking(torch.tensor([w - 1, h - 1], dtype=coord_dtype), scores_nograd.device)
+        wh = _copied_literal([w - 1, h - 1], device=scores_nograd.device, dtype=coord_dtype)
 
         keypoints = []
         scoredispersitys = []
@@ -734,9 +735,7 @@ class SDDH(nn.Module):
         """
         b, c, h, w = x.shape
         # Positions in at least float32, as in DKD; the sampling grid is cast to the feature map's dtype for the call.
-        wh = _to_device_nonblocking(
-            torch.tensor([[w - 1, h - 1]], dtype=torch.promote_types(x.dtype, torch.float32)), x.device
-        )
+        wh = _copied_literal([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
         max_offset = max(h, w) / 4.0
 
         # Each convolution of the head sees one window (offset_conv) or one sample (sf_conv) per keypoint, so it is a
@@ -1079,8 +1078,8 @@ class ALIKED(nn.Module):
 
         B = images.shape[0]
         _, _, h, w = images.shape
-        wh = _to_device_nonblocking(
-            torch.tensor([w - 1, h - 1], dtype=torch.promote_types(images.dtype, torch.float32)), images.device
+        wh = _copied_literal(
+            [w - 1, h - 1], device=images.device, dtype=torch.promote_types(images.dtype, torch.float32)
         )
 
         results = []
