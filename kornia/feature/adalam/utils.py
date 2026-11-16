@@ -161,18 +161,10 @@ def draw_first_k_couples(k: int, rdims: torch.Tensor, dv: torch.device) -> torch
     couples, at least 17 for ``k = 128``; in a smaller region they wrap, and can repeat or pair a sample with itself.
     """
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
-    residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
-
-    repeats = torch.cat(
-        [
-            torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
-            torch.tensor([residual_search], dtype=torch.long, device=dv),
-        ]
-    )
-    # Row ``i`` holds the couples ``(i, 0), ..., (i, i - 1)``; its first index is ``i``, not its length, which differs
-    # for the residual row.
-    firsts = torch.arange(1, max_exhaustive_search + 2, dtype=torch.long, device=dv)
-    idx_sequence = torch.stack([firsts.repeat_interleave(repeats), arange_sequence(repeats)], dim=-1)
+    # The strict lower triangle is already in pair order. Its size depends only on Python k, avoiding the
+    # repeat_interleave output-size read, max().item(), and boolean compaction of GPU-generated row lengths.
+    size = max_exhaustive_search + 2
+    idx_sequence = torch.tril_indices(size, size, offset=-1, device=dv)[:, :k].t()
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
 
