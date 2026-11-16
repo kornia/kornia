@@ -425,7 +425,7 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     mutual0 = indices0 == m1.gather(1, m0)
     mutual1 = indices1 == m0.gather(1, m1)
     max0_exp = max0.values.exp()
-    zero = max0_exp.new_tensor(0)
+    zero = max0_exp.new_zeros(())  # a device fill: new_tensor(0) would copy from the host, a synchronization
     mscores0 = torch.where(mutual0, max0_exp, zero)
     mscores1 = torch.where(mutual1, mscores0.gather(1, m1), zero)
     valid0 = mutual0 & (mscores0 > th)
@@ -443,10 +443,14 @@ _KEYPOINT_RANGE_MSG = (
 )
 
 
-def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
-    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
+def _check_keypoints_normalized(*kpts: torch.Tensor) -> None:
+    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible.
+
+    All the given tensors are checked with one read of the device, since each read waits for its queued work.
+    """
     if not is_exporting():
-        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), _KEYPOINT_RANGE_MSG)
+        inside = torch.stack([((k >= -1) & (k <= 1)).all() for k in kpts]).all()
+        KORNIA_CHECK(bool(inside), _KEYPOINT_RANGE_MSG)
 
 
 def _select_pair(image: Dict[str, Any], k: int, b: int) -> Dict[str, Any]:
@@ -795,8 +799,7 @@ class LightGlue(nn.Module):
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-        _check_keypoints_normalized(kpts0)
-        _check_keypoints_normalized(kpts1)
+        _check_keypoints_normalized(kpts0, kpts1)
         if self.conf.add_scale_ori:
             kpts0 = torch.cat([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:
@@ -946,14 +949,15 @@ class LightGlue(nn.Module):
 
         matches, mscores = [], []
         for k in range(b):
-            valid = m0[k] > -1
-            m_indices_0 = torch.where(valid)[0]
-            m_indices_1 = m0[k][valid]
+            # One read of the device per pair, for the matched indices; the rest are gathers by those indices, where
+            # boolean-mask indexing would read the device for each tensor.
+            m_indices_0 = torch.nonzero(m0[k] > -1).squeeze(-1)
+            m_indices_1 = m0[k][m_indices_0]
+            mscores.append(mscores0[k][m_indices_0])
             if do_point_pruning:
                 m_indices_0 = ind0[k, m_indices_0]
                 m_indices_1 = ind1[k, m_indices_1]
             matches.append(torch.stack([m_indices_0, m_indices_1], -1))
-            mscores.append(mscores0[k][valid])
 
         # TODO: Remove when hloc switches to the compact format.
         if do_point_pruning:

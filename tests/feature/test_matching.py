@@ -17,6 +17,7 @@
 
 import math
 import warnings
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -1049,13 +1050,20 @@ class TestLightGlueMatcherOrientations(BaseTester):
         class _RecordingLightGlue(torch.nn.Module):
             # Stands in for the network, whose construction downloads weights; the matcher only
             # prepares its inputs.
-            def __init__(self, *args, **kwargs):
+            def __init__(self, features, *args, **kwargs):
                 super().__init__()
+                # The matcher passes keypoint scales and orientations only to the weights that read them.
+                self.conf = SimpleNamespace(add_scale_ori=LightGlue.features[features].get("add_scale_ori", False))
 
             def forward(self, data):
                 seen.update(data)
                 matches = torch.full((1, data["image0"]["keypoints"].shape[1]), -1, device=device)
-                return {"matches0": matches, "matching_scores0": torch.zeros_like(matches, dtype=torch.float32)}
+                return {
+                    "matches0": matches,
+                    "matching_scores0": torch.zeros_like(matches, dtype=torch.float32),
+                    "matches": [torch.empty(0, 2, dtype=torch.long, device=device)],
+                    "scores": [torch.empty(0, device=device)],
+                }
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
         return seen
@@ -1068,7 +1076,8 @@ class TestLightGlueMatcherOrientations(BaseTester):
         scale = torch.full((2, 3, 1, 1), 4.0, device=device, dtype=torch.float64)
         lafs = laf_from_center_scale_ori(xy, scale, degrees.unsqueeze(-1))
         descriptors = torch.rand(3, 128, device=device, dtype=torch.float64)
-        LightGlueMatcher("disk")(descriptors, descriptors, lafs[:1], lafs[1:])
+        # "doghardnet" is a configuration that reads the orientations wrapped into [0, 2 pi)
+        LightGlueMatcher("doghardnet")(descriptors, descriptors, lafs[:1], lafs[1:])
         # Negative angles move into [0, 2 pi); the float32 pi added 1.7e-7 rad too much.
         expected = torch.remainder(torch.deg2rad(degrees), 2 * torch.pi)
         self.assert_close(seen["image0"]["oris"], expected[:1], rtol=0.0, atol=1e-12)
