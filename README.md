@@ -68,12 +68,12 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
 - **Compiles and exports.** Nearly all probed operator configurations run under `torch.compile` and match eager,
   and over 1,000 export to ONNX; the result for every operator is on the
   [export support page](https://kornia.readthedocs.io/en/latest/get-started/export-support.html).
-- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.1 flagship benchmarks (RTX 4090,
-  batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in eager mode
-  than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×. On the small
-  overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue, color jitter
-  and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU work.
-  Results vary with hardware and workload; every number, win and loss is published on the
+- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.1 and 0.9.2 flagship benchmarks
+  (RTX 4090, batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in
+  eager mode than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×.
+  On the small overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue,
+  color jitter and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU
+  work. Results vary with hardware and workload; every number, win and loss is published on the
   [performance page](https://kornia.readthedocs.io/en/latest/get-started/performance.html).
 
 These operators run on the input's device with no NumPy round trip, and most are differentiable; robust estimation
