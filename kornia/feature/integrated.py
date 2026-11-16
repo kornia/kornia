@@ -26,7 +26,7 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.ops import _copied_literal
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -88,7 +88,7 @@ def _image_size_from_hw(hw: Tuple[int, int], device: torch.device) -> torch.Tens
 
     The copy does not block: a blocking copy from host memory would wait for all the work queued on the device.
     """
-    return _to_device_nonblocking(torch.tensor([[hw[1], hw[0]]]), device)
+    return _copied_literal([[hw[1], hw[0]]], device=device, dtype=torch.int64)
 
 
 def _run_descriptor(module: nn.Module, patches: torch.Tensor) -> torch.Tensor:
