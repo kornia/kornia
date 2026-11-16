@@ -216,7 +216,10 @@ not approval for a new API; establish the concrete need and check reservations f
     and 6–10% slower on empty ones ([#6792](https://github.com/kornia/kornia/issues/6792)),
     and a tensor mask in ALIKED's keypoint detector was slower at batch 1 and on the CPU
     ([#6793](https://github.com/kornia/kornia/pull/6793)). Report the synchronization count
-    and the base/branch timing together. Keep input validation as it is: moving a check to
+    and the base/branch timing together. Sync removals are exempt from the 20% bar: a
+    measured end-to-end gain above run-to-run noise on a common workload is enough, such as
+    the 3–8% above, as long as no other measured workload, CPU included, gets slower beyond
+    noise. Keep input validation as it is: moving a check to
     `torch._assert_async` changes when and how the error surfaces, and that is a maintainer
     decision ([#6335](https://github.com/kornia/kornia/issues/6335)).
     [#6792](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
