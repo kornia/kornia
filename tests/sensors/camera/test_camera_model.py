@@ -291,16 +291,18 @@ class TestCameraModelTypes(BaseTester):
         (CameraModelType.BROWN_CONRADY, 12),
         (CameraModelType.KANNALA_BRANDT_K3, 8),
         (CameraModelType.ORTHOGRAPHIC, 4),
+        (CameraModelType.DOUBLE_SPHERE, 6),
     )
 
     def test_convention_params_length_is_fixed_per_camera_model_type(self, device, dtype):
         # params is (N,) or (B, N) with N fixed by the model type (4 PINHOLE, 12 BROWN_CONRADY,
-        # 8 KANNALA_BRANDT_K3, 4 ORTHOGRAPHIC); N - 1 and (B, 1, N) raise ValueError. There is no (B, N, 4) form.
+        # 8 KANNALA_BRANDT_K3, 4 ORTHOGRAPHIC, 6 DOUBLE_SPHERE); N - 1 and (B, 1, N) raise ValueError.
         assert [(m.name, m.value) for m in CameraModelType] == [
             ("PINHOLE", 0),
             ("BROWN_CONRADY", 1),
             ("KANNALA_BRANDT_K3", 2),
             ("ORTHOGRAPHIC", 3),
+            ("DOUBLE_SPHERE", 4),
         ]
         for model_type, length in self._LENGTHS:
             unbatched = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
@@ -387,6 +389,7 @@ class TestNonPinholeCameraMatrix(BaseTester):
             (CameraModelType.BROWN_CONRADY, 12),
             (CameraModelType.KANNALA_BRANDT_K3, 8),
             (CameraModelType.ORTHOGRAPHIC, 4),
+            (CameraModelType.DOUBLE_SPHERE, 6),
         ],
     )
     def test_matrix_unbatched(self, device, dtype, model_type, num_params):
@@ -417,6 +420,7 @@ class TestNonPinholeCameraMatrix(BaseTester):
             (CameraModelType.BROWN_CONRADY, 12),
             (CameraModelType.KANNALA_BRANDT_K3, 8),
             (CameraModelType.ORTHOGRAPHIC, 4),
+            (CameraModelType.DOUBLE_SPHERE, 6),
         ],
     )
     def test_matrix_batched(self, device, dtype, model_type, num_params):

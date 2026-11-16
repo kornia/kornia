@@ -23,6 +23,7 @@ from typing import Any, Union
 
 import torch
 
+from kornia.geometry.camera import project_points_double_sphere, unproject_points_double_sphere
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
@@ -40,6 +41,8 @@ class CameraModelType(Enum):
     - ``KANNALA_BRANDT_K3``: :class:`KannalaBrandtK3`, the fisheye model whose radius is a 9th-order odd polynomial
       of the ray angle, 8 values.
     - ``ORTHOGRAPHIC``: :class:`Orthographic`, parallel projection that drops ``z``, ``[fx, fy, cx, cy]``.
+    - ``DOUBLE_SPHERE``: :class:`DoubleSphereModel`, complete 3D wide-angle projection with unit-ray unprojection,
+      ``[fx, fy, cx, cy, xi, alpha]``, 6 values.
 
     See Also:
         - :class:`CameraModel`: builds the model a member names.
@@ -51,6 +54,7 @@ class CameraModelType(Enum):
     BROWN_CONRADY = 1
     KANNALA_BRANDT_K3 = 2
     ORTHOGRAPHIC = 3
+    DOUBLE_SPHERE = 4
 
 
 def get_model_from_type(
@@ -65,6 +69,8 @@ def get_model_from_type(
         return KannalaBrandtK3(image_size, params)
     if model_type == CameraModelType.ORTHOGRAPHIC:
         return Orthographic(image_size, params)
+    if model_type == CameraModelType.DOUBLE_SPHERE:
+        return DoubleSphereModel(image_size, params)
     raise ValueError("Invalid Camera Model Type")
 
 
@@ -475,7 +481,163 @@ class Orthographic(CameraModelBase):
         super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
 
 
-CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Orthographic]
+class DoubleSphereModel:
+    r"""Model a wide-angle camera with the complete Double Sphere projection.
+
+    ``cam = DoubleSphereModel(image_size, params)`` takes ``[fx, fy, cx, cy, xi, alpha]``. Unlike the other sensor
+    models, it projects 3D points directly instead of first intersecting rays with the ``z = 1`` plane, so it can
+    represent valid rays with negative camera-frame ``z``. :meth:`unproject_rays` returns a unit bearing, and
+    :meth:`unproject` scales that bearing by a Euclidean distance along the ray.
+
+    Convention:
+        - Camera coordinates are ``+X`` right, ``+Y`` down and ``+Z`` forward; pixels use integer pixel centres.
+        - ``unproject`` takes distance along the bearing, unlike :class:`CameraModelBase`, whose depth is camera-frame
+          ``z``. Use ``unproject_rays`` when only a direction is needed.
+        - The closed-form projection is valid only on the Double Sphere model's visibility domain. It does not mask or
+          validate points or pixels outside that domain.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(6,)`` or ``(B, 6)`` parameters ``[fx, fy, cx, cy, xi, alpha]``; another length or rank above 2
+            raises ``ValueError``.
+
+    See Also:
+        - :class:`CameraModel`: build this model with its ``DOUBLE_SPHERE`` member.
+        - :class:`KannalaBrandtK3`: a fisheye model that projects through normalized ``z = 1`` coordinates.
+        - :func:`~kornia.geometry.camera.project_points_double_sphere`: the plain-tensor projection function.
+        - :func:`~kornia.geometry.camera.unproject_points_double_sphere`: the plain-tensor unit-ray inverse.
+
+    Example:
+        >>> params = torch.tensor([300., 320., 160., 120., 0.5, 0.4])
+        >>> cam = DoubleSphereModel(ImageSize(240, 320), params)
+        >>> cam.project(Vector3(torch.tensor([0.3, -0.2, 2.]))).data.round(decimals=3)
+        tensor([189.755,  98.841])
+
+    """
+
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
+        if params.ndim not in (1, 2) or params.shape[-1] != 6:
+            raise ValueError("params must be of shape (6,) or (B, 6) for DOUBLE_SPHERE Camera")
+        self._image_size = image_size
+        self._height = image_size.height
+        self._width = image_size.width
+        self._params = params
+
+    @property
+    def image_size(self) -> ImageSize:
+        """Return the image size of the camera."""
+        return self._image_size
+
+    @property
+    def height(self) -> int | torch.Tensor:
+        """Return the image height."""
+        return self._height
+
+    @property
+    def width(self) -> int | torch.Tensor:
+        """Return the image width."""
+        return self._width
+
+    @property
+    def params(self) -> torch.Tensor:
+        """Return the camera parameters ``[fx, fy, cx, cy, xi, alpha]``."""
+        return self._params
+
+    @property
+    def fx(self) -> torch.Tensor:
+        """Return the focal length in the x direction."""
+        return self._params[..., 0]
+
+    @property
+    def fy(self) -> torch.Tensor:
+        """Return the focal length in the y direction."""
+        return self._params[..., 1]
+
+    @property
+    def cx(self) -> torch.Tensor:
+        """Return the principal point in the x direction."""
+        return self._params[..., 2]
+
+    @property
+    def cy(self) -> torch.Tensor:
+        """Return the principal point in the y direction."""
+        return self._params[..., 3]
+
+    @property
+    def xi(self) -> torch.Tensor:
+        """Return the first Double Sphere shape parameter."""
+        return self._params[..., 4]
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        """Return the second Double Sphere shape parameter."""
+        return self._params[..., 5]
+
+    def matrix(self) -> torch.Tensor:
+        """Return the ``(*, 3, 3)`` intrinsic matrix formed from the first four parameters."""
+        z = torch.zeros_like(self.fx)
+        o = torch.ones_like(self.fx)
+        row1 = torch.stack((self.fx, z, self.cx), -1)
+        row2 = torch.stack((z, self.fy, self.cy), -1)
+        row3 = torch.stack((z, z, o), -1)
+        return torch.stack((row1, row2, row3), -2)
+
+    def K(self) -> torch.Tensor:
+        """Return the intrinsic matrix; an alias of :meth:`matrix`."""
+        return self.matrix()
+
+    def project(self, points: Vector3) -> Vector2:
+        """Project camera-frame points to pixels with the Double Sphere model.
+
+        Args:
+            points: ``Vector3`` of camera-frame points in the model's valid domain.
+
+        Returns:
+            ``Vector2`` of pixel coordinates.
+
+        """
+        return Vector2(project_points_double_sphere(points.data, self.params))
+
+    def unproject_rays(self, points: Vector2) -> Vector3:
+        """Unproject pixels to unit-length camera-frame bearings.
+
+        Args:
+            points: ``Vector2`` of pixels in the model's valid image domain.
+
+        Returns:
+            ``Vector3`` of unit-length bearing vectors.
+
+        """
+        return Vector3(unproject_points_double_sphere(points.data, self.params))
+
+    def unproject(self, points: Vector2, distance: torch.Tensor | float) -> Vector3:
+        """Unproject pixels to camera-frame points at Euclidean distance along each bearing.
+
+        Unlike :class:`CameraModelBase`, ``distance`` is measured along the ray rather than along camera-frame ``z``.
+
+        Args:
+            points: ``Vector2`` of pixels in the model's valid image domain.
+            distance: Euclidean distance along each bearing, with shape ``(*,)`` or a Python scalar.
+
+        Returns:
+            ``Vector3`` of camera-frame points.
+
+        """
+        ray = self.unproject_rays(points).data
+        distance_tensor = torch.as_tensor(distance, device=ray.device, dtype=ray.dtype)
+        return Vector3(ray * distance_tensor.unsqueeze(-1))
+
+    def scale(self, scale_factor: torch.Tensor | float) -> DoubleSphereModel:
+        """Return a new model with image size and pixel intrinsics multiplied by ``scale_factor``."""
+        scale = torch.as_tensor(scale_factor, device=self.params.device, dtype=self.params.dtype)
+        params = torch.stack(
+            (self.fx * scale, self.fy * scale, self.cx * scale, self.cy * scale, self.xi, self.alpha), dim=-1
+        )
+        image_size = ImageSize(self.image_size.height * scale_factor, self.image_size.width * scale_factor)
+        return DoubleSphereModel(image_size, params)
+
+
+CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Orthographic, DoubleSphereModel]
 
 
 class CameraModel:

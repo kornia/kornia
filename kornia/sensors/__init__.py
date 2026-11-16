@@ -17,6 +17,6 @@
 
 """Model sensors: the experimental camera models of ``kornia.sensors.camera``.
 
-``kornia.sensors.camera`` builds pinhole, Brown-Conrady, Kannala-Brandt K3 and orthographic cameras, or a custom
-model from a distortion and a projection.
+``kornia.sensors.camera`` builds pinhole, Brown-Conrady, Kannala-Brandt K3, orthographic and Double Sphere cameras, or
+a custom model from a distortion and a projection.
 """

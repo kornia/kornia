@@ -15,6 +15,11 @@ vectors: a projection to the image plane, then the intrinsics, with or without a
 :doc:`pinhole <geometry.camera.pinhole>`; for a rectified stereo rig, :doc:`stereo camera <geometry.camera.stereo>`; for
 OpenCV's Brown-Conrady distortion of pixel coordinates, :doc:`geometry.calibration`.
 
+The Double Sphere model is a complete 3D projection rather than a distortion of normalized ``z = 1`` coordinates.
+Its projection accepts camera-frame points and its inverse returns unit-length rays, including valid rays with negative
+``z``. The equations and valid domains follow Usenko et al.,
+`The Double Sphere Camera Model <https://arxiv.org/abs/1807.08957>`_.
+
 Projections
 -----------
 
@@ -30,6 +35,9 @@ the normalized ``z = 1`` plane (perspective), and :func:`project_points_orthogra
 .. autofunction:: project_points_orthographic
 .. autofunction:: unproject_points_orthographic
 .. autofunction:: dx_project_points_orthographic
+
+.. autofunction:: project_points_double_sphere
+.. autofunction:: unproject_points_double_sphere
 
 Distortion
 ----------
