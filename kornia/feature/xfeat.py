@@ -40,7 +40,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.ops import _copied_literal
-from kornia.core.utils import _l2_normalize, _samples_half_in_float32
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32, _to_device_nonblocking
 from kornia.geometry.subpix import nms2d
 
 
@@ -287,7 +287,12 @@ class InterpolateSparse2d(nn.Module):
         called with ``align_corners=False``; this asymmetry matches the
         convention the pretrained weights were trained with.
         """
-        return 2.0 * (x / _copied_literal([W - 1, H - 1], device=x.device, dtype=x.dtype)) - 1.0
+        if torch.jit.is_scripting():
+            # TorchScript cannot compile _copied_literal (its literal annotation), so it keeps the host copy.
+            wh = _to_device_nonblocking(torch.tensor([W - 1, H - 1], dtype=x.dtype), x.device)
+        else:
+            wh = _copied_literal([W - 1, H - 1], device=x.device, dtype=x.dtype)
+        return 2.0 * (x / wh) - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.

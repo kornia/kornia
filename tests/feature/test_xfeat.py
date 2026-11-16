@@ -113,6 +113,14 @@ class TestInterpolateSparse2d(BaseTester):
         op = torch_optimizer(interp)
         self.assert_close(op(x, pos, 16, 16), interp(x, pos, 16, 16))
 
+    def test_jit(self, device, dtype):
+        # TorchScript keeps compiling the sampler: normgrid takes the host-copy path when scripted (#6797).
+        interp = InterpolateSparse2d("bilinear")
+        scripted = torch.jit.script(interp)
+        x = torch.rand(1, 8, 16, 16, device=device, dtype=dtype)
+        pos = torch.rand(1, 5, 2, device=device, dtype=dtype) * 15
+        self.assert_close(scripted(x, pos, 16, 16), interp(x, pos, 16, 16), atol=0.0, rtol=0.0)
+
 
 # ---------------------------------------------------------------------------
 # XFeat end-to-end tests
