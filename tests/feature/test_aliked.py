@@ -26,7 +26,7 @@ from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
 from kornia.feature.aliked import aliked as aliked_module
 from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
-from kornia.feature.aliked.deform_conv2d import _bilinear_sample, _grid_sample_bilinear, deform_conv2d
+from kornia.feature.aliked.deform_conv2d import _grid_sample_offsets, _sample_with_autograd, deform_conv2d
 
 from testing.base import (
     BaseTester,
@@ -305,6 +305,18 @@ class TestDeformConv2d(BaseTester):
             self.assert_close(actual, expected)
 
     @NO_MPS_FLOAT64
+    def test_dynamo_keeps_sizes_symbolic(self, device, dtype, torch_optimizer):
+        """Compiled with dynamic shapes, the grid_sample sampler serves a new image size without recompiling."""
+        op = torch_optimizer(deform_conv2d, fullgraph=True, dynamic=True)
+        weight = torch.ones(3, 2, 3, 3, device=device, dtype=dtype)
+        with torch.no_grad():
+            for i, (H, W) in enumerate(((13, 17), (21, 9))):
+                x = torch.ones(1, 2, H, W, device=device, dtype=dtype)
+                offset = torch.zeros(1, 18, H, W, device=device, dtype=dtype)
+                with torch._dynamo.config.patch(error_on_recompile=i > 0):
+                    assert op(x, offset, weight, padding=1).shape == (1, 3, H, W)
+
+    @NO_MPS_FLOAT64
     def test_inference_samples_with_grid_sample(self, device, dtype, monkeypatch):
         """Without autograd deform_conv2d does not call the absolute-coordinate sampler."""
 
@@ -331,20 +343,22 @@ class TestDeformConv2d(BaseTester):
         C, H, W, K = 8, 37, 53, 9
         n = K * H * W
         x = torch.sin(0.37 * torch.arange(C * H * W, dtype=torch.float64)).reshape(1, C, H, W)
-        rows = torch.arange(H, dtype=torch.float64).reshape(1, 1, 1, H, 1)
-        cols = torch.arange(W, dtype=torch.float64).reshape(1, 1, 1, 1, W)
-        sample_h = rows + 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        sample_w = cols + 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        x, sample_h, sample_w = (t.to(device, dtype) for t in (x, sample_h, sample_w))
+        # offsets of a 3x3 kernel with padding 1, interleaved (dy, dx) per tap
+        dy = 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        dx = 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        offset = torch.stack((dy, dx), dim=2).reshape(1, 2 * K, H, W)
+        x, offset = (t.to(device, dtype) for t in (x, offset))
+        conv = ((3, 3), (1, 1), (1, 1), (1, 1), (H, W), 1, C)  # kernel, stride, padding, dilation, output, groups
         # the reference of the inputs as rounded to `dtype`
-        expected = _bilinear_sample(*(t.cpu().double() for t in (x, sample_h, sample_w)), 1, C)
+        expected = _sample_with_autograd(x.cpu().double(), offset.cpu().double(), None, *conv)
 
-        inference = _grid_sample_bilinear(x, sample_h, sample_w, 1, C).cpu().double()
-        autograd = _bilinear_sample(x, sample_h, sample_w, 1, C).cpu().double()
+        inference = _grid_sample_offsets(x, offset, None, *conv).cpu().double()
+        autograd = _sample_with_autograd(x, offset, None, *conv).cpu().double()
         assert (inference - expected).abs().mean() <= (autograd - expected).abs().mean()
 
     @NO_MPS_FLOAT64
-    def test_inference_nonfinite_offsets_give_nan(self, device, dtype):
+    @pytest.mark.parametrize("use_mask", [False, True])
+    def test_inference_nonfinite_offsets_give_nan(self, device, dtype, use_mask):
         """A nan or infinite offset gives nan in both samplers, which grid_sample alone does not do on every device."""
         x = torch.arange(15, device=device, dtype=dtype).reshape(1, 1, 3, 5)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -352,10 +366,12 @@ class TestDeformConv2d(BaseTester):
         offset[0, 0, 0, 0] = float("nan")
         offset[0, 1, 0, 1] = float("inf")
         offset[0, 1, 0, 2] = float("-inf")
+        # with a mask the inference sampler puts the nan into the mask instead of the samples
+        mask = torch.full((1, 1, 3, 5), 0.5, device=device, dtype=dtype) if use_mask else None
 
-        expected = deform_conv2d(x, offset, weight)
+        expected = deform_conv2d(x, offset, weight, mask=mask)
         with torch.no_grad():
-            actual = deform_conv2d(x, offset, weight)
+            actual = deform_conv2d(x, offset, weight, mask=mask)
         nan = torch.isnan(expected)
         assert nan.sum() == 3
         assert torch.equal(torch.isnan(actual), nan)
@@ -375,6 +391,41 @@ class TestDeformConv2d(BaseTester):
         with torch.no_grad():
             actual = deform_conv2d(x, offset, weight)
         self.assert_close(actual, torch.zeros_like(actual))
+
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] in ("float32", "float64")),
+        reason="Promoting float32 samples needs a float64 mask, which MPS does not support",
+    )
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    @pytest.mark.parametrize("groups", [1, 2])
+    def test_mask_keeps_type_promotion(self, device, dtype, grad_enabled, groups):
+        mask_dtype = torch.float64 if dtype in (torch.float32, torch.float64) else torch.float32
+        # 0.5 + 2**-30 (double) or 0.5 + 2**-13 (float): rounding the mask to the input dtype loses the increment.
+        value = 0.5000000009313226 if mask_dtype == torch.float64 else 0.5001220703125
+        x = torch.ones(1, groups, 2, 2, device=device, dtype=dtype)
+        offset = torch.zeros(1, 2, 2, 2, device=device, dtype=dtype)
+        mask = torch.full((1, 1, 2, 2), value, device=device, dtype=mask_dtype)
+        weight = torch.ones(groups, 1, 1, 1, device=device, dtype=mask_dtype)
+        with torch.set_grad_enabled(grad_enabled):
+            out = deform_conv2d(x, offset, weight, mask=mask)
+        assert out.dtype == mask_dtype
+        # Zero offsets and one unit-weight tap over ones give the mask exactly, without interpolation rounding.
+        self.assert_close(out, torch.full_like(out, value), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    def test_bias_keeps_type_promotion(self, grad_enabled):
+        """The bias is added after the product, so it promotes the output as torch does, also under autocast."""
+        x = torch.ones(1, 2, 1, 1)
+        offset = torch.zeros(1, 2, 1, 1)
+        weight = torch.zeros(1, 2, 1, 1)
+        with torch.set_grad_enabled(grad_enabled):
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                out = deform_conv2d(x, offset, weight, torch.tensor([1e5]))
+            mixed = deform_conv2d(x, offset, weight, torch.tensor([1.0], dtype=torch.float64))
+        # bfloat16 would round 1e5 to 99840
+        assert out.dtype == torch.float32
+        assert out.item() == 1e5
+        assert mixed.dtype == torch.float64
 
     @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
