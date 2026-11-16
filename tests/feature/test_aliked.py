@@ -843,16 +843,18 @@ class TestALIKEDKeypointSelection(BaseTester):
     @pytest.mark.parametrize("sizes_on_cpu", [False, True])
     def test_border_mask_preserves_slice_starts(self, device, dtype, sizes_on_cpu):
         # Preserve slice semantics while replacing scalar slice starts with masks: float sizes truncate to long,
-        # and starts below zero count from the padded map's end (size 1 minus radius 2 gives start -1).
-        scores = torch.zeros(4, 1, 16, 24, device=device, dtype=dtype)
+        # and starts below zero count from the padded map's end (size 1 minus radius 2 gives start -1). A side equal
+        # to the radius gives start 0 and clears the whole image even when the other side is full.
+        scores = torch.zeros(6, 1, 16, 24, device=device, dtype=dtype)
         scores[:, :, 5, 5] = 0.9
         scores[:, :, 12, 20] = 0.8
         sizes = torch.tensor(
-            [[1.0, 1.0], [2.0, 2.0], [8.9, 9.8], [24.0, 16.0]], device="cpu" if sizes_on_cpu else device
+            [[1.0, 1.0], [2.0, 2.0], [8.9, 9.8], [24.0, 16.0], [2.0, 16.0], [24.0, 2.0]],
+            device="cpu" if sizes_on_cpu else device,
         )
         detector = DKD(top_k=4).to(device, dtype)
         keypoints, _, _ = detector(scores, image_size=sizes, sub_pixel=False)
-        expected = [[[5.0, 5.0], [20.0, 12.0]], [], [[5.0, 5.0]], [[5.0, 5.0], [20.0, 12.0]]]
+        expected = [[[5.0, 5.0], [20.0, 12.0]], [], [[5.0, 5.0]], [[5.0, 5.0], [20.0, 12.0]], [], []]
         for points, pixels in zip(keypoints, expected):
             pixel_tensor = torch.tensor(pixels, device=device, dtype=points.dtype).reshape(-1, 2)
             self.assert_close(points, 2.0 * pixel_tensor / points.new_tensor([23.0, 15.0]) - 1.0)
