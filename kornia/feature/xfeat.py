@@ -39,7 +39,8 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
-from kornia.core.utils import _l2_normalize, _samples_half_in_float32, _to_device_nonblocking
+from kornia.core.ops import _copied_literal
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32
 from kornia.geometry.subpix import nms2d
 
 
@@ -286,7 +287,7 @@ class InterpolateSparse2d(nn.Module):
         called with ``align_corners=False``; this asymmetry matches the
         convention the pretrained weights were trained with.
         """
-        return 2.0 * (x / _to_device_nonblocking(torch.tensor([W - 1, H - 1], dtype=x.dtype), x.device)) - 1.0
+        return 2.0 * (x / _copied_literal([W - 1, H - 1], device=x.device, dtype=x.dtype)) - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.
@@ -509,7 +510,7 @@ class XFeat(nn.Module):
         """
         h, w = x.shape[-2:]
         _h, _w = self._resized_size(h, w)
-        cell = _to_device_nonblocking(torch.tensor([w / _w / factor, h / _h / factor]), mkpts.device)
+        cell = _copied_literal([w / _w / factor, h / _h / factor], device=mkpts.device, dtype=torch.get_default_dtype())
         return cell.expand(mkpts.shape[0], mkpts.shape[1], 2)
 
     @staticmethod
@@ -625,7 +626,8 @@ class XFeat(nn.Module):
         feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
         # The cell's top-left pixel of the resized image, at that pixel's centre in the input (#6537).
-        mkpts = (mkpts + 0.5) * _to_device_nonblocking(torch.tensor([rw1, rh1]), mkpts.device).view(1, -1) - 0.5
+        scale = _copied_literal([rw1, rh1], device=mkpts.device, dtype=torch.get_default_dtype())
+        mkpts = (mkpts + 0.5) * scale.view(1, -1) - 0.5
         return mkpts, feats
 
     def _extract_dualscale(
@@ -751,7 +753,8 @@ class XFeat(nn.Module):
         feats = normalize(feats, dim=-1).to(x.dtype)
 
         # Each keypoint is a pixel of the resized image: report that pixel's centre in the input (#6537).
-        mkpts = (mkpts + 0.5) * _to_device_nonblocking(torch.tensor([rw1, rh1]), mkpts.device).view(1, 1, -1) - 0.5
+        scale = _copied_literal([rw1, rh1], device=mkpts.device, dtype=torch.get_default_dtype())
+        mkpts = (mkpts + 0.5) * scale.view(1, 1, -1) - 0.5
 
         results = []
         for b in range(B):
