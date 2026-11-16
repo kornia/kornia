@@ -221,8 +221,12 @@ def _grid_sample_offsets(
     nonfinite = torch.isfinite(off).all(dim=4).logical_not_().reshape(B, n_off_grps, 1, K, H_out, W_out)
     if mask is None:
         return sampled.masked_fill(nonfinite, float("nan")).to(input.dtype)
-    modulation = mask.reshape(B, n_off_grps, 1, K, H_out, W_out).to(dtype).masked_fill(nonfinite, float("nan"))
-    return (sampled * modulation).to(input.dtype)
+    # Preserve mask precision and multiplication's dtype promotion, as in the autograd sampler.
+    modulation_dtype = torch.promote_types(dtype, mask.dtype)
+    modulation = (
+        mask.reshape(B, n_off_grps, 1, K, H_out, W_out).to(modulation_dtype).masked_fill(nonfinite, float("nan"))
+    )
+    return (sampled * modulation).to(torch.promote_types(input.dtype, mask.dtype))
 
 
 def _bilinear_sample(

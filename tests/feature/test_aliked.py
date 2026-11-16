@@ -392,6 +392,26 @@ class TestDeformConv2d(BaseTester):
             actual = deform_conv2d(x, offset, weight)
         self.assert_close(actual, torch.zeros_like(actual))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] in ("float32", "float64")),
+        reason="Promoting float32 samples needs a float64 mask, which MPS does not support",
+    )
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    @pytest.mark.parametrize("groups", [1, 2])
+    def test_mask_keeps_type_promotion(self, device, dtype, grad_enabled, groups):
+        mask_dtype = torch.float64 if dtype in (torch.float32, torch.float64) else torch.float32
+        # 0.5 + 2**-30 (double) or 0.5 + 2**-13 (float): rounding the mask to the input dtype loses the increment.
+        value = 0.5000000009313226 if mask_dtype == torch.float64 else 0.5001220703125
+        x = torch.ones(1, groups, 2, 2, device=device, dtype=dtype)
+        offset = torch.zeros(1, 2, 2, 2, device=device, dtype=dtype)
+        mask = torch.full((1, 1, 2, 2), value, device=device, dtype=mask_dtype)
+        weight = torch.ones(groups, 1, 1, 1, device=device, dtype=mask_dtype)
+        with torch.set_grad_enabled(grad_enabled):
+            out = deform_conv2d(x, offset, weight, mask=mask)
+        assert out.dtype == mask_dtype
+        # Zero offsets and one unit-weight tap over ones give the mask exactly, without interpolation rounding.
+        self.assert_close(out, torch.full_like(out, value), rtol=0, atol=0)
+
     @pytest.mark.parametrize("grad_enabled", [True, False])
     def test_bias_keeps_type_promotion(self, grad_enabled):
         """The bias is added after the product, so it promotes the output as torch does, also under autocast."""
