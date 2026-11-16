@@ -182,12 +182,12 @@ matcher in that mode. The DoG presets return the 12-sigma frames that the ``"dog
 Learned local features
 ----------------------
 
-:class:`ALIKED`, :class:`DISK`, :class:`XFeat` and :class:`DeDoDe` detect and describe keypoints.
+:class:`ALIKED`, :class:`DISK`, :class:`XFeat`, :class:`CLIDD` and :class:`DeDoDe` detect and describe keypoints.
 Load them with ``from_pretrained`` to get pretrained weights and evaluation mode. Their constructors otherwise
 create models in training mode with random weights, except that the default ``DeDoDe()`` also loads a pretrained
 DINOv2 backbone. :class:`SOLD2_detector` detects line segments and loads pretrained weights by default.
 
-The four keypoint models return ``(x, y)`` pixel coordinates. To match one image pair with
+The keypoint models return ``(x, y)`` pixel coordinates. To match one image pair with
 :class:`LightGlueMatcher`, use :func:`laf_from_center_scale_ori` on ``keypoints[None]`` to construct LAFs,
 then pass the LAFs and descriptors to the matcher in the mode listed below.
 Subtract 0.5 from DeDoDe's keypoints first to convert its half-pixel centres to integer pixel centres.
@@ -224,6 +224,11 @@ keypoint models with the authors' code on each device.
      - :meth:`XFeat.detectAndCompute`: one dict per image, keypoints and 64-D descriptors;
        :meth:`XFeat.match_xfeat` and :meth:`XFeat.match_xfeat_star` also match image pairs
      - ``"xfeat"``
+   * - :class:`CLIDD`
+     - RGB ``(B, 3, H, W)`` in ``[0, 1]``, or grayscale ``(B, 1, H, W)``, resized to multiples of 32
+     - one dict per image: integer-pixel keypoints and 48-, 64- or 128-D descriptors; :meth:`CLIDD.match` matches
+       two images by dual softmax. The Triton kernels are optional
+     - none
    * - :class:`DeDoDe`
      - RGB ``(B, 3, H, W)`` in ``[0, 1]``, padded to multiples of 14
      - tensors of the ``n`` best keypoints of each image, ``(B, N, 2)`` with pixel ``i`` at ``i + 0.5``, their
@@ -266,6 +271,12 @@ API reference
 
 .. autoclass:: InterpolateSparse2d
    :members: forward
+
+.. autoclass:: CLIDD
+   :members: forward, from_pretrained, match
+
+.. autoclass:: CLIDDModel
+   :members: forward, describe
 
 .. autoclass:: SOLD2_detector
    :members: forward
