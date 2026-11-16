@@ -1111,7 +1111,7 @@ class TestLinearAttention(BaseTester):
     @pytest.mark.parametrize("autocast", [False, True])
     def test_dynamo_uniform_average(self, device, dtype, torch_optimizer, autocast):
         if autocast and device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 autocast regression runs on CPU and CUDA")
+            pytest.skip("Inductor on MPS ignores the nested autocast region (pytorch/pytorch#201630)")
         q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
         k = torch.ones(1, 1024, 8, 32, device=device, dtype=dtype)
         v = torch.ones_like(k, requires_grad=True)

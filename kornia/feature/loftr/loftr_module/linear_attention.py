@@ -79,9 +79,10 @@ class LinearAttention(nn.Module):
         Returns:
             queried_values: (N, L, H, D)
 
-        Half-precision inputs are evaluated in float32 and rounded back to the query dtype. Outside TorchScript,
-        autocast does not lower the attention arithmetic: at ordinary coarse-grid sizes the unnormalized sums exceed
-        float16's range even when the normalized output and its gradients are representable.
+        Half-precision inputs are evaluated in float32 and rounded back to the query dtype: at ordinary coarse-grid
+        sizes the unnormalized sums exceed float16's range even when the normalized output and its gradients are
+        representable. Autocast does not lower this arithmetic, except under TorchScript and in Inductor-compiled code
+        on MPS, which ignores the nested autocast region (pytorch/pytorch#201630).
 
         """
         if torch.jit.is_scripting():
