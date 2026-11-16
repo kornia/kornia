@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import platform
+
 import pytest
 import torch
 
@@ -521,6 +523,16 @@ class TestConventionsMeanAveragePrecision(BaseTester):
 
 
 class TestMAPAccumulationPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (
+                p["device_name"] == "mps"
+                and p["box_dtype"] == torch.bfloat16
+                and int(platform.mac_ver()[0].split(".")[0] or 0) < 14
+            )
+        ),
+        reason="MPS bfloat16 requires macOS 14 or newer",
+    )
     @pytest.mark.applies_to(
         when=lambda p: not (p["device_name"] == "mps" and p["box_dtype"] == torch.float64),
         reason="MPS does not support float64",
