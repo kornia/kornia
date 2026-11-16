@@ -24,7 +24,7 @@ import kornia.augmentation.utils.helpers as augmentation_helpers
 from kornia.core import ops as core_ops
 from kornia.core.utils import _to_device_nonblocking, _torch_inverse_cast
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 requires_cuda = pytest.mark.applies_to(devices=("cuda",), reason="needs a CUDA device")
 
@@ -231,6 +231,7 @@ class TestCopiedLiteral(BaseTester):
         assert out.dtype == dtype
         assert torch.equal(out, expected)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_graph_capture_keeps_a_device_literal(self, device, dtype) -> None:
         # Captured, the literal stays torch.tensor(..., device=device): a host tensor moved inside the graph is no graph
         # constant to Inductor, which made compiled CUDA extract_patches_from_pyramid 1.2-1.6x slower.
