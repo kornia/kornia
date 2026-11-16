@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _autocast_disabled, _convolution_outside_autocast
+from kornia.core.utils import _autocast_disabled, _convolution_outside_autocast, _to_device_nonblocking
 from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
@@ -876,8 +876,15 @@ def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tenso
     # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
     wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
     min_size = min(wf, hf)
-    k = nlaf.new_tensor([2.0 * min_size / float(w), 2.0 * min_size / float(h)])
-    t = (2.0 * nlaf[..., :, 2] * nlaf.new_tensor([wf, hf]) + 1.0) / nlaf.new_tensor([float(w), float(h)]) - 1.0
+    # Non-blocking copies of the constants: new_tensor's blocking copies each waited for the device's queued work.
+    consts = _to_device_nonblocking(
+        torch.tensor(
+            [[2.0 * min_size / float(w), 2.0 * min_size / float(h)], [wf, hf], [float(w), float(h)]], dtype=nlaf.dtype
+        ),
+        nlaf.device,
+    )
+    k = consts[0]
+    t = (2.0 * nlaf[..., :, 2] * consts[1] + 1.0) / consts[2] - 1.0
     return k, t
 
 
@@ -1171,7 +1178,7 @@ def extract_patches_from_pyramid(
             )
         )
         xoff += w_l + 2
-    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 4, 2)
+    level_constants = _to_device_nonblocking(torch.tensor(constants, dtype=grid_dtype), nlaf.device).view(-1, 4, 2)
 
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and

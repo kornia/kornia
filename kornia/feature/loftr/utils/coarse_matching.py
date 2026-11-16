@@ -345,14 +345,20 @@ class CoarseMatching(nn.Module):
         mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1).to(coord_dtype) * scale0
         mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1).to(coord_dtype) * scale1
 
-        # These matches is the current prediction (for visualization)
+        # These matches is the current prediction (for visualization). Only training pads with ground-truth matches,
+        # which have mconf == 0; otherwise every match scored above max(thr, 0) and a filter would keep them all, at the
+        # cost of reading the device. Training filters with one read, then gathers.
+        predicted = [b_ids, mkpts0_c, mkpts1_c, mconf]
+        if self.training:
+            keep = torch.nonzero(mconf != 0).squeeze(-1)
+            predicted = [t[keep] for t in predicted]
         coarse_matches.update(
             {
                 "gt_mask": mconf == 0,
-                "m_bids": b_ids[mconf != 0],  # mconf == 0 => gt matches
-                "mkpts0_c": mkpts0_c[mconf != 0],
-                "mkpts1_c": mkpts1_c[mconf != 0],
-                "mconf": mconf[mconf != 0],
+                "m_bids": predicted[0],  # mconf == 0 => gt matches
+                "mkpts0_c": predicted[1],
+                "mkpts1_c": predicted[2],
+                "mconf": predicted[3],
             }
         )
 
