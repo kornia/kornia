@@ -877,15 +877,14 @@ def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tenso
     # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
     wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
     min_size = min(wf, hf)
-    # One copy of the constants that does not wait for queued work (new_tensor's blocking copies each waited); compiled,
-    # they stay graph constants on the device (see _copied_literal).
-    consts = _copied_literal(
-        [[2.0 * min_size / float(w), 2.0 * min_size / float(h)], [wf, hf], [float(w), float(h)]],
-        device=nlaf.device,
-        dtype=nlaf.dtype,
-    )
-    k = consts[0]
-    t = (2.0 * nlaf[..., :, 2] * consts[1] + 1.0) / consts[2] - 1.0
+    # Copies of the constants that do not wait for queued work (new_tensor's blocking copies each waited); compiled,
+    # they stay graph constants on the device (see _copied_literal). Three separate literals, not one packed (3, 2)
+    # tensor indexed per row: compiled on MPS (M1 Pro, torch 2.14) the packed form made extract_patches_from_pyramid
+    # about 1.3x slower than 0.9.1; separate literals match 0.9.1 with bit-identical output.
+    k = _copied_literal([2.0 * min_size / float(w), 2.0 * min_size / float(h)], device=nlaf.device, dtype=nlaf.dtype)
+    scale = _copied_literal([wf, hf], device=nlaf.device, dtype=nlaf.dtype)
+    extent = _copied_literal([float(w), float(h)], device=nlaf.device, dtype=nlaf.dtype)
+    t = (2.0 * nlaf[..., :, 2] * scale + 1.0) / extent - 1.0
     return k, t
 
 
