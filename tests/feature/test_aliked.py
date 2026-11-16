@@ -861,14 +861,21 @@ class TestALIKEDKeypointSelection(BaseTester):
 
     @pytest.mark.parametrize("sizes_on_cpu", [False, True])
     def test_border_mask_has_no_host_scalar_reads(self, device, dtype, sizes_on_cpu):
+        # The per-image border mask adds no host read to the call without image_size. Comparing the two calls,
+        # instead of asserting no reads at all, keeps the check valid on MPS, where the keypoint selection's boolean
+        # indexing also reads scalars to the host.
         scores = torch.zeros(2, 1, 16, 24, device=device, dtype=dtype)
         scores[:, :, 5, 5] = 0.9
         sizes = torch.tensor([[18, 12], [24, 16]], device="cpu" if sizes_on_cpu else device)
         detector = DKD(top_k=4).to(device, dtype)
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
-            keypoints, _, _ = detector(scores, image_size=sizes, sub_pixel=False)
-        assert [len(points) for points in keypoints] == [1, 1]
-        assert not any(event.key == "aten::_local_scalar_dense" for event in profile.key_averages())
+
+        def scalar_reads(**kwargs):
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+                keypoints, _, _ = detector(scores, sub_pixel=False, **kwargs)
+            assert [len(points) for points in keypoints] == [1, 1]
+            return sum(e.count for e in profile.key_averages() if e.key == "aten::_local_scalar_dense")
+
+        assert scalar_reads(image_size=sizes) == scalar_reads()
 
     @staticmethod
     def _score_map(peaks, device, dtype, batch=1, h=64, w=96):
