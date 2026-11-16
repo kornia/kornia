@@ -53,7 +53,7 @@ def project_points_double_sphere(points: torch.Tensor, params: torch.Tensor) -> 
         >>> points = torch.tensor([[0.3, -0.2, 2.0]])
         >>> params = torch.tensor([300.0, 320.0, 160.0, 120.0, 0.5, 0.4])
         >>> project_points_double_sphere(points, params).round(decimals=3)
-        tensor([[189.755,  98.841]])
+        tensor([[189.7550,  98.8410]])
 
     """
     KORNIA_CHECK_SHAPE(points, ["*", "3"])
@@ -103,7 +103,7 @@ def unproject_points_double_sphere(pixels: torch.Tensor, params: torch.Tensor) -
         >>> pixels = torch.tensor([[189.755, 98.841]])
         >>> params = torch.tensor([300.0, 320.0, 160.0, 120.0, 0.5, 0.4])
         >>> unproject_points_double_sphere(pixels, params).round(decimals=3)
-        tensor([[ 0.148, -0.098,  0.984]])
+        tensor([[ 0.1480, -0.0980,  0.9840]])
 
     """
     KORNIA_CHECK_SHAPE(pixels, ["*", "2"])

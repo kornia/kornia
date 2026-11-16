@@ -511,7 +511,7 @@ class DoubleSphereModel:
         >>> params = torch.tensor([300., 320., 160., 120., 0.5, 0.4])
         >>> cam = DoubleSphereModel(ImageSize(240, 320), params)
         >>> cam.project(Vector3(torch.tensor([0.3, -0.2, 2.]))).data.round(decimals=3)
-        tensor([189.755,  98.841])
+        tensor([189.7550,  98.8410])
 
     """
 
