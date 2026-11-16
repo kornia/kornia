@@ -38,14 +38,21 @@ Which function to use:
   (``du/dx`` alone).
 - Normalized points to pixels and back with a flat parameter vector: :func:`distort_points_affine` and
   :func:`undistort_points_affine` (``[fx, fy, cx, cy]``, no lens distortion), :func:`distort_points_kannala_brandt`
-  and :func:`undistort_points_kannala_brandt` (fisheye, eight parameters); their Jacobians
-  :func:`dx_distort_points_affine` and :func:`dx_distort_points_kannala_brandt`. For OpenCV's Brown-Conrady
-  coefficients on pixel coordinates, use :mod:`kornia.geometry.calibration`.
+  and :func:`undistort_points_kannala_brandt` (fisheye, eight parameters), :func:`distort_points_double_sphere`
+  and :func:`undistort_points_double_sphere` (Double Sphere, six parameters);
+  their Jacobians :func:`dx_distort_points_affine`, :func:`dx_distort_points_kannala_brandt`,
+  and :func:`dx_distort_points_double_sphere`.
+  For OpenCV's Brown-Conrady coefficients on pixel coordinates, use :mod:`kornia.geometry.calibration`.
 - 3D points from a rectified stereo disparity map: :class:`StereoCamera`, from the two projection matrices, or
   :func:`reproject_disparity_to_3D`, from a ``Q`` matrix.
 """
 
 from .distortion_affine import distort_points_affine, dx_distort_points_affine, undistort_points_affine
+from .distortion_double_sphere import (
+    distort_points_double_sphere,
+    dx_distort_points_double_sphere,
+    undistort_points_double_sphere,
+)
 from .distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     dx_distort_points_kannala_brandt,
@@ -66,8 +73,10 @@ __all__ = [
     "StereoCamera",
     "cam2pixel",
     "distort_points_affine",
+    "distort_points_double_sphere",
     "distort_points_kannala_brandt",
     "dx_distort_points_affine",
+    "dx_distort_points_double_sphere",
     "dx_distort_points_kannala_brandt",
     "dx_project_points_orthographic",
     "dx_project_points_z1",
@@ -77,6 +86,7 @@ __all__ = [
     "project_points_z1",
     "reproject_disparity_to_3D",
     "undistort_points_affine",
+    "undistort_points_double_sphere",
     "undistort_points_kannala_brandt",
     "unproject_points",
     "unproject_points_orthographic",

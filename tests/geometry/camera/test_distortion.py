@@ -23,6 +23,11 @@ from kornia.geometry.camera.distortion_affine import (
     dx_distort_points_affine,
     undistort_points_affine,
 )
+from kornia.geometry.camera.distortion_double_sphere import (
+    distort_points_double_sphere,
+    dx_distort_points_double_sphere,
+    undistort_points_double_sphere,
+)
 from kornia.geometry.camera.distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     dx_distort_points_kannala_brandt,
@@ -559,3 +564,139 @@ class TestDistortionKannalaBrandt(BaseTester):
         ).to(dtype)
 
         self.assert_close(analytic, autograd)
+
+
+class TestDistortionDoubleSphere(BaseTester):
+    def test_smoke(self, device, dtype) -> None:
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        params = torch.tensor([500.0, 500.0, 320.0, 240.0, -0.18, 0.59], device=device, dtype=dtype)
+        assert distort_points_double_sphere(points, params) is not None
+        assert undistort_points_double_sphere(points, params) is not None
+
+    def _test_cardinality_distort_batch(self, device, dtype, batch_size):
+        batch_tuple = (batch_size,) if batch_size is not None else ()
+        points = torch.rand(batch_tuple + (2,), device=device, dtype=dtype) * 0.2
+        params = torch.tensor([500.0, 500.0, 320.0, 240.0, -0.18, 0.59], device=device, dtype=dtype)
+        if batch_size is not None:
+            params = params.expand(batch_tuple + (6,))
+        assert distort_points_double_sphere(points, params).shape == batch_tuple + (2,)
+
+    def _test_cardinality_undistort_batch(self, device, dtype, batch_size):
+        batch_tuple = (batch_size,) if batch_size is not None else ()
+        points = torch.rand(batch_tuple + (2,), device=device, dtype=dtype) + 200.0
+        params = torch.tensor([500.0, 500.0, 320.0, 240.0, -0.18, 0.59], device=device, dtype=dtype)
+        if batch_size is not None:
+            params = params.expand(batch_tuple + (6,))
+        assert undistort_points_double_sphere(points, params).shape == batch_tuple + (2,)
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 3])
+    def test_cardinality(self, device, dtype, batch_size):
+        self._test_cardinality_distort_batch(device, dtype, batch_size)
+        self._test_cardinality_undistort_batch(device, dtype, batch_size)
+
+    def test_distort_points_roundtrip(self, device, dtype) -> None:
+        # Ground-truth values in float64 generated from Usenko et al. (3DV 2018)
+        points = torch.tensor(
+            [
+                [0.0, 0.0],
+                [0.1, 0.2],
+                [-0.3, 0.4],
+                [0.5, -0.5],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        params = torch.tensor([[500.0, 500.0, 320.0, 240.0, -0.18, 0.59]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [320.0, 240.0],
+                [380.0014761044431, 360.0029522088862],
+                [150.2150993074092, 466.3798675901211],
+                [585.7961230671391, -25.7961230671391],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        points_distorted = distort_points_double_sphere(points, params)
+        rtol, atol = (1e-2, 5e-2) if dtype in (torch.float16, torch.bfloat16) else (None, None)
+        self.assert_close(points_distorted, expected, rtol=rtol, atol=atol)
+        if dtype in (torch.float16, torch.bfloat16):
+            return
+        points_recovered = undistort_points_double_sphere(points_distorted, params)
+        self.assert_close(points, points_recovered)
+
+    def test_dx_distort_points_double_sphere(self, device, dtype) -> None:
+        points = torch.tensor([0.1, 0.2], device=device, dtype=dtype)
+        params = torch.tensor([500.0, 500.0, 320.0, 240.0, -0.18, 0.59], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [596.2293, -7.5706],
+                [-7.5706, 584.8734],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(dx_distort_points_double_sphere(points, params), expected)
+
+    def test_convention_dx_distort_points_double_sphere_matches_autograd(self, device, dtype):
+        # Asymmetric focal lengths and principal points ensure no swaps can hide
+        params = torch.tensor(
+            [450.0, 520.0, 315.0, 235.0, -0.18, 0.59],
+            device=device,
+            dtype=dtype,
+        )
+        points = torch.tensor([0.25, -0.35], device=device, dtype=dtype)
+
+        analytic = dx_distort_points_double_sphere(points, params)
+
+        reference_dtype = dtype
+        if dtype in (torch.float16, torch.bfloat16):
+            reference_dtype = torch.float32
+
+        reference_points = points.to(reference_dtype)
+        reference_params = params.to(reference_dtype)
+
+        autograd = torch.autograd.functional.jacobian(
+            lambda q: distort_points_double_sphere(q, reference_params),
+            reference_points,
+        ).to(dtype)
+
+        self.assert_close(analytic, autograd)
+
+    def test_shape_checks(self, device, dtype):
+        points = torch.ones(2, device=device, dtype=dtype)
+        params = torch.ones(6, device=device, dtype=dtype)
+
+        with pytest.raises(Exception):
+            distort_points_double_sphere(torch.ones(3, device=device, dtype=dtype), params)
+        with pytest.raises(Exception):
+            distort_points_double_sphere(points, torch.ones(5, device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            undistort_points_double_sphere(torch.ones(3, device=device, dtype=dtype), params)
+        with pytest.raises(Exception):
+            undistort_points_double_sphere(points, torch.ones(5, device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            dx_distort_points_double_sphere(torch.ones(3, device=device, dtype=dtype), params)
+        with pytest.raises(Exception):
+            dx_distort_points_double_sphere(points, torch.ones(5, device=device, dtype=dtype))
+
+    def test_gradcheck(self, device):
+        points = torch.tensor([[0.1, 0.2], [-0.15, 0.25]], device=device, dtype=torch.float64, requires_grad=True)
+        params = torch.tensor(
+            [[500.0, 500.0, 320.0, 240.0, -0.18, 0.59]], device=device, dtype=torch.float64, requires_grad=True
+        )
+        self.gradcheck(distort_points_double_sphere, (points, params))
+
+    def test_jit(self, device, dtype):
+        points = torch.tensor([[0.1, 0.2], [-0.15, 0.25]], device=device, dtype=dtype)
+        params = torch.tensor([[500.0, 500.0, 320.0, 240.0, -0.18, 0.59]], device=device, dtype=dtype)
+
+        op_distort = torch.jit.script(distort_points_double_sphere)
+        self.assert_close(op_distort(points, params), distort_points_double_sphere(points, params))
+
+        op_undistort = torch.jit.script(undistort_points_double_sphere)
+        distorted = distort_points_double_sphere(points, params)
+        self.assert_close(op_undistort(distorted, params), undistort_points_double_sphere(distorted, params))
+
+        op_dx = torch.jit.script(dx_distort_points_double_sphere)
+        self.assert_close(op_dx(points, params), dx_distort_points_double_sphere(points, params))

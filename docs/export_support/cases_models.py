@@ -1297,6 +1297,7 @@ from kornia.sensors.camera import (  # noqa: E402
     BrownConradyModel,
     CameraModel,
     CameraModelType,
+    DoubleSphereModel,
     KannalaBrandtK3,
     Orthographic,
     PinholeModel,
@@ -1310,6 +1311,10 @@ _bc = BrownConradyModel(
 _kb = KannalaBrandtK3(
     ImageSize(480, 640),
     torch.tensor([328.0, 328.0, 320.0, 240.0, 0.0, 0.0, 0.0, 0.0]),
+)
+_ds = DoubleSphereModel(
+    ImageSize(480, 640),
+    torch.tensor([500.0, 500.0, 320.0, 240.0, -0.18, 0.59]),
 )
 _orth = Orthographic(ImageSize(480, 640), torch.tensor([328.0, 328.0, 320.0, 240.0]))
 _pts3 = torch.tensor([[1.0, 2.0, 5.0], [-0.5, 0.3, 2.0]])
@@ -1387,6 +1392,15 @@ A(
         lambda p: _orth.project(Vector3(p)).data,
         [_pts3],
         note="orthographic projection with affine intrinsics baked",
+    )
+)
+A(
+    case(
+        "sensors.camera.DoubleSphereModel.project",
+        "sensors.camera",
+        lambda p: _ds.project(Vector3(p)).data,
+        [_pts3],
+        note="Double Sphere model; params baked",
     )
 )
 A(case("sensors.camera.CameraModelBase/CameraModelType", "sensors.camera", None, [], skip="base class / enum"))

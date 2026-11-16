@@ -25,12 +25,17 @@ import torch
 
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
-from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
+from kornia.sensors.camera.distortion_model import (
+    AffineTransform,
+    BrownConradyTransform,
+    DoubleSphereTransform,
+    KannalaBrandtK3Transform,
+)
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
 
 class CameraModelType(Enum):
-    """Name a built-in camera model for :class:`CameraModel`: pinhole, Brown-Conrady, fisheye or orthographic.
+    """Name a built-in camera model for :class:`CameraModel`.
 
     ``CameraModel(image_size, CameraModelType.PINHOLE, params)`` builds the model a member names, and the member fixes
     the length of ``params``:
@@ -40,6 +45,8 @@ class CameraModelType(Enum):
     - ``KANNALA_BRANDT_K3``: :class:`KannalaBrandtK3`, the fisheye model whose radius is a 9th-order odd polynomial
       of the ray angle, 8 values.
     - ``ORTHOGRAPHIC``: :class:`Orthographic`, parallel projection that drops ``z``, ``[fx, fy, cx, cy]``.
+    - ``DOUBLE_SPHERE``: :class:`DoubleSphereModel`, the wide-angle and fisheye model with closed-form unprojection,
+      6 values.
 
     See Also:
         - :class:`CameraModel`: builds the model a member names.
@@ -51,6 +58,7 @@ class CameraModelType(Enum):
     BROWN_CONRADY = 1
     KANNALA_BRANDT_K3 = 2
     ORTHOGRAPHIC = 3
+    DOUBLE_SPHERE = 4
 
 
 def get_model_from_type(
@@ -65,10 +73,12 @@ def get_model_from_type(
         return KannalaBrandtK3(image_size, params)
     if model_type == CameraModelType.ORTHOGRAPHIC:
         return Orthographic(image_size, params)
+    if model_type == CameraModelType.DOUBLE_SPHERE:
+        return DoubleSphereModel(image_size, params)
     raise ValueError("Invalid Camera Model Type")
 
 
-CameraDistortionType = Union[AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform]
+CameraDistortionType = Union[AffineTransform, BrownConradyTransform, DoubleSphereTransform, KannalaBrandtK3Transform]
 CameraProjectionType = Union[Z1Projection, OrthographicProjection]
 
 # The number of parameters each distortion model reads, which is what fixes the
@@ -78,6 +88,7 @@ CameraProjectionType = Union[Z1Projection, OrthographicProjection]
 _PARAMS_LEN_FOR_DISTORTION: dict[type, int] = {
     AffineTransform: 4,
     BrownConradyTransform: 12,
+    DoubleSphereTransform: 6,
     KannalaBrandtK3Transform: 8,
 }
 
@@ -475,7 +486,39 @@ class Orthographic(CameraModelBase):
         super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
 
 
-CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Orthographic]
+class DoubleSphereModel(CameraModelBase):
+    r"""Model a wide-angle or fisheye camera with the Double Sphere projection model.
+
+    ``cam = DoubleSphereModel(image_size, params)`` takes the ``(6,)`` or ``(B, 6)`` vector
+    ``[fx, fy, cx, cy, xi, alpha]``. :meth:`~CameraModelBase.project` maps normalized points
+    to distorted pixels using two consecutive sphere projections, and :meth:`~CameraModelBase.unproject`
+    inverts the map in closed form without iterative root-finding (Usenko et al., 3DV 2018). It is
+    :class:`CameraModelBase` with
+    :class:`~kornia.sensors.camera.distortion_model.DoubleSphereTransform` and
+    :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
+
+    See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
+    pixel-center and camera-frame conventions.
+
+    Args:
+        image_size: :class:`~kornia.image.ImageSize` of the image.
+        params: ``(6,)`` or ``(B, 6)`` parameters in the order above; another length, or a rank
+            above 2, raises ``ValueError``.
+
+    See Also:
+        - :class:`KannalaBrandtK3`: an 8-parameter polynomial fisheye model inverted iteratively.
+        - :class:`BrownConradyModel`: OpenCV's radial and tangential lens distortion model.
+        - :class:`PinholeModel`: the perspective projection with no lens distortion.
+
+    """
+
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
+        if params.shape[-1] != 6 or len(params.shape) > 2:
+            raise ValueError("params must be of shape B, 6 for DOUBLE_SPHERE Camera")
+        super().__init__(DoubleSphereTransform(), Z1Projection(), image_size, params)
+
+
+CameraModelVariants = Union[PinholeModel, BrownConradyModel, DoubleSphereModel, KannalaBrandtK3, Orthographic]
 
 
 class CameraModel:
@@ -508,6 +551,10 @@ class CameraModel:
         >>> # Kannala Brandt K3 Camera Model
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.KANNALA_BRANDT_K3, torch.Tensor([1.0, 1.0, 1.0,
         ... 1.0, 1.0, 1.0, 1.0, 1.0]))
+        >>> # Double Sphere Camera Model
+        >>> cam = CameraModel(
+        ...     ImageSize(480, 640), CameraModelType.DOUBLE_SPHERE, torch.Tensor([500., 500., 320., 240., -0.18, 0.59])
+        ... )
         >>> # Orthographic Camera Model
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.ORTHOGRAPHIC, torch.Tensor([328., 328., 320., 240.]))
         >>> cam.params

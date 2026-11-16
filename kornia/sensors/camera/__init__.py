@@ -27,8 +27,8 @@ Which class to use:
 
 - A built-in model chosen by name: :class:`CameraModel`, with a :class:`CameraModelType`.
 - The built-in models as classes: :class:`PinholeModel` (no lens distortion), :class:`BrownConradyModel` (OpenCV's
-  radial and tangential distortion), :class:`KannalaBrandtK3` (fisheye) and :class:`Orthographic` (parallel
-  projection).
+  radial and tangential distortion), :class:`KannalaBrandtK3` (fisheye), :class:`Orthographic` (parallel
+  projection) and :class:`DoubleSphereModel` (wide-angle and fisheye with closed-form inverse).
 - A custom model from a distortion and a projection: :class:`CameraModelBase`, with the classes of
   ``kornia.sensors.camera.distortion_model`` and ``kornia.sensors.camera.projection_model``.
 - Cameras with extrinsics, on plain tensors and applied per camera in a batch:
@@ -40,6 +40,7 @@ from .camera_model import (
     CameraModel,
     CameraModelBase,
     CameraModelType,
+    DoubleSphereModel,
     KannalaBrandtK3,
     Orthographic,
     PinholeModel,
@@ -50,6 +51,7 @@ __all__ = [
     "CameraModel",
     "CameraModelBase",
     "CameraModelType",
+    "DoubleSphereModel",
     "KannalaBrandtK3",
     "Orthographic",
     "PinholeModel",

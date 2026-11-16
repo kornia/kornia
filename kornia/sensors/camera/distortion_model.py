@@ -19,6 +19,10 @@
 import torch
 
 from kornia.geometry.calibration import distort_points, undistort_points
+from kornia.geometry.camera.distortion_double_sphere import (
+    distort_points_double_sphere,
+    undistort_points_double_sphere,
+)
 from kornia.geometry.camera.distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
@@ -269,3 +273,47 @@ class KannalaBrandtK3Transform:
 
         """
         return Vector2(undistort_points_kannala_brandt(points.data, params))
+
+
+class DoubleSphereTransform:
+    """Map normalized ``z = 1`` ``Vector2`` points to pixels with the Double Sphere camera model, and back.
+
+    ``uv = DoubleSphereTransform().distort(params, points)`` takes the ``(..., 6)`` vector
+    ``[fx, fy, cx, cy, xi, alpha]`` and a :class:`~kornia.geometry.vector.Vector2` of normalized points, and
+    returns the ``Vector2`` of distorted pixels; :meth:`undistort` inverts it in closed form. It is the distortion of
+    :class:`~kornia.sensors.camera.DoubleSphereModel`.
+
+    See Also:
+        - :class:`KannalaBrandtK3Transform`: a fisheye distortion of the ray angle inverted iteratively.
+        - :class:`BrownConradyTransform`: OpenCV's radial and tangential lens distortion.
+        - :class:`AffineTransform`: the intrinsics alone, with no distortion.
+        - :func:`~kornia.geometry.camera.distort_points_double_sphere`: the same map on plain tensors.
+        - :func:`~kornia.geometry.camera.undistort_points_double_sphere`: its inverse on plain tensors.
+
+    """
+
+    def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Distort normalized points to pixels with the Double Sphere model.
+
+        Args:
+            params: ``(..., 6)`` vector ``[fx, fy, cx, cy, xi, alpha]``.
+            points: ``Vector2`` of points on the normalized :math:`z = 1` plane.
+
+        Returns:
+            ``Vector2`` of the distorted pixels.
+
+        """
+        return Vector2(distort_points_double_sphere(points.data, params))
+
+    def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Undistort pixels to normalized points with the Double Sphere model.
+
+        Args:
+            params: ``(..., 6)`` vector ``[fx, fy, cx, cy, xi, alpha]``.
+            points: ``Vector2`` of distorted pixels.
+
+        Returns:
+            ``Vector2`` of points on the normalized :math:`z = 1` plane.
+
+        """
+        return Vector2(undistort_points_double_sphere(points.data, params))

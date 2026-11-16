@@ -26,6 +26,7 @@ from kornia.sensors.camera.camera_model import Orthographic
 from kornia.sensors.camera.distortion_model import (
     AffineTransform,
     BrownConradyTransform,
+    DoubleSphereTransform,
     KannalaBrandtK3Transform,
 )
 from kornia.sensors.camera.projection_model import Z1Projection
@@ -285,22 +286,25 @@ class TestPinholeCamera(BaseTester):
 
 
 class TestCameraModelTypes(BaseTester):
-    # The four CameraModelType members and the parameter-vector length each one enforces.
+    # The five CameraModelType members and the parameter-vector length each one enforces.
     _LENGTHS = (
         (CameraModelType.PINHOLE, 4),
         (CameraModelType.BROWN_CONRADY, 12),
         (CameraModelType.KANNALA_BRANDT_K3, 8),
         (CameraModelType.ORTHOGRAPHIC, 4),
+        (CameraModelType.DOUBLE_SPHERE, 6),
     )
 
     def test_convention_params_length_is_fixed_per_camera_model_type(self, device, dtype):
         # params is (N,) or (B, N) with N fixed by the model type (4 PINHOLE, 12 BROWN_CONRADY,
-        # 8 KANNALA_BRANDT_K3, 4 ORTHOGRAPHIC); N - 1 and (B, 1, N) raise ValueError. There is no (B, N, 4) form.
+        # 8 KANNALA_BRANDT_K3, 4 ORTHOGRAPHIC, 6 DOUBLE_SPHERE); N - 1 and (B, 1, N) raise ValueError.
+        # There is no (B, N, 4) form.
         assert [(m.name, m.value) for m in CameraModelType] == [
             ("PINHOLE", 0),
             ("BROWN_CONRADY", 1),
             ("KANNALA_BRANDT_K3", 2),
             ("ORTHOGRAPHIC", 3),
+            ("DOUBLE_SPHERE", 4),
         ]
         for model_type, length in self._LENGTHS:
             unbatched = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
@@ -316,6 +320,8 @@ class TestCameraModelTypes(BaseTester):
             CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(1, 1, 4, device=device, dtype=dtype))
         with pytest.raises(ValueError, match=r"params must be of shape .* for KANNALA_BRANDT_K3 Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match=r"params must be of shape .* for DOUBLE_SPHERE Camera"):
+            CameraModel(ImageSize(6, 8), CameraModelType.DOUBLE_SPHERE, torch.ones(5, device=device, dtype=dtype))
 
 
 class TestCameraModelBaseParamsValidation:
@@ -348,6 +354,7 @@ class TestCameraModelBaseParamsValidation:
         [
             (AffineTransform, 4),
             (BrownConradyTransform, 12),
+            (DoubleSphereTransform, 6),
             (KannalaBrandtK3Transform, 8),
         ],
     )
@@ -387,6 +394,7 @@ class TestNonPinholeCameraMatrix(BaseTester):
             (CameraModelType.BROWN_CONRADY, 12),
             (CameraModelType.KANNALA_BRANDT_K3, 8),
             (CameraModelType.ORTHOGRAPHIC, 4),
+            (CameraModelType.DOUBLE_SPHERE, 6),
         ],
     )
     def test_matrix_unbatched(self, device, dtype, model_type, num_params):
@@ -417,6 +425,7 @@ class TestNonPinholeCameraMatrix(BaseTester):
             (CameraModelType.BROWN_CONRADY, 12),
             (CameraModelType.KANNALA_BRANDT_K3, 8),
             (CameraModelType.ORTHOGRAPHIC, 4),
+            (CameraModelType.DOUBLE_SPHERE, 6),
         ],
     )
     def test_matrix_batched(self, device, dtype, model_type, num_params):
@@ -460,21 +469,30 @@ class TestNonPinholeCameraProjectUnproject(BaseTester):
         CameraModelType.BROWN_CONRADY: (0.1, -0.05, 0.01, -0.02, 0.003, 0.02, -0.01, 0.005),
         CameraModelType.KANNALA_BRANDT_K3: (0.05, -0.01, 0.002, -0.0005),
         CameraModelType.ORTHOGRAPHIC: (),
+        CameraModelType.DOUBLE_SPHERE: (-0.18, 0.59),
     }
     _POINTS = ((0.3, -0.2, 2.0), (-0.4, 0.25, 3.0))
     # Pixels of _POINTS[i] through camera i, from the plain-tensor functions in float64:
     #   BROWN_CONRADY      distort_points(xy / z, K_i, dist, new_K=torch.eye(3))
     #   KANNALA_BRANDT_K3  distort_points_kannala_brandt(xy / z, torch.cat([intrinsics_i, dist]))
     #   ORTHOGRAPHIC       distort_points_affine(xy, intrinsics_i)
+    #   DOUBLE_SPHERE      distort_points_double_sphere(xy / z, torch.cat([intrinsics_i, dist]))
     # The distortion moves them by up to 0.5 px from the pinhole pixels (205, 88) and (112.67, 135).
     _PROJECTED = {
         CameraModelType.BROWN_CONRADY: ((204.5600220913, 88.2782065129), (112.1940012868, 135.2979753288)),
         CameraModelType.KANNALA_BRANDT_K3: ((204.5921616765, 88.2900183634), (112.9250215202, 134.8269945177)),
         CameraModelType.ORTHOGRAPHIC: ((250.0, 56.0), (38.0, 185.0)),
+        CameraModelType.DOUBLE_SPHERE: ((214.3024061381, 81.3849556351), (104.8364703108, 140.2434350598)),
     }
 
     @pytest.mark.parametrize(
-        "model_type", [CameraModelType.BROWN_CONRADY, CameraModelType.KANNALA_BRANDT_K3, CameraModelType.ORTHOGRAPHIC]
+        "model_type",
+        [
+            CameraModelType.BROWN_CONRADY,
+            CameraModelType.KANNALA_BRANDT_K3,
+            CameraModelType.ORTHOGRAPHIC,
+            CameraModelType.DOUBLE_SPHERE,
+        ],
     )
     @pytest.mark.parametrize("batched", [False, True])
     def test_project_unproject(self, device, dtype, model_type, batched):

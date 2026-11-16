@@ -35,12 +35,17 @@ Distortion
 ----------
 
 Normalized points to pixels and back with a flat parameter vector: the affine model ``[fx, fy, cx, cy]``, which
-applies the intrinsics and no lens distortion, and the Kannala-Brandt fisheye model
-``[fx, fy, cx, cy, k0, k1, k2, k3]``, each with its inverse and its Jacobian with respect to the point.
+applies the intrinsics and no lens distortion, the Kannala-Brandt fisheye model
+``[fx, fy, cx, cy, k0, k1, k2, k3]``, and the Double Sphere camera model ``[fx, fy, cx, cy, xi, alpha]``,
+each with its inverse and its Jacobian with respect to the point.
 
 .. autofunction:: distort_points_affine
 .. autofunction:: undistort_points_affine
 .. autofunction:: dx_distort_points_affine
+
+.. autofunction:: distort_points_double_sphere
+.. autofunction:: undistort_points_double_sphere
+.. autofunction:: dx_distort_points_double_sphere
 
 .. autofunction:: distort_points_kannala_brandt
 .. autofunction:: undistort_points_kannala_brandt
