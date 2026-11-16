@@ -700,3 +700,33 @@ class TestDistortionDoubleSphere(BaseTester):
 
         op_dx = torch.jit.script(dx_distort_points_double_sphere)
         self.assert_close(op_dx(points, params), dx_distort_points_double_sphere(points, params))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        points = torch.tensor([[0.1, 0.2], [-0.15, 0.25]], device=device, dtype=dtype)
+        params = torch.tensor([[500.0, 500.0, 320.0, 240.0, -0.18, 0.59]], device=device, dtype=dtype)
+
+        op_distort = torch_optimizer(distort_points_double_sphere)
+        self.assert_close(op_distort(points, params), distort_points_double_sphere(points, params))
+
+        op_undistort = torch_optimizer(undistort_points_double_sphere)
+        distorted = distort_points_double_sphere(points, params)
+        self.assert_close(op_undistort(distorted, params), undistort_points_double_sphere(distorted, params))
+
+        op_dx = torch_optimizer(dx_distort_points_double_sphere)
+        self.assert_close(op_dx(points, params), dx_distort_points_double_sphere(points, params))
+
+    def test_backward_zero_radicand_boundary(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("Gradient check on boundary requires float32/float64")
+        # det = 1 - (2 * 0.625 - 1) * 4 = 1 - 0.25 * 4 = 0
+        points = torch.tensor([[2.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        params = torch.tensor([1.0, 1.0, 0.0, 0.0, 0.0, 0.625], device=device, dtype=dtype, requires_grad=True)
+        out = undistort_points_double_sphere(points, params)
+        assert torch.isfinite(out).all()
+        # Verify backward passes finite gradients, including with a zero-weight sample
+        loss = (out * torch.tensor([[0.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype)).sum()
+        loss.backward()
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+        assert params.grad is not None
+        assert torch.isfinite(params.grad).all()

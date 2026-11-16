@@ -196,13 +196,23 @@ def undistort_points_double_sphere(
     my = (v - cy) / fy
     r2 = mx * mx + my * my
 
-    det = torch.clamp(1.0 - (2.0 * alpha - 1.0) * r2, min=0.0)
-    denom_mz = alpha * torch.sqrt(det) + (1.0 - alpha)
+    # Differentiate positive safe arguments so boundary samples with det <= 0 or rad2 <= 0
+    # have finite autograd derivatives and do not contaminate gradients across PyTorch versions.
+    det_arg = 1.0 - (2.0 * alpha - 1.0) * r2
+    det_is_nonpos = det_arg <= 0
+    safe_det = torch.where(det_is_nonpos, torch.ones_like(det_arg), det_arg)
+    sqrt_det = torch.where(det_is_nonpos, torch.zeros_like(det_arg), safe_det.sqrt())
+
+    denom_mz = alpha * sqrt_det + (1.0 - alpha)
     mz = (1.0 - alpha * alpha * r2) / denom_mz
 
-    rad2 = torch.clamp(mz * mz + (1.0 - xi * xi) * r2, min=0.0)
+    rad2_arg = mz * mz + (1.0 - xi * xi) * r2
+    rad2_is_nonpos = rad2_arg <= 0
+    safe_rad2 = torch.where(rad2_is_nonpos, torch.ones_like(rad2_arg), rad2_arg)
+    sqrt_rad2 = torch.where(rad2_is_nonpos, torch.zeros_like(rad2_arg), safe_rad2.sqrt())
+
     denom_scale = mz * mz + r2
-    scale = (mz * xi + torch.sqrt(rad2)) / denom_scale
+    scale = (mz * xi + sqrt_rad2) / denom_scale
 
     xc = scale * mx
     yc = scale * my

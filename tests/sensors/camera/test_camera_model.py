@@ -510,3 +510,23 @@ class TestNonPinholeCameraProjectUnproject(BaseTester):
 
         self.assert_close(projected.data, expected)
         self.assert_close(unprojected.data, points)
+
+    def test_double_sphere_multi_point_batching(self, device, dtype):
+        params = torch.tensor(
+            [intrinsics + self._DISTORTION[CameraModelType.DOUBLE_SPHERE] for intrinsics in self._INTRINSICS],
+            device=device,
+            dtype=dtype,
+        )
+        pts = torch.tensor(
+            [
+                [[0.3, -0.2, 2.0], [-0.4, 0.25, 3.0], [0.1, 0.1, 1.5]],
+                [[0.3, -0.2, 2.0], [-0.4, 0.25, 3.0], [0.1, 0.1, 1.5]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        cam = CameraModel(ImageSize(240, 320), CameraModelType.DOUBLE_SPHERE, params)
+        projected = cam.project(Vector3(pts))
+        assert projected.data.shape == (2, 3, 2)
+        unprojected = cam.unproject(projected, pts[..., 2])
+        self.assert_close(unprojected.data, pts)

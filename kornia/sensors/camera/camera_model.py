@@ -490,12 +490,13 @@ class DoubleSphereModel(CameraModelBase):
     r"""Model a wide-angle or fisheye camera with the Double Sphere projection model.
 
     ``cam = DoubleSphereModel(image_size, params)`` takes the ``(6,)`` or ``(B, 6)`` vector
-    ``[fx, fy, cx, cy, xi, alpha]``. :meth:`~CameraModelBase.project` maps normalized points
-    to distorted pixels using two consecutive sphere projections, and :meth:`~CameraModelBase.unproject`
-    inverts the map in closed form without iterative root-finding (Usenko et al., 3DV 2018). It is
-    :class:`CameraModelBase` with
+    ``[fx, fy, cx, cy, xi, alpha]``. :meth:`~CameraModelBase.project` maps points in front of the camera
+    (:math:`z > 0`) to distorted pixels using two consecutive sphere projections, and
+    :meth:`~CameraModelBase.unproject` inverts the map in closed form without iterative root-finding
+    (Usenko et al., 3DV 2018). It is :class:`CameraModelBase` with
     :class:`~kornia.sensors.camera.distortion_model.DoubleSphereTransform` and
-    :class:`~kornia.sensors.camera.projection_model.Z1Projection`.
+    :class:`~kornia.sensors.camera.projection_model.Z1Projection`. Because projection onto the image plane
+    is normalized by :class:`~kornia.sensors.camera.projection_model.Z1Projection`, rays require :math:`z > 0`.
 
     See :doc:`camera and world conventions </get-started/camera-conventions>` for shared intrinsics,
     pixel-center and camera-frame conventions.

@@ -303,7 +303,10 @@ class DoubleSphereTransform:
             ``Vector2`` of the distorted pixels.
 
         """
-        return Vector2(distort_points_double_sphere(points.data, params))
+        point_data = points.data
+        while point_data.ndim > params.ndim:
+            params = params.unsqueeze(-2)
+        return Vector2(distort_points_double_sphere(point_data, params))
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Undistort pixels to normalized points with the Double Sphere model.
@@ -316,4 +319,7 @@ class DoubleSphereTransform:
             ``Vector2`` of points on the normalized :math:`z = 1` plane.
 
         """
-        return Vector2(undistort_points_double_sphere(points.data, params))
+        point_data = points.data
+        while point_data.ndim > params.ndim:
+            params = params.unsqueeze(-2)
+        return Vector2(undistort_points_double_sphere(point_data, params))
