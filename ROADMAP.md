@@ -200,6 +200,26 @@ not approval for a new API; establish the concrete need and check reservations f
   gradients stay within the existing test tolerances, and dtype/device handling and
   compile/ONNX support stay as they are. Measure base and branch on the same hardware
   and workloads following [the benchmark methodology](benchmarks/README.md).
+  - **Fewer host synchronizations:** on CUDA and MPS, `.item()`, `bool()` or `if` on a
+    tensor, `nonzero`, and boolean-mask indexing or assignment make the host wait until the
+    device queue drains; `torch.cuda.set_sync_debug_mode("warn")` lists them. Removing them
+    pays most in matching and post-processing code made of many small kernels. On an RTX 4090,
+    `match_smnn` went from nine waits to one and became 1.4–1.9× faster
+    ([#6501](https://github.com/kornia/kornia/pull/6501)); `LightGlueMatcher` went from 17
+    waits to 2 and became 2–13% faster per pair ([#6779](https://github.com/kornia/kornia/pull/6779));
+    AdaLAM's pair sampler became 19–26× faster, while the full `match_adalam` stayed within noise
+    ([#6793](https://github.com/kornia/kornia/pull/6793)). End to end, three `kornia.feature`
+    PRs together ([#6779](https://github.com/kornia/kornia/pull/6779)–[#6781](https://github.com/kornia/kornia/pull/6781))
+    cut XFeat- and LightGlue-based matching by 3–8% per pair and left GPU-bound LoFTR and
+    DeDoDe unchanged. A removed synchronization is not a speed-up by itself: trading SOLD2's
+    per-block guard for an unconditional `nonzero` made refinement 29% faster on dense heatmaps
+    and 6–10% slower on empty ones ([#6792](https://github.com/kornia/kornia/issues/6792)),
+    and a tensor mask in ALIKED's keypoint detector was slower at batch 1 and on the CPU
+    ([#6793](https://github.com/kornia/kornia/pull/6793)). Report the synchronization count
+    and the base/branch timing together. Keep input validation as it is: moving a check to
+    `torch._assert_async` changes when and how the error surfaces, and that is a maintainer
+    decision ([#6335](https://github.com/kornia/kornia/issues/6335)).
+    [#6792](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
 - **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
   distortions, weather/noise, and compression effects; the differentiated core remains
   differentiability, batching, and annotation consistency.

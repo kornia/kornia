@@ -286,6 +286,12 @@ Kornia's differentiated value is its geometry core: warping and sampling, homogr
 
 See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
 
+### Make Existing Operators Faster
+
+We take speed-ups of existing operators when they hold up under measurement: at least 20% on a common workload, in the general code path, with outputs, gradients, dtype/device handling and compile/ONNX support unchanged. Time base and branch on the same hardware following the [benchmark methodology](benchmarks/README.md#methodology-contract); the [Roadmap](ROADMAP.md#areas-seeking-contributors) has the full rules.
+
+- **Fewer host synchronizations on CUDA and MPS.** `.item()`, `if tensor:`, `nonzero` and boolean-mask indexing make the host wait for the GPU. Removing them made `match_smnn` 1.4–1.9× faster on CUDA ([#6501](https://github.com/kornia/kornia/pull/6501)). [SOLD2's heatmap refinement](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
+
 ### AI Models
 
 The model zoo is currently **frozen for expansion** while maintainer bandwidth concentrates on the core. Shipped models (LoFTR, LightGlue, DISK, DeDoDe, SAM, and friends) stay available and maintained, and model work approved before the freeze (Efficient LoFTR, SANDesc) will be completed under its existing scope. New integrations — including VLM/VLA models — require a named maintainer sponsor who accepts ongoing ownership of the integration; a contributor implementation alone cannot reopen the surface. See the [Roadmap](ROADMAP.md#guiding-themes) for the reasoning and the reopen condition.
