@@ -422,9 +422,9 @@ def combine_tensor_patches(
     work_dtype = patches.real.dtype if patches.is_complex() else patches.dtype
     if is_integer or half:
         work_dtype = torch.float32
-    ones_tensor = torch.ones(
-        patches.shape[0], patches.shape[2], original_size[0], original_size[1], device=patches.device, dtype=work_dtype
-    )
+    # The spatial overlap counts are shared by every image and channel. Build them once and broadcast the divisor,
+    # avoiding a batch/channel-sized unfolded copy of ones while preserving the same padding and fold operations.
+    ones_tensor = torch.ones(1, 1, original_size[0], original_size[1], device=patches.device, dtype=work_dtype)
     if has_unpadding:
         ones_tensor = F.pad(ones_tensor, list(unpadding_tuple))
     restored_size = ones_tensor.shape[2:]
