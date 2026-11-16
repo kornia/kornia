@@ -200,6 +200,19 @@ not approval for a new API; establish the concrete need and check reservations f
   gradients stay within the existing test tolerances, and dtype/device handling and
   compile/ONNX support stay as they are. Measure base and branch on the same hardware
   and workloads following [the benchmark methodology](benchmarks/README.md).
+  - **Fewer host synchronizations:** `.item()`, `bool()` or `if` on a tensor, `nonzero`,
+    and boolean-mask indexing or assignment make the host wait for the device. On CUDA,
+    `torch.cuda.set_sync_debug_mode("warn")` points at many of these waits but not all of them.
+    To count them on any device, count `aten::_local_scalar_dense` and `aten::nonzero` events in
+    `torch.profiler`, as the [#6792](https://github.com/kornia/kornia/issues/6792) reproducer does.
+    Removing them made `match_smnn` 1.4–1.9× faster on an RTX 4090
+    ([#6501](https://github.com/kornia/kornia/pull/6501)). Fewer waits do not always mean faster
+    code: time base and branch, including the CPU and empty or sparse inputs, and report the
+    synchronization count with the timing. Sync removals are exempt from the 20% bar: an
+    end-to-end gain above run-to-run noise on a common workload is enough, as long as no other
+    measured workload, CPU included, gets slower beyond noise. Keep input validation as it is
+    ([#6335](https://github.com/kornia/kornia/issues/6335)). SOLD2's heatmap refinement
+    ([#6792](https://github.com/kornia/kornia/issues/6792)) is open to contributors with a CUDA device.
 - **Augmentation breadth:** low-priority, community-driven gaps such as dropout,
   distortions, weather/noise, and compression effects; the differentiated core remains
   differentiability, batching, and annotation consistency.
