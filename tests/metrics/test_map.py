@@ -521,6 +521,10 @@ class TestConventionsMeanAveragePrecision(BaseTester):
 
 
 class TestMAPAccumulationPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["box_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         "box_dtype,detected,objects,expected_ap",
         [
