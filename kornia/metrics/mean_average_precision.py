@@ -60,6 +60,8 @@ def mean_average_precision(
           ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
+        - Detection counts, precision and recall use at least float32 before each class's AP is rounded to the
+          output dtype. A half-precision recall rounded up to a threshold would otherwise score an unreached level.
 
     Args:
         pred_boxes: per-image predicted boxes, each with shape ``(N, 4)``.
@@ -126,6 +128,9 @@ def mean_average_precision(
         _pred_boxes.dtype if _pred_boxes.is_floating_point() else torch.float32,
         _gt_boxes.dtype if _gt_boxes.is_floating_point() else torch.float32,
     )
+    # Recall comparisons are discrete decisions: bfloat16 rounds 512/513 to 1 and incorrectly gives a missed
+    # object full recall. Keep counts and their ratios in at least float32, rounding only the final class AP.
+    statistics_dtype = torch.promote_types(ap_dtype, torch.float32)
 
     # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
     for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
@@ -167,8 +172,8 @@ def mean_average_precision(
         pred_class_boxes = pred_class_boxes[sort_ind]  # (n_class_detections, 4)
 
         # In the order of decreasing scores, check if true or false positive
-        gt_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
-        false_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
+        gt_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
+        false_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
         for d in range(n_class_detections):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = pred_class_images[d]  # (), scalar
@@ -216,7 +221,7 @@ def mean_average_precision(
         # Exact tenths as Python floats: each comparison below casts them to the recall dtype. A float32 arange widened
         # to Python floats gives 0.10000000149..., which a float64 recall of exactly 1/10 never reaches (#5083).
         recall_thresholds = [i / 10 for i in range(11)]  # (11)
-        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=ap_dtype)  # (11)
+        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=statistics_dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():
