@@ -25,7 +25,7 @@ import kornia
 from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
 from kornia.feature.aliked import aliked as aliked_module
-from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
+from kornia.feature.aliked.aliked import DKD, SDDH, InputPadder, _affine_from_cov, get_patches
 from kornia.feature.aliked.deform_conv2d import _grid_sample_offsets, _sample_with_autograd, deform_conv2d
 
 from testing.base import (
@@ -839,6 +839,34 @@ class TestALIKEDForwardLAF(BaseTester):
 
 class TestALIKEDKeypointSelection(BaseTester):
     """Top-k mode keeps at most ``k`` strict maxima (#5862); the threshold fallback is decided per image (#5865)."""
+
+    @pytest.mark.parametrize("sizes_on_cpu", [False, True])
+    def test_border_mask_preserves_slice_starts(self, device, dtype, sizes_on_cpu):
+        # Preserve slice semantics while replacing scalar slice starts with masks: float sizes truncate to long,
+        # and starts below zero count from the padded map's end (size 1 minus radius 2 gives start -1).
+        scores = torch.zeros(4, 1, 16, 24, device=device, dtype=dtype)
+        scores[:, :, 5, 5] = 0.9
+        scores[:, :, 12, 20] = 0.8
+        sizes = torch.tensor(
+            [[1.0, 1.0], [2.0, 2.0], [8.9, 9.8], [24.0, 16.0]], device="cpu" if sizes_on_cpu else device
+        )
+        detector = DKD(top_k=4).to(device, dtype)
+        keypoints, _, _ = detector(scores, image_size=sizes, sub_pixel=False)
+        expected = [[[5.0, 5.0], [20.0, 12.0]], [], [[5.0, 5.0]], [[5.0, 5.0], [20.0, 12.0]]]
+        for points, pixels in zip(keypoints, expected):
+            pixel_tensor = torch.tensor(pixels, device=device, dtype=points.dtype).reshape(-1, 2)
+            self.assert_close(points, 2.0 * pixel_tensor / points.new_tensor([23.0, 15.0]) - 1.0)
+
+    @pytest.mark.parametrize("sizes_on_cpu", [False, True])
+    def test_border_mask_has_no_host_scalar_reads(self, device, dtype, sizes_on_cpu):
+        scores = torch.zeros(2, 1, 16, 24, device=device, dtype=dtype)
+        scores[:, :, 5, 5] = 0.9
+        sizes = torch.tensor([[18, 12], [24, 16]], device="cpu" if sizes_on_cpu else device)
+        detector = DKD(top_k=4).to(device, dtype)
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+            keypoints, _, _ = detector(scores, image_size=sizes, sub_pixel=False)
+        assert [len(points) for points in keypoints] == [1, 1]
+        assert not any(event.key == "aten::_local_scalar_dense" for event in profile.key_averages())
 
     @staticmethod
     def _score_map(peaks, device, dtype, batch=1, h=64, w=96):

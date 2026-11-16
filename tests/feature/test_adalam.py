@@ -377,7 +377,14 @@ class TestAdalamExact(BaseTester):
 
 
 class TestDrawFirstKCouples(BaseTester):
-    @pytest.mark.parametrize("k", [1, 2, 3, 128])
+    def test_no_host_scalar_reads(self, device):
+        dims = torch.tensor([3, 17, 1000], device=device)
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+            couples = draw_first_k_couples(128, dims, device)
+        assert couples.shape == (128, 2, 3)
+        assert not any(event.key == "aten::_local_scalar_dense" for event in profile.key_averages())
+
+    @pytest.mark.parametrize("k", [0, 1, 2, 3, 4, 6, 7, 127, 128, 136, 137])
     def test_couples_are_the_first_k_distinct_pairs(self, k, device):
         # The k couples are the pairs (i, j), j < i, in row order. The residual row after the complete ones used
         # its length as its first index, so it repeated couples already drawn: 8 of the default 128.

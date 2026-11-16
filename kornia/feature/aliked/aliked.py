@@ -312,10 +312,15 @@ class DKD(nn.Module):
         is_max[:, :, : self.radius, :] = False
         is_max[:, :, :, : self.radius] = False
         if image_size is not None:
-            for i in range(b):
-                iw, ih = image_size[i].long()
-                is_max[i, :, ih.item() - self.radius :, :] = False
-                is_max[i, :, :, iw.item() - self.radius :] = False
+            # Keep size-dependent border decisions on device instead of reading two scalars per image.
+            ends = _to_device_nonblocking(image_size, scores_map.device, torch.long) - self.radius
+            w_end, h_end = ends.unbind(-1)
+            # Match Python slice starts, including a negative start when an image is smaller than the radius.
+            w_end = torch.where(w_end < 0, w_end + w, w_end)
+            h_end = torch.where(h_end < 0, h_end + h, h_end)
+            rows = torch.arange(h, device=scores_map.device).view(1, 1, h, 1)
+            cols = torch.arange(w, device=scores_map.device).view(1, 1, 1, w)
+            is_max &= (rows < h_end.view(b, 1, 1, 1)) & (cols < w_end.view(b, 1, 1, 1))
         else:
             is_max[:, :, -self.radius :, :] = False
             is_max[:, :, :, -self.radius :] = False
