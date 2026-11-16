@@ -1492,11 +1492,11 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
         self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
 
     def test_rotate3d_default_center_promotes_all_angles(self, device):
-        """A half yaw must not override the float32 dtype of the concatenated rotation vector."""
+        """Half yaw and pitch must not override the float32 dtype that roll gives the concatenated rotation vector."""
         volume = torch.arange(75, device=device, dtype=torch.float32).reshape(1, 1, 3, 5, 5) / 80
         yaw = torch.zeros(1, device=device, dtype=torch.float16)
-        pitch = torch.zeros(1, device=device, dtype=torch.float32)
-        roll = torch.full_like(yaw, 90)
+        pitch = torch.zeros_like(yaw)
+        roll = torch.full((1,), 90.0, device=device, dtype=torch.float32)
         actual = kornia.geometry.transform.rotate3d(volume, yaw, pitch, roll, align_corners=True)
         self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
 
