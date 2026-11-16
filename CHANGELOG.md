@@ -11,6 +11,32 @@ Run `pixi run changelog-preview` to read the assembled notes.
 
 <!-- towncrier release notes start -->
 
+## [0.9.2] - 2026-11-16
+
+### Added
+
+- The GPU acceleration page lists the geometry solvers that need a newer PyTorch on MPS, where older releases lack a linear-algebra kernel and raise `NotImplementedError`: `RANSAC` with the homography and fundamental models and its default `local_optimization="lm"`, and `find_fundamental(method="7POINT")`, need torch 2.7; `find_homography_dlt` with its default `solver="lu"`, `find_homography_dlt_iterated`, `safe_solve_with_mask` and `RANSAC("homography", local_optimization="dlt")` need torch 2.10; `find_fundamental` with its default `method="8POINT"` (2.7 for exactly eight correspondences without weights) and `RANSAC` with the fundamental and essential models and `local_optimization="dlt"` need torch 2.14. `PYTORCH_ENABLE_MPS_FALLBACK=1` runs them on an older torch. The docstrings of these functions point to the table. ([#6774](https://github.com/kornia/kornia/pull/6774))
+- `LightGlueMatcher` and `LightGlue` synchronize the host with the device fewer times per image pair. Besides the reads of early stopping (one per layer run) and point pruning (one per pruned layer and image), a call synchronizes twice instead of 17 times (ALIKED or DISK features, measured with `torch.cuda.set_sync_debug_mode`): the matcher computes the keypoint scales and orientations only for the weights that read them (the `"sift"`, `"doghardnet"` and `"dog_affnet_hardnet"` configurations), copies `hw1`/`hw2` to the device without blocking, and returns the match lists `LightGlue` already computed; `LightGlue` selects each pair's matches with one read of the device and checks the keypoint range of both images with one read. The matches and scores are unchanged. On CUDA (RTX 4090, torch 2.15) matching a 2048-keypoint pair at 1024 px is 2-13 % faster for ALIKED, DISK and XFeat features. ([#6779](https://github.com/kornia/kornia/pull/6779))
+- Under `torch.no_grad()` or `torch.inference_mode()`, `kornia.feature.aliked.deform_conv2d` builds the `grid_sample` coordinates straight from the offsets, with one fused multiply-add and one division per axis on a zero-offset grid, and `deform_conv2d` computes a single-group convolution with one `torch.bmm`. That is about half the kernel launches per call. On CUDA (RTX 4090, torch 2.15) the `ALIKED` forward of a 1024 px image is 8-11 % faster, closing most of the gap to `torchvision.ops.deform_conv2d`; on a single x86 CPU thread (i7-14700K) it is about 5 % faster. Outputs change by float32 rounding, and half-precision inputs are still sampled in float32. Mask modulation preserves PyTorch dtype promotion when mask and input dtypes differ. ([#6780](https://github.com/kornia/kornia/pull/6780))
+- The inference paths of `ALIKED`, `DISK`, `XFeat`, `LoFTR` and the pyramid patch extraction behind `LAFDescriptor` synchronize the host with the device less often, with bit-identical outputs: small per-call constants are copied to the device without blocking, and selections that read the device once per tensor read it once (DISK picks its `n` strongest maxima without a second read, LoFTR skips the ground-truth filter outside training). Per call, measured with `torch.cuda.set_sync_debug_mode`: ALIKED 5 -> 1, DISK 4 -> 1, `XFeat.detectAndCompute` 8 -> 2, `XFeat.match_xfeat_star` 12 -> 2, LoFTR 5 -> 1, `LAFDescriptor(HardNet)` 4 -> 0. On CUDA (RTX 4090, torch 2.15) XFeat* matching is about 10 % faster and ALIKED and the HardNet patch descriptor about 4 % faster at 1024 px. ([#6781](https://github.com/kornia/kornia/pull/6781))
+- Reduce host synchronization in ALIKED's per-image border masking, AdaLAM's deterministic pair sampling, and ONNX LightGlue's keypoint range validation while preserving outputs and validation errors. ([#6793](https://github.com/kornia/kornia/pull/6793))
+
+### Bug fixes
+
+- Added the missing SD XL example figure to the `RandomDissolving` and `StableDiffusionDissolving` docstring tables. ([#6719](https://github.com/kornia/kornia/pull/6719))
+- `raw_to_rgb` preserves measured Bayer sensor samples when autocast lowers the precision of green interpolation. ([#6759](https://github.com/kornia/kornia/pull/6759))
+- Fixed NaN second and higher derivatives of `So3.right_jacobian`, `So3.left_jacobian`, `So3.Jr` and `So3.Jl` at zero rotation. ([#6776](https://github.com/kornia/kornia/pull/6776))
+- Fix LoFTR linear attention erasing float16 outputs and value gradients when its unnormalized sums overflow at
+  ordinary image sizes. Half-precision attention now computes in float32, outside autocast in eager and compiled
+  calls, and returns the query dtype. Fully masked key sequences also return finite zeros. ([#6786](https://github.com/kornia/kornia/pull/6786))
+- `crop_and_resize3d`, `crop_by_boxes3d` and `center_crop3d` no longer round the boxes and crop matrix of a float16 or bfloat16 volume to its dtype before sampling. A resized crop's corners missed the requested voxels, so a unit value read as 0.96 (float16) or 0.79 (bfloat16), and a box past depth 256 (bfloat16) or 2048 (float16) read a neighbouring slice or raised `torch.linalg.LinAlgError`. ([#6787](https://github.com/kornia/kornia/pull/6787))
+- `rotate3d` with the default center no longer raises inside an autocast region when the volume and the angles have different floating-point dtypes, for example a float16 volume with float32 angles. The default center now takes the angles' promoted dtype, so the call gives the same result as passing that center explicitly. ([#6788](https://github.com/kornia/kornia/pull/6788))
+
+### Breaking changes
+
+- Changed the `Boxes` constructor to validate every element of a list when `raise_if_not_floating_point=True`. Previously, mixed-dtype lists could be accepted when the first element was floating-point, even if subsequent elements were integers. Now, such lists raise `ValueError` regardless of element order. Set `raise_if_not_floating_point=False` to allow integer tensors to be converted to floating-point. ([#6765](https://github.com/kornia/kornia/pull/6765))
+
+
 ## [0.9.1] - 2026-11-13
 
 ### Added
