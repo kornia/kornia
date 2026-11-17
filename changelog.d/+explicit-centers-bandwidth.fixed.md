@@ -1,0 +1,1 @@
+`kornia.enhance.image_histogram2d` with explicit `centers` and no `bandwidth` now takes its default bandwidth from those centers: their mean gap, which is their spacing when they are evenly spaced, instead of `(max - min) / n_bins`. A single center keeps the range-based default; centers without a spacing, such as two equal centers, now ask for an explicit `bandwidth`.
