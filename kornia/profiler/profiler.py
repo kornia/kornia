@@ -33,7 +33,6 @@ from kornia.profiler.metrics import (
 )
 from kornia.profiler.transforms import Transform
 
-
 pd = LazyLoader("pandas", globals(), "pandas")
 
 
