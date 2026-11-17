@@ -20,6 +20,7 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import BaseError
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar.essential import _refine_essential_lm
 
@@ -1056,6 +1057,21 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
             (E_mat, K1, K2, x1, x2),
             requires_grad=(True, False, False, False, False),
         )
+
+    def test_exception(self, device, dtype):
+        E_mat = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
+        K1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        K2 = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        x1 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        x2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+
+        with pytest.raises(BaseError, match=r"E_mat, K1 and K2 must have the same number of batch dimensions"):
+            epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)
+
+        E_mat_valid = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        bad_mask = torch.ones(1, 3, dtype=torch.bool, device=device)
+        with pytest.raises(BaseError, match=r"mask and x1 batch and point dimensions must match"):
+            epi.motion_from_essential_choose_solution(E_mat_valid, K1, K2, x1, x2, mask=bad_mask)
 
 
 # A five-point sample of normalised coordinates with no real root (recipe in the #4883 pin).

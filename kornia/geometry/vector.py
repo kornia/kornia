@@ -116,7 +116,7 @@ class Vector3(TensorWrapper):
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
-        KORNIA_CHECK(vector.shape[-1] == 3)
+        KORNIA_CHECK(vector.shape[-1] == 3, f"Vector3 last dimension must be 3. Got {vector.shape}")
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
@@ -239,8 +239,11 @@ class Vector3(TensorWrapper):
         Returns:
             :class:`Vector3` containing the assembled coordinates.
         """
-        KORNIA_CHECK(type(x) is type(y) is type(z))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(
+            type(x) is type(y) is type(z),
+            f"x, y and z must have the same type. Got {type(x)}, {type(y)} and {type(z)}",
+        )
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)), f"Coordinates must be torch.Tensor or float. Got {type(x)}")
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
@@ -268,7 +271,7 @@ class Vector2(TensorWrapper):
 
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
-        KORNIA_CHECK(vector.shape[-1] == 2)
+        KORNIA_CHECK(vector.shape[-1] == 2, f"Vector2 last dimension must be 2. Got {vector.shape}")
 
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}"
@@ -361,8 +364,8 @@ class Vector2(TensorWrapper):
         Returns:
             :class:`Vector2` containing the assembled coordinates.
         """
-        KORNIA_CHECK(type(x) is type(y))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(type(x) is type(y), f"x and y must have the same type. Got {type(x)} and {type(y)}")
+        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)), f"Coordinates must be torch.Tensor or float. Got {type(x)}")
         if isinstance(x, float):
             return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...

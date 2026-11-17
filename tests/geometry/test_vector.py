@@ -21,6 +21,7 @@ import pickle
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
@@ -119,6 +120,16 @@ class TestVector3(BaseTester):
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
 
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector3 last dimension must be 3"):
+            Vector3(torch.rand(2, device=device, dtype=dtype))
+
+        with pytest.raises(BaseError, match=r"x, y and z must have the same type"):
+            Vector3.from_coords(1.0, 2.0, torch.tensor(3.0, device=device, dtype=dtype))
+
+        with pytest.raises(BaseError, match=r"Coordinates must be torch.Tensor or float"):
+            Vector3.from_coords("1", "2", "3")
+
 
 class TestVector2(BaseTester):
     def test_smoke(self, device, dtype):
@@ -193,6 +204,16 @@ class TestVector2(BaseTester):
         assert torch.isfinite(zero.grad).all()
         expected = torch.zeros_like(zero) if dtype == torch.float16 else torch.full_like(zero, 1e12)
         self.assert_close(zero.grad, expected)
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector2 last dimension must be 2"):
+            Vector2(torch.rand(3, device=device, dtype=dtype))
+
+        with pytest.raises(BaseError, match=r"x and y must have the same type"):
+            Vector2.from_coords(1.0, torch.tensor(2.0, device=device, dtype=dtype))
+
+        with pytest.raises(BaseError, match=r"Coordinates must be torch.Tensor or float"):
+            Vector2.from_coords("1", "2")
 
 
 @pytest.mark.usefixtures("restore_torch_rng")

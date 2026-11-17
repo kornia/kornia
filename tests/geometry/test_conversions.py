@@ -5979,8 +5979,12 @@ class TestEulerFromQuaternion(BaseTester):
     def test_exception(self, device, dtype):
         q = Quaternion.random(batch_size=2)
         q = q.to(device, dtype)
-        with pytest.raises(BaseError):
-            euler_from_quaternion(q.w, torch.rand(1), q.y, q.z)
+        with pytest.raises(BaseError, match=r"w and x must have the same shape"):
+            euler_from_quaternion(q.w, torch.rand(1, device=device, dtype=dtype), q.y, q.z)
+        with pytest.raises(BaseError, match=r"x and y must have the same shape"):
+            euler_from_quaternion(q.w, q.x, torch.rand(1, device=device, dtype=dtype), q.z)
+        with pytest.raises(BaseError, match=r"y and z must have the same shape"):
+            euler_from_quaternion(q.w, q.x, q.y, torch.rand(1, device=device, dtype=dtype))
 
     def test_gradcheck(self, device):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
@@ -6366,9 +6370,11 @@ class TestQuaternionFromEuler(BaseTester):
         assert qz.shape[0] == batch_size
 
     def test_exception(self, device, dtype):
-        _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        with pytest.raises(BaseError):
-            quaternion_from_euler(torch.rand(1), pitch, yaw)
+        roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
+        with pytest.raises(BaseError, match=r"roll and pitch must have the same shape"):
+            quaternion_from_euler(torch.rand(1, device=device, dtype=dtype), pitch, yaw)
+        with pytest.raises(BaseError, match=r"pitch and yaw must have the same shape"):
+            quaternion_from_euler(roll, pitch, torch.rand(1, device=device, dtype=dtype))
 
     def test_gradcheck(self, device):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)

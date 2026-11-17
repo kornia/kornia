@@ -990,11 +990,17 @@ def motion_from_essential_choose_solution(
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(x1, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(x2, ["*", "N", "2"])
-    KORNIA_CHECK(len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]))
+    KORNIA_CHECK(
+        len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]),
+        f"E_mat, K1 and K2 must have the same number of batch dimensions. Got {E_mat.shape}, {K1.shape} and {K2.shape}",
+    )
 
     if mask is not None:
         KORNIA_CHECK_SHAPE(mask, ["*", "N"])
-        KORNIA_CHECK(mask.shape == x1.shape[:-1])
+        KORNIA_CHECK(
+            mask.shape == x1.shape[:-1],
+            f"mask and x1 batch and point dimensions must match. Got {mask.shape} and {x1.shape[:-1]}",
+        )
 
     unbatched = len(E_mat.shape) == 2
 

@@ -208,7 +208,7 @@ class Hyperplane(nn.Module):
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
         """
-        KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
+        KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)), f"p must be a Vector3 or torch.Tensor. Got {type(p)}")
         return Scalar(batched_dot_product(self.normal.data, _unwrap(p)) + self.offset.data)
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
@@ -283,8 +283,14 @@ class Hyperplane(nn.Module):
         p2_data = _unwrap(p2)
 
         KORNIA_CHECK_SHAPE(p0_data, ["*", "3"])
-        KORNIA_CHECK(p0_data.shape == p1_data.shape)
-        KORNIA_CHECK(p1_data.shape == p2_data.shape)
+        KORNIA_CHECK(
+            p0_data.shape == p1_data.shape,
+            f"p0 and p1 must have the same shape. Got {p0_data.shape} and {p1_data.shape}",
+        )
+        KORNIA_CHECK(
+            p1_data.shape == p2_data.shape,
+            f"p1 and p2 must have the same shape. Got {p1_data.shape} and {p2_data.shape}",
+        )
 
         # Half-precision points are converted to float32 before the edges are taken. In float16 the cross product of
         # a small triangle underflows (edges of 1e-4 give 1e-8, below the smallest subnormal 6e-8), that of a large

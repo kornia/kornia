@@ -22,7 +22,7 @@ import pytest
 import torch
 from torch import nn
 
-from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.pose import NamedPose
@@ -98,6 +98,13 @@ class TestSe3(BaseTester):
 
         with pytest.raises(TypeError, match=r"Unsupported type"):
             Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype)) * 4
+
+        x = torch.rand(5, dtype=dtype, device=device)
+        y = torch.rand(3, dtype=dtype, device=device)
+        with pytest.raises(BaseError, match=r"x and y must have the same shape"):
+            Se3.trans(x, y, y)
+        with pytest.raises(BaseError, match=r"y and z must have the same shape"):
+            Se3.trans(y, y, x)
 
     def test_gradcheck(self, device):
         v = torch.tensor([[1.0, 2.0, 3.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64)

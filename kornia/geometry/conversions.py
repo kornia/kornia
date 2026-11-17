@@ -1598,9 +1598,9 @@ def euler_from_quaternion(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    KORNIA_CHECK(w.shape == x.shape)
-    KORNIA_CHECK(x.shape == y.shape)
-    KORNIA_CHECK(y.shape == z.shape)
+    KORNIA_CHECK(w.shape == x.shape, f"w and x must have the same shape. Got {w.shape} and {x.shape}")
+    KORNIA_CHECK(x.shape == y.shape, f"x and y must have the same shape. Got {x.shape} and {y.shape}")
+    KORNIA_CHECK(y.shape == z.shape, f"y and z must have the same shape. Got {y.shape} and {z.shape}")
 
     quaternion = torch.stack((w, x, y, z), dim=-1)
     # float16 and bfloat16 are computed in float32 and rounded once; the half-precision arithmetic was up to 5 eps
@@ -1718,8 +1718,10 @@ def quaternion_from_euler(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    KORNIA_CHECK(roll.shape == pitch.shape)
-    KORNIA_CHECK(pitch.shape == yaw.shape)
+    KORNIA_CHECK(
+        roll.shape == pitch.shape, f"roll and pitch must have the same shape. Got {roll.shape} and {pitch.shape}"
+    )
+    KORNIA_CHECK(pitch.shape == yaw.shape, f"pitch and yaw must have the same shape. Got {pitch.shape} and {yaw.shape}")
 
     # float16 and bfloat16 are computed in float32 and rounded once, which keeps every coefficient within rounding of
     # the exact value for the given angles; the half-precision arithmetic was up to 1.1 eps off. Other dtypes run
