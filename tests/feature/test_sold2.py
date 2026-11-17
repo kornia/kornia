@@ -40,7 +40,7 @@ class TestLocalHeatmapRefinement(BaseTester):
         ).float()
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("shape", [(64, 80), (72, 64)])
+    @pytest.mark.parametrize("shape", [(64, 80), (72, 64), (32, 64), (64, 32)])
     @pytest.mark.parametrize("num_blocks, overlap_ratio", [(1, 0.5), (5, 0.0), (20, 0.5), (20, 0.75)])
     @pytest.mark.parametrize("value", [0.0, 0.0005, 0.5])
     def test_overlapping_blocks_and_inactive_blocks(self, device, dtype, shape, num_blocks, overlap_ratio, value):

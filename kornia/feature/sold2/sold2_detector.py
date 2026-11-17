@@ -357,8 +357,8 @@ class LineSegmentDetectionModule:
             for w_idx in range(num_blocks):
                 h_start = round(h_idx * h_block * increase_ratio)
                 w_start = round(w_idx * w_block * increase_ratio)
-                h_end = h_start + h_block if h_idx < num_blocks - 1 else H
-                w_end = w_start + w_block if w_idx < num_blocks - 1 else W
+                h_end = min(h_start + h_block, H) if h_idx < num_blocks - 1 else H
+                w_end = min(w_start + w_block, W) if w_idx < num_blocks - 1 else W
                 blocks.setdefault((h_end - h_start, w_end - w_start), []).append(h_start * W + w_start)
 
         count_map = torch.zeros(H * W, dtype=torch.int, device=heatmap.device)
