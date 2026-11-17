@@ -192,6 +192,10 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://github.com/Shiaoming/ALIKED/raw/main/models/aliked-n16.pth",
     ],
     "xfeat.pt": "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat.pt",
+    # CLIDD: the slow parity test and test_pretrained_mode load A48, and generate_examples.main
+    # loads the default L64. The cache names carry a prefix; the release names its files A48.pth.
+    "clidd_A48.pth": "https://github.com/HITCSC/CLIDD/releases/download/v1.0/A48.pth",
+    "clidd_L64.pth": "https://github.com/HITCSC/CLIDD/releases/download/v1.0/L64.pth",
     # -- deblurring ----------------------------------------------------------
     # DeFMO(True): smoke and jit tests instantiate both halves.
     "encoder_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
