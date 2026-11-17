@@ -25,7 +25,7 @@ from kornia.core.exceptions import BaseError
 from kornia.feature import CLIDD, CLIDDModel
 from kornia.feature.clidd import clidd as clidd_module
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 _HAS_TRITON = importlib.util.find_spec("triton") is not None
 
@@ -257,6 +257,30 @@ class TestCLIDDTriton(BaseTester):
         # The backward adds with atomics in a run-dependent order (see test_triton_matches_pytorch): compare relative
         # to the largest gradient, about 1e-6 apart.
         assert (x_compiled.grad - x_eager.grad).abs().max() <= 1e-4 * x_eager.grad.abs().max()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_export_records_the_pytorch_formulation(self, device):
+        # torch.export rejects raw Triton launches: the automatic mode of a 128-D variant, which runs the kernels in
+        # eager on CUDA, must fall back to the PyTorch formulation inside an export.
+        torch.manual_seed(0)
+        net = CLIDDModel("G128").to(device).eval()
+
+        class _Describe(torch.nn.Module):
+            def __init__(self, net: CLIDDModel) -> None:
+                super().__init__()
+                self.net = net
+
+            def forward(self, img: torch.Tensor, kp: torch.Tensor) -> torch.Tensor:
+                maps, _ = self.net(img)
+                return self.net.describe(maps, kp)
+
+        x = torch.rand(1, 3, 64, 96, device=device)
+        kp = torch.rand(1, 50, 2, device=device) * 2 - 1
+        with torch.no_grad():
+            exported = torch.export.export(_Describe(net), (x, kp), strict=False)
+            net.use_triton = False
+            expected = _Describe(net)(x, kp)
+            self.assert_close(exported.module()(x, kp), expected)
 
     def test_clidd_empty_keypoints_with_triton(self, device):
         if not _HAS_TRITON:

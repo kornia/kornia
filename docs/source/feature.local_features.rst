@@ -227,7 +227,7 @@ keypoint models with the authors' code on each device.
    * - :class:`CLIDD`
      - RGB ``(B, 3, H, W)`` in ``[0, 1]``, or grayscale ``(B, 1, H, W)``, resized to multiples of 32
      - one dict per image: keypoints and 48-, 64- or 128-D descriptors; :meth:`CLIDD.match` matches
-       two images by dual softmax. The Triton kernels are optional
+       the descriptors of two images by dual softmax. The Triton kernels are optional
      - none
    * - :class:`DeDoDe`
      - RGB ``(B, 3, H, W)`` in ``[0, 1]``, padded to multiples of 14

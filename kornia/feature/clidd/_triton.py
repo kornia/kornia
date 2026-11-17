@@ -445,7 +445,8 @@ class _DeformableSampleProject(torch.autograd.Function):
         C_out = weight.shape[0]
         weight_mcc = weight[:, :, 0].permute(2, 1, 0).contiguous()
 
-        # Accumulate in float32: the kernel adds atomically, and half-precision atomics lose the small contributions.
+        # Accumulate in float32, as the forward does, rather than with half-precision atomics. On U128 at 480 x 640 with
+        # 4,096 keypoints this changed no gradient measurably: half-precision rounding elsewhere dominates.
         grad_input = torch.zeros(input_nhwc.shape, device=input_nhwc.device, dtype=torch.float32)
         grad_grid = torch.zeros(grid.shape, device=grid.device, dtype=torch.float32)
         grad_weight_mcc = torch.zeros(weight_mcc.shape, device=weight.device, dtype=torch.float32)

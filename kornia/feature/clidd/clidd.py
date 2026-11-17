@@ -59,7 +59,7 @@ from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.ops import _copied_literal
-from kornia.core.utils import _l2_normalize, _samples_half_in_float32
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32, is_exporting
 from kornia.geometry.subpix import nms2d
 
 _CLIDD_CONFIGS: Dict[str, Dict[str, int]] = {
@@ -112,8 +112,9 @@ def _uses_triton(use_triton: Optional[bool], variant: str, x: torch.Tensor) -> b
         )
         return True
     # Inductor before torch 2.7 miscompiles the kernels (see kornia/feature/clidd/_triton.py), which then stay out of
-    # compiled graphs: keep the automatic mode compilable there.
-    return usable and variant in _TRITON_BY_DEFAULT and not torch_version_lt(2, 7, 0)
+    # compiled graphs: keep the automatic mode compilable there. torch.export rejects raw Triton launches, so an export
+    # records the PyTorch formulation; before torch 2.12 is_exporting() also holds inside torch.compile.
+    return usable and variant in _TRITON_BY_DEFAULT and not torch_version_lt(2, 7, 0) and not is_exporting()
 
 
 class _BasicLayer(nn.Module):
@@ -176,7 +177,9 @@ class CLIDDModel(nn.Module):
           :func:`torch.nn.functional.conv2d`. ``True`` runs the kernels and raises without the ``triton`` package,
           off CUDA, or for float64 maps, which the kernels would compute in float32; ``False`` always runs PyTorch.
           ``None`` (the default) runs the kernels for float32, float16 and bfloat16 maps on CUDA with Triton installed
-          and a 128-D variant (``"G128"``, ``"E128"``, ``"U128"``) from torch 2.7, and PyTorch otherwise.
+          and a 128-D variant (``"G128"``, ``"E128"``, ``"U128"``) from torch 2.7, and PyTorch otherwise, including
+          under :func:`torch.export.export`, which rejects raw Triton launches. Before torch 2.12 Torch reports a
+          ``torch.compile`` trace as an export too, so there a compiled ``None`` also runs PyTorch.
         - Both implementations are differentiable and agree to float32 rounding with TF32 off; the kernels use TF32
           when ``torch.backends.cudnn.allow_tf32`` is set, as the convolution of the PyTorch formulation does. Both
           compile with ``torch.compile(fullgraph=True)`` from torch 2.7. Inductor in torch 2.5 and 2.6 miscompiles the
