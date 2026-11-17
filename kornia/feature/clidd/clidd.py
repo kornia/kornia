@@ -60,6 +60,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.ops import _copied_literal
 from kornia.core.utils import _l2_normalize, _samples_half_in_float32
+from kornia.geometry.subpix import nms2d
 
 _CLIDD_CONFIGS: Dict[str, Dict[str, int]] = {
     "A48": {"c1": 4, "c2": 4, "c3": 4, "r1": 1, "r2": 1, "r3": 1, "cdesc": 48, "cdetect": 4, "M": 4},
@@ -74,6 +75,16 @@ _CLIDD_CONFIGS: Dict[str, Dict[str, int]] = {
 }
 
 _WEIGHTS_URL = "https://github.com/HITCSC/CLIDD/releases/download/v1.0/{}.pth"
+
+
+def _weights_source(variant: str) -> Tuple[str, str]:
+    """Return the cache file name and the URL of the authors' v1.0 checkpoint of ``variant``.
+
+    The release names its files after the variant alone (``L64.pth``), so the cache entry in the shared torch hub
+    directory carries a ``clidd_`` prefix.
+    """
+    return f"clidd_{variant}.pth", _WEIGHTS_URL.format(variant)
+
 
 # Keypoints closer than this to the border of the resized image are dropped, as in the reference implementation.
 _BORDER = 4
@@ -294,8 +305,9 @@ class CLIDDModel(nn.Module):
         """
         KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         if keypoints.shape[1] == 0:
-            # conv2d rejects the empty (B, C, 0, M) samples.
-            return keypoints.new_zeros(keypoints.shape[0], 0, self.post_conv.out_channels).to(maps[0].dtype)
+            # conv2d rejects the empty (B, C, 0, M) samples. An empty view of a map, so that a loss summed over no
+            # descriptors still backpropagates (to zero gradients) like a non-empty one.
+            return maps[0][:, :1, :1, :1].reshape(maps[0].shape[0], 1, 1).expand(-1, 0, self.post_conv.out_channels)
         triton = _uses_triton(self.use_triton, self.variant, maps[0])
         if triton:
             maps = (
@@ -324,9 +336,10 @@ class CLIDD(nn.Module):
 
     ``clidd = CLIDD.from_pretrained("L64")`` loads trained weights in evaluation mode, and ``features = clidd(images)``
     takes RGB images ``(B, 3, H, W)`` in :math:`[0, 1]`, or grayscale ``(B, 1, H, W)``, and returns one dictionary per
-    image with up to ``top_k`` integer-pixel keypoints ``(N, 2)`` as ``(x, y)`` pixels, their scores ``(N,)`` in
-    descending order and L2-normalised descriptors ``(N, D)``. Match the descriptors of two images with
-    :meth:`match`, the dual-softmax mutual nearest neighbours of the authors, or with :func:`match_mnn`.
+    image with up to ``top_k`` keypoints ``(N, 2)`` as ``(x, y)`` input pixels (integer pixels when ``H`` and ``W`` are
+    multiples of 32), their scores ``(N,)`` in descending order and L2-normalised descriptors ``(N, D)``. Match the
+    descriptors of two images with :meth:`match`, the dual-softmax mutual nearest neighbours of the authors, or with
+    :func:`match_mnn`.
 
     The variants trade accuracy for speed; the number is the descriptor size ``D``. The authors report, on an NVIDIA
     Jetson Orin-NX: ``"A48"`` 4,252 parameters, 881 FPS; ``"N64"`` 0.019 M, 843 FPS; ``"T64"`` 0.043 M, 804 FPS;
@@ -343,16 +356,18 @@ class CLIDD(nn.Module):
         - The forward does not change the grad mode: run it under ``torch.no_grad()`` or ``torch.inference_mode()``
           for inference. The descriptors are differentiable with respect to the image and the weights; the keypoints
           and the choice of keypoints are not.
-        - The image is resized bilinearly with ``align_corners=True``, as in the reference implementation, to
-          ``(H', W')``: ``H`` and ``W`` rounded down to multiples of 32, at least 32. Pixel ``i`` of the resized image
-          is reported at :math:`i (W - 1) / (W' - 1)` in :math:`x`, and likewise in :math:`y`: the input position that
-          resize samples, in the pixel convention of :func:`~kornia.feature.laf_from_center_scale_ori`. That is
-          exactly ``i`` when ``H`` and ``W`` are multiples of 32. The reference reports :math:`i W / W'` instead, up
-          to :math:`(W - W') / W'` px, below one pixel, away.
-        - A keypoint is a pixel of the score map equal to the maximum of its ``2 * nms_radius + 1`` window, as in the
-          reference, so tied maxima all survive, at least 4 pixels from the border of the resized image, with a score
-          strictly above ``detection_threshold``. Scores are the raw logits of the score head. The ``top_k`` highest
-          are kept, all of them for ``top_k=None``, in descending order.
+        - The image is resized bilinearly with ``align_corners=False`` to ``(H', W')``: ``H`` and ``W`` rounded down
+          to multiples of 32, at least 32. Pixel ``i`` of the resized image is reported at its centre in the input,
+          :math:`(i + 0.5) W / W' - 0.5` in :math:`x`, and likewise in :math:`y`, in the pixel convention of
+          :func:`~kornia.feature.laf_from_center_scale_ori`, as :class:`XFeat` does. That is exactly ``i`` when ``H``
+          and ``W`` are multiples of 32. This departs on purpose from the reference implementation, which resizes
+          with ``align_corners=True`` and reports :math:`i W / W'`.
+        - A keypoint is a strict local maximum of the score map in its ``2 * nms_radius + 1`` window
+          (:func:`~kornia.geometry.subpix.nms2d`, as in :class:`XFeat` and :class:`ALIKED`), at least 4 pixels from
+          the border of the resized image, with a score strictly above ``detection_threshold``. Tied maxima are never
+          keypoints. This departs on purpose from the reference implementation, which keeps every pixel equal to the
+          maximum of its window, so all pixels of a plateau. Scores are the raw logits of the score head. The
+          ``top_k`` highest are kept, all of them for ``top_k=None``, in descending order.
         - A ``(B, 1, H, W)`` image is repeated to three channels, and other channel counts raise. The image is cast
           to the dtype of the weights after the resize. Keypoints are float32, or float64 for a float64 model; scores
           and descriptors have the dtype of the weights.
@@ -360,7 +375,7 @@ class CLIDD(nn.Module):
     Args:
         variant: the network configuration; see :class:`CLIDDModel`. Default: ``"L64"``.
         top_k: the number of keypoints kept per image, or ``None`` for all. Default: ``4096``.
-        nms_radius: the radius of the maximum window; ``0`` disables the suppression. Default: ``2``.
+        nms_radius: the radius of the suppression window; ``0`` disables the suppression. Default: ``2``.
         detection_threshold: the logit a keypoint must exceed. Default: ``-5.0``, as in the reference.
         use_triton: whether to run the fused Triton kernels; see :class:`CLIDDModel`. Default: ``None``, which runs
             them for the 128-D variants on CUDA from torch 2.7 when the ``triton`` package is installed.
@@ -408,7 +423,7 @@ class CLIDD(nn.Module):
         Args:
             variant: the network configuration; see :class:`CLIDDModel`. Default: ``"L64"``.
             top_k: the number of keypoints kept per image, or ``None`` for all. Default: ``4096``.
-            nms_radius: the radius of the maximum window. Default: ``2``.
+            nms_radius: the radius of the suppression window. Default: ``2``.
             detection_threshold: the logit a keypoint must exceed. Default: ``-5.0``.
             use_triton: whether to run the fused Triton kernels. Default: ``None`` (automatic).
 
@@ -416,9 +431,8 @@ class CLIDD(nn.Module):
             The model in evaluation mode.
         """
         model = cls(variant, top_k, nms_radius, detection_threshold, use_triton)
-        state_dict = load_state_dict_from_url(
-            _WEIGHTS_URL.format(variant), file_name=f"clidd_{variant}.pth", map_location="cpu"
-        )
+        file_name, url = _weights_source(variant)
+        state_dict = load_state_dict_from_url(url, file_name=file_name, map_location="cpu")
         model.net.load_state_dict(state_dict)
         return model.eval()
 
@@ -435,12 +449,16 @@ class CLIDD(nn.Module):
         KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
         KORNIA_CHECK(images.shape[1] in (1, 3), "CLIDD takes RGB (B, 3, H, W) or grayscale (B, 1, H, W) images.")
         B, _, H, W = images.shape
+        if B == 0:
+            # nms2d pools windows other than 3, 5 and 7 with max_pool2d, which on MPS returns a (0,) tensor for an empty
+            # batch (torch 2.15).
+            return []
         h, w = max(32, H // 32 * 32), max(32, W // 32 * 32)
         dtype = self.net.conv1.weight.dtype
         x = images
         if (h, w) != (H, W):
             wide = torch.float32 if _samples_half_in_float32(x) else x.dtype
-            x = F.interpolate(x.to(wide), (h, w), mode="bilinear", align_corners=True)
+            x = F.interpolate(x.to(wide), (h, w), mode="bilinear", align_corners=False)
         x = x.to(dtype)
         if x.shape[1] == 1:
             x = x.expand(-1, 3, -1, -1)
@@ -449,15 +467,15 @@ class CLIDD(nn.Module):
         score = score[:, 0]
         detect = score > self.detection_threshold
         if self.nms_radius > 0:
-            r = self.nms_radius
-            detect = detect & (score == F.max_pool2d(score[:, None], 2 * r + 1, 1, r)[:, 0])
+            k = 2 * self.nms_radius + 1
+            detect = detect & nms2d(score[:, None], (k, k), mask_only=True)[:, 0]
         inner = torch.zeros_like(detect)
         inner[:, _BORDER:-_BORDER, _BORDER:-_BORDER] = True
         detect = detect & inner
 
         kpt_dtype = torch.promote_types(dtype, torch.float32)
         size = _copied_literal([w, h], device=x.device, dtype=kpt_dtype)
-        ratio = _copied_literal([(W - 1) / (w - 1), (H - 1) / (h - 1)], device=x.device, dtype=kpt_dtype)
+        ratio = _copied_literal([W / w, H / h], device=x.device, dtype=kpt_dtype)
         out: List[Dict[str, torch.Tensor]] = []
         for b in range(B):
             yx = detect[b].nonzero()
@@ -467,7 +485,8 @@ class CLIDD(nn.Module):
             kpts = yx[order].flip(-1).to(kpt_dtype)
             grid = (kpts + 0.5) / size * 2 - 1
             descs = self.net.describe((maps[0][b : b + 1], maps[1][b : b + 1], maps[2][b : b + 1]), grid[None])[0]
-            out.append({"keypoints": kpts * ratio, "scores": scores, "descriptors": descs})
+            # Pixel i of the resized image has its centre at (i + 0.5) W / W' - 0.5 of the input.
+            out.append({"keypoints": (kpts + 0.5) * ratio - 0.5, "scores": scores, "descriptors": descs})
         return out
 
     @staticmethod
@@ -493,15 +512,16 @@ class CLIDD(nn.Module):
         KORNIA_CHECK_SHAPE(desc1, ["N1", "D"])
         if desc0.shape[0] == 0 or desc1.shape[0] == 0:
             return desc0.new_zeros(0, 1), torch.zeros(0, 2, dtype=torch.long, device=desc0.device)
-        sim = desc0 @ desc1.t()
-        # exp(beta (s - 1)) is the softmax numerator up to a constant factor, and stays finite for |s| <= 1.
-        prob = torch.exp((sim - 1) * beta)
-        prob = prob * prob / prob.sum(dim=-1, keepdim=True) / prob.sum(dim=-2, keepdim=True)
-        nn01 = prob.argmax(dim=1)
-        nn10 = prob.argmax(dim=0)
-        idx0 = torch.arange(prob.shape[0], device=prob.device)
+        # The sum of two log-softmaxes, in at least float32: the product of the softmaxes underflows to 0 in float16
+        # and, for low similarities and a large beta, in float32 as well, which would score a singleton pair 0, not 1.
+        wide = torch.promote_types(desc0.dtype, torch.float32)
+        logits = (desc0.to(wide) @ desc1.to(wide).t()) * beta
+        log_prob = logits.log_softmax(dim=-1) + logits.log_softmax(dim=-2)
+        nn01 = log_prob.argmax(dim=1)
+        nn10 = log_prob.argmax(dim=0)
+        idx0 = torch.arange(log_prob.shape[0], device=log_prob.device)
         mutual = nn10[nn01] == idx0
         idx0, idx1 = idx0[mutual], nn01[mutual]
-        scores = prob[idx0, idx1]
+        scores = log_prob[idx0, idx1].exp()
         keep = scores > min_score
-        return scores[keep, None], torch.stack([idx0[keep], idx1[keep]], dim=-1)
+        return scores[keep, None].to(desc0.dtype), torch.stack([idx0[keep], idx1[keep]], dim=-1)

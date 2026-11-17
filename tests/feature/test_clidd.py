@@ -51,6 +51,11 @@ def _image(batch: int = 1, height: int = 96, width: int = 128) -> torch.Tensor:
     return img[None].repeat(batch, 1, 1, 1)
 
 
+def _wide(device: torch.device) -> torch.dtype:
+    """float64 for a reference computation, float32 on MPS, which has no float64."""
+    return torch.float32 if device.type == "mps" else torch.float64
+
+
 def _random_clidd(variant: str, device: torch.device, dtype: torch.dtype, **kwargs) -> CLIDD:
     torch.manual_seed(0)
     return CLIDD(variant, **kwargs).to(device, dtype).eval()
@@ -84,19 +89,20 @@ class TestCLIDDModel(BaseTester):
         with pytest.raises(BaseError):
             CLIDDModel("X99")
 
-    def test_convention_clidd_samples_each_map_at_the_keypoint_moved_by_its_offset(self, device, dtype):
+    def test_convention_clidd_samples_each_map_at_the_keypoint_moved_by_its_offset(self, device):
         """A descriptor projects bilinear samples of each map at the keypoint plus the offsets of that map."""
         torch.manual_seed(0)
-        net = CLIDDModel("A48", use_triton=False).to(device, torch.float64).eval()
+        wide = _wide(device)
+        net = CLIDDModel("A48", use_triton=False).to(device, wide).eval()
         M = net.num_points
         # Zero offset weights: the bias alone gives the offsets, (x, y) pixels of the 64 x 96 image for map l, point m.
-        offsets = torch.randn(3, M, 2, dtype=torch.float64) * 3
+        offsets = torch.randn(3, M, 2, dtype=wide) * 3
         with torch.no_grad():
             net.dcn.weight.zero_()
             net.dcn.bias.copy_(offsets.flatten())
-        maps = tuple(torch.randn(1, 4, 64 // s, 96 // s, device=device, dtype=torch.float64) for s in (2, 8, 32))
+        maps = tuple(torch.randn(1, 4, 64 // s, 96 // s, device=device, dtype=wide) for s in (2, 8, 32))
         px, py = 37.0, 21.0  # pixel of the 64 x 96 image
-        kp = torch.tensor([[[(2 * px + 1) / 96 - 1, (2 * py + 1) / 64 - 1]]], device=device, dtype=torch.float64)
+        kp = torch.tensor([[[(2 * px + 1) / 96 - 1, (2 * py + 1) / 64 - 1]]], device=device, dtype=wide)
         desc = net.describe(maps, kp)[0, 0]
 
         samples = []
@@ -113,16 +119,17 @@ class TestCLIDDModel(BaseTester):
         self.assert_close(desc, F.normalize(expected, dim=0))
 
     def test_offsets_are_clamped_to_max_offset(self, device):
-        net = CLIDDModel("A48", max_offset=2.0, use_triton=False).to(device, torch.float64).eval()
-        far = CLIDDModel("A48", max_offset=2.0, use_triton=False).to(device, torch.float64).eval()
+        wide = _wide(device)
+        net = CLIDDModel("A48", max_offset=2.0, use_triton=False).to(device, wide).eval()
+        far = CLIDDModel("A48", max_offset=2.0, use_triton=False).to(device, wide).eval()
         far.load_state_dict(net.state_dict())
         with torch.no_grad():
             net.dcn.weight.zero_()
             net.dcn.bias.fill_(2.0)
             far.dcn.weight.zero_()
             far.dcn.bias.fill_(50.0)
-        maps = tuple(torch.randn(1, 4, 64 // s, 64 // s, device=device, dtype=torch.float64) for s in (2, 8, 32))
-        kp = torch.zeros(1, 3, 2, device=device, dtype=torch.float64)
+        maps = tuple(torch.randn(1, 4, 64 // s, 64 // s, device=device, dtype=wide) for s in (2, 8, 32))
+        kp = torch.zeros(1, 3, 2, device=device, dtype=wide)
         self.assert_close(far.describe(maps, kp), net.describe(maps, kp))
 
     def test_gradcheck(self, device):
@@ -153,6 +160,8 @@ class TestCLIDDModel(BaseTester):
     def test_use_triton_true_raises_where_the_kernels_do_not_run(self, device, map_dtype):
         if device.type == "cuda" and map_dtype == torch.float32 and _HAS_TRITON:
             pytest.skip("the kernels run here")
+        if device.type == "mps" and map_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
         net = CLIDDModel("A48", use_triton=True).to(device, map_dtype).eval()
         maps, _ = net(torch.rand(1, 3, 32, 32, device=device, dtype=map_dtype))
         with pytest.raises(BaseError, match="use_triton=True"):
@@ -164,6 +173,14 @@ class TestCLIDDModel(BaseTester):
         desc = net.describe(maps, torch.zeros(2, 0, 2, device=device, dtype=dtype))
         assert desc.shape == (2, 0, 48)
         assert desc.dtype == dtype
+
+    def test_describe_no_keypoints_backpropagates(self, device):
+        net = CLIDDModel("A48", use_triton=False).to(device).eval()
+        img = torch.rand(1, 3, 32, 32, device=device, requires_grad=True)
+        maps, _ = net(img)
+        net.describe(maps, torch.zeros(1, 0, 2, device=device)).sum().backward()
+        assert img.grad is not None
+        assert (img.grad == 0).all()
 
     @pytest.mark.parametrize("variant", ["A48", "L64", "G128", "U128"])
     def test_automatic_mode_runs_triton_for_the_128_dimensional_variants_on_cuda(self, variant, device):
@@ -300,9 +317,9 @@ class TestCLIDD(BaseTester):
         self.assert_close(desc.float().norm(dim=-1), torch.ones(desc.shape[0], device=device), low_tolerance=True)
 
     def test_each_image_is_described_independently_of_the_batch(self, device):
-        clidd = _random_clidd("A48", device, torch.float64)
+        clidd = _random_clidd("A48", device, _wide(device))
         # A random image: the periodic _image() gives tied scores, whose top-k order is not defined.
-        imgs = torch.rand(2, 3, 64, 96, device=device, dtype=torch.float64)
+        imgs = torch.rand(2, 3, 64, 96, device=device, dtype=_wide(device))
         batch = clidd(imgs)
         for b in range(2):
             single = clidd(imgs[b : b + 1])[0]
@@ -324,34 +341,67 @@ class TestCLIDD(BaseTester):
         assert img.grad is not None
         assert img.grad.abs().sum() > 0
 
-    def test_convention_clidd_keypoints_are_window_maxima_away_from_the_border(self, device):
+    def test_convention_clidd_keypoints_are_strict_window_maxima_away_from_the_border(self, device):
         clidd = _random_clidd("A48", device, torch.float32, top_k=None)
-        img = _image().to(device)
+        img = torch.rand(1, 3, 96, 128, device=device)
         out = clidd(img)[0]
         _, score = clidd.net(img)
         score = score[0, 0]
-        pooled = F.max_pool2d(score[None, None], 5, 1, 2)[0, 0]
+        assert out["keypoints"].shape[0] > 0
         x, y = out["keypoints"].long().unbind(-1)
         assert (x >= 4).all()
         assert (x < 128 - 4).all()
         assert (y >= 4).all()
         assert (y < 96 - 4).all()
         self.assert_close(score[y, x], out["scores"])
-        self.assert_close(pooled[y, x], out["scores"])
         assert (out["scores"] > clidd.detection_threshold).all()
+        for xi, yi in zip(x.tolist(), y.tolist()):
+            window = score[yi - 2 : yi + 3, xi - 2 : xi + 3].flatten()
+            others = torch.cat([window[:12], window[13:]])
+            assert (score[yi, xi] > others).all()
 
-    def test_convention_clidd_reports_the_input_position_the_align_corners_resize_samples(self, device):
-        """A 70 x 100 image is resized to 64 x 96: pixel i of the resize is reported at i (W - 1) / (W' - 1)."""
-        clidd = _random_clidd("A48", device, torch.float64, top_k=None)
-        img = _image(1, 70, 100).to(device, torch.float64)
+    def test_convention_clidd_tied_maxima_are_not_keypoints(self, device, monkeypatch):
+        """Two equal maxima in one window are both suppressed; the reference keeps both."""
+        clidd = _random_clidd("A48", device, torch.float32, top_k=None)
+        img = torch.rand(1, 3, 64, 64, device=device)
+        maps, _ = clidd.net(img)
+        score = torch.full((1, 1, 64, 64), -10.0, device=device)
+        score[0, 0, 20, 20] = score[0, 0, 20, 22] = 1.0  # a tie, 2 px apart
+        score[0, 0, 40, 40] = 2.0  # a strict maximum
+        monkeypatch.setattr(clidd.net, "forward", lambda x: (maps, score))
+        out = clidd(img)[0]
+        self.assert_close(out["keypoints"], torch.tensor([[40.0, 40.0]], device=device))
+        self.assert_close(out["scores"], torch.tensor([2.0], device=device))
+
+    def test_no_keypoints_backpropagates(self, device):
+        clidd = _random_clidd("A48", device, torch.float32, detection_threshold=1e9, use_triton=False)
+        img = _image().to(device).requires_grad_()
+        clidd(img)[0]["descriptors"].sum().backward()
+        assert img.grad is not None
+        assert (img.grad == 0).all()
+
+    def test_convention_clidd_reports_the_pixel_centre_of_the_resize(self, device):
+        """A 70 x 100 image is resized to 64 x 96: pixel i of the resize is reported at (i + 0.5) W / W' - 0.5."""
+        wide = _wide(device)
+        clidd = _random_clidd("A48", device, wide, top_k=None)
+        img = torch.rand(1, 3, 70, 100, device=device, dtype=wide)
         kpts = clidd(img)[0]["keypoints"]
-        resized = F.interpolate(img, (64, 96), mode="bilinear", align_corners=True)
+        resized = F.interpolate(img, (64, 96), mode="bilinear", align_corners=False)
         kpts_resized = clidd(resized)[0]["keypoints"]
-        ratio = torch.tensor([99 / 95, 69 / 63], device=device, dtype=torch.float64)
-        self.assert_close(kpts, kpts_resized * ratio)
-        # That resize maps the first and last pixels onto the first and last input pixels.
-        self.assert_close(resized[..., 0, 0], img[..., 0, 0])
-        self.assert_close(resized[..., 63, 95], img[..., 69, 99])
+        assert kpts_resized.shape[0] > 0
+        # The 64 x 96 image is not resized again, so its keypoints are its integer pixels.
+        self.assert_close(kpts_resized, kpts_resized.round())
+        ratio = torch.tensor([100 / 96, 70 / 64], device=device, dtype=wide)
+        self.assert_close(kpts, (kpts_resized + 0.5) * ratio - 0.5)
+        # That is the input position the resize reads: a ramp holding each pixel's own x (y) coordinate, resized,
+        # holds (i + 0.5) W / W' - 0.5 at pixel i away from the clamped border.
+        ys, xs = torch.meshgrid(
+            torch.arange(70, device=device, dtype=wide), torch.arange(100, device=device, dtype=wide), indexing="ij"
+        )
+        ramp = F.interpolate(torch.stack([xs, ys])[None], (64, 96), mode="bilinear", align_corners=False)[0]
+        i, j = torch.arange(1, 95, device=device), torch.arange(1, 63, device=device)
+        self.assert_close(ramp[0, 10, i], (i.to(wide) + 0.5) * 100 / 96 - 0.5)
+        self.assert_close(ramp[1, j, 10], (j.to(wide) + 0.5) * 70 / 64 - 0.5)
 
     @pytest.mark.applies_to(devices=("cpu",), reason="checks the call to the downloader, which is device independent")
     def test_pretrained_uses_kornia_downloader(self, monkeypatch, device):
@@ -374,7 +424,8 @@ class TestCLIDD(BaseTester):
     @pytest.mark.slow
     def test_pretrained_a48_matches_the_reference_implementation(self, device):
         # Generated with the authors' code (github.com/HITCSC/CLIDD @ 0a89201a, weights v1.0 A48.pth) on CUDA with
-        # TRITON_F32_DEFAULT=ieee and cuDNN TF32 off, top_k=None, for _image(), sorted by descending score:
+        # TRITON_F32_DEFAULT=ieee and cuDNN TF32 off, top_k=None, for _image(), sorted by descending score. No 5 x 5
+        # window of its score map holds a tie, so kornia's strict NMS keeps the same 215 keypoints:
         #     ref = CLIDD("A48", top_k=None).cuda().eval()   # the authors' clidd.CLIDD
         #     r = ref(_image().cuda())[0]; order = r["scores"].argsort(descending=True)
         #     r["keypoints"][order][:6], r["scores"][order][:6], r["descriptors"][order][:3, :6]
@@ -433,12 +484,13 @@ class TestCLIDD(BaseTester):
 class TestCLIDDMatch(BaseTester):
     def test_match_is_mutual_dual_softmax(self, device, dtype):
         torch.manual_seed(0)
-        d0 = F.normalize(torch.randn(30, 16, device=device, dtype=torch.float64), dim=-1)
+        wide = _wide(device)
+        d0 = F.normalize(torch.randn(30, 16, device=device, dtype=wide), dim=-1)
         d1 = F.normalize(
             torch.cat(
                 [
-                    d0[:20] + 0.05 * torch.randn(20, 16, device=device, dtype=torch.float64),
-                    torch.randn(15, 16, device=device, dtype=torch.float64),
+                    d0[:20] + 0.05 * torch.randn(20, 16, device=device, dtype=wide),
+                    torch.randn(15, 16, device=device, dtype=wide),
                 ]
             ),
             dim=-1,
@@ -454,6 +506,24 @@ class TestCLIDDMatch(BaseTester):
             self.assert_close(scores[:, 0], prob[mutual, nn01[mutual]].to(dtype))
         # The noisy copies are matched to their originals.
         assert {(i, i) for i in range(20)} <= {tuple(p) for p in idxs.tolist()}
+
+    @pytest.mark.parametrize(("similarity", "beta"), [(0.5, 20.0), (-1.0, 30.0)])
+    def test_singleton_pair_scores_one(self, device, dtype, similarity, beta):
+        """Each softmax of a 1 x 1 similarity is 1, however low the similarity: the score does not underflow."""
+        d0 = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
+        d1 = torch.tensor([[similarity, (1 - similarity**2) ** 0.5]], device=device, dtype=dtype)
+        scores, idxs = CLIDD.match(d0, d1, beta=beta)
+        assert idxs.tolist() == [[0, 0]]
+        self.assert_close(scores, torch.ones(1, 1, device=device, dtype=dtype))
+        assert scores.dtype == dtype
+
+    def test_unmatched_descriptor_keeps_the_other_matches(self, device, dtype):
+        """A descriptor of desc0 far from every one of desc1 must not drop the matches of the others."""
+        d = torch.eye(4, device=device, dtype=dtype)
+        d0 = torch.cat([d[:3], -d[:1]])  # the last is opposite to desc1[0] and orthogonal to the rest
+        scores, idxs = CLIDD.match(d0, d[:3])
+        assert idxs.tolist() == [[0, 0], [1, 1], [2, 2]]
+        assert torch.isfinite(scores).all()
 
     def test_min_score(self, device):
         torch.manual_seed(0)

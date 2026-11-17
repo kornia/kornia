@@ -368,6 +368,13 @@ def _next_pow2(a: int) -> int:
     return 1 if a <= 1 else 1 << ((a - 1).bit_length())
 
 
+# The launchers, untyped: a type checker reads ``kernel[grid](...)`` as a call of the kernel's own signature, which a
+# launch does not follow (it passes the ``tl.constexpr`` parameters by keyword and adds ``num_warps``). The same
+# ``JITFunction`` objects, so Dynamo still traces the launches as user-defined Triton kernels.
+_launch_forward: Any = _forward_kernel
+_launch_backward: Any = _backward_kernel
+
+
 def _launch_config(n: int, b: int, c_in: int, c_out: int) -> Tuple[Tuple[int], int, int, int]:
     block_n = 32
     block_c_in = max(min(32, _next_pow2(c_in)), 16)
@@ -404,7 +411,7 @@ class _DeformableSampleProject(torch.autograd.Function):
         if N == 0 or B == 0:
             return output
         launch, block_n, block_c_in, block_c_out = _launch_config(N, B, C_in, C_out)
-        _forward_kernel[launch](
+        _launch_forward[launch](
             output,
             input_nhwc,
             grid,
@@ -445,7 +452,7 @@ class _DeformableSampleProject(torch.autograd.Function):
         grad_bias = torch.zeros((C_out,), device=weight.device, dtype=torch.float32)
         if N > 0 and B > 0:
             launch, block_n, block_c_in, block_c_out = _launch_config(N, B, C_in, C_out)
-            _backward_kernel[launch](
+            _launch_backward[launch](
                 input_nhwc,
                 grid,
                 weight_mcc,

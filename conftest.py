@@ -17,6 +17,7 @@
 
 import contextlib
 import functools
+import importlib.util
 import os
 import random
 import subprocess
@@ -55,6 +56,10 @@ try:
 except ImportError:
     _backends_non_experimental = []
 
+
+# The CLIDD Triton kernels import ``triton`` at import time, and torch installs it only on Linux: skip the module in
+# ``--doctest-modules`` collection elsewhere. It has no doctests; kornia imports it only when the kernels run.
+collect_ignore = [] if importlib.util.find_spec("triton") else ["kornia/feature/clidd/_triton.py"]
 
 WEIGHTS_CACHE_DIR = "weights/"
 
