@@ -680,6 +680,32 @@ class TestScaleSpaceDetector(BaseTester):
         # Rounding the image to float16 moves this gradient by up to 0.015 (CPU, CUDA).
         self.assert_close(gradient.float(), expected, rtol=0, atol=0.05)
 
+    @pytest.mark.parametrize("subpix", [ConvQuadInterp3d, IterativeQuadInterp3d, AdaptiveQuadInterp3d])
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.bfloat16])
+    def test_image_gradient_in_a_float16_region_6601(self, device, subpix, image_dtype):
+        # In a float16 autocast region the pyramid and the Hessian's derivative convolutions run in float16, while
+        # the image stays float32 or bfloat16. The determinant's backward used to overflow there (see #6601), so
+        # every pixel of the image gradient was non-finite.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        _skip_without_half_padding(device, torch.float16)
+        image = torch.rand(1, 1, 64, 80, generator=torch.Generator().manual_seed(0)).to(device)
+        det = ScaleSpaceDetector(10, subpix_module=subpix()).to(device)
+        reference = image.clone().requires_grad_()
+        lafs, responses = det(reference)
+        # The six strongest detections are the same in both runs; the weaker ones may swap in float16.
+        expected = torch.autograd.grad(lafs[:, :6].sum() + responses[:, :6].sum(), reference)[0]
+
+        x = image.to(image_dtype).clone().requires_grad_()
+        with torch.autocast(device.type, dtype=torch.float16):
+            lafs, responses = det(x)
+        gradient = torch.autograd.grad(lafs[:, :6].sum() + responses[:, :6].sum(), x)[0]
+        assert gradient.isfinite().all()
+        similarity = torch.nn.functional.cosine_similarity(
+            gradient.double().flatten(), expected.double().flatten(), dim=0
+        )
+        assert similarity > 0.95
+
     @pytest.mark.applies_to(
         when=lambda p: not (p["response_dtype"] == torch.float64 and p["device_name"] == "mps"),
         reason="MPS has no float64",

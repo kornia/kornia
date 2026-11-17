@@ -443,6 +443,25 @@ class TestBlobHessian(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.hessian_response, (img), nondet_tol=1e-4)
 
+    def test_float16_backward_with_sigmas_stays_finite_6601(self, device):
+        # The determinant's backward multiplies the incoming gradient by sigmas ** 4 before it reaches the
+        # second-derivative maps. Formed in float16, that intermediate overflowed (1e3 * 4 ** 4 > 65504) although the
+        # true gradient fits (about 6e3 on this smooth image), and the convolution's backward turned the inf into NaN.
+        _skip_without_half_padding(device, torch.float16)
+        image = torch.rand(1, 1, 32, 32, generator=torch.Generator().manual_seed(0))
+        image = kornia.filters.gaussian_blur2d(image, (9, 9), (2.0, 2.0)).to(device)
+        sigmas = torch.full((1,), 4.0, device=device)
+        x = image.half().requires_grad_()
+        out = kornia.feature.hessian_response(x, sigmas=sigmas)
+        assert out.dtype == torch.float32  # float16 derivatives times float32 sigmas, as before
+        (gradient,) = torch.autograd.grad(out, x, torch.full_like(out, 1e3))
+        assert gradient.dtype == torch.float16
+        assert gradient.isfinite().all()
+        reference = image.double().requires_grad_()
+        out64 = kornia.feature.hessian_response(reference, sigmas=sigmas.double())
+        (expected,) = torch.autograd.grad(out64, reference, torch.full_like(out64, 1e3))
+        assert torch.nn.functional.cosine_similarity(gradient.double().flatten(), expected.flatten(), dim=0) > 0.99
+
 
 class TestBlobDoGSingle(BaseTester):
     def test_blobs_batch(self, device, dtype):

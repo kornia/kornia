@@ -341,11 +341,18 @@ def hessian_response(
             raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode, 2)
+    out_dtype = gradients.dtype if sigmas is None else torch.promote_types(gradients.dtype, sigmas.dtype)
+    # Form the determinant in at least float32 and round it once, to the output dtype. Formed in the derivatives'
+    # half precision (a float16 image, or the float16 convolution of an autocast region) and then scaled by float32
+    # sigmas, its backward held the incoming gradient times ``sigmas ** 4`` in float16: that overflows at the scales
+    # ScaleSpaceDetector uses and made every image gradient non-finite. Promoting is exact, so float32 and float64
+    # inputs give the same result as before.
+    gradients = gradients.to(torch.promote_types(gradients.dtype, torch.float32))
     dxx: torch.Tensor = gradients[:, :, 0]
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = dxx * dyy - dxy**2
+    scores: torch.Tensor = (dxx * dyy - dxy**2).to(out_dtype)
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
