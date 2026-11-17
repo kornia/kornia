@@ -313,6 +313,26 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    def test_convention_first_bin_axis_belongs_to_x1(self, device, dtype):
+        x1 = torch.tensor([[0.0, 0.0, 1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
+        x2 = torch.tensor([[1.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.5, device=device, dtype=dtype)
+
+        # Independently sum paired Gaussian weights: a = math.exp(-2), n = 3 * (1 + a)**2 + 1e-10.
+        # Raw matrices are [[3*a, 2+a*a], [1+2*a*a, 3*a]] and [[2*a+a*a, a+2*a*a], [2+a, 1+2*a]].
+        expected = torch.tensor(
+            [
+                [[0.10499358540079136, 0.5219387739089568], [0.26807405526360023, 0.10499358540079136]],
+                [[0.07473216913994209, 0.044470752879092836], [0.552200190169806, 0.3285968877852987]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        actual = TestHistogram2d.fcn(x1, x2, bins, bandwidth)
+
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize(
         "epsilon,expected_value",
         [(0.0, 0.25), (1e-10, 0.24998611622339154), (1e-6, 0.16073222839317233)],
