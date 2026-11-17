@@ -1,0 +1,1 @@
+`crop_by_indices` avoids per-image slicing when identical boxes already match the explicit output size, speeding up `RandomCrop(same_on_batch=True)` while preserving contiguous, independent output tensors and image gradients.
