@@ -240,18 +240,18 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ValueError, match="automatically generated histogram range"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5)
 
-    def test_explicit_centers_without_spacing_need_a_bandwidth(self):
-        centers = torch.tensor([0.5, 0.5])
+    def test_explicit_centers_without_spacing_need_a_bandwidth(self, device, dtype):
+        centers = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
         with pytest.raises(AsyncCheckError, match="bandwidth derived from the bin centers"):
-            TestImageHistogram2d.fcn(torch.ones(4, 4), centers=centers)
+            TestImageHistogram2d.fcn(torch.ones(4, 4, device=device, dtype=dtype), centers=centers)
 
-    def test_negative_one_bandwidth_with_explicit_centers_does_not_need_a_range(self):
+    def test_negative_one_bandwidth_with_explicit_centers_does_not_need_a_range(self, device, dtype):
         # With explicit centers the automatic bandwidth is their spacing, so the sentinel does not use min and max.
-        centers = torch.tensor([0.25, 0.75])
-        image = torch.rand(4, 4)
+        centers = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
+        image = torch.rand(4, 4, device=device, dtype=dtype)
         hist, _ = TestImageHistogram2d.fcn(image, min=0.0, max=0.0, bandwidth=-1.0, centers=centers)
         expected, _ = TestImageHistogram2d.fcn(image, bandwidth=0.5, centers=centers)
-        torch.testing.assert_close(hist, expected)
+        self.assert_close(hist, expected)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("range_and_bins", [(0.0, 255.0, 256), (0.0, 1.0, 2), (0.0, 1.0, 8), (-3.0, 7.0, 3)])
