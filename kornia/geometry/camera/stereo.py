@@ -582,8 +582,8 @@ def reproject_disparity_to_3D(
         return points
     # Keep the actual homogeneous components for diagnostics: finite output alone
     # cannot distinguish a placeholder, or finite XYZ produced by infinite W.
-    # This is transform_points' existing bmm/conversion/cast path, shared by both
-    # return modes so requesting diagnostics cannot select different arithmetic.
+    # This is stereo's established bmm/conversion/cast path, shared by both return modes so requesting diagnostics
+    # cannot select different arithmetic. Its absolute W cutoff is intentionally distinct from transform_points.
     uvd_h = convert_points_to_homogeneous(uvd).to(Q_matrix.dtype)
     Q_t = Q_matrix.expand(batch_size, -1, -1).transpose(-1, -2)
     if torch.jit.is_scripting():
