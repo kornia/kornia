@@ -451,7 +451,7 @@ class CLIDD(nn.Module):
         B, _, H, W = images.shape
         if B == 0:
             # nms2d pools windows other than 3, 5 and 7 with max_pool2d, which on MPS returns a (0,) tensor for an empty
-            # batch (torch 2.15).
+            # batch before torch 2.16 (fixed by pytorch#201756).
             return []
         h, w = max(32, H // 32 * 32), max(32, W // 32 * 32)
         dtype = self.net.conv1.weight.dtype
