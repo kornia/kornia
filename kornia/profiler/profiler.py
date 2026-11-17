@@ -17,11 +17,12 @@
 
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, DefaultDict, Dict, List, Optional, Union
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Union
 
 import torch
 from torch import Tensor, nn
 
+from kornia.core.external import LazyLoader
 from kornia.profiler.collectors.base import Collector
 from kornia.profiler.metrics import (
     CosineSimilarity,
@@ -32,13 +33,9 @@ from kornia.profiler.metrics import (
 )
 from kornia.profiler.transforms import Transform
 
-if TYPE_CHECKING:
-    import pandas as pd
-else:
-    try:
-        import pandas as pd
-    except ImportError:
-        pd = None
+
+pd = LazyLoader("pandas", globals(), "pandas")
+
 
 MetricType = Union[Metric, str]
 TransformType = Union[nn.Module, Callable[[Tensor], Tensor], Transform, str, None]
@@ -100,7 +97,7 @@ class Profiler:
 
         self.storage: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.results: Optional[List[Dict[str, Any]]] = None
-        self._df: Optional[pd.DataFrame] = None
+        self._df: Optional[Any] = None
 
     @staticmethod
     def _build_transform(
@@ -307,7 +304,7 @@ class Profiler:
             self._df.to_json(path, orient="records", indent=2)
 
     @property
-    def df(self) -> Optional["pd.DataFrame"]:
+    def df(self) -> Optional[Any]:
         """Return the computed results DataFrame, or ``None`` if not computed.
 
         Raises:
