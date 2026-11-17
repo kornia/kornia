@@ -24,6 +24,23 @@ from testing.base import BaseTester
 
 
 class TestApplyLinearTransformation(BaseTester):
+    @pytest.mark.device_agnostic
+    def test_cpu_channels_last_matches_einsum_exactly(self):
+        # The CUDA channel-innermost branch can differ by an ulp on CPU; preserve the original CPU contraction.
+        image = torch.rand(
+            (4, 3, 32, 32), generator=torch.Generator().manual_seed(0), device="cpu", dtype=torch.float32
+        ).contiguous(memory_format=torch.channels_last)
+        kernel = torch.tensor(
+            [[0.412453, 0.357580, 0.180423], [0.212671, 0.715160, 0.072169], [0.019334, 0.119193, 0.950227]],
+            device="cpu",
+            dtype=torch.float32,
+        )
+        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image)
+
+        actual = _apply_linear_transformation(image, kernel)
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
     def test_compute_operands(self, device):
         image = torch.tensor([1, 2, 3, 4, 5, 6], device=device, dtype=torch.int64).view(1, 3, 1, 2)
         kernel = torch.tensor([[1.0, 0.5, -0.25], [-0.5, 1.0, 0.0], [0.0, 0.25, 1.0]], dtype=torch.float64)
