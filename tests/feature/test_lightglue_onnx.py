@@ -25,7 +25,7 @@ import torch
 
 from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, DeviceError
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
 
@@ -231,6 +231,41 @@ class TestOnnxLightGlue:
         }
         with pytest.raises(BaseError, match=r"Wrong device: the inputs are on cuda:0, the matcher on cuda:1"):
             matcher({"image0": features, "image1": features})
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("device", ["cpu:0", torch.device("cpu", 0)])
+    def test_cpu_index_accepts_cpu_inputs(self, tmp_path, device):
+        # CPU tensors report ``cpu`` without an index, so ``cpu:0`` must not make forward reject them.
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device=device)
+        assert matcher.device == torch.device("cpu")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+            "descriptors": torch.ones(1, 2, 4),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.parametrize("checks", [True, False])
+    @pytest.mark.parametrize(
+        ("image", "key"), [(i, k) for i in ("image0", "image1") for k in ("keypoints", "descriptors")]
+    )
+    def test_each_input_on_another_device_raises(self, monkeypatch, tmp_path, checks, image, key):
+        # Every input is bound by pointer, so each of the four must be on the matcher's device, with checks off too.
+        monkeypatch.setattr("kornia.core.check._KORNIA_CHECKS_ENABLED", checks)
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cpu")
+        data = {
+            name: {
+                "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+                "descriptors": torch.ones(1, 2, 4),
+                "image_size": torch.tensor([[10, 10]]),
+            }
+            for name in ("image0", "image1")
+        }
+        data[image][key] = data[image][key].to("cuda:0")
+        with pytest.raises(DeviceError, match=r"Wrong device: the inputs are on cuda:0, the matcher on cpu"):
+            matcher(data)
 
     @pytest.mark.device_agnostic
     def test_unavailable_gpu_raises(self, monkeypatch, tmp_path):

@@ -23,7 +23,7 @@ from typing import ClassVar, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import DeviceError
 from kornia.core.external import numpy as _np
 from kornia.core.external import onnxruntime as _ort
 
@@ -98,6 +98,8 @@ class OnnxLightGlue:
 
         providers: list[str | tuple[str, dict[str, int]]]
         if device.type == "cpu":
+            # CPU tensors report ``cpu`` without an index, and forward compares full devices.
+            device = torch.device("cpu")
             providers = ["CPUExecutionProvider"]
         elif device.type == "cuda":
             # onnxruntime's CUDA provider and the I/O bindings both take a GPU index; without one they use GPU 0.
@@ -180,7 +182,7 @@ class OnnxLightGlue:
         # matcher's GPU index, and a tensor on another GPU makes that an illegal memory access (#6427).
         for tensor in (kpts0_, desc0, kpts1_, desc1):
             if tensor.device != self.device:
-                raise BaseError(f"Wrong device: the inputs are on {tensor.device}, the matcher on {self.device}")
+                raise DeviceError(f"Wrong device: the inputs are on {tensor.device}, the matcher on {self.device}")
         KORNIA_CHECK(torch.float32 == kpts0_.dtype == kpts1_.dtype == desc0.dtype == desc1.dtype, "Wrong dtype")
         KORNIA_CHECK_SHAPE(kpts0_, ["1", "M", "2"])
         KORNIA_CHECK_SHAPE(kpts1_, ["1", "N", "2"])
