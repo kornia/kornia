@@ -142,6 +142,34 @@ class TestZeroTiltGradients(BaseTester):
         self.assert_close(compiled_gradient[..., 12:], expected)
 
 
+@pytest.mark.parametrize("op", [distort_points, undistort_points])
+class TestTiltAutocast(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
+    @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
+    def test_tilt_keeps_float32_accuracy_under_autocast(self, op, device, amp_dtype):
+        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16")
+
+        K = torch.tensor([[650.0, 0.0, 320.0], [0.0, 625.0, 240.0], [0.0, 0.0, 1.0]], device=device)
+        ideal = torch.tensor([[32.0, 40.0], [599.0, 428.0], [180.0, 396.0]], device=device)
+        dist = torch.tensor(
+            [0.025, -0.015, 0.001, -0.002, 0.005, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10, 0.04],
+            device=device,
+            requires_grad=True,
+        )
+        # OpenCV 4.12 projectPoints on the rays K^-1 @ [u, v, 1], with zero rotation and translation.
+        measured = ideal.new_tensor([[33.358949, 41.662335], [603.883117, 431.421759], [174.264740, 403.544651]])
+        points, expected = (ideal, measured) if op is distort_points else (measured, ideal)
+
+        reference = op(points, K, dist)
+        with torch.autocast(device.type, dtype=amp_dtype):
+            actual = op(points, K, dist)
+
+        self.assert_close(actual, expected, atol=2e-4, rtol=0)
+        self.assert_close(actual, reference, atol=0, rtol=0)
+        self.assert_close(torch.autograd.grad(actual.sum(), dist)[0], torch.autograd.grad(reference.sum(), dist)[0])
+
+
 class TestDistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
