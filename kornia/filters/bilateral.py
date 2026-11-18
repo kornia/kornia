@@ -264,6 +264,19 @@ def _bilateral_blur(
             input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type
         )
 
+    output_dtype = input.dtype
+    if input.dtype == torch.float16:
+        # A positive sigma of 2**-10 makes -0.5 / sigma**2 overflow float16: even the centre's zero distance then
+        # produces NaN. Smaller, representable differences can also vanish when squared. Promote before unfolding
+        # so only the image, rather than every overlapping window, needs a conversion; return the original dtype.
+        input = input.float()
+        if guidance is not None:
+            guidance = guidance.float()
+        if isinstance(sigma_color, torch.Tensor):
+            sigma_color = sigma_color.float()
+        if isinstance(sigma_space, torch.Tensor):
+            sigma_space = sigma_space.float()
+
     if isinstance(sigma_color, torch.Tensor):
         sigma_color = sigma_color.view(-1, 1, 1, 1, 1, 1)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
@@ -311,11 +324,10 @@ def _bilateral_blur(
     kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
     del color_distance_sq
     # On MPS over Kx, then over Ky, for the speed above. Elsewhere one reduction over both window axes: the two-step sum
-    # rounds every partial sum over Kx to a half dtype, which costs float16 and bfloat16 gradients with respect to
-    # tensor sigmas their accuracy.
+    # rounds every partial sum over Kx, which costs bfloat16 gradients with respect to tensor sigmas their accuracy.
     if input.device.type == "mps":
-        return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
-    return (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
+        return ((unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)).to(output_dtype)
+    return ((unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))).to(output_dtype)
 
 
 def bilateral_blur(
@@ -344,7 +356,8 @@ def bilateral_blur(
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
         - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
-          its device.
+          its device. For float16 inputs, the window arithmetic uses float32 so small positive sigmas do not overflow
+          the inverse variance or lose squared differences; the result is cast back to float16.
         - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`, so uint8 differences do not wrap.
         - On the CPU, a float32 or float64 input (after that conversion) with at least 65,536 values is filtered tap
@@ -355,7 +368,7 @@ def bilateral_blur(
           tap, since the compiled loop has a block of operations per tap. Both forms compute the same weights and add
           up the weighted values in a different order, so they agree to rounding.
         - On MPS, each window is summed over its columns and then over its rows, because MPS reduces two non-adjacent
-          axes much more slowly than one. In float16 and bfloat16 that rounds every partial sum, so there the
+          axes much more slowly than one. In bfloat16 that rounds every partial sum, so there the
           gradients with respect to a tensor ``sigma_color`` or ``sigma_space`` are less accurate than on the CPU or
           CUDA. Tensor sigmas are cast to the input's dtype, so keeping them in float32 does not help; pass a float32
           input on MPS when those gradients matter.

@@ -1,0 +1,1 @@
+Compute float16 bilateral and joint bilateral window arithmetic in float32, preserving the output dtype while avoiding NaN weights and gradients for small positive color sigmas and lost weights from squared-difference underflow. Float16 window temporaries now use four bytes per value instead of two.

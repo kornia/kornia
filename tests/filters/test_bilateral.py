@@ -294,15 +294,16 @@ class TestBilateralBlur(BaseTester):
     )
     @pytest.mark.parametrize("half_dtype", [torch.float16])
     def test_half_precision_sigma_gradients(self, device, half_dtype):
-        # A two-step window sum in half precision truncated intermediate partial sums, raising sigma gradient relative
-        # error to ~7.5e-2 for sigma_color and ~3.8e-2 for sigma_space (#6284). Single-step reduction restores < 2.5e-2.
+        # A two-step window sum in half precision truncated intermediate partial sums (#6284). Compare the same
+        # representable inputs and output gradients: rounding this image alone changes the true sigma_color gradient
+        # from -0.178865 to -0.190558 (float64). Arithmetic error must not be rewarded for cancelling that difference.
         if not supports_reflect_padding(device, half_dtype):
             pytest.skip("reflection padding is unsupported for this device/dtype")
         torch.manual_seed(0)
-        x = torch.rand(1, 3, 32, 40)
-        sigma_color = torch.tensor([0.1])
-        sigma_space = torch.tensor([[1.5, 1.5]])
-        w = torch.rand(1, 3, 32, 40)
+        x = torch.rand(1, 3, 32, 40).to(half_dtype).float()
+        sigma_color = torch.tensor([0.1]).to(half_dtype).float()
+        sigma_space = torch.tensor([[1.5, 1.5]]).to(half_dtype).float()
+        w = torch.rand(1, 3, 32, 40).to(half_dtype).float()
 
         def grads(dtype):
             leaves = [t.to(device=device, dtype=dtype).clone().requires_grad_() for t in (x, sigma_color, sigma_space)]
@@ -317,6 +318,63 @@ class TestBilateralBlur(BaseTester):
         rel_space = ((actual[2] - ref[2]).abs().max() / ref[2].abs().max()).item()
         assert rel_color < 0.025
         assert rel_space < 0.025
+
+    @pytest.mark.applies_to(
+        dtypes=("float16", "float32", "float64"), reason="small positive float16 sigma and wider reference dtypes"
+    )
+    @pytest.mark.parametrize("joint", [False, True])
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    @pytest.mark.parametrize("tensor_sigma", [False, True])
+    @pytest.mark.parametrize("sigma", [2**-10, 2**-13])
+    def test_convention_small_color_sigma(self, joint, distance, tensor_sigma, sigma, device, dtype):
+        # A normalized dark image and its colour sigma are scaled together. All values, outputs and derivatives fit
+        # in float16, but -0.5 / sigma**2 does not; at 2**-13 even a squared neighbour difference underflows.
+        # Independent literals for sigma=2**-10, generated with Python math (replicate border, spatial sigma=1):
+        # s = 2**-10; guide = [0., s, 4*s]; values = [.25, .5, 1.] if joint else guide
+        # for j in range(3):
+        #     ids = [max(0, min(2, j+i)) for i in [-1, 0, 1]]
+        #     d = [guide[k] - guide[j] for k in ids]
+        #     w = [math.exp(-i*i/2 - v*v/(2*s*s)) for i, v in zip([-1, 0, 1], d)]
+        #     y = sum(values[k]*v for k, v in zip(ids, w)) / sum(w)
+        #     dy = sum(v*(values[k]-y)*z*z/s**3 for k, v, z in zip(ids, w, d)) / sum(w)
+        guide = torch.tensor([0.0, sigma, 4 * sigma], device=device, dtype=dtype).view(1, 1, 1, 3)
+        image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide) if joint else guide
+        sigma_color = torch.tensor([sigma], device=device, dtype=dtype, requires_grad=True) if tensor_sigma else sigma
+        args = (image, guide) if joint else (image,)
+        op = joint_bilateral_blur if joint else bilateral_blur
+        actual = op(*args, (1, 3), sigma_color, (1.0, 1.0), "replicate", distance)
+
+        if joint:
+            values = [0.29658093080646186, 0.4355450559873709, 0.9979117095035963]
+            derivative = -25.349232186725377 * (2**-10 / sigma)
+        else:
+            scale = sigma / 2**-10
+            values = [v * scale for v in [0.00018195676096274178, 0.0007295721806632388, 0.003894013922872634]]
+            derivative = -0.05643328126633213
+        expected = torch.tensor(values, device=device, dtype=dtype).view_as(actual)
+        assert actual.dtype == dtype
+        # One float16 subnormal step accommodates rounding the smallest output, without hiding a lost colour weight.
+        self.assert_close(actual, expected, rtol=1e-3, atol=6e-8)
+        if tensor_sigma:
+            actual[..., 1].sum().backward()
+            self.assert_close(
+                sigma_color.grad, torch.tensor([derivative], device=device, dtype=dtype), rtol=1e-3, atol=1e-5
+            )
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="compile the promoted float16 weight and backward path")
+    @pytest.mark.parametrize("joint", [False, True])
+    def test_dynamo_small_color_sigma(self, joint, device, dtype, torch_optimizer):
+        guide = torch.tensor([0.0, 2**-10, 2**-8], device=device, dtype=dtype).view(1, 1, 1, 3)
+        image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide) if joint else guide
+        sigma = torch.tensor([2**-10], device=device, dtype=dtype, requires_grad=True)
+        op = torch_optimizer(joint_bilateral_blur if joint else bilateral_blur)
+        args = (image, guide) if joint else (image,)
+        actual = op(*args, (1, 3), sigma, (1.0, 1.0), "replicate")
+        actual[..., 1].sum().backward()
+        expected_value = 0.4355450559873709 if joint else 0.0007295721806632388
+        expected_gradient = -25.349232186725377 if joint else -0.05643328126633213
+        self.assert_close(actual[..., 1], torch.full_like(actual[..., 1], expected_value), rtol=1e-3, atol=6e-8)
+        self.assert_close(sigma.grad, torch.full_like(sigma, expected_gradient), rtol=1e-3, atol=1e-5)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
