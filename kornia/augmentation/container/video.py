@@ -477,8 +477,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            # The tensor is read and returned as the legacy inclusive storage, as before #6710.
+            input = Boxes._from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)),
+                mode="vertices_plus",
+                inclusive=True,
             )
             input = super().transform_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
@@ -502,8 +505,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            # The tensor is read and returned as the legacy inclusive storage, as before #6710.
+            input = Boxes._from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)),
+                mode="vertices_plus",
+                inclusive=True,
             )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)

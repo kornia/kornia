@@ -285,9 +285,7 @@ class VisualPrompter:
                 KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
             else:
                 KORNIA_CHECK_SHAPE(boxes.data, ["B", "K", "4"])
-            # ``Boxes.from_tensor`` checks the values (finite, positive extents). Its vertices are not used: their
-            # round trip widens a sub-pixel box ([10, 20, 10.5, 20.5] comes back as [9.5, 19.5, 11, 21]) and, in
-            # bfloat16, rounds the -1 offset away ([256, 256, 258, 258] comes back as [256, 256, 256, 256]).
+            # ``Boxes.from_tensor`` checks the values (finite, positive extents); the tensor itself is taken as given.
             Boxes.from_tensor(boxes, mode="xyxy")
             images = boxes.shape[0] if boxes.ndim == 3 else 1
             xyxy = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())

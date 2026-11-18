@@ -20,8 +20,10 @@
 A 2D box is four ``(x, y)`` corners in clockwise order, top-left, top-right, bottom-right, bottom-left, so one box per
 image is ``(B, 4, 2)``. A 3D box is those four corners at the front followed by the same four at the back, ``(B, 8, 3)``
 with ``(x, y, z)`` corners. Corners are inclusive pixel centres: a box covering pixels ``0..9`` has corners at ``0`` and
-``9`` and width ``x_max - x_min + 1 = 10``, unlike the exclusive boxes of torchvision, COCO and albumentations
-(`#3934 <https://github.com/kornia/kornia/issues/3934>`_). The generators and the shape and mask functions share this
+``9`` and width ``x_max - x_min + 1 = 10``. These are pixel-index windows, first to last pixel, the model of the crop
+functions and of a homography between pixel grids, not annotation boxes: the exclusive boxes of torchvision, COCO,
+albumentations and :class:`~kornia.geometry.boxes.Boxes` are regions, ``x_max - x_min`` wide
+(`#6710 <https://github.com/kornia/kornia/issues/6710>`_). The generators and the shape and mask functions share this
 convention; :func:`nms` takes exclusive ``(N, 4)`` ``xyxy`` boxes instead
 (`#4008 <https://github.com/kornia/kornia/issues/4008>`_), and :func:`transform_bbox` takes ``xyxy`` or ``xywh`` boxes,
 or corners, and adds no ``+1``. From an unbatched :class:`~kornia.geometry.boxes.Boxes`, pass its
@@ -280,7 +282,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     See Also:
         - :func:`infer_bbox_shape3d`: the depths, heights and widths of ``(B, 8, 3)`` corners, which it validates first.
-        - :meth:`~kornia.geometry.boxes.Boxes.get_boxes_shape`: the inclusive size of the axis-aligned bounds of the
+        - :meth:`~kornia.geometry.boxes.Boxes.get_boxes_shape`: the exclusive size of the axis-aligned bounds of the
           boxes in a container, for corners in any order.
         - :func:`bbox_generator`: the inverse, corners from a start corner and this height and width.
 

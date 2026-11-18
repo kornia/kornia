@@ -171,9 +171,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           a bare augmentation gives; next to a video or 3D child it lists the shapes the container runs, the
           video's 5D layout or ``(D, H, W)`` and ``(B, C, D, H, W)``
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
-        - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
-          ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
-          does. Labels pass through geometric steps untouched.
+        - a tensor under the bare ``bbox`` or ``bbox_xyxy`` key holds corners in the pixel-centre frame of the
+          image matrices, read as the inclusive ``'vertices_plus'`` or ``'xyxy_plus'`` mode of
+          :class:`~kornia.geometry.boxes.Boxes`, and the matrices move them as they move keypoints: flips map
+          ``x' = W - 1 - x`` and ``y' = H - 1 - y``, as :func:`~kornia.geometry.transform.hflip` does, and its
+          numbers are those of the releases before `#6710 <https://github.com/kornia/kornia/issues/6710>`_. A
+          :class:`~kornia.geometry.boxes.Boxes` object under any key, and a tensor under ``bbox_xywh``, holds
+          exclusive boxes, transformed in the edge frame: ``e' = M (e - 1/2) + 1/2``, so a flip maps
+          ``x' = W - x`` and a 2x resize ``x' = 2 x``. Labels pass through geometric steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
@@ -340,7 +345,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ...    torch.tensor([[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]]),
         ...    torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]])
         ... ]
-        >>> bbox = [Boxes.from_tensor(i).data for i in bbox]
+        >>> bbox = [Boxes.from_tensor(i).to_tensor("vertices_plus") for i in bbox]
         >>> aug_dict = K.AugmentationSequential(
         ...    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...    K.RandomHorizontalFlip(p=1.0),
@@ -1247,13 +1252,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
         if isinstance(arg, Boxes):
             return arg
+        # A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key keeps the legacy inclusive storage, in which image
+        # matrices move its corners as they are: its outputs keep their numbers until frame-named keys exist. Every
+        # other input is stored exclusive and transformed in the edge frame (#6710).
+        legacy = DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]
         if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
-            return VideoBoxes.from_tensor(arg)
+            # Video boxes are (B, T, N, 4, 2) inclusive corners under every key.
+            return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=legacy)
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         arg = cast(torch.Tensor, arg)
-        return Boxes.from_tensor(arg, mode=mode)
+        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy)
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey

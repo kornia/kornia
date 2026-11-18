@@ -193,7 +193,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         if isinstance(input, torch.Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
                 raise RuntimeError(f"Only BxNx4x2 torch.Tensor is supported. Got {input.shape}.")
-            input = Boxes(input, False, mode="vertices_plus")
+            input = Boxes(input, False, mode="vertices")
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
         output = input

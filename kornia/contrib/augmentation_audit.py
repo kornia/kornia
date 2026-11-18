@@ -59,6 +59,8 @@ __all__ = ["AugmentationAuditReport", "AugmentationAuditStep", "SpatialAudit", "
 
 _T = TypeVar("_T")
 _BOX_MODES = {DataKey.BBOX: "vertices_plus", DataKey.BBOX_XYXY: "xyxy_plus", DataKey.BBOX_XYWH: "xywh"}
+# The tensor keys whose boxes the container keeps in the legacy inclusive storage, as pixel-centre corners.
+_LEGACY_BOX_KEYS = (DataKey.BBOX, DataKey.BBOX_XYXY)
 
 
 def _snapshot(value: _T) -> _T:
@@ -274,7 +276,12 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
     return []
 
 
-def _coordinates(value: DataType, key: DataKey) -> Tensor:
+def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
+    """Return the stored coordinates in the pixel-centre frame of the image matrices, and the frame margin.
+
+    Exclusive box vertices are edges, half a pixel from the pixel-centre frame, and may reach half a pixel beyond
+    the first and last pixel centres; the legacy inclusive storage holds pixel-centre corners, as keypoints do.
+    """
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
     ):
@@ -282,13 +289,32 @@ def _coordinates(value: DataType, key: DataKey) -> Tensor:
     if isinstance(value, (Boxes, Keypoints)):
         if value._N is not None:
             raise ValueError("audit does not support ragged Boxes or Keypoints constructed from lists.")
-        return value.data
+        if isinstance(value, Boxes) and not value._inclusive:
+            return value.data - 0.5, 0.5
+        return value.data, 0.0
     if not isinstance(value, Tensor):
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
-        return Boxes.from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False).data
-    return value
+        legacy = key in _LEGACY_BOX_KEYS
+        stored = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=legacy).data
+        return (stored, 0.0) if legacy else (stored - 0.5, 0.5)
+    return value, 0.0
+
+
+def _spatial_audits(
+    sources: dict[int, Tensor],
+    values: list[Any],
+    keys: list[DataKey],
+    shape: tuple[int, ...],
+    inverse: Tensor | None,
+    dtype: torch.dtype,
+) -> list[SpatialAudit]:
+    audits = []
+    for index, source in sources.items():
+        result, margin = _coordinates(values[index], keys[index])
+        audits.append(_spatial_audit(source, result, keys[index], index, shape, inverse, dtype, margin=margin))
+    return audits
 
 
 def _capture(
@@ -367,6 +393,7 @@ def _spatial_audit(
     shape: tuple[int, ...],
     inverse: Tensor | None,
     dtype: torch.dtype,
+    margin: float = 0.0,
 ) -> SpatialAudit:
     if source.shape != result.shape:
         raise ValueError("audit requires spatial outputs to preserve the source shape and label cardinality.")
@@ -374,10 +401,10 @@ def _spatial_audit(
     batch, count = result.shape[:2]
     finite = result.isfinite().flatten(2).all(-1)
     outside = (
-        (result[..., 0] < 0)
-        | (result[..., 0] > shape[-1] - 1)
-        | (result[..., 1] < 0)
-        | (result[..., 1] > shape[-2] - 1)
+        (result[..., 0] < -margin)
+        | (result[..., 0] > shape[-1] - 1 + margin)
+        | (result[..., 1] < -margin)
+        | (result[..., 1] > shape[-2] - 1 + margin)
     )
     if key in _BOX_MODES:
         outside = outside.any(-1)
@@ -488,7 +515,7 @@ def audit(
     for index, (value, key) in enumerate(zip(args, keys)):
         if key not in (DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS, *_BOX_MODES):
             raise ValueError(f"audit does not support the data key {key.name}.")
-        tensor = _coordinates(value, key)
+        tensor, _ = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
         expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
         if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
@@ -528,18 +555,7 @@ def audit(
             "unsupported" if matrix is None else "available" if bool(valid.all()) else "singular"
         )
         diagnostic_dtype = torch.float64 if image.dtype == torch.float64 else torch.float32
-        spatial = [
-            _spatial_audit(
-                source,
-                _coordinates(values[index], keys[index]),
-                keys[index],
-                index,
-                output_shape,
-                inverse,
-                diagnostic_dtype,
-            )
-            for index, source in sources.items()
-        ]
+        spatial = _spatial_audits(sources, values, keys, output_shape, inverse, diagnostic_dtype)
         warnings = capture_warnings + [
             f"{step.name}: {step.unsupported_reason}." for step in steps if step.unsupported_reason
         ]

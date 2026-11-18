@@ -963,7 +963,8 @@ class TestBbox3D(BaseTester):
         self, device, dtype, case
     ):
         # kornia#4255: a box whose slab covers (or overhangs) a whole axis of the (4, 4, 5) volume fills the
-        # intersection of the three axis ranges, exactly as Boxes3D.to_mask does. The interior box is a control.
+        # intersection of the three axis ranges, exactly as Boxes3D.to_mask does. The interior box is a control. The
+        # free function reads inclusive corners, so it takes the 'vertices_plus' export.
         xyzxyz_plus, region = {
             "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], (slice(1, 3), slice(1, 3), slice(None))),
             "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], (slice(1, 3), slice(None), slice(1, 3))),
@@ -973,12 +974,13 @@ class TestBbox3D(BaseTester):
         boxes = Boxes3D.from_tensor(torch.tensor([xyzxyz_plus], device=device, dtype=dtype), mode="xyzxyz_plus")
         expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
         expected[(0, 0, *region)] = 1.0
-        self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(bbox_to_mask3d(boxes.to_tensor("vertices_plus"), (4, 4, 5)), expected, atol=0.0, rtol=0.0)
         self.assert_close(boxes.to_mask(4, 4, 5).to(dtype), expected[:, 0], atol=0.0, rtol=0.0)
         interior = Boxes3D.from_tensor(
             torch.tensor([[1.0, 1.0, 1.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
-        assert bbox_to_mask3d(interior.data, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
+        inclusive = interior.to_tensor("vertices_plus")
+        assert bbox_to_mask3d(inclusive, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
 
 
 class TestNMS(BaseTester):

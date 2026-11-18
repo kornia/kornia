@@ -411,8 +411,8 @@ class TestVisualPrompter(BaseTester):
         with pytest.raises(ValueError, match="negative widths"):
             prompter.predict(boxes=torch.tensor([[60.0, 20.0, 10.0, 50.0]], device=device, dtype=dtype))
 
-    # A sub-pixel box, and one whose -1 vertex offset bfloat16 cannot represent at 256 (spacing 2): the ``Boxes``
-    # vertex round trip gives [9.5, 19.5, 11, 21] for the first and, in bfloat16, [256, 256, 256, 256] for the second.
+    # A sub-pixel box, and one at 256, where the bfloat16 spacing is 2 and cannot hold a +/-1 offset: both corners
+    # are mapped as given.
     @NO_MPS_FLOAT64
     @pytest.mark.parametrize("box", [[10.0, 20.0, 10.5, 20.5], [256.0, 256.0, 258.0, 258.0]], ids=["subpixel", "256"])
     def test_tensor_box_corners_are_taken_as_given(self, device, dtype, box):
