@@ -93,15 +93,13 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     target_flatten: Tensor = target.flatten(start_dim=1).to(accumulation_dtype)
 
     # get shapes
-    B, N = pred_flatten.shape
+    _, N = pred_flatten.shape
 
     # compute actual loss
     signs = 2.0 * target_flatten - 1.0
     errors = 1.0 - pred_flatten * signs
     errors_sorted, permutation = errors.sort(dim=1, descending=True)
-    batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
-    target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
-    target_sorted = target_sorted.view(B, N)
+    target_sorted: Tensor = target_flatten.gather(1, permutation)
     target_sorted_sum: Tensor = target_sorted.sum(1, keepdim=True)
     intersection: Tensor = target_sorted_sum - target_sorted.cumsum(1)
     union: Tensor = target_sorted_sum + (1.0 - target_sorted).cumsum(1)
