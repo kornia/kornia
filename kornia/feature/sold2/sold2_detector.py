@@ -389,7 +389,9 @@ class LineSegmentDetectionModule:
                 selected = torch.arange(top.shape[-1], device=heatmap.device)[None] < lengths_t[:, None]
                 scale = torch.where(selected, top, 0).sum(-1, dtype=mean_dtype)
                 scale = (scale / lengths_t).to(heatmap.dtype)
-                refined = values.index_copy(0, rows_t, (active_values / scale[:, None]).clamp(0, 1))
+                refined = values.scatter(
+                    0, rows_t[:, None].expand_as(active_values), (active_values / scale[:, None]).clamp(0, 1)
+                )
             heatmap_output.index_add_(0, indices, refined.flatten().to(heatmap_output.dtype))
             count_map.index_add_(0, indices, torch.ones_like(indices, dtype=count_map.dtype))
         return torch.clamp((heatmap_output / count_map).reshape(H, W), max=1.0, min=0.0)
