@@ -253,6 +253,8 @@ class KMeans:
             distance: torch.Tensor = self._pairwise_euclidean_distance(X_work, current_centers.to(work_dtype))
 
             cluster_assignment = distance.argmin(-1)
+            # Assignment has consumed the distances; do not retain them while updating the centers.
+            del distance
 
             previous_centers = current_centers.clone()
 
@@ -274,6 +276,9 @@ class KMeans:
                 # integer sums are exact with scatter_add_; MPS lacks integer matmul and index_add_ on torch 2.5
                 index = cluster_assignment[:, None].expand(-1, X_work.shape[1])
                 cluster_sums = X_work.new_zeros(self.num_clusters, X_work.shape[1]).scatter_add_(0, index, X_work)
+
+            # Release the assignment buffer before the next iteration builds its distance tensors.
+            del one_hot
 
             # edge case when a certain cluster centre has no points assigned to it:
             # just choose a random point as its update. A random index is drawn for every

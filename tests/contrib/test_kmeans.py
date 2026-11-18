@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import weakref
+
 import pytest
 import torch
 
@@ -198,6 +200,80 @@ class TestKMeans(BaseTester):
         self.assert_close(centers[0], x.mean(dim=0))
         # the empty cluster is reseeded to *some* row of x, not left at the stale starting center
         assert any(torch.allclose(centers[1], row) for row in x)
+
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU centroid-storage validation")
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    @pytest.mark.parametrize("center_dtype", [torch.float32, torch.float64])
+    def test_unequal_cluster_counts_and_input_gradients(self, device, dtype, noncontiguous, center_dtype):
+        # Three clusters contain 3, 2 and 4 points. Their independent arithmetic means are (0, 3), (10, 2),
+        # and (20, 3). For a fixed assignment, each point's derivative is its centroid's upstream / count.
+        x = torch.tensor(
+            [[0, 0], [0, 3], [0, 6], [10, 0], [10, 4], [20, 0], [20, 2], [20, 4], [20, 6]],
+            device=device,
+            dtype=dtype,
+        )
+        if noncontiguous:
+            x = x.t().contiguous().t()
+            assert not x.is_contiguous()
+        x.requires_grad_()
+        centers = torch.tensor([[0, 0], [10, 0], [20, 0]], device=device, dtype=center_dtype)
+        km = kornia.contrib.KMeans(3, centers, tolerance=None, max_iterations=1)
+        km.fit(x)
+
+        self.assert_close(km.cluster_centers, x.new_tensor([[0, 3], [10, 2], [20, 3]]), rtol=0, atol=0)
+        self.assert_close(km.cluster_assignments, x.new_tensor([0, 0, 0, 1, 1, 2, 2, 2, 2], dtype=torch.int64))
+        upstream = x.new_tensor([[3, -6], [-2, 4], [8, -4]])
+        (gradient,) = torch.autograd.grad(km.cluster_centers, x, upstream)
+        expected_gradient = x.new_tensor([[1, -2]] * 3 + [[-1, 2]] * 2 + [[2, -1]] * 4)
+        self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
+
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU centroid-storage validation")
+    def test_empty_cluster_count_preserves_random_draws(self, device, dtype):
+        # Every sample initially belongs to cluster zero. Empty clusters use the corresponding elements of the
+        # single three-index draw, including its unused first entry; assignment construction consumes no RNG.
+        x = torch.tensor([[0, 0], [0, 2], [0, 4], [0, 6]], device=device, dtype=dtype)
+        centers = x.new_zeros(3, 2)
+        torch.manual_seed(817)
+        selected = torch.randint(len(x), (3,), device=device)
+        expected_next = torch.rand(4, device=device)
+        torch.manual_seed(817)
+        km = kornia.contrib.KMeans(3, centers, tolerance=None, max_iterations=1)
+        km.fit(x)
+
+        expected = torch.cat([x.new_tensor([[0, 3]]), x[selected[1:]]])
+        self.assert_close(km.cluster_centers, expected, rtol=0, atol=0)
+        self.assert_close(torch.rand(4, device=device), expected_next, rtol=0, atol=0)
+
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="Eager buffer lifetime")
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_iteration_buffers_released_before_next_assignment(self, device, dtype, requires_grad, monkeypatch):
+        x = torch.tensor([[0, 0], [0, 2], [8, 0], [8, 2]], device=device, dtype=dtype, requires_grad=requires_grad)
+        km = kornia.contrib.KMeans(2, x.detach()[[0, 2]], tolerance=None, max_iterations=2)
+        references = {}
+        original_distance = km._pairwise_euclidean_distance
+        original_one_hot = torch.nn.functional.one_hot
+
+        def checked_distance(a, b):
+            # Check before allocating another distance matrix, while the previous fit iteration is still on stack.
+            live = [name for name, reference in references.items() if reference() is not None]
+            assert not live, f"Previous iteration retains buffers: {live}"
+            result = original_distance(a, b)
+            references["distance"] = weakref.ref(result)
+            return result
+
+        def capture_one_hot(*args, **kwargs):
+            result = original_one_hot(*args, **kwargs)
+            references["one_hot"] = weakref.ref(result)
+            return result
+
+        monkeypatch.setattr(km, "_pairwise_euclidean_distance", checked_distance)
+        monkeypatch.setattr(torch.nn.functional, "one_hot", capture_one_hot)
+        km.fit(x)
+        self.assert_close(km.cluster_centers, x.new_tensor([[0, 1], [8, 1]]), rtol=0, atol=0)
+        if requires_grad:
+            # Autograd retains what its own nodes need after the unnecessary local references are released.
+            (gradient,) = torch.autograd.grad(km.cluster_centers.sum(), x)
+            self.assert_close(gradient, torch.full_like(x, 0.5), rtol=0, atol=0)
 
     @pytest.mark.parametrize(
         ("x", "starting_centers", "expected"),
