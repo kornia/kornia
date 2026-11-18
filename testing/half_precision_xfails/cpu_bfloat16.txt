@@ -10,10 +10,6 @@
 # pillow: 12.3.0
 # generated-by: pytest tests/ --record-known-failures=<candidate> --known-failure-profile=cpu-bfloat16
 
-call	builtins.AssertionError	tests/augmentation/test_backward_3d.py::TestRandomRotation3DBackward::test_param[cpu-bfloat16-False-False-bilinear-degrees7]
-call	builtins.AssertionError	tests/augmentation/test_backward_3d.py::TestRandomRotation3DBackward::test_param[cpu-bfloat16-False-True-bilinear-degrees7]
-call	builtins.AssertionError	tests/augmentation/test_backward_3d.py::TestRandomRotation3DBackward::test_param[cpu-bfloat16-True-False-bilinear-degrees7]
-call	builtins.AssertionError	tests/augmentation/test_backward_3d.py::TestRandomRotation3DBackward::test_param[cpu-bfloat16-True-True-bilinear-degrees7]
 call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-20]
 call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-bfloat16-6]
 call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted[cpu-bfloat16-16]
