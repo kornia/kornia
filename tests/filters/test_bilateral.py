@@ -483,8 +483,10 @@ class TestBilateralBlur(BaseTester):
         args = (image, guide) if joint else (image,)
         actual = op(*args, (1, 3), color, space, "replicate", distance)
         assert actual.dtype == dtype
+        assert actual.device == image.device
         expected = torch.tensor(expected_values, device=device, dtype=dtype).view_as(actual)
-        self.assert_close(actual, expected, rtol=1e-2 if dtype == torch.bfloat16 else 1e-3, atol=1e-5)
+        # Compare on CPU so BaseTester's XLA tolerance override cannot hide an intermediate sigma cast.
+        self.assert_close(actual.cpu(), expected.cpu(), rtol=1e-2 if dtype == torch.bfloat16 else 1e-3, atol=1e-5)
 
     @pytest.mark.applies_to(dtypes=("float16",), reason="ordinary wider spatial sigmas must not be rounded to float16")
     @pytest.mark.parametrize("sigma_dtype", [torch.float32, torch.float64])
@@ -498,13 +500,15 @@ class TestBilateralBlur(BaseTester):
         args = (image, image) if joint else (image,)
         actual = op(*args, (1, 7), 2.0, sigma_space, "replicate", distance)
         assert actual.dtype == dtype
+        assert actual.device == image.device
         # At the centre only the two distance-three taps have value 1. Independent Python-math result:
         # s = 1 + 2**-11
         # w = [math.exp(-i*i/(2*s*s) - (1/8 if abs(i) == 3 else 0)) for i in range(-3, 4)]
         # expected = (w[0] + w[-1]) / sum(w)
         # Rounding s through float16 changes the rounded centre by 3.05e-5, above the unchanged 1.79e-5 tolerance.
         expected = torch.full_like(actual[..., 3], 0.007863141241652728)
-        self.assert_close(actual[..., 3], expected, rtol=1e-3, atol=1e-5)
+        # Keep the explicit tolerance on XLA, as in the colour-sigma probe.
+        self.assert_close(actual[..., 3].cpu(), expected.cpu(), rtol=1e-3, atol=1e-5)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("joint", [False, True])
