@@ -528,6 +528,129 @@ class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
         self.assert_close(weights[1].float(), expected_weights[1])
 
 
+@pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU kernel reduction")
+class TestThinPlateSplineKernelReduction(BaseTester):
+    # Independent scalar reference for the literals below, using only Python's math module:
+    # q = [[2., 0.], [0., 2.], [1., 1.]]; c = [[0., 0.], [1., 0.], [0., 1.]]
+    # w = [[.25, -.25], [-.5, .75], [.125, .5]]; a = [[.25, -.125], [1.25, .25], [-.5, .75]]
+    # g = [[.25, -1.], [2., .5], [-1., .75]]
+    # def u(p, c):
+    #     d = sum((x-y)**2 for x, y in zip(p, c))
+    #     return .5*d*math.log(d) if d else 0.
+    # print([[a[0][j] + sum(p[i]*a[i+1][j] for i in range(2))
+    #         + sum(u(p, c[i])*w[i][j] for i in range(len(c))) for j in range(2)] for p in q])
+    # print([[sum(u(q[n], c[i])*g[n][j] for n in range(len(q))) for j in range(2)] for i in range(len(c))])
+    # print([[sum(([1.] + q[n])[i]*g[n][j] for n in range(len(q))) for j in range(2)] for i in range(3)])
+    _VALUES = [
+        [3.9460965281956017, 1.69365020998268],
+        [-2.06865020998268, 3.6995489052539927],
+        [1.1732867951399863, 0.7017132048600137],
+    ]
+    _AFFINE_VALUES = [[2.75, 0.375], [-0.75, 1.375], [1.0, 0.875]]
+
+    @staticmethod
+    def _inputs(device, dtype):
+        query = torch.tensor([[[2.0, 0.0], [0.0, 2.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        centers = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        weights = torch.tensor([[[0.25, -0.25], [-0.5, 0.75], [0.125, 0.5]]], device=device, dtype=dtype)
+        affine = torch.tensor([[[0.25, -0.125], [1.25, 0.25], [-0.5, 0.75]]], device=device, dtype=dtype)
+        return query, centers, weights, affine
+
+    @pytest.mark.parametrize("weight_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("autocast_dtype", [None, torch.bfloat16, torch.float16])
+    def test_values_and_parameter_gradients(self, device, dtype, weight_dtype, autocast_dtype):
+        query, centers, weights, affine = self._inputs(device, dtype)
+        weights = weights.to(weight_dtype).requires_grad_()
+        affine.requires_grad_()
+        with torch.autocast(device.type, dtype=autocast_dtype, enabled=autocast_dtype is not None):
+            actual = kornia.geometry.transform.warp_points_tps(query, centers, weights, affine)
+        assert actual.dtype == torch.promote_types(dtype, weight_dtype)
+        # Kernel distances have the coordinate dtype, even when the weights promote the output to float64.
+        expected = torch.tensor([self._VALUES], device=device, dtype=dtype)
+        self.assert_close(actual.to(dtype), expected)
+        upstream = torch.tensor([[[0.25, -1.0], [2.0, 0.5], [-1.0, 0.75]]], device=device, dtype=actual.dtype)
+        weights_grad, affine_grad = torch.autograd.grad(actual, (weights, affine), upstream)
+        expected_weights_grad = torch.tensor(
+            [
+                [
+                    [5.545177444479562, -0.8664339756999316],
+                    [8.047189562170502, 2.0117973905426254],
+                    [1.0058986952713127, -4.023594781085251],
+                ]
+            ],
+            device=device,
+            dtype=weight_dtype,
+        )
+        expected_affine_grad = torch.tensor([[[1.25, 0.25], [-0.5, -1.25], [3.0, 1.75]]], device=device, dtype=dtype)
+        self.assert_close(weights_grad, expected_weights_grad)
+        self.assert_close(affine_grad, expected_affine_grad)
+
+    @pytest.mark.parametrize("point_batch,weight_batch", [(1, 2), (2, 1), (2, 2)])
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    def test_broadcast_batches(self, device, dtype, point_batch, weight_batch, noncontiguous):
+        query, centers, weights, affine = self._inputs(device, dtype)
+        expected = torch.tensor([self._VALUES], device=device, dtype=dtype).expand(2, -1, -1).clone()
+        if weight_batch == 2:
+            weights = torch.cat([weights, 2 * weights])
+            expected[1] = 2 * expected[1] - torch.tensor(self._AFFINE_VALUES, device=device, dtype=dtype)
+        if point_batch == 2:
+            query = torch.cat([query, query.flip(1)])
+            expected[1] = expected[1].flip(0)
+        if noncontiguous:
+            query, centers, weights, affine = (
+                x.transpose(-2, -1).contiguous().transpose(-2, -1) for x in (query, centers, weights, affine)
+            )
+            assert not query.is_contiguous()
+            assert not weights.is_contiguous()
+        actual = kornia.geometry.transform.warp_points_tps(query, centers, weights, affine)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize(
+        "num_centers,num_weights,expected",
+        [
+            (0, 0, _AFFINE_VALUES),
+            # The historical elementwise reduction also broadcasts a singleton kernel axis in either operand.
+            # Generated by the same scalar reference, using c[:1] or w[:1] for every radial term, respectively.
+            (
+                1,
+                3,
+                [
+                    [2.4034264097200273, 3.147588722239781],
+                    [-1.0965735902799727, 4.147588722239782],
+                    [0.9133566024300068, 1.5681471805599454],
+                ],
+            ),
+            (
+                3,
+                1,
+                [
+                    [4.449045875831258, -1.324045875831258],
+                    [0.9490458758312581, -0.3240458758312581],
+                    [1.1732867951399863, 0.7017132048600137],
+                ],
+            ),
+        ],
+    )
+    def test_empty_and_broadcast_kernel_axis(self, device, dtype, num_centers, num_weights, expected):
+        query, centers, weights, affine = self._inputs(device, dtype)
+        actual = kornia.geometry.transform.warp_points_tps(
+            query, centers[:, :num_centers], weights[:, :num_weights], affine
+        )
+        self.assert_close(actual, torch.tensor([expected], device=device, dtype=dtype))
+
+    def test_compile_values_and_gradients(self, device, dtype, torch_optimizer):
+        inputs = tuple(x.requires_grad_() for x in self._inputs(device, dtype))
+        warp = kornia.geometry.transform.warp_points_tps
+        expected = warp(*inputs)
+        expected_grad = torch.autograd.grad(expected.sum(), inputs)
+        compiled = torch_optimizer(warp, fullgraph=True)
+        actual = compiled(*inputs)
+        self.assert_close(actual, torch.tensor([self._VALUES], device=device, dtype=dtype))
+        actual_grad = torch.autograd.grad(actual.sum(), inputs)
+        for actual_tensor, expected_tensor in zip(actual_grad, expected_grad):
+            self.assert_close(actual_tensor, expected_tensor)
+
+
 class TestWarpImage(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device):

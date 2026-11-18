@@ -100,6 +100,27 @@ def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
     )
 
 
+def _weighted_kernel_sum(k_matrix: torch.Tensor, kernel_weights: torch.Tensor) -> torch.Tensor:
+    # A CPU matrix product avoids the BxNxKx2 product and its backward intermediates. Keep the elementwise
+    # implementation for tracing/compilation (which can fuse the reduction), half kernels, accelerators and
+    # the existing singleton-K broadcasting. This avoids eager intermediates without changing the compiled graph.
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not is_compiling()
+        and k_matrix.device.type == "cpu"
+        and k_matrix.dtype in (torch.float32, torch.float64)
+        and k_matrix.shape[-1] == kernel_weights.shape[-2]
+    ):
+        product_dtype = torch.promote_types(k_matrix.dtype, kernel_weights.dtype)
+        if product_dtype in (torch.float32, torch.float64):
+            # Match elementwise promotion, including half weights with float32 distances. Autocast must not
+            # lower the precision of coordinates through this new product.
+            with _autocast_disabled(k_matrix.device.type):
+                return k_matrix.to(product_dtype).matmul(kernel_weights.to(product_dtype))
+    return k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
+
+
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Fit a thin-plate-spline warp that maps source points exactly onto target points.
 
@@ -285,9 +306,7 @@ def warp_points_tps(
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, kernel_centers)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    # broadcast the kernel distance matrix against the x and y weights to compute the x and y
-    # transforms simultaneously
-    k_mul_kernel = k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
+    k_mul_kernel = _weighted_kernel_sum(k_matrix, kernel_weights)
     points_mul_affine = points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2)
     warped: torch.Tensor = k_mul_kernel + points_mul_affine + affine_weights[:, None, 0]
 
