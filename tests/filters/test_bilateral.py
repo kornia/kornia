@@ -297,7 +297,7 @@ class TestBilateralBlur(BaseTester):
         # A two-step window sum in half precision truncated intermediate partial sums (#6284). Compare the same
         # representable inputs and output gradients: quantization changes the true sigma_color gradient from -0.178865
         # to -0.190558 (float64). Arithmetic error must not be rewarded for cancelling that difference.
-        if not supports_reflect_padding(device, half_dtype):
+        if not supports_reflect_padding(device, torch.float32):
             pytest.skip("reflection padding is unsupported for this device/dtype")
         torch.manual_seed(0)
         x = torch.rand(1, 3, 32, 40).to(half_dtype).float()
@@ -363,18 +363,111 @@ class TestBilateralBlur(BaseTester):
 
     @pytest.mark.applies_to(dtypes=("float16",), reason="compile the promoted float16 weight and backward path")
     @pytest.mark.parametrize("joint", [False, True])
-    def test_dynamo_small_color_sigma(self, joint, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("sigma_dtype", [torch.float16, torch.float32])
+    def test_dynamo_small_color_sigma(self, joint, sigma_dtype, device, dtype, torch_optimizer):
         guide = torch.tensor([0.0, 2**-10, 2**-8], device=device, dtype=dtype).view(1, 1, 1, 3)
         image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide) if joint else guide
-        sigma = torch.tensor([2**-10], device=device, dtype=dtype, requires_grad=True)
+        sigma = torch.tensor([2**-10], device=device, dtype=sigma_dtype, requires_grad=True)
         op = torch_optimizer(joint_bilateral_blur if joint else bilateral_blur)
         args = (image, guide) if joint else (image,)
         actual = op(*args, (1, 3), sigma, (1.0, 1.0), "replicate")
+        assert actual.dtype == dtype
         actual[..., 1].sum().backward()
         expected_value = 0.4355450559873709 if joint else 0.0007295721806632388
         expected_gradient = -25.349232186725377 if joint else -0.05643328126633213
         self.assert_close(actual[..., 1], torch.full_like(actual[..., 1], expected_value), rtol=1e-3, atol=6e-8)
         self.assert_close(sigma.grad, torch.full_like(sigma, expected_gradient), rtol=1e-3, atol=1e-5)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="keep wider tensor sigmas in the promoted arithmetic dtype")
+    @pytest.mark.parametrize("joint", [False, True])
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    @pytest.mark.parametrize("small_parameter", ["color", "space"])
+    def test_half_input_preserves_small_float32_sigmas(self, joint, distance, small_parameter, device, dtype):
+        guide = torch.tensor([0.0, 2**-10, 2**-8], device=device, dtype=dtype).view(1, 1, 1, 3)
+        image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide) if joint else guide
+        # 2**-26 is a valid positive float32 sigma, but rounds to zero in float16. Either narrow kernel must leave
+        # these pixels unchanged: the nearest nonzero colour distance and nearest spatial offset have zero weight.
+        color = 2**-26 if small_parameter == "color" else 1.0
+        space = (1.0, 2**-26) if small_parameter == "space" else (1.0, 1.0)
+        sigma_color = torch.tensor([color], device=device, dtype=torch.float32)
+        sigma_space = torch.tensor([space], device=device, dtype=torch.float32)
+        op = joint_bilateral_blur if joint else bilateral_blur
+        args = (image, guide) if joint else (image,)
+        actual = op(*args, (1, 3), sigma_color, sigma_space, "replicate", distance)
+        assert actual.dtype == dtype
+        self.assert_close(actual, image, rtol=0, atol=0)
+        self.assert_close(actual, op(*args, (1, 3), color, space, "replicate", distance), rtol=0, atol=0)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="float32 parameter gradients must not pass through float16")
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    def test_half_input_preserves_large_float32_sigma_gradient(self, distance, device, dtype):
+        guide = torch.tensor([0.0, 2**-10, 2**-8], device=device, dtype=dtype).view(1, 1, 1, 3)
+        image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide)
+        sigma = torch.tensor([2**-10], device=device, dtype=torch.float32, requires_grad=True)
+        actual = joint_bilateral_blur(image, guide, (1, 3), sigma, (1.0, 1.0), "replicate", distance)
+        assert actual.dtype == dtype
+        (actual[..., 1] * 4096).sum().backward()
+        # The analytic derivative above, with a representable upstream gradient, is finite in the parameter's dtype
+        # but exceeds float16's maximum. A float32 -> float16 -> float32 sigma conversion would return -inf.
+        expected = torch.tensor([-25.349232186725377 * 4096], device=device, dtype=torch.float32)
+        self.assert_close(sigma.grad, expected, rtol=1e-5, atol=1e-3)
+
+    @pytest.mark.parametrize("sigma_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("joint", [False, True])
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    def test_tensor_sigmas_preserve_working_dtype_convention(self, sigma_dtype, joint, distance, device, dtype):
+        guide_values = [0.0, 0.5, 1.25]
+        image_values = [0.125, 0.5, 0.875] if joint else guide_values
+        guide = torch.tensor(guide_values, device=device, dtype=dtype).view(1, 1, 1, 3)
+        image = torch.tensor(image_values, device=device, dtype=dtype).view_as(guide)
+        # Keep sigmas on the CPU until the filter moves and casts them together (MPS cannot first allocate float64).
+        color = torch.tensor([0.3], dtype=sigma_dtype)
+        space = torch.tensor([[1.0, 0.9]], dtype=sigma_dtype)
+        working_dtype = torch.float32 if dtype == torch.float16 else dtype
+        color_value = color.to(working_dtype).item()
+        space_value = space.to(working_dtype)[0, 1].item()
+        expected_values = []
+        for center in range(3):
+            indices = [max(0, min(2, center + offset)) for offset in (-1, 0, 1)]
+            weights = [
+                math.exp(
+                    -(offset**2) / (2 * space_value**2)
+                    - (guide_values[idx] - guide_values[center]) ** 2 / (2 * color_value**2)
+                )
+                for offset, idx in zip((-1, 0, 1), indices)
+            ]
+            expected_values.append(
+                sum(image_values[idx] * weight for idx, weight in zip(indices, weights)) / sum(weights)
+            )
+        op = joint_bilateral_blur if joint else bilateral_blur
+        args = (image, guide) if joint else (image,)
+        actual = op(*args, (1, 3), color, space, "replicate", distance)
+        assert actual.dtype == dtype
+        expected = torch.tensor(expected_values, device=device, dtype=dtype).view_as(actual)
+        self.assert_close(actual, expected, rtol=1e-2 if dtype == torch.bfloat16 else 1e-3, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("joint", [False, True])
+    def test_complex_input_keeps_spatial_kernel_dtype_promotion(self, joint):
+        image = torch.tensor([[[[0j, 1j, 0j]]]], dtype=torch.complex64, requires_grad=True)
+        sigma_space = torch.tensor([[1.0, 1.0]], dtype=torch.float64, requires_grad=True)
+        op = joint_bilateral_blur if joint else bilateral_blur
+        args = (image, image) if joint else (image,)
+        actual = op(*args, (1, 3), 1.0, sigma_space, "constant")
+        assert actual.dtype == torch.complex128
+        e = math.exp(-0.5)
+        edge = e**2 / (1 + e + e**2)
+        expected = torch.tensor([[[[edge * 1j, 1j / (1 + 2 * e**2), edge * 1j]]]], dtype=torch.complex128)
+        # Colour weights retain the existing complex64 arithmetic; only the spatial kernel promotes the output.
+        self.assert_close(actual, expected, rtol=1e-7, atol=1e-8)
+        actual.imag.sum().backward()
+        derivative = 2 * e**2 / (1 + e + e**2) ** 2 - 2 * e**2 / (1 + 2 * e**2) ** 2
+        self.assert_close(
+            sigma_space.grad,
+            torch.tensor([[0.0, derivative]], dtype=torch.float64),
+            rtol=1e-7,
+            atol=1e-9,
+        )
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])

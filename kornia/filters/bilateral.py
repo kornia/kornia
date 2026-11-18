@@ -232,6 +232,9 @@ def _bilateral_blur(
     input = _to_floating(input)
     if guidance is not None and not guidance.is_floating_point():
         guidance = guidance.to(input.dtype)
+    # Half inputs use float32 window arithmetic below. Convert tensor sigmas directly to that dtype: an intermediate
+    # cast through float16 would still erase small positive values and overflow otherwise finite parameter gradients.
+    sigma_dtype = torch.float32 if input.dtype == torch.float16 else input.dtype
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
@@ -239,7 +242,7 @@ def _bilateral_blur(
         # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
         if not is_compiling() and not bool((sigma_color > 0).all()):
             KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype)
+        sigma_color = sigma_color.to(device=input.device, dtype=sigma_dtype)
     elif not sigma_color > 0:
         KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
 
@@ -248,7 +251,7 @@ def _bilateral_blur(
         _check_sigma_batch("sigma_space", sigma_space, input)
         # the spatial kernel takes the dtype of a tensor sigma, so match a floating input as for sigma_color
         if input.is_floating_point():
-            sigma_space = sigma_space.to(device=input.device, dtype=input.dtype)
+            sigma_space = sigma_space.to(device=input.device, dtype=sigma_dtype)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -272,10 +275,6 @@ def _bilateral_blur(
         input = input.float()
         if guidance is not None:
             guidance = guidance.float()
-        if isinstance(sigma_color, torch.Tensor):
-            sigma_color = sigma_color.float()
-        if isinstance(sigma_space, torch.Tensor):
-            sigma_space = sigma_space.float()
 
     if isinstance(sigma_color, torch.Tensor):
         sigma_color = sigma_color.view(-1, 1, 1, 1, 1, 1)
@@ -304,15 +303,26 @@ def _bilateral_blur(
     # gradient over one axis at a time.
     centre = guidance.unsqueeze(-1).expand(-1, -1, -1, -1, kx).unsqueeze(3)  # (B, C, H, 1, W, Kx)
     diff = unfolded_guidance - centre
+    # Reuse the promoted half path's fresh difference in eager inference, avoiding a second float32 colour window.
+    # Autograd needs the original difference; compilers fuse the functional form, and tracers/transforms keep it too.
+    in_place = (
+        output_dtype == torch.float16
+        and not is_compiling()
+        and not torch.jit.is_tracing()
+        and not torch._C._are_functorch_transforms_active()
+        and not _records_gradient(input, guidance, sigma_color, sigma_space)
+    )
     if diff.shape[1] == 1:
         # One channel's sum is the value itself, so the sum is skipped: on torch 2.14, MPS reduces over an axis of
         # size 1 about 270 times slower than it squares (222 ms against 0.8 ms). l1 keeps its abs(): |d|^2 is d^2
         # only for a real difference, not for a complex one.
-        color_distance_sq = diff.abs().square() if color_distance_type == "l1" else diff.square()
+        color_distance_sq = (
+            diff.square_() if in_place else (diff.abs().square() if color_distance_type == "l1" else diff.square())
+        )
     elif color_distance_type == "l1":
-        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
+        color_distance_sq = (diff.abs_() if in_place else diff.abs()).sum(1, keepdim=True).square()
     else:
-        color_distance_sq = diff.square().sum(1, keepdim=True)
+        color_distance_sq = (diff.square_() if in_place else diff.square()).sum(1, keepdim=True)
     del diff
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
@@ -326,8 +336,10 @@ def _bilateral_blur(
     # On MPS over Kx, then over Ky, for the speed above. Elsewhere one reduction over both window axes: the two-step sum
     # rounds every partial sum over Kx, which costs bfloat16 gradients with respect to tensor sigmas their accuracy.
     if input.device.type == "mps":
-        return ((unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)).to(output_dtype)
-    return ((unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))).to(output_dtype)
+        output = (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    else:
+        output = (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
+    return output.to(output_dtype) if output_dtype == torch.float16 else output
 
 
 def bilateral_blur(
@@ -355,9 +367,11 @@ def bilateral_blur(
         - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
-        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
-          its device. For float16 inputs, the window arithmetic uses float32 so small positive sigmas do not overflow
-          the inverse variance or lose squared differences; the result is cast back to float16.
+        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is moved to its device and
+          cast to its dtype, except for float16 inputs, which use float32 sigmas and window arithmetic so small positive
+          sigmas do not overflow the inverse variance or lose squared differences. The result is cast back to float16.
+          Eager inference reuses its colour-difference buffer; gradient-recorded window temporaries use four bytes per
+          value instead of two, which can increase the memory needed for large images and kernels.
         - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`, so uint8 differences do not wrap.
         - On the CPU, a float32 or float64 input (after that conversion) with at least 65,536 values is filtered tap
