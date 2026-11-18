@@ -1607,6 +1607,39 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert augmentation(0.0)(skipped).shape == skipped.shape
 
 
+class TestEmptySliceCropAutograd(BaseTester):
+    @pytest.mark.parametrize("augmentation", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
+    @pytest.mark.parametrize("probability", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("in_sequence", [False, True])
+    def test_forward_and_replay_keep_image_gradients_4429(self, augmentation, probability, in_sequence, device, dtype):
+        crop = augmentation((4, 5), p=probability, cropping_mode="slice")
+        aug = K.AugmentationSequential(crop, data_keys=["input", "mask"]) if in_sequence else crop
+        inputs = [torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)]
+        if in_sequence:
+            inputs.append(torch.empty(0, 1, 6, 8, device=device, dtype=dtype, requires_grad=True))
+
+        output = aug(*inputs)
+        saved = copy.deepcopy(aug._params)
+        outputs = output if in_sequence else [output]
+        for actual, image in zip(outputs, inputs):
+            assert actual.shape == (0, image.shape[1], 4, 5)
+            assert actual.dtype == dtype
+            assert actual.device == device
+            actual.sum().backward()
+            self.assert_close(image.grad, torch.empty_like(image))
+
+        # Replay the saved empty draw after another call replaced the crop's last parameters.
+        later = [torch.rand(2, image.shape[1], 9, 11, device=device, dtype=dtype) for image in inputs]
+        aug(*later)
+        fresh_inputs = [image.detach().requires_grad_() for image in inputs]
+        replay = aug(*fresh_inputs, params=saved)
+        replayed = replay if in_sequence else [replay]
+        for actual, image in zip(replayed, fresh_inputs):
+            assert actual.shape == (0, image.shape[1], 4, 5)
+            actual.sum().backward()
+            self.assert_close(image.grad, torch.empty_like(image))
+
+
 _AUGMENTATIONS = [K.RandomEqualize, K.RandomEqualize3D, K.RandomPosterize, K.RandomSharpness]
 
 

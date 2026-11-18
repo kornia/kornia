@@ -234,6 +234,13 @@ class TestCropAndResize(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_empty_slice_module_keeps_image_gradient_4429(self, device, dtype):
+        image = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        output = kornia.geometry.transform.CenterCrop2D((4, 5))(image)
+        assert output.shape == (0, 3, 4, 5)
+        output.sum().backward()
+        self.assert_close(image.grad, torch.empty_like(image))
+
     def test_invalid_size_type(self):
         with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
             kornia.geometry.transform.CenterCrop2D([4, 6])
@@ -1102,16 +1109,45 @@ class TestCropByIndices(BaseTester):
         with pytest.raises((ValueError, RuntimeError), match="align_corners option can only be set"):
             op(img, src_box, size=(6, 6), interpolation="nearest", align_corners=True)
 
-    @pytest.mark.parametrize("size", [(2, 3), None])
-    def test_crop_by_indices_empty_batch(self, size, device, dtype):
+    @pytest.mark.parametrize("size", [(2, 3), (7, 9), (0, 0), None])
+    @pytest.mark.parametrize("shape_compensation", ["resize", "pad"])
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_crop_by_indices_empty_batch(self, size, shape_compensation, transpose, device, dtype):
         # Empty in, empty out (#4429): the uniform-box fast path read the first box of an empty batch
         # and raised IndexError. With ``size`` the output takes that size; without it there is no box
         # to infer one from, so the spatial dimensions are zero.
         img = torch.rand(0, 3, 5, 4, device=device, dtype=dtype)
+        if transpose:
+            img = img.transpose(-2, -1)
+        img.requires_grad_()
         src_box = torch.zeros(0, 4, 2, device=device, dtype=torch.int64)
-        out = kornia.geometry.transform.crop_by_indices(img, src_box, size=size)
+        out = kornia.geometry.transform.crop_by_indices(img, src_box, size=size, shape_compensation=shape_compensation)
         assert out.shape == (0, 3, *(size or (0, 0)))
         assert out.dtype == dtype
+        assert out.device == device
+        # No row is copied on the empty path, but the result must still be differentiable in the image (#4429).
+        out.sum().backward()
+        self.assert_close(img.grad, torch.empty_like(img))
+
+    @pytest.mark.parametrize("context", [torch.no_grad, torch.inference_mode])
+    def test_empty_crop_respects_disabled_grad_mode_4429(self, context, device, dtype):
+        img = torch.empty(0, 3, 5, 4, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 4, 2, device=device)
+        with context():
+            out = kornia.geometry.transform.crop_by_indices(img, boxes, size=(2, 3))
+        assert out.shape == (0, 3, 2, 3)
+        assert not out.requires_grad
+
+    def test_dynamo_empty_batch_retains_image_gradient_4429(self, device, dtype, torch_optimizer):
+        img = torch.empty(0, 3, 5, 4, device=device, dtype=dtype, requires_grad=True)
+        boxes = torch.empty(0, 4, 2, device=device, dtype=torch.long)
+        op = torch_optimizer(kornia.geometry.transform.crop_by_indices, fullgraph=True)
+        out = op(img, boxes, size=(2, 3))
+        assert out.shape == (0, 3, 2, 3)
+        assert out.device == device
+        assert out.dtype == dtype
+        out.sum().backward()
+        self.assert_close(img.grad, torch.empty_like(img))
 
     def test_crop_by_indices_variable_sizes_exception(self, device, dtype):
         img = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
