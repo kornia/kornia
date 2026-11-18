@@ -439,14 +439,17 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("joint", [False, True])
     @pytest.mark.parametrize("distance", ["l1", "l2"])
     def test_tensor_sigmas_preserve_working_dtype_convention(self, sigma_dtype, joint, distance, device, dtype):
-        guide_values = [0.0, 0.5, 1.25]
-        image_values = [0.125, 0.5, 0.875] if joint else guide_values
+        guide_values = [0.3125, 0.0, 0.3125]
+        image_values = [1.0, 0.0, 1.0] if joint else guide_values
         guide = torch.tensor(guide_values, device=device, dtype=dtype).view(1, 1, 1, 3)
         image = torch.tensor(image_values, device=device, dtype=dtype).view_as(guide)
         # Keep sigmas on the CPU until the filter moves and casts them together (MPS cannot first allocate float64).
-        color = torch.tensor([0.3], dtype=sigma_dtype)
-        space = torch.tensor([[1.0, 0.9]], dtype=sigma_dtype)
-        # Independent Python-math literals. Round (c, s)=(.3, .9) to the parameter then working dtype, and use:
+        # The colour-sigma midpoint rounds down in float16. Two bright neighbours make that loss visible at the centre
+        # after the output is rounded to float16, without tightening the dtype tolerances below.
+        color = torch.tensor([0.125 + 2**-14], dtype=sigma_dtype)
+        space = torch.tensor([[1.0, 1.0]], dtype=sigma_dtype)
+        # Independent Python-math literals. Round (c, s)=(.125 + 2**-14, 1) to the parameter then
+        # working dtype, and use:
         # for j in range(3):
         #     ids = [max(0, min(2, j+i)) for i in (-1, 0, 1)]
         #     w = [math.exp(-i*i/(2*s*s) - (guide_values[k]-guide_values[j])**2/(2*c*c))
@@ -454,20 +457,20 @@ class TestBilateralBlur(BaseTester):
         #     y = sum(image_values[k]*v for k, v in zip(ids, w)) / sum(w)
         expected_rows = {
             torch.float16: (
-                [0.040189618269375865, 0.457279262862899, 1.2386180434577096],
-                [0.15514221370203188, 0.4641195184924751, 0.8693090217288548],
+                [0.30740084120767036, 0.01581288747997671, 0.30740084120767036],
+                [0.9836826918645452, 0.05060123993592546, 0.9836826918645452],
             ),
             torch.bfloat16: (
-                [0.04039129152055616, 0.4572423875113197, 1.2384613370284696],
-                [0.15529346864041715, 0.4640441153465342, 0.8692306685142348],
+                [0.30740084120767036, 0.01581288747997671, 0.30740084120767036],
+                [0.9836826918645452, 0.05060123993592546, 0.9836826918645452],
             ),
             torch.float32: (
-                [0.0401761347838798, 0.45728182309783655, 1.2386284604373587],
-                [0.15513210108790984, 0.4641246160764675, 0.8693142302186794],
+                [0.30738552235087324, 0.015858731971556028, 0.30738552235087324],
+                [0.9836336715227945, 0.050747942308979284, 0.9836336715227945],
             ),
             torch.float64: (
-                [0.04017613149057195, 0.4572818237246134, 1.238628462980764],
-                [0.15513209861792895, 0.46412461732239774, 0.8693142314903819],
+                [0.30738552235087324, 0.015858731971556028, 0.30738552235087324],
+                [0.9836336715227945, 0.050747942308979284, 0.9836336715227945],
             ),
         }
         expected_sigma_dtype = sigma_dtype
@@ -482,6 +485,26 @@ class TestBilateralBlur(BaseTester):
         assert actual.dtype == dtype
         expected = torch.tensor(expected_values, device=device, dtype=dtype).view_as(actual)
         self.assert_close(actual, expected, rtol=1e-2 if dtype == torch.bfloat16 else 1e-3, atol=1e-5)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="ordinary wider spatial sigmas must not be rounded to float16")
+    @pytest.mark.parametrize("sigma_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("joint", [False, True])
+    @pytest.mark.parametrize("distance", ["l1", "l2"])
+    def test_half_input_preserves_ordinary_spatial_sigma_precision(self, sigma_dtype, joint, distance, device, dtype):
+        image = torch.tensor([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], device=device, dtype=dtype).view(1, 1, 1, 7)
+        # Keep the wider sigma on the CPU until the filter moves and casts it, also for MPS.
+        sigma_space = torch.tensor([[1.0, 1.0 + 2**-11]], dtype=sigma_dtype)
+        op = joint_bilateral_blur if joint else bilateral_blur
+        args = (image, image) if joint else (image,)
+        actual = op(*args, (1, 7), 2.0, sigma_space, "replicate", distance)
+        assert actual.dtype == dtype
+        # At the centre only the two distance-three taps have value 1. Independent Python-math result:
+        # s = 1 + 2**-11
+        # w = [math.exp(-i*i/(2*s*s) - (1/8 if abs(i) == 3 else 0)) for i in range(-3, 4)]
+        # expected = (w[0] + w[-1]) / sum(w)
+        # Rounding s through float16 changes the rounded centre by 3.05e-5, above the unchanged 1.79e-5 tolerance.
+        expected = torch.full_like(actual[..., 3], 0.007863141241652728)
+        self.assert_close(actual[..., 3], expected, rtol=1e-3, atol=1e-5)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("joint", [False, True])
