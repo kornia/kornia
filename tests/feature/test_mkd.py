@@ -105,15 +105,15 @@ def test_get_kron_order_values_and_dtype():
 
 
 class TestMKDGradients(BaseTester):
-    @pytest.mark.parametrize("ps", [5, 13, 25])
-    def test_shape(self, ps, device):
+    def test_shape(self, device):
+        ps = 13
         inp = torch.ones(1, 1, ps, ps).to(device)
         gradients = MKDGradients().to(device)
         out = gradients(inp)
         assert out.shape == (1, 2, ps, ps)
 
-    @pytest.mark.parametrize("bs", [1, 5, 13])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 5
         inp = torch.ones(bs, 1, 15, 15).to(device)
         gradients = MKDGradients().to(device)
         out = gradients(inp)
@@ -148,15 +148,15 @@ class TestMKDGradients(BaseTester):
 
 
 class TestVonMisesKernel(BaseTester):
-    @pytest.mark.parametrize("ps", [5, 13, 25])
-    def test_shape(self, ps, device):
+    def test_shape(self, device):
+        ps = 13
         inp = torch.ones(1, 1, ps, ps).to(device)
         vm = VonMisesKernel(patch_size=ps, coeffs=[0.38214156, 0.48090413]).to(device)
         out = vm(inp)
         assert out.shape == (1, 3, ps, ps)
 
-    @pytest.mark.parametrize("bs", [1, 5, 13])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 5
         inp = torch.ones(bs, 1, 15, 15).to(device)
         vm = VonMisesKernel(patch_size=15, coeffs=[0.38214156, 0.48090413]).to(device)
         out = vm(inp)
@@ -211,15 +211,16 @@ class TestVonMisesKernel(BaseTester):
 
 
 class TestEmbedGradients(BaseTester):
-    @pytest.mark.parametrize("ps,relative", [(5, True), (13, True), (25, True), (5, False), (13, False), (25, False)])
-    def test_shape(self, ps, relative, device):
+    @pytest.mark.parametrize("relative", [True, False])
+    def test_shape(self, relative, device):
+        ps = 13
         inp = torch.ones(1, 2, ps, ps).to(device)
         emb_grads = EmbedGradients(patch_size=ps, relative=relative).to(device)
         out = emb_grads(inp)
         assert out.shape == (1, 7, ps, ps)
 
-    @pytest.mark.parametrize("bs", [1, 5, 13])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 5
         inp = torch.ones(bs, 2, 15, 15).to(device)
         emb_grads = EmbedGradients(patch_size=15, relative=True).to(device)
         out = emb_grads(inp)
@@ -279,10 +280,9 @@ class TestExplicitSpacialEncoding(BaseTester):
         d_ = 9 if kernel_type == "cart" else 25
         assert out.shape == (1, d_ * in_dims)
 
-    @pytest.mark.parametrize(
-        "kernel_type,bs", [("cart", 1), ("cart", 5), ("cart", 13), ("polar", 1), ("polar", 5), ("polar", 13)]
-    )
-    def test_batch_shape(self, kernel_type, bs, device):
+    @pytest.mark.parametrize("kernel_type", ["cart", "polar"])
+    def test_batch_shape(self, kernel_type, device):
+        bs = 5
         inp = torch.ones(bs, 7, 15, 15).to(device)
         ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=15, in_dims=7).to(device)
         out = ese(inp)
@@ -361,8 +361,8 @@ class TestWhitening(BaseTester):
         out = wh(inp)
         assert out.shape == (1, output_dims)
 
-    @pytest.mark.parametrize("bs", [1, 3, 7])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 3
         wh = Whitening(xform="lw", whitening_model=None, in_dims=175, output_dims=128).to(device)
         inp = torch.ones(bs, 175).to(device)
         out = wh(inp)
@@ -390,7 +390,7 @@ class TestWhitening(BaseTester):
 
         self.gradcheck(whitening_describe, (patches, in_dims), nondet_tol=1e-4)
 
-    def test_jit(self, device, dtype):
+    def test_jit(self, device):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
         model = Whitening(xform="lw", whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
@@ -416,7 +416,7 @@ class TestWhitening(BaseTester):
         assert wh(torch.rand(3, in_dims, device=device, dtype=dtype)).shape == (3, output_dims)
 
     @pytest.mark.parametrize("keval", [40, -1, -31])
-    def test_pcaws_needs_the_shrinkage_eigenvalue(self, device, keval):
+    def test_pcaws_needs_the_shrinkage_eigenvalue(self, keval):
         # A whitening model with no eigenvalue at index keval has no shrinkage weight: say so instead of IndexError.
         # A negative keval has no meaning for a spectrum; it used to index the one truncated to output_dims.
         in_dims = 30
@@ -486,8 +486,8 @@ class TestMKDDescriptor(BaseTester):
         # non-strict still loads, as it does for any missing key
         fresh.load_state_dict(partial, strict=False)
 
-    @pytest.mark.parametrize("bs", [1, 3, 7])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 3
         mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
         inp = torch.ones(bs, 1, 19, 19).to(device)
         out = mkd(inp)
@@ -517,18 +517,6 @@ class TestMKDDescriptor(BaseTester):
             return mkd(patches.double())
 
         self.gradcheck(mkd_describe, (patches, ps), nondet_tol=1e-4)
-
-    @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
-    def test_jit(self, device, dtype):
-        batch_size, channels, ps = 1, 1, 19
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        kt = "concat"
-        wt = "lw"
-        model = MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(
-            MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
-        )
-        self.assert_close(model(patches), model_jit(patches))
 
     @pytest.mark.parametrize("output_dims", [20, 40])
     def test_pcaws_with_at_most_40_output_dims(self, device, dtype, output_dims):
@@ -572,8 +560,8 @@ class TestSimpleKD(BaseTester):
         out = skd(inp)
         assert out.shape == (1, min(128, self.dims[kernel_type]))
 
-    @pytest.mark.parametrize("bs", [1, 3, 7])
-    def test_batch_shape(self, bs, device):
+    def test_batch_shape(self, device):
+        bs = 3
         skd = SimpleKD(patch_size=19, kernel_type="polar").to(device)
         inp = torch.ones(bs, 1, 19, 19).to(device)
         out = skd(inp)

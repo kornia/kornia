@@ -32,7 +32,7 @@ from kornia.core._compat import torch_version_ge
 from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
 from kornia.filters import GaussianBlur2d
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
 
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
@@ -44,6 +44,9 @@ if torch_version_ge(2, 9, 0):
 DOCUMENTED_OPSET = 18
 
 _RGB = {"input_shape": [-1, 3, -1, -1], "output_shape": [-1, 3, -1, -1]}
+
+
+_EXPORTERS = onnx_exporter_params("default-exporter", "legacy-exporter")
 
 
 def _default_domain_opset(op):
@@ -139,6 +142,19 @@ _NOT_CALL_STATE = {
         ("device",),
         "unpickling; the samplers it rebuilds follow torch.load's map_location",
     ),
+    "RandomGeneratorBase._ranges_need_rebuild": (
+        ("_range_versions",),
+        (
+            "which range version the samplers were built from; an export's run rebuilds them too and neither is "
+            "restored, so a later call compares it with the samplers it belongs to"
+        ),
+    ),
+    "PlainUniformGenerator._ranges_loaded": (("samplers",), "load_state_dict, not a call"),
+    "Rotation90Generator._find_whole_range": (
+        ("_whole_range",),
+        "the constructor, load_state_dict and the rebuild of a copy, not a call",
+    ),
+    "RandomRotation90._load_from_state_dict": (("_allows_odd_turns",), "load_state_dict, not a call"),
     "RandomTransplantation.params_from_input": (
         ("excluded_labels",),
         "a constructor argument moved to the mask's device; its values never change",
@@ -300,7 +316,7 @@ class TestONNXExportMixin(BaseTester):
     # Not "dynamo" in the ids: conftest deselects every test whose name contains it unless an optimizer is set. The
     # default exporter is torch.export-based from torch 2.9 and the legacy one before.
     @pytest.mark.parametrize("case", ["container", "module"], ids=["nested-container", "bare-module"])
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_keeps_the_state_inverse_reads_6140(self, exporter, case):
         exported, aug, y, expected = self._augmented(case)
         modules = list(exported.modules())
@@ -313,7 +329,7 @@ class TestONNXExportMixin(BaseTester):
         assert all(_same_objects(_call_state_of(m), state) for m, state in zip(modules, before))
         self.assert_close(aug.inverse(y), expected)
 
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_leaves_no_state_on_a_module_never_called_6140(self, exporter):
         # Several of the attributes are class-level defaults until a call stores them on the instance.
         import kornia.augmentation as K
@@ -348,7 +364,7 @@ class TestONNXExportMixin(BaseTester):
     # A static shape: with a dynamic batch, the dynamo exporter stops in the generators before the modules below run.
     _STATIC = {"input_shape": [2, 3, 4, 4], "pseudo_shape": [2, 3, 4, 4]}
 
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_keeps_the_matrix_of_a_policy_6140(self, exporter):
         # Under a capture, where ``is_exporting()`` skips the reset, a policy appends the dummy's matrices in place to
         # the list its ``transform_matrix`` composes, so putting the same list back is not enough.
@@ -430,7 +446,7 @@ class TestONNXExportMixin(BaseTester):
         assert all(params[key] is items[key] for key in items)
         self.assert_close(aug.inverse(y), expected)
 
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_leaves_a_resized_crop_copyable_6140(self, exporter):
         # ``ResizedCropGenerator`` stored each call's crop sizes on itself. A dynamo export on torch 2.9 left its fake
         # tensor there, and ``deepcopy`` and ``pickle`` raised afterwards. The sizes are now passed on, not stored.
@@ -650,7 +666,7 @@ class TestONNXExportMixinDtypeDevice(BaseTester):
 
 
 class TestONNXExportMixinRandomState(BaseTester):
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    @pytest.mark.parametrize("exporter", _EXPORTERS)
     def test_export_gives_back_the_random_state_6140(self, device, exporter):
         # The dummy and the export's run on it draw from the global generators, an augmentation moved to a device on
         # that device's, so the draws after an export were not the ones the same calls make without it (#6140).

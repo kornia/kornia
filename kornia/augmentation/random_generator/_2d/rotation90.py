@@ -17,14 +17,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Set
 
 import torch
 
 from kornia.augmentation.random_generator._2d.plain_uniform import PlainUniformGenerator
 from kornia.augmentation.random_generator.base import UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["Rotation90Generator"]
 
@@ -51,9 +51,29 @@ class Rotation90Generator(PlainUniformGenerator):
 
     """
 
+    # Whether the range is whole, and in ``RandomRotation90`` whether it can draw an odd turn, are read from its values
+    # and decide how the draw is made and whether a non-square input is refused. The floored draw is piecewise constant
+    # in the range: only the clamp's tie on the top number reports a derivative. An update of a learnable range reaches
+    # this generator through ``load_state_dict`` and copies only.
+    _follows_ranges_in_forward = False
+
     def __init__(self, times: Any) -> None:
         super().__init__((times, "times", 0.0, (-3, 3)))
-        self._whole_range = bool(self.times.to(torch.float64).round().eq(self.times).all())
+        self._find_whole_range()
+
+    def _find_whole_range(self) -> None:
+        # Read on the host, in Python floats: a loaded range may sit on MPS, which has no float64.
+        self._whole_range = all(float(value).is_integer() for value in self.times.reshape(-1).tolist())
+
+    def _ranges_loaded(self, names: Set[str]) -> None:
+        self._find_whole_range()
+        super()._ranges_loaded(names)
+
+    def _rebuild_samplers(self, device: Any, dtype: torch.dtype) -> None:
+        # Only a copy of a learnable range comes here, since the forward path does not rebuild this generator. The copy
+        # holds the range as it is now, which an in-place update may have changed since the flag was found.
+        self._find_whole_range()
+        super()._rebuild_samplers(device, dtype)
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         super().make_samplers(device, dtype)
@@ -75,4 +95,4 @@ class Rotation90Generator(PlainUniformGenerator):
             # ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` for a range such as ``(1, 1)``, which ``floor``
             # would keep, so a rare draw would turn a quarter turn into a half turn.
             drawn = drawn.floor().clamp(max=sampler.high - 1)
-        return {"times": drawn.to(device=_device, dtype=_dtype)}
+        return {"times": _to_device_nonblocking(drawn, _device, _dtype)}

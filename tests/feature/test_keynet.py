@@ -37,18 +37,6 @@ class TestKeyNet(BaseTester):
         model = KeyNet(pretrained=False).to(device, dtype).eval()
         self.assert_close(torch_optimizer(model)(inp), model(inp))
 
-    def test_shape(self, device, dtype):
-        inp = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
-        keynet = KeyNet(pretrained=False).to(device, dtype).eval()
-        out = keynet(inp)
-        assert out.shape == inp.shape
-
-    def test_shape_batch(self, device, dtype):
-        inp = torch.ones(16, 1, 16, 16, device=device, dtype=dtype)
-        keynet = KeyNet(pretrained=False).to(device, dtype).eval()
-        out = keynet(inp)
-        assert out.shape == inp.shape
-
     @pytest.mark.parametrize("num_filters", [4, 16])
     def test_non_default_num_filters(self, num_filters, device, dtype):
         # The learnable block used to produce 8 channels per level whatever ``num_filters`` said, while

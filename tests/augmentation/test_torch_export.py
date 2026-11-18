@@ -48,12 +48,17 @@ _HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compil
 _TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
 
+# A zero mean and a unit std are the identity, which an exported program that dropped the op would also reproduce.
+_MEAN = (0.1, -0.2, 0.3)
+_STD = (0.5, 2.0, 0.25)
+
+
 def _normalize() -> torch.nn.Module:
-    return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
+    return K.Normalize(mean=torch.tensor(_MEAN), std=torch.tensor(_STD))
 
 
 def _denormalize() -> torch.nn.Module:
-    return K.Denormalize(mean=torch.zeros(3), std=torch.ones(3))
+    return K.Denormalize(mean=torch.tensor(_MEAN), std=torch.tensor(_STD))
 
 
 def _resize() -> torch.nn.Module:
@@ -83,7 +88,6 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 ]
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
@@ -137,7 +141,6 @@ TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 ]
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
@@ -173,7 +176,6 @@ INT_SIZE_RESIZES: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 ]
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", INT_SIZE_RESIZES, ids=[n for n, _ in INT_SIZE_RESIZES])
@@ -203,7 +205,6 @@ PAD_TO_FOLLOWERS: list[Tuple[str, Callable[[], list[torch.nn.Module]]]] = [
 ]
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", PAD_TO_FOLLOWERS, ids=[n for n, _ in PAD_TO_FOLLOWERS])
@@ -239,7 +240,6 @@ def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[obje
     return seq, (image, mask), lambda out: out[1], mask.flip(-1)
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("case", ["fresh", "after_float16_call", "dict_mask_first"])
@@ -265,7 +265,6 @@ def test_torch_export_mask_uses_the_call_image_dtype_4478(case: str) -> None:
     assert torch.equal(mask, expected), f"{case}: {mask.flatten().tolist()} vs {expected.flatten().tolist()}"
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -297,7 +296,6 @@ class _ReplayWithConstantParams(torch.nn.Module):
         return self.seq(*args, params=self.params)
 
 
-@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("data_key", ["mask", "keypoints", "bbox_xyxy"])

@@ -38,7 +38,7 @@ class RandomShear(GeometricAugmentationBase2D):
     Args:
         shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (a, b) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).

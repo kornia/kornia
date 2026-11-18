@@ -21,17 +21,23 @@ import torch
 
 
 class AverageMeter:
-    """Computes and stores the average and current value.
+    """Keep the running average of a metric over batches.
+
+    ``stats = AverageMeter()`` starts empty; ``stats.update(val, n)`` adds a value that stands for ``n`` samples, and
+    ``stats.avg`` returns their ``n``-weighted mean as a Python float.
 
     Convention:
-        - ``update(val, n)`` adds ``val * n`` to ``sum`` and ``n`` to ``count``, so ``avg`` is the ``n``-weighted
-          mean: the mean over samples when every ``val`` is a batch mean and ``n`` its batch size. ``val`` keeps the
-          last value passed, unweighted.
+        - ``update(val, n)`` adds ``val * n`` to ``sum`` and ``n`` to ``count``, so ``avg`` is the mean over
+          samples when every ``val`` is a batch mean and ``n`` its batch size. ``val`` keeps the last value passed,
+          unweighted.
         - Values are not rescaled: :func:`~kornia.metrics.accuracy` percentages average to a percentage. A tensor
           ``val`` keeps ``sum`` a tensor that holds its autograd graph; pass a detached tensor or a Python number to
           avoid keeping it.
         - Float16 and bfloat16 values are weighted and accumulated in float32. Later updates can promote the
           accumulator to a wider dtype; ``val`` always retains the original value and dtype.
+
+    See Also:
+        - :func:`~kornia.metrics.accuracy`: a batch metric to feed it, as a percentage.
 
     Example:
         >>> stats = AverageMeter()

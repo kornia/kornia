@@ -198,8 +198,9 @@ class OnnxLightGlue:
         kpts0 = normalize_keypoints(kpts0_, size=size0)
         kpts1 = normalize_keypoints(kpts1_, size=size1)
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)
+        # Validate both images with one host read, retaining the synchronous error before ONNX inference.
+        inside = ((kpts0 >= -1) & (kpts0 <= 1)).all() & ((kpts1 >= -1) & (kpts1 <= 1)).all()
+        KORNIA_CHECK(bool(inside), _KEYPOINT_RANGE_MSG)
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}

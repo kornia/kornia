@@ -91,14 +91,15 @@ def match_adalam(
         - ``config`` is merged into the defaults of ``kornia.feature.adalam.get_adalam_default_config()``; an
           unknown key warns and is ignored. The computation runs on the device of ``desc1`` unless ``config`` sets
           ``"device"``.
-        - Exact local affine correspondences are retained when enough distinct keypoints support them beyond the
-          seed and minimal fitting pair. Unlike the reference implementation, equal tiny residuals alone do not
-          imply duplicate keypoints. Their confidence uses a conservative residual-area floor of ``2**-24`` in
-          normalized coordinates, so inverse confidence stays finite even for an exact fit.
-        - Known defect: more accurate keypoints can keep fewer correct matches. On large images, keypoints with
-          sub-pixel noise lose correct matches that noisier ones keep, and a neighbourhood that mixes exact and
-          slightly noisy correct matches keeps the exact ones and few of the others
-          (`#5943 <https://github.com/kornia/kornia/issues/5943>`_).
+        - Local affine consensus counts distinct source and target locations, reserving three samples for the
+          seed and minimal fitting pair. Repeated locations use the first observation in descriptor-score order
+          as evidence; a later conflicting match cannot replace it. Equal residuals do not imply duplicate keypoints.
+          The full accepted radius is returned, including repeated observations tied at its boundary and mixtures
+          of exact and noisy matches. Confidence uses a
+          conservative residual-area floor of ``2**-24`` in normalized coordinates, remaining finite for exact fits.
+        - Unlike the reference implementation, which merges nearly equal residuals into float16 bins, the
+          consensus radius is the largest at which both the cumulative inlier density and the density over the
+          last ``min_inliers`` samples reach ``min_confidence``.
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.
@@ -360,7 +361,7 @@ class AdalamFilter:
         scores = dd12[:, 0] / dd12[:, 1].clamp_min_(1e-3)
 
         if self.config["force_seed_mnn"]:
-            _dd21, nn21 = torch.min(distmat, dim=0)  # (n2,)
+            nn21 = distmat.t().contiguous().argmin(dim=1)  # (n2,)
             mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config["device"])
         else:
             mnn = None

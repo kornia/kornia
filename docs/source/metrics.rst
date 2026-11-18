@@ -2,7 +2,7 @@ kornia.metrics
 ==============
 
 .. meta::
-   :description: The kornia.metrics module provides a variety of metrics to evaluate the performance of deep learning models in computer vision tasks. It includes metrics for classification, segmentation, detection, image quality, and optical flow. With functions such as accuracy, mean IoU, PSNR, and AEPE, this module facilitates efficient monitoring and evaluation of models during training, making it a valuable tool for model performance assessment.
+   :description: kornia.metrics scores predictions for classification, segmentation, detection, image quality (PSNR, SSIM), optical flow (AEPE), stereo disparity and pose, and averages them over training batches.
 
 .. currentmodule:: kornia.metrics
 

@@ -27,6 +27,18 @@ from testing.base import BaseTester
 class TestRandomRotation3D(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
+    @staticmethod
+    def _tolerances(device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # The angles are drawn in float32; a half call rounds the matrix (1 eps off the float32 one, and R R^T 1 eps
+            # off the identity) and its trilinear warp rounds the volume, the grid and the weights: the output of
+            # test_random_rotation lands up to 1.8 eps off the float32 literal, whose values reach 1.5.
+            eps = torch.finfo(dtype).eps
+            return 2 * eps, 2 * eps
+        if device.type == "cuda" and dtype == torch.float32:
+            return 5e-3, 1e-3
+        return 1e-4, 1e-6
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -99,8 +111,7 @@ class TestRandomRotation3D(BaseTester):
         )
 
         out = f(input_tensor)
-        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
-        rtol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-6
+        atol, rtol = self._tolerances(device, dtype)
         self.assert_close(out, expected, rtol=rtol, atol=atol)
         self.assert_close(f.transform_matrix, expected_transform, rtol=rtol, atol=atol)
 
@@ -123,8 +134,7 @@ class TestRandomRotation3D(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1, 1)  # (2, 1, 3, 4, 4)
 
-        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
-        rtol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-6
+        atol, rtol = self._tolerances(device, dtype)
 
         torch.manual_seed(24)
         out = f(input_tensor)

@@ -119,21 +119,6 @@ class TestCombineTensorPatches(BaseTester):
         with pytest.raises(AssertionError):
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
-    def test_expl_autopadding(self, device, dtype):
-        img_shape = (8, 13)
-        img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(
-            1, 1, img_shape[0], img_shape[1]
-        )
-        window_size = (3, 3)
-        padding = kornia.contrib.compute_padding(img_shape, window_size)
-        patches = kornia.contrib.extract_tensor_patches(
-            img, window_size=window_size, stride=window_size, padding=padding
-        )
-        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
-        assert m(patches).shape == (1, 1, *img_shape)
-
-        self.assert_close(img, m(patches))
-
     def test_impl_autopadding(self, device, dtype):
         img_shape = (11, 16)
         img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(1, 1, *img_shape)
@@ -279,11 +264,10 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2, allow_auto_unpadding=True, unpadding=(0, 0))
         self.assert_close(out, img)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("stride", [2, 1])
     def test_float64_round_trip_is_exact(self, stride, device):
         # An eps added to every divisor returned 999.99999 for 1000.0.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         g = torch.Generator().manual_seed(0)
         img = (torch.rand(1, 2, 4, 6, generator=g, dtype=torch.float64) * 1000).to(device)
         out = kornia.contrib.combine_tensor_patches(

@@ -9,6 +9,11 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     open-pull-requests-limit: 10
+    # Setting labels replaces Dependabot's defaults, so keep "dependencies".
+    # Dependency bumps are internal: no-changelog satisfies the changelog check.
+    labels:
+      - "dependencies"
+      - "no-changelog"
     schedule:
       interval: weekly
       day: sunday
@@ -21,6 +26,10 @@ updates:
     commit-message:
       prefix: ⬆️
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github_actions"
+      - "no-changelog"
     # this will group all dependencies together into single PRs for all github-actions
     groups:
       github-actions:

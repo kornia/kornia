@@ -30,6 +30,8 @@ whose four edges along an axis span different extents on it, one with a non-fini
 that no affine map relates, such as a box that is not a parallelepiped in :func:`crop_and_resize3d`. An axis-aligned
 box may have a one-voxel axis where the output has one too; resizing a one-voxel axis to more voxels, or a longer one
 to one voxel, raises ``torch.linalg.LinAlgError`` (`#4747 <https://github.com/kornia/kornia/issues/4747>`_).
+For half-precision volumes, box crops keep the boxes and solved matrix in float32 through sampling, then return the
+volume's dtype, so rounding the matrix does not move the sampled voxels.
 
 Which function to use:
 
@@ -101,9 +103,8 @@ def crop_and_resize3d(
             it, or is not a parallelepiped.
 
     See Also:
-        - :func:`crop_and_resize`: the same for images and ``(B, 4, 2)`` boxes, where, along an axis longer than one
-          pixel, ``align_corners`` changes only ``'reflection'`` padding and, with ``mode='nearest'``, which pixel a
-          sample exactly halfway takes.
+        - :func:`crop_and_resize`: the same for images and ``(B, 4, 2)`` boxes, where ``align_corners`` changes only
+          ``'reflection'`` padding and, with ``mode='nearest'``, which pixel a sample exactly halfway takes.
         - :func:`crop_by_boxes3d`: maps the box onto a second box, whose size sets the output size.
         - :func:`center_crop3d`: the central window of each volume, with ``align_corners=True`` by default.
 
@@ -194,9 +195,7 @@ def center_crop3d(
     ``patches = center_crop3d(tensor, size)`` takes volumes ``(B, C, D, H, W)`` and returns their central
     ``(B, C, d, h, w)`` windows for ``size = (d, h, w)``: with the default ``align_corners=True``, a sub-volume of the
     input, with the extra voxel of an odd margin at the back/bottom/right. A ``size`` larger than the input pads with
-    zeros, except along a one-voxel input axis, which ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For images, use :func:`center_crop`; for a crop at any
-    box, :func:`crop_and_resize3d`.
+    zeros. For images, use :func:`center_crop`; for a crop at any box, :func:`crop_and_resize3d`.
 
     Convention:
         - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
@@ -464,21 +463,21 @@ def _crop_by_boxes3d_to_size(
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     out_dtype = tensor.dtype
-    # only an output axis of one voxel can be flat in dst_box, so every other crop keeps its exact solve and graph
+    # The sampler already widens half volumes. Keep the box solve and its matrix in that dtype too:
+    # rounding the matrix first moves the sampled voxels even when every box coordinate is exact.
+    half_input = _samples_half_in_float32(tensor)
+    work_dtype = torch.float32 if half_input else tensor.dtype
+    tensor = tensor.to(work_dtype)
+    src_box, dst_box = src_box.to(work_dtype), dst_box.to(work_dtype)
+    # Only an output axis of one voxel can be flat in dst_box; keep widening out of every other solve and graph.
     if 1 in out_size:
-        # Voxel 257 is not a bfloat16 value (2049 is not a float16 one): a half box would round onto its neighbour,
-        # and one voxel of widening would round back onto the box. So for a half volume the boxes, the widening, the
-        # transform and the warp stay in float32, as the warp already samples half volumes, and the patch returns to
-        # the input dtype.
-        work_dtype = torch.float32 if _samples_half_in_float32(tensor) else tensor.dtype
-        tensor = tensor.to(work_dtype)
-        src_box, dst_box = src_box.to(work_dtype), dst_box.to(work_dtype)
         solve_src, solve_dst = _widen_one_voxel_axes(src_box, dst_box)
     else:
-        src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
         solve_src, solve_dst = src_box, dst_box
     dst_trans_src: torch.Tensor = get_perspective_transform3d(solve_src, solve_dst)
-    _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
+    # Preserve the existing tolerance for rounded half boxes and for the one-voxel path.
+    tolerance_dtype = out_dtype if half_input and 1 not in out_size else dst_trans_src.dtype
+    _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src, tolerance_dtype)
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
@@ -512,7 +511,9 @@ def _widen_one_voxel_axes(src_box: torch.Tensor, dst_box: torch.Tensor) -> Tuple
     return src_box + offset, dst_box + offset
 
 
-def _check_boxes_related_by_affine(src_box: torch.Tensor, dst_box: torch.Tensor, dst_trans_src: torch.Tensor) -> None:
+def _check_boxes_related_by_affine(
+    src_box: torch.Tensor, dst_box: torch.Tensor, dst_trans_src: torch.Tensor, tolerance_dtype: torch.dtype
+) -> None:
     # The crops warp by the top three rows of the box homography, an affine map, so they place the 8 corners of
     # ``src_box`` on those of ``dst_box`` only when an affine map relates the two boxes, as one relates any two
     # parallelepipeds. Refuse every other pair instead of cropping it with a wrong mapping. Mapping a corner sums
@@ -533,7 +534,7 @@ def _check_boxes_related_by_affine(src_box: torch.Tensor, dst_box: torch.Tensor,
     with _autocast_disabled(src.device.type):
         miss = (src @ linear + translation - dst).abs().amax((-2, -1))
         scale = (src.abs() @ linear.abs() + translation.abs() + dst.abs()).amax((-2, -1))
-    tolerance = max(torch.finfo(dst_trans_src.dtype).eps, torch.finfo(torch.float32).eps) ** 0.5 * scale
+    tolerance = max(torch.finfo(tolerance_dtype).eps, torch.finfo(torch.float32).eps) ** 0.5 * scale
     if bool((miss > tolerance).any()):
         raise AssertionError(
             "Boxes must be related by an affine map, as two parallelepipeds are: the affine map the crop warps by "

@@ -16,6 +16,7 @@
 #
 
 import importlib
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +34,43 @@ one_hot_module = importlib.import_module("kornia.losses.one_hot")
 
 
 class TestBinaryFocalLossWithLogits(BaseTester):
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_ignored_non_finite_logits(self, device, dtype, value, reduction, gamma, ignore_index):
+        """Ignored non-finite logits contribute neither loss nor logit gradients."""
+        # Include both a partly ignored sample and an entirely ignored sample.
+        logits = torch.tensor(
+            [[[0.0, value], [0.0, value]], [[value, value], [value, value]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        labels = torch.full_like(logits, ignore_index)
+        labels[0, 0, 0], labels[0, 1, 0] = 1.0, 0.0
+        weight = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+        pos_weight = torch.tensor([5.0, 7.0], device=device, dtype=dtype)
+        loss = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, 0.25, gamma, reduction, pos_weight, weight, ignore_index
+        )
+
+        # At logit 0, p = 1/2: FL = alpha_t * 2**(-gamma) * log(2), and
+        # dFL/dz = (1 - 2*t) * alpha_t * 2**(-gamma-1) * (1 + gamma*log(2)).
+        factors = torch.tensor([[[2.5, 0.0], [2.25, 0.0]], [[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        expected = factors * (0.5**gamma * math.log(2.0))
+        expected_grad = factors * (0.5 ** (gamma + 1) * (1 + gamma * math.log(2.0)))
+        expected_grad[0, 0, 0] *= -1
+        if reduction == "mean":
+            expected = expected.mean()
+            expected_grad = expected_grad / logits.numel()
+        elif reduction == "sum":
+            expected = expected.sum()
+
+        self.assert_close(loss, expected)
+        loss.sum().backward()
+        self.assert_close(logits.grad, expected_grad)
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_value_same_as_torch_bce_loss(self, device, dtype, reduction, ignore_index):
@@ -62,47 +100,6 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         )
         self.assert_close(focal_equivalent_bce_loss, torch_bce_loss)
 
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("alpha", [None, 0.2, 0.5])
-    @pytest.mark.parametrize("gamma", [0.0, 1.0, 2.0])
-    def test_shape_alpha_gamma(self, device, dtype, reduction, expected_shape, alpha, gamma):
-        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
-        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
-
-        actual_shape = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=alpha, gamma=gamma, reduction=reduction
-        ).shape
-        assert actual_shape == expected_shape
-
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("pos_weight", [None, (1, 2, 5)])
-    @pytest.mark.parametrize("weight", [None, (0.2, 0.5, 0.8)])
-    def test_shape_pos_weight_weight(self, device, dtype, reduction, expected_shape, pos_weight, weight):
-        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
-        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
-
-        pos_weight = None if pos_weight is None else torch.tensor(pos_weight, dtype=dtype, device=device)
-        weight = None if weight is None else torch.tensor(weight, dtype=dtype, device=device)
-
-        actual_shape = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, pos_weight=pos_weight, weight=weight
-        ).shape
-        assert actual_shape == expected_shape
-
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("ignore_index", [-100, 255])
-    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
-        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
-        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
-
-        ignore = torch.rand(2, 3, 2, device=device) > 0.6
-        labels[ignore] = ignore_index
-
-        actual_shape = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
-        ).shape
-        assert actual_shape == expected_shape
-
     @pytest.mark.parametrize("gamma", [0.5, 2.0])
     def test_dynamo(self, device, dtype, torch_optimizer, gamma):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -115,6 +112,21 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         actual = op_optimized(logits, labels, *args)
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("gamma", [0.0, 0.5, 2.0])
+    def test_dynamo_ignored_non_finite_logits(self, device, dtype, torch_optimizer, gamma):
+        """Compiled forward and backward passes exclude ignored non-finite logits."""
+        logits = torch.tensor(
+            [[0.0, float("nan"), float("inf"), -float("inf")]], device=device, dtype=dtype, requires_grad=True
+        )
+        labels = torch.tensor([[1.0, -100.0, -100.0, -100.0]], device=device, dtype=dtype)
+        op = torch_optimizer(kornia.losses.binary_focal_loss_with_logits)
+        loss = op(logits, labels, 0.25, gamma, "sum")
+        self.assert_close(loss, logits.new_tensor(0.25 * 0.5**gamma * math.log(2.0)))
+        loss.backward()
+        expected_grad = torch.zeros_like(logits)
+        expected_grad[0, 0] = -0.25 * 0.5 ** (gamma + 1) * (1 + gamma * math.log(2.0))
+        self.assert_close(logits.grad, expected_grad)
 
     def test_jit_script(self, device, dtype):
         # TorchScript compiles the loss with its weight checks, whose messages format shapes rather than a lambda
@@ -130,7 +142,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
             op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(4, device=device, dtype=dtype), None)
 
     @pytest.mark.parametrize("gamma", [0.5, 2.0])
-    def test_gradcheck(self, device, dtype, gamma):
+    def test_gradcheck(self, device, gamma):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
 
@@ -138,7 +150,7 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
 
-    def test_gradcheck_ignore_index(self, device, dtype):
+    def test_gradcheck_ignore_index(self, device):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         ignore = torch.rand(2, 3, 2, device=device) > 0.8
@@ -149,22 +161,17 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         self.gradcheck(op, (logits, labels, *args), requires_grad=[True, False, False, False])
 
     def test_module(self, device, dtype):
+        # Every argument differs from the function defaults, so the module has to forward each one.
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+        labels[0, 1, 0] = labels[1, 2, 1] = 255
+        pos_weight = torch.tensor([3.0, 0.5, 2.0], device=device, dtype=dtype)
+        weight = torch.tensor([[0.2], [1.5], [0.8]], device=device, dtype=dtype)
 
-        args = (0.25, 2.0)
+        args = (0.6, 1.5, "sum", pos_weight, weight, 255)
         op = kornia.losses.binary_focal_loss_with_logits
         op_module = kornia.losses.BinaryFocalLossWithLogits(*args)
         self.assert_close(op_module(logits, labels), op(logits, labels, *args))
-
-    def test_numeric_stability(self, device, dtype):
-        logits = torch.tensor([[100.0, -100]], dtype=dtype, device=device)
-        labels = torch.tensor([[1.0, 0.0]], dtype=dtype, device=device)
-
-        args = (0.25, 2.0)
-        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, *args)
-        expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
-        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("gamma", [0.25, 0.5, 0.75, 2.0])
     @pytest.mark.parametrize("alpha", [None, 0.25])
@@ -273,9 +280,8 @@ class TestFocalLoss(BaseTester):
         expected = kornia.losses.focal_loss(logits, labels, alpha, 2.0, reduction)
         self.assert_close(compiled(logits, labels, alpha, 2.0, reduction), expected)
 
+    @pytest.mark.applies_to(devices=("cuda",), reason="CUDA synchronization check")
     def test_reduced_alpha_does_not_synchronize(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("CUDA synchronization check")
         logits = torch.randn(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
         labels = torch.randint(4, (2, 3, 5), device=device)
         expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, "none").mean()
@@ -448,55 +454,6 @@ class TestFocalLoss(BaseTester):
         self.assert_close(loss, torch.zeros_like(loss))
         self.assert_close(torch.autograd.grad(loss, logits)[0], torch.zeros_like(logits))
 
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("alpha", [None, 0.2, 0.5])
-    @pytest.mark.parametrize("gamma", [0.0, 1.0, 2.0])
-    def test_shape_alpha_gamma(self, device, dtype, reduction, expected_shape, alpha, gamma):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.randint(num_classes, (2, 3, 2), device=device)
-
-        actual_shape = kornia.losses.focal_loss(logits, labels, alpha=alpha, gamma=gamma, reduction=reduction).shape
-        assert actual_shape == expected_shape
-
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3)), ("mean", ()), ("sum", ())])
-    def test_shape_target_with_only_one_dim(self, device, dtype, reduction, expected_shape):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-        labels = torch.randint(num_classes, (2,), device=device)
-
-        actual_shape = kornia.losses.focal_loss(logits, labels, alpha=0.1, gamma=1.5, reduction=reduction).shape
-        assert actual_shape == expected_shape
-
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("weight", [None, (0.2, 0.5, 0.8)])
-    def test_shape_weight(self, device, dtype, reduction, expected_shape, weight):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.randint(num_classes, (2, 3, 2), device=device)
-
-        weight = None if weight is None else torch.tensor(weight, dtype=dtype, device=device)
-
-        actual_shape = kornia.losses.focal_loss(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, weight=weight
-        ).shape
-        assert actual_shape == expected_shape
-
-    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
-    @pytest.mark.parametrize("ignore_index", [-100, 255])
-    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.randint(num_classes, (2, 3, 2), device=device)
-
-        ignore = torch.rand(2, 3, 2, device=device) > 0.6
-        labels[ignore] = ignore_index
-
-        actual_shape = kornia.losses.focal_loss(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
-        ).shape
-        assert actual_shape == expected_shape
-
     @pytest.mark.parametrize("ignore_index", [-100, 255])
     def test_value_ignore_index(self, device, dtype, ignore_index):
         num_classes = 3
@@ -532,13 +489,15 @@ class TestFocalLoss(BaseTester):
         self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
         assert (values[~off_class] > 0).all()
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        reason="an out-of-range index fails a device-side assert off the CPU, which ends the CUDA context",
+    )
     @pytest.mark.parametrize("reduction, weighted", [("mean", False), ("sum", False), ("mean", True), ("none", False)])
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_exception_labels_outside_the_classes(self, device, dtype, reduction, weighted, ignore_index):
         # Unweighted 'mean' and 'sum' gather the target class, the others build a one-hot target: both raise
         # one_hot's errors. The gather used to raise its own "index ... is out of bounds".
-        if device.type != "cpu":
-            pytest.skip("an out-of-range index fails a device-side assert off the CPU, which ends the CUDA context")
         num_classes = 3
         logits = torch.rand(2, num_classes, 4, device=device, dtype=dtype)
         weight = torch.ones(num_classes, device=device, dtype=dtype) if weighted else None
@@ -549,12 +508,11 @@ class TestFocalLoss(BaseTester):
                 kornia.losses.focal_loss(logits, labels, 0.25, 2.0, reduction, weight, ignore_index)
 
     # The name keeps "compile" and "dynamo" out, so the ordinary jobs run it.
+    @pytest.mark.applies_to(devices=("cpu",), reason="the label check runs on the CPU only")
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     def test_reduced_label_check_traces_in_one_graph(self, device, dtype, reduction):
         # The label check of the gather path is captured with the loss, in one graph, and raises when it runs.
-        if device.type != "cpu":
-            pytest.skip("the label check runs on the CPU only")
         graphs = []
 
         def backend(gm, example_inputs):
@@ -610,7 +568,7 @@ class TestFocalLoss(BaseTester):
         with pytest.raises(Exception, match="weight must hold one value per class of pred"):
             op_script(logits, labels, 0.25, 2.0, "mean", torch.rand(num_classes + 1, device=device, dtype=dtype))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(num_classes, (2, 3, 2), device=device).long()
@@ -622,11 +580,14 @@ class TestFocalLoss(BaseTester):
         )
 
     def test_module(self, device, dtype):
+        # Every argument differs from the function defaults, so the module has to forward each one.
         num_classes = 3
-        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-        labels = torch.randint(num_classes, (2,), device=device)
+        logits = torch.rand(2, num_classes, 4, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 4), device=device)
+        labels[0, 1] = labels[1, 3] = 255
+        weight = torch.tensor([0.2, 1.5, 0.8], device=device, dtype=dtype)
 
-        args = (0.25, 2.0)
+        args = (0.4, 1.5, "sum", weight, 255)
         op = kornia.losses.focal_loss
         op_module = kornia.losses.FocalLoss(*args)
         self.assert_close(op_module(logits, labels), op(logits, labels, *args))
@@ -662,6 +623,12 @@ else:
 
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestFocalLossCompiledLabels(BaseTester):
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, on the CPU in float32",
+    )
     @pytest.mark.parametrize(
         "reduction, ignore_index, requires_grad", [("mean", -100, False), ("mean", -100, True), ("sum", None, False)]
     )
@@ -673,8 +640,6 @@ class TestFocalLossCompiledLabels(BaseTester):
         # bounds") where eager raises: for a label past the classes on torch 2.5.1, 2.9.1 and 2.14, and for a
         # negative one on 2.14; 2.5.1 and 2.9.1 returned a loss for it without gradients. The check does not depend
         # on is_exporting(), which a torch.compile capture also reports on 2.5.1 and 2.9.1, so 2.9.1 runs it too.
-        if device.type != "cpu" or dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, on the CPU in float32")
         from torch._inductor.decomposition import decompositions
 
         if torch.ops.aten._assert_async.msg in decompositions:

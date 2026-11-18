@@ -24,7 +24,7 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
-from kornia.augmentation.container.ops import InputSequentialOps
+from kornia.augmentation.container.ops import InputSequentialOps, _filter_child_options, _validate_extra_args
 from kornia.augmentation.container.params import ParamItem
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
@@ -121,14 +121,16 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(PolicySequential, module)
+            child_args = _filter_child_options(module, extra_args, param)
             mat = module.get_transformation_matrix(
-                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
+                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=child_args
             )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
@@ -244,6 +246,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)

@@ -7,7 +7,6 @@ kornia.color
 .. currentmodule:: kornia.color
 
 Color space conversions on tensors with channels at axis -3, plus color maps and sepia.
-Each operation documents its channel order and range.
 
 Conventions
 -----------

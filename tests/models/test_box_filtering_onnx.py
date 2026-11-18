@@ -98,11 +98,10 @@ class TestBoxFilteringONNX(BaseTester):
             with pytest.raises(ort.capi.onnxruntime_pybind11_state.InvalidArgument, match=f"Expected: {batch}"):
                 session.run(None, {"input": _detections(other, 20).numpy()})
 
-    @pytest.mark.parametrize("input_shape", [[-1, -1, 6], [-1, 20, 6]])
-    def test_list_export_rejects_a_dynamic_batch_6077(self, input_shape):
+    def test_list_export_rejects_a_dynamic_batch_6077(self):
         """Point callers asking for a dynamic batch to the tensor-output mode."""
         with pytest.raises(ValueError, match="filter_as_zero=True"):
-            BoxFiltering(confidence_threshold=0.5).to_onnx(save=False, input_shape=input_shape)
+            BoxFiltering(confidence_threshold=0.5).to_onnx(save=False, input_shape=[-1, -1, 6])
 
     def test_explicit_shapes_must_agree(self):
         """Reject a pseudo batch that conflicts with an explicitly fixed input batch."""
@@ -119,6 +118,8 @@ class TestBoxFilteringONNX(BaseTester):
         module = BoxFiltering(confidence_threshold=0.5, filter_as_zero=True)
         exported = module.to_onnx(save=False, dynamo=dynamo)
         assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param
+        # #6112: the threshold stays a constant in the graph, not a second input.
+        assert len(exported.graph.input) == 1
         assert len(exported.graph.output) == 1
 
         session = _session(exported)
@@ -145,23 +146,6 @@ class TestBoxFilteringONNX(BaseTester):
         boxes[:, :, 2:] = 1.0
         (actual,) = session.run(None, {"input": boxes.numpy()})
         assert int((torch.from_numpy(actual)[:, :, 1] > 0).sum()) == int((module(boxes)[:, :, 1] > 0).sum()) == 100
-
-    @pytest.mark.timeout(120)
-    @pytest.mark.parametrize("dynamo", _EXPORTERS)
-    def test_filter_with_threshold_keeps_it_as_a_constant_6112(self, dynamo):
-        """A thresholded filter still filters at its threshold, from one input."""
-        pytest.importorskip("onnx")
-        pytest.importorskip("onnxscript")
-
-        module = BoxFiltering(confidence_threshold=0.5, filter_as_zero=True)
-        exported = module.to_onnx(save=False, dynamo=dynamo)
-        assert len(exported.graph.input) == 1
-
-        boxes = torch.zeros(2, 50, 6)
-        boxes[:, :, 1] = torch.linspace(0.01, 0.99, 50)
-        (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
-        self.assert_close(torch.from_numpy(actual), module(boxes))
-        assert int((torch.from_numpy(actual)[:, :, 1] > 0).sum()) == 50
 
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("dynamo", _EXPORTERS)

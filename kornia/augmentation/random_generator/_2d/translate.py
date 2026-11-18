@@ -20,13 +20,14 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
+from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import (
     _adapted_rsampling,
     _check_positive_int_or_traced,
     _common_param_check,
     _range_bound,
 )
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["TranslateGenerator"]
 
@@ -64,22 +65,25 @@ class TranslateGenerator(RandomGeneratorBase):
         return f"translate_x={self.translate_x}, translate_y={self.translate_y}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.translate_x_sampler = None
-        self.translate_y_sampler = None
-
-        if self.translate_x is not None:
-            _translate_x = _range_bound(self.translate_x, "translate_x", bounds=(-1, 1), check="joint").to(
-                device=device, dtype=dtype
-            )
+        range_dtype = _range_bound_dtype(dtype)
+        # Each sampler is assigned once, without ``None`` first: a module shared by threads may draw meanwhile.
+        if self.translate_x is None:
+            self.translate_x_sampler = None
+        else:
+            _translate_x = _range_bound(
+                self.translate_x, "translate_x", bounds=(-1, 1), check="joint", dtype=range_dtype
+            ).to(device=device, dtype=dtype)
 
             self.translate_x_sampler = UniformDistribution(
                 _translate_x[..., 0], _translate_x[..., 1], validate_args=False
             )
 
-        if self.translate_y is not None:
-            _translate_y = _range_bound(self.translate_y, "translate_y", bounds=(-1, 1), check="joint").to(
-                device=device, dtype=dtype
-            )
+        if self.translate_y is None:
+            self.translate_y_sampler = None
+        else:
+            _translate_y = _range_bound(
+                self.translate_y, "translate_y", bounds=(-1, 1), check="joint", dtype=range_dtype
+            ).to(device=device, dtype=dtype)
 
             self.translate_y_sampler = UniformDistribution(
                 _translate_y[..., 0], _translate_y[..., 1], validate_args=False
@@ -97,8 +101,8 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_x_sampler is not None:
             translate_x = (
-                _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch).to(
-                    device=_device, dtype=_dtype
+                _to_device_nonblocking(
+                    _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch), _device, _dtype
                 )
                 * width
             )
@@ -107,8 +111,8 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_y_sampler is not None:
             translate_y = (
-                _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch).to(
-                    device=_device, dtype=_dtype
+                _to_device_nonblocking(
+                    _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch), _device, _dtype
                 )
                 * height
             )

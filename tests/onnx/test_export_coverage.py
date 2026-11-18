@@ -116,7 +116,14 @@ def _cases():
         ),
         pytest.param(_Fn(kornia.contrib.distance_transform), ((gray > 0.7).float(),), id="distance_transform"),
         pytest.param(
-            kornia.losses.HausdorffERLoss(),
+            _Fn(kornia.contrib.distance_transform),
+            (torch.tensor([0.0, 0.5, 1.0, 0.0]).repeat(15).reshape(1, 1, 3, 4, 5),),
+            id="distance_transform_3d_fractional",
+        ),
+        pytest.param(
+            # Each erosion step exports the same nodes again, per class: three steps instead of the default ten keep
+            # the repetition at a quarter of the export time, and give these inputs the loss of ten steps.
+            kornia.losses.HausdorffERLoss(k=3),
             (torch.rand(2, 3, 12, 12), torch.randint(0, 3, (2, 1, 12, 12))),
             id="hausdorff",
         ),

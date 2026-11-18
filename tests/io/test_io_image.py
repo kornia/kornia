@@ -163,21 +163,6 @@ class TestIoImage:
         with pytest.raises((IsADirectoryError, PermissionError), match=re.escape(f"dir{suffix}")):
             load_image(tmp_path / f"dir{suffix}")
 
-    def test_smoke(self, tmp_path: Path) -> None:
-        height, width = 4, 5
-        img_th: torch.Tensor = create_random_img8_torch(height, width, 3)
-
-        file_path = tmp_path / "image.jpg"
-        write_image(str(file_path), img_th)
-
-        assert file_path.is_file()
-
-        img_load: torch.Tensor = load_image(str(file_path), ImageLoadType.UNCHANGED)
-
-        assert img_th.shape == img_load.shape
-        assert img_th.shape[1:] == (height, width)
-        assert str(img_th.device) == "cpu"
-
     def test_device(self, device, png_image: Path) -> None:
         file_path = Path(png_image)
 
@@ -250,16 +235,15 @@ class TestIoImage:
         assert loaded.shape == (1, 4, 5)
         assert torch.equal(loaded, img)
 
-    @pytest.mark.parametrize("ext", ["jpg"])
-    @pytest.mark.parametrize("channels", [3])
-    def test_write_image(self, device, tmp_path, ext, channels):
+    def test_write_image(self, device, tmp_path):
+        # A tensor on the test device is written from its CPU copy; PNG is lossless, so it reads back bit for bit.
         height, width = 4, 5
-        img_th: torch.Tensor = create_random_img8_torch(height, width, channels, device)
+        img_th: torch.Tensor = create_random_img8_torch(height, width, 3, device)
 
-        file_path = tmp_path / f"image.{ext}"
+        file_path = tmp_path / "image.png"
         write_image(file_path, img_th)
 
-        assert file_path.is_file()
+        assert torch.equal(load_image(file_path, ImageLoadType.UNCHANGED), img_th.cpu())
 
     @pytest.mark.parametrize("shape", [(1, 1, 5), (1, 5, 1)])
     def test_write_image_one_row_or_one_column_grayscale(self, tmp_path: Path, shape) -> None:

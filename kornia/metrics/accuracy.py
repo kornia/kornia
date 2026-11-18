@@ -42,21 +42,27 @@ def _is_positive_index(k: Any) -> bool:
 
 
 def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (1,)) -> list[torch.Tensor]:
-    """Compute the accuracy over the k top predictions for the specified values of k.
+    """Compute the top-k classification accuracy of class scores, in percent.
+
+    ``accs = accuracy(pred, target, topk=(1, 5))`` takes ``(B, C)`` class scores and ``(B,)`` class indices, and
+    returns one percentage in :math:`[0, 100]`, not a fraction, per entry of ``topk``.
 
     Convention:
-        - ``pred`` holds one score per class, ``(B, C)``; only the order of the scores in a row matters.
-          ``target`` holds class indices, ``(B,)`` or ``(B, 1)``. The batch sizes of ``pred`` and
-          ``target`` must match.
-        - The result is a list with one 0-d float32 tensor per entry of ``topk``, in that order. Each is a
-          **percentage** in :math:`[0, 100]`, not a fraction, taken over the whole batch: a sample counts for ``k``
-          when its target is among its ``k`` highest scores, and a ``k`` above :math:`C` counts as :math:`C`.
-          :ref:`Losses and metrics <losses-metrics-conventions>` lists the scale of every task metric.
+        - Only the order of the scores in a row matters. A sample counts for ``k`` when its target is among its
+          ``k`` highest scores; a ``k`` above :math:`C` counts as :math:`C`. :ref:`Losses and metrics
+          <losses-metrics-conventions>` lists the scale of every task metric.
 
     Args:
-        pred: the class scores, with shape ``(B, C)``.
-        target: the ground-truth class indices, with shape ``(B,)`` or ``(B, 1)``.
-        topk: the expected topk ranking.
+        pred: class scores with shape ``(B, C)``.
+        target: ground-truth class indices with shape ``(B,)`` or ``(B, 1)``.
+        topk: the values of ``k``, positive integers.
+
+    Returns:
+        a list with one 0-d float32 tensor per entry of ``topk``, in that order.
+
+    See Also:
+        - :func:`~kornia.metrics.confusion_matrix`: counts of every target and predicted class pair, from hard labels.
+        - :class:`~kornia.metrics.AverageMeter`: the running mean of these percentages over batches.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])

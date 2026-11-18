@@ -36,30 +36,30 @@ def add_weighted(
     beta: Union[float, torch.Tensor],
     gamma: Union[float, torch.Tensor],
 ) -> torch.Tensor:
-    r"""Calculate the weighted sum of two Tensors.
+    """Blend two tensors as a weighted sum.
 
-    Convention:
-        src1 and src2 must have exactly the same shape; a Python number coefficient applies to
-        every element. A tensor coefficient must broadcast to src1's shape without changing it,
-        such as a 0-d scalar or a per-image (B, 1, 1, 1) weight; a mismatched or extra leading axis
-        raises. See :class:`AddWeighted` for the module wrapper.
+    ``out = add_weighted(src1, alpha, src2, beta, gamma)`` returns ``src1 * alpha + src2 * beta + gamma`` for two
+    tensors of one shape, without clamping.
 
     .. image:: _static/img/add_weighted.png
 
-    The function calculates the weighted sum of two Tensors as follows:
-
-    .. math::
-        out = src1 * alpha + src2 * beta + gamma
+    Convention:
+        A tensor coefficient must broadcast to the shape of ``src1`` without enlarging it: a 0-d scalar, ``(C, 1, 1)``
+        or a per-image ``(B, 1, 1, 1)`` weight. A ``(B,)`` weight lines up with the width axis, not the batch: it raises
+        unless ``B`` equals ``W`` or 1, and then it weights columns. Use ``(B, 1, 1, 1)`` for one weight per image.
 
     Args:
-        src1: torch.Tensor with an arbitrary shape, equal to shape of src2.
-        alpha: weight of the src1 elements, a float or a tensor broadcastable to the src1 shape.
-        src2: torch.Tensor with an arbitrary shape, equal to shape of src1.
-        beta: weight of the src2 elements, a float or a tensor broadcastable to the src1 shape.
-        gamma: value added to each sum, a float or a tensor broadcastable to the src1 shape.
+        src1: tensor of any shape.
+        alpha: weight of ``src1``, a number or a tensor.
+        src2: tensor with the shape of ``src1``.
+        beta: weight of ``src2``, a number or a tensor.
+        gamma: value added to the sum, a number or a tensor.
 
     Returns:
-        Weighted torch.Tensor with shape equal to src1 and src2 shapes.
+        Weighted sum with the shape of ``src1``.
+
+    See Also:
+        - :class:`AddWeighted`: the module form.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)
@@ -84,25 +84,27 @@ def add_weighted(
 
 
 class AddWeighted(nn.Module):
-    r"""Calculate the weighted sum of two Tensors.
+    """Blend two tensors as a weighted sum (module form).
+
+    ``op = AddWeighted(alpha, beta, gamma)`` stores the coefficients and ``out = op(src1, src2)`` is
+    :func:`add_weighted` with them. A tensor coefficient is stored as a non-persistent buffer, or as a parameter if it
+    is an ``nn.Parameter``.
 
     Convention:
-        See :func:`add_weighted`.
-
-    The function calculates the weighted sum of two Tensors as follows:
-
-    .. math::
-        out = src1 * alpha + src2 * beta + gamma
+        - See the convention block of :func:`add_weighted`.
 
     Args:
-        alpha: weight of the src1 elements, a float or a tensor broadcastable to the src1 shape.
-        beta: weight of the src2 elements, a float or a tensor broadcastable to the src1 shape.
-        gamma: value added to each sum, a float or a tensor broadcastable to the src1 shape.
+        alpha: weight of ``src1``, a number or a tensor.
+        beta: weight of ``src2``, a number or a tensor.
+        gamma: value added to the sum, a number or a tensor.
 
     Shape:
-        - Input1: torch.Tensor with an arbitrary shape, equal to shape of Input2.
-        - Input2: torch.Tensor with an arbitrary shape, equal to shape of Input1.
-        - Output: Weighted torch.Tensor with shape equal to src1 and src2 shapes.
+        - Input1: tensor of any shape.
+        - Input2: tensor with the shape of Input1.
+        - Output: same shape as Input1.
+
+    See Also:
+        - :func:`add_weighted`: the one-call form.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)

@@ -231,3 +231,60 @@ def test_digest_line_names_version_and_commit(tmp_path: Path) -> None:
     line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- augmentation"))
     assert "kornia 0.9.0rc1 @ c670e2ab" in line
     assert "2026-08-08" in line
+
+
+def _write(root: Path, version: str, fname: str, commit: str, throughput: float) -> None:
+    device = fname[:-5].split("--")[2]
+    payload = {
+        "metadata": {
+            "timestamp_utc": "2026-11-16T12:00:00+00:00",
+            "git_commit": commit,
+            "platform": "Linux-x86_64",
+            "python": "3.11.0",
+            "torch": "2.14.0",
+            "kornia": version,
+            "device": device,
+        },
+        "results": [{"op": "op", "backend": "kornia (eager)", "batch": 32, "throughput_per_s": throughput}],
+    }
+    d = root / version
+    d.mkdir(parents=True, exist_ok=True)
+    (d / fname).write_text(json.dumps(payload))
+
+
+def test_partial_release_keeps_unchanged_suites(tmp_path: Path) -> None:
+    """A release that re-measures one suite still publishes the other suites from the release before it."""
+    _write(tmp_path, "0.9.1", "color--box--cuda.json", "aaaa1111", 1.0)
+    _write(tmp_path, "0.9.1", "feature--box--cuda.json", "bbbb2222", 2.0)
+    _write(tmp_path, "0.9.2", "feature--box--cuda.json", "cccc3333", 3.0)
+
+    published = generate_benchmarks.published_results(generate_benchmarks.load_results(tmp_path))
+    assert {fname: version for fname, (version, _) in published.items()} == {
+        "color--box--cuda.json": "0.9.1",
+        "feature--box--cuda.json": "0.9.2",
+    }
+    rst = generate_benchmarks.render_page(tmp_path)
+    assert "Results for kornia 0.9.2" in rst
+    assert "aaaa1111" in rst
+    assert "cccc3333" in rst
+    assert "bbbb2222" not in rst  # the re-measured suite's older snapshot is not published
+    assert "from kornia 0.9.2, 0.9.1" in rst
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, tmp_path)
+    text = llms.read_text()
+    assert "kornia 0.9.2, 0.9.1, committed in `benchmarks/results/0.9.2/` and `benchmarks/results/0.9.1/`" in text
+    assert "kornia 0.9.1 @ aaaa1111" in text
+    assert "bbbb2222" not in text
+
+
+def test_machines_absent_from_the_latest_release_are_not_published(tmp_path: Path) -> None:
+    """Runs of a machine the latest release does not measure stay in their old directory, unpublished."""
+    _write(tmp_path, "0.9.0rc1", "augmentation--old-box--mps.json", "dddd4444", 1.0)
+    _write(tmp_path, "0.9.1", "augmentation--box--cuda.json", "eeee5555", 2.0)
+
+    published = generate_benchmarks.published_results(generate_benchmarks.load_results(tmp_path))
+    assert list(published) == ["augmentation--box--cuda.json"]
+    rst = generate_benchmarks.render_page(tmp_path)
+    assert "dddd4444" not in rst
+    assert "``benchmarks/results/0.9.0rc1/``" in rst  # listed as an older result set

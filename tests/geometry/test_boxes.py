@@ -32,7 +32,25 @@ from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    raises_value_check,
+    skip_unsupported_autocast,
+)
+
+
+def _coordinate_tolerances(dtype, scale):
+    """Return the float32/float64 tolerance of the box-transform pins, or a half-precision one at coordinate ``scale``.
+
+    In half precision each coordinate goes through up to four roundings of at most ``eps / 2 * scale``: the width and
+    the corner of the conversion to corners, the transform, and the expected literal's own conversion.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return {"atol": 2 * torch.finfo(dtype).eps * scale, "rtol": 0.0}
+    return {"atol": 1e-4, "rtol": 1e-4}
+
 
 # Rows of the list-built boxes of the #6283 tests, in exclusive ``xyxy``; ``None`` marks a padding row. Sample 0 holds
 # one box and two padding rows, sample 1 three boxes. ``_NEW`` is the box the writes that do not copy a row bring in.
@@ -397,14 +415,12 @@ class TestBoxes2D(BaseTester):
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the vertex check raises synchronously only on CPU")
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_convention_vertex_modes_reject_non_finite_coordinates_4177(self, mode, value, device, dtype):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
-        if device.type != "cpu":
-            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
-            pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
             device=device,
@@ -635,12 +651,21 @@ class TestBoxes2D(BaseTester):
         coordinates = torch.tensor([[1, 2, 5, 4]], device=device)
         assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.get_default_dtype()
 
-        # A list is padded into a tensor of its first element's dtype before the
-        # check, so a mixed-dtype list is judged by its first box alone.
+        # Every list element is checked for floating-point dtype before merging.
         floating = vertices.to(torch.float32)
-        assert Boxes([floating, vertices]).dtype == torch.float32
+        floating[..., 0] += 0.5
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes([floating, vertices])
         with pytest.raises(ValueError, match="floating point"):
             Boxes([vertices, floating])
+
+        # Integer boxes are cast when raise_if_not_floating_point=False.
+        boxes_float_first = Boxes([floating, vertices], raise_if_not_floating_point=False)
+        boxes_int_first = Boxes([vertices, floating], raise_if_not_floating_point=False)
+        assert boxes_float_first.dtype == torch.float32
+        assert boxes_int_first.dtype == torch.float32
+        self.assert_close(boxes_float_first.data[0, 0], floating[0])
+        self.assert_close(boxes_int_first.data[1, 0], floating[0])
 
         # from_tensor converts each list element independently before the same
         # first-element dtype merge, so reversing mixed float16/integer inputs
@@ -648,6 +673,36 @@ class TestBoxes2D(BaseTester):
         half = vertices.to(torch.float16)
         assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
         assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.get_default_dtype()
+
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test merges float64 boxes",
+    )
+    def test_large_integer_coordinates_merge_with_float64_4012(self, device):
+        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
+        float64_boxes = vertices.to(torch.float64)
+        integer_boxes = vertices.clone()
+        integer_boxes[0, 0, 0] = 16777217
+
+        boxes = Boxes([float64_boxes, integer_boxes], raise_if_not_floating_point=False)
+        assert boxes.dtype == torch.float64
+        assert boxes.data[1, 0, 0, 0].item() == 16777217
+
+        boxes = Boxes([integer_boxes, float64_boxes], raise_if_not_floating_point=False)
+        assert boxes.dtype == torch.float64
+        assert boxes.data[0, 0, 0, 0].item() == 16777217
+
+    def test_integer_list_uses_at_least_float32_4012(self, device):
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float16)
+            vertices = torch.tensor([[[2049, 2], [4, 2], [4, 3], [1, 3]]], device=device)
+            boxes = Boxes([vertices, vertices.clone()], raise_if_not_floating_point=False)
+
+            assert boxes.dtype == torch.float32
+            assert boxes.data[0, 0, 0, 0].item() == 2049
+        finally:
+            torch.set_default_dtype(original_dtype)
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))
@@ -728,6 +783,49 @@ class TestBoxes2D(BaseTester):
         for mode in ("xyxy_plus", "xywh", "vertices", "vertices_plus"):
             lengths = [len(out) for out in boxes.to_tensor(mode)]
             assert lengths == [sum(row is not None for row in sample) for sample in rows], mode
+
+    def test_unbatched_selection_draws_no_padding_rows_6602(self, device, dtype):
+        # A selection knows which of its rows are padding, so it draws what the list-built object draws: one box of
+        # _A = (1, 1, 3, 3) has area 2 x 2 = 4, and the two padding rows are empty rather than a pixel at the origin.
+        boxes = self._padding_boxes(device, dtype)
+        expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(boxes.to_mask(8, 8)[0].sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes[0].to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes[0].to_mask(8, 8), boxes.to_mask(8, 8)[0], atol=0.0, rtol=0.0)
+        # The sample without padding rows is unchanged: _B0, _B1 and _B2 all draw.
+        self.assert_close(boxes[1].to_mask(8, 8), boxes.to_mask(8, 8)[1], atol=0.0, rtol=0.0)
+        assert boxes[1].to_mask(8, 8).sum((-1, -2)).count_nonzero() == 3
+
+    def test_unbatched_selection_draws_the_row_written_over_padding_6602(self, device, dtype):
+        # Padding belongs to the row, not to its position: a real box written over a padding row draws, and a padding
+        # row written over a real box does not.
+        boxes = self._padding_boxes(device, dtype)
+        selected = boxes[0].clone()
+        selected[1] = Boxes.from_tensor(torch.tensor([_NEW], device=device, dtype=dtype), mode="xyxy")
+        # _NEW = (0, 1, 2, 6) has area 2 x 5 = 10.
+        expected = torch.tensor([4.0, 10.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(selected.to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+        selected[0] = boxes[0][1:2]
+        expected = torch.tensor([0.0, 10.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(selected.to_mask(8, 8).sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+
+    def test_unbatched_selection_ignores_moved_padding_corners_6602(self, device, dtype):
+        # The transform moves the stored corners of a padding row, which must still draw nothing.
+        boxes = self._padding_boxes(device, dtype)
+        shift = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        masks = boxes[0].transform_boxes(shift).to_mask(8, 8)
+        expected = torch.tensor([4.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(masks.sum((-1, -2)), expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript cannot compile a Boxes method"
+    )
+    def test_dynamo_unbatched_selection_mask_6602(self, device, dtype, torch_optimizer, optimizer_backend):
+        boxes = self._padding_boxes(device, dtype)
+        function = lambda selected: selected.to_mask(8, 8)  # noqa: E731
+        compiled = torch_optimizer(function, fullgraph=True)
+        for selected in (boxes[0], boxes[1]):
+            self.assert_close(compiled(selected), function(selected), atol=0.0, rtol=0.0)
 
     def test_list_padding_reported_cases_6283(self, device, dtype):
         b = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
@@ -1139,14 +1237,15 @@ class TestBoxes2D(BaseTester):
         batched_bbox = torch.stack([_create_tensor_box(), _create_tensor_box()])
         assert Boxes(batched_bbox)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test exercises the cast under float64",
+    )
     def test_integer_input_respects_default_dtype_4379(self, device):
         # kornia#4379: integer boxes and transformation matrices were hardcoded to
         # float32 (`.float()`) regardless of the caller's default dtype. They now
         # cast to torch.get_default_dtype(). Pin the fix end to end and restore the
         # global default so the test cannot leak state to siblings.
-        # MPS does not support float64, so skip on MPS.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
@@ -2091,6 +2190,18 @@ class TestBoxes2D(BaseTester):
 
 
 class TestTransformBoxes2D(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_transform_6601(self, autocast_dtype, device):
+        # They inherit transform_points' half-precision product: up to 0.89 px off in bfloat16 at 256 px.
+        skip_unsupported_autocast(device, autocast_dtype)
+        boxes = torch.tensor([[[10.3, 20.7, 200.1, 180.9]]], device=device)
+        homography = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [1e-3, 2e-3, 1.0]]], device=device)
+        expected = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = Boxes.from_tensor(boxes, mode="xyxy").transform_boxes(homography).data
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
         boxes_xyxy = torch.tensor([[139.2640, 103.0150, 398.3120, 411.5225]], device=device, dtype=dtype)
@@ -2102,7 +2213,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 512))
         # inplace check
         assert transformed_boxes is not boxes
 
@@ -2117,7 +2228,7 @@ class TestTransformBoxes2D(BaseTester):
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         transformed_boxes = boxes.transform_boxes_(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 512))
         # inplace check
         assert transformed_boxes is boxes
 
@@ -2166,7 +2277,7 @@ class TestTransformBoxes2D(BaseTester):
         expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
-        self.assert_close(out.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(out.data, expected_boxes.data, **_coordinate_tolerances(dtype, 513))
 
     def test_gradcheck(self, device):
         # Define boxes in XYXY format for simplicity.
@@ -2319,10 +2430,11 @@ class TestBbox3D(BaseTester):
         self.assert_close(h, torch.as_tensor([[21.0, 51.0]], device=device, dtype=dtype))
         self.assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS does not support float64; this test exercises the cast under float64",
+    )
     def test_integer_input_respects_default_dtype_4379(self, device):
-        # MPS does not support float64, so skip on MPS.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
@@ -2936,7 +3048,7 @@ class TestTransformBoxes3D(BaseTester):
         )
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 909))
         # inplace check
         assert transformed_boxes is not boxes
 
@@ -2955,7 +3067,7 @@ class TestTransformBoxes3D(BaseTester):
         )
 
         transformed_boxes = boxes.transform_boxes_(trans_mat)
-        self.assert_close(transformed_boxes.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(transformed_boxes.data, expected_boxes.data, **_coordinate_tolerances(dtype, 909))
         # inplace check
         assert transformed_boxes is boxes
 
@@ -3004,7 +3116,7 @@ class TestTransformBoxes3D(BaseTester):
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
-        self.assert_close(out.data, expected_boxes.data, atol=1e-4, rtol=1e-4)
+        self.assert_close(out.data, expected_boxes.data, **_coordinate_tolerances(dtype, 1573))
 
     def test_gradcheck(self, device):
         # Define boxes in XYZXYZ format for simplicity.
@@ -3211,14 +3323,15 @@ class TestVideoBoxes(BaseTester):
                 enable_checks()
         assert video_boxes.data.shape == boxes.reshape(-1, 1, 4, 2).shape
 
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("the vertex check is torch._assert_async: synchronous only on CPU")
+    def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype, capfd):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("the vertex check is torch._assert_async: it raises at the next sync on MPS from torch 2.13")
         boxes = self._sample_video_boxes(device, dtype)
         boxes[0, 0, 0, 0, 0] = value
 
-        with pytest.raises(RuntimeError, match="non-finite coordinates"):
+        with raises_value_check(device, "non-finite coordinates", capfd):
             VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
     def test_exception(self, device, dtype):

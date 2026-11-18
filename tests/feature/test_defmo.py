@@ -40,7 +40,7 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
         assert mod.times.dtype == torch.float16
         assert mod.times.device == torch.empty(0, device=device).device
 
-    def test_times_stays_out_of_state_dict(self, device):
+    def test_times_stays_out_of_state_dict(self):
         # non-persistent: `times` is fully determined by `tsr_steps`, not learned, so
         # existing checkpoints keep loading with strict=True.
         assert "times" not in RenderingDeFMO().state_dict()
@@ -64,6 +64,9 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
             out = mod(latent)
         assert out.dtype == torch.float16
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="checksum pinned on CPU; cross-device float summation can differ further"
+    )
     def test_matches_pre_fix_output_in_the_normal_float32_path(self, device):
         # behaviour-preserving: pinned against the pre-fix module (plain `self.times`
         # attribute, `.to(latent.device)`-only) with the same seed and input -- confirmed
@@ -74,8 +77,6 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
         # a ~1.6e-8 relative difference -- ordinary floating-point non-associativity, not
         # a behavioral change). rel=1e-3 keeps ~1000x margin above that while still
         # catching a real regression, which would produce a very different value.
-        if device.type != "cpu":
-            pytest.skip("checksum pinned on CPU; cross-device float summation can differ further")
         torch.manual_seed(0)
         mod = RenderingDeFMO().to(device).eval()
         latent = torch.rand(1, 2048, 4, 4, device=device)
@@ -88,20 +89,12 @@ class TestRenderingDeFMOTimesBuffer(BaseTester):
 
 class TestDeFMO(BaseTester):
     @pytest.mark.slow
-    def test_shape(self, device, dtype):
-        inp = torch.ones(1, 6, 128, 160, device=device, dtype=dtype)
-        defmo = DeFMO(pretrained=False).to(device, dtype)
-        defmo.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = defmo(inp)
-        assert out.shape == (1, 24, 4, 128, 160)
-
-    @pytest.mark.slow
     def test_shape_batch(self, device, dtype):
         inp = torch.ones(2, 6, 128, 160, device=device, dtype=dtype)
         defmo = DeFMO(pretrained=False).to(device, dtype).eval()
-        out = defmo(inp)
         with torch.no_grad():
-            assert out.shape == (2, 24, 4, 128, 160)
+            out = defmo(inp)
+        assert out.shape == (2, 24, 4, 128, 160)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):

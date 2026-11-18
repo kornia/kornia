@@ -79,8 +79,8 @@ def harris_response(
           multiplies the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in
           ``[0, 1]`` does not carry over to ``[0, 255]``.
         - ``k`` is not validated.
-        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
-          ``RuntimeError`` from the reflect padding of the window.
+        - Each channel is processed independently. The window extends its reflected border across short axes,
+          including singleton pixels.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
@@ -183,8 +183,8 @@ def gftt_response(
           :func:`~kornia.feature.harris_response`. This is the function's scale-weighting convention, not a guarantee
           of scale invariance. The integration window :math:`W` stays fixed as the image blur changes; the response's
           decay with blur depends on the image structure, including the corner geometry.
-        - Each channel is processed independently. ``H`` and ``W`` must be at least 4: a smaller image raises
-          ``RuntimeError`` from the reflect padding of the window.
+        - Each channel is processed independently. The window extends its reflected border across short axes,
+          including singleton pixels.
 
     Args:
         input: input image with shape ``(B, C, H, W)``.
@@ -402,8 +402,7 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
           :func:`~kornia.feature.dog_response`; see its Convention block. Each kernel has the size
           ``int(8 * sigma + 1)``, rounded up to an odd number. The order of ``sigma1`` and ``sigma2`` is not checked:
           swapping them flips the sign.
-        - ``H`` and ``W`` must be larger than half the larger kernel, at least 7 for the default ``sigma2=1.6``: a
-          smaller image raises ``RuntimeError`` from the reflect padding of the blur.
+        - Both blurs extend reflected borders across short axes, including singleton pixels.
 
     Args:
         input: images ``(B, C, H, W)``.
@@ -525,7 +524,8 @@ class CornerHarris(nn.Module):
     Convention:
         Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
         Convention block. Unlike the function's, this ``k`` has no default. A ``float``, ``int`` or NumPy scalar
-        ``k`` becomes a 0-dimensional tensor; a tensor is stored as it is.
+        ``k`` becomes a 0-dimensional float32 tensor, and a float64 image uses the number itself while the buffer
+        still holds it; a tensor is stored as it is.
 
     See Also:
         - :func:`harris_response`: the function form, with ``k`` defaulting to ``0.04``.
@@ -539,10 +539,11 @@ class CornerHarris(nn.Module):
 
     def __init__(self, k: Union[float, torch.Tensor], grads_mode: str = "sobel") -> None:
         super().__init__()
-        if isinstance(k, float):
-            self.register_buffer("k", torch.tensor(k))
-        elif isinstance(k, numbers.Real) and not isinstance(k, bool):
-            # An int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+        # The number itself, for a float64 image: the buffer holds it rounded to float32.
+        self._k_number: Optional[float] = None
+        if isinstance(k, numbers.Real) and not isinstance(k, bool):
+            # A float, an int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+            self._k_number = float(k)
             self.register_buffer("k", torch.tensor(float(k)))
         else:
             self.register_buffer("k", k)
@@ -562,7 +563,17 @@ class CornerHarris(nn.Module):
         Returns:
             Harris response map tensor.
         """
-        return harris_response(input, self.k, self.grads_mode, sigmas)
+        k = self.k
+        number = self.__dict__.get("_k_number")  # absent from a module pickled before it existed
+        if number is not None and input.dtype == torch.float64 and k.is_floating_point():
+            # While the buffer still holds the number as built (not loaded or assigned another k), apply it exactly.
+            built = torch.tensor(number).to(device=k.device, dtype=k.dtype)
+            # One-dimensional: the TorchScript ONNX exporter casts a 0-dimensional constant to the buffer's float32.
+            exact = torch.tensor([number], dtype=torch.float64, device=k.device)
+            k64 = k.to(torch.float64)
+            # ``k64 - k64.detach()`` is zero, so the value stays exact while a trainable ``k`` keeps its gradient.
+            k = torch.where(k == built, exact + (k64 - k64.detach()), k64).reshape(k.shape)
+        return harris_response(input, k, self.grads_mode, sigmas)
 
 
 class CornerGFTT(nn.Module):

@@ -35,7 +35,9 @@ from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, onnx_exporter_params
+
+_EXPORTERS = onnx_exporter_params()
 
 
 class TestSuperResolutionBuilders(BaseTester):
@@ -110,14 +112,13 @@ class TestSuperResolutionBuilders(BaseTester):
         with pytest.raises(ValueError, match="small_sr"):
             SuperResolution.from_config(SuperResolutionConfig(model_name="not_a_model", pretrained=False))
 
-    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
-    def test_onnx_metadata_is_initialised(self, builder):
+    def test_small_sr_onnx_metadata_is_initialised(self):
         """``to_onnx`` reads these three; without defaults they are annotations only.
 
         Regression test for the review of #4335: an ``__init__`` that does not set them
         leaves export raising ``AttributeError``.
         """
-        model = builder.build(pretrained=False)
+        model = SmallSRBuilder.build(pretrained=False)
         assert model.pseudo_image_size is None or isinstance(model.pseudo_image_size, int)
         assert model.input_image_size is None or isinstance(model.input_image_size, int)
         assert model.output_image_size is None or isinstance(model.output_image_size, int)
@@ -160,7 +161,7 @@ class TestSuperResolutionBuilders(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
-    @pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
     def test_to_onnx_with_pre_and_post_processor_matches_eager_at_any_size(self, export_kwargs):
         """Without an ``image_size``, the graph takes any batch, height and width, as the eager pre-processor does."""
         pytest.importorskip("onnx")

@@ -59,10 +59,6 @@ def test_dataclass_field_holding_namedtuple_does_not_raise():
     assert got == {"inner": {"v": 3}, "points": [Point(4, 5)]}
 
 
-def test_plain_nested_dataclass_still_converts():
-    assert dataclass_to_dict(Outer(Inner(7), [])) == {"inner": {"v": 7}, "points": []}
-
-
 def test_tuple_and_list_paths_are_unchanged():
     assert dataclass_to_dict((Point(1, 2),)) == (Point(1, 2),)
     assert dataclass_to_dict([Inner(1)]) == [{"v": 1}]

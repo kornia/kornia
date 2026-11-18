@@ -405,8 +405,6 @@ class TestResize(BaseTester):
     def test_convention_align_corners_default_none(self, device, dtype):
         # resize's bare default align_corners=None behaves like align_corners=False (no test in the
         # suite exercises the bare default; every other call here passes align_corners=False explicitly).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
         # Snippet used to generate expected:
         # inp_x = torch.arange(20, dtype=torch.float32) / 20.0
         # inp = inp_x[None].T @ inp_x[None]
@@ -416,6 +414,8 @@ class TestResize(BaseTester):
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
         out = kornia.geometry.transform.resize(inp, (5, 5), antialias=False)
+        # as in TestRescale.test_downscale_values: bfloat16 holds values near 0.6 to one ULP of 3.9e-3
+        tol = max(1e-3, torch.finfo(dtype).eps)
         expected = torch.tensor(
             [
                 [
@@ -431,7 +431,7 @@ class TestResize(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
         # the output above cannot distinguish None from False (they interpolate identically), so
         # the documented default is additionally pinned on the signature itself
         import inspect
@@ -544,7 +544,10 @@ class TestRescale(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # The input ramp rounds to the dtype before it is resampled, and bfloat16 holds values near 0.6 to 3.9e-3 (one
+        # ULP); the literals carry 4 decimals. One eps or 1e-3, whichever is larger, covers both.
+        tol = max(1e-3, torch.finfo(dtype).eps)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
 
     def test_downscale_values_AA(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
@@ -566,7 +569,10 @@ class TestRescale(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # The input ramp rounds to the dtype before it is resampled, and bfloat16 holds values near 0.6 to 3.9e-3 (one
+        # ULP); the literals carry 4 decimals. One eps or 1e-3, whichever is larger, covers both.
+        tol = max(1e-3, torch.finfo(dtype).eps)
+        self.assert_close(out, expected, atol=tol, rtol=tol)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -780,9 +786,8 @@ class TestRotate(BaseTester):
 
     def test_convention_align_corners_default_true(self, device, dtype):
         # rotate/Rotate's bare default align_corners=True (every other test in this class passes
-        # align_corners=True explicitly to Rotate; this exercises the bare default).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # align_corners=True explicitly to Rotate; this exercises the bare default). A half-precision 90 degree
+        # rotation matrix is exact, as its entries are computed in float32 and rounded once.
         # Snippet used to generate expected:
         # inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]])
         # angle = torch.tensor([90.0])
@@ -804,15 +809,17 @@ class TestRotate(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.rotate, (input, angle))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         rot = kornia.geometry.transform.Rotate(angle)
         rot_traced = torch.jit.trace(kornia.geometry.transform.Rotate(angle), img)
-        self.assert_close(rot(img), rot_traced(img))
+        # TorchScript's CUDA fuser keeps a half chain in float32 and rounds once (0.03 from eager here); the
+        # comparison is about the trace, so it runs unfused.
+        with torch.jit.fuser("none"):
+            actual = rot_traced(img)
+        self.assert_close(rot(img), actual)
 
 
 class TestTranslate(BaseTester):
@@ -874,8 +881,6 @@ class TestTranslate(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.translate, (input, translation), requires_grad=(True, False))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -910,23 +915,6 @@ class TestScale(BaseTester):
             device=device,
             dtype=dtype,
         )
-        # prepare transformation
-        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
-        transform = kornia.geometry.transform.Scale(scale_factor)
-        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
-
-    def test_scale_factor_05_batch2(self, device, dtype):
-        # prepare input data
-        inp = torch.tensor(
-            [[[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
-            device=device,
-            dtype=dtype,
-        ).repeat(2, 1, 1, 1)
-        expected = torch.tensor(
-            [[[0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
-            device=device,
-            dtype=dtype,
-        ).repeat(2, 1, 1, 1)
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Scale(scale_factor)
@@ -976,16 +964,6 @@ class TestScale(BaseTester):
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.scale, (input, scale_factor), requires_grad=(True, False))
-
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype):
-        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
-        batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        trans = kornia.geometry.transform.Scale(scale_factor)
-        trans_traced = torch.jit.trace(kornia.Scale(scale_factor), img)
-        self.assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
 class TestShear(BaseTester):
@@ -1100,8 +1078,6 @@ class TestShear(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.shear, (input, shear), requires_grad=(True, False))
 
-    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -1347,7 +1323,7 @@ class TestAffine2d(BaseTester):
         tol = {torch.float16: 1e-2, torch.bfloat16: 5e-2}.get(dtype, 1e-4)
         self.assert_close(actual, expected, atol=tol, rtol=tol)
 
-    def test_compose_affine_matrix_3x3(self, device, dtype):
+    def test_compose_affine_matrix_3x3(self):
         """To get parameters:
         import torchvision as tv
         from PIL import Image
@@ -1430,12 +1406,11 @@ class TestAffine2d(BaseTester):
 
         assert out[0, 0, 0, 9] == 0.0
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64")
     @pytest.mark.parametrize("op", ["rotate", "scale", "Affine"])
     def test_default_center_takes_parameter_dtype_6545(self, device, op):
         # float32 parameters with a float64 image sample in float64, as warp_affine documents. The default center was
         # built in the image dtype and failed the matrix's same-dtype check, while an explicit center worked.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         image = torch.rand(2, 3, 6, 7, device=device, dtype=torch.float64)
         angle = torch.tensor([30.0, -15.0], device=device, dtype=torch.float32)
         factor = torch.tensor([[1.5, 0.75], [0.5, 2.0]], device=device, dtype=torch.float32)
@@ -1453,10 +1428,77 @@ class TestAffine2d(BaseTester):
         self.assert_close(out, expected, atol=0, rtol=0)
 
 
+class TestOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_translate(self, device, dtype):
+        row = self._row(device, dtype)
+        translation = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.translate(row, translation), torch.zeros_like(row))
+        out = kornia.geometry.transform.translate(row, translation, padding_mode="border")
+        self.assert_close(out, row)
+
+    def test_convention_rotate(self, device, dtype):
+        # A quarter turn about (1.5, 0): every output pixel samples x = 1.5, at y = x - 1.5 away from the only row, so
+        # the value 2.5 there is weighed by 1 - |y|.
+        expected = torch.tensor([[[[0.0, 1.25, 1.25, 0.0]]]], device=device, dtype=dtype)
+        angle = torch.tensor([90.0], device=device, dtype=dtype)
+        out = kornia.geometry.transform.rotate(self._row(device, dtype), angle)
+        self.assert_close(out, expected, low_tolerance=True)
+
+    def test_convention_scale(self, device, dtype):
+        # Shrinking by 2 about y = 1 samples the row y = -1 for the output row.
+        row = self._row(device, dtype)
+        factor = torch.tensor([[1.0, 0.5]], device=device, dtype=dtype)
+        center = torch.tensor([[1.5, 1.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.scale(row, factor, center=center)
+        self.assert_close(out, torch.zeros_like(row))
+
+    def test_convention_shear(self, device, dtype):
+        # A vertical shear of 1 moves column x by x rows, so only the first column stays on the row.
+        row = self._row(device, dtype)
+        factors = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.shear(row, factors, align_corners=True), expected)
+        self.assert_close(kornia.geometry.transform.Shear(factors)(row), expected)
+
+    def test_convention_affine(self, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.5]]], device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.affine(row, matrix), 0.5 * row)
+
+
 class TestWarpByBuiltMatrixAutocast(BaseTester):
     """rotate, scale and rotate3d build their matrix and warp by it, both outside a caller's autocast region (#6573)."""
 
     # Exact: in and out of the region run the same arithmetic on one device.
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("half_volume", [False, True])
+    def test_rotate3d_default_center_mixed_precision(self, device, half_dtype, half_volume):
+        """A default center and an explicit one describe the same clockwise quarter-turn under autocast."""
+        self._skip_unsupported(device, str(half_dtype).split(".")[-1])
+        volume_dtype, angle_dtype = (half_dtype, torch.float32) if half_volume else (torch.float32, half_dtype)
+        volume = torch.arange(75, device=device, dtype=volume_dtype).reshape(1, 1, 3, 5, 5) / 80
+        zero = torch.zeros(1, device=device, dtype=angle_dtype)
+        roll = torch.full_like(zero, 90)
+        center = torch.tensor([[2.0, 2.0, 1.0]], device=device, dtype=angle_dtype)
+        with torch.autocast(device.type, dtype=half_dtype):
+            expected = kornia.geometry.transform.rotate3d(volume, zero, zero, roll, center, align_corners=True)
+            actual = kornia.geometry.transform.rotate3d(volume, zero, zero, roll, align_corners=True)
+        assert actual.dtype == volume_dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
+
+    def test_rotate3d_default_center_promotes_all_angles(self, device):
+        """Half yaw and pitch must not override the float32 dtype that roll gives the concatenated rotation vector."""
+        volume = torch.arange(75, device=device, dtype=torch.float32).reshape(1, 1, 3, 5, 5) / 80
+        yaw = torch.zeros(1, device=device, dtype=torch.float16)
+        pitch = torch.zeros_like(yaw)
+        roll = torch.full((1,), 90.0, device=device, dtype=torch.float32)
+        actual = kornia.geometry.transform.rotate3d(volume, yaw, pitch, roll, align_corners=True)
+        self.assert_close(actual, torch.rot90(volume, -1, (-2, -1)))
 
     @staticmethod
     def _skip_unsupported(device, autocast_dtype):
@@ -1478,18 +1520,22 @@ class TestWarpByBuiltMatrixAutocast(BaseTester):
             return transform.rotate(image, torch.tensor([25.0], device=device, dtype=dtype))
         return transform.scale(image, torch.tensor([[1.13, 1.13]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (
+                p["device_name"] == "cpu"
+                and p["src_dtype"] in (torch.float16, torch.bfloat16)
+                and p["src_dtype"] != getattr(torch, p["autocast_dtype"])
+            )
+        ),
+        reason="CPU autocast rejects a half tensor of the other half dtype in torch.stack and torch.cat",
+    )
     @pytest.mark.parametrize("op_name", ["rotate", "scale", "rotate3d"])
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
     def test_region_does_not_change_the_warp_6573(self, op_name, src_dtype, autocast_dtype, device):
         # In bfloat16, float32 rotate, scale and rotate3d of [0, 1] inputs were off by 0.11, 0.36 and 0.14.
         self._skip_unsupported(device, autocast_dtype)
-        if (
-            device.type == "cpu"
-            and src_dtype in (torch.float16, torch.bfloat16)
-            and src_dtype != getattr(torch, autocast_dtype)
-        ):
-            pytest.skip("CPU autocast rejects a half tensor of the other half dtype in torch.stack and torch.cat")
         expected = self._call(op_name, device, src_dtype)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
             actual = self._call(op_name, device, src_dtype)

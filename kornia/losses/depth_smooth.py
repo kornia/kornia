@@ -37,7 +37,11 @@ def _gradient_y(img: torch.Tensor) -> torch.Tensor:
 
 
 def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
-    r"""Criterion that computes image-aware inverse depth smoothness loss.
+    r"""Compute the edge-aware smoothness loss of an inverse depth map.
+
+    ``loss = inverse_depth_smoothness_loss(idepth, image)`` penalises the horizontal and vertical gradients of
+    an ``(N, 1, H, W)`` inverse depth. Each is weighted by the exponential of minus the gradient of the
+    ``(N, 3, H, W)`` image, so a depth edge costs little where the image has an edge.
 
     .. math::
 
@@ -59,11 +63,15 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
           broadcasts against the other argument, and swapped arguments return a value.
 
     Args:
-        idepth: tensor with the inverse depth with shape ``(N, 1, H, W)``.
-        image: tensor with the input image with shape ``(N, 3, H, W)``.
+        idepth: inverse depth with shape ``(N, 1, H, W)``.
+        image: image with shape ``(N, 3, H, W)``, in the dtype of ``idepth``.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        the loss, a scalar.
+
+    See Also:
+        - :class:`~kornia.losses.InverseDepthSmoothnessLoss`: the module form.
+        - :func:`~kornia.losses.total_variation`: the smoothness of one image, with no weights.
 
     Examples:
         >>> idepth = torch.rand(1, 1, 4, 5)
@@ -110,16 +118,10 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
 
 
 class InverseDepthSmoothnessLoss(nn.Module):
-    r"""Criterion that computes image-aware inverse depth smoothness loss.
+    r"""Compute the edge-aware smoothness loss of an inverse depth map (module form).
 
-    .. math::
-
-        \text{loss} = \operatorname{mean}_{nij} \left| \partial_x d_{nij} \right|
-        e^{-\frac{1}{C} \sum_c \left| \partial_x I_{ncij} \right|}
-        + \operatorname{mean}_{nij} \left| \partial_y d_{nij} \right|
-        e^{-\frac{1}{C} \sum_c \left| \partial_y I_{ncij} \right|}
-
-    with forward differences :math:`\partial_x` and :math:`\partial_y`, each mean taken over its own differences.
+    ``smooth = InverseDepthSmoothnessLoss()`` takes no arguments, and ``loss = smooth(idepth, image)`` is
+    :func:`~kornia.losses.inverse_depth_smoothness_loss`.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.inverse_depth_smoothness_loss`.
@@ -128,6 +130,9 @@ class InverseDepthSmoothnessLoss(nn.Module):
         - Inverse Depth: ``(N, 1, H, W)``
         - Image: ``(N, 3, H, W)``
         - Output: scalar
+
+    See Also:
+        - :func:`~kornia.losses.inverse_depth_smoothness_loss`: the one-call form.
 
     Examples:
         >>> idepth = torch.rand(1, 1, 4, 5)

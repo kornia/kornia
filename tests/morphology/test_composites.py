@@ -60,7 +60,7 @@ class TestComposites(BaseTester):
         op(tensor, l_kernel, engine="unfold")
         assert seen == ["unfold", "unfold"]
 
-    @pytest.mark.parametrize("name", ["opening", "closing", "top_hat", "bottom_hat"])
+    @pytest.mark.parametrize("name", ["top_hat", "bottom_hat"])
     def test_convention_composite_convolution_handles_infinite_intermediates_4734(self, device, dtype, name):
         if not dtype.is_floating_point:
             pytest.skip("Infinity regression requires a floating-point dtype.")

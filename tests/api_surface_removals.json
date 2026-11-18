@@ -5,6 +5,10 @@
   "kornia.contrib.boxmot_tracker": [
     "BoxMotTracker"
   ],
+  "kornia.models.paligemma": [
+    "PaliGemma",
+    "PaliGemmaConfig"
+  ],
   "kornia.models.qwen25": [
     "Qwen2VLVisionTransformer"
   ],

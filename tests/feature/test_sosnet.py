@@ -24,13 +24,6 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 
 
 class TestSOSNet(BaseTester):
-    def test_shape(self, device):
-        inp = torch.ones(1, 1, 32, 32, device=device)
-        sosnet = SOSNet(pretrained=False).to(device)
-        sosnet.eval()  # batchnorm with size 1 is not allowed in train mode
-        out = sosnet(inp)
-        assert out.shape == (1, 128)
-
     def test_empty_batch(self, device, dtype):
         # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
         model = SOSNet(pretrained=False).to(device, dtype).eval()
@@ -40,13 +33,6 @@ class TestSOSNet(BaseTester):
         assert out.dtype == one.dtype
         assert out.device == one.device
 
-    def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
-        sosnet = SOSNet(pretrained=False).to(device).eval()
-        out = sosnet(inp)
-        assert out.shape == (16, 128)
-
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype).eval()

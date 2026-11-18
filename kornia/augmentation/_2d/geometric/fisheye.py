@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.core.utils import _to_device_nonblocking
+from kornia.core.utils import _samples_half_in_float32, _to_device_nonblocking
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import euclidean_distance
 from kornia.geometry.transform import remap
@@ -107,9 +107,15 @@ class RandomFisheye(AugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # A half image is warped in float32: a half-precision sampling field is off by half a pixel or more at 256 px.
+        out_dtype = input.dtype
+        if _samples_half_in_float32(input):
+            input = input.float()
         # create the initial sampling fields
         B, _, H, W = input.shape
-        grid = create_meshgrid(H, W, normalized_coordinates=True)
+        # A float64 image gets a float64 grid; every other dtype keeps the default-dtype grid it had before.
+        grid_dtype = torch.float64 if input.dtype == torch.float64 else None
+        grid = create_meshgrid(H, W, normalized_coordinates=True, dtype=grid_dtype)
         field_x = _to_device_nonblocking(grid[..., 0], input.device, input.dtype)  # 1xHxW
         field_y = _to_device_nonblocking(grid[..., 1], input.device, input.dtype)  # 1xHxW
         # vectorize the random parameters
@@ -122,7 +128,7 @@ class RandomFisheye(AugmentationBase2D):
         )
         field_x = field_x + field_x * distance**gamma  # BxHxw
         field_y = field_y + field_y * distance**gamma  # BxHxW
-        return remap(input, field_x, field_y, normalized_coordinates=True, align_corners=True)
+        return remap(input, field_x, field_y, normalized_coordinates=True, align_corners=True).to(out_dtype)
 
     def apply_transform_mask(
         self,

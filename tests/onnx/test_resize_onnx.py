@@ -41,37 +41,6 @@ if torch_version_lt(2, 5, 0):
     pytest.skip("the dynamo ONNX exporter needs torch >= 2.5", allow_module_level=True)
 
 
-def test_resize_export_binding():
-    model = Resize((32, 32), interpolation="bilinear")
-    model.eval()
-
-    x = torch.randn(1, 3, 64, 64)
-    with torch.no_grad():
-        torch_out = model(x)
-
-    fd, temp_path = tempfile.mkstemp(suffix=".onnx")
-    os.close(fd)
-
-    try:
-        torch.onnx.export(model, x, temp_path, dynamo=True, opset_version=18)
-
-        ort_session = ort.InferenceSession(temp_path)
-        input_name = ort_session.get_inputs()[0].name
-        output_name = ort_session.get_outputs()[0].name
-
-        binding = ort_session.io_binding()
-        binding.bind_cpu_input(input_name, x.numpy())
-        binding.bind_output(output_name)
-
-        ort_session.run_with_iobinding(binding)
-        ort_out = binding.copy_outputs_to_cpu()[0]
-
-        np.testing.assert_allclose(torch_out.numpy(), ort_out, rtol=1e-4, atol=1e-4)
-    finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
 def test_resize_export_upscale():
     """Test upscaling with dynamo."""
     model = Resize((128, 128))

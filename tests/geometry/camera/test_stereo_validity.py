@@ -22,7 +22,7 @@ from kornia.geometry.camera.stereo import StereoCamera, reproject_disparity_to_3
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 
 
 def _camera(device, dtype):
@@ -78,7 +78,7 @@ class TestStereoReconstructionValidity(BaseTester):
             torch.zeros(1, 1, 1, 1, device=device, dtype=dtype), q, return_mask=True
         )
         assert valid.all()
-        self.assert_close(points.flatten(), q.new_tensor([-2, -1.5, 50]))
+        self.assert_close(points.flatten(), points.new_tensor([-2, -1.5, 50]))
 
     def test_infinite_w_is_invalid_even_with_finite_xyz(self, device, dtype):
         q = _camera(device, dtype).Q.clone()
@@ -102,11 +102,13 @@ class TestStereoReconstructionValidity(BaseTester):
         assert not valid[0, 0, 0, 0]
         torch.testing.assert_close(points, _legacy(d, q), atol=0, rtol=0, equal_nan=True)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (torch.float64 in (p["q_dtype"], p["d_dtype"]))),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("q_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("d_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_mixed_dtypes_preserve_coordinates(self, device, q_dtype, d_dtype):
-        if device.type == "mps" and torch.float64 in (q_dtype, d_dtype):
-            pytest.skip("MPS does not support float64")
         q = _camera(device, q_dtype).Q
         d = torch.full((2, 2, 3, 1), 10, device=device, dtype=d_dtype)
         points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
@@ -175,7 +177,7 @@ class TestStereoReconstructionValidity(BaseTester):
                 self.assert_close(a, b, atol=0, rtol=0)
 
     @pytest.mark.device_agnostic
-    def test_cpu_autocast_preserves_coordinates_gradients_and_cutoff(self):
+    def test_cpu_autocast_preserves_coordinates_gradients_and_cutoff_6601(self):
         q = _camera(torch.device("cpu"), torch.float32).Q.detach().requires_grad_()
         d = torch.tensor([0.0, 10.0]).reshape(1, 1, 2, 1).requires_grad_()
         with torch.autocast("cpu", dtype=torch.bfloat16):
@@ -188,7 +190,7 @@ class TestStereoReconstructionValidity(BaseTester):
         for a, b in zip(actual, expected):
             self.assert_close(a, b, atol=0, rtol=0)
 
-        # W is above the float32 cutoff but rounds to the cutoff under autocast.
+        # W is above the float32 cutoff. In half precision it rounded to the cutoff: the region marked it invalid.
         q = torch.zeros(1, 4, 4)
         q[..., 3] = 1e-8 * (1 + 1e-4)
         d = torch.zeros(1, 1, 1, 1)
@@ -196,7 +198,18 @@ class TestStereoReconstructionValidity(BaseTester):
         with torch.autocast("cpu", dtype=torch.bfloat16):
             points, valid = reproject_disparity_to_3D(d, q, return_mask=True)
             assert torch.equal(points, _legacy(d, q))
-        assert not valid.any()
+        assert valid.all()
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_points_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        camera = _camera(device, torch.float32)
+        disparity = torch.rand(1, 64, 64, 1, generator=torch.Generator().manual_seed(0)).to(device) * 40 + 1
+        expected = reproject_disparity_to_3D(disparity, camera.Q)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = reproject_disparity_to_3D(disparity, camera.Q)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_mismatched_batch(self, device, dtype):
         d = torch.ones(3, 2, 2, 1, device=device, dtype=dtype)

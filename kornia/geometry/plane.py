@@ -45,6 +45,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYP
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
 from kornia.core.utils import (
+    _deepcopy_module_state,
     _right_singular_vector,
     _svd_work_dtype,
     _torch_linalg_svdvals,
@@ -90,8 +91,8 @@ class Hyperplane(nn.Module):
           caller's ``nn.Parameter`` is kept; any other floating-point tensor, such as a leaf that requires grad or a
           tensor with autograd history, is stored as a buffer and keeps its autograd link; and an integer tensor is
           stored as a buffer (ParametrizedLine rejects one).
-          ``copy.deepcopy`` of a plane whose state carries autograd history raises ``RuntimeError``
-          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          ``copy.deepcopy`` holds a tensor with autograd history as a new leaf that keeps ``requires_grad``, as for
+          :class:`~kornia.geometry.quaternion.Quaternion`.
         - Points broadcast against the planes as torch broadcasts ``(..., 3)`` against ``(B, 3)``: the axis before
           the coordinates pairs with the plane batch. One plane, or a batch of one, takes points of any leading
           shape; a batch of ``B > 1`` takes ``(B, 3)``, one point per plane, a single ``(3,)`` point, or
@@ -116,6 +117,9 @@ class Hyperplane(nn.Module):
         >>> plane.signed_distance(torch.tensor([[1.0, 1.0, 5.0], [0.0, 0.0, 0.0]])).data
         tensor([ 3., -2.], grad_fn=<AddBackward0>)
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()

@@ -33,22 +33,6 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dy
 
 
 class TestOneHot:
-    def test_smoke(self, device, dtype):
-        num_classes = 4
-        labels = torch.zeros(2, 2, 1, dtype=torch.int64, device=device)
-        labels[0, 0, 0] = 0
-        labels[0, 1, 0] = 1
-        labels[1, 0, 0] = 2
-        labels[1, 1, 0] = 3
-
-        # convert labels to one hot tensor
-        one_hot_tensor = one_hot(labels, num_classes, device, dtype)
-
-        assert_close(one_hot_tensor[0, labels[0, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot_tensor[0, labels[0, 1, 0], 1, 0].item(), 1.0)
-        assert_close(one_hot_tensor[1, labels[1, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot_tensor[1, labels[1, 1, 0], 1, 0].item(), 1.0)
-
     def test_exact_values(self, device, dtype):
         labels = torch.tensor([[[0, 2, 1], [1, 0, 0]]], device=device)
         expected = F.one_hot(labels, 3).movedim(-1, 1).to(dtype)
@@ -142,22 +126,21 @@ else:
 
 
 class TestCheckClassLabels(BaseTester):
-    def test_valid_labels_pass_unchanged(self, device, dtype):
+    def test_valid_labels_pass_unchanged(self, device):
         labels = torch.tensor([[0, 2, 1], [2, 2, 0]], device=device)
         assert _check_class_labels(labels, 3) is labels
         empty = torch.zeros(0, 3, device=device, dtype=torch.int64)
         assert _check_class_labels(empty, 3) is empty
 
-    def test_exception(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("only CPU labels are checked")
+    @pytest.mark.applies_to(devices=("cpu",), reason="only CPU labels are checked")
+    def test_exception(self, device):
         for value, message in ((3, "smaller than num_classes"), (-1, "non-negative")):
             labels = torch.tensor([[0, 2, 1], [2, value, 0]], device=device)
             with pytest.raises(RuntimeError, match=f"Class values must be {message}"):
                 _check_class_labels(labels, 3)
 
     @pytest.mark.device_agnostic
-    def test_other_devices_and_vmap_skip_the_check(self, device, dtype):
+    def test_other_devices_and_vmap_skip_the_check(self):
         # A meta tensor stands for any device but the CPU on every leg, and vmap has no batching rule for the assert.
         def asserts(labels):
             graph = make_fx(lambda x: _check_class_labels(x, 3))(labels).graph
@@ -172,7 +155,7 @@ class TestCheckClassLabels(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_version_gate_matches_inductor(self, device, dtype):
+    def test_version_gate_matches_inductor(self):
         # Compiled labels are clamped only where Inductor keeps the asserts; up to torch 2.8 it decomposes them away.
         from torch._inductor.decomposition import decompositions
 
@@ -180,7 +163,7 @@ class TestCheckClassLabels(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_export_keeps_the_labels_unclamped(self, device, dtype):
+    def test_export_keeps_the_labels_unclamped(self):
         # ONNX translates an exported graph without its asserts, where clamped labels would turn the failing index op
         # into a silent wrong value. The exported program itself keeps the asserts.
         class _Gather(torch.nn.Module):
@@ -197,11 +180,15 @@ class TestCheckClassLabels(BaseTester):
         with pytest.raises(RuntimeError, match="Class values must be smaller than num_classes"):
             exported.module()(x, labels)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        when=lambda p: p["optimizer_backend"] == "inductor",
+        reason="one fresh-process inductor compile per case, on the CPU in float32",
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
     def test_dynamo_gather_fused_before_the_asserts_raises(self, value, message, device, dtype, optimizer_backend):
-        if device.type != "cpu" or dtype != torch.float32 or optimizer_backend != "inductor":
-            pytest.skip("one fresh-process inductor compile per case, on the CPU in float32")
         from torch._inductor.decomposition import decompositions
 
         if torch.ops.aten._assert_async.msg in decompositions:

@@ -68,6 +68,22 @@ _RANGES_ON_CUDA = {
     "RandomRotation": lambda r: K.RandomRotation(r(-10.0, 10.0), p=1.0),
     "RandomGamma": lambda r: K.RandomGamma(r(0.8, 1.2), r(0.9, 1.1), p=1.0),
 }
+# Learnable ranges that move with the module, next to numbers that do not: the samplers of all of them are built again
+# before each draw.
+_LEARNABLE_FOLLOWED = {
+    "RandomBrightness-half-width": lambda r: K.RandomBrightness(r(0.2), p=1.0),
+    "RandomRGBShift-half-width": lambda r: K.RandomRGBShift(r(0.1), (-0.1, 0.1), 0.1, p=1.0),
+    "RandomRotation-half-width": lambda r: K.RandomRotation(r(10.0), p=1.0),
+    "RandomAffine-half-width": lambda r: K.RandomAffine(r(10.0), (0.1, 0.1), (0.9, 1.1), 5.0, p=1.0),
+    "ColorJitter-half-width": lambda r: K.ColorJitter(r(0.2), 0.1, (0.9, 1.1), 0.1, p=1.0),
+    "RandomPerspective": lambda r: K.RandomPerspective(r(0.3), p=1.0),
+    "RandomMixUpV2": lambda r: K.RandomMixUpV2(r(0.0, 1.0), p=1.0),
+    "RandomTranslate": lambda r: K.RandomTranslate(r(-0.1, 0.1), (-0.1, 0.1), p=1.0),
+    "RandomMotionBlur": lambda r: K.RandomMotionBlur(3, r(30.0), (-0.5, 0.5), p=1.0),
+    "RandomRotation3D": lambda r: K.RandomRotation3D(r(10.0), p=1.0),
+    "RandomAffine3D": lambda r: K.RandomAffine3D(r(10.0), (0.1, 0.1, 0.1), (0.9, 1.1), 5.0, p=1.0),
+    "RandomPerspective3D": lambda r: K.RandomPerspective3D(r(0.5), p=1.0),
+}
 # Auto operations and policies moved to CUDA as a whole (#6297). The range they read from their generator is on CUDA,
 # where reading its values on the host would wait for the GPU.
 _MOVED_AUTO = {
@@ -100,12 +116,10 @@ def test_registry_covers_public_augmentations() -> None:
     assert not missing, f"Register these augmentations in testing/augmentation/sync_registry.py: {missing}"
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA host synchronizations need a CUDA device")
+@pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
 class TestAugmentationHostSync(BaseTester):
     @pytest.mark.parametrize("case, which", _CALLS)
     def test_no_avoidable_host_sync(self, case, which, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         fn = make_call(case, which, device, dtype)
         try:
             fn()
@@ -120,8 +134,6 @@ class TestAugmentationHostSync(BaseTester):
     @pytest.mark.parametrize("placement", ["cpu", "cuda"])
     @pytest.mark.parametrize("name", sorted(_REPLAY))
     def test_replay_params_cuda_and_cpu(self, name, placement, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         op = _REPLAY[name]()
         x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
         first = op(x)
@@ -138,8 +150,6 @@ class TestAugmentationHostSync(BaseTester):
 
     @pytest.mark.parametrize("name", ["RandomCutMixV2", "RandomMixUpV2"])
     def test_empty_batch_mix(self, name, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         op = _EMPTY_BATCH_MIX[name]()
         x = torch.rand(0, 3, 32, 32, device=device, dtype=dtype)
         op(x)
@@ -152,9 +162,6 @@ class TestAugmentationHostSync(BaseTester):
 
     @pytest.mark.parametrize("name", sorted(_RANGES_ON_CUDA))
     def test_learnable_range_on_cuda_with_the_module_on_the_cpu(self, name, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
-
         def learnable(*values):
             value = values if len(values) > 1 else values[0]
             return torch.nn.Parameter(torch.tensor(value, device=device, dtype=dtype))
@@ -169,10 +176,32 @@ class TestAugmentationHostSync(BaseTester):
         outputs[0].sum().backward()
         assert all(p.grad is not None for p in op.parameters())
 
+    @pytest.mark.parametrize("name", sorted(_LEARNABLE_FOLLOWED))
+    def test_learnable_range_rebuilt_before_each_draw_adds_no_sync(self, name, device, dtype) -> None:
+        # The samplers are built again before each draw (#6572); neither the range nor the numbers next to it are read.
+
+        def learnable(*values):
+            value = values if len(values) > 1 else values[0]
+            return torch.nn.Parameter(torch.tensor(value, device=device, dtype=dtype))
+
+        op = _LEARNABLE_FOLLOWED[name](learnable).to(device=device, dtype=dtype)
+        volumetric = name.endswith("3D")
+        x = (
+            torch.rand(4, 3, 4, 16, 16, device=device, dtype=dtype)
+            if volumetric
+            else torch.rand(4, 3, 16, 16, device=device, dtype=dtype)
+        )
+        op(x)
+        torch.cuda.synchronize()
+        sites = sync_sites(lambda: op(x))
+        # Compared with the same call without the rebuild, so that no site below ``make_samplers`` can hide from this.
+        op._param_generator._forward_pre_hooks.clear()
+        torch.cuda.synchronize()
+        without = sync_sites(lambda: op(x))
+        assert not sites - without, (dict(sites), dict(without))
+
     @pytest.mark.parametrize("name", sorted(_MOVED_AUTO))
     def test_moved_auto_operation_adds_no_sync_of_its_own(self, name, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         module = _MOVED_AUTO[name]().to(device=device, dtype=dtype)
         x = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
         module(x)
@@ -185,8 +214,6 @@ class TestAugmentationHostSync(BaseTester):
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     @pytest.mark.parametrize("name", sorted(_GATED))
     def test_gate_selection_unchanged(self, name, p, same_on_batch, device, dtype) -> None:
-        if device.type != "cuda":
-            pytest.skip("CUDA host synchronizations need a CUDA device")
         build, shape = _GATED[name]
         op = build(p, same_on_batch)
         x = torch.rand(*shape, device=device, dtype=dtype)
@@ -235,7 +262,8 @@ class TestMaskWritesWithoutHostReads(BaseTester):
         assert torch.equal(rain(x.cpu(), params=params), out.cpu())
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA host synchronizations need a CUDA device")
+@pytest.mark.uses_accelerator
+@pytest.mark.applies_to(devices=("cuda",), reason="CUDA host synchronizations need a CUDA device")
 @pytest.mark.parametrize(
     "build",
     [
@@ -270,7 +298,8 @@ def test_list_boxes_add_no_host_sync_to_dense_boxes(build) -> None:
     assert sites([first, second, second[:0], first]) == sites(second[:1].expand(4, -1, -1))
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="host-to-device copies need a CUDA device")
+@pytest.mark.uses_accelerator
+@pytest.mark.applies_to(devices=("cuda",), reason="host-to-device copies need a CUDA device")
 def test_erasing_copies_box_parameters_not_masks(tmp_path) -> None:
     # A large pageable copy stalls the host while the driver stages it, without any cudaStreamSynchronize: the
     # erasing mask is built on the device from the box parameters, so only the parameters cross.
@@ -309,13 +338,15 @@ def _shape_literal_cases() -> dict:
     }
 
 
+@pytest.mark.applies_to(
+    when=lambda p: p["optimizer_backend"] != "jit",
+    reason="counts the graphs of torch.compile, which torch.jit.script does not build",
+)
 @pytest.mark.parametrize("name", sorted(_shape_literal_cases()))
 def test_dynamo_shape_derived_literals_compile_once(name, device, torch_optimizer, optimizer_backend) -> None:
     # Literals built from sizes stay symbolic under a dynamic compile: one graph for every size, no guard on a value.
     from torch._dynamo.testing import CompileCounter
 
-    if optimizer_backend == "jit":
-        pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
     op = _shape_literal_cases()[name]
     counter = CompileCounter()
     compiled = torch_optimizer(op, backend=counter, dynamic=True, fullgraph=True)
@@ -325,11 +356,14 @@ def test_dynamo_shape_derived_literals_compile_once(name, device, torch_optimize
     assert counter.frame_count == 1
 
 
+@pytest.mark.applies_to(
+    devices=("cuda",),
+    when=lambda p: p["optimizer_backend"] == "inductor",
+    reason="counts the CUDA kernels of an Inductor graph",
+)
 def test_dynamo_literals_stay_graph_constants(device, torch_optimizer, optimizer_backend) -> None:
     # Under torch.compile a literal stays a constant of the graph, which Inductor folds into its consumer: the
     # compiled grayscale is one kernel, as before. Filling the weights on the device would add a stack kernel per call.
-    if optimizer_backend != "inductor" or device.type != "cuda":
-        pytest.skip("counts the CUDA kernels of an Inductor graph")
     x = torch.rand(8, 3, 64, 64, device=device)
     compiled = torch_optimizer(K.RandomGrayscale(p=1.0))
     compiled(x)

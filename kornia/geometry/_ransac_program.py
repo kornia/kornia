@@ -66,7 +66,12 @@ from kornia.geometry.homography import (
     _transfer_from_basis,
     sample_is_valid_for_homography,
 )
-from kornia.geometry.ransac import _LM_CANDIDATES, _normalize_correspondences_core
+from kornia.geometry.ransac import (
+    _LM_CANDIDATES,
+    _RANK_TESTED_MODELS,
+    _fundamental_near_rank_one,
+    _normalize_correspondences_core,
+)
 from kornia.geometry.solvers import homogeneous as _homogeneous
 
 __all__ = ["MAX_BATCH", "build_lm_program", "load_program"]
@@ -165,7 +170,7 @@ def _minimal_models(model_type: str, x1: torch.Tensor, x2: torch.Tensor) -> torc
 
 
 def _scores(
-    models: torch.Tensor, basis: torch.Tensor, threshold: torch.Tensor, planar: bool, msac: bool
+    models: torch.Tensor, basis: torch.Tensor, threshold: torch.Tensor, planar: bool, msac: bool, rank_tested: bool
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """MSAC scores (or support counts) in float64 and int64 support counts ``(M,)`` of minimal models.
 
@@ -173,7 +178,10 @@ def _scores(
     number of correspondences, which a single graph for every ``N`` cannot carry.
     """
     errors = _transfer_from_basis(models, basis) if planar else _sampson_from_quadratic_basis(models, basis)
-    counts = (errors <= threshold).sum(1)
+    inliers = errors <= threshold
+    if rank_tested:
+        inliers = inliers & ~_fundamental_near_rank_one(models, threshold)[:, None]
+    counts = inliers.sum(1)
     if not msac:
         return counts.to(torch.float64), counts
     # fmin, unlike clamp, takes the threshold for NaN residuals: a NaN residual is an outlier.
@@ -232,6 +240,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
     planar = model_type == "homography"
     essential = model_type == "essential"
     msac = score_type == "msac"
+    rank_tested = model_type in _RANK_TESTED_MODELS
 
     def lm_program(
         kp1: torch.Tensor,
@@ -282,7 +291,7 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             torch._check(size <= MAX_BATCH)
             indices = _draw_samples(m, num_tc, size, device, random_seed, drawn)
             models = _minimal_models(model_type, x1[indices], x2[indices])
-            scores, counts = _scores(models, basis, threshold_work, planar, msac)
+            scores, counts = _scores(models, basis, threshold_work, planar, msac, rank_tested)
             # Insufficient support ranks below every supported model, as in RANSAC._forward_lm; the padding, which
             # keeps the top-k defined for a batch without models, below that.
             scores = torch.cat([scores.masked_fill(counts <= m, -1.0), pad_scores])
@@ -335,6 +344,9 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             valid = torch.cat([valid, valid])
         errors = _lm_errors(model_type, candidates, x1_host, x2_host)
         inliers = (errors <= threshold) & finite
+        if rank_tested:
+            # A refit can collapse a model that the sampling loop let through.
+            inliers = inliers & ~_fundamental_near_rank_one(candidates, threshold)[:, None]
         support = inliers.sum(1)
         if msac:
             scores = ((1.0 - torch.fmin(errors, threshold) / threshold) * weights).sum(1)
@@ -349,6 +361,8 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
             mask = inliers.to(torch.float64)[None]
             refined = _lm_refine(model_type, model[None], x1_host, x2_host, mask, "cauchy", threshold / 9, refine_iters)
             refined_inliers = (_lm_errors(model_type, refined, x1_host, x2_host)[0] <= threshold) & finite
+            if rank_tested:
+                refined_inliers = refined_inliers & ~_fundamental_near_rank_one(refined, threshold)[0]
             supported = refined_inliers.sum() > m
             model = torch.where(supported, refined[0], model)
             inliers = torch.where(supported, refined_inliers, inliers)

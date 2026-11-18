@@ -729,7 +729,6 @@ A(
 
 # ============================================================================= VLM re-implementations (pure PyTorch)
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel, KimiVLProjectorConfig, MoonViT, MoonViTConfig  # noqa: E402
-from kornia.models.paligemma import PaliGemma, PaliGemmaConfig  # noqa: E402
 from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer  # noqa: E402
 from kornia.models.siglip2 import SigLip2Config, SigLip2ImagePreprocessor, SigLip2Model  # noqa: E402
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig  # noqa: E402
@@ -869,28 +868,6 @@ A(
         lambda m: m,
         [torch.rand(1, 3, 112, 84)],
         note="pure-PyTorch Qwen2.5-VL tower; conv3d patch embed, 2D RoPE, windowed + full attention, 2x2 merger",
-        tags=("model",),
-    )
-)
-_pcfg = PaliGemmaConfig(
-    vision_config=_vcfg,
-    vocab_size=100,
-    hidden_size=32,
-    intermediate_size=64,
-    num_hidden_layers=1,
-    num_attention_heads=2,
-    num_key_value_heads=1,
-    head_dim=16,
-    max_position_embeddings=64,
-)
-A(
-    mcase(
-        "models.paligemma.PaliGemma[tiny,random]",
-        "models.vlm",
-        lambda: ev(PaliGemma(_pcfg)),
-        lambda m: m,
-        [torch.randint(0, 100, (1, 4)), torch.rand(1, 3, 32, 32)],
-        note="pure-PyTorch SigLIP2 tower + Gemma decoder (RMSNorm, RoPE, GQA); inputs (input_ids, pixel_values)",
         tags=("model",),
     )
 )

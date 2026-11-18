@@ -49,7 +49,12 @@ class TestProjectPoints(BaseTester):
         )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # A ~1900 px pixel rounds by up to 0.5 px in float16, 0.0055 after unprojecting by depth / f = 30 / 2746:
+            # within the default half-precision tolerances.
+            self.assert_close(point_3d, point_3d_hat)
+        else:
+            self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # TODO: point [0, 0, 0] crashes

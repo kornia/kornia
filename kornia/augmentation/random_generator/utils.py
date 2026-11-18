@@ -20,6 +20,20 @@ from typing import Any, Optional
 import torch
 
 
+def _range_bound_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Choose a bound dtype without rounding below the requested sampler precision.
+
+    ``range_dtype = _range_bound_dtype(dtype)`` promotes ``dtype`` with the current default dtype
+    for range normalization. Retaining a wider ambient dtype keeps the existing rounding for
+    lower-precision samplers, while float64 samplers avoid intermediate float32 rounding.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomAffine`: Configure an affine augmentation whose sampler
+          bounds use this normalization dtype.
+    """
+    return torch.promote_types(torch.get_default_dtype(), dtype)
+
+
 def randperm(n: int, ensure_perm: bool = True, identity: Optional[torch.Tensor] = None, **kwargs: Any) -> torch.Tensor:
     """`randomperm` with the ability to ensure the different arrangement generated.
 

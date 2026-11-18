@@ -327,6 +327,9 @@ class SIFTDescriptor(nn.Module):
     def get_weighting_kernel(self) -> torch.Tensor:
         """Return the Gaussian weighting kernel used before orientation pooling.
 
+        A float64 input is weighted with the same window built in float64, not with this buffer, which holds it rounded
+        to float32.
+
         Returns:
             Detached copy of the Gaussian kernel tensor.
         """
@@ -353,7 +356,13 @@ class SIFTDescriptor(nn.Module):
         gy = grads[:, :, 1]
 
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
-        mag = mag * self.gk.expand_as(mag).type_as(mag).to(mag.device)
+        gk = self.gk
+        if mag.dtype == torch.float64:
+            # Built in float64 rather than cast from the buffer, which holds the window rounded to float32.
+            sigma = float(self.patch_size) / math.sqrt(2.0)
+            ks = self.patch_size
+            gk = get_gaussian_kernel2d((ks, ks), (sigma, sigma), True, device=mag.device, dtype=torch.float64)
+        mag = mag * gk.expand_as(mag).type_as(mag).to(mag.device)
         o_big = float(self.num_ang_bins) * ori / (2.0 * math.pi)
 
         bo0_big_ = torch.floor(o_big)

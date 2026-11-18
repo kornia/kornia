@@ -79,9 +79,6 @@ class TestStableDiffusionDissolving(BaseTester):
         # Create a dummy image tensor with shape [B, C, H, W], where B is the batch size.
         return torch.rand(1, 3, 64, 64)
 
-    def test_init(self, sdm_2_1):
-        assert isinstance(sdm_2_1, StableDiffusionDissolving), "Initialization failed"
-
     def test_encode_tensor_to_latent(self, sdm_2_1, dummy_image, device, dtype):
         dummy_image = dummy_image.to(device, dtype)
         # Note: the model internally converts latents to its own dtype, so we don't strictly check output dtype match

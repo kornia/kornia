@@ -39,11 +39,11 @@ from kornia.augmentation.utils.helpers import (
     _detach_recorded_graph_tensors,
     _raise_input_rank_error,
 )
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
+from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps, _validate_extra_args
 from .params import ParamItem
 
 __all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]
@@ -176,6 +176,17 @@ class BasicSequentialBase(nn.Sequential):
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
+
+
+def _chain_transform_matrices(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Return ``a @ b`` outside a caller's autocast region, which would round the chained matrix to half precision.
+
+    Up to 0.34 off in bfloat16 for two ``RandomAffine`` on float32 input, and returned in that dtype (#6601). Operands
+    of different half and float32 dtypes, which autocast would have reconciled, meet in float32.
+    """
+    a, b = _reconcile_under_autocast(a, b)
+    with _autocast_disabled(a.device.type):
+        return a @ b
 
 
 class SequentialBase(BasicSequentialBase):
@@ -325,6 +336,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         if not is_exporting():
             self._sequence_matrices: List[Optional[torch.Tensor]] = []
         for param in params:
@@ -352,6 +364,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Tensor mapped back through inverse operations.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -369,6 +382,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed mask tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -387,6 +401,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Inverse-transformed mask tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -404,6 +419,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed boxes.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -422,6 +438,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Inverse-transformed boxes.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -439,6 +456,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed keypoints.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for param in params:
             module = self.get_submodule(param.name)
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -459,6 +477,7 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Inverse-transformed keypoints.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -559,7 +578,7 @@ class TransformMatrixMinIn:
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:
-            self._transform_matrix = transform_matrix @ self._transform_matrix
+            self._transform_matrix = _chain_transform_matrices(transform_matrix, self._transform_matrix)
 
     def _reset_transform_matrix_state(self) -> None:
         if is_exporting():

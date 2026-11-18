@@ -48,6 +48,37 @@ AdaLAM shares the linear fitting primitive but retains its specialized loop:
 its local 2x2 models are constrained by a matched seed, and its variable-size
 neighborhoods, sampling and confidence-based inlier selection are unchanged.
 
+Fundamental matrices of nearly rank one
+---------------------------------------
+
+The seven- and eight-point solvers only enforce rank at most two. A matrix
+``F = l m^T`` of rank one gives every correspondence with its second point on the
+line ``l``, or its first point on the line ``m``, zero epipolar error, whatever its
+other point is. So mismatches along one image's line (along an edge, say) could
+outvote the true geometry. ``"fundamental"``, ``"fundamental_7pt"`` and
+``"fundamental_8pt"`` count no inliers for such a matrix, for
+``local_optimization`` of either kind and with ``degensac=True``. The test works
+with both images' points Hartley-normalized at a shared scale (in pixels, the true
+geometry can have ``s2 / s1`` below 0.01). There it compares
+``|cof F| / (|F|^2 - F_33^2)``, about the ratio ``s2 / s1`` of ``F``'s singular
+values, with five inlier thresholds of that frame, up to a limit of 0.1. It costs
+no SVD, since ``s1 s2`` is the norm of ``F``'s cofactor matrix. ``F_33`` is left out
+because it is the epipolar residual of the two keypoint centroids, which mismatches
+can pull away from the true matches, and it says nothing about rank. A model above
+the floor can still take part of the line, about 40% of it near the floor. In
+640 x 480 images with 30 true correspondences (0.3 px noise), 40 mismatches within
+0.3 px of a line in either image and 30 random ones, at ``inl_th=1``, it keeps 28
+to 30 of the true ones and at most 3 of the line (over ten scenes); without the
+test, 0 to 6 and 38 to 40. A longer line wins back: with 70 mismatches on it, the
+true correspondences win in about 8 of 20 scenes, and with 80 in none. A true
+geometry whose keypoints differ in scale between the views can fall below the floor
+as well, and RANSAC then keeps another model. On 20 real image pairs with the second
+view's true matches shrunk by a factor ``k`` and the mismatches left in place, at
+``inl_th`` of 2 to 5, the true matrix was below the floor in none of 120 cases at
+``k = 3``, 2 at ``k = 5``, 8 at ``k = 8`` and 37 at ``k = 15``. With a 20 times
+smaller second view in 1000 px images at ``inl_th=1``, the median pose error goes
+from 14 to 31 degrees.
+
 Affine fundamental matrices
 ---------------------------
 

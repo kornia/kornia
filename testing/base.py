@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+import copy
 import math
+import re
 import sys
 import types
 from contextlib import contextmanager
@@ -72,12 +74,88 @@ def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
         torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
+def autocast_for(device: torch.device, dtype: torch.dtype) -> torch.autocast:
+    """Return a ``torch.autocast`` region on ``device`` for an input of ``dtype``.
+
+    A float16 or bfloat16 input runs in a region of its own dtype, any other input in the device's default region.
+    CPU autocast promotes the operands of ``torch.stack`` and ``torch.cat`` within one half dtype: a float16 operand in
+    the default bfloat16 region raises ``Unexpected floating ScalarType in at::autocast::prioritize`` in plain PyTorch
+    (torch 2.15 and the 2.16.0.dev20261105 nightly), so a mixed-half region tests PyTorch rather than Kornia.
+    """
+    return torch.autocast(device.type, dtype=dtype if dtype in (torch.float16, torch.bfloat16) else None)
+
+
+@contextmanager
+def raises_cuda_device_assert(match: str, capfd: pytest.CaptureFixture[str]) -> Iterator[None]:
+    """Expect the block to fail a CUDA device-side assert whose message matches ``match``.
+
+    A value check on CUDA is ``torch._assert_async``: the call returns, and the failure surfaces by the next
+    synchronization, which closes the block, as a :exc:`RuntimeError` (``torch.AcceleratorError`` where torch has it)
+    naming a device-side assert rather than the check's message. The kernel prints the message to stderr, which
+    ``capfd`` captures, so the message still pins which check fired. torch's Windows builds print only the asserted
+    condition: the MSVC branch of ``CUDA_KERNEL_ASSERT_MSG`` drops the message, so there only the assert is checked.
+
+    The assert leaves the CUDA context unusable for the rest of the process, so a test that uses this must be marked
+    ``@pytest.mark.cuda_device_assert``, which runs it in a fresh subprocess on CUDA (see TESTING.md).
+    """
+    try:
+        yield
+        torch.cuda.synchronize()
+    except RuntimeError as error:
+        if "device-side assert" not in str(error):
+            raise
+    else:
+        pytest.fail("the block failed no CUDA device-side assert")
+    err = capfd.readouterr().err
+    if sys.platform != "win32" and not re.search(match, err):
+        pytest.fail(f"the device-side assert printed no message matching {match!r}:\n{err}")
+
+
+def raises_value_check(
+    device: torch.device,
+    match: str,
+    capfd: pytest.CaptureFixture[str],
+    expected_exception: type[BaseException] = RuntimeError,
+) -> Any:
+    """Expect the block to fail a value check whose message matches ``match``, on any device.
+
+    Off CUDA it is ``pytest.raises(expected_exception, match=match)``; the block synchronizes an asynchronous device
+    such as MPS itself. On CUDA it is :func:`raises_cuda_device_assert`, so the test must be marked
+    ``@pytest.mark.cuda_device_assert``.
+    """
+    if device.type == "cuda":
+        return raises_cuda_device_assert(match, capfd)
+    return pytest.raises(expected_exception, match=match)
+
+
+def skip_unsupported_autocast(device: torch.device, autocast_dtype: str) -> None:
+    """Skip a test of a caller's autocast region on a device without one, or that cannot run ``autocast_dtype``."""
+    if device.type not in ("cpu", "cuda", "mps"):
+        pytest.skip("CPU, CUDA and MPS autocast")
+    if device.type == "cuda" and autocast_dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+
+
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
     return not (
         (torch_version_lt(2, 4, 0) and sys.version_info >= (3, 12))
         or (torch_version_lt(2, 6, 0) and sys.version_info >= (3, 13))
     )
+
+
+def onnx_exporter_params(default_id: str = "default", legacy_id: str = "legacy") -> list[Any]:
+    """Return the ``to_onnx`` keyword sets of the exporters worth testing, as ``pytest.param`` values.
+
+    ``{"dynamo": False}`` runs the legacy TorchScript exporter. ``{}`` runs ``torch.onnx.export``'s default: the dynamo
+    exporter from torch 2.9, the TorchScript exporter before it. The default case is listed only from torch 2.9, so an
+    older torch does not export the same graph twice. Keep the ids free of "dynamo" and "compile": conftest deselects
+    every test whose name contains them unless an optimizer is set.
+    """
+    params = [pytest.param({"dynamo": False}, id=legacy_id)]
+    if not torch_version_lt(2, 9, 0):
+        params.insert(0, pytest.param({}, id=default_id))
+    return params
 
 
 def dynamic_export_is_available() -> bool:
@@ -140,6 +218,30 @@ def assert_close(
         equal_nan=False,
         **kwargs,
     )
+
+
+def assert_deepcopy_copies_state_as_leaves(module: torch.nn.Module) -> torch.nn.Module:
+    """Check that ``copy.deepcopy(module)`` copies its state like ``torch.save`` / ``torch.load``.
+
+    The copy holds the same keys, each as a parameter or a buffer like the original and with the same values, dtype,
+    device and ``requires_grad``, but as leaves in storage of their own, so no gradient flows back through it. The
+    property is checked directly, since ``torch.load`` cannot rebuild a complex32 tensor that requires grad. Returns
+    the copy.
+    """
+    copied = copy.deepcopy(module)
+    assert type(copied) is type(module)
+    original = module.state_dict(keep_vars=True)
+    actual = copied.state_dict(keep_vars=True)
+    assert list(actual) == list(original)
+    assert set(dict(copied.named_buffers())) == set(dict(module.named_buffers()))
+    for name, source in original.items():
+        tensor = actual[name]
+        assert type(tensor) is type(source), name
+        assert tensor.grad_fn is None, name
+        assert tensor.requires_grad == source.requires_grad, name
+        assert tensor.data_ptr() != source.data_ptr(), name
+        assert_close(tensor.detach(), source.detach(), rtol=0, atol=0)
+    return copied
 
 
 def tensor_to_gradcheck_var(

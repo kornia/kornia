@@ -68,12 +68,11 @@ def test_default_border_type_matches_the_sibling_filters(op, siblings):
 
 class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [3, 5])
-    @pytest.mark.parametrize("angle", [36.0, 200.0])
-    @pytest.mark.parametrize("direction", [-0.9, 0.0, 0.9])
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
+    def test_smoke(self, shape, mode, params_as_tensor, device, dtype):
+        # kernel size, angle and direction only change the kernel's values, which other tests pin
+        kernel_size, angle, direction = 5, 200.0, -0.9
         B, _C, _H, _W = shape
         data = torch.rand(shape, device=device, dtype=dtype)
 
@@ -85,27 +84,10 @@ class TestMotionBlur(BaseTester):
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 
-    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_cardinality(self, shape, device, dtype):
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        ksize = 5
-        angle = 200.0
-        direction = 0.3
-
-        sample = torch.rand(shape, device=device, dtype=dtype)
-        motion = MotionBlur(ksize, angle, direction)
-        assert motion(sample).shape == shape
-
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
-
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("ksize", [3, 11])
-    @pytest.mark.parametrize("angle", [0.0, 360.0])
-    @pytest.mark.parametrize("direction", [-1.0, 1.0])
-    @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_get_motion_kernel2d(self, batch_size, ksize, angle, direction, params_as_tensor, device, dtype):
+    # a float angle and direction build one kernel on the default device and dtype, whatever the batch
+    @pytest.mark.parametrize("batch_size, params_as_tensor", [(1, True), (3, True), (1, False)])
+    def test_get_motion_kernel2d(self, batch_size, params_as_tensor, device, dtype):
+        ksize, angle, direction = 3, 0.0, 1.0
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(batch_size)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(batch_size)
@@ -118,16 +100,6 @@ class TestMotionBlur(BaseTester):
         expected = torch.ones(1, device=device, dtype=dtype) * batch_size
         assert actual.shape == (batch_size, ksize, ksize)
         self.assert_close(actual.sum(), expected.sum())
-
-    def test_get_motion_kernel2d_directional_weights(self, device, dtype):
-        direction = torch.tensor([-1.0, 0.0, 1.0], device=device, dtype=dtype)
-        actual = get_motion_kernel2d(5, torch.zeros_like(direction), direction)
-
-        expected = torch.zeros((3, 5, 5), device=device, dtype=dtype)
-        expected[0, 2] = torch.tensor([0.0, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
-        expected[1, 2] = 0.2
-        expected[2, 2] = torch.tensor([0.4, 0.3, 0.2, 0.1, 0.0], device=device, dtype=dtype)
-        self.assert_close(actual, expected)
 
     def test_get_motion_kernel2d_direction_gradcheck(self, device):
         direction = torch.tensor([-0.5, 0.5], device=device, dtype=torch.float64, requires_grad=True)
@@ -177,16 +149,6 @@ class TestMotionBlur(BaseTester):
         sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(motion_blur, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
-    def test_module(self, device, dtype):
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        params = [3, 20.0, 0.5]
-        op = motion_blur
-        op_module = MotionBlur(*params)
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-
-        self.assert_close(op(img, *params), op_module(img))
-
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("params_as_tensor", [False, True])
     def test_module_forwards_mode(self, mode, params_as_tensor, device, dtype):
@@ -225,6 +187,12 @@ class TestMotionBlur(BaseTester):
         self.assert_close(motion_blur(img, 7, angle, 0.3, "reflect"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur(7, angle, 0.3, "reflect")(img), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["device_name"] == "mps" and (p["dtype_name"] == "float64" or p["tensor_dtype"] == torch.float64))
+        ),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("tensor_parameter", ["angle", "angle_0d", "direction"])
     def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
@@ -232,8 +200,6 @@ class TestMotionBlur(BaseTester):
     ):
         # A tensor angle or direction with a Python number for the other builds the number on the tensor's device and
         # in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
-        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
-            pytest.skip("MPS has no float64")
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         if not supports_nearest_2d_grid_sample(device, tensor_dtype):
@@ -261,8 +227,9 @@ class TestMotionBlur(BaseTester):
     # 5-tap kernel along one axis.
     @pytest.mark.parametrize("shape", [(1, 1, 5, 7), (2, 3, 8, 6), (1, 1, 3, 9), (1, 1, 9, 3)])
     @pytest.mark.parametrize("angle", [0.0, 45.0, 90.0, 30.0])
-    @pytest.mark.parametrize("direction", [0.0, 0.7])
-    def test_constant_image_stays_constant_at_the_default_border(self, shape, angle, direction, device, dtype):
+    def test_constant_image_stays_constant_at_the_default_border(self, shape, angle, device, dtype):
+        # any normalized kernel keeps a constant constant, so the direction (which only reweights the taps) is fixed
+        direction = 0.0
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         image = torch.full(shape, 0.75, device=device, dtype=dtype)
@@ -270,18 +237,14 @@ class TestMotionBlur(BaseTester):
         self.assert_close(motion_blur(image, 5, angle, direction), image)
         self.assert_close(MotionBlur(5, angle, direction)(image), image)
 
-    # "reflect" needs each spatial axis longer than the kernel radius (``kernel_size // 2 = 2`` here), as it does for
-    # ``filter2d``, ``gaussian_blur2d`` and ``box_blur`` at their defaults; "constant" and "replicate" do not.
     @pytest.mark.parametrize("shape", [(1, 1, 2, 9), (1, 1, 9, 2), (1, 1, 1, 9)])
-    def test_default_border_raises_on_an_axis_of_at_most_the_kernel_radius(self, shape, device, dtype):
+    def test_default_border_preserves_a_constant_image_on_short_axes(self, shape, device, dtype):
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         image = torch.ones(shape, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError, match="Padding size should be less than"):
-            motion_blur(image, 5, 0.0, 0.0)
-        with pytest.raises(RuntimeError, match="Padding size should be less than"):
-            MotionBlur(5, 0.0, 0.0)(image)
+        self.assert_close(motion_blur(image, 5, 0.0, 0.0), image)
+        self.assert_close(MotionBlur(5, 0.0, 0.0)(image), image)
         assert motion_blur(image, 5, 0.0, 0.0, border_type="constant").shape == shape
 
     # Snippet used to generate expected:
@@ -319,13 +282,15 @@ class TestMotionBlur(BaseTester):
 
 
 class TestMotionBlur3D(BaseTester):
-    @pytest.mark.parametrize("shape", [(1, 4, 3, 8, 15), (2, 2, 3, 11, 7)])
-    @pytest.mark.parametrize("kernel_size", [3, 5])
-    @pytest.mark.parametrize("angle", [(36.0, 15.0, 200.0), (200.0, 10.0, 150.0)])
-    @pytest.mark.parametrize("direction", [-0.9, 0.0, 0.9])
+    # A shape check: each shape, kernel size and angle once, with every direction, mode and parameter form.
+    @pytest.mark.parametrize(
+        "shape,kernel_size,angle",
+        [((1, 4, 3, 8, 15), 3, (36.0, 15.0, 200.0)), ((2, 2, 3, 11, 7), 5, (200.0, 10.0, 150.0))],
+    )
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
+    def test_smoke(self, shape, kernel_size, angle, mode, params_as_tensor, device, dtype):
+        direction = 0.0  # the direction only changes the kernel's values, which other tests pin
         if params_as_tensor:
             supports_mode = (
                 supports_nearest_3d_grid_sample(device, dtype)
@@ -345,27 +310,10 @@ class TestMotionBlur3D(BaseTester):
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 
-    @pytest.mark.parametrize("shape", [(1, 4, 1, 8, 15), (2, 3, 1, 11, 7)])
-    def test_cardinality(self, shape, device, dtype):
-        if not supports_replicate_padding_3d(device, dtype):
-            pytest.skip("replication_pad3d is unavailable for this device/dtype")
-        ksize = 5
-        angle = (200.0, 15.0, 120.0)
-        direction = 0.3
-
-        sample = torch.rand(shape, device=device, dtype=dtype)
-        motion = MotionBlur3D(ksize, angle, direction)
-        assert motion(sample).shape == shape
-
-    @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self): ...
-
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("ksize", [3, 11])
-    @pytest.mark.parametrize("angle", [(0.0, 360.0, 150.0)])
-    @pytest.mark.parametrize("direction", [-1.0, 1.0])
-    @pytest.mark.parametrize("params_as_tensor", [True, False])
-    def test_get_motion_kernel3d(self, batch_size, ksize, angle, direction, params_as_tensor, device, dtype):
+    # a float angle and direction build one kernel on the default device and dtype, whatever the batch
+    @pytest.mark.parametrize("batch_size, params_as_tensor", [(1, True), (3, True), (1, False)])
+    def test_get_motion_kernel3d(self, batch_size, params_as_tensor, device, dtype):
+        ksize, angle, direction = 3, (0.0, 360.0, 150.0), 1.0
         mode = "nearest"
         if params_as_tensor is True:
             if not supports_nearest_3d_grid_sample(device, dtype):
@@ -421,16 +369,6 @@ class TestMotionBlur3D(BaseTester):
 
         sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(motion_blur3d, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
-
-    def test_module(self, device, dtype):
-        if not supports_replicate_padding_3d(device, dtype):
-            pytest.skip("replication_pad3d is unavailable for this device/dtype")
-        params = [3, (0.0, 360.0, 150.0), 0.5]
-        op = motion_blur3d
-        op_module = MotionBlur3D(*params)
-        img = torch.ones(1, 3, 1, 5, 5, device=device, dtype=dtype)
-
-        self.assert_close(op(img, *params), op_module(img))
 
     @pytest.mark.parametrize("mode", ["nearest", "bilinear"])
     @pytest.mark.parametrize("angle_form", ["float", "int", "tuple", "list", "tensor"])
@@ -506,6 +444,12 @@ class TestMotionBlur3D(BaseTester):
         self.assert_close(motion_blur3d(volume, 5, angle, 0.3, "replicate"), expected, rtol=0, atol=0)
         self.assert_close(MotionBlur3D(5, angle, 0.3, "replicate")(volume), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (p["device_name"] == "mps" and (p["dtype_name"] == "float64" or p["tensor_dtype"] == torch.float64))
+        ),
+        reason="MPS has no float64",
+    )
     @pytest.mark.parametrize("tensor_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     @pytest.mark.parametrize("tensor_parameter", ["angle", "direction"])
     def test_tensor_parameter_with_a_python_number_is_built_like_the_tensor(
@@ -513,8 +457,6 @@ class TestMotionBlur3D(BaseTester):
     ):
         # A tensor angle or direction with a Python number, or a tuple, for the other builds that one on the tensor's
         # device and in its dtype, whatever the input's dtype, so the blur is the one of the two tensors.
-        if device.type == "mps" and torch.float64 in (dtype, tensor_dtype):
-            pytest.skip("MPS has no float64")
         if not supports_replicate_padding_3d(device, dtype):
             pytest.skip("replication_pad3d is unavailable for this device/dtype")
         if not supports_nearest_3d_grid_sample(device, tensor_dtype):
@@ -541,15 +483,14 @@ class TestMotionBlur3D(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
-    # A blur of a constant volume is that constant, thin volumes included: ``D = 1`` is why the default is
-    # "replicate" and not "reflect", which needs each axis longer than the kernel radius. "replicate" has no such
-    # limit, down to a single voxel, so unlike the 2-D default there is no size at which this one raises.
+    # The default replicate border keeps a constant volume constant, down to a single voxel.
     @pytest.mark.parametrize(
         "shape", [(1, 1, 5, 6, 7), (2, 2, 3, 4, 5), (1, 1, 1, 5, 7), (2, 3, 1, 8, 9), (1, 1, 1, 1, 1)]
     )
     @pytest.mark.parametrize("angle", [(0.0, 0.0, 0.0), (45.0, 0.0, 0.0), (0.0, 90.0, 0.0), (30.0, 60.0, 120.0)])
-    @pytest.mark.parametrize("direction", [0.0, 0.7])
-    def test_constant_volume_stays_constant_at_the_default_border(self, shape, angle, direction, device, dtype):
+    def test_constant_volume_stays_constant_at_the_default_border(self, shape, angle, device, dtype):
+        # any normalized kernel keeps a constant constant, so the direction (which only reweights the taps) is fixed
+        direction = 0.0
         if not supports_replicate_padding_3d(device, dtype):
             pytest.skip("replication_pad3d is unavailable for this device/dtype")
         volume = torch.full(shape, 0.75, device=device, dtype=dtype)

@@ -33,7 +33,7 @@ from kornia.geometry.depth import (
     warp_frame_depth,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 
 
 def _k_asymmetric(device, dtype, fy=100.0):
@@ -232,7 +232,12 @@ class TestDepthTo3d(BaseTester):
         )
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points=True)
-        self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The unit rays and the 4-digit expected literals (<= 2) each round by eps / 2 relative: one ulp apart at
+            # most, within the default half-precision tolerances.
+            self.assert_close(points3d, points3d_expected)
+        else:
+            self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
         depth = 2 * torch.tensor(
@@ -318,7 +323,7 @@ class TestDepthTo3d(BaseTester):
             depth_to_3d_v2(depth, camera_matrix[0])
 
     @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
-    def test_half_depth_with_float32_intrinsics_keeps_pixel_precision_6148(self, half_dtype, device, dtype):
+    def test_half_depth_with_float32_intrinsics_keeps_pixel_precision_6148(self, half_dtype, device):
         # kornia#6148: a half-precision depth map with float32 intrinsics built its pixel grid in the depth's
         # dtype, so the integer column indices were rounded (bfloat16 holds integers only to 256) and X drifted
         # by up to 2 px at 640 px wide. The grid is now built in the promoted dtype, so the points match the
@@ -364,11 +369,12 @@ class TestDepthTo3d(BaseTester):
         assert torch.equal(depth_to_3d(depth, camera_matrix), depth_to_3d(reference, camera_matrix))
         assert torch.equal(depth_to_3d_v2(depth[:, 0], camera_matrix), depth_to_3d_v2(reference[:, 0], camera_matrix))
 
-    def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device, dtype):
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="float64 default dtype, which MPS does not compute in"
+    )
+    def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device):
         # Both inputs integer: promote_types does not support the unsigned/signed pair, so the grid falls back
         # to the default floating dtype instead of raising. MPS cannot compute in float64.
-        if device.type == "mps":
-            pytest.skip("float64 default dtype, which MPS does not compute in")
         depth = torch.full((1, 1, 2, 3), 2, device=device, dtype=torch.uint16)
         camera_matrix = torch.tensor([[[100, 0, 4], [0, 100, 3], [0, 0, 1]]], device=device, dtype=torch.int32)
         previous_dtype = torch.get_default_dtype()
@@ -381,8 +387,8 @@ class TestDepthTo3d(BaseTester):
         finally:
             torch.set_default_dtype(previous_dtype)
 
-    def test_all_half_inputs_keep_the_half_grid_6148(self, device, dtype):
-        # An all-bfloat16 call keeps its bfloat16 grid (the wider half-precision policy belongs to #5814), so
+    def test_all_half_inputs_keep_the_half_grid_6148(self, device):
+        # An all-bfloat16 call keeps its bfloat16 grid, whose points are this function's output, so
         # only the mixed case changes. With fx = 1 and cx = 1, column 257 unprojects to x = 256 in exact
         # arithmetic, which a bfloat16 grid stores as 255 while a float32 computation cast back gives 256:
         # the pinned literal proves the grid itself stayed bfloat16, not a float32 pipeline narrowing late.
@@ -397,7 +403,7 @@ class TestDepthTo3d(BaseTester):
         assert points_v1[0, 0, 0, 257].item() == 255.0
         assert points_v2[0, 0, 257, 0].item() == 255.0
 
-    def test_real_depth_with_complex_intrinsics_promotes_through_the_grid_6148(self, device, dtype):
+    def test_real_depth_with_complex_intrinsics_promotes_through_the_grid_6148(self, device):
         # A complex promotion keeps a real grid (arange has no complex kernels); the arithmetic still
         # promotes to complex, which also unblocks complex inputs that failed on main during grid
         # construction.
@@ -411,7 +417,7 @@ class TestDepthTo3d(BaseTester):
         expected = torch.tensor([0.0, 0.0, 2.0], device=device, dtype=torch.complex64)
         self.assert_close(points_v2[0, 0, 0], expected)
 
-    def test_complex32_depth_with_half_intrinsics_unprojects_6148(self, device, dtype):
+    def test_complex32_depth_with_half_intrinsics_unprojects_6148(self, device):
         # complex32 depth promotes with float16 intrinsics to complex32, which also has no arange kernel:
         # the grid stays real (float16) and only the final multiplication sees the complex depth. The
         # imaginary part reaches the output: at pixel (u=2, v=1) an identity camera unprojects z = 2+1j
@@ -428,7 +434,7 @@ class TestDepthTo3d(BaseTester):
         self.assert_close(points[0, :, 1, 2].to(torch.complex64), expected)
         self.assert_close(points_v2[0, 1, 2].to(torch.complex64), expected)
 
-    def test_all_complex32_inputs_get_a_real_grid_6148(self, device, dtype):
+    def test_all_complex32_inputs_get_a_real_grid_6148(self, device):
         # Two complex32 inputs cannot run through torch (no ComplexHalf division kernel), but the grid
         # dtype itself is well defined: the real component of the promotion, float16.
         from kornia.geometry.depth import _depth_grid_dtype
@@ -445,7 +451,7 @@ class TestDepthTo3d(BaseTester):
     def test_float32_intrinsics_results_are_bitwise_unchanged_6148(self, depth_dtype, device, dtype):
         # Control: for every depth dtype whose old grid was already built in the dtype the promotion keeps,
         # every output bit is preserved. On the half profiles the fixture dtype matches the depth dtype, so
-        # the promoted grid dtype is the same half and the comparison covers the all-half policy of #5814.
+        # the promoted grid dtype is the same half and the comparison covers the all-half path.
         camera_matrix = _k_asymmetric(device, dtype)
         depth_values = torch.rand(1, 1, 2, 6, device=device).mul(5).add(1)
         depth = depth_values.to(depth_dtype)
@@ -698,7 +704,7 @@ class TestDepthToNormals(BaseTester):
 
 class TestWarpFrameDepth(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
-    def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device, dtype):
+    def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device):
         # kornia#6148 on the wrapper path: warp_frame_depth reaches the mixed-dtype fix through
         # depth_to_3d_v2, so an identity warp with half-precision depth and float32 intrinsics and
         # transform reproduces the float32-depth image instead of sampling off-by-pixels. float16 holds the
@@ -896,6 +902,108 @@ class TestWarpFrameDepth(BaseTester):
         self.assert_close(warped[0, 0, 0], torch.tensor([1.0, 2.0, 3.0, 4.0, 0.0], device=device, dtype=dtype))
         assert (warped - image_src).abs().max().item() > 0.5
         assert torch.equal(warp_frame_depth(image_src, depth_dst, _eye4(device, dtype), camera_matrix), image_src)
+
+
+class TestDepthWarpAutocast(BaseTester):
+    """A caller's autocast region does not reach the sampling grid of the depth warps (#6601)."""
+
+    # Exact where in and out of the region run the same arithmetic on one device.
+
+    @staticmethod
+    def _inputs(device, dtype=torch.float32):
+        generator = torch.Generator().manual_seed(0)
+        theta = torch.tensor(0.4363)
+        pose = torch.eye(4)[None]
+        pose[:, :2, :2] = torch.tensor([[theta.cos(), -theta.sin()], [theta.sin(), theta.cos()]])
+        pose[:, :3, 3] = torch.tensor([0.3, -0.2, 1.1])
+        camera_matrix = torch.tensor([[[300.0, 0.0, 128.3], [0.0, 310.0, 127.7], [0.0, 0.0, 1.0]]])
+        image = torch.rand(1, 1, 256, 256, generator=generator)
+        depth = 2.5 * (1.0 + 0.1 * torch.rand(1, 1, 256, 256, generator=generator))
+        return tuple(x.to(device=device, dtype=dtype) for x in (image, depth, pose, camera_matrix))
+
+    @staticmethod
+    def _depth_warp(image, depth, pose, camera_matrix):
+        intrinsics = torch.eye(4, device=pose.device, dtype=pose.dtype)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=pose.device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=pose.device, dtype=pose.dtype)[None], size, size)
+        return kornia.geometry.depth.depth_warp(pinhole_dst, pinhole_src, depth, image, 256, 256)
+
+    @pytest.mark.parametrize("op_name", ["warp_frame_depth", "depth_warp"])
+    @pytest.mark.parametrize("input_dtype", ["float32", "half"])
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_warp_6601(self, op_name, input_dtype, autocast_dtype, device):
+        # The result came back in float32, up to 0.68 (warp_frame_depth) and 0.88 (depth_warp) off in bfloat16 on a
+        # [0, 1] image: the products of transform_points and of DepthWarper.compute_projection_matrix. Half inputs of
+        # the region's dtype run in float32 since #6608, in the region too: 0.63 from float32 truth in it, 0.22 outside.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        inputs = self._inputs(device, half if input_dtype == "half" else torch.float32)
+        op = self._depth_warp if op_name == "depth_warp" else kornia.geometry.depth.warp_frame_depth
+        expected = op(*inputs)
+        with torch.autocast(device.type, dtype=half):
+            actual = op(*inputs)
+        assert actual.dtype == inputs[0].dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_projection_matrix_6601(self, autocast_dtype, device):
+        skip_unsupported_autocast(device, autocast_dtype)
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        pinhole_src = PinholeCamera(intrinsics, torch.eye(4, device=device)[None], size, size)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, 256, 256)
+        expected = warper.compute_projection_matrix(pinhole_src)._dst_proj_src
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = warper.compute_projection_matrix(pinhole_src)._dst_proj_src
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_cameras_of_different_dtypes_compose_in_float32_in_a_region_6601(self, autocast_dtype, device):
+        # Outside the region they raise. In it autocast reconciled them in the caller's precision, 0.96 off in bfloat16;
+        # they now meet in float32, so a half pose from a model under AMP keeps working. The half identity is exact, so
+        # the matrix equals the all-float32 one.
+        skip_unsupported_autocast(device, autocast_dtype)
+        half = getattr(torch, autocast_dtype)
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        pinhole_dst = PinholeCamera(intrinsics, pose, size, size)
+        identity = torch.eye(4, device=device)[None]
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, 256, 256)
+        expected = warper.compute_projection_matrix(PinholeCamera(intrinsics, identity, size, size))._dst_proj_src
+        pinhole_src = PinholeCamera(intrinsics, identity.to(half), size, size)
+        with pytest.raises(RuntimeError):
+            warper.compute_projection_matrix(pinhole_src)
+        with torch.autocast(device.type, dtype=half):
+            warper.compute_projection_matrix(pinhole_src)
+        assert warper._dst_proj_src.dtype == torch.float32
+        self.assert_close(warper._dst_proj_src, expected, rtol=0, atol=0)
+
+    def test_a_wrong_camera_type_still_raises_type_error_6601(self, device):
+        # The guard reads the cameras' dtypes, which must not come before this check's message.
+        _, _, pose, camera_matrix = self._inputs(device)
+        intrinsics = torch.eye(4, device=device)[None]
+        intrinsics[:, :3, :3] = camera_matrix
+        size = torch.tensor([256.0], device=device)
+        warper = kornia.geometry.depth.DepthWarper(PinholeCamera(intrinsics, pose, size, size), 256, 256)
+        with pytest.raises(TypeError, match="pinhole_src expected to be of class PinholeCamera"):
+            warper.compute_projection_matrix("not a camera")
+
+    def test_still_scriptable_6601(self, device):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        image, depth, pose, camera_matrix = self._inputs(device)
+        scripted = torch.jit.script(kornia.geometry.depth.warp_frame_depth)
+        self.assert_close(
+            scripted(image, depth, pose, camera_matrix),
+            kornia.geometry.depth.warp_frame_depth(image, depth, pose, camera_matrix),
+        )
 
 
 class TestDepthWarperConventions(BaseTester):
@@ -1128,8 +1236,6 @@ class TestDepthWarperConventions(BaseTester):
     def test_convention_warp_frame_depth_matches_depth_warper(self, device, dtype):
         # The two APIs compute the same warp through different arithmetic (depth_to_3d_v2 + project_points versus
         # pixel2cam + cam2pixel) and agree to the dtype tolerance on the seeded random camera pairs.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision: the two paths diverge beyond the half-precision tolerances")
         for seed, rotate in ((11, True), (7, False)):
             img, dep, transform, k3, k4, batch_h, batch_w = self._random_warp_inputs(device, dtype, 2, seed, rotate)
             batch_identity = torch.eye(4, device=device, dtype=dtype)[None].repeat(2, 1, 1).contiguous()
@@ -1324,11 +1430,13 @@ class TestDepthFromDisparity(BaseTester):
             torch.full((1, 1, 1, 1), 25.0, device=device, dtype=dtype),
         )
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"),
+        reason="float16: the far depth of a zero disparity, 0.5 * 100 / 2**-24, is past the float16 range",
+    )
     def test_convention_zero_disparity_warps_as_a_point_at_infinity_4272(self, device, dtype):
         # kornia#4272 (kept by ruling): the far depth of a zero disparity sends warp_frame_depth along the
         # rotation-only homography K R K^-1, the limit for a point at infinity; an inf depth would give NaN.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("half-precision pixel coordinates round across the image border in this comparison")
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -1610,14 +1718,16 @@ class TestDepthFromPlaneEquation(BaseTester):
         )
         self.assert_close(tilted, torch.tensor([[2.2360679774997896, 1.4907119849998598]], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"),
+        reason="float16: eps is floored at 2**-24 and 2 / 2**-24 is past the float16 range: the depth is inf",
+    )
     def test_convention_depth_from_plane_equation_clamps_a_tiny_denominator(self, device, dtype):
         # A ray-plane dot product inside (-eps, eps) is clamped to +/- eps with its sign kept, so a nearly grazing
         # ray returns a large SIGNED finite depth (2 / 1e-8 = 2e8); eps is passed explicitly, and eps = 1e-6 gives
         # 2e6. An exact zero is covered by the #4280 pin below.
         # Snippet used to generate expected: depth_from_plane_equation([[0, 1, 2.384185791015625e-09]], [[2.0]],
         # [[[4.0, 3.0]]], K, eps=1e-8) and the negated normal
-        if dtype == torch.float16:
-            pytest.skip("float16: eps is floored at 2**-24 and 2 / 2**-24 is past the float16 range: the depth is inf")
         camera_matrix = _k_asymmetric(device, dtype)
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         principal_point = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
@@ -1631,11 +1741,12 @@ class TestDepthFromPlaneEquation(BaseTester):
         wider = depth_from_plane_equation(normal, offsets, principal_point, camera_matrix, eps=1e-6)
         self.assert_close(wider, torch.full((1, 1), 2.0e6, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"), reason="float16: 2e8 overflows the float16 range"
+    )
     def test_convention_depth_from_plane_equation_clamps_the_singularity_4280(self, device, dtype):
         # kornia#4280: an exactly zero denominator is replaced by POSITIVE eps, so the grazing ray returns +2e8 for
         # either sign of the normal.
-        if dtype == torch.float16:
-            pytest.skip("float16: 2e8 overflows the float16 range")
         camera_matrix = _k_asymmetric(device, dtype)
         for sign in (1.0, -1.0):
             grazing = depth_from_plane_equation(

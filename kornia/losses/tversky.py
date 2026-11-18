@@ -52,51 +52,46 @@ def tversky_loss(
     eps: float = 1e-8,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Tversky Coefficient loss.
+    r"""Compute the Tversky loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices.
 
-    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
+    ``loss = tversky_loss(pred, target, alpha, beta)`` is one minus the Tversky index :cite:`salehi2017tversky` of the
+    softmax of ``pred`` over the classes (:math:`P`) and the one-hot ``target`` (:math:`G`) on the non-ignored pixels.
+    ``alpha`` weights the false positives :math:`P \setminus G` and ``beta`` the false negatives :math:`G \setminus P`.
 
     .. math::
 
-        \text{S}(P, G, \alpha; \beta) =
-          \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
-
-    Where:
-       - :math:`P` and :math:`G` are the softmax probabilities and exact one-hot
-         targets for each class, restricted to non-ignored pixels.
-       - :math:`\alpha` and :math:`\beta` control the magnitude of the
-         penalties for FPs and FNs, respectively.
-
-    Note:
-       - :math:`\alpha = \beta = 0.5` gives :func:`~kornia.losses.dice_loss` with ``average='macro'`` and twice
-         the ``eps``.
-       - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
-       - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
-         per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
+        \text{loss} = 1 - \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
     Convention:
-        ``pred``, ``target`` and ``ignore_index`` behave as in :func:`~kornia.losses.dice_loss`: logits
-        ``(B, C, H, W)`` with the softmax taken inside, int64 class indices ``(B, H, W)`` and ignored pixels removed
-        from their own sample. The index is computed per sample and class, averaged over the classes present in the
-        sample's non-ignored target, then over the batch into a 0-d tensor; a sample whose pixels are all ignored
-        enters the batch mean as loss 1. There is no ``weight``, ``average`` or ``reduction``.
+        - ``pred``, ``target`` and ``ignore_index`` behave as in :func:`~kornia.losses.dice_loss`: logits
+          ``(B, C, H, W)`` with the softmax taken inside, int64 class indices ``(B, H, W)`` and ignored pixels removed
+          from their own sample. The index is computed per sample and class, averaged over the classes present in the
+          sample's non-ignored target, then over the batch; a sample whose pixels are all ignored enters the batch
+          mean as loss 1. There is no ``weight``, ``average`` or ``reduction``.
+        - :math:`\alpha = \beta = 0.5` gives ``dice_loss(average='macro', eps=2 * eps)``, and
+          :math:`\alpha = \beta = 1` the per-class Tanimoto coefficient. For :math:`\alpha + \beta = 1` and
+          :math:`\alpha > 0`, the unsmoothed per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
 
     Args:
-        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes.
-        target: labels tensor with shape ``(N, H, W)`` where each value
-          is in range :math:`0 ≤ targets[i] ≤ C-1`.
-        alpha: the first coefficient in the denominator.
-        beta: the second coefficient in the denominator.
-        eps: scalar for numerical stability.
-        ignore_index: labels with this value are ignored in the loss computation.
+        pred: logits ``(B, C, H, W)``.
+        target: int64 class indices ``(B, H, W)`` in ``[0, C)``, or ``ignore_index``.
+        alpha: weight of the false positives, non-negative and finite.
+        beta: weight of the false negatives, non-negative and finite.
+        eps: term added to the denominator, non-negative and finite.
+        ignore_index: label whose pixels are left out; ``None`` ignores no label.
 
-    Return:
-        the computed loss.
+    Returns:
+        the loss, a 0-d tensor.
 
     Note:
         Softmax, spatial reductions and the ratio use float32 for float16 and
         bfloat16 inputs to avoid overflow in large-image sums and ratio gradients.
         The returned loss retains the input dtype.
+
+    See Also:
+        - :class:`~kornia.losses.TverskyLoss`: the module form.
+        - :func:`~kornia.losses.dice_loss`: weights false positives and false negatives equally; adds ``average`` and
+          class ``weight``.
 
     Example:
         >>> N = 5  # num_classes
@@ -152,41 +147,29 @@ def tversky_loss(
 
 
 class TverskyLoss(nn.Module):
-    r"""Criterion that computes Tversky Coefficient loss.
+    r"""Compute the Tversky loss of ``(B, C, H, W)`` logits against ``(B, H, W)`` class indices (module form).
 
-    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
-
-    .. math::
-
-        \text{S}(P, G, \alpha; \beta) =
-          \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
-
-    Where:
-       - :math:`P` and :math:`G` are the softmax probabilities and exact one-hot
-         targets for each class, restricted to non-ignored pixels.
-       - :math:`\alpha` and :math:`\beta` control the magnitude of the
-         penalties for FPs and FNs, respectively.
-
-    Note:
-       - :math:`\alpha = \beta = 0.5` gives :func:`~kornia.losses.dice_loss` with ``average='macro'`` and twice
-         the ``eps``.
-       - :math:`\alpha = \beta = 1` corresponds to the per-class Tanimoto coefficient.
-       - For :math:`\alpha + \beta = 1` and :math:`\alpha > 0`, the unsmoothed
-         per-class score is :math:`F_{\sqrt{\beta / \alpha}}`.
+    ``criterion = TverskyLoss(alpha, beta, eps, ignore_index)`` stores its arguments, and
+    ``loss = criterion(pred, target)`` is :func:`~kornia.losses.tversky_loss`.
 
     Convention:
         See the Convention block of :func:`~kornia.losses.tversky_loss`.
 
     Args:
-        alpha: the first coefficient in the denominator.
-        beta: the second coefficient in the denominator.
-        eps: scalar for numerical stability.
-        ignore_index: labels with this value are ignored in the loss computation.
+        alpha: weight of the false positives, non-negative and finite.
+        beta: weight of the false negatives, non-negative and finite.
+        eps: term added to the denominator, non-negative and finite.
+        ignore_index: label whose pixels are left out; ``None`` ignores no label.
 
     Shape:
-        - Pred: ``(N, C, H, W)`` where C = number of classes.
-        - Target: ``(N, H, W)`` where each value is
-          :math:`0 ≤ targets[i] ≤ C-1`.
+        - pred: logits ``(B, C, H, W)``.
+        - target: int64 class indices ``(B, H, W)`` in ``[0, C)``, or ``ignore_index``.
+        - Output: a 0-d tensor.
+
+    See Also:
+        - :func:`~kornia.losses.tversky_loss`: the one-call form.
+        - :class:`~kornia.losses.DiceLoss`: weights false positives and false negatives equally; adds ``average`` and
+          class ``weight``.
 
     Examples:
         >>> N = 5  # num_classes

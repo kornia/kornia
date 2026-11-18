@@ -100,81 +100,17 @@
 
 ## CUDA 与半精度支持
 
-下表按模块统计 Linux CPU 已知失败清单中的条目（[`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt)、[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)），对应固定的 Python 3.11 和 PyTorch 2.15.0 环境。
-清单记录了 **242 个 float16 失败和 255 个 bfloat16 失败**。这些数量指参数化测试用例，并不代表不受支持的函数数量。[#4153](https://github.com/kornia/kornia/issues/4153) 曾跟踪这些失败，直到该议题于 2026-10-18 关闭；目前没有单个议题跟踪所有剩余条目。
-没有 CI 任务覆盖 CUDA 或 MPS 半精度；CPU 结果不能证明这些后端的支持情况。完整测试套件的一次本地 CUDA 测量见[下文](#cuda-测试套件测量)。
+Kornia 算子接受 CPU、CUDA 和 MPS 张量。float16 和 bfloat16 输入受各算子自身限制约束；一些算子对半精度输入使用 float32 计算，并返回输入 dtype。
 
-| 模块 | float16 | bfloat16 | 已知失败（fp16 / bf16） | 说明 |
-|------|:-------:|:--------:|:----------------------:|------|
-| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv 转换和 `rgb255_to_normals` 对半精度输入使用 float32 计算，并返回输入 dtype |
-| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny、高斯核／模糊和 FFT 卷积对半精度输入使用 float32 计算，并返回输入 dtype |
-| `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA 对半精度输入保留 float32 拟合状态；白化和 JPEG 以 float32 计算后返回输入 dtype |
-| `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 47 | float16：容器 autocast／运行时错误和精度问题；两种 dtype：三维反向传播和随机生成器精度问题 |
-| `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | 旋转矩阵、仿射／透视变换和单应性变换器的精度问题 |
-| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | 投影、畸变往返变换和双目重投影；包括测试中的 dtype 断言 |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 12 / 12 | solve_pnp_dlt 拒绝半精度输入；undistort_points 精度问题 |
-| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | 本质矩阵分解／运动恢复和 KRt_from_projection 缺少 CPU 半精度内核；基础矩阵精度问题 |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT 求解器精度问题，包括迭代版本和基于直线的版本 |
-| `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 拒绝用 bfloat16 构造旋转：PyTorch 没有复数 bfloat16 dtype；这些预期错误／跳过项不计入清单 |
-| `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d 和 ConvQuadInterp3d 精度问题；bfloat16：render_gaussian2d 精度问题 |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | 轴角、四元数和旋转矩阵的精度问题；包括 tests/integration/test_conversions.py |
-| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | 本质矩阵模型拟合在对极几何求解器中抛出异常 |
-| `kornia.geometry (other)` | ⚠️ | ⚠️ | 6 / 13 | 边界框变换和深度的精度问题 |
-| `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | 圆／椭圆多边形填充的比较使用半精度计算的顶点和参考掩码 |
-| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16：总变分精度问题 |
-| `kornia.feature` | ✅ | ✅ | 0 / 0 | 特征匹配在半精度 dtype 下使用手动实现的 cdist 回退路径；LightGlue 的 float16 测试被跳过 |
-| `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16：RT-DETR RepVGG 融合精度问题 |
-| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16：直方图匹配和 _torch_svd_cast 精度问题 |
+- **CPU float16 和 bfloat16** 在 CI 中按严格的已知失败清单（[`testing/half_precision_xfails/`](testing/half_precision_xfails/)）运行：出现新的失败，或已记录的失败开始通过，都会使任务失败。
+- **CUDA** 在维护者的硬件上测试，而不是在托管 CI 中测试（托管 CI 的运行器没有 GPU）：完整测试套件在 NVIDIA GPU 上以 float32、float64、float16 和 bfloat16 以及 `torch.compile` 运行，在发布前以及审查涉及设备相关代码的拉取请求时执行。仅在 CUDA 上出现的失败会被修复，或列在下方的指南中。
+- **MPS** 在 CI 中运行 float32；MPS 半精度不在 CI 范围内，仅凭 CPU 结果不能证明其支持情况。
 
-✅ CPU 已知失败清单中没有条目 &nbsp; ⚠️ 存在已记录的 CPU 失败。
-这两个符号都不承诺完整的 dtype 支持：跳过的测试、预期异常以及源码中的 xfail 不在这些计数内。一些算子内部使用 float32 或 float64 计算，再返回输入 dtype。
-
-**观测到的 CPU CI 结果：**
-
-[2026-10-21 在 `93f1376e` 上的定时运行](https://github.com/kornia/kornia/actions/runs/39524889979)使用 Linux x86_64、Python 3.11 和 PyTorch 2.14.0，不包含慢速测试或编译测试：
-
-| 运行 | 通过 | 失败 | 跳过 | XFAIL（全部） | XPASS | 严格清单条目 |
-|------|-----:|-----:|-----:|-------------:|------:|-------------:|
-| [CPU float16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300500) | 23905 | 0 | 5132 | 284 | 4 | 250 |
-| [CPU bfloat16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300410) | 23726 | 0 | 5286 | 309 | 4 | 274 |
-
-每个任务还取消选择了 3 个 ONNX 一致性测试。XFAIL 总数包括严格清单条目和源码中的预期失败。每个成功任务中的 4 个 XPASS，是原本非严格预期失败但实际通过的测试；**清单**中的条目一旦通过，则会使验证失败，异常类型改变、条目被跳过或节点 ID 过期也同样如此。因此，CI 任务变绿意味着记录的基线得到复现，即便仍有已知失败和跳过项。这些总数描述的是所链接的版本；模块表描述的是仓库中提交的清单。
-
-在固定环境中验证完整 CPU 配置：
-
-```bash
-KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16
-KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-bfloat16
-```
-
-`pixi run test-half` 是一次未固定随机种子的 CPU 测试运行，不使用严格配置基线。定向检查和基线维护方法请参阅 [TESTING.md](TESTING.md#7-half-precision-dtypes-float16--bfloat16)。
-
-### CUDA 测试套件测量
-
-Kornia 接受 CUDA 张量以使用 GPU 加速，但受各算子的 dtype 和后端限制约束。目前没有 CUDA CI 任务，也没有提交到仓库的 CUDA 已知失败清单，因此下列总数只是某一版本的本地测量，不保证后续版本具有相同结果：版本 `e4a444e9b`（2026-11-04），RTX 4090，Python 3.11，PyTorch 2.15.0+cu132，关闭 TF32，对 `tests/` 使用 `--device=cuda`：
-
-| CUDA 运行 | 通过 | 失败 | 跳过 | XFAIL | XPASS |
-|-----------|-----:|-----:|-----:|------:|------:|
-| float32 + float64 | 46079 | 0 | 9198 | 46 | 11 |
-| float16 + bfloat16 | 45024 | 440 | 9813 | 50 | 7 |
-| float32，`torch.compile`（inductor）测试 | 853 | 6 | 80 | 1 | 1 |
-
-- **float32 和 float64：** 没有失败。
-- **float16 和 bfloat16：** 440 个失败中，408 个是 CPU 清单条目在 CUDA 上的对应用例。其余 32 个中，21 个在独立进程中通过，2 个使用未固定随机种子的输入，在 CPU 上也会失败。有 9 个仅在 CUDA 上失败：其中 5 个是因为 CUDA 按批量大小选择卷积和矩阵乘法内核，使半精度 LoFTR、SmallSR 或 LightGlue 对同一图像的批量输出与单独输出略有不同（在 CPU 上逐位相同；使用预训练权重时，这一差异小于半精度误差本身）；另外 4 个是 `RandomRotation3D` 的 bfloat16 反向传播用例，原因在于 bfloat16 的限制，而非 CUDA：测试中的 SGD 步长小于每个角度的半个 bfloat16 ulp，因此角度没有变化。
-- **`torch.compile`：** 6 个编译测试仅在 CUDA 上失败（缩放裁剪的重放、Otsu 分箱边界、`fit_line`、`Hyperplane` 和 `Keypoints` 的标量索引）。
-
-[精度指南](https://kornia.readthedocs.io/en/latest/get-started/precision.html#cuda-test-suite-measurement)列出了每项失败，给出了批量与单张处理的测量结果，并列出测试套件未覆盖的、仍未解决的 CUDA 专属问题。
-
-运行 CUDA 半精度测试时，请使用 `--isolate-half-precision`，使每个测试都在新进程中运行。缺少此选项时，这些测试默认被跳过；仅选择半精度 dtype 并不能测试 CUDA 半精度支持：
+[精度指南](https://kornia.readthedocs.io/en/latest/get-started/precision.html)给出了具体数字：按模块统计的已知失败、在同一版本上一起测得的 CPU 和 CUDA 测试套件总数、仅在 CUDA 上出现的失败，以及复现这些结果的命令。CUDA 半精度测试只有在每个测试都于新进程中运行时才会执行，否则会被跳过：
 
 ```bash
 pixi run test-module tests/color/ --device=cuda --dtype=float16,bfloat16 --isolate-half-precision
 ```
-
-详情请参阅[完整精度指南](https://kornia.readthedocs.io/en/latest/get-started/precision.html)。
 
 ## 赞助
 

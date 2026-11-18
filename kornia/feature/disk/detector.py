@@ -46,13 +46,15 @@ def heatmap_to_keypoints(
     nms_mask = nms2d(heatmap.unsqueeze(1), (window_size, window_size), mask_only=True).squeeze(1)
     nmsed = nms_mask & (heatmap > score_threshold)
 
+    width = heatmap.shape[-1]
     keypoints = []
     for b in range(heatmap.shape[0]):
-        yx = nmsed[b].nonzero(as_tuple=False)
-        detection_logp = heatmap[b][nmsed[b]]
-        xy = yx.flip((1,))
+        # The raster indices of the maxima are the image's one read of the device; everything after is gathered by
+        # index, where boolean masks would read it again for each tensor.
+        flat = torch.nonzero(nmsed[b].flatten()).squeeze(-1)
+        detection_logp = heatmap[b].flatten()[flat]
 
-        if n is not None and detection_logp.numel() > n:
+        if n is not None and flat.numel() > n:
             # The n strongest: every score above the n-th largest (torch.kthvalue gives it as the n-th smallest of
             # -logp), then the maxima equal to it in raster order until n are kept. The keypoints stay in raster order.
             if n > 0:
@@ -61,12 +63,18 @@ def heatmap_to_keypoints(
                 above = detection_logp > threshold
                 tied = detection_logp == threshold
                 mask = above | (tied & (torch.cumsum(tied, 0) <= n - above.sum()))
+                # Exactly n are kept, so their positions come from the running count of the mask without reading
+                # the device: the i-th kept maximum goes to slot i, every other one to a spare slot n.
+                slot = torch.where(mask, torch.cumsum(mask, 0) - 1, n)
+                order = torch.zeros(n + 1, dtype=torch.long, device=flat.device)
+                order.scatter_(0, slot, torch.arange(flat.numel(), device=flat.device))
+                kept = order[:n]
             else:
-                mask = torch.zeros_like(detection_logp, dtype=torch.bool)
+                kept = flat[:0]
+            flat = flat[kept]
+            detection_logp = detection_logp[kept]
 
-            xy = xy[mask]
-            detection_logp = detection_logp[mask]
-
+        xy = torch.stack((flat % width, torch.div(flat, width, rounding_mode="floor")), dim=-1)
         keypoints.append(Keypoints(xy, detection_logp))
 
     return keypoints

@@ -31,7 +31,8 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
-from .base import ImageSequentialBase
+from .base import ImageSequentialBase, _chain_transform_matrices
+from .ops import _filter_child_options, _validate_extra_args
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["ImageSequential"]
@@ -134,6 +135,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         - :class:`~kornia.augmentation.container.AugmentationSequential`: also transforms aligned masks and annotations.
         - :class:`~kornia.augmentation.container.PatchSequential`: runs transforms on a regular patch grid.
         - :class:`~kornia.augmentation.container.VideoSequential`: runs transforms on videos.
+        - :class:`~kornia.core.ImageSequential`: the core container of the same name, which records no parameters to
+          replay and adds a ``to_onnx`` export.
 
     Examples:
         >>> _ = torch.manual_seed(77)
@@ -428,16 +431,20 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
+
+        Returns:
+            the chained matrix, or ``None`` if no geometric module contributes one. In a caller's autocast region it
+            keeps the input's dtype, and float32 input is computed in float32.
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
-        if extra_args is None:
-            extra_args = {}
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
+            child_args = _filter_child_options(module, extra_args, param)
             if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 # Ignore error for 5-dim video. Keep try/except: Dynamo on torch 2.5.1 cannot trace
@@ -448,13 +455,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     pass
                 # Standardize shape
                 if recompute:
-                    flags = override_parameters(module.flags, extra_args, in_place=False)
+                    flags = override_parameters(module.flags, child_args, in_place=False)
                     mat = module.generate_transformation_matrix(input, param.data, flags)
                 elif module.transform_matrix is not None:
                     mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
@@ -467,10 +474,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
-                        input, maybe_param_data, recompute=recompute, extra_args=extra_args
+                        input, maybe_param_data, recompute=recompute, extra_args=child_args
                     )
                 mat = module.identity_matrix(input) if _mat is None else _mat
-                res_mat = mat if res_mat is None else mat @ res_mat
+                res_mat = mat if res_mat is None else _chain_transform_matrices(mat, res_mat)
         return res_mat
 
     def inverse_inputs(

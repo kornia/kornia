@@ -209,6 +209,29 @@ class TestCropAndResize(BaseTester):
         )
         self.assert_close(out_default, expected_zeros, rtol=1e-2, atol=1e-2)
 
+    def test_float32_box_on_a_half_image_keeps_its_far_corner(self, device, dtype):
+        # A float32 full-image box with an output of the image size is an identity crop in every dtype. The
+        # destination corners follow the box dtype: built in the image dtype, the far corner n - 1 rounded (bfloat16
+        # 257 -> 256, float16 2049 -> 2048) on the destination side only, which stretched the crop by n - 1 : n - 2
+        # and moved the last columns by up to 15. 2050 is the first float16 size whose far corner rounds.
+        n = 2050 if dtype == torch.float16 else 258
+        image = (torch.arange(n, device=device, dtype=torch.float32) % 16).expand(1, 1, n, n).to(dtype)
+        box = torch.tensor([[[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]]], device=device, dtype=torch.float32)
+        out = kornia.geometry.transform.crop_and_resize(image, box, (n, n))
+        assert out.dtype == dtype
+        self.assert_close(out, image)
+
+    def test_float32_box_on_a_half_image_keeps_its_fraction(self, device, dtype):
+        # The source corners keep a float32 box's precision for a half image. Rounded to bfloat16 (271.6 -> 272,
+        # 261.3 -> 262) the box moved, and the crop of a random image was 0.60 off the float32 crop of the same image;
+        # kept in float32 the two differ by the output rounding only (0.002 in bfloat16).
+        image = torch.rand(1, 1, 300, 300, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        box = torch.tensor([[[10.3, 20.7], [261.3, 20.7], [261.3, 271.6], [10.3, 271.6]]], device=device)
+        out = kornia.geometry.transform.crop_and_resize(image, box, (64, 64))
+        expected = kornia.geometry.transform.crop_and_resize(image.float(), box, (64, 64))
+        assert out.dtype == dtype
+        self.assert_close(out.float(), expected, rtol=0.0, atol=1e-2)
+
 
 class TestCenterCrop(BaseTester):
     def test_invalid_size_type(self):
@@ -591,6 +614,75 @@ class TestCropByBoxes(BaseTester):
         self.assert_close(kornia.geometry.transform.crop_and_resize(inp, column, (5, 1)), expected)
 
     @pytest.mark.parametrize(
+        "src_box_coords, out_size, expected_out, expected_grad",
+        [
+            # inp[y, x] = x + 16 y, so the box gradient is the image slope at the sampled pixels:
+            # point: out = I(x0, y0); row: out.sum() = 3 x0 + 1.5 (x2 - x0) + 48 y0
+            (
+                [[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]],
+                (1, 1),
+                [[34.0]],
+                [[1.0, 16.0], [0, 0], [0, 0], [0, 0]],
+            ),
+            (
+                [[[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]]],
+                (1, 3),
+                [[17.0, 18.0, 19.0]],
+                [[1.5, 48.0], [0, 0], [1.5, 0], [0, 0]],
+            ),
+        ],
+    )
+    def test_supported_size_one_crop_box_gradient_6642(
+        self, src_box_coords, out_size, expected_out, expected_grad, device, dtype
+    ):
+        """Test a crop with one pixel on an axis of both the box and ``size`` has the translation gradient (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16).requires_grad_()
+        src_box = torch.tensor(src_box_coords, device=device, dtype=dtype, requires_grad=True)
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, out_size)
+        self.assert_close(out, torch.tensor(expected_out, device=device, dtype=dtype)[None, None])
+
+        out.sum().backward()
+        assert torch.isfinite(inp.grad).all()
+        self.assert_close(src_box.grad, torch.tensor([expected_grad], device=device, dtype=dtype))
+
+    def test_degenerate_triangle_onto_same_triangle_is_a_translation_6642(self, device, dtype):
+        """Test a triangle mapped onto a translated copy of itself keeps the translation crop (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(256.0, device=device, dtype=dtype).view(1, 1, 16, 16)
+        src_box = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [1.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
+        dst_box = src_box - 1
+        out = kornia.geometry.transform.crop_by_boxes(inp, src_box, dst_box)
+        self.assert_close(out, inp[..., 1:5, 1:5])
+
+    def test_size_one_box_batch_does_not_corrupt_valid_box_6642(self, device, dtype):
+        """Test a size-1 box in a batch does not poison gradients of valid boxes (#6642)."""
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 8, 8).repeat(2, 1, 1, 1)
+        inp.requires_grad = True
+        # Item 0 is valid 2x2 box, Item 1 is size-1 box resized to (2, 2) (documented one-sided NaN)
+        src_box = torch.tensor(
+            [
+                [[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]],
+                [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        out = kornia.geometry.transform.crop_and_resize(inp, src_box, (2, 2))
+        # Item 0 is finite, Item 1 is NaN per #4747 contract
+        assert torch.isfinite(out[0]).all()
+        assert torch.isnan(out[1]).all()
+
+        out[0].sum().backward()
+        assert torch.isfinite(src_box.grad[0]).all()
+        assert torch.isfinite(inp.grad[0]).all()
+
+    @pytest.mark.parametrize(
         "src, size",
         [
             ([[1.0, 1.0], [3.0, 1.0], [3.0, 1.0], [1.0, 1.0]], (3, 3)),  # a size-1 row resized to 3 rows
@@ -717,7 +809,103 @@ class TestCropByTransform(BaseTester):
         )
 
 
+class TestCropOnePixelInputAxis6433(BaseTester):
+    def _row(self, device, dtype):
+        return torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype).reshape(1, 1, 1, 4)
+
+    def test_convention_center_crop_pads_above_and_below(self, device, dtype):
+        row = self._row(device, dtype)
+        zero = torch.zeros_like(row)
+        out = kornia.geometry.transform.center_crop(row, (3, 4))
+        self.assert_close(out, torch.cat((zero, row, zero), dim=-2))
+
+    def test_convention_center_crop_keeps_the_axis_at_its_size(self, device, dtype):
+        row = self._row(device, dtype)
+        self.assert_close(kornia.geometry.transform.center_crop(row, (1, 2)), row[..., 1:3])
+
+    def test_convention_center_crop_of_a_column_pads_left_and_right(self, device, dtype):
+        column = self._row(device, dtype).transpose(-1, -2)
+        zero = torch.zeros_like(column)
+        out = kornia.geometry.transform.center_crop(column, (4, 3))
+        self.assert_close(out, torch.cat((zero, column, zero), dim=-1))
+
+    def test_convention_center_crop_resample_matches_slice(self, device, dtype):
+        # The default slicing mode of CenterCrop2D already zero-pads this input.
+        row = self._row(device, dtype)
+        resample = kornia.geometry.transform.CenterCrop2D((3, 4), cropping_mode="resample")(row)
+        self.assert_close(resample, kornia.geometry.transform.CenterCrop2D((3, 4))(row))
+
+    @pytest.mark.parametrize("matrix_rows", [2, 3])
+    def test_convention_crop_by_transform_mat(self, matrix_rows, device, dtype):
+        row = self._row(device, dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        matrix[0, 1, 2] = 1.0
+        out = kornia.geometry.transform.crop_by_transform_mat(row, matrix[:, :matrix_rows], (2, 4))
+        self.assert_close(out, torch.cat((torch.zeros_like(row), row), dim=-2))
+
+
 class TestCropByIndices(BaseTester):
+    @pytest.mark.parametrize("batch", [1, 4])
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "transposed", "expanded"])
+    @pytest.mark.parametrize("size", [(3, 4), [3, 4]])
+    @pytest.mark.parametrize("shape_compensation", ["resize", "pad"])
+    def test_uniform_exact_size_values_and_gradients_4531(self, batch, layout, size, shape_compensation, device, dtype):
+        inp = torch.rand(batch, 2, 8, 9, device=device, dtype=dtype)
+        if layout == "channels_last":
+            inp = inp.contiguous(memory_format=torch.channels_last)
+        elif layout == "transposed":
+            inp = inp.transpose(-2, -1)
+        elif layout == "expanded":
+            inp = inp[:1].expand(batch, -1, -1, -1)
+        inp.requires_grad_()
+        box = torch.tensor([[[2, 1], [5, 1], [5, 3], [2, 3]]], device=device, dtype=dtype).expand(batch, -1, -1)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=size, shape_compensation=shape_compensation)
+        expected = inp[..., 1:4, 2:6]
+        self.assert_close(out, expected, atol=0, rtol=0)
+        assert out.is_contiguous()
+        assert out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+
+        weights = torch.arange(1, out.numel() + 1, device=device, dtype=dtype).reshape_as(out)
+        (gradient,) = torch.autograd.grad(out, inp, weights)
+        expected_gradient = torch.zeros_like(inp)
+        expected_gradient[..., 1:4, 2:6] = weights
+        self.assert_close(gradient, expected_gradient, atol=0, rtol=0)
+
+    def test_uniform_exact_size_avoids_per_row_slices_4531(self, device, dtype):
+        inp = torch.rand(4, 2, 8, 9, device=device, dtype=dtype)
+        box = torch.tensor([[[2, 1], [5, 1], [5, 3], [2, 3]]], device=device, dtype=dtype).expand(4, -1, -1)
+        batch_slices = []
+
+        class BatchSlices(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                if func == torch.ops.aten.slice.Tensor and args[0] is inp and args[1] == 0:
+                    batch_slices.append(func)
+                return func(*args, **(kwargs or {}))
+
+        # Identical boxes need one spatial slice across the batch, rather than B separate row slices.
+        with BatchSlices():
+            out = kornia.geometry.transform.crop_by_indices(inp, box, size=(3, 4))
+        assert out.shape == (4, 2, 3, 4)
+        assert not batch_slices
+
+    def test_uniform_full_image_does_not_alias_input_4531(self, device, dtype):
+        # Even an already-contiguous full-image slice must be copied, rather than returned by contiguous().
+        inp = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        original = inp.clone()
+        box = torch.tensor([[[0, 0], [4, 0], [4, 3], [0, 3]]], device=device, dtype=dtype).expand(2, -1, -1)
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=(4, 5))
+        self.assert_close(out, original, atol=0, rtol=0)
+        out.zero_()
+        self.assert_close(inp, original, atol=0, rtol=0)
+
+    def test_uniform_exact_size_gradcheck_4531(self, device):
+        inp = torch.rand(2, 1, 5, 6, device=device, dtype=torch.float64)
+        box = torch.tensor([[[1, 1], [3, 1], [3, 2], [1, 2]]], device=device).expand(2, -1, -1)
+        self.gradcheck(
+            kornia.geometry.transform.crop_by_indices, (inp, box, (2, 3)), requires_grad=(True, False, False)
+        )
+
     @pytest.mark.parametrize("batch", [1, 2, 5])
     @pytest.mark.parametrize("requires_grad", [False, True])
     @pytest.mark.parametrize("grad_enabled", [False, True])

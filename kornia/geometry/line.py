@@ -44,6 +44,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import (
+    _deepcopy_module_state,
     _svd_work_dtype,
     _symmetric_eigenvector,
     _torch_svd_cast,
@@ -96,8 +97,8 @@ class ParametrizedLine(nn.Module):
           result of :meth:`through` and :func:`fit_line` on such tensors, returns points and distances that require
           grad. A caller's ``nn.Parameter`` is kept; any other floating-point tensor, such as a leaf that requires
           grad or a tensor with autograd history, is stored as a buffer and keeps its autograd link; an integer or
-          bool tensor raises ``TypeCheckError``. ``copy.deepcopy`` of a line whose state carries autograd history
-          raises ``RuntimeError`` (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+          bool tensor raises ``TypeCheckError``. ``copy.deepcopy`` holds an origin or a direction with autograd
+          history as a new leaf that keeps ``requires_grad``, as for :class:`~kornia.geometry.quaternion.Quaternion`.
 
     See Also:
         - :func:`fit_line`: fits the line to a set of points by total least squares, instead of taking an origin
@@ -115,6 +116,9 @@ class ParametrizedLine(nn.Module):
         tensor([1.4000, 0.0000], grad_fn=<LinalgVectorNormBackward0>)
 
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
         """Initialize a parametrized line of direction and origin.

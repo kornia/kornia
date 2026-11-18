@@ -15,9 +15,24 @@
 # limitations under the License.
 #
 
-"""Camera models submodule for Kornia sensors.
+"""Model cameras as a projection followed by a lens distortion, on ``Vector3`` points and flat parameter vectors.
 
-This package provides camera model definitions and utilities for camera calibration and projection.
+This API is experimental. Points are :class:`~kornia.geometry.vector.Vector3` in the camera frame and pixels are
+:class:`~kornia.geometry.vector.Vector2` with integer pixel centers, as on
+:doc:`camera and world conventions </get-started/camera-conventions>`; depth is the camera-frame ``z``. ``params`` is
+a flat ``(N,)`` or batched ``(B, N)`` vector that starts with ``[fx, fy, cx, cy]``, and its length is fixed by the
+model.
+
+Which class to use:
+
+- A built-in model chosen by name: :class:`CameraModel`, with a :class:`CameraModelType`.
+- The built-in models as classes: :class:`PinholeModel` (no lens distortion), :class:`BrownConradyModel` (OpenCV's
+  radial and tangential distortion), :class:`KannalaBrandtK3` (fisheye) and :class:`Orthographic` (parallel
+  projection).
+- A custom model from a distortion and a projection: :class:`CameraModelBase`, with the classes of
+  ``kornia.sensors.camera.distortion_model`` and ``kornia.sensors.camera.projection_model``.
+- Cameras with extrinsics, on plain tensors and applied per camera in a batch:
+  :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 """
 
 from .camera_model import (

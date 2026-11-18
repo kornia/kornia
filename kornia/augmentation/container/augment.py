@@ -33,7 +33,7 @@ from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
-from kornia.core.mixin.image_module import _rebuild_container
+from kornia.core.mixin.image_module import _is_pil_image, _rebuild_container
 from kornia.core.ops import eye_like
 from kornia.core.utils import _normalize_to_float32_or_float64, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -42,7 +42,7 @@ from kornia.image.utils import image_to_tensor
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType, InputSequentialOps
+from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _filter_child_options, _validate_extra_args
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
@@ -67,13 +67,6 @@ def _is_numpy_array(arg: Any) -> bool:
     # imported, and an import inside a compiled ``forward`` is a graph break (``importlib.import_module``).
     numpy_module = sys.modules.get("numpy")
     return numpy_module is not None and isinstance(arg, numpy_module.ndarray)
-
-
-def _is_pil_image(arg: Any) -> bool:
-    # Look PIL up for the same reason as NumPy above, and because Pillow is optional: a PIL image can exist only once
-    # PIL is imported, so a tensor mask must not load it through the lazy loader.
-    pil_module = sys.modules.get("PIL.Image")
-    return pil_module is not None and isinstance(arg, pil_module.Image)
 
 
 # The inputs AugmentationSequential accepts next to a 3D child; a 4D tensor is ambiguous there.
@@ -133,6 +126,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
+                                    In a caller's autocast region `.transform_matrix` keeps the input's dtype, and
+                                    float32 input is computed in float32.
                                     The validator also accepts `silence`, an alias that behaves
                                     like `silent`; any other value raises ``ValueError``.
 
@@ -457,22 +452,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Read invocation snapshots and parameter-aware geometric matrices from a plain image sequence."""
         for param in params:
             module = container.get_submodule(param.name)
+            child_args = _filter_child_options(module, extra_args, param)
             if type(module) is ImageSequential:
                 yield from AugmentationSequential._image_sequence_matrices(
-                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args, sequence_matrices
+                    module, InputSequentialOps.get_sequential_module_param(param), input, child_args, sequence_matrices
                 )
             elif isinstance(module, AugmentationSequential):
                 if sequence_matrices is None and type(module) is AugmentationSequential:
                     if module._transformation_matrix_arg != "skip":
                         yield from AugmentationSequential._image_sequence_matrices(
-                            module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                            module, InputSequentialOps.get_sequential_module_param(param), input, child_args
                         )
                 else:
                     matrix = module.transform_matrix if sequence_matrices is None else next(sequence_matrices)
                     if matrix is not None:
                         yield matrix
             elif isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D)):
-                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=extra_args)
+                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=child_args)
 
     def _update_image_sequence_matrix(
         self,
@@ -483,6 +479,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         image_transformed: bool = True,
     ) -> None:
         """Collect nested matrices, using invocation snapshots only after an image call."""
+        extra_args = _filter_child_options(module, extra_args, param)
         if (
             type(module) is ImageSequential
             and self._transformation_matrix_arg in ("silent", "silence")
@@ -515,6 +512,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)
@@ -568,10 +566,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     "or passing valid params into this function."
                 )
 
+            present = set(self.transform_op.data_keys)
+            extra_args = {
+                key: _validate_extra_args(self, value, params)
+                for key, value in self.extra_args.items()
+                if key in present
+            }
             outputs: List[DataType] = in_args
             for param in params[::-1]:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
+                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=extra_args)
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
@@ -859,10 +863,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 else:
                     raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
+            # Validate only the options of data keys in this call; INPUT options also reach the matrix collection.
+            present = {*original_data_keys, DataKey.INPUT}
+            extra_args = {
+                key: _validate_extra_args(self, value, params)
+                for key, value in self.extra_args.items()
+                if key in present
+            }
             outputs: Union[torch.Tensor, List[DataType]] = in_args
             for param in params:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
+                outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=extra_args)
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
@@ -870,7 +881,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     module,
                     param,
                     outputs[0],
-                    extra_args=self.extra_args.get(DataKey.INPUT),
+                    extra_args=extra_args.get(DataKey.INPUT),
                     image_transformed=DataKey.INPUT in original_data_keys,
                 )
 

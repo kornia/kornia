@@ -3,11 +3,13 @@ Thresholding
 
 .. currentmodule:: kornia.filters
 
-Simple intensity-based segmentation: keep the pixels inside a value range, or split an image at Otsu's threshold.
+:func:`in_range` keeps the pixels whose channels lie between bounds you give. :func:`otsu_threshold` picks one
+threshold per image plane from its histogram and keeps the pixels above it.
 
 .. autofunction:: in_range
 
 .. autoclass:: InRange
+
 .. autofunction:: otsu_threshold
 
 .. autoclass:: OtsuThreshold

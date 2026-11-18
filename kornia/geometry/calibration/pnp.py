@@ -25,6 +25,7 @@ from torch.linalg import qr as linalg_qr
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
 from kornia.core.utils import (
+    _at_least_float32,
     _autocast_disabled,
     _right_singular_vector,
     _svd_work_dtype,
@@ -109,8 +110,10 @@ def solve_pnp_dlt(
           normalization and the degeneracy check use the same weighting. A uniform ``weights`` leaves the answer
           unchanged up to rounding, and a zero weight is the same as removing the point.
         - fewer than 6 points or 6 nonzero ``weights``, or a ``world_points``, ``img_points`` or ``intrinsics``
-          in a dtype other than float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the
-          argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
+          in a dtype other than float16/bfloat16/float32/float64, raise :class:`~kornia.core.exceptions.BaseError`
+          naming the argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
+        - float16 and bfloat16 inputs are solved in float32 and the pose is returned in the dtype of
+          ``world_points``.
         - a caller's autocast region does not change the result: float32 inputs are solved in float32.
 
     Args:
@@ -180,16 +183,19 @@ def solve_pnp_dlt(
     # 3. http://rpg.ifi.uzh.ch/docs/teaching/2020/03_camera_calibration.pdf
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
-    accepted_dtypes = (torch.float32, torch.float64)
+    accepted_dtypes = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+    accepted = "float16, bfloat16, float32 or float64"
     KORNIA_CHECK_IS_TENSOR(world_points)
     KORNIA_CHECK_IS_TENSOR(img_points)
     KORNIA_CHECK_IS_TENSOR(intrinsics)
     KORNIA_CHECK(isinstance(svd_eps, float), f"svd_eps must be a float, got {type(svd_eps).__name__}.")
-    KORNIA_CHECK(
-        world_points.dtype in accepted_dtypes, f"world_points must be float32 or float64, got {world_points.dtype}."
-    )
-    KORNIA_CHECK(img_points.dtype in accepted_dtypes, f"img_points must be float32 or float64, got {img_points.dtype}.")
-    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes, f"intrinsics must be float32 or float64, got {intrinsics.dtype}.")
+    KORNIA_CHECK(world_points.dtype in accepted_dtypes, f"world_points must be {accepted}, got {world_points.dtype}.")
+    KORNIA_CHECK(img_points.dtype in accepted_dtypes, f"img_points must be {accepted}, got {img_points.dtype}.")
+    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes, f"intrinsics must be {accepted}, got {intrinsics.dtype}.")
+    # No backend factorizes half precision: half-precision inputs are solved in float32 and the pose is rounded once.
+    dtype = world_points.dtype
+    world_points, img_points = _at_least_float32(world_points), _at_least_float32(img_points)
+    intrinsics = _at_least_float32(intrinsics)
     KORNIA_CHECK_SHAPE(world_points, ["B", "N", "3"])
     KORNIA_CHECK_SHAPE(img_points, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(intrinsics, ["B", "3", "3"])
@@ -200,6 +206,7 @@ def solve_pnp_dlt(
     )
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights)
+        weights = _at_least_float32(weights)
 
     B, N = world_points.shape[:2]
 
@@ -316,4 +323,4 @@ def solve_pnp_dlt(
 
         # Preparing the final output.
         # TODO: Implement algorithm to refine the solution.
-        return torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1)
+        return torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1).to(dtype)

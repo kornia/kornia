@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import pytest
 import torch
 
 from kornia.augmentation import RandomAffine3D
@@ -25,10 +24,6 @@ from testing.base import BaseTester
 
 class TestRandomAffine3D(BaseTester):
     def test_batch_random_affine_3d(self, device, dtype):
-        # TODO(jian): cuda and fp64
-        if "cuda" in str(device) and dtype == torch.float64:
-            pytest.skip("AssertionError: assert tensor(False, device='cuda:0')")
-
         f = RandomAffine3D((0, 0, 0), p=1.0)  # No rotation
         tensor = torch.tensor(
             [[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]], device=device, dtype=dtype

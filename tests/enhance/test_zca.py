@@ -86,11 +86,10 @@ class TestZCA(BaseTester):
         self.assert_close(mean, torch.zeros_like(mean))
         self.assert_close(inverse / std, torch.ones_like(inverse))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU/CUDA/MPS mixed-precision coverage")
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_covariance_accumulation_amp(self, device, dtype, unbiased):
         """Fitting leaves float16 autocast, whose matrix products would overflow a covariance above 65504."""
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
         # The MPS job runs float32 only, so it fits a float16 input here as well.
         input_dtypes = [dtype, torch.float16] if device.type == "mps" and dtype != torch.float16 else [dtype]
         std = math.sqrt(4 * 300.0**2 / (3 if unbiased else 4) + 1e-6)
@@ -144,11 +143,10 @@ class TestZCA(BaseTester):
         assert transform.device == mean.device == inverse.device == data.device
         assert transform.dtype == mean.dtype == inverse.dtype == torch.float32
 
+    @pytest.mark.applies_to(dtypes=("bfloat16",), reason="Bfloat16 exponent-range regression")
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_covariance_accumulation_bfloat16_range(self, device, dtype, unbiased):
         """A finite covariance must not overflow its unnormalized scatter."""
-        if dtype != torch.bfloat16:
-            pytest.skip("Bfloat16 exponent-range regression")
         data = torch.tensor([[-1e19], [1e19]], device=device, dtype=dtype).repeat(2, 1)
         scale = data[1, 0]
         divisor = data.shape[0] - 1 if unbiased else data.shape[0]
@@ -275,10 +273,11 @@ class TestZCA(BaseTester):
 
         self.assert_close(data, data_hat, low_tolerance=True)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 required for gradcheck"
+    )
     def test_grad_zca_individual_transforms(self, device):
         """Check if the gradients of the transforms are correct w.r.t to the input data."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_T(x):
@@ -294,9 +293,10 @@ class TestZCA(BaseTester):
         self.gradcheck(zca_mu, (data,))
         self.gradcheck(zca_T_inv, (data,))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 required for gradcheck"
+    )
     def test_grad_zca_with_fit(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_fit(x):
@@ -305,9 +305,10 @@ class TestZCA(BaseTester):
 
         self.gradcheck(zca_fit, (data,))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64 required for gradcheck"
+    )
     def test_grad_detach_zca(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         zca = kornia.enhance.ZCAWhitening()
@@ -337,9 +338,8 @@ class TestZCA(BaseTester):
 
         assert zca.state_dict() == {}
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_fitted_state_follows_dtype_conversion(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         data = torch.randn(8, 3, device=device, dtype=torch.float32)
         zca = kornia.enhance.ZCAWhitening().fit(data)
 

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from enum import Enum
 from functools import update_wrapper
 from inspect import getattr_static
@@ -228,13 +229,18 @@ class _BasicAugmentationBase(nn.Module):
         p_batch: float,
         same_on_batch: bool,
     ) -> torch.Tensor:
+        # Draw in the default dtype, so a seed gives the same gate whatever the augmentation's dtype. MPS has no
+        # float64, so a float64 default draws in float32 there; that case used to raise.
+        rand_dtype = torch.get_default_dtype()
+        if rand_dtype == torch.float64 and self.device.type == "mps":
+            rand_dtype = torch.float32
         batch_prob: torch.Tensor
         if p_batch == 1:
             batch_prob = torch.ones(1, device=self.device, dtype=self.dtype)
         elif p_batch == 0:
             batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = (torch.rand(1, device=self.device) < p_batch).to(self.dtype)
+            batch_prob = (torch.rand(1, device=self.device, dtype=rand_dtype) < p_batch).to(self.dtype)
 
         # Per-sample gate. `p` and `same_on_batch` are Python values, so these branches are
         # resolved at trace time (no graph break).
@@ -244,9 +250,9 @@ class _BasicAugmentationBase(nn.Module):
         elif p == 0:
             elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
         elif same_on_batch:
-            elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
+            elem_prob = (torch.rand(1, device=self.device, dtype=rand_dtype) < p).to(self.dtype).expand(batch_shape[0])
         else:
-            elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
+            elem_prob = (torch.rand(batch_shape[0], device=self.device, dtype=rand_dtype) < p).to(self.dtype)
 
         # Branchless combine (replaces the data-dependent `if batch_prob.sum() == 1`).
         # batch_prob is (1,) in {0, 1}: a selected batch yields elem_prob, a deselected one
@@ -294,6 +300,16 @@ class _BasicAugmentationBase(nn.Module):
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
 
+        # Validate before committing state. Controls are not parameters or flags and must not be saved for replay.
+        for key in kwargs:
+            if key not in params and key not in flags and key not in ("save_kwargs", "data_keys"):
+                warnings.warn(
+                    f"{type(self).__name__} got an unknown keyword argument '{key}'; it is ignored. "
+                    "Passing unknown keyword arguments is deprecated and will raise TypeError in a future release.",
+                    FutureWarning,
+                    stacklevel=3,
+                )
+
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
             self._commit_state(params=params)
@@ -333,7 +349,9 @@ class _BasicAugmentationBase(nn.Module):
         Note:
             By default, all the overwriting parameters in kwargs will not be recorded
             as in ``self._params``. If you wish it to be recorded, you may pass
-            ``save_kwargs=True`` additionally.
+            ``save_kwargs=True`` additionally. Only parameter overrides are recorded; flag overrides
+            apply to this call and must be supplied again for replay. Unknown keywords emit ``FutureWarning``
+            and are ignored.
 
         """
         in_tensor = self.__unpack_input__(input)

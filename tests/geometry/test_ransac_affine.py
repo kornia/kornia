@@ -28,6 +28,14 @@ from testing.base import BaseTester
 
 
 class TestRANSACAffine(BaseTester):
+    @pytest.fixture(autouse=True)
+    def _skip_on_mps(self, request):
+        # Too slow for the MPS CI leg: on its paravirtual GPU (macos-15, torch 2.14) this file took 130-370 s of the
+        # job's 60 minutes with no code change between runs. The affine solver and its scoring are covered by the
+        # CPU legs; the other RANSAC models keep MPS coverage in test_ransac.py.
+        if "device" in request.fixturenames and request.getfixturevalue("device").type == "mps":
+            pytest.skip("too slow on the MPS CI runner; the affine RANSAC tests are covered on CPU")
+
     @pytest.mark.parametrize("score_type", ["ransac", "msac"])
     @pytest.mark.parametrize("prosac", [False, True])
     @pytest.mark.parametrize("lo_sample_size", [None, 8])
@@ -82,9 +90,8 @@ class TestRANSACAffine(BaseTester):
         self.assert_close(inliers, torch.tensor([True, True, True, True, False], device=device))
         assert count == 4
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="CPU/CUDA/MPS mixed-precision coverage")
     def test_affine_autocast_preserves_float32_scoring_and_inliers(self, device):
-        if device.type not in ("cpu", "cuda", "mps"):
-            pytest.skip("CPU/CUDA/MPS mixed-precision coverage")
         autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
         u = torch.linspace(-500.0, 500.0, 64, device=device)
         v = 100.0 * torch.tensor([1.0, -1.0], device=device).repeat(32)

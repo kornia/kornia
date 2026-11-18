@@ -23,7 +23,7 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator
 
 __all__ = ["MosaicGenerator"]
@@ -97,9 +97,9 @@ class MosaicGenerator(RandomGeneratorBase):
             .permute(1, 0)
         )
 
-        start_corner_factor = _adapted_rsampling(
-            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
-        ).to(device=_device, dtype=_dtype)
+        start_corner_factor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False), _device, _dtype
+        )
         # Slice-mode crops cast the start to long (``crop_by_indices``), so a fractional start would
         # translate boxes by a sub-pixel amount the image crop never applies. Floor the start here so
         # the image and the boxes share the same integer coordinates.

@@ -251,9 +251,18 @@ class RandomRotation90(GeometricAugmentationBase2D):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_allows_odd_turns" not in self.__dict__:
-            # A RandomRotation90 pickled before the non-square check existed has no cached answer.
+        if "_allows_odd_turns" not in self.__dict__ or self._param_generator.times.requires_grad:
+            # A RandomRotation90 pickled before the non-square check existed has no cached answer, and the copy of a
+            # learnable range draws from the range as it is now, which an in-place update may have changed. A buffer
+            # written in place keeps the copied samplers, and with them the copied answer.
             low, high = self._param_generator.times.tolist()
+            self._allows_odd_turns = _range_allows_odd_turns(low, high)
+
+    def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+        times = state_dict.get(f"{prefix}_param_generator.times")
+        if isinstance(times, torch.Tensor) and times.shape == (2,):
+            low, high = times.tolist()
             self._allows_odd_turns = _range_allows_odd_turns(low, high)
 
     def validate_tensor(self, input: torch.Tensor) -> None:

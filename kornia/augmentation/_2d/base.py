@@ -100,7 +100,8 @@ class AugmentationBase2D(_AugmentationBase):
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
         - reproducibility goes through torch's global generators; there is no per-instance generator.
-          ``generator=`` raises at construction, and ``forward`` silently drops it like any other unknown keyword
+          ``generator=`` raises at construction; in ``forward`` it emits ``FutureWarning`` and is ignored,
+          like other unknown keyword overrides
           (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). :doc:`/get-started/conventions` states the
           seeding, ``DataLoader``-worker, parameter-placement and serialization rules.
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale, stores the
@@ -111,8 +112,9 @@ class AugmentationBase2D(_AugmentationBase):
           consulted by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs
           alike (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand,
           which every one of those paths honors.
-        - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
-          (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+        - a ``_param_generator.*`` range buffer in ``state_dict()`` updates the samplers when loading changes it, and
+          a learnable range is read before each draw; see :doc:`/get-started/conventions` for the classes this leaves
+          out (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
           (`#4429 <https://github.com/kornia/kornia/issues/4429>`_).
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as

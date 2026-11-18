@@ -23,7 +23,7 @@ from torch import Size, nn
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
-from kornia.augmentation.container.ops import InputSequentialOps
+from kornia.augmentation.container.ops import InputSequentialOps, _filter_child_options, _validate_extra_args
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core.ops import eye_like
@@ -110,18 +110,20 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
+        extra_args = _validate_extra_args(self, extra_args, params)
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: torch.Tensor = self.identity_matrix(_transform_input(input))
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(OperationBase, module)
+            child_args = _filter_child_options(module, extra_args, param)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 input = module.op.transform_tensor(input)
                 # Standardize shape
                 if recompute:
-                    flags = override_parameters(module.op.flags, extra_args, in_place=False)
+                    flags = override_parameters(module.op.flags, child_args, in_place=False)
                     mat = module.op.generate_transformation_matrix(input, param.data, flags)
                 elif module.op.transform_matrix is not None:
                     mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
@@ -196,6 +198,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         Returns:
             Transformed tensor.
         """
+        extra_args = _validate_extra_args(self, extra_args, params)
         self._reset_transform_matrix_state()
         for param in params:
             module = self.get_submodule(param.name)

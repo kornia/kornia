@@ -28,6 +28,85 @@ from kornia.augmentation.utils.helpers import _constant_tensor
 
 from testing.base import BaseTester
 
+
+class TestSamplerBoundsPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["default_dtype"] == torch.float64),
+        reason="MPS does not support float64 range normalization.",
+    )
+    @pytest.mark.parametrize(
+        "make_generator,ranges,sampler_name,expected",
+        [
+            (rg.AffineGenerator, {"degrees": 0.1}, "degree_sampler", (-0.1, 0.1)),
+            (rg.AffineGenerator, {"degrees": (0.1, 0.2)}, "degree_sampler", (0.1, 0.2)),
+            (partial(rg.AffineGenerator, 0.0), {"translate": (0.1, 0.2)}, "translate_x_sampler", (-0.1, 0.1)),
+            (partial(rg.AffineGenerator, 0.0), {"translate": (0.1, 0.2)}, "translate_y_sampler", (-0.2, 0.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2)}, "scale_2_sampler", (0.7, 1.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_2_sampler", (0.7, 1.2)),
+            (partial(rg.AffineGenerator, 0.0), {"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_4_sampler", (0.8, 1.3)),
+            (rg.TranslateGenerator, {"translate_x": (0.1, 0.2)}, "translate_x_sampler", (0.1, 0.2)),
+            (rg.TranslateGenerator, {"translate_y": (0.1, 0.2)}, "translate_y_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator, 3, direction=0.0), {"angle": (0.1, 0.2)}, "angle_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator, 3, 0.0), {"direction": (0.1, 0.2)}, "direction_sampler", (0.1, 0.2)),
+            (partial(rg.MotionBlurGenerator3D, 3, 0.0), {"direction": (0.1, 0.2)}, "direction_sampler", (0.1, 0.2)),
+            (
+                partial(rg.SaltAndPepperGenerator, salt_and_pepper=(0.0, 1.0)),
+                {"amount": (0.1, 0.2)},
+                "amount_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.SaltAndPepperGenerator, amount=(0.0, 1.0)),
+                {"salt_and_pepper": (0.1, 0.2)},
+                "salt_and_pepper_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearIlluminationGenerator, sign=(-1.0, 1.0)),
+                {"gain": (0.1, 0.2)},
+                "gain_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearIlluminationGenerator, gain=(0.0, 1.0)),
+                {"sign": (0.1, 0.2)},
+                "sign_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearCornerIlluminationGenerator, sign=(-1.0, 1.0)),
+                {"gain": (0.1, 0.2)},
+                "gain_sampler",
+                (0.1, 0.2),
+            ),
+            (
+                partial(rg.LinearCornerIlluminationGenerator, gain=(0.0, 1.0)),
+                {"sign": (0.1, 0.2)},
+                "sign_sampler",
+                (0.1, 0.2),
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("tensor_ranges", [False, True])
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_sampler_bounds_keep_requested_precision_4426(
+        self, make_generator, ranges, sampler_name, expected, tensor_ranges, default_dtype, device, dtype
+    ):
+        # Exercise the float64 ambient default only on backends that support that precision.
+        if tensor_ranges:
+            ranges = {name: torch.tensor(value, device=device, dtype=dtype) for name, value in ranges.items()}
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            generator = make_generator(**ranges)
+            generator.set_rng_device_and_dtype(device, dtype)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+        sampler = getattr(generator, sampler_name)
+        bounds = torch.stack((sampler.low, sampler.high))
+        self.assert_close(bounds, torch.tensor(expected, device=device, dtype=dtype), rtol=0, atol=0)
+
+
 # Numeric constructor inputs deliberately keep the generated parameters on CPU, except for the
 # resize and illumination generators, which follow the device and dtype the generator was moved to.
 # Include both branches which construct destination corners in crop generators.
@@ -75,10 +154,9 @@ class TestParameterConstants(BaseTester):
         lifted = [node for node in graph.nodes if node.target == torch.ops.aten.lift_fresh_copy.default]
         assert not lifted, f"Forward lifted fresh tensor constants: {lifted}"
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     @pytest.mark.parametrize("moved", [False, True])
     def test_dynamo_transfer(self, make_generator, shape, moved, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
         generator = make_generator()
         if moved and isinstance(generator, torch.nn.Module):
             generator.to(device=device, dtype=dtype)
@@ -117,11 +195,10 @@ AUGMENTATIONS = [
 
 
 class TestAugmentationConstantTransfer(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     @pytest.mark.parametrize("make_aug,shape", AUGMENTATIONS)
     @pytest.mark.parametrize("moved", [False, True])
     def test_dynamo_replay(self, make_aug, shape, moved, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
         aug = make_aug()
         if moved:
             aug.to(device=device, dtype=dtype)
@@ -199,10 +276,8 @@ class TestConstantTensor(BaseTester):
         targets = [node.target for node in graph.nodes if node.op == "call_function"]
         assert targets.count(torch.ops.aten.full.default) == 3
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Inductor regression covers CPU and CUDA")
     def test_dynamo_dynamic_size(self, device, dtype, torch_optimizer):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("Inductor regression covers CPU and CUDA")
-
         def dimensions(input):
             return (
                 _constant_tensor([input.shape[-1] - 1, input.shape[-2] - 1], dtype=input.dtype).to(input) + input.sum()
@@ -283,7 +358,7 @@ class TestCenterCrop3DEmptyBatch(BaseTester):
             assert empty[name].dtype == value.dtype
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="Synchronization debugging requires CUDA")
+@pytest.mark.applies_to(devices=("cuda",), reason="Synchronization debugging requires CUDA")
 class TestCudaParameterSync(BaseTester):
     @pytest.mark.parametrize(
         "make_generator",
@@ -293,8 +368,6 @@ class TestCudaParameterSync(BaseTester):
         ],
     )
     def test_no_host_device_sync(self, make_generator, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("Synchronization debugging requires CUDA")
         generator = make_generator(device).to(device=device, dtype=dtype)
         generator((4, 3, 16, 19))
         torch.cuda.set_sync_debug_mode("error")

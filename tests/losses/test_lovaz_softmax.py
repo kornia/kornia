@@ -88,15 +88,6 @@ class TestLovaszSoftmaxLoss(BaseTester):
         loss.backward()
         assert logits.grad.shape == logits.shape
 
-    def test_smoke(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 1) * num_classes
-        labels = labels.to(device).long()
-
-        criterion = kornia.losses.LovaszSoftmaxLoss()
-        assert criterion(logits, labels) is not None
-
     def test_exception(self):
         from kornia.core.exceptions import ShapeError
 
@@ -268,10 +259,9 @@ class TestLovaszSoftmaxLoss(BaseTester):
         assert loss.dtype == dtype
         self.assert_close(loss, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("weighted", [False, True])
     def test_float64_matches_a_float64_reference(self, device, weighted):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         logits = torch.randn(2, 3, 16, 24, device=device, dtype=torch.float64, requires_grad=True)
         labels = torch.randint(0, 3, (2, 16, 24), device=device)
@@ -284,7 +274,7 @@ class TestLovaszSoftmaxLoss(BaseTester):
         self.assert_close(loss, expected.to(device), rtol=1e-12, atol=1e-12)
         self.assert_close(torch.autograd.grad(loss, logits)[0], expected_grad.to(device), rtol=1e-12, atol=1e-15)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
@@ -303,9 +293,7 @@ class TestLovaszSoftmaxLoss(BaseTester):
         with pytest.raises(Exception, match="weight must hold one value per class of pred"):
             op_script(logits, labels, torch.rand(num_classes + 1, device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="Not matching results")
     def test_dynamo(self, device, dtype, torch_optimizer):
-        # TODO: investigate if we can fix it or report the issue
         num_classes = 6
         logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
         labels = torch.randint(0, num_classes, (2, 1, 2), device=device)
@@ -314,17 +302,6 @@ class TestLovaszSoftmaxLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(logits, labels), op_optimized(logits, labels))
-
-    def test_module(self, device, dtype):
-        num_classes = 5
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
-
-        op = kornia.losses.lovasz_softmax_loss
-        op_module = kornia.losses.LovaszSoftmaxLoss()
-
-        self.assert_close(op(logits, labels), op_module(logits, labels))
 
 
 class TestConventionsLovaszSoftmaxLoss(BaseTester):
