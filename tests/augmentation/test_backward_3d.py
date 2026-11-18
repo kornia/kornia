@@ -54,7 +54,10 @@ class TestRandomRotation3DBackward:
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
-            opt = torch.optim.SGD(aug.parameters(), lr=10)
+            # The (10, 20) range gets gradients of about 2e-3 to 5e-3. At lr=10 each step stays below half the
+            # bfloat16 spacing at that value (0.03125 at 10, 0.0625 at 20), so it rounds away and the range cannot
+            # move. lr=100 makes every step at least 0.2, which every tested dtype can represent.
+            opt = torch.optim.SGD(aug.parameters(), lr=100)
             loss = mse(output, torch.ones_like(output) * 2)  # to ensure that a big loss value could be obtained
             loss.backward()
             opt.step()
