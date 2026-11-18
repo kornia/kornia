@@ -109,13 +109,12 @@ class TestHalfSampling(BaseTester):
         raise AssertionError(operation)
 
     # Whatever these operations build, their samples are what float32 grid_sample returns for that grid.
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU sampling regression")
     @pytest.mark.parametrize(
         "operation", ["homography", "cached_homography", "elastic", "tps", "depth", "depth_warper"]
     )
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_float32_sampling_reference(self, device, dtype, operation, align_corners):
-        if device.type != "cpu":
-            pytest.skip("CPU sampling regression")
         image = ((torch.arange(3 * 256 * 256, device=device) % 251).float() / 251).reshape(1, 3, 256, 256).to(dtype)
         sample = F.grid_sample
 
@@ -242,6 +241,7 @@ class TestHalfSampling(BaseTester):
             return RandomFisheye(center, center, gamma, p=1.0)(image)
         raise AssertionError(operation)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     @pytest.mark.parametrize(
         "operation",
         [
@@ -270,8 +270,6 @@ class TestHalfSampling(BaseTester):
         # than half a pixel at 256 px in bfloat16 (#5751, #5814): every warp builds its grid and samples in float32,
         # so it agrees with a float64 run of the same half inputs to the output rounding. The float64 reference runs
         # on the CPU, as MPS has no float64.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         if operation.endswith("3d") and not supports_bilinear_3d_grid_sample(device, torch.float32):
             pytest.skip("bilinear 3D grid_sample is unavailable for this device")
         image = ((torch.arange(3 * 256 * 256, device=device) % 251).float() / 251).reshape(1, 3, 256, 256).to(dtype)
@@ -280,9 +278,8 @@ class TestHalfSampling(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual.cpu().double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     def test_half_augmentation_matches_float64(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         image = ((torch.arange(3 * 256 * 256, device=device) % 251).float() / 251).reshape(1, 3, 256, 256).to(dtype)
         aug = RandomAffine(degrees=(25.0, 25.0), p=1.0)
         actual = aug(image)
@@ -292,11 +289,12 @@ class TestHalfSampling(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual.cpu().double(), expected, rtol=0, atol=torch.finfo(dtype).eps)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float16", "bfloat16"), reason="CPU float16/bfloat16 warps run in float32"
+    )
     @pytest.mark.parametrize("operation", ["affine", "perspective", "remap_pixel"])
     def test_cpu_half_warp_gradients_run_in_float32(self, device, dtype, operation):
         # Forward and backward both run in float32: the half gradients are the float32 ones, rounded.
-        if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("CPU float16/bfloat16 warps run in float32")
         image = torch.linspace(0, 1, 3 * 160 * 144, device=device).reshape(1, 3, 160, 144).to(dtype)
         half_image = image.clone().requires_grad_()
         float_image = image.float().requires_grad_()
@@ -308,12 +306,11 @@ class TestHalfSampling(BaseTester):
         assert actual_grad.dtype == dtype
         self.assert_close(actual_grad, expected_grad.to(dtype), rtol=0, atol=0)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU sampling regression")
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_sampling_gradients(self, device, dtype, mode, padding_mode, align_corners):
-        if device.type != "cpu":
-            pytest.skip("CPU sampling regression")
         image = torch.linspace(0, 1, 17 * 19, device=device, dtype=dtype).reshape(1, 1, 17, 19)
         image.requires_grad_()
         grid = create_meshgrid(13, 11, device=device, dtype=dtype).mul(1.2).add(0.03).requires_grad_()
@@ -338,11 +335,10 @@ class TestHalfSampling(BaseTester):
             return True
         return False
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half sampling dtype validation")
     @pytest.mark.parametrize("size", [0, 4])
     @pytest.mark.parametrize("map_dtype", [torch.float32, torch.int64])
     def test_mismatched_grid_dtype(self, device, dtype, size, map_dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half sampling dtype validation")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("torch's grid_sample accepts a grid of another dtype on this device")
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
@@ -350,10 +346,9 @@ class TestHalfSampling(BaseTester):
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|same type|grid_sampler_2d_cpu not implemented)"):
             remap(image, coords, coords, normalized_coordinates=True)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half sampling dtype validation")
     def test_mismatched_matrix_dtype(self, device, dtype):
         # A float32 matrix next to a half image is rejected as before; only matching dtypes move to float32.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half sampling dtype validation")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("torch's grid_sample accepts a grid of another dtype on this device")
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
@@ -363,21 +358,19 @@ class TestHalfSampling(BaseTester):
         with pytest.raises(RuntimeError, match=r"(dtype|scalar type|same type|grid_sampler_2d_cpu not implemented)"):
             warp_perspective(image, matrix, (4, 4))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     def test_mismatched_normalized_homography_dtype(self, device, dtype):
         # Only a transform of the image's own half dtype moves to float32; a mismatch is still rejected.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("this backend accepts a mismatched grid dtype")
         image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             homography_warp(image, torch.eye(3, device=device)[None], (8, 8))
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     def test_cached_half_homography_rejects_a_float32_patch(self, device, dtype, normalized_coordinates):
         # The direct path rejects this, so the cached path, whose grid is float32 inside, does too.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("this backend accepts a mismatched grid dtype")
         warper = HomographyWarper(8, 8, normalized_coordinates=normalized_coordinates)
@@ -392,11 +385,10 @@ class TestHalfSampling(BaseTester):
         intrinsics = torch.eye(4, device=device, dtype=intrinsics_dtype)[None]
         return PinholeCamera(intrinsics, torch.eye(4, device=device, dtype=extrinsics_dtype)[None], size, size)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     @pytest.mark.parametrize("operation", ["frame_depth", "depth_warper", "elastic", "tps", "cached_homography"])
     def test_mismatched_parameter_dtype(self, device, dtype, operation):
         # Only parameters of the image's own half dtype move to float32; a float32 one is still rejected.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("this backend accepts a mismatched grid dtype")
         image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
@@ -424,12 +416,11 @@ class TestHalfSampling(BaseTester):
         with pytest.raises(RuntimeError):
             warp()
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="float16/bfloat16 warps run in float32")
     @pytest.mark.parametrize("mismatched", ["src", "dst_intrinsics", "dst_extrinsics"])
     @pytest.mark.parametrize("other", ["float32", "other_half"])
     def test_mismatched_camera_dtype(self, device, dtype, mismatched, other):
         # Half cameras compose in float32 only when they share one dtype; other mixes are still rejected.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("float16/bfloat16 warps run in float32")
         if not self._rejects_mismatched_grid(device, dtype):
             pytest.skip("this backend accepts a mismatched grid dtype")
         other_dtype = torch.float32 if other == "float32" else {torch.float16: torch.bfloat16}.get(dtype, torch.float16)

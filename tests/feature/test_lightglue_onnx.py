@@ -25,7 +25,6 @@ import torch
 
 from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
-from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
 
@@ -103,7 +102,6 @@ def _write_local_model(tmp_path):
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
-@pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
     @pytest.mark.device_agnostic
     def test_local_model_inference(self, tmp_path):
@@ -147,8 +145,9 @@ class TestOnnxLightGlue:
         assert result["matches"].device.type == "cpu"
         torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.slow
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.applies_to(devices=("cuda",), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])
     def test_pretrained_weights_cuda(self, weights):
         model = OnnxLightGlue(weights, "cuda")
@@ -281,6 +280,44 @@ def test_onnx_lightglue_keypoint_range_message_5724():
     side = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[50, 50]])}
     with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
         model({"image0": side, "image1": side})
+
+
+def test_onnx_lightglue_range_check_reads_one_scalar(device):
+    # Stop before inference: this tests validation on CUDA even with CPU-only onnxruntime.
+    model = object.__new__(OnnxLightGlue)
+    model.device = device
+    side = {
+        "keypoints": torch.tensor([[[0.0, 0.0], [10.0, 10.0]]], device=device),
+        "descriptors": torch.zeros(1, 2, 4, device=device),
+        "image_size": torch.tensor([[10, 10]], device=device),
+    }
+    with (
+        torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile,
+        pytest.raises(AttributeError, match="session"),
+    ):
+        model({"image0": side, "image1": side})
+    reads = sum(e.count for e in profile.key_averages() if e.key == "aten::_local_scalar_dense")
+    assert reads == 1
+
+
+@pytest.mark.parametrize("side_index", [0, 1])
+@pytest.mark.parametrize("invalid", [-1.0, 11.0, float("nan"), float("inf")])
+def test_onnx_lightglue_rejects_invalid_keypoints_on_either_side(device, side_index, invalid):
+    from kornia.core.exceptions import BaseError
+
+    model = object.__new__(OnnxLightGlue)
+    model.device = device
+    sides = [
+        {
+            "keypoints": torch.tensor([[[0.0, 0.0], [10.0, 10.0]]], device=device),
+            "descriptors": torch.zeros(1, 2, 4, device=device),
+            "image_size": torch.tensor([[10, 10]], device=device),
+        }
+        for _ in range(2)
+    ]
+    sides[side_index]["keypoints"][0, 0, 0] = invalid
+    with pytest.raises(BaseError, match=r"\[-1, 1\].*\(width, height\)"):
+        model({"image0": sides[0], "image1": sides[1]})
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime")

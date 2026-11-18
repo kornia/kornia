@@ -2034,6 +2034,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
           about +z is **clockwise on screen** (y-down image axes) — opposite of :func:`get_rotation_matrix2d`
         - returns the projection matrix ``(B, 3, 4)`` in pixel coordinates
         - a caller's autocast region does not change the result
+        - ``float16`` and ``bfloat16`` angles are converted and rotated in ``float32``, and the rotation is rounded
+          once to the input dtype
 
     Args:
         center: center of the rotation (x,y,z) in the source with shape ``(B, 3)``.
@@ -2071,9 +2073,13 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
     # Outside a caller's autocast region, as in get_rotation_matrix2d.
     with _autocast_disabled(center.device.type):
-        # create rotation matrix
-        axis_angle_rad: torch.Tensor = torch.torch.deg2rad(angles)
+        # create rotation matrix; half-precision angles are converted and rotated in float32, as in
+        # angle_to_rotation_matrix: in float16 a 90 degree turn left 4.8e-4 where the matrix has 0
+        half = angles.dtype in (torch.float16, torch.bfloat16)
+        axis_angle_rad: torch.Tensor = torch.deg2rad(angles.float() if half else angles)
         rmat: torch.Tensor = axis_angle_to_rotation_matrix(axis_angle_rad)  # Bx3x3
+        if half:
+            rmat = rmat.to(angles.dtype)
         scaling_matrix: torch.Tensor = eye_like(3, rmat)
         scaling_matrix = scaling_matrix * scales.unsqueeze(dim=1)
         rmat = rmat @ scaling_matrix.to(rmat)

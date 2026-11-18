@@ -127,6 +127,30 @@ def latest_version(versions: list[str]) -> str:
     return max(versions, key=_version_key)
 
 
+def published_results(data: dict[str, dict[str, dict]]) -> dict[str, tuple[str, dict]]:
+    """The published snapshot of each ``<suite>--<machine>--<device>`` file, with its version directory.
+
+    A release re-measures only the suites its changes reach, so its version directory can hold a subset of the
+    files. Each file name then takes its newest version directory. Only the machines of the latest directory are
+    published: runs of machines it does not measure stay in the older directories, unpublished.
+    """
+    if not data:
+        return {}
+    latest = latest_version(list(data))
+    machines = {fname[:-5].split("--")[1] for fname in data[latest]}
+    out: dict[str, tuple[str, dict]] = {}
+    for version in sorted(data, key=_version_key):
+        for fname, payload in data[version].items():
+            if fname[:-5].split("--")[1] in machines:
+                out[fname] = (version, payload)
+    return dict(sorted(out.items()))
+
+
+def _versions_label(published: dict[str, tuple[str, dict]]) -> str:
+    versions = sorted({version for version, _ in published.values()}, key=_version_key, reverse=True)
+    return ", ".join(versions)
+
+
 #: Row fields that identify the measurement rather than the configuration it was taken at.
 MEASUREMENT_FIELDS = frozenset({"op", "backend", "median_us", "iqr_us", "throughput_per_s", "error"})
 
@@ -176,8 +200,16 @@ def render_page(results_root: Path) -> str:
     if not data:
         return INTRO + "\nNo benchmark results are committed yet.\n"
     version = latest_version(list(data))
+    published = published_results(data)
     parts = [INTRO, f"Results for kornia {version}\n{'-' * (20 + len(version))}\n"]
-    for fname, payload in sorted(data[version].items()):
+    used = {v for v, _ in published.values()}
+    if used != {version}:
+        parts.append(
+            f"A release re-measures the suites its changes reach; the others keep the snapshot of the release that "
+            f"last changed them. These results come from kornia {_versions_label(published)}, and each table names "
+            "the kornia version and commit it measured.\n"
+        )
+    for fname, (_, payload) in published.items():
         suite, slug, device = fname[:-5].split("--")
         meta = payload["metadata"]
         parts.append(f"\n{suite} — {slug} ({device})\n{'^' * (len(suite) + len(slug) + len(device) + 6)}\n")
@@ -187,7 +219,7 @@ def render_page(results_root: Path) -> str:
             f"throughput in {meta.get('units') or 'items/s'}\n\n"
         )
         parts.append(_table(payload))
-    older = sorted(set(data) - {version})
+    older = sorted(set(data) - used, key=_version_key)
     if older:
         parts.append("\nOlder result sets in git: " + ", ".join(f"``benchmarks/results/{v}/``" for v in older) + "\n")
     if (Path(results_root) / SUPERSEDED_DIR).is_dir():
@@ -207,16 +239,15 @@ def _throughput(payload: dict, op: str, batch: int, backend: str) -> float | Non
 
 
 def hero_figures(results_root: Path) -> dict | None:
-    """CPU and accelerator throughput of the ``HERO`` op from the latest committed result set.
+    """CPU and accelerator throughput of the ``HERO`` op from the published result files.
 
     Returns ``None`` when no machine has both measurements, so the caller can leave the chart out.
     """
     data = load_results(results_root)
     if not data:
         return None
-    version = latest_version(list(data))
     by_machine: dict[str, dict[str, dict]] = {}
-    for fname, payload in data[version].items():
+    for fname, (_, payload) in published_results(data).items():
         suite, slug, device = fname[:-5].split("--")
         if suite == HERO["suite"]:
             by_machine.setdefault(slug, {})[device] = payload
@@ -289,11 +320,13 @@ def _digest(results_root: Path) -> str:
     data = load_results(results_root)
     if not data:
         return "- No committed benchmark results yet.\n"
-    version = latest_version(list(data))
-    lines = [f"- Result set: kornia {version}, committed in `benchmarks/results/{version}/` (per-machine"]
-    lines += ["  snapshots; reproduce with `python benchmarks/<dir>/<script>.py --contribute benchmarks/results`,"]
-    lines += ["  the script each suite maps to in `benchmarks/README.md`)."]
-    for fname, payload in sorted(data[version].items()):
+    published = published_results(data)
+    versions = _versions_label(published)
+    where = " and ".join(f"`benchmarks/results/{v}/`" for v in versions.split(", "))
+    lines = [f"- Result set: kornia {versions}, committed in {where} (per-machine"]
+    lines += ["  snapshots, the newest of each suite; reproduce with `python benchmarks/<dir>/<script>.py"]
+    lines += ["  --contribute benchmarks/results`, the script each suite maps to in `benchmarks/README.md`)."]
+    for fname, (_, payload) in published.items():
         suite, slug, device = fname[:-5].split("--")
         meta = payload["metadata"]
         rows = [r for r in payload["results"] if isinstance(r.get("throughput_per_s"), (int, float))]

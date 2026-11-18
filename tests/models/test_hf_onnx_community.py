@@ -179,10 +179,11 @@ def test_loader_keeps_the_model_cache_paths_of_earlier_releases(with_data, tmp_p
     assert [c.args[:2] for c in mock_download.call_args_list] == expected
 
 
-@pytest.mark.parametrize("model_name", ["../outside", "a/../../outside", "", ".", "ABSOLUTE"])
-def test_loader_refuses_a_model_name_outside_the_cache_directory(model_name, tmp_path):
+def test_loader_refuses_a_model_name_outside_the_cache_directory(tmp_path):
     # the model, its weights and its preprocessing config are cached in <cache_dir>/<model_name>/: a name that leaves
-    # cache_dir would load a file already there, such as <cache_dir>/../outside/preprocessor_config.json, unfetched
+    # cache_dir would load a file already there, such as <cache_dir>/../outside/preprocessor_config.json, unfetched.
+    # The other spellings (absolute, "", ".", nested "..") go through the same _relative_path_components check, which
+    # tests/onnx/test_download.py pins.
     from unittest import mock
 
     from kornia.models._hf_models import HFONNXComunnityModelLoader
@@ -192,10 +193,8 @@ def test_loader_refuses_a_model_name_outside_the_cache_directory(model_name, tmp
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "preprocessor_config.json").write_text("{}")
-    if model_name == "ABSOLUTE":
-        model_name = str(outside)
     with mock.patch.object(ONNXLoader, "download") as mock_download, pytest.raises(ValueError, match="model_name"):
-        HFONNXComunnityModelLoader(model_name, cache_dir=str(root)).load_preprocessing()
+        HFONNXComunnityModelLoader("../outside", cache_dir=str(root)).load_preprocessing()
     mock_download.assert_not_called()
 
 

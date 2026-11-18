@@ -21,6 +21,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils.helpers import _exact_in_float64, _float_numbers
 from kornia.enhance import denormalize
 
 
@@ -78,6 +79,9 @@ class Denormalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
+        # The numbers themselves, for a float64 image: the flags hold them rounded to float32.
+        self._mean_numbers = _float_numbers(mean)
+        self._std_numbers = _float_numbers(std)
         if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
@@ -95,4 +99,8 @@ class Denormalize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return denormalize(input, flags["mean"], flags["std"])
+        mean, std = flags["mean"], flags["std"]
+        if input.dtype == torch.float64:  # the numbers are absent from an older pickle
+            mean = _exact_in_float64(mean, self.__dict__.get("_mean_numbers"), input.device)
+            std = _exact_in_float64(std, self.__dict__.get("_std_numbers"), input.device)
+        return denormalize(input, mean, std)

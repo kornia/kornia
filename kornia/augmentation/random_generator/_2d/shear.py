@@ -29,7 +29,7 @@ from kornia.augmentation.utils import (
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ShearGenerator"]
 
@@ -100,7 +100,7 @@ class ShearGenerator(RandomGeneratorBase):
 
         sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch, generator=self._generator)
         sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch, generator=self._generator)
-        sx = sx.to(device=_device, dtype=_dtype)
-        sy = sy.to(device=_device, dtype=_dtype)
+        sx = _to_device_nonblocking(sx, _device, _dtype)
+        sy = _to_device_nonblocking(sy, _device, _dtype)
 
         return {"center": center, "shear_x": sx, "shear_y": sy}

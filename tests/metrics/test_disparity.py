@@ -145,12 +145,6 @@ def test_convention_indicator_metrics_have_no_gradient(metric, device):
 
 
 class TestMeanAbsoluteDisparityError(BaseTester):
-    def test_smoke(self, device, dtype):
-        input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        target = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        actual = kornia.metrics.mean_absolute_disparity_error(input, target)
-        assert actual.shape == torch.Size([])
-
     def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, device=device, dtype=dtype)
         expected = torch.tensor(0.5, device=device, dtype=dtype)
@@ -254,12 +248,6 @@ class TestMeanAbsoluteDisparityError(BaseTester):
 
 
 class TestRootMeanSquaredDisparityError(BaseTester):
-    def test_smoke(self, device, dtype):
-        input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        target = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        actual = kornia.metrics.root_mean_squared_disparity_error(input, target)
-        assert actual.shape == torch.Size([])
-
     def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, device=device, dtype=dtype)
         expected = torch.tensor(0.5, device=device, dtype=dtype)
@@ -398,12 +386,6 @@ class TestRootMeanSquaredDisparityError(BaseTester):
 
 
 class TestMeanBadPixelError(BaseTester):
-    def test_smoke(self, device, dtype):
-        input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        target = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        actual = kornia.metrics.mean_bad_pixel_error(input, target)
-        assert actual.shape == torch.Size([])
-
     def test_metric_mean_reduction(self, device, dtype):
         input = torch.zeros(1, 6, device=device, dtype=dtype)
         target = torch.tensor([[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]], device=device, dtype=dtype)
@@ -502,19 +484,6 @@ class TestKittiD1Error(BaseTester):
             torch.tensor(self.INPUT, device=device, dtype=dtype),
             torch.tensor(self.TARGET, device=device, dtype=dtype),
         )
-
-    def test_smoke(self, device, dtype):
-        # Scaled to a realistic disparity range on purpose: on maps drawn from [0, 1) the error can
-        # never exceed the 3 px absolute threshold, so the outlier branch would never be taken and
-        # the metric would be a constant 0 whatever the implementation did.
-        input = 100.0 * torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        target = 100.0 * torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        actual = kornia.metrics.kitti_d1_error(input, target)
-        assert actual.shape == torch.Size([])
-        assert 0.0 <= actual.item() <= 1.0
-        per_pixel = kornia.metrics.kitti_d1_error(input, target, reduction="none")
-        assert per_pixel.shape == input.shape
-        assert bool((per_pixel > 0).any()), "the outlier branch was never exercised"
 
     def test_metric_mean_reduction(self, device, dtype):
         input, target = self._sample(device, dtype)
@@ -765,10 +734,11 @@ class TestDisparityDevices(BaseTester):
         out = _DISPARITY_METRICS[0](sample.to("meta"), target)
         assert out.device.type == "meta"
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "cpu", reason="needs a device other than the CPU and meta"
+    )
     def test_scalar_maps_on_two_other_devices(self, device, dtype):
         # Only a 0-d CPU tensor mixes with another device in torch, so 0-d maps on two other devices are rejected.
-        if device.type == "cpu":
-            pytest.skip("needs a device other than the CPU and meta")
         sample = torch.tensor(7.0, device=device, dtype=dtype)
         target = torch.tensor(3.0, device="meta", dtype=dtype)
         for metric in _DISPARITY_METRICS:

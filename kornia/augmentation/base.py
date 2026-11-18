@@ -230,15 +230,20 @@ class _BasicAugmentationBase(_GeneratorMixin, nn.Module):
         p_batch: float,
         same_on_batch: bool,
     ) -> torch.Tensor:
+        # Draw in the default dtype, so a seed gives the same gate whatever the augmentation's dtype. MPS has no
+        # float64, so a float64 default draws in float32 there; that case used to raise.
+        rand_dtype = torch.get_default_dtype()
+        if rand_dtype == torch.float64 and self.device.type == "mps":
+            rand_dtype = torch.float32
         batch_prob: torch.Tensor
         if p_batch == 1:
             batch_prob = torch.ones(1, device=self.device, dtype=self.dtype)
         elif p_batch == 0:
             batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = (torch.rand(1, device=self.device, **_generator_kwargs(self._generator)) < p_batch).to(
-                self.dtype
-            )
+            batch_prob = (
+                torch.rand(1, device=self.device, dtype=rand_dtype, **_generator_kwargs(self._generator)) < p_batch
+            ).to(self.dtype)
 
         # Per-sample gate. `p` and `same_on_batch` are Python values, so these branches are
         # resolved at trace time (no graph break).
@@ -249,14 +254,15 @@ class _BasicAugmentationBase(_GeneratorMixin, nn.Module):
             elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
         elif same_on_batch:
             elem_prob = (
-                (torch.rand(1, device=self.device, **_generator_kwargs(self._generator)) < p)
+                (torch.rand(1, device=self.device, dtype=rand_dtype, **_generator_kwargs(self._generator)) < p)
                 .to(self.dtype)
                 .expand(batch_shape[0])
             )
         else:
-            elem_prob = (torch.rand(batch_shape[0], device=self.device, **_generator_kwargs(self._generator)) < p).to(
-                self.dtype
-            )
+            elem_prob = (
+                torch.rand(batch_shape[0], device=self.device, dtype=rand_dtype, **_generator_kwargs(self._generator))
+                < p
+            ).to(self.dtype)
 
         # Branchless combine (replaces the data-dependent `if batch_prob.sum() == 1`).
         # batch_prob is (1,) in {0, 1}: a selected batch yields elem_prob, a deselected one

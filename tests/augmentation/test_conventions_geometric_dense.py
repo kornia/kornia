@@ -108,7 +108,8 @@ class TestDenseGeometricConventions(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_thin_plate_spline_identity_grid_3928(self, device, dtype, align_corners):
-        image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
+        # A constant image hides a transposed or mirrored grid; a ramp does not.
+        image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 9
         aug = K.RandomThinPlateSpline(scale=0, align_corners=align_corners, p=1)
         self.assert_close(aug(image), image)
 

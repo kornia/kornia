@@ -83,13 +83,12 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.core._compat import torch_version
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.augmentation.utils import oversized_random_crop_params
+from testing.augmentation.utils import float32_literal_tolerance, oversized_random_crop_params
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.overwrite import default_with_one_parameter_changed
 
@@ -164,20 +163,8 @@ class CommonTests(BaseTester):
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
 
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_random_p_1(self): ...
-
     def test_inverse_coordinate_check(self):
         self._test_inverse_coordinate_check_implementation(params=self._default_param_set)
-
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_exception(self): ...
-
-    @pytest.mark.skip(reason="Not implemented in base class")
-    def test_batch(self): ...
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self): ...
 
     def test_module(self):
         self._test_module_implementation(params=self._default_param_set)
@@ -372,86 +359,6 @@ class TestRandomEqualizeAlternative(CommonTests):
         # parameter generation, must compile without a graph break — not just apply_transform.
         _assert_dynamo_fullgraph(lambda: RandomEqualize(p=1.0), self, device, dtype)
 
-    def test_random_p_1(self):
-        input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
-        input_tensor = input_tensor.repeat(1, 2, 20, 1)
-
-        expected_output = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = expected_output.repeat(1, 2, 20, 1)
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
-    def test_batch(self):
-        input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
-        input_tensor = input_tensor.repeat(2, 3, 20, 1)
-
-        expected_output = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = expected_output.repeat(2, 3, 20, 1)
-
-        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_exception(self):
         with pytest.raises(ValueError, match=r"Input size must have a shape"):
             self._create_augmentation_from_params(p=1.0)(
@@ -558,27 +465,6 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
     def param_set(self, request):
         return request.param
 
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = torch.tensor(
-            [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(12)
 
@@ -605,10 +491,6 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
             params=parameters,
         )
 
-    @pytest.mark.skip(reason="No special parameters to validate.")
-    def test_exception(self):
-        pass
-
 
 class TestRandomVerticalFlipAlternative(CommonTests):
     possible_params: Dict["str", Tuple] = {}
@@ -618,27 +500,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
         return request.param
-
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-        expected_output = torch.tensor(
-            [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]],
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
 
     def test_batch(self):
         torch.manual_seed(12)
@@ -665,10 +526,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
             expected_transformation=expected_transformation,
             params=parameters,
         )
-
-    @pytest.mark.skip(reason="No special parameters to validate.")
-    def test_exception(self):
-        pass
 
 
 class TestRandomRotationAlternative(CommonTests):
@@ -712,8 +569,6 @@ class TestRandomRotationAlternative(CommonTests):
         )
 
     def test_batch(self):
-        if self.dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         torch.manual_seed(12)
 
@@ -769,8 +624,12 @@ class TestRandomRotation90(CommonTests):
         "align_corners": True,
     }
 
-    @pytest.mark.skip(reason="not working for all torch versions")
-    def test_gradcheck(): ...
+    def test_gradcheck(self):
+        # One draw of quarter turns for every evaluation, as in TestRandomFisheye.test_gradcheck.
+        aug = RandomRotation90(**self._default_param_set, p=1.0)
+        input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=torch.float64)
+        params = aug.forward_parameters(input_tensor.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (input_tensor,))
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
@@ -809,8 +668,6 @@ class TestRandomRotation90(CommonTests):
         )
 
     def test_batch(self):
-        if self.dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         torch.manual_seed(12)
 
@@ -858,40 +715,22 @@ class TestRandomGrayscaleAlternative(CommonTests):
             params=self._default_param_set,
         )
 
-    def test_random_p_1(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]],
-            device=self.device,
-            dtype=self.dtype,
-        ).repeat(1, 3, 1, 1)
-        expected_output = (
-            (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
-        )
-
-        parameters = {}
-        self._test_random_p_1_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            params=parameters,
-        )
-
     def test_batch(self):
-        torch.manual_seed(42)
-
+        # Distinct channels: a grayscale of three equal channels is the input itself, whatever the weights.
         input_tensor = torch.tensor(
-            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]],
+            [
+                [[[1.0, 0.0], [0.0, 0.5]], [[0.0, 1.0], [0.0, 0.5]], [[0.0, 0.0], [1.0, 0.5]]],
+                [[[0.2, 0.4], [0.6, 0.8]], [[0.8, 0.6], [0.4, 0.2]], [[0.0, 0.5], [1.0, 0.25]]],
+            ],
             device=self.device,
             dtype=self.dtype,
-        ).repeat(2, 3, 1, 1)
-        expected_output = (
-            (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
         )
+        # 0.299 R + 0.587 G + 0.114 B per pixel, worked by hand: the pure-channel pixels give the weights.
+        expected_output = torch.tensor(
+            [[[0.299, 0.587], [0.114, 0.5]], [[0.5294, 0.5288], [0.5282, 0.3851]]],
+            device=self.device,
+            dtype=self.dtype,
+        )[:, None].repeat(1, 3, 1, 1)
 
         expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
@@ -1339,7 +1178,7 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -1770,10 +1609,9 @@ class TestColorJiggle(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     @pytest.mark.parametrize("order", [None, (3,)])
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device, order):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -1784,24 +1622,7 @@ class TestColorJiggle(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
-        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-
     def test_color_jitter_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1930,8 +1751,6 @@ class TestColorJitter(BaseTester):
         assert torch.equal(op(image, params=params), sampled(image, params=params))
 
     def test_color_jitter(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -1944,8 +1763,6 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -1957,7 +1774,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2304,9 +2121,8 @@ class TestColorJitter(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -2317,24 +2133,7 @@ class TestColorJitter(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
-        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1, 1)  # 4 x 3 x 5 x 5
-
-        expected = input
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1)  # 4 x 3 x 3
-
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-
     def test_color_jitter_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJitter(), ColorJitter())
 
@@ -2412,7 +2211,7 @@ class TestRandomBrightness(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomBrightness(brightness=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2475,22 +2274,7 @@ class TestRandomBrightness(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomBrightness())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_brightness_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomBrightness(), RandomBrightness())
 
@@ -2526,7 +2310,7 @@ class TestRandomContrast(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomContrast(contrast=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2589,22 +2373,7 @@ class TestRandomContrast(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomContrast())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_contrast_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomContrast(), RandomContrast())
 
@@ -2637,9 +2406,8 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         torch.manual_seed(0)
         image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
         hue = kornia.color.rgb_to_hsv(image)[:, 0]
@@ -2648,7 +2416,7 @@ class TestRandomHue(BaseTester):
         error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
         self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2717,22 +2485,7 @@ class TestRandomHue(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomHue())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_hue_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomHue(), RandomHue())
 
@@ -2765,7 +2518,7 @@ class TestRandomSaturation(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomSaturation(saturation=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -2834,22 +2587,7 @@ class TestRandomSaturation(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomSaturation())
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_saturation_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomSaturation(), RandomSaturation())
 
@@ -2890,11 +2628,12 @@ class TestRectangleRandomErasing(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="This regression exercises the CPU sampler with half tensor parameters."
+    )
     @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_half_precision_random_erasing_replays_native_params(self, device, parameter_dtype, same_on_batch):
-        if device.type != "cpu":
-            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
         batch_size, height, width = 65536, 16, 16
         scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
         ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
@@ -2979,6 +2718,26 @@ class TestRectangleRandomErasing(BaseTester):
         input = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(rand_rec, (input, rect_params))
 
+    def test_float64_default_with_input_on_device(self, device):
+        # The augmentation is not moved, so its parameters stay on the CPU in the default dtype and the boxes cross to
+        # the input's device. With a float64 default they crossed as float64, which MPS does not have.
+        image = torch.rand(2, 3, 11, 7, device=device)
+        mask = torch.ones(2, 1, 11, 7, device=device)
+        seq = kornia.augmentation.AugmentationSequential(
+            RandomErasing(scale=(0.1, 0.3), p=1.0), data_keys=["input", "mask"]
+        )
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            out_image, out_mask = seq(image, mask)
+            expected_image, expected_mask = seq(image.cpu(), mask.cpu(), params=seq._params)
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert out_image.device == device
+        assert (out_mask == 0).any()
+        self.assert_close(out_image.cpu(), expected_image, rtol=0, atol=0)
+        self.assert_close(out_mask.cpu(), expected_mask, rtol=0, atol=0)
+
 
 class TestRandomGamma(BaseTester):
     # return values such a Tensor variable.
@@ -2991,7 +2750,7 @@ class TestRandomGamma(BaseTester):
         )
         assert str(f) == repr
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         f = RandomGamma(gamma=(0.5, 2.0), gain=(0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
@@ -3060,45 +2819,7 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    def test_random_gamma_tuple(self, device, dtype):
-        torch.manual_seed(42)
-
-        f = RandomGamma(gamma=(0.8, 1.2))
-
-        input = torch.tensor(
-            [
-                [
-                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
-                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
-                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 3 x 3 x 3
-
-        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3 x 3
-
-        expected = self._get_expected_gamma(device, dtype)
-
-        self.assert_close(f(input), expected, low_tolerance=True)
-
-    def test_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-        torch.manual_seed(27)
-
-        f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
-
-        expected = input
-
-        self.assert_close(f(input), expected)
-
     def test_random_gamma_batch_sequential(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
 
@@ -3146,15 +2867,6 @@ class TestRandomGrayscale(BaseTester):
         f = RandomGrayscale()
         repr = "RandomGrayscale(p=0.1, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-
-    def test_random_grayscale(self, device, dtype):
-        f = RandomGrayscale()
-
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype)  # 3 x 5 x 5
-
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        f(input)
-        self.assert_close(f.transform_matrix, expected_transform)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomGrayscale(p=0.5, same_on_batch=True)
@@ -3227,42 +2939,6 @@ class TestRandomGrayscale(BaseTester):
         img_gray = RandomGrayscale(p=1.0)(data)
         self.assert_close(img_gray, expected)
 
-    def test_opencv_false(self, device, dtype):
-        data = torch.tensor(
-            [
-                [
-                    [
-                        [0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                        [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                        [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                        [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                        [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593],
-                    ],
-                    [
-                        [0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                        [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                        [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                        [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                        [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426],
-                    ],
-                    [
-                        [0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                        [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                        [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                        [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                        [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532],
-                    ],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        expected = data
-
-        img_gray = RandomGrayscale(p=0.0)(data)
-        self.assert_close(img_gray, expected)
-
     def test_opencv_true_batch(self, device, dtype):
         data = torch.tensor(
             [
@@ -3326,41 +3002,6 @@ class TestRandomGrayscale(BaseTester):
         img_gray = RandomGrayscale(p=1.0)(data)
         self.assert_close(img_gray, expected)
 
-    def test_opencv_false_batch(self, device, dtype):
-        data = torch.tensor(
-            [
-                [
-                    [0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                    [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                    [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                    [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                    [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593],
-                ],
-                [
-                    [0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                    [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                    [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                    [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                    [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426],
-                ],
-                [
-                    [0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                    [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                    [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                    [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                    [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532],
-                ],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        data = data.unsqueeze(0).repeat(4, 1, 1, 1)
-
-        expected = data
-
-        img_gray = RandomGrayscale(p=0.0)(data)
-        self.assert_close(img_gray, expected)
-
     def test_random_grayscale_sequential_batch(self, device, dtype):
         f = AugmentationSequential(RandomGrayscale(p=0.0), RandomGrayscale(p=0.0))
 
@@ -3413,14 +3054,19 @@ class TestCenterCrop(BaseTester):
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
+        # The odd height leaves 3 spare rows; the crop starts at floor(3 / 2) = 1, as it does on the even width.
+        expected = inp[..., 1:3, 1:3]
+        expected_transform = torch.tensor(
+            [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
         aug = CenterCrop(2)
         out = aug(inp)
-        assert out.shape == (1, 2, 2, 2)
-        assert aug.transform_matrix.shape == (1, 3, 3)
+        self.assert_close(out, expected)
+        self.assert_close(aug.transform_matrix, expected_transform)
         aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
-        assert out.shape == (1, 2, 2, 2)
-        assert aug.transform_matrix.shape == (1, 3, 3)
+        self.assert_close(out, expected)
+        self.assert_close(aug.transform_matrix, expected_transform)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
 
     def test_no_transform_tuple(self, device, dtype):
@@ -4120,35 +3766,6 @@ class TestRandomCrop(BaseTester):
         inp = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3
         self.gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,))
 
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        actual = op_script(img)
-        expected = kornia.geometry.transform.center_crop3d(img)
-        self.assert_close(actual, expected)
-
-    @pytest.mark.skip("Need to fix Union type")
-    def test_jit_trace(self, device, dtype):
-        # Define script
-        op = RandomCrop(size=(3, 3), p=1.0).forward
-        op_script = torch.jit.script(op)
-        # 1. Trace op
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        op_trace = torch.jit.trace(op_script, (img,))
-
-        # 2. Generate new input
-        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
-
-        # 3. Evaluate
-        actual = op_trace(img)
-        expected = op(img)
-        self.assert_close(actual, expected)
-
 
 class TestRandomResizedCrop(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -4365,50 +3982,10 @@ class TestRandomEqualize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = RandomEqualize(p=0.5)
         repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-
-    def test_random_equalize(self, device, dtype):
-        f = RandomEqualize(p=1.0)
-        f1 = RandomEqualize(p=0.0)
-
-        bs, channels, height, width = 1, 3, 20, 20
-
-        inputs = self.build_input(channels, height, width, bs, device=device, dtype=dtype)
-
-        row_expected = torch.tensor(
-            [
-                0.0000,
-                0.07843,
-                0.15686,
-                0.2353,
-                0.3137,
-                0.3922,
-                0.4706,
-                0.5490,
-                0.6275,
-                0.7059,
-                0.7843,
-                0.8627,
-                0.9412,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-                1.0000,
-            ]
-        )
-        expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
-        identity = kornia.core.ops.eye_like(3, expected)  # 3 x 3
-
-        self.assert_close(f(inputs), expected, low_tolerance=True)
-        self.assert_close(f.transform_matrix, identity, low_tolerance=True)
-        self.assert_close(f1(inputs), inputs, low_tolerance=True)
-        self.assert_close(f1.transform_matrix, identity, low_tolerance=True)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0)
@@ -4443,6 +4020,10 @@ class TestRandomEqualize(BaseTester):
             ]
         )
         expected = self.build_input(channels, height, width, bs, row=row_expected, device=device, dtype=dtype)
+        # Mirror the second image: equalization is a per-pixel lookup from the histogram, which mirroring keeps, so
+        # its output is the first image's output mirrored. Equal images could not tell the samples apart.
+        inputs[1] = inputs[1].flip(-1)
+        expected[1] = expected[1].flip(-1)
 
         identity = kornia.core.ops.eye_like(3, expected)  # 2 x 3 x 3
 
@@ -4501,35 +4082,39 @@ class TestRandomGaussianBlur(BaseTester):
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
+        aug = RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0)
         actual = aug(input)
-        self.assert_close(actual, actual)
+        # The expanded batch shares one storage; it must blur as the same images laid out contiguously.
+        self.assert_close(actual, aug(input.contiguous(), params=aug._params))
 
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     def test_module_kernel_int(self, device, dtype):
         func_params = [3, torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [3, (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     def test_module_sigma_tensor(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), torch.tensor((1.5, 1.5))]
         op = kornia.filters.gaussian_blur2d
-        op_module = RandomGaussianBlur(*params)
+        op_module = RandomGaussianBlur(*params, p=1.0)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        # A non-constant image: blurring a constant one returns it for any kernel and sigma.
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
     @pytest.mark.slow
@@ -4548,8 +4133,11 @@ class TestRandomInvert(BaseTester):
         _assert_dynamo_fullgraph(lambda: RandomInvert(p=1.0), self, device, dtype)
 
     def test_smoke(self, device, dtype):
-        img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
-        self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
+        # Varying values below 1: an all-ones image maps to zeros under many wrong formulas, and an image whose
+        # maximum is 1 cannot tell ``1 - img`` from ``img.max() - img``.
+        img = torch.tensor([[[[0.0, 0.25], [0.6, 0.8]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 0.75], [0.4, 0.2]]]], device=device, dtype=dtype)  # 1 - img, by hand
+        self.assert_close(RandomInvert(p=1.0)(img), expected)
 
 
 class TestRandomChannelShuffle(BaseTester):
@@ -4661,12 +4249,6 @@ class TestRandomGaussianNoise(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         _assert_dynamo_fullgraph(lambda: RandomGaussianNoise(p=1.0), self, device, dtype)
 
-    def test_smoke(self, device, dtype):
-        torch.manual_seed(0)
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomGaussianNoise(p=1.0)
-        assert img.shape == aug(img).shape
-
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.rand(1, 1, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
         transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
@@ -4703,7 +4285,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
@@ -4734,12 +4316,6 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
-
-        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
-            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
-
-        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
-            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
     @pytest.mark.parametrize("batch_shape", [1, 3, 5])
     @pytest.mark.parametrize("channel_shape", [1, 3])
@@ -4884,9 +4460,9 @@ class TestRandomGaussianIllumination(BaseTester):
         aug = RandomGaussianIllumination(gain=0.5, p=1.0)
         res = aug(input_tensor)
         assert input_tensor.shape == res.shape
-        self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(res, expected, **float32_literal_tolerance(dtype))
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomGaussianIllumination(sign=3)
 
@@ -4939,7 +4515,7 @@ class TestRandomGaussianIllumination(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("param", ["gain", "center", "sigma", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomGaussianIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -4984,7 +4560,7 @@ class TestRandomLinearIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomLinearIllumination(sign=3)
 
@@ -5003,19 +4579,19 @@ class TestRandomLinearIllumination(BaseTester):
     @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
-        transform = RandomGaussianIllumination(p=1.0)
+        transform = RandomLinearIllumination(p=1.0)
         output_tensor = transform(input_tensor)
         assert input_tensor.shape[0] == output_tensor.shape[0]
         assert input_tensor.shape[1] == output_tensor.shape[1]
 
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
-        transform = RandomGaussianIllumination(p=1.0, same_on_batch=True)
+        transform = RandomLinearIllumination(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
     @pytest.mark.parametrize("param", ["gain", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomLinearIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -5060,7 +4636,7 @@ class TestRandomLinearCornerIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomLinearCornerIllumination(sign=3)
 
@@ -5091,7 +4667,7 @@ class TestRandomLinearCornerIllumination(BaseTester):
         self.assert_close(output_tensor[0], output_tensor[1])
 
     @pytest.mark.parametrize("param", ["gain", "sign"])
-    def test_length_message_6454(self, param, device, dtype):
+    def test_length_message_6454(self, param):
         # The message carried a run of spaces from a backslash-continued string literal.
         with pytest.raises(ValueError) as excinfo:
             RandomLinearCornerIllumination(**{param: (0.1, 0.1, 0.1)})
@@ -5201,10 +4777,32 @@ class TestRandomChannelDropout(BaseTester):
         moved = aug.to(device=device, dtype=dtype)
         assert moved.fill_value.device.type == torch.device(device).type
         assert moved.fill_value.dtype == dtype
-        # the moved buffer is the value the forward actually fills with
+        # the moved buffer is the value the forward actually fills with, except that a float64 image gets the number
+        # itself while the buffer still holds it as built
         out = moved(torch.zeros(1, 3, 8, 8, device=device, dtype=dtype))
-        assert (out == moved.fill_value).any()
-        assert out.max() == moved.fill_value
+        fill = 0.3 if dtype == torch.float64 else moved.fill_value
+        assert (out == fill).any()
+        assert out.max() == fill
+
+    def test_float64_fill_is_the_exact_number(self, device):
+        # A float64 image is filled with fill_value itself, not the float32 buffer's 0.3700000047683716, while the
+        # buffer still holds it as built; a value changed in place is used as it is, and so is the buffer of a
+        # module pickled before the number was kept. MPS has no float64, so there the image stays on the CPU.
+        image_device = torch.device("cpu") if device.type == "mps" else device
+        img = torch.rand(2, 3, 4, 4, generator=torch.Generator().manual_seed(0), dtype=torch.float64).to(image_device)
+        aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.37, p=1.0).to(device)
+        for fill in (0.37, 0.5):
+            if fill == 0.5:
+                aug.fill_value.fill_(0.5)
+            out = aug(img)
+            dropped = (out != img).flatten(2).any(-1)
+            assert int(dropped.sum()) == 2
+            self.assert_close(out[dropped], torch.full_like(out[dropped], fill), rtol=0.0, atol=0.0)
+        del aug._fill_numbers
+        aug.fill_value.fill_(0.37)
+        out = aug(img)
+        dropped = (out != img).flatten(2).any(-1)
+        self.assert_close(out[dropped], torch.full_like(out[dropped], float(torch.tensor(0.37))), rtol=0.0, atol=0.0)
 
 
 class TestNormalize(BaseTester):
@@ -5216,7 +4814,7 @@ class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
         repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
@@ -5249,21 +4847,6 @@ class TestNormalize(BaseTester):
         with pytest.raises(ValueError, match=r"mean length and number of channels do not match"):
             f(inputs)
 
-    def test_random_normalize(self, device, dtype):
-        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
-
-        inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
-
-        expected = (inputs - 1) * 2
-
-        identity = kornia.core.ops.eye_like(3, expected)
-
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
-
     def test_batch_random_normalize(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
         f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
@@ -5289,30 +4872,59 @@ class TestNormalize(BaseTester):
             (input,),
         )
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # A float64 image is normalized with the numbers themselves, not with the float32 tensors the flags hold; the
+        # expected values come from plain NumPy (snippet in the PR). A mean set in the flags afterwards, or given as a
+        # number for one call, is used as it is, and so are the flags of a module pickled before the numbers were kept.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(18, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 3, 2, 3).to(device)
+        scalar = Normalize(0.37, 0.29)
+        per_channel = Normalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        actual = torch.stack([scalar(img)[0, 0, 0, 0], per_channel(img)[0, 2, 1, 2]])
+        expected = torch.tensor([-0.8965517241379312, -0.026666666666665208], device=device, dtype=torch.float64)
+        self.assert_close(actual, expected, rtol=1e-12, atol=0.0)
+        # The expected values divide by a float64 tensor, as Normalize does: CUDA computes a tensor divided by a Python
+        # number as a product with its reciprocal, which can miss the correctly rounded quotient by 1 ulp.
+        std = torch.tensor(0.29, device=device, dtype=torch.float64)
+        scalar.flags["mean"] = torch.tensor([0.5])
+        self.assert_close(scalar(img), (img - 0.5) / std, rtol=0.0, atol=0.0)
+        self.assert_close(scalar(img, mean=0.25), (img - 0.25) / std, rtol=0.0, atol=0.0)
+        del scalar._mean_numbers, scalar._std_numbers
+        std_rounded_to_float32 = torch.tensor(0.29).to(device=device, dtype=torch.float64)
+        self.assert_close(scalar(img), (img - 0.5) / std_rounded_to_float32, rtol=0.0, atol=0.0)
+
+    def test_float64_statistics_keep_their_gradient(self, device):
+        # The exact numbers pass the gradient on to the flags they stand for, as the flags themselves do in float32.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=torch.float64)
+        aug = Normalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        aug.flags["mean"].requires_grad_(True)
+        aug(img).sum().backward()
+        # The gradient of sum((x - mean) / std) for each channel's mean is -N / std, with N = 2 * 4 * 5 values.
+        expected = -40.0 / torch.tensor([0.229, 0.224, 0.225], dtype=torch.float64)
+        self.assert_close(aug.flags["mean"].grad, expected.float())
+
+    def test_float64_infinite_statistics_give_no_nan(self, device):
+        # An infinite mean or std, or a number the float32 flag rounds to infinity, held as built: the exact
+        # number still applies to a float64 image, and the gradient term (``inf - inf``) does not turn it into NaN.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = torch.rand(1, 3, 2, 3, device=device, dtype=torch.float64)
+        self.assert_close(Normalize(0.0, float("inf"))(img), torch.zeros_like(img), rtol=0.0, atol=0.0)
+        self.assert_close(Normalize(1e39, 1.0)(img), torch.full_like(img, -1e39), rtol=0.0, atol=0.0)
+        self.assert_close(Denormalize(float("inf"), 1.0)(img), torch.full_like(img, float("inf")), rtol=0.0, atol=0.0)
+
 
 class TestDenormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
         repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-
-    def test_random_denormalize(self, device, dtype):
-        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
-
-        inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
-
-        expected = inputs / 2 + 1
-
-        identity = kornia.core.ops.eye_like(3, expected)
-
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
 
     @pytest.mark.parametrize(
         "mean, std",
@@ -5376,6 +4988,25 @@ class TestDenormalize(BaseTester):
             (input,),
         )
 
+    def test_float64_matches_the_numpy_reference(self, device):
+        # A float64 image is denormalized with the numbers themselves, not with the float32 tensors the flags hold; the
+        # expected values come from plain NumPy (snippet in the PR). A mean set in the flags afterwards is used as
+        # it is, and so are the flags of a module pickled before the numbers were kept; each matches a module given
+        # those values as tensors.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(18, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 3, 2, 3).to(device)
+        scalar = Denormalize(0.37, 0.29)
+        per_channel = Denormalize([0.485, 0.456, 0.406], (0.229, 0.224, 0.225))
+        actual = torch.stack([scalar(img)[0, 0, 0, 0], per_channel(img)[0, 2, 1, 2]])
+        expected = torch.tensor([0.4019, 0.4960000000000001], device=device, dtype=torch.float64)
+        self.assert_close(actual, expected, rtol=1e-12, atol=0.0)
+        scalar.flags["mean"] = torch.tensor([0.5])
+        expected = Denormalize(torch.tensor([0.5]), torch.tensor([0.29], dtype=torch.float64))(img)
+        self.assert_close(scalar(img), expected, rtol=0.0, atol=0.0)
+        del scalar._mean_numbers, scalar._std_numbers
+        self.assert_close(scalar(img), Denormalize(torch.tensor([0.5]), torch.tensor([0.29]))(img), rtol=0.0, atol=0.0)
+
 
 class TestRandomFisheye(BaseTester):
     @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
@@ -5421,17 +5052,69 @@ class TestRandomFisheye(BaseTester):
         center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        img = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
-        assert img.shape == aug(img).shape
+        # Two equal images: with one image the test cannot see whether the draw is shared.
+        out = aug(img.repeat(2, 1, 1, 1))
+        for key in ("center_x", "center_y", "gamma"):
+            self.assert_close(aug._params[key][0], aug._params[key][1])
+        self.assert_close(out[0], out[1])
 
-    @pytest.mark.skip(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0")
-    def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
-        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
-        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
-        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
-        self.gradcheck(RandomFisheye(center_x, center_y, gamma), (img,))
+    def test_gradcheck(self, device):
+        # One parameter draw for every evaluation: gradcheck calls the op repeatedly, and a fresh draw each time
+        # makes the numerical Jacobian compare different warps.
+        img = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64)
+        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=torch.float64)
+        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=torch.float64)
+        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=torch.float64)
+        aug = RandomFisheye(center_x, center_y, gamma, p=1.0)
+        params = aug.forward_parameters(img.shape)
+        self.gradcheck(lambda x: aug(x, params=params), (img,))
+
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The sampling grid is built in float64 for a float64 image; the expected values come from plain NumPy (snippet
+        # in the PR), and a grid built in float32 misses them by far more than 1e-12.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = ((torch.arange(42, dtype=torch.float64) * 0.37 + 0.11) % 1.0).reshape(1, 1, 6, 7).to(device)
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+        params = {
+            "center_x": torch.tensor([0.23], device=device, dtype=torch.float64),
+            "center_y": torch.tensor([-0.17], device=device, dtype=torch.float64),
+            "gamma": torch.tensor([0.9], device=device, dtype=torch.float64),
+            "batch_prob": img.new_ones(1),
+        }
+        out = aug(img, params=params)[0, 0]
+        expected = torch.tensor([0.5205761288578419, 0.03817829207170546], device=device, dtype=torch.float64)
+        self.assert_close(torch.stack([out[1, 2], out[4, 5]]), expected, rtol=1e-12, atol=0.0)
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_grid_dtype_changes_only_for_a_float64_image(self, device, default_dtype, monkeypatch):
+        # Only a float64 image gets a float64 grid. A float32 image keeps the grid built in the default dtype, so its
+        # result under a float64 default is unchanged; a grid built in the image's dtype would change it.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        from kornia.augmentation._2d.geometric import fisheye as fisheye_module
+
+        grid_dtypes = []
+
+        def spy(*args, **kwargs):
+            grid = create_meshgrid(*args, **kwargs)
+            grid_dtypes.append(grid.dtype)
+            return grid
+
+        monkeypatch.setattr(fisheye_module, "create_meshgrid", spy)
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            for image_dtype in (torch.float32, torch.float64):
+                aug(torch.rand(1, 1, 4, 5, device=device, dtype=image_dtype))
+        finally:
+            torch.set_default_dtype(original_dtype)
+        assert grid_dtypes == [default_dtype, torch.float64]
 
 
 class TestRandomElasticTransform(BaseTester):
@@ -5518,10 +5201,6 @@ class TestRandomElasticTransform(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
-    @pytest.mark.skipif(
-        torch_version() in {"1.11.0", "1.12.1"} and sys.version_info.minor == 10,
-        reason="failing because no gaussian mean",
-    )
     def test_apply(self, batch_prob, device, dtype):
         torch.manual_seed(0)
 
@@ -5546,11 +5225,6 @@ class TestRandomElasticTransform(BaseTester):
 
 
 class TestRandomBoxBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomBoxBlur(p=1.0)
-        assert img.shape == aug(img).shape
-
     @pytest.mark.parametrize("normalized", [True, False])
     def test_normalized_selects_the_separable_path(self, normalized, device, dtype):
         from kornia.filters import box_blur
@@ -5697,6 +5371,73 @@ class TestResize:
         torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
         assert counter.frame_count == 1
 
+    @pytest.mark.parametrize(
+        "size, src_size",
+        [((1, 4), (6, 7)), ((4, 1), (6, 7)), ((1, 1), (6, 7)), ((4, 8), (1, 8)), ((5, 3), (6, 7))],
+        ids=["one_row_out", "one_col_out", "one_pixel_out", "one_row_in", "no_one_pixel_axis"],
+    )
+    def test_convention_one_pixel_axis_matrix_follows_corner_aligned_output_6644(self, size, src_size, device, dtype):
+        # The default align_corners=True has no scale along a one-pixel axis, and the solved matrix was NaN (#6644).
+        # F.interpolate samples the first pixel there, so that axis is a translation onto output pixel 0.
+        h, w = src_size
+        ys, xs = torch.meshgrid(
+            torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+        )
+        # Bilinear interpolation of a linear ramp is exact: each output pixel holds the source (x, y) it sampled.
+        img = torch.stack((xs, ys))[None]
+        aug = Resize(size)
+        out = aug(img)
+        matrix = aug.transform_matrix
+        assert torch.isfinite(matrix).all()
+        inverse = aug.inverse(out)
+        assert inverse.shape == img.shape
+        assert torch.isfinite(inverse).all()
+
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        sampled = out[0].flatten(1).T  # (N, 2) source (x, y) of every output pixel
+        out_ys, out_xs = torch.meshgrid(
+            torch.arange(size[0], device=device, dtype=dtype),
+            torch.arange(size[1], device=device, dtype=dtype),
+            indexing="ij",
+        )
+        # A one-pixel source axis is repeated along the output; the matrix sends that pixel to output index 0.
+        expected = torch.stack((out_xs * (w > 1), out_ys * (h > 1)), -1).flatten(0, 1)
+        mapped = kornia.geometry.transform_points(matrix, sampled[None])[0]
+        torch.testing.assert_close(mapped, expected, rtol=tol, atol=tol)
+        # Keypoints and box corners mapped through the matrix come back through its inverse.
+        # MPS has no float64, so the reference inverse is built on the CPU.
+        inv = torch.linalg.inv(matrix.cpu().double()).to(device, dtype)
+        back = kornia.geometry.transform_points(inv, mapped[None])[0]
+        torch.testing.assert_close(back, sampled, rtol=tol, atol=tol)
+
+    def test_inverse_one_row_output_restores_its_source_row_6644(self, device, dtype):
+        # The one-pixel output row goes back to source row 0, which it sampled; the other rows are padding.
+        img = torch.rand(1, 2, 6, 7, device=device, dtype=dtype) + 1
+        aug = Resize((1, 7))
+        inverse = aug.inverse(aug(img))
+        torch.testing.assert_close(inverse[..., 0, :], img[..., 0, :])
+        assert (inverse[..., 1:, :] == 0).all()
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_matrix_unchanged_without_one_pixel_axis_6644(self, align_corners, device, dtype):
+        aug = Resize((100, 37), align_corners=align_corners)
+        aug(torch.rand(2, 1, 6, 7, device=device, dtype=dtype))
+        src, dst = aug._params["src"], aug._params["dst"]
+        if align_corners:
+            expected = kornia.geometry.get_perspective_transform(src, dst)
+        else:
+            expected = kornia.geometry.transform._crop._half_pixel_resize_transform(src.to(dtype), dst.to(dtype))
+        assert torch.equal(aug.transform_matrix, expected.to(device, dtype).expand(2, -1, -1))
+
+    def test_align_corners_false_one_pixel_axis_unchanged_6644(self, device, dtype):
+        # The half-pixel matrix was already finite for one-pixel axes: x' = (x + 0.5) * W'/W - 0.5, likewise for y.
+        aug = Resize((1, 4), align_corners=False)
+        out = aug(torch.rand(1, 1, 6, 7, device=device, dtype=dtype))
+        sx, sy = 4 / 7, 1 / 6
+        expected = torch.tensor([[[sx, 0.0, (sx - 1) / 2], [0.0, sy, (sy - 1) / 2], [0.0, 0.0, 1.0]]])
+        torch.testing.assert_close(aug.transform_matrix, expected.to(device, dtype))
+        assert torch.isfinite(aug.inverse(out)).all()
+
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
@@ -5735,24 +5476,6 @@ class TestRandomPosterize:
 
 
 class TestRandomPlasma:
-    def test_plasma_shadow(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaShadow(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
-    def test_plasma_brightness(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaBrightness(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
-    def test_plasma_contrast(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomPlasmaContrast(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (2, 3, 4, 5)
-
     @pytest.mark.parametrize(
         "augmentation_cls",
         [
@@ -6108,10 +5831,12 @@ class TestPlanckianJitter(BaseTester):
 
     # The half dtypes are named rather than taken from the fixture so the preservation is
     # exercised on the default float32 leg too, not only on the two half-precision jobs.
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["half_dtype"] is torch.bfloat16),
+        reason="bfloat16 support on MPS is incomplete",
+    )
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_planckian_jitter_preserves_half_dtype_on_any_leg_4574(self, device, half_dtype):
-        if device.type == "mps" and half_dtype is torch.bfloat16:
-            pytest.skip("bfloat16 support on MPS is incomplete")
         input = torch.rand(2, 3, 4, 4, device=device, dtype=half_dtype)
         output = RandomPlanckianJitter(p=1.0)(input)
 
@@ -6126,9 +5851,10 @@ class TestRandomRGBShift(BaseTester):
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="Random parameters are device-dependent; expected values were computed on CPU"
+    )
     def test_random_rgb_shift(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -6148,11 +5874,12 @@ class TestRandomRGBShift(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, **float32_literal_tolerance(dtype))
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), reason="Random parameters are device-dependent; expected values were computed on CPU"
+    )
     def test_random_rgb_shift_same_batch(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -6172,7 +5899,7 @@ class TestRandomRGBShift(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, **float32_literal_tolerance(dtype))
 
 
 class TestRandomTranslate(BaseTester):
@@ -6330,12 +6057,6 @@ class TestRandomSnow(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == batch_shape
 
-    def test_smoke(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomSnow(p=1.0, snow_coefficient=(0.0, 0.5), brightness=(1.0, 2.0))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-
     def test_gray_patch_is_finite_and_replayed(self, device, dtype):
         input_data = torch.full((1, 3, 4, 4), 0.25, device=device, dtype=dtype)
         input_data[:, 0, 2:, 2:] = 0.9
@@ -6370,25 +6091,35 @@ class TestRandomSnow(BaseTester):
 
 
 class TestRandomMedianBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomMedianBlur(p=0.8)
-        assert image.shape == aug(image).shape
-
     def test_feature_median_blur(self, device, dtype):
-        torch.manual_seed(0)
+        # A varying image at p=1: a constant image is its own median, and p=0.5 may skip the blur.
+        img = torch.tensor(
+            [
+                [
+                    [
+                        [0.1, 0.9, 0.2, 0.3, 0.0],
+                        [0.4, 0.5, 1.0, 0.6, 0.2],
+                        [0.8, 0.0, 0.7, 0.3, 0.5],
+                        [0.2, 0.6, 0.1, 0.9, 0.4],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        out = RandomMedianBlur((3, 3), p=1.0)(img)
 
-        img = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
-        out = RandomMedianBlur((3, 3), p=0.5)(img)
-
+        # Snippet used to generate expected (3 x 3 median over the reflect-padded image, without kornia):
+        #   p = torch.nn.functional.pad(img, (1, 1, 1, 1), mode="reflect")
+        #   p.unfold(2, 3, 1).unfold(3, 3, 1).reshape(1, 1, 4, 5, 9).median(-1).values
         expected = torch.tensor(
             [
                 [
                     [
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
-                        [1.0, 1.0, 1.0, 1.0],
+                        [0.5, 0.5, 0.6, 0.3, 0.3],
+                        [0.5, 0.5, 0.5, 0.3, 0.3],
+                        [0.5, 0.5, 0.6, 0.5, 0.5],
+                        [0.2, 0.6, 0.3, 0.5, 0.4],
                     ]
                 ]
             ],
@@ -6502,16 +6233,6 @@ class TestRandomRain(BaseTester):
         out = aug.apply_transform(image, params, {})
         assert torch.equal(out, reference)
 
-    def test_smoke(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
@@ -6554,7 +6275,7 @@ class TestRandomRain(BaseTester):
     def test_zero_probability(self, device):
         input_data = torch.rand(10, 3, 8, 8, device=device)
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
-        aug(input_data)
+        self.assert_close(aug(input_data), input_data, rtol=0, atol=0)
 
     def test_same_on_batch(self, device, dtype):
         aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(5, 10), same_on_batch=True)
@@ -6580,6 +6301,7 @@ class TestRandomRain(BaseTester):
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.slow
     @pytest.mark.parametrize("context", ["spawn", "forkserver", "fork"] if os.name != "nt" else ["spawn"])
     def test_spawn_multiprocessing_context(self, context: str):
@@ -6609,19 +6331,19 @@ class TestRandomJPEG(BaseTester):
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_same_on_batch(self, device, dtype):
+    def test_same_on_batch(self):
         images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
         aug = RandomJPEG(jpeg_quality=(1.0, 100.0), same_on_batch=True)
         images_aug = aug(images)
         self.assert_close(images_aug[0], images_aug[1])
 
-    def test_single_jpeg_quality(self, device, dtype):
+    def test_single_jpeg_quality(self):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomJPEG(jpeg_quality=19.04, p=1.0)
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_single_image(self, device, dtype):
+    def test_single_image(self):
         images = torch.rand(3, 16, 16)
         aug = RandomJPEG(jpeg_quality=19.04, p=1.0, keepdim=True)
         images_aug = aug(images)
@@ -6700,13 +6422,13 @@ class TestRandomDissolving(BaseTester):
         # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader's ImportError under --runslow.
         pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
-    def test_batch_proc(self, device, dtype):
+    def test_batch_proc(self):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_single_proc(self, device, dtype):
+    def test_single_proc(self):
         images = torch.rand(3, 16, 16)
         aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
@@ -6723,23 +6445,31 @@ class TestRandomThinPlateSpline(CommonTests):
         return request.param
 
     # Disable unsupported base tests
+    @pytest.mark.applies_to(
+        when=lambda p: False, reason="RandomThinPlateSpline does not implement compute_transformation"
+    )
     def test_smoke(self, param_set):
-        pytest.skip("RandomThinPlateSpline does not implement compute_transformation")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_module(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_random_p_1(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_inverse_coordinate_check(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_exception(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
+    @pytest.mark.applies_to(when=lambda p: False, reason="RandomThinPlateSpline does not expose transform_matrix")
     def test_batch(self):
-        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+        pass
 
     def test_same_on_batch_true(self):
         torch.manual_seed(0)
@@ -6777,8 +6507,6 @@ class TestRandomThinPlateSpline(CommonTests):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_zero_scale_identity(self, same_on_batch, align_corners, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
         # Both conventions: a zero-scale spline is the identity whichever one the class is built
         # with, and align_corners=False is the class default. This used to be pinned at True only,
         # because warp_image_tps built its sampling grid corner-aligned whatever flag reached

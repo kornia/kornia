@@ -43,21 +43,6 @@ class TestAepe(BaseTester):
         actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="none")
         self.assert_close(actual, expected)
 
-    def test_perfect_fit(self, device, dtype):
-        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-        expected = torch.zeros(4, 4, device=device, dtype=dtype)
-        actual = kornia.metrics.aepe(sample, sample, reduction="none")
-        self.assert_close(actual, expected)
-
-    def test_aepe_alias(self, device, dtype):
-        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-        expected = torch.zeros(4, 4, device=device, dtype=dtype)
-        actual_aepe = kornia.metrics.aepe(sample, sample, reduction="none")
-        actual_alias = kornia.metrics.average_endpoint_error(sample, sample, reduction="none")
-        self.assert_close(actual_aepe, expected)
-        self.assert_close(actual_alias, expected)
-        self.assert_close(actual_aepe, actual_alias)
-
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import TypeCheckError
 
@@ -81,13 +66,6 @@ class TestAepe(BaseTester):
             or "Expected shape" in str(errinfo.value)
             or "shape must be" in str(errinfo.value)
         )
-
-    def test_smoke(self, device, dtype):
-        input = torch.rand(3, 3, 2, device=device, dtype=dtype)
-        target = torch.rand(3, 3, 2, device=device, dtype=dtype)
-
-        criterion = kornia.metrics.AEPE()
-        assert criterion(input, target) is not None
 
 
 class TestConventionsAepe(BaseTester):

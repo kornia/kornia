@@ -16,6 +16,8 @@
 #
 
 import contextlib
+import functools
+import importlib.util
 import os
 import random
 import subprocess
@@ -25,6 +27,7 @@ from contextlib import contextmanager
 from functools import partial
 from itertools import product
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 import pytest
@@ -54,6 +57,10 @@ except ImportError:
     _backends_non_experimental = []
 
 
+# The CLIDD Triton kernels import ``triton`` at import time, and torch installs it only on Linux: skip the module in
+# ``--doctest-modules`` collection elsewhere. It has no doctests; kornia imports it only when the kernels run.
+collect_ignore = [] if importlib.util.find_spec("triton") else ["kornia/feature/clidd/_triton.py"]
+
 WEIGHTS_CACHE_DIR = "weights/"
 
 
@@ -81,6 +88,33 @@ def get_test_devices() -> dict[str, torch.device]:
     return devices
 
 
+@functools.cache
+def available_test_devices() -> dict[str, torch.device]:
+    """Return :func:`get_test_devices`, probed on first use.
+
+    The probe initializes the CUDA driver, which fixes the visible devices for the process. Deferring it to the
+    first use lets :func:`_hide_cuda_from_cpu_only_runs` set ``CUDA_VISIBLE_DEVICES`` from ``pytest_configure``.
+    """
+    return get_test_devices()
+
+
+def _hide_cuda_from_cpu_only_runs(config) -> None:
+    """Hide CUDA devices from a run whose ``--device`` selection does not include CUDA.
+
+    The first ``torch.compile`` call initializes a CUDA context even when every tensor is on the CPU: Dynamo saves
+    and restores the CUDA RNG state around each frame. On a busy GPU that context fails with "CUDA error: out of
+    memory" in a CPU test. A CPU-only selection has no use for the GPU, so it gets none; tests that reach CUDA
+    without the ``device`` fixture run in CUDA runs instead. Must run before anything probes CUDA, and keeps a
+    ``CUDA_VISIBLE_DEVICES`` the caller set. xdist workers and per-test subprocesses inherit the setting.
+    """
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        return
+    selected = set(config.getoption("--device").split(","))
+    if selected & {"all", "cuda"}:
+        return
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+
 def get_test_dtypes() -> dict[str, torch.dtype]:
     """Create a dictionary with the dtypes to test.
 
@@ -97,28 +131,40 @@ def get_test_dtypes() -> dict[str, torch.dtype]:
 
 # setup the devices to test the source code
 
-TEST_DEVICES: dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: dict[str, torch.dtype] = get_test_dtypes()
 TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Combinations of device and dtype to be excluded from testing.
 # Example: DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
+# A test that fails a CUDA device-side assert on purpose, after which its process cannot use CUDA: on CUDA it always
+# runs in a fresh subprocess, through the runner of --isolate-half-precision (see _is_subprocess_isolated_test).
+CUDA_DEVICE_ASSERT_MARKER = "cuda_device_assert"
+
 
 @pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
-    if device_name not in TEST_DEVICES:
+    devices = available_test_devices()
+    if device_name not in devices:
         pytest.skip(f"Device '{device_name}' is not available on this system")
-    return TEST_DEVICES[device_name]
+    return devices[device_name]
 
 
 @pytest.fixture
-def restore_torch_rng():
+def restore_torch_rng(request):
     """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
     cpu_state = torch.random.get_rng_state()
-    # Initialize available generators before snapshotting: a test can make the first accelerator draw.
-    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    # Initialize available generators before snapshotting: a test can make the first accelerator draw. A CUDA test
+    # marked cuda_device_assert ends the CUDA context of its own process, so it has no later CUDA draw to protect, and
+    # restoring the generators would raise its device-side assert again.
+    callspec = getattr(request.node, "callspec", None)
+    ends_cuda_context = (
+        request.node.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None
+        and callspec is not None
+        and callspec.params.get("device_name") == "cuda"
+    )
+    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() and not ends_cuda_context else None
     mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
     try:
         yield
@@ -252,6 +298,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
         "--ignore-glob": getattr(config.option, "ignore_glob", None),
         "xdist": getattr(config.option, "numprocesses", None),
         "-p": getattr(config.option, "plugins", None),
+        "--skip-onnx": getattr(config.option, "skip_onnx", None),
     }
     active = [name for name, value in partial_options.items() if value]
     if active:
@@ -260,6 +307,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    _hide_cuda_from_cpu_only_runs(config)
     config._conformance = {}
     for promise in conformance_promise.PROMISES:
         try:
@@ -269,6 +317,12 @@ def pytest_configure(config) -> None:
         if config._conformance[promise.marker]:
             plugin = conformance.KnownFailurePlugin(promise)
             config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
+    # The ONNX conformance cases have "onnx" in their node IDs, so --skip-onnx would deselect every selected case.
+    onnx_conformance = conformance_promise.ONNX
+    if config.getoption("--skip-onnx") and config._conformance[onnx_conformance.marker]:
+        raise pytest.UsageError(
+            f"--skip-onnx (KORNIA_TEST_SKIP_ONNX) deselects every case {onnx_conformance.option} selects; drop one"
+        )
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -319,7 +373,7 @@ def pytest_generate_tests(metafunc) -> None:
     params: list[tuple[str, list]] = []
 
     if "device_name" in metafunc.fixturenames:
-        params.append(("device_name", _parse_test_option(metafunc.config, "--device", TEST_DEVICES)))
+        params.append(("device_name", _parse_test_option(metafunc.config, "--device", available_test_devices())))
     if "dtype_name" in metafunc.fixturenames:
         params.append(("dtype_name", _parse_test_option(metafunc.config, "--dtype", TEST_DTYPES)))
     if "optimizer_backend" in metafunc.fixturenames:
@@ -363,15 +417,115 @@ def _apply_device_skips(items) -> None:
             item.add_marker(skip_mps_autocast)
 
 
+def _deselect_cuda_device_assert_dtypes(config, items) -> None:
+    """Collect a CUDA test marked cuda_device_assert for one dtype of the matrix only."""
+    # A CUDA test marked cuda_device_assert costs a fresh process (about 4 seconds), and whether a value check fires
+    # does not depend on the dtype, so on CUDA it runs for one dtype of the matrix: float32 when selected, else the
+    # first one. Items without a dtype_name parameter, and other devices, keep every case.
+    selected_dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+    kept_dtype = "float32" if "float32" in selected_dtypes else selected_dtypes[0]
+    device_assert_items = []
+    for item in items:
+        params = getattr(getattr(item, "callspec", None), "params", {})
+        if (
+            params.get("device_name") == "cuda"
+            and params.get("dtype_name", kept_dtype) != kept_dtype
+            and item.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None
+        ):
+            device_assert_items.append(item)
+    if device_assert_items:
+        config.hook.pytest_deselected(items=device_assert_items)
+        device_assert_ids = {id(item) for item in device_assert_items}
+        items[:] = [item for item in items if id(item) not in device_assert_ids]
+        reporter = config.pluginmanager.get_plugin("terminalreporter")
+        if reporter is not None:
+            reporter.write_line(
+                f"deselected {len(device_assert_items)} cuda_device_assert test(s) on CUDA: each runs in a fresh "
+                f"process, so CUDA runs them for {kept_dtype} only.",
+                yellow=True,
+            )
+
+
+def _is_device_agnostic(item) -> bool:
+    """Return whether an accelerator-only run may deselect ``item`` because a CPU job runs the same code.
+
+    ``uses_accelerator`` keeps a test: it reaches an accelerator without the ``device`` fixture (a hard-coded
+    ``"cuda"`` tensor, a ``torch.cuda.is_available()`` guard, an MPS probe), so the accelerator leg is where it does
+    its work. Otherwise a test marked ``device_agnostic`` goes, and so does one whose fixture closure has no
+    ``device``: nothing hands it the selected device, so it repeats on the accelerator leg exactly what the CPU leg
+    did. An item without a fixture closure (not a Python test function) is kept.
+    """
+    if item.get_closest_marker("uses_accelerator") is not None:
+        return False
+    # A test that applies only to accelerators (``applies_to(devices=("cuda",))``) has nothing to do on the CPU leg.
+    if any(
+        mark.kwargs.get("devices") is not None and "cpu" not in mark.kwargs["devices"]
+        for mark in item.iter_markers(APPLIES_TO_MARKER)
+    ):
+        return False
+    if item.get_closest_marker("device_agnostic") is not None:
+        return True
+    fixturenames = getattr(item, "fixturenames", None)
+    if fixturenames is None:
+        return False
+    return "device" not in fixturenames and "device_name" not in fixturenames
+
+
+APPLIES_TO_MARKER = "applies_to"
+
+
+def _applies_to_selection(item, selected_devices: Sequence[str]) -> bool:
+    """Return whether every ``applies_to`` mark of ``item`` accepts its device, dtype and parameters.
+
+    ``@pytest.mark.applies_to(devices=..., dtypes=..., when=..., reason=...)`` declares the cases a test is written
+    for. ``devices`` and ``dtypes`` name the accepted ``device_name`` and ``dtype_name`` values; a test without the
+    ``device`` fixture is accepted when one of ``devices`` is in the run's ``--device`` selection. ``when`` receives
+    the item's parameters (``device_name``, ``dtype_name`` and every ``parametrize`` argument) as a dict and returns
+    whether the case applies. Marks stack: a class mark and a function mark must both accept.
+    """
+    params = getattr(getattr(item, "callspec", None), "params", {})
+    for mark in item.iter_markers(APPLIES_TO_MARKER):
+        devices = mark.kwargs.get("devices")
+        if devices is not None:
+            device_name = params.get("device_name")
+            if device_name is None:
+                if not set(devices) & set(selected_devices):
+                    return False
+            elif device_name not in devices:
+                return False
+        dtypes = mark.kwargs.get("dtypes")
+        if dtypes is not None and params.get("dtype_name") not in (None, *dtypes):
+            return False
+        when = mark.kwargs.get("when")
+        if when is not None and not when(params):
+            return False
+    return True
+
+
+def _deselect_inapplicable(config, items, selected_devices: Sequence[str]) -> None:
+    """Deselect the cases that an ``applies_to`` mark excludes, so they are not reported as skipped.
+
+    A case outside a test's declared device, dtype or parameter scope is not a test that could not run: there is
+    nothing to run. Deselecting it at collection keeps "skipped" for tests that could run in another environment
+    (a missing optional package, a torch release, ``--runslow``).
+    """
+    inapplicable = [item for item in items if not _applies_to_selection(item, selected_devices)]
+    if not inapplicable:
+        return
+    config.hook.pytest_deselected(items=inapplicable)
+    inapplicable_ids = {id(item) for item in inapplicable}
+    items[:] = [item for item in items if id(item) not in inapplicable_ids]
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
     # them once whenever CPU is part of the matrix instead of repeating the same work in every
     # accelerator job. --run-device-agnostic forces them back on, so an accelerator-only run can
     # still cover the whole suite when that is what the caller wants.
-    selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
+    selected_devices = _parse_test_option(config, "--device", available_test_devices())
     if "cpu" not in selected_devices and not config.getoption("--run-device-agnostic"):
-        device_agnostic_items = [item for item in items if item.get_closest_marker("device_agnostic") is not None]
+        device_agnostic_items = [item for item in items if _is_device_agnostic(item)]
         if device_agnostic_items:
             config.hook.pytest_deselected(items=device_agnostic_items)
             device_agnostic_ids = {id(item) for item in device_agnostic_items}
@@ -382,9 +536,29 @@ def pytest_collection_modifyitems(config, items):
             reporter = config.pluginmanager.get_plugin("terminalreporter")
             if reporter is not None:
                 reporter.write_line(
-                    f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
-                    "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
-                    "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    f"deselected {len(device_agnostic_items)} device-agnostic test(s): they are marked "
+                    "device_agnostic or take no device fixture, and CPU is not in --device. Pass "
+                    "--run-device-agnostic (or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    yellow=True,
+                )
+
+    _deselect_cuda_device_assert_dtypes(config, items)
+    _deselect_inapplicable(config, items, selected_devices)
+
+    # ONNX tests depend on the torch release (its exporters) and the onnx packages, not on the Python version or the
+    # test dtype, so CI runs them on one CPU leg per torch release and passes --skip-onnx to the others. They are
+    # recognised by name: a test whose node ID does not contain "onnx" keeps running everywhere.
+    if config.getoption("--skip-onnx"):
+        onnx_items = [item for item in items if "onnx" in item.nodeid.lower()]
+        if onnx_items:
+            config.hook.pytest_deselected(items=onnx_items)
+            onnx_ids = {id(item) for item in onnx_items}
+            items[:] = [item for item in items if id(item) not in onnx_ids]
+            reporter = config.pluginmanager.get_plugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line(
+                    f"deselected {len(onnx_items)} ONNX test(s) by --skip-onnx (KORNIA_TEST_SKIP_ONNX): another job "
+                    "runs them on this torch release.",
                     yellow=True,
                 )
 
@@ -408,7 +582,7 @@ def pytest_collection_modifyitems(config, items):
             items[:] = [item for item in items if id(item) not in conformance_ids]
 
     if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
-        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        devices = _parse_test_option(config, "--device", available_test_devices())
         dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
         if len(devices) != 1 or len(dtypes) != 1:
             raise pytest.UsageError("--xfail-known-failures requires exactly one --device and one --dtype")
@@ -540,10 +714,20 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_RUN_DEVICE_AGNOSTIC", "false").lower() == "true",
         help=(
-            "Run tests marked device_agnostic even when CPU is not part of the device matrix. "
+            "Run device-agnostic tests (marked device_agnostic, or taking no device fixture and not "
+            "marked uses_accelerator) even when CPU is not part of the device matrix. "
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--skip-onnx",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_SKIP_ONNX", "false").lower() == "true",
+        help=(
+            "Deselect every test whose node ID contains 'onnx'. CI passes it to the CPU jobs that share a torch "
+            "release with a job that runs them. (env: KORNIA_TEST_SKIP_ONNX)"
         ),
     )
     for promise in conformance_promise.PROMISES:
@@ -732,14 +916,12 @@ def _extract_failure_output(output: str) -> str:
 def _is_subprocess_isolated_test(item) -> bool:
     """Return True if this test should be run in a fresh subprocess.
 
-    Checks that:
-    - ``--isolate-half-precision`` is set
-    - we are NOT already inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var)
-    - the test is parametrised with a half-precision dtype on CUDA
+    Never inside such a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var), and only for a test parametrised with
+    ``device_name="cuda"``. There it is True for:
+    - a test marked ``cuda_device_assert``, which fails a device-side assert on purpose, on any dtype and option set
+    - with ``--isolate-half-precision``, a test parametrised with a half-precision dtype
     """
     if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
-        return False
-    if not item.config.getoption("--isolate-half-precision", default=False):
         return False
     callspec = getattr(item, "callspec", None)
     if callspec is None:
@@ -747,13 +929,17 @@ def _is_subprocess_isolated_test(item) -> bool:
     params = callspec.params
     if params.get("device_name") != "cuda":
         return False
+    if item.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None:
+        return True
+    if not item.config.getoption("--isolate-half-precision", default=False):
+        return False
     if params.get("dtype_name") in ("float16", "bfloat16"):
         return True
     return any(v in (torch.float16, torch.bfloat16) for v in params.values())
 
 
 def pytest_runtest_protocol(item, nextitem):
-    """Run float16/bfloat16 CUDA tests in a fresh subprocess for true isolation.
+    """Run float16/bfloat16 CUDA tests, and CUDA tests marked ``cuda_device_assert``, in a fresh subprocess.
 
     ``pytest-forked`` uses ``fork()``, which copies the parent's CUDA context handle
     into the child.  A device-side assert in the child corrupts the *same* underlying
@@ -790,7 +976,7 @@ def pytest_runtest_protocol(item, nextitem):
         f"--dtype={dtype_name}",
     ]
     # The parent already decided this node runs, so the child must not re-apply a selection rule
-    # and collect nothing: it is handed a single --device=cuda, under which the device_agnostic
+    # and collect nothing: it is handed a single --device=cuda, under which the device-agnostic
     # deselection would fire. Exit code 5 is reported back as an ordinary skip, which would hide
     # a test that never executed.
     cmd.append("--run-device-agnostic")
@@ -836,7 +1022,9 @@ def pytest_runtest_protocol(item, nextitem):
         return pytest.TestReport(
             nodeid=item.nodeid,
             location=item.location,
-            keywords=dict(item.keywords),
+            # Names only, as pytest's own reports carry them: the values include Mark objects, which xdist cannot
+            # serialize to send the report from a worker.
+            keywords=dict.fromkeys(item.keywords, 1),
             outcome=out,
             longrepr=rep_longrepr,
             when=when,
@@ -990,6 +1178,11 @@ def cuda_device_assert_guard(request):
         return
 
     if device.type != "cuda":
+        yield
+        return
+
+    # A marked test fails a device-side assert on purpose and checks it itself, in a process of its own.
+    if request.node.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None:
         yield
         return
 

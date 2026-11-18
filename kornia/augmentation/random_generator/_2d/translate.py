@@ -28,7 +28,7 @@ from kornia.augmentation.utils import (
     _range_bound,
 )
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["TranslateGenerator"]
 
@@ -105,9 +105,13 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_x_sampler is not None:
             translate_x = (
-                _adapted_rsampling(
-                    (batch_size,), self.translate_x_sampler, same_on_batch, generator=self._generator
-                ).to(device=_device, dtype=_dtype)
+                _to_device_nonblocking(
+                    _adapted_rsampling(
+                        (batch_size,), self.translate_x_sampler, same_on_batch, generator=self._generator
+                    ),
+                    _device,
+                    _dtype,
+                )
                 * width
             )
         else:
@@ -115,9 +119,13 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_y_sampler is not None:
             translate_y = (
-                _adapted_rsampling(
-                    (batch_size,), self.translate_y_sampler, same_on_batch, generator=self._generator
-                ).to(device=_device, dtype=_dtype)
+                _to_device_nonblocking(
+                    _adapted_rsampling(
+                        (batch_size,), self.translate_y_sampler, same_on_batch, generator=self._generator
+                    ),
+                    _device,
+                    _dtype,
+                )
                 * height
             )
         else:

@@ -134,10 +134,12 @@ class TestConnectedComponents(BaseTester):
         m[0, 0, 8, 7] = 1
         assert kornia.contrib.connected_components(m, num_iterations=3)[0, 0, 8, 7].item() == 8 * 31 + 7 + 1
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps",
+        reason="MPS has no float64; covered by test_mps_raises_past_2_pow_24_pixels",
+    )
     def test_ids_stay_exact_past_2_pow_24_pixels(self, device):
         # float32 ids merged indices 2**24 - 1 and 2**24 + 1 into 16777216.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64; covered by test_mps_raises_past_2_pow_24_pixels")
         m = torch.zeros(1, 1, 1, 2**24 + 8, device=device)
         m[..., 2**24 - 1] = 1
         m[..., 2**24 + 1] = 1
@@ -167,9 +169,8 @@ class TestConnectedComponents(BaseTester):
         assert out[0, 0, 7, 9].item() == 7 * 1000 + 9 + 1
         assert int((out > 0).sum()) == 2
 
+    @pytest.mark.applies_to(devices=("mps",), reason="MPS-only bound")
     def test_mps_raises_past_2_pow_24_pixels(self, device):
-        if device.type != "mps":
-            pytest.skip("MPS-only bound")
         with pytest.raises(ValueError, match="2\\*\\*24"):
             kornia.contrib.connected_components(torch.zeros(1, 1, 1, 2**24 + 8, device=device))
 

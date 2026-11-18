@@ -137,11 +137,13 @@ def _unwrap(v: Any) -> Any:
 
 
 class TensorWrapper:
-    """Wrapper around PyTorch tensors that tracks attribute and function usage.
+    """Wrap a tensor so torch ops on it return the wrapper's class when a shape rule allows, plain tensors otherwise.
 
-    This class provides a transparent wrapper around PyTorch tensors while
-    tracking which attributes and functions are accessed. Useful for debugging
-    and understanding tensor usage patterns.
+    ``w = TensorWrapper(tensor)`` wraps a tensor without copying it. Every torch function, tensor method, tensor
+    attribute and operator applied to ``w`` runs on the wrapped tensor and wraps the tensors of its result again, by the
+    rule below. ``w.data`` and ``w.unwrap()`` return the wrapped tensor itself. A wrapper is not a ``torch.Tensor``:
+    subclass it for a typed tensor, as :class:`~kornia.geometry.vector.Vector3`,
+    :class:`~kornia.geometry.vector.Vector2` and :class:`~kornia.geometry.vector.Scalar` do.
 
     Convention:
         - An attribute the wrapper does not define is looked up on the wrapped tensor, and a tensor value is
@@ -176,9 +178,13 @@ class TensorWrapper:
         - ``bool``, ``int``, ``float``, ``complex``, ``operator.index`` and ``len`` return Python values.
 
     Attributes:
-        _data: The underlying PyTorch tensor.
         used_attrs: Set of attribute names that have been accessed.
         used_calls: Set of functions that have been called.
+
+    See Also:
+        - :class:`~kornia.geometry.vector.Vector3`: a subclass for ``(*, 3)`` 3D vectors, with dot products.
+        - :class:`~kornia.geometry.vector.Scalar`: a subclass that adds no methods, for scalars of any shape.
+
     """
 
     __slots__ = ("_data", "used_attrs", "used_calls")

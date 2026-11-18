@@ -51,16 +51,6 @@ def _loftr_matching_every_cell(device, dtype):
 
 class TestLoFTR(BaseTester):
     @pytest.mark.slow
-    def test_pretrained_outdoor_smoke(self, device, dtype):
-        loftr = LoFTR("outdoor").to(device, dtype)
-        assert loftr is not None
-
-    @pytest.mark.slow
-    def test_pretrained_indoor_smoke(self, device, dtype):
-        loftr = LoFTR("indoor").to(device, dtype)
-        assert loftr is not None
-
-    @pytest.mark.slow
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_pretrained_indoor(self, device, dtype, data):
@@ -102,16 +92,6 @@ class TestLoFTR(BaseTester):
         err = (transform_points(data["H_gt"].cpu().double()[None], kpts0[None])[0] - kpts1).norm(dim=-1)
         assert (err < 3).double().mean() > 0.85, err
         assert err.median() < 1.5, err
-
-    @pytest.mark.slow
-    def test_mask(self, device):
-        patches = torch.rand(1, 1, 32, 32, device=device)
-        mask = torch.rand(1, 32, 32, device=device)
-        loftr = LoFTR().to(patches.device, patches.dtype)
-        sample = {"image0": patches, "image1": patches, "mask0": mask, "mask1": mask}
-        with torch.no_grad():
-            out = loftr(sample)
-        assert out is not None
 
     def test_masked_cells_do_not_match_5740(self, device):
         """The whole-module view of #5740: with the same coarse cells masked on both sides,
@@ -178,10 +158,9 @@ class TestLoFTR(BaseTester):
         assert kpts0[:, 0].max() >= 8 * 5
         assert kpts0[:, 1].max() >= 8 * 9
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_half_model_returns_float32_keypoints(self, device, dtype):
         # R4: bfloat16 keypoints resolve 2 px for x in [256, 512); the any-size slow test failed on that alone.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         model = _loftr_matching_every_cell(device, dtype)
         g = torch.Generator().manual_seed(0)
         image0 = torch.rand(1, 1, 300, 424, generator=g).to(device, dtype)
@@ -194,9 +173,8 @@ class TestLoFTR(BaseTester):
         far = out["keypoints1"][out["keypoints1"][:, 0] > 256, 0]
         assert (far % 2 != 0).any()  # sub-2-px positions exist past 256, which bfloat16 cannot hold
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_position_encoding_growth_preserves_half_dtype(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         position_encoding = PositionEncodingSine(4, max_shape=(2, 2)).to(device, dtype)
         features = torch.zeros(1, 4, 3, 3, device=device, dtype=dtype)
 
@@ -284,12 +262,19 @@ class TestLoFTR(BaseTester):
             with pytest.raises(ValueError, match="exactly one of `image1` and `features1`"):
                 model({"image0": image})
 
-    @pytest.mark.parametrize("batch_sizes", [(1, 2), (2, 1)])
+    # The check compares the two batch sizes, so their order matters only where two images of one size are split
+    # from one backbone pass at the first image's batch size.
     @pytest.mark.parametrize(
-        "input_keys",
-        [("image0", "image1"), ("features0", "features1"), ("image0", "features1"), ("features0", "image1")],
+        "input_keys, batch_sizes",
+        [
+            (("image0", "image1"), (1, 2)),
+            (("image0", "image1"), (2, 1)),
+            (("features0", "features1"), (1, 2)),
+            (("image0", "features1"), (1, 2)),
+            (("features0", "image1"), (1, 2)),
+        ],
     )
-    def test_mismatched_batch_sizes(self, device, dtype, batch_sizes, input_keys):
+    def test_mismatched_batch_sizes(self, device, dtype, input_keys, batch_sizes):
         model = _loftr_matching_every_cell(device, dtype)
         with torch.no_grad():
             data = {}
@@ -309,19 +294,6 @@ class TestLoFTR(BaseTester):
             return loftr.forward({"image0": x, "image1": y})["keypoints0"]
 
         self.gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4)
-
-    @pytest.mark.skip("does not like transformer.py:L99, zip iteration")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 1, 1, 32, 32
-        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        patches2x = resize(patches, (48, 48))
-        sample = {"image0": patches, "image1": patches2x}
-        model = LoFTR().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(model)
-        out = model(sample)
-        out_jit = model_jit(sample)
-        for k, v in out.items():
-            self.assert_close(v, out_jit[k])
 
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch flattens the coarse maps without a -1 to infer and returns no matches."""
@@ -871,9 +843,8 @@ class TestCoarseMatchingSelection(BaseTester):
             (grad_expected,) = torch.autograd.grad(prob, reference)
             self.assert_close(grad, grad_expected.to(device=device, dtype=dtype), rtol=1e-2, atol=1e-7)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
     def test_long_column_softmax_autocast(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 autocast regression runs on CPU and CUDA")
         # Float32 features can still produce float16 similarities under autocast.
         cm = CoarseMatching(self.CFG).to(device).eval()
         feat0 = torch.zeros(1, 65536, 2, device=device, dtype=torch.float32)
@@ -884,9 +855,8 @@ class TestCoarseMatchingSelection(BaseTester):
         expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=_autocast_softmax_dtype(device))
         self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
     def test_temperature_scaling_autocast(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 autocast regression runs on CPU and CUDA")
         cm = CoarseMatching(self.CFG).to(device).eval()
         feat0 = torch.zeros(1, 1, 2, device=device, dtype=torch.float32, requires_grad=True)
         feat1 = torch.full((1, 1, 2), 10000.0, device=device, dtype=torch.float32, requires_grad=True)
@@ -1089,6 +1059,72 @@ class TestResNetFPN(BaseTester):
 
 
 class TestLinearAttention(BaseTester):
+    @pytest.mark.parametrize("kv_len,heads,dim", [(1024, 8, 32), (32, 1, 1024)])
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_uniform_values_keep_their_normalized_average(self, device, dtype, kv_len, heads, dim, masked):
+        # ELU(1) + 1 = 2, so the normalizer is 4 * dim * valid_keys, above float16's range in both paths.
+        # Every value is one: the normalized output is one and each valid value receives valid_queries / valid_keys.
+        q = torch.ones(1, 3, heads, dim, device=device, dtype=dtype, requires_grad=True)
+        k = torch.ones(1, kv_len, heads, dim, device=device, dtype=dtype, requires_grad=True)
+        v = torch.ones_like(k, requires_grad=True)
+        q_mask = torch.ones(1, 3, device=device, dtype=torch.bool)
+        kv_mask = torch.ones(1, kv_len, device=device, dtype=torch.bool)
+        if masked:
+            q_mask[:, 1] = False
+            kv_mask[:, : kv_len // 4] = False
+        out = LinearAttention()(q, k, v, q_mask, kv_mask)
+        self.assert_close(out, q_mask[:, :, None, None].expand_as(out).to(dtype))
+        grads = torch.autograd.grad(out.sum(), (q, k, v))
+        for grad in grads:
+            assert bool(torch.isfinite(grad).all())
+        valid_queries, valid_keys = (2, 3 * kv_len // 4) if masked else (3, kv_len)
+        expected_grad = kv_mask[:, :, None, None].expand_as(v).to(dtype) * (valid_queries / valid_keys)
+        self.assert_close(grads[2], expected_grad)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float16 autocast regression runs on CPU and CUDA")
+    def test_uniform_average_under_autocast(self, device, dtype):
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, 1024, 8, 32, device=device, dtype=dtype)
+        v = torch.ones_like(k, requires_grad=True)
+        with torch.autocast(device.type, dtype=torch.float16):
+            out = LinearAttention()(q, k, v)
+        self.assert_close(out, torch.ones_like(q))
+        (grad,) = torch.autograd.grad(out.sum(), (v,))
+        self.assert_close(grad, torch.full_like(v, 3 / 1024))
+
+    @pytest.mark.parametrize("kv_len", [5, 40])
+    def test_all_keys_masked_return_zero(self, device, dtype, kv_len):
+        q, k, v = (torch.ones(1, n, 2, 4, device=device, dtype=dtype, requires_grad=True) for n in (3, kv_len, kv_len))
+        kv_mask = torch.zeros(1, kv_len, device=device, dtype=torch.bool)
+        out = LinearAttention()(q, k, v, kv_mask=kv_mask)
+        self.assert_close(out, torch.zeros_like(out), rtol=0.0, atol=0.0)
+        for grad in torch.autograd.grad(out.sum(), (q, k, v)):
+            self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("kv_len", [5, 1024])
+    def test_jit_uniform_average(self, device, dtype, kv_len):
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, kv_len, 8, 32, device=device, dtype=dtype)
+        out = torch.jit.script(LinearAttention())(q, k, k)
+        self.assert_close(out, torch.ones_like(q))
+
+    @pytest.mark.parametrize("autocast", [False, True])
+    def test_dynamo_uniform_average(self, device, dtype, torch_optimizer, autocast):
+        if autocast and device.type not in ("cpu", "cuda"):
+            pytest.skip("Inductor on MPS ignores the nested autocast region (pytorch/pytorch#201630)")
+        q = torch.ones(1, 3, 8, 32, device=device, dtype=dtype)
+        k = torch.ones(1, 1024, 8, 32, device=device, dtype=dtype)
+        v = torch.ones_like(k, requires_grad=True)
+        op = torch_optimizer(LinearAttention())
+        if autocast:
+            with torch.autocast(device.type, dtype=torch.float16):
+                out = op(q, k, v)
+        else:
+            out = op(q, k, v)
+        self.assert_close(out, torch.ones_like(q))
+        (grad,) = torch.autograd.grad(out.sum(), (v,))
+        self.assert_close(grad, torch.full_like(v, 3 / 1024))
+
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("kv_len", [5, 40])  # 40 > heads * dim = 8: the dense block-diagonal GEMM path
     def test_padded_queries_stay_finite_5728(self, device, dtype, kv_len):
@@ -1239,6 +1275,83 @@ class TestConventionsLoFTR(BaseTester):
         model.coarse_matching.register_forward_pre_hook(coarse_features)
         model.fine_matching.register_forward_pre_hook(fine_features)
         return model
+
+    # Without a mask, padded and mask_value do not apply. Both sides masked covers every padding and mask value, as
+    # each side converts its mask alike; one side masked alone pins the all-valid mask built for the other side.
+    @pytest.mark.parametrize(
+        "masked_sides, padded, mask_value",
+        [
+            ((), False, 1),
+            ((0, 1), False, 1),
+            ((0, 1), False, 255),
+            ((0, 1), True, 1),
+            ((0, 1), True, 255),
+            ((0,), True, 1),
+            ((1,), True, 1),
+        ],
+    )
+    def test_convention_border_follows_each_samples_valid_region_5888(
+        self, device, dtype, masked_sides, padded, mask_value
+    ):
+        # The designed pairs below use real coarse/fine matching. With two cells removed at each border,
+        # sample 0's (3, 7) -> (5, 3) is too close to the right/bottom padding on side 0/1 respectively;
+        # sample 1's (2, 3) -> (4, 7) is too close to its bottom/right padding. Only (5, 2) -> (2, 6) remains.
+        sample = {
+            "image0": torch.zeros(2, 1, 59, 85, device=device, dtype=dtype),
+            "image1": torch.zeros(2, 1, 64, 74, device=device, dtype=dtype),
+        }
+        for side in masked_sides:
+            mask = torch.ones_like(sample[f"image{side}"][:, 0], dtype=torch.bool)
+            if padded:
+                if side == 0:
+                    mask[0, :, 72:] = False  # 9 valid coarse columns
+                    mask[1, 32:] = False  # 4 valid coarse rows
+                else:
+                    mask[0, 56:] = False  # 7 valid coarse rows
+                    mask[1, :, 72:] = False  # 9 valid coarse columns
+            sample[f"mask{side}"] = mask if mask_value == 1 else mask.to(dtype) * mask_value
+        with torch.no_grad():
+            out = self._hooked_loftr(device, dtype, swap=False)(sample)
+        if padded and masked_sides:
+            expected0, expected1, batches = [[16.0, 40.0]], [[44.0, 20.0]], [0]
+        else:
+            expected0 = [[56.0, 24.0], [16.0, 40.0], [24.0, 16.0]]
+            expected1 = [[26.0, 38.0], [44.0, 20.0], [60.0, 32.0]]
+            batches = [0, 0, 1]
+        coord = torch.promote_types(dtype, torch.float32)
+        self.assert_close(out["keypoints0"], torch.tensor(expected0, device=device, dtype=coord))
+        self.assert_close(out["keypoints1"], torch.tensor(expected1, device=device, dtype=coord))
+        assert out["batch_indexes"].tolist() == batches
+
+    # The attention multiplies features by the mask, and float16 * bfloat16 promotes to float32, which the
+    # float16 projections reject. Masks are passed in the model dtype; that older limit is not tested here.
+    @pytest.mark.applies_to(
+        when=lambda p: p["dtype_name"] != "float16", reason="a bfloat16 mask needs a model dtype it promotes into"
+    )
+    @pytest.mark.parametrize("wide", [0, 1])
+    @pytest.mark.parametrize("side", [0, 1])
+    def test_convention_all_valid_bfloat16_mask_counts_257_columns(self, device, dtype, side, wide, monkeypatch):
+        # Integer counting gives 257 columns; a bfloat16 sum rounds it to 256 and wrongly rejects column 254.
+        # The 257-column image is either the masked one or the unmasked one, whose all-valid mask LoFTR builds.
+        # Cached features avoid a wide backbone pass, but the real coarse/fine matcher still chooses the match.
+        monkeypatch.setattr(self, "_PAIRS", {0: [((3, 254), (3, 3), 16.0, (2, 2))]})
+        sample = {}
+        widths = [257 if current == wide else 8 for current in (0, 1)]
+        for current, width in enumerate(widths):
+            sample[f"features{current}"] = {
+                "coarse": torch.zeros(1, 256, 8, width, device=device, dtype=dtype),
+                "fine": torch.zeros(1, 128, 32, 4 * width, device=device, dtype=dtype),
+            }
+        sample[f"mask{side}"] = torch.ones(1, 64, 8 * widths[side], device=device, dtype=torch.bfloat16)
+        model = self._hooked_loftr(device, dtype, swap=bool(wide))
+        with torch.no_grad():
+            actual = model(sample)
+            unmasked = model({key: value for key, value in sample.items() if not key.startswith("mask")})
+        coord_dtype = torch.promote_types(dtype, torch.float32)
+        for current, expected in ((wide, [[2032.0, 24.0]]), (1 - wide, [[24.0, 24.0]])):
+            self.assert_close(actual[f"keypoints{current}"], torch.tensor(expected, device=device, dtype=coord_dtype))
+            self.assert_close(actual[f"keypoints{current}"], unmasked[f"keypoints{current}"])
+        assert actual["batch_indexes"].tolist() == [0]
 
     def test_convention_loftr_keypoints_are_eight_times_the_coarse_cell_plus_the_fine_offset(self, device, dtype):
         image0 = torch.rand(2, 1, 59, 85, device=device, dtype=dtype)

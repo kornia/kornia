@@ -134,7 +134,7 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    hash1 = "fbd2207fe384be85897e105346ae3b85649adec2"
     BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
         f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
     )
@@ -723,6 +723,7 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
+        "CLIDD",
         "SIFTDescriptorFromPyramid",
         "SIFTFeatureScaleSpace",
     ]
@@ -756,6 +757,18 @@ def main():
             # upsample heatmap from preprocessed size back to original image size
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
             out = K.color.grayscale_to_rgb(out)
+            img_in = img_outdoor
+        elif fn_name == "CLIDD":
+            fn = K.feature.CLIDD.from_pretrained()
+            with torch.no_grad():
+                kpts = fn(img_outdoor)[0]["keypoints"]
+            # One mark per keypoint, at its nearest input pixel.
+            h, w = img_outdoor.shape[-2:]
+            xy = kpts.round().long()
+            heatmap = img_outdoor.new_zeros(1, 1, h * w)
+            index = xy[:, 1].clamp(0, h - 1) * w + xy[:, 0].clamp(0, w - 1)
+            heatmap[0, 0].scatter_(0, index, 1.0)
+            out = K.color.grayscale_to_rgb(F.max_pool2d(heatmap.view(1, 1, h, w), 5, stride=1, padding=2))
             img_in = img_outdoor
         elif fn_name == "SIFTFeatureScaleSpace":
             fn = K.feature.SIFTFeatureScaleSpace(num_features=2048, descriptor_backend="pyramid").eval()

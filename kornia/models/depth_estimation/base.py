@@ -111,7 +111,7 @@ class DepthEstimation(HFONNXComunnityModel):
                 raise ValueError(f"Unsupported depth type `{depth_type}`.")
             output.append(grayscale_to_rgb(depth_map))
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
+        return self._tensor_to_type(output, output_type)
 
     def save(
         self,

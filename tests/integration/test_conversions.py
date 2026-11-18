@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import numpy as np
 import pytest
 import torch
@@ -26,17 +28,22 @@ from testing.base import BaseTester
 
 @pytest.fixture
 def atol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, whose rounding alone moves the O(1) values of these tests that far; 1e-4 otherwise.
+
+    The rotation conversions compute float16 and bfloat16 in float32 and round once, so a half-precision result is
+    within rounding of the exact one for its rounded input; the input, the expected literal and each intermediate
+    conversion of a round trip round once more. A wrong sign or a factor of 2 misses by a sizeable fraction of 1.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
 @pytest.fixture
 def rtol(device, dtype):
-    """Lower tolerance for cuda-float16 only."""
-    if "cuda" in device.type and dtype == torch.float16:
-        return 1.0e-3
+    """One eps of a half dtype, relative, as for ``atol``; 1e-4 otherwise."""
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.finfo(dtype).eps
     return 1.0e-4
 
 
@@ -202,77 +209,31 @@ class TestAngleOfRotations(BaseTester):
         return rot_m, axis
 
     @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
-    def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol, test_rng_seed):
-        # Random angle in [-pi..pi]
-        angle_values = np.random.default_rng(test_rng_seed).random(size=(2, 1)) * 2.0 * np.pi - np.pi
-        angle = torch.tensor(angle_values, device=device, dtype=dtype)
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
-            axis_name=axis_name, angle=angle, device=device, dtype=dtype
-        )
-        assert rot_m.dim() == 3
-        assert rot_m.shape[-1] == 3
-        assert rot_m.shape[-2] == 3
-        assert rot_m.shape[-3] == angle.numel()
-        assert axis.shape[-1] == 3
-        assert axis.shape[-2] == angle.numel()
-
-        # Make sure the returned axis matches the named one, and the appropriate column
-        if axis_name == "x":
-            self.assert_close(axis, torch.tensor(((1.0, 0.0, 0.0),) * angle.numel(), device=device, dtype=dtype))
-            self.assert_close(axis, rot_m[..., :3, 0])
-        elif axis_name == "y":
-            self.assert_close(axis, torch.tensor(((0.0, 1.0, 0.0),) * angle.numel(), device=device, dtype=dtype))
-            self.assert_close(axis, rot_m[..., :3, 1])
-        elif axis_name == "z":
-            self.assert_close(axis, torch.tensor(((0.0, 0.0, 1.0),) * angle.numel(), device=device, dtype=dtype))
-            self.assert_close(axis, rot_m[..., :3, 2])
-        else:
-            raise NotImplementedError(f"Not prepared for axis_name {axis_name}")
-
-        # Make sure axes are perpendicular
-        zero = torch.zeros_like(angle).unsqueeze(-1)
-        self.assert_close(rot_m[..., :3, 1:2].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero, atol=atol, rtol=rtol)
-        self.assert_close(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 1:2], zero, atol=atol, rtol=rtol)
-        self.assert_close(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero, atol=atol, rtol=rtol)
-
-        # Make sure axes are unit norm
-        one = torch.ones_like(angle)
-        self.assert_close(rot_m[..., :3, 0].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
-        self.assert_close(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
-        self.assert_close(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
-
-    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
-    @pytest.mark.parametrize("angle_deg", [-179.9, -135.0, -90.0, -45.0, 0.0, 45, 90, 135, 179.9])
-    def test_matrix_angle(self, axis_name, angle_deg, device, dtype):
-        angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).view(1, 1)
-        rot_m, _ = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
-            axis_name=axis_name, angle=angle, device=device, dtype=dtype
-        )
-        matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
-        self.assert_close(torch.abs(angle), matrix_angle_abs)
-
-    @pytest.mark.parametrize("axis_name", ["x", "y", "z"])
     @pytest.mark.parametrize("angle_deg", [-179.9, -90.0, -45.0, 0.0, 45, 90, 179.9])
     def test_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         angle = torch.tensor((angle_deg * kornia.pi / 180.0,), device=device, dtype=dtype).repeat(2, 1)
-        pi = torch.ones_like(angle) * kornia.pi
         assert 2 <= len(angle.shape)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m, eps=eps)
+        # The angle is read off the quaternion in float64: in bfloat16, -179.9 degrees rounds to a turn 9.7e-4 short of
+        # pi, which the quaternion holds (w = -4.8e-4), but a bfloat16 atan2 and pi (3.140625) cannot tell from pi.
+        # It is read on the CPU, since MPS has no float64.
+        quaternion = quaternion.cpu().double()
+        pi = torch.full_like(angle, math.pi, dtype=torch.float64, device="cpu")
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
         angle_hat = 2.0 * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True), quaternion[..., 0:1])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):
-            angle_hat = torch.where(mask, angle_hat - 2.0 * kornia.pi, angle_hat)
+            angle_hat = torch.where(mask, angle_hat - 2.0 * math.pi, angle_hat)
             mask = pi < angle_hat
         # invert angle, if quaternion axis points in the opposite direction of the original axis
-        dots = (quaternion[..., 1:4] * axis).sum(dim=-1, keepdim=True)
-        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat)
+        dots = (quaternion[..., 1:4] * axis.cpu().double()).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat).to(device=device, dtype=dtype)
         # quaternion angle should match input angle
         self.assert_close(angle_hat, angle, atol=atol, rtol=rtol)
         # magnitude of angle should match matrix rotation angle

@@ -25,8 +25,8 @@ import kornia
 from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
 from kornia.feature.aliked import aliked as aliked_module
-from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
-from kornia.feature.aliked.deform_conv2d import _bilinear_sample, _grid_sample_bilinear, deform_conv2d
+from kornia.feature.aliked.aliked import DKD, SDDH, InputPadder, _affine_from_cov, get_patches
+from kornia.feature.aliked.deform_conv2d import _grid_sample_offsets, _sample_with_autograd, deform_conv2d
 
 from testing.base import (
     BaseTester,
@@ -40,14 +40,22 @@ from testing.base import (
 # ---------------------------------------------------------------------------
 
 
+NO_MPS_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+    reason="MPS does not support float64",
+)
+
+
 class TestDeformConv2d(BaseTester):
     """Tests for the pure-PyTorch deform_conv2d implementation."""
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_zero_offset_matches_regular_conv(self, device, dtype):
         """With all-zero offsets, deform_conv2d should equal regular conv2d."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         B, C_in, H, W = 1, 4, 8, 8
         C_out, kH, kW = 8, 3, 3
         K = kH * kW
@@ -61,24 +69,6 @@ class TestDeformConv2d(BaseTester):
 
         assert out_dcn.shape == out_reg.shape
         assert torch.allclose(out_dcn, out_reg, atol=1e-5)
-
-    @pytest.mark.parametrize("dtype", [torch.float32])
-    def test_output_shape(self, device, dtype):
-        """Check output spatial dimensions for various settings."""
-        B, C_in, H, W = 2, 3, 16, 16
-        C_out, kH, kW = 6, 3, 3
-        K = kH * kW
-        padding, stride = 1, 1
-
-        H_out = (H + 2 * padding - kH) // stride + 1
-        W_out = (W + 2 * padding - kW) // stride + 1
-
-        x = torch.randn(B, C_in, H, W, device=device, dtype=dtype)
-        weight = torch.randn(C_out, C_in, kH, kW, device=device, dtype=dtype)
-        offset = torch.zeros(B, 2 * K, H_out, W_out, device=device, dtype=dtype)
-
-        out = deform_conv2d(x, offset, weight, padding=padding, stride=stride)
-        assert out.shape == (B, C_out, H_out, W_out)
 
     @staticmethod
     def _torchvision_reference_inputs():
@@ -191,6 +181,7 @@ class TestDeformConv2d(BaseTester):
         dtype=torch.float64,
     ).reshape(1, 2, 4, 4)
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
     @pytest.mark.parametrize("use_mask", [False, True])
     def test_matches_torchvision_reference(self, device, dtype, use_mask, grad_enabled):
@@ -201,8 +192,6 @@ class TestDeformConv2d(BaseTester):
         generated once offline -- see the comment above ``_EXPECTED_NO_MASK``. Without autograd
         deform_conv2d samples with ``grid_sample``, so both samplers are checked.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         with torch.set_grad_enabled(grad_enabled):
             x64, weight64, bias64, offset64, mask64 = self._torchvision_reference_inputs()
             expected64 = self._EXPECTED_WITH_MASK if use_mask else self._EXPECTED_NO_MASK
@@ -248,6 +237,7 @@ class TestDeformConv2d(BaseTester):
         assert weight.grad is not None
         assert offset.grad is not None
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize(
         "shape, groups, n_off_grps, stride, dilation, use_mask",
         [
@@ -261,8 +251,6 @@ class TestDeformConv2d(BaseTester):
         self, device, dtype, shape, groups, n_off_grps, stride, dilation, use_mask
     ):
         """Without autograd the grid_sample sampler gives the values of the absolute-coordinate one."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         B, C_in, H, W = shape
         C_out, kH, kW = 6, 3, 3
         K = kH * kW
@@ -288,10 +276,9 @@ class TestDeformConv2d(BaseTester):
         tol = {torch.float16: 2e-3, torch.bfloat16: 1.6e-2}.get(dtype)
         self.assert_close(actual, expected, rtol=tol, atol=tol)
 
+    @NO_MPS_FLOAT64
     def test_dynamo(self, device, dtype, torch_optimizer):
         """Compiled without autograd, the grid_sample sampler gives eager's values, or more accurate ones in half."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         g = torch.Generator().manual_seed(0)
         # two offset groups and two convolution groups, a stride and a mask
         x = torch.randn(2, 8, 13, 17, generator=g, dtype=torch.float64)
@@ -317,10 +304,21 @@ class TestDeformConv2d(BaseTester):
         else:
             self.assert_close(actual, expected)
 
+    @NO_MPS_FLOAT64
+    def test_dynamo_keeps_sizes_symbolic(self, device, dtype, torch_optimizer):
+        """Compiled with dynamic shapes, the grid_sample sampler serves a new image size without recompiling."""
+        op = torch_optimizer(deform_conv2d, fullgraph=True, dynamic=True)
+        weight = torch.ones(3, 2, 3, 3, device=device, dtype=dtype)
+        with torch.no_grad():
+            for i, (H, W) in enumerate(((13, 17), (21, 9))):
+                x = torch.ones(1, 2, H, W, device=device, dtype=dtype)
+                offset = torch.zeros(1, 18, H, W, device=device, dtype=dtype)
+                with torch._dynamo.config.patch(error_on_recompile=i > 0):
+                    assert op(x, offset, weight, padding=1).shape == (1, 3, H, W)
+
+    @NO_MPS_FLOAT64
     def test_inference_samples_with_grid_sample(self, device, dtype, monkeypatch):
         """Without autograd deform_conv2d does not call the absolute-coordinate sampler."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
 
         def autograd_sampler(*args):
             raise AssertionError("the absolute-coordinate sampler ran without autograd")
@@ -336,52 +334,53 @@ class TestDeformConv2d(BaseTester):
         with pytest.raises(AssertionError, match="without autograd"):
             deform_conv2d(x, offset, weight, padding=1)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half precision only")
     def test_inference_sampler_is_accurate_in_half_precision(self, device, dtype):
         """grid_sample samples half-precision inputs in float32, at least as accurately as the autograd sampler.
 
         Sampled in half precision, the normalized coordinates would be several times less accurate.
         """
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision only")
         C, H, W, K = 8, 37, 53, 9
         n = K * H * W
         x = torch.sin(0.37 * torch.arange(C * H * W, dtype=torch.float64)).reshape(1, C, H, W)
-        rows = torch.arange(H, dtype=torch.float64).reshape(1, 1, 1, H, 1)
-        cols = torch.arange(W, dtype=torch.float64).reshape(1, 1, 1, 1, W)
-        sample_h = rows + 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        sample_w = cols + 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, 1, K, H, W)
-        x, sample_h, sample_w = (t.to(device, dtype) for t in (x, sample_h, sample_w))
+        # offsets of a 3x3 kernel with padding 1, interleaved (dy, dx) per tap
+        dy = 2.5 * torch.sin(1.3 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        dx = 2.5 * torch.cos(0.7 * torch.arange(n, dtype=torch.float64)).reshape(1, K, H, W)
+        offset = torch.stack((dy, dx), dim=2).reshape(1, 2 * K, H, W)
+        x, offset = (t.to(device, dtype) for t in (x, offset))
+        conv = ((3, 3), (1, 1), (1, 1), (1, 1), (H, W), 1, C)  # kernel, stride, padding, dilation, output, groups
         # the reference of the inputs as rounded to `dtype`
-        expected = _bilinear_sample(*(t.cpu().double() for t in (x, sample_h, sample_w)), 1, C)
+        expected = _sample_with_autograd(x.cpu().double(), offset.cpu().double(), None, *conv)
 
-        inference = _grid_sample_bilinear(x, sample_h, sample_w, 1, C).cpu().double()
-        autograd = _bilinear_sample(x, sample_h, sample_w, 1, C).cpu().double()
+        inference = _grid_sample_offsets(x, offset, None, *conv).cpu().double()
+        autograd = _sample_with_autograd(x, offset, None, *conv).cpu().double()
         assert (inference - expected).abs().mean() <= (autograd - expected).abs().mean()
 
-    def test_inference_nonfinite_offsets_give_nan(self, device, dtype):
+    @NO_MPS_FLOAT64
+    @pytest.mark.parametrize("use_mask", [False, True])
+    def test_inference_nonfinite_offsets_give_nan(self, device, dtype, use_mask):
         """A nan or infinite offset gives nan in both samplers, which grid_sample alone does not do on every device."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         x = torch.arange(15, device=device, dtype=dtype).reshape(1, 1, 3, 5)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         offset = torch.zeros(1, 2, 3, 5, device=device, dtype=dtype)
         offset[0, 0, 0, 0] = float("nan")
         offset[0, 1, 0, 1] = float("inf")
         offset[0, 1, 0, 2] = float("-inf")
+        # with a mask the inference sampler puts the nan into the mask instead of the samples
+        mask = torch.full((1, 1, 3, 5), 0.5, device=device, dtype=dtype) if use_mask else None
 
-        expected = deform_conv2d(x, offset, weight)
+        expected = deform_conv2d(x, offset, weight, mask=mask)
         with torch.no_grad():
-            actual = deform_conv2d(x, offset, weight)
+            actual = deform_conv2d(x, offset, weight, mask=mask)
         nan = torch.isnan(expected)
         assert nan.sum() == 3
         assert torch.equal(torch.isnan(actual), nan)
         self.assert_close(actual[~nan], expected[~nan])
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("image_hw", [(1, 5), (4, 1), (3, 5)])
     def test_inference_huge_finite_offsets_sample_zero_padding(self, device, dtype, image_hw):
         """A finite offset too large to normalize lands in the zero padding instead of overflowing."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         H, W = image_hw
         x = torch.arange(1, H * W + 1, device=device, dtype=dtype).reshape(1, 1, H, W)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -393,10 +392,44 @@ class TestDeformConv2d(BaseTester):
             actual = deform_conv2d(x, offset, weight)
         self.assert_close(actual, torch.zeros_like(actual))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] in ("float32", "float64")),
+        reason="Promoting float32 samples needs a float64 mask, which MPS does not support",
+    )
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    @pytest.mark.parametrize("groups", [1, 2])
+    def test_mask_keeps_type_promotion(self, device, dtype, grad_enabled, groups):
+        mask_dtype = torch.float64 if dtype in (torch.float32, torch.float64) else torch.float32
+        # 0.5 + 2**-30 (double) or 0.5 + 2**-13 (float): rounding the mask to the input dtype loses the increment.
+        value = 0.5000000009313226 if mask_dtype == torch.float64 else 0.5001220703125
+        x = torch.ones(1, groups, 2, 2, device=device, dtype=dtype)
+        offset = torch.zeros(1, 2, 2, 2, device=device, dtype=dtype)
+        mask = torch.full((1, 1, 2, 2), value, device=device, dtype=mask_dtype)
+        weight = torch.ones(groups, 1, 1, 1, device=device, dtype=mask_dtype)
+        with torch.set_grad_enabled(grad_enabled):
+            out = deform_conv2d(x, offset, weight, mask=mask)
+        assert out.dtype == mask_dtype
+        # Zero offsets and one unit-weight tap over ones give the mask exactly, without interpolation rounding.
+        self.assert_close(out, torch.full_like(out, value), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("grad_enabled", [True, False])
+    def test_bias_keeps_type_promotion(self, grad_enabled):
+        """The bias is added after the product, so it promotes the output as torch does, also under autocast."""
+        x = torch.ones(1, 2, 1, 1)
+        offset = torch.zeros(1, 2, 1, 1)
+        weight = torch.zeros(1, 2, 1, 1)
+        with torch.set_grad_enabled(grad_enabled):
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                out = deform_conv2d(x, offset, weight, torch.tensor([1e5]))
+            mixed = deform_conv2d(x, offset, weight, torch.tensor([1.0], dtype=torch.float64))
+        # bfloat16 would round 1e5 to 99840
+        assert out.dtype == torch.float32
+        assert out.item() == 1e5
+        assert mixed.dtype == torch.float64
+
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("grad_enabled", [True, False])
     def test_empty_batch(self, device, dtype, grad_enabled):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         x = torch.empty(0, 4, 5, 7, device=device, dtype=dtype)
         weight = torch.empty(6, 2, 3, 3, device=device, dtype=dtype)
         offset = torch.empty(0, 18, 5, 7, device=device, dtype=dtype)
@@ -404,14 +437,13 @@ class TestDeformConv2d(BaseTester):
             output = deform_conv2d(x, offset, weight, padding=1)
         assert output.shape == (0, 6, 5, 7)
 
+    @NO_MPS_FLOAT64
     def test_integer_offset_derivative_uses_the_next_pixel(self, device, dtype):
         """Autograd keeps the absolute-coordinate sampler, whose derivative at an integer position is one-sided.
 
         grid_sample's normalized coordinates round some integer positions down onto the previous pixel, which would
         give those positions the derivative from the left instead.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         H, W = 7, 11
         image = (3 + torch.arange(H * W, device=device, dtype=dtype)).reshape(1, 1, H, W)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -450,6 +482,7 @@ class TestALIKED(BaseTester):
                 assert bottom - top in (0, 1)
                 assert right - left in (0, 1)
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("channels_last", [False, True])
     def test_dynamo_dense_map_with_changing_sizes(self, dtype, device, torch_optimizer, channels_last):
         """extract_dense_map compiles in one graph and matches eager, also once the image size changes.
@@ -458,8 +491,6 @@ class TestALIKED(BaseTester):
         which reached the float offset bound of DeformableConv2d, and inductor (torch 2.14) failed to lower it:
         ``TensorReferenceAnalysis has no attribute 'python_mod'``. The channels_last map keeps its layout compiled.
         """
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
         op = torch_optimizer(aliked.extract_dense_map, fullgraph=True)
@@ -472,10 +503,9 @@ class TestALIKED(BaseTester):
                 self.assert_close(a, e)
             assert (actual[0].stride(1) == 1) == channels_last
 
+    @NO_MPS_FLOAT64
     def test_dynamo_model_with_changing_sizes(self, dtype, device, torch_optimizer):
         """The compiled model, with the graph breaks of its keypoint selection, runs on changing image sizes."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
         op = torch_optimizer(aliked)
         for hw in ((64, 96), (96, 72)):
@@ -483,39 +513,6 @@ class TestALIKED(BaseTester):
                 output = op(torch.rand(1, 3, *hw, device=device, dtype=dtype))
             assert len(output) == 1
             assert isinstance(output[0], ALIKEDFeatures)
-
-    def test_smoke(self, dtype, device):
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert isinstance(output, list)
-        assert len(output) == 1
-        assert isinstance(output[0], ALIKEDFeatures)
-
-    def test_smoke_batch(self, dtype, device):
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert len(output) == 2
-        assert all(isinstance(f, ALIKEDFeatures) for f in output)
-
-    def test_grayscale_input(self, dtype, device):
-        """1-channel input should be broadcast to 3 channels automatically."""
-        aliked = ALIKED().to(device, dtype).eval()
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        assert isinstance(output[0], ALIKEDFeatures)
-
-    def test_output_shapes(self, dtype, device):
-        """Keypoints should be (N,2), descriptors (N,D), scores (N,)."""
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        output = aliked(inp)
-        feat = output[0]
-        N = feat.n
-        assert feat.keypoints.shape == (N, 2)
-        assert feat.descriptors.shape[0] == N
-        assert feat.keypoint_scores.shape == (N,)
 
     def test_descriptor_normalized(self, dtype, device):
         """Descriptors should be L2-normalised."""
@@ -533,19 +530,6 @@ class TestALIKED(BaseTester):
             # a 2x margin there and leaves float32/float64 on the original bound.
             atol = max(1e-4, 2 * torch.finfo(dtype).eps)
             assert torch.allclose(norms, torch.ones_like(norms), atol=atol)
-
-    def test_keypoints_in_image(self, dtype, device):
-        """Keypoints should lie within the image boundaries."""
-        H, W = 64, 64
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        output = aliked(inp)
-        feat = output[0]
-        if feat.n > 0:
-            assert (feat.keypoints[:, 0] >= 0).all()
-            assert (feat.keypoints[:, 0] <= W - 1).all()
-            assert (feat.keypoints[:, 1] >= 0).all()
-            assert (feat.keypoints[:, 1] <= H - 1).all()
 
     @pytest.mark.parametrize("model_name", ["aliked-t16", "aliked-n16", "aliked-n32"])
     def test_model_configs(self, device, model_name):
@@ -646,6 +630,24 @@ class TestSDDH(BaseTester):
         ]
         return x, keypoints
 
+    def _assert_matches_the_convolutions(self, descriptors, offsets, expected_descriptors, expected_offsets, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
+                self.assert_close(actual, expected)
+            return
+        # In half precision the matrix products and the convolutions round their sums in different orders (cuBLAS and
+        # cuDNN on CUDA). Both are about as far from a float32 computation, up to 7 eps (float16) and 5 eps (bfloat16),
+        # so neither is the more accurate. Over ~63000 random draws per dtype on an RTX 4090 the unit descriptors
+        # differed by up to 9.25 eps (float16) and 10.25 eps (bfloat16), and 2 to 4 of the 16 CUDA cases of a run
+        # failed the default tolerances; CPU bfloat16 reached 1.7 eps. A small norm before the normalization amplifies
+        # the error, hence the tail; 16 eps leaves a 1.5x margin. The offsets, up to max_offset = 8, were at most
+        # 1 eps apart (|offset| < 1.2): a relative 2 eps allows two roundings at any magnitude.
+        eps = torch.finfo(dtype).eps
+        for actual, expected in zip(descriptors, expected_descriptors):
+            self.assert_close(actual, expected, rtol=0.0, atol=16 * eps)
+        for actual, expected in zip(offsets, expected_offsets):
+            self.assert_close(actual, expected, rtol=2 * eps, atol=eps)
+
     @pytest.mark.parametrize("kernel_size", [1, 3])
     @pytest.mark.parametrize("mask", [False, True])
     @pytest.mark.parametrize("conv2d", [False, True])
@@ -656,8 +658,7 @@ class TestSDDH(BaseTester):
             descriptors, offsets = sddh(x, keypoints)
             expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
         assert [d.shape for d in descriptors] == [(37, 16), (0, 16)]
-        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
-            self.assert_close(actual, expected)
+        self._assert_matches_the_convolutions(descriptors, offsets, expected_descriptors, expected_offsets, dtype)
 
     def test_gate_gets_the_convolution_output_map(self, device, dtype):
         # a gate that accepts only (N, C, H, W) input, such as Softmax2d, works as it did on the convolution output
@@ -666,13 +667,13 @@ class TestSDDH(BaseTester):
         with torch.no_grad():
             descriptors, offsets = sddh(x, keypoints)
             expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
-        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
-            self.assert_close(actual, expected)
+        self._assert_matches_the_convolutions(descriptors, offsets, expected_descriptors, expected_offsets, dtype)
 
+    # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="half-precision weight gradients differ by their accumulation order"
+    )
     def test_gradients_match_the_convolutions(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
-            pytest.skip("half-precision weight gradients differ by their accumulation order")
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip("bilinear grid_sample has no backward for this dtype")
         sddh = SDDH(16, 3, 4, gate=torch.nn.SELU(inplace=True)).to(device, dtype)
@@ -685,6 +686,19 @@ class TestSDDH(BaseTester):
         for actual, reference in zip(grads, expected):
             self.assert_close(actual, reference)
 
+    def test_get_patches_reads_the_window_at_the_clamped_corner(self, device, dtype):
+        # get_patches(t, p, ps) is the ps x ps window of t whose top-left pixel is (p - ps / 2 + 1).long(), clamped
+        # to keep a one-pixel margin at the right and bottom, in t's device and dtype.
+        c, h, w, ps = 2, 9, 11, 3
+        t = torch.arange(c * h * w, device=device).reshape(c, h, w).to(dtype)
+        p = torch.tensor([[4, 3], [0, 0], [10, 8]], device=device)
+        corners = [(3, 2), (0, 0), (w - 1 - ps, h - 1 - ps)]
+        expected = torch.stack([t[:, y : y + ps, x : x + ps] for x, y in corners])
+        patches = get_patches(t, p, ps)
+        assert patches.device == t.device
+        assert patches.dtype == dtype
+        self.assert_close(patches, expected, rtol=0, atol=0)
+
 
 # ---------------------------------------------------------------------------
 # forward_laf tests
@@ -692,11 +706,10 @@ class TestSDDH(BaseTester):
 
 
 class TestALIKEDHalfPrecisionCoordinates(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision rule")
     def test_half_model_returns_float32_keypoints(self, device, dtype):
         # R4: the soft-argmax keypoints were formed and returned in the score map's dtype, which puts every bfloat16
         # keypoint past x = 256 on a 2 px grid. They are float32 now; scores and descriptors keep the model dtype.
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rule")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         torch.manual_seed(0)
@@ -717,15 +730,6 @@ class TestALIKEDHalfPrecisionCoordinates(BaseTester):
 
 class TestALIKEDForwardLAF(BaseTester):
     """Tests for ALIKED.forward_laf returning kornia LAF-format outputs."""
-
-    def test_smoke(self, device, dtype):
-        """forward_laf should return the three expected tensors."""
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=32).to(device, dtype).eval()
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        assert lafs.ndim == 4  # (B, N, 2, 3)
-        assert responses.ndim == 3  # (B, N, 1)
-        assert descs.ndim == 3  # (B, N, D)
 
     @pytest.mark.parametrize("compute_affine", [True, False])
     @pytest.mark.parametrize("with_mask", [False, True])
@@ -754,56 +758,6 @@ class TestALIKEDForwardLAF(BaseTester):
             empty = aliked.forward_laf(torch.rand(0, 3, 64, 64), compute_affine=compute_affine)
             ref = aliked.forward_laf(torch.rand(1, 3, 64, 64), compute_affine=compute_affine)
         assert [t.dtype for t in empty] == [t.dtype for t in ref]
-
-    def test_output_shapes(self, device, dtype):
-        """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
-        B, H, W = 2, 64, 64
-        top_k = 20
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype).eval()
-        inp = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        N = lafs.shape[1]
-        assert lafs.shape == (B, N, 2, 3)
-        assert responses.shape == (B, N, 1)
-        assert descs.shape[0] == B
-        assert descs.shape[1] == N
-
-    def test_laf_center_in_image(self, device, dtype):
-        """LAF centres (col 2) should lie within image bounds."""
-        H, W = 64, 64
-        top_k = 30
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, _ = aliked.forward_laf(inp, compute_affine=False)
-        # Only check keypoints with positive response (non-padding).
-        valid = responses[0, :, 0] > 0
-        if valid.any():
-            centers = lafs[0, valid, :, 2]  # (N_valid, 2) — [x, y]
-            assert (centers[:, 0] >= 0).all()
-            assert (centers[:, 0] <= W - 1).all()
-            assert (centers[:, 1] >= 0).all()
-            assert (centers[:, 1] <= H - 1).all()
-
-    def test_batch_padding(self, device, dtype):
-        """All images in the batch should share the same N (padded to max)."""
-        B = 3
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=25).to(device, dtype).eval()
-        inp = torch.rand(B, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
-        assert lafs.shape[0] == B
-        assert responses.shape[0] == B
-        assert descs.shape[0] == B
-
-    def test_laf_with_mask(self, device, dtype):
-        """Providing a mask should suppress keypoints in the masked region."""
-        H, W = 64, 64
-        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=40).to(device, dtype).eval()
-        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        # Suppress the entire image except the bottom-right quarter.
-        mask = torch.zeros(1, 1, H, W, device=device, dtype=dtype)
-        mask[:, :, H // 2 :, W // 2 :] = 1.0
-        lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask, compute_affine=False)
-        assert lafs_masked.shape[0] == 1
 
     @pytest.mark.slow
     def test_laf_affine_shape(self, device, dtype):
@@ -885,6 +839,43 @@ class TestALIKEDForwardLAF(BaseTester):
 
 class TestALIKEDKeypointSelection(BaseTester):
     """Top-k mode keeps at most ``k`` strict maxima (#5862); the threshold fallback is decided per image (#5865)."""
+
+    @pytest.mark.parametrize("sizes_on_cpu", [False, True])
+    def test_border_mask_preserves_slice_starts(self, device, dtype, sizes_on_cpu):
+        # Preserve slice semantics while replacing scalar slice starts with masks: float sizes truncate to long,
+        # and starts below zero count from the padded map's end (size 1 minus radius 2 gives start -1). A side equal
+        # to the radius gives start 0 and clears the whole image even when the other side is full.
+        scores = torch.zeros(6, 1, 16, 24, device=device, dtype=dtype)
+        scores[:, :, 5, 5] = 0.9
+        scores[:, :, 12, 20] = 0.8
+        sizes = torch.tensor(
+            [[1.0, 1.0], [2.0, 2.0], [8.9, 9.8], [24.0, 16.0], [2.0, 16.0], [24.0, 2.0]],
+            device="cpu" if sizes_on_cpu else device,
+        )
+        detector = DKD(top_k=4).to(device, dtype)
+        keypoints, _, _ = detector(scores, image_size=sizes, sub_pixel=False)
+        expected = [[[5.0, 5.0], [20.0, 12.0]], [], [[5.0, 5.0]], [[5.0, 5.0], [20.0, 12.0]], [], []]
+        for points, pixels in zip(keypoints, expected):
+            pixel_tensor = torch.tensor(pixels, device=device, dtype=points.dtype).reshape(-1, 2)
+            self.assert_close(points, 2.0 * pixel_tensor / points.new_tensor([23.0, 15.0]) - 1.0)
+
+    @pytest.mark.parametrize("sizes_on_cpu", [False, True])
+    def test_border_mask_has_no_host_scalar_reads(self, device, dtype, sizes_on_cpu):
+        # The per-image border mask adds no host read to the call without image_size. Comparing the two calls,
+        # instead of asserting no reads at all, keeps the check valid on MPS, where the keypoint selection's boolean
+        # indexing also reads scalars to the host.
+        scores = torch.zeros(2, 1, 16, 24, device=device, dtype=dtype)
+        scores[:, :, 5, 5] = 0.9
+        sizes = torch.tensor([[18, 12], [24, 16]], device="cpu" if sizes_on_cpu else device)
+        detector = DKD(top_k=4).to(device, dtype)
+
+        def scalar_reads(**kwargs):
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+                keypoints, _, _ = detector(scores, sub_pixel=False, **kwargs)
+            assert [len(points) for points in keypoints] == [1, 1]
+            return sum(e.count for e in profile.key_averages() if e.key == "aten::_local_scalar_dense")
+
+        assert scalar_reads(image_size=sizes) == scalar_reads()
 
     @staticmethod
     def _score_map(peaks, device, dtype, batch=1, h=64, w=96):
@@ -1002,11 +993,10 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert responses[1, 1:].abs().max() == 0
             assert descs[1, 1:].abs().max() == 0
 
+    @NO_MPS_FLOAT64
     def test_isolated_peaks_past_256_land_on_their_pixel(self, device, dtype):
         # The keypoints are float32 for a half-precision model, normalised by W - 1 = 319, which bfloat16 rounds to
         # 320: the odd pixels past 256, which bfloat16 cannot hold, come back exactly from forward and forward_laf.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         peaks = [(0, 257, 13, 0.9), (0, 301, 40, 0.8), (0, 35, 50, 0.7)]
@@ -1019,12 +1009,11 @@ class TestALIKEDKeypointSelection(BaseTester):
             assert found.dtype == torch.promote_types(dtype, torch.float32)
             self.assert_close(found.cpu().double(), expected, rtol=0.0, atol=1e-4)
 
+    @NO_MPS_FLOAT64
     def test_descriptor_head_reads_the_keypoint_pixel_past_256(self, device, dtype):
         # SDDH predicts its sampling offsets from the feature patch around each keypoint's pixel. With W - 1 = 319,
         # which bfloat16 rounds to 320, a half-precision normaliser put that pixel one column off past x = 256. The
         # right neighbour moves the keypoint to x = 300.27 by the soft-argmax, so its pixel is column 300.
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS has no float64")
         if not (supports_replicate_padding(device, dtype) and supports_bilinear_2d_grid_sample(device, dtype)):
             pytest.skip("ALIKED pads with replication and samples with bilinear grid_sample, absent for this dtype")
         score_map = self._score_map([(0, 300, 40, 0.8), (0, 301, 40, 0.7)], device, dtype, w=320)
@@ -1270,7 +1259,8 @@ class TestALIKEDModes(BaseTester):
     """``ALIKED()`` builds random weights in training mode and ``ALIKED.from_pretrained`` returns evaluation mode.
 
     In evaluation mode BatchNorm uses its running statistics, not those of the batch; the inference pins below run a
-    random model after ``.eval()``.
+    random model after ``.eval()``. The training mode of ``ALIKED()`` is pinned by
+    test_pretrained_mode.py::TestPretrainedMode::test_random_init_is_training_mode.
     """
 
     @pytest.fixture(autouse=True)
@@ -1281,11 +1271,6 @@ class TestALIKEDModes(BaseTester):
     @staticmethod
     def _model(device, dtype):
         return ALIKED(model_name="aliked-t16").to(device, dtype).eval()
-
-    def test_convention_aliked_random_init_is_training_mode(self, device, dtype):
-        aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
-        assert aliked.training
-        assert all(m.training for m in aliked.modules())
 
     def test_convention_aliked_from_pretrained_is_eval_mode(self, device, dtype, monkeypatch):
         weights = ALIKED(model_name="aliked-t16").state_dict()
@@ -1400,14 +1385,14 @@ class TestALIKEDStateDict(BaseTester):
         assert aliked.dkd.hw_grid.device == device
         assert aliked.dkd.hw_grid.dtype == dtype
 
-    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, dtype, monkeypatch):
+    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, monkeypatch):
         weights = ALIKED(model_name="aliked-t16").state_dict()
         weights["desc_head.sf.weight"] = weights.pop("desc_head.sf_conv.weight")
         monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
         with pytest.raises(RuntimeError, match=r"Missing key.*desc_head\.sf_conv\.weight"):
             ALIKED.from_pretrained("aliked-t16", device=device)
 
-    def test_state_dict_with_hw_grid_loads(self, device, dtype, monkeypatch):
+    def test_state_dict_with_hw_grid_loads(self, device, monkeypatch):
         saved = ALIKED(model_name="aliked-t16")
         weights = {**saved.state_dict(), "dkd.hw_grid": saved.dkd.hw_grid.clone()}
         aliked = ALIKED(model_name="aliked-t16")

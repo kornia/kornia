@@ -391,13 +391,20 @@ class RANSAC(nn.Module):
           runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
           generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
           one. PROSAC sampling and DEGENSAC are not supported.
-        - Known defect: after compiled estimation on the CPU, a later CUDA process sharing the same inductor cache can
-          save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
-          segmentation fault on its first call. Use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
+        - PyTorch before 2.15: after compiled estimation on the CPU, a later CUDA process sharing the same inductor
+          cache can save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
+          segmentation fault on its first call. Reproduced on 2.14.0; PyTorch 2.15.0 saves a separate CUDA
+          program. On an older PyTorch, use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
           ``KORNIA_RANSAC_AOT=0`` to skip the artifact. Deleting only ``<TORCHINDUCTOR_CACHE_DIR>/kornia_ransac/``
           does not help: the next CUDA compile reads the same inductor cache and saves the CPU program again
           (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
         - A caller's autocast region does not change the estimate.
+        - On MPS with the default ``local_optimization="lm"``, ``"homography"``, ``"fundamental"``,
+          ``"fundamental_7pt"`` and ``"fundamental_8pt"`` need torch 2.7 or later. With ``local_optimization="dlt"``,
+          ``"homography"`` needs torch 2.10 or later, and ``"fundamental"``, ``"fundamental_7pt"``,
+          ``"fundamental_8pt"`` and ``"essential"`` need torch 2.14 or later, because their inlier refits use the
+          weighted eight-point solver. On an older torch, set ``PYTORCH_ENABLE_MPS_FALLBACK=1``; see
+          :ref:`MPS linear algebra <mps-linear-algebra>`.
 
     Args:
         model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt",

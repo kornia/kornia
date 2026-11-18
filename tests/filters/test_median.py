@@ -31,11 +31,6 @@ median_module = importlib.import_module("kornia.filters.median")
 
 
 class TestMedianBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
-        actual = median_blur(inp, 3)
-        assert isinstance(actual, torch.Tensor)
-
     @pytest.mark.parametrize("batch_size", [0, 1, 2])
     @pytest.mark.parametrize("channels", [0, 3])
     @pytest.mark.parametrize("kernel_size", [3, (5, 7)])

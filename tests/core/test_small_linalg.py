@@ -142,12 +142,6 @@ def _well_conditioned(n, device, dtype, batch=()):
 
 class TestAdjugateKernels(BaseTester):
     @pytest.mark.parametrize("n", [2, 3, 4])
-    def test_smoke(self, device, dtype, n):
-        adj, det = ADJUGATE[n](_well_conditioned(n, device, dtype))
-        assert adj.shape == (n, n)
-        assert det.shape == ()
-
-    @pytest.mark.parametrize("n", [2, 3, 4])
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, n, batch):
         adj, det = ADJUGATE[n](_well_conditioned(n, device, dtype, batch))
@@ -171,14 +165,13 @@ class TestAdjugateKernels(BaseTester):
         )
         self.assert_close(det, torch.linalg.det(x.to(ref_dtype)).to(dtype), atol=tol, rtol=tol)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_adjugate_identity_is_exact_on_integral_float64(self, device, n):
         # A @ adj(A) == det(A) * I holds identically. Small integers held in float64 make every
         # intermediate exactly representable, so this is an equality, not a tolerance -- and it
         # is the only check here that exercises the float64 path against something other than a
         # same-precision torch.linalg call, which would be no reference at all.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         values = torch.arange(1, n * n + 1, device=device, dtype=torch.float64).reshape(n, n)
         x = values + torch.eye(n, device=device, dtype=torch.float64) * (n * n)
         adj, det = ADJUGATE[n](x)
@@ -256,19 +249,13 @@ def _permanent_of_abs(x):
 
 class TestDetPermKernels(BaseTester):
     @pytest.mark.parametrize("n", [2, 3, 4])
-    def test_smoke(self, device, dtype, n):
-        det, perm = DET_PERM[n](_well_conditioned(n, device, dtype))
-        assert det.shape == ()
-        assert perm.shape == ()
-        assert det.dtype == dtype
-        assert perm.dtype == dtype
-
-    @pytest.mark.parametrize("n", [2, 3, 4])
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, n, batch):
         det, perm = DET_PERM[n](_well_conditioned(n, device, dtype, batch))
         assert det.shape == batch
         assert perm.shape == batch
+        assert det.dtype == dtype
+        assert perm.dtype == dtype
 
     @pytest.mark.parametrize("n", [2, 3, 4])
     def test_matches_linalg_det_and_the_permanent_of_the_absolute_values(self, device, dtype, n):
@@ -361,11 +348,6 @@ class _DetPermModule(torch.nn.Module):
 
 
 class TestInverse3x3Kernels(BaseTester):
-    def test_smoke(self, device, dtype):
-        x = _well_conditioned(3, device, dtype)
-        assert _inverse_3x3_cross(x).shape == (3, 3)
-        assert _inverse_3x3_scalar(x).shape == (3, 3)
-
     @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
     def test_cardinality(self, device, dtype, batch):
         x = _well_conditioned(3, device, dtype, batch)

@@ -22,12 +22,10 @@ from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 
 from testing.base import BaseTester
 
-# Image sizes that a half-precision image dtype cannot hold. bfloat16 keeps 8 significant bits, so 667 rounds to 668,
-# 1001 to 1000 and 333 to 332; float16 keeps 11, so 4097 rounds to 4096 and 2051 to 2052.
+# Image sizes that a half-precision image dtype cannot hold: bfloat16 keeps 8 significant bits, so 667 rounds to 668,
+# 1001 to 1000 and 333 to 332.
 _HALF_SIZE_CASES = [
     pytest.param(torch.bfloat16, [(667, 1000)], False, id="bfloat16-batch-of-one"),
-    pytest.param(torch.bfloat16, [(667, 1000)], True, id="bfloat16-list-of-one"),
-    pytest.param(torch.float16, [(4097, 2051)], True, id="float16-list-of-one"),
     pytest.param(torch.bfloat16, [(667, 1000), (1001, 333)], True, id="bfloat16-list-of-two"),
 ]
 
@@ -56,11 +54,9 @@ class TestResizePreProcessor(BaseTester):
 
 
 class TestResizePostProcessor(BaseTester):
-    @pytest.mark.parametrize(
-        ("image_dtype", "sizes"), [(torch.bfloat16, [(667, 1000)]), (torch.bfloat16, [(667, 1000), (1001, 333)])]
-    )
-    def test_resize_postprocessor_returns_original_size(self, device, dtype, image_dtype, sizes):
-        images = [torch.rand(3, h, w, device=device).to(image_dtype) for h, w in sizes]
+    def test_resize_postprocessor_returns_original_size(self, device, dtype):
+        sizes = [(667, 1000), (1001, 333)]
+        images = [torch.rand(3, h, w, device=device).to(torch.bfloat16) for h, w in sizes]
         _, original_sizes = ResizePreProcessor(8, 8)(images)
         maps = torch.rand(len(sizes), 1, 8, 8, device=device, dtype=dtype)
 

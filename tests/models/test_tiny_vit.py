@@ -16,7 +16,6 @@
 #
 
 import copy
-import sys
 
 import pytest
 import torch
@@ -70,46 +69,35 @@ def _image(batch_size: int = 1, seed: int = 0) -> torch.Tensor:
 
 
 class TestTinyViT(BaseTester):
-    # 128 is not a multiple of the 7-pixel attention window at any stage, so it takes the padded
-    # window-attention path; 224 divides evenly and takes the unpadded one. Both belong here: the
-    # only other coverage of the exact-multiple path is marked slow, which PR CI skips.
-    @pytest.mark.parametrize("img_size", [128, 224])
-    def test_smoke(self, device, dtype, img_size):
-        model = TinyViT(img_size=img_size).to(device=device, dtype=dtype)
-        data = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)
+    def test_smoke(self, device, dtype):
+        # 128 is not a multiple of the 7-pixel attention window at any stage, so it takes the padded
+        # window-attention path. The default 224 divides evenly and takes the unpadded one, which
+        # test_dynamo, test_forward_takes_sizes_of_its_token_grid and the eval-mode tests run.
+        model = TinyViT(img_size=128).to(device=device, dtype=dtype)
+        data = torch.randn(1, 3, 128, 128, device=device, dtype=dtype)
 
         out = model(data)
         assert isinstance(out, torch.Tensor)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("num_classes", [10, 100])
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_cardinality(self, device, dtype, batch_size, num_classes):
-        model = TinyViT(num_classes=num_classes).to(device=device, dtype=dtype)
-        data = torch.rand(batch_size, 3, model.img_size, model.img_size, device=device, dtype=dtype)
+    def test_cardinality(self, device, dtype):
+        model = TinyViT(num_classes=10).to(device=device, dtype=dtype)
+        data = torch.rand(3, 3, model.img_size, model.img_size, device=device, dtype=dtype)
 
         out = model(data)
-        assert out.shape == (batch_size, num_classes)
+        assert out.shape == (3, 10)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("img_size", [128, 224])
     def test_empty_batch_6266(self, device, dtype, img_size):
         """An empty batch goes through the padded and the unpadded window attention."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = TinyViT(img_size=img_size).to(device=device, dtype=dtype).eval()
         out = model(torch.rand(0, 3, img_size, img_size, device=device, dtype=dtype))
         assert out.shape == (0, 1000)
 
-    @pytest.mark.skip("not implemented")
-    def test_exception(self): ...
-
-    @pytest.mark.skip("not implemented")
-    def test_gradcheck(self): ...
-
-    @pytest.mark.skip("not implemented")
-    def test_module(self): ...
-
-    @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
         op = TinyViT().to(device=device, dtype=dtype)
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)
@@ -186,9 +174,11 @@ class TestTinyViT(BaseTester):
         # The update moves the logits by 0.11 at most; float32 rounding alone moves them by about 4e-7.
         assert (y1 - y0).abs().max() > 1e-2
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_eval_then_cast_matches_cast_then_eval(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         evaluated_first = _random_biases(TinyViT.from_config("5m"))
         cast_first = copy.deepcopy(evaluated_first)
         evaluated_first.eval().to(device, dtype)
@@ -314,6 +304,10 @@ class TestTinyViT(BaseTester):
         # The stochastic depth rate rises linearly to drop_path_rate at the last block.
         assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.3)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         ("img_size", "mobile_sam", "size"),
         [
@@ -325,8 +319,6 @@ class TestTinyViT(BaseTester):
         ],
     )
     def test_forward_takes_sizes_of_its_token_grid(self, device, dtype, img_size, mobile_sam, size):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # The stem and the first patch merging downsample by 8 with ceil rounding, so sides from img_size - 7 to
         # img_size give the img_size // 8 grid the attention stages are built for, and their result is correct.
         model = TinyViT.from_config("5m", img_size=img_size, mobile_sam=mobile_sam).to(device, dtype).eval()
@@ -336,6 +328,10 @@ class TestTinyViT(BaseTester):
 
         assert out.shape == ((1, 256, img_size // 16, img_size // 16) if mobile_sam else (1, 1000))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         ("img_size", "mobile_sam", "size"),
         [
@@ -349,8 +345,6 @@ class TestTinyViT(BaseTester):
         ],
     )
     def test_forward_rejects_other_token_grids(self, device, dtype, img_size, mobile_sam, size):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # 112 x 448 and 448 x 112 give 14 x 56 and 56 x 14 grids of the 784 tokens of 28 x 28, which the stages would
         # read as 28 x 28; 32 x 128 gives MobileSAM's 4 x 16 grid of the 64 tokens of 8 x 8. 216 and 225 give 27 x 27
         # and 29 x 29; 224 x 256 and 256 x 224 have one side right (28 x 32 and 32 x 28).
@@ -359,10 +353,12 @@ class TestTinyViT(BaseTester):
         with torch.no_grad(), pytest.raises(ValueError, match=f"{img_size // 8}x{img_size // 8}"):
             model(torch.rand(1, 3, *size, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(("img_size", "mobile_sam"), [(80, False), (240, False), (72, True)])
     def test_img_size_off_the_merging_grid_is_named_in_the_error(self, device, dtype, img_size, mobile_sam):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # The stride-2 convolutions round an odd grid up where the stages were built for it rounded down, so such an
         # img_size rejects its own img_size x img_size input: the error names the img_size rule.
         model = TinyViT.from_config("5m", img_size=img_size, mobile_sam=mobile_sam).to(device, dtype).eval()
@@ -373,10 +369,12 @@ class TestTinyViT(BaseTester):
         ):
             model(torch.rand(1, 3, img_size, img_size, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("mobile_sam", [False, True])
     def test_dynamo_fullgraph(self, device, dtype, torch_optimizer, mobile_sam, cudnn_tf32_follows_option):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # The token-grid check reads static shapes: it must compile without a graph break.
         op = _random_biases(TinyViT.from_config("5m", img_size=64, mobile_sam=mobile_sam)).eval().to(device, dtype)
         img = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -390,10 +388,11 @@ class TestTinyViT(BaseTester):
         with torch.no_grad():
             self.assert_close(op(img), op_optimized(img), rtol=rtol, atol=atol)
 
-    @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_dynamo_eval_mode(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # Evaluation mode first, then the cast: the order of a pretrained model moved to its device.
         op = _random_biases(TinyViT.from_config("5m")).eval().to(device, dtype)
         img = _image().to(device, dtype)

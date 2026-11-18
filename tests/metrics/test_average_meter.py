@@ -89,10 +89,9 @@ class TestConventionsAverageMeter(BaseTester):
         meter.sum.backward()
         self.assert_close(value.grad, torch.tensor(100.0, device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_later_update_preserves_a_wider_dtype(self, device):
         """A later float64 update widens the accumulator without rounding it away."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         meter = AverageMeter()
         meter.update(torch.tensor(2**24, device=device, dtype=torch.float32))
         meter.update(torch.tensor(1.0, device=device, dtype=torch.float64))

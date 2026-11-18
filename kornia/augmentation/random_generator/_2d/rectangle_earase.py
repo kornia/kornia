@@ -28,7 +28,7 @@ from kornia.augmentation.utils import (
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["RectangleEraseGenerator"]
 
@@ -115,8 +115,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.ratio, self.scale])
         images_area = height * width
         target_areas = (
-            _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch, generator=self._generator).to(
-                device=_device, dtype=_dtype
+            _to_device_nonblocking(
+                _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch, generator=self._generator),
+                _device,
+                _dtype,
             )
             * images_area
         )
@@ -144,7 +146,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
                 (batch_size,), self.ratio_sampler, same_on_batch, generator=self._generator
             )
 
-        aspect_ratios = aspect_ratios.to(device=_device, dtype=_dtype)
+        aspect_ratios = _to_device_nonblocking(aspect_ratios, _device, _dtype)
 
         # based on target areas and aspect ratios, rectangle params are computed
         heights = torch.round((target_areas * aspect_ratios) ** (1 / 2)).clamp(1.0, height)
@@ -153,11 +155,15 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         position_dtype = torch.promote_types(self.uniform_sampler.low.dtype, _dtype)
         if position_dtype in (torch.float16, torch.bfloat16):
             position_dtype = torch.float32
-        xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator).to(
-            device=_device, dtype=position_dtype
+        xs_ratio = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator),
+            _device,
+            position_dtype,
         )
-        ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator).to(
-            device=_device, dtype=position_dtype
+        ys_ratio = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch, generator=self._generator),
+            _device,
+            position_dtype,
         )
 
         xs = xs_ratio * (width - widths.to(dtype=position_dtype) + 1)

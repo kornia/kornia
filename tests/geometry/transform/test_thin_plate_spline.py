@@ -122,10 +122,9 @@ class TestBooksteinSpline(BaseTester):
         self.assert_close(kernel.sum(dim=1), torch.zeros_like(kernel[:, 0]))
         self.assert_close(kernel.mT @ src, torch.zeros_like(kernel[:, :2]))
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_convention_far_field_matches_scipy(self, device):
         # float64: the far field cancels r^2 log r terms of 1e7, which float32 cannot resolve.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         src = torch.tensor([_SRC], device=device, dtype=torch.float64)
         dst = torch.tensor([_DST], device=device, dtype=torch.float64)
         far = torch.tensor([_FAR], device=device, dtype=torch.float64)
@@ -200,9 +199,8 @@ class TestBooksteinSpline(BaseTester):
             with pytest.raises(RuntimeError, match="must have one dtype"):
                 kornia.geometry.transform.get_tps_transform(src.to(other), src)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_gradcheck_through_fit_and_warp(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         src = torch.tensor([_SRC], device=device, dtype=torch.float64)
         dst = torch.tensor([_DST], device=device, dtype=torch.float64)
         query = torch.tensor([_BETWEEN], device=device, dtype=torch.float64)
@@ -213,11 +211,10 @@ class TestBooksteinSpline(BaseTester):
 
         assert self.gradcheck(fit_and_warp, (src, dst), raise_exception=True)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_landmark_gradient_is_exact(self, device):
         # The warp of a landmark is its target whatever the landmark is: the zero-distance kernels on the diagonal of
         # the fit must contribute no gradient of their own, though the kernel's derivative diverges there.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         src = torch.tensor([_SRC], device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.tensor([_DST], device=device, dtype=torch.float64)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
@@ -228,13 +225,13 @@ class TestBooksteinSpline(BaseTester):
 
 class TestTransformParameters(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_smoke(self, batch_size, device, dtype):
+    def test_smoke(self, batch_size, device):
         src = torch.rand(batch_size, 4, 2, device=device)
         out = kornia.geometry.transform.get_tps_transform(src, src)
         assert len(out) == 2
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_no_warp(self, batch_size, device, dtype):
+    def test_no_warp(self, batch_size, device):
         src = torch.rand(batch_size, 5, 2, device=device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
         target_kernel = torch.zeros(batch_size, 5, 2, device=device)
@@ -244,7 +241,7 @@ class TestTransformParameters(BaseTester):
         self.assert_close(affine, target_affine, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_affine_only(self, batch_size, device, dtype):
+    def test_affine_only(self, batch_size, device):
         src = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [0.5, 0.5]]], device=device).repeat(
             batch_size, 1, 1
         )
@@ -253,7 +250,7 @@ class TestTransformParameters(BaseTester):
         self.assert_close(kernel, torch.zeros_like(kernel), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_exception(self, batch_size, device, dtype):
+    def test_exception(self, batch_size):
         src = torch.rand(batch_size, 5, 2).numpy()
         with pytest.raises(TypeError):
             assert kornia.geometry.transform.get_tps_transform(src, src)
@@ -267,17 +264,19 @@ class TestTransformParameters(BaseTester):
         expected = torch.tensor([0.0, 0.0, math.e**2], device=device, dtype=dtype)
         self.assert_close(_kernel_distance(d2), expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["grad_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float64])
     def test_kernel_distance_zero_gradient(self, device, grad_dtype):
-        if device.type == "mps" and grad_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         squared_distances = torch.tensor([0.0, 1.0], device=device, dtype=grad_dtype, requires_grad=True)
         grad = torch.autograd.grad(_kernel_distance(squared_distances).sum(), squared_distances)[0]
         assert torch.isfinite(grad).all()
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("requires_grad", [True, False])
-    def test_gradcheck(self, batch_size, device, dtype, requires_grad):
+    def test_gradcheck(self, batch_size, device, requires_grad):
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         src.requires_grad_(requires_grad)
@@ -287,7 +286,7 @@ class TestTransformParameters(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_jit(self, batch_size, device, dtype):
+    def test_jit(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         op = kornia.geometry.transform.get_tps_transform
         op_jit = torch.jit.script(op)
@@ -354,21 +353,21 @@ class TestKernelCentersNotice(BaseTester):
 
 class TestWarpPoints(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_smoke(self, batch_size, device, dtype):
+    def test_smoke(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         warp = kornia.geometry.transform.warp_points_tps(src, src, kernel, affine)
         assert warp.shape == src.shape
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_warp(self, batch_size, device, dtype):
+    def test_warp(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         warp = kornia.geometry.transform.warp_points_tps(src, src, kernel, affine)
         self.assert_close(warp, dst, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_exception(self, batch_size, device, dtype):
+    def test_exception(self, batch_size):
         src = torch.rand(batch_size, 5, 2)
         kernel = torch.zeros_like(src)
         affine = torch.zeros(batch_size, 3, 2)
@@ -403,7 +402,7 @@ class TestWarpPoints(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("requires_grad", [True, False])
-    def test_gradcheck(self, batch_size, device, dtype, requires_grad):
+    def test_gradcheck(self, batch_size, device, requires_grad):
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
@@ -414,7 +413,7 @@ class TestWarpPoints(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_jit(self, batch_size, device, dtype):
+    def test_jit(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         op = kornia.geometry.transform.warp_points_tps
@@ -531,7 +530,7 @@ class TestThinPlateSplineMixedDtypesAutocast(BaseTester):
 
 class TestWarpImage(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_smoke(self, batch_size, device, dtype):
+    def test_smoke(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         tensor = torch.rand(batch_size, 3, 32, 32, device=device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
@@ -539,7 +538,7 @@ class TestWarpImage(BaseTester):
         assert warp.shape == tensor.shape
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_warp(self, batch_size, device, dtype):
+    def test_warp(self, batch_size, device):
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device).repeat(
             batch_size, 1, 1
         )
@@ -562,7 +561,7 @@ class TestWarpImage(BaseTester):
         self.assert_close(warp, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_exception(self, batch_size, device, dtype):
+    def test_exception(self, batch_size):
         image = torch.rand(batch_size, 3, 32, 32)
         dst = torch.rand(batch_size, 5, 2)
         kernel = torch.zeros_like(dst)
@@ -596,12 +595,9 @@ class TestWarpImage(BaseTester):
         with pytest.raises(ValueError):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine_bad)
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="gradcheck requires float64")
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("gradcheck is unstable for warp_image_tps on CUDA")
-        if dtype != torch.float64:
-            pytest.skip("gradcheck requires float64")
 
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
@@ -624,7 +620,7 @@ class TestWarpImage(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_jit(self, batch_size, device, dtype):
+    def test_jit(self, batch_size, device):
         src, dst = _sample_points(batch_size, device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         image = torch.rand(batch_size, 3, 32, 32, device=device)
@@ -663,11 +659,13 @@ class TestWarpImage(BaseTester):
         out_border = kornia.geometry.transform.warp_image_tps(img, centers, kernel, affine, padding_mode="border")
         assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason="half-precision rounding of near-zero boundary values exceeds this test's atol",
+    )
     def test_convention_control_points_normalized_coords(self, device, dtype):
         # Control points live in the normalized frame selected by align_corners: at True, a
         # one-pixel shift of a W=4 image is 2 / (4 - 1) in corner-aligned coordinates.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision rounding of near-zero boundary values exceeds this test's atol")
 
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
         # 4 corners + center, normalized [-1, 1] coordinates (align_corners=True mapping).

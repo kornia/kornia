@@ -25,10 +25,6 @@ from testing.parametrized_tester import parametrized_test
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        torch.rand(1, 3, 4, 4, device=device, dtype=dtype),
-        torch.ones((3, 3), device=device, dtype=dtype),
-    ),
     cardinality_tests=[
         {
             "inputs": lambda device, dtype: (
@@ -59,14 +55,16 @@ from testing.parametrized_tester import parametrized_test
             "expected_shape": torch.Size([3, 2, 5, 5]),
         },
     ],
-    gradcheck_inputs=lambda device: (
-        torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64),
-        torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64),
-    ),
 )
 class TestTopHat(BaseTester):
     def setup_method(self) -> None:
         self.func = top_hat
+
+    def test_gradcheck(self, device):
+        tensor = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64)
+        # The kernel is a discrete membership mask, not a differentiable input.
+        kernel = torch.ones(3, 3, device=device, dtype=torch.float64)
+        self.gradcheck(lambda image: self.func(image, kernel), (tensor,))
 
     def test_kernel(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[

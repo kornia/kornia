@@ -34,18 +34,6 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
-    @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
-    @pytest.mark.parametrize(
-        "hd,shape", [(kornia.losses.HausdorffERLoss, (10, 10)), (kornia.losses.HausdorffERLoss3D, (10, 10, 10))]
-    )
-    def test_smoke_none(self, hd, shape, reduction, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
-        labels = (torch.rand(2, 1, *shape, dtype=dtype, device=device) * (num_classes - 1)).long()
-        loss = hd(reduction=reduction)
-
-        loss(logits, labels)
-
     @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
     def test_input_type_validation(self, loss_cls):
         with pytest.raises(TypeError) as errinf:
@@ -198,11 +186,12 @@ class TestHausdorffLoss(BaseTester):
         actual = loss(logits, labels)
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the weighted sum of ten erosions is not exact in half precision"
+    )
     def test_numeric_every_erosion_counts(self, device, dtype):
         # Random inputs as in test_numeric erode to zero after a few steps. These mismatches are 24 to 26 pixels wide
         # and stay nonzero through eleven erosions: k = 9 gives 17.93455078125 and k = 11 gives 22.183046875.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("the weighted sum of ten erosions is not exact in half precision")
         target = torch.zeros(2, 1, 64, 64, dtype=torch.long, device=device)
         target[0, :, 6:58, 6:58] = 1  # a 52 x 52 object
         fg = torch.zeros(2, 64, 64, device=device, dtype=dtype)
@@ -308,7 +297,7 @@ class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize(
         "hd,shape", [(kornia.losses.HausdorffERLoss, (5, 5)), (kornia.losses.HausdorffERLoss3D, (5, 5, 5))]
     )
-    def test_gradcheck(self, hd, shape, device, dtype):
+    def test_gradcheck(self, hd, shape, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, device=device)
         labels = (torch.rand(2, 1, *shape, device=device) * (num_classes - 1)).long()

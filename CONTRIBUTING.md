@@ -114,7 +114,7 @@ A docstring is how a reader, human or agent, decides which function to call, so 
 - **Module docstrings** open with a title line, then the conventions the module's functions share, then "Which function to use" (or "Which class to use" for a catalog of classes), grouped by task, one line each, naming every entry of the `__all__` of the namespace users import from as a role (`` :func:`name` ``) or a literal (``` ``name`` ```). A namespace without `__all__` (`kornia.geometry`, `kornia.geometry.transform`) catalogs its subpackages and main entry points instead; a defining file without `__all__` gets no catalog.
 - **Shapes** are literals such as ``` ``(B, 1, H, W)`` ```. Keep `:math:` for formulas, and for a tuple that is a value, such as a point's `` :math:`(X, Y, Z)` ``; write a value range as an interval, `` :math:`[0, 1]` ``.
 
-Enforcement, rollout tables, and reference-resolution rules are in [Docstring checks](TESTING.md#docstring-checks).
+Enforcement, scope, and reference-resolution rules are in [Docstring checks](TESTING.md#docstring-checks).
 
 ## Coding Standards
 

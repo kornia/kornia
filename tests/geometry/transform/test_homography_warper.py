@@ -258,7 +258,11 @@ class TestHomographyWarper(BaseTester):
         # instantiate warper and from source to destination
         warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
-        self.assert_close(patch_src[..., 1:], patch_dst[..., :-1], atol=1e-4, rtol=1e-4)
+        # A half dtype rounds the normalized shift 2 / (width - 1) (0.4 and 1 / 3 here) by up to eps / 2, which moves
+        # the samples by that fraction of a pixel, and rounds each sample by up to eps / 2 of a value below 1: the
+        # default half tolerances (one eps) hold both. A one-pixel misalignment is off by the pixel differences, ~0.3.
+        tol = None if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        self.assert_close(patch_src[..., 1:], patch_dst[..., :-1], atol=tol, rtol=tol)
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3)])
     def test_rotation(self, batch_shape, device, dtype):
@@ -348,14 +352,15 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
         self.assert_close(direct, patch_src)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range"
+    )
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
     def test_warp_grid_ignores_the_homography_scale(self, scale, align_corners, device, dtype):
         # A homography and any nonzero multiple of it describe the same warp. An absolute eps inside
         # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
         # sampled pixels depended on the matrix's arbitrary scale (#5761).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("these scales test the float32/float64 arithmetic range")
         height, width = 6, 6
         image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
         dst_homo_src = torch.tensor(
@@ -384,12 +389,13 @@ class TestHomographyWarper(BaseTester):
         assert torch.isfinite(scaled).all()
         self.assert_close(scaled, warp(image, dst_homo_src_norm, (height, width), **kwargs))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range"
+    )
     @pytest.mark.parametrize("scale", [1e-8, 1e-12, 1e12])
     def test_homography_warp_gradient_follows_the_projective_gauge(self, scale, device, dtype):
         # The scale is divided out with a detached factor, so the image is unchanged and the gradient
         # obeys the projective rule dL/d(s*H) = (dL/dH)/s rather than being silently rescaled (#5761).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("these scales test the float32/float64 arithmetic range")
         height, width = 6, 6
         image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
         dst_homo_src = torch.tensor(
@@ -644,14 +650,13 @@ class TestHomographyWarper(BaseTester):
         # Exact: the mixed call in the region and the float32 call outside it run the same arithmetic on one device.
         self.assert_close(actual, expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
     def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
         # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
         # of a 640 px grid to whole pixels (x = 257 sampled 256, 639 fell outside the image); a grid cached inside
         # autocast kept the error outside it. The pixel grid is warped with elementwise products, which autocast
         # leaves alone.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         width = 640
         image = torch.arange(width, device=device, dtype=torch.float32).expand(1, 1, 2, width)
         identity = eye_like(3, image)
@@ -668,14 +673,13 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(cached_inside, expected, rtol=0, atol=0)
         self.assert_close(expected[..., 1:-1], image[..., 1:-1])
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("autocast_dtype,width", [(torch.bfloat16, 640), (torch.float16, 4096)])
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("local_homography", [True, False])
     def test_pixel_coordinates_torchscript_autocast(
         self, autocast_dtype, width, align_corners, local_homography, device
     ):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         # A scripted call cannot leave a caller's autocast region, which would round the pixel coordinates of a
         # matrix product at these widths and sample padding even under an identity homography.
         image = torch.arange(width, device=device, dtype=torch.float32).expand(2, 1, 2, width)
@@ -782,12 +786,6 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     def test_dynamo(self, batch_size, align_corners, normalized_coordinates, device, dtype, torch_optimizer):
-        if (
-            device == torch.device("cpu")
-            and batch_size != 1
-            and kornia.core._compat.torch_version() in {"2.3.0", "2.3.1"}
-        ):
-            pytest.skip("Failing to compile batched inputs see pytorch/pytorch#126617")
 
         # generate input data
         height, width = 128, 64
@@ -931,13 +929,8 @@ class TestHomographyNormalizePrecision(BaseTester):
     nothing here, so do not "simplify" these numbers.
     """
 
-    @staticmethod
-    def _skip_if_no_float64(device):
-        if device.type == "mps":
-            pytest.skip("float64 is not supported on MPS")
-
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float64 is not supported on MPS")
     def test_normalize_homography_float64(self, device):
-        self._skip_if_no_float64(device)
         f64 = torch.float64
         dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
 
@@ -948,8 +941,8 @@ class TestHomographyNormalizePrecision(BaseTester):
         expected = dst_norm @ _torch_inverse_cast(src_norm)
         self.assert_close(out, expected, rtol=0.0, atol=1e-15)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float64 is not supported on MPS")
     def test_denormalize_homography_float64(self, device):
-        self._skip_if_no_float64(device)
         f64 = torch.float64
         dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
 
@@ -960,8 +953,8 @@ class TestHomographyNormalizePrecision(BaseTester):
         expected = _torch_inverse_cast(dst_norm) @ src_norm
         self.assert_close(out, expected, rtol=0.0, atol=1e-15)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="float64 is not supported on MPS")
     def test_normalize_homography3d_float64(self, device):
-        self._skip_if_no_float64(device)
         f64 = torch.float64
         dst_pix_trans_src_pix = torch.eye(4, device=device, dtype=f64)[None]
 
@@ -1034,17 +1027,12 @@ class TestHomographyWarper3D(BaseTester):
         )
         self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
 
-        norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
-            device=device, dtype=dtype
-        )
-        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
-
         # change output scale
         norm_homo = kornia.geometry.conversions.normalize_homography3d(
             dst_homo_src, input_shape, (input_shape[0] // 2, input_shape[1] * 2, input_shape[2] // 2)
         ).to(device=device, dtype=dtype)
         res = torch.tensor(
-            [[[4.0, 0.0, 0.0, 3.0], [0.0, 0.4667, 0.0, -0.5333], [0.0, 0.0, 3.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
+            [[[4.0, 0.0, 0.0, 3.0], [0.0, 7 / 15, 0.0, -8 / 15], [0.0, 0.0, 3.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
             device=device,
             dtype=dtype,
         ).repeat(batch_size, 1, 1)

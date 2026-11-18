@@ -198,15 +198,6 @@ class TestTverskyLoss(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual.cpu().double(), expected, rtol=1e-2, atol=1e-6)
 
-    def test_smoke(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
-
-        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
-        assert criterion(logits, labels) is not None
-
     def test_exception(self):
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
 
@@ -328,7 +319,7 @@ class TestTverskyLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)

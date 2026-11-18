@@ -24,9 +24,10 @@ from testing.base import BaseTester
 
 
 class TestMobileViT(BaseTester):
-    @pytest.mark.parametrize("B", [1, 2])
+    # The modes differ in widths and expansion only, and the batch passes through every mode's unfolding alike: each
+    # batch size runs with some mode rather than with every one.
+    @pytest.mark.parametrize(("mode", "B"), [("xxs", 2), ("xs", 1), ("s", 2)])
     @pytest.mark.parametrize("image_size", [(128, 128)])
-    @pytest.mark.parametrize("mode", ["xxs", "xs", "s"])
     @pytest.mark.parametrize("patch_size", [(2, 2)])
     def test_smoke(self, device, dtype, B, image_size, mode, patch_size):
         ih, iw = image_size

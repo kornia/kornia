@@ -126,7 +126,8 @@ class StereoCamera:
           ``cy`` or a zero or reversed baseline. Left and right matrices with different batch sizes raise a plain
           :class:`RuntimeError` instead, except a right batch of 1, which is paired with every left matrix. The
           method raises :class:`StereoException` for a disparity map that is not a floating ``(B, H, W, 1)``
-          tensor. An integer rig is accepted; its ``Q`` is in the default floating dtype.
+          tensor. An integer rig is accepted; its ``Q`` is in the default floating dtype, and a ``float16`` or
+          ``bfloat16`` rig's ``Q`` is ``float32``.
 
     .. warning::
         ``W = Q[3, 3] - fy * d`` with ``Q[3, 3] = fy * (cx_left - cx_right)``, so ``W = 0`` where the disparity
@@ -346,8 +347,11 @@ class StereoCamera:
         the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.
 
-        Integer camera matrices use the default floating-point dtype for Q; floating-point cameras
-        retain their dtype. The stored camera matrices and intrinsic parameter properties are unchanged.
+        Integer camera matrices use the default floating-point dtype for Q; ``float32`` and ``float64`` cameras
+        retain their dtype. ``float16`` and ``bfloat16`` rigs get a ``float32`` Q: a real rig's
+        ``Q[2, 3] = fx * fy * baseline`` exceeds the ``float16`` range (``-2.8e5`` for a 721 px focal length and a
+        0.54 m baseline), and reprojection then runs in ``float32`` and returns the disparity dtype. The stored
+        camera matrices and intrinsic parameter properties keep the rig's dtype.
 
         Return:
             The Q matrix of shape ``(B, 4, 4)``.
@@ -364,11 +368,17 @@ class StereoCamera:
         """
         floating_camera = self.rectified_left_camera.is_floating_point()
         dtype = self.dtype if floating_camera else torch.get_default_dtype()
-        # Promote before products and negation, which can overflow for narrow integer cameras.
-        fx, fy = self.fx.to(dtype), self.fy.to(dtype)
-        cx_left, cx_right, cy = self.cx_left.to(dtype), self.cx_right.to(dtype), self.cy.to(dtype)
-        baseline: torch.Tensor = -self.tx
-        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=dtype)
+        # Promote before products and negation, which can overflow for narrow integer cameras. Half-precision rigs
+        # keep Q in float32: Q[2, 3] = fx * fy * baseline of a real rig is past the float16 range, the partial
+        # product fx * fy overflows float16 from fx = fy = 256, and each product would round in the half dtype.
+        work = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        fx, fy = self.fx.to(work), self.fy.to(work)
+        cx_left, cx_right, cy = self.cx_left.to(work), self.cx_right.to(work), self.cy.to(work)
+        if work == dtype:
+            baseline: torch.Tensor = -self.tx
+        else:
+            baseline = self.rectified_right_camera[..., 0, 3].to(work) / fx
+        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=work)
         Q[:, 0, 0] = fy * baseline
         Q[:, 0, 3] = -fy * cx_left * baseline
         Q[:, 1, 1] = fx * baseline

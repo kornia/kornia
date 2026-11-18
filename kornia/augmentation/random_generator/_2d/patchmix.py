@@ -23,7 +23,7 @@ from torch.distributions import Beta, Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["PatchMixGenerator"]
 
@@ -107,14 +107,16 @@ class PatchMixGenerator(RandomGeneratorBase):
             # argsort to the identity, which pairs every image with itself and makes the whole
             # augmentation a no-op. `same_on_batch` shares the patch location below instead,
             # matching the convention that it does not equate batch-pairing indices.
-            mix_pairs: torch.Tensor = (
-                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False, generator=self._generator)
-                .to(device=_device, dtype=_dtype)
-                .argsort(dim=0)
-            )
+            mix_pairs: torch.Tensor = _to_device_nonblocking(
+                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False, generator=self._generator),
+                _device,
+                _dtype,
+            ).argsort(dim=0)
             # Sample lam from beta distribution
-            lam = _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch, generator=self._generator).to(
-                device=_device, dtype=_dtype
+            lam = _to_device_nonblocking(
+                _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch, generator=self._generator),
+                _device,
+                _dtype,
             )
 
             # Sample patch coordinates

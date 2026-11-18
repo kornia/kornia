@@ -6,7 +6,8 @@ kornia.io
 
 .. currentmodule:: kornia.io
 
-Package to load and save image data directly as tensors.
+Load image files into ``(C, H, W)`` tensors with :func:`load_image`, write tensors to JPEG, PNG or TIFF files with
+:func:`write_image`, and fetch the sample images of kornia's examples with :func:`get_sample_images`.
 
 The package is backed by `kornia-rs <https://github.com/kornia/kornia-rs>`_, a low-level computer vision
 library written in `Rust <https://www.rust-lang.org/>`_ that is installed automatically as a dependency of

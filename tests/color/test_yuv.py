@@ -127,22 +127,22 @@ def _round_trip_tol(dtype):
     return _ROUND_TRIP_TOL.get(dtype, (1e-4, 1e-4))
 
 
-def _skip_without_real_float64(device) -> None:
-    # The #4044 regression below hardcodes float64 and asserts a raw deviation at 1e-12, so it
-    # needs a backend that actually computes in float64. MPS has none at all, and XLA executes a
-    # float64 request as float32 (the ``tpu`` fixture in conftest is ``xm.xla_device()``), where
-    # the round trip bottoms out around 1e-7 -- five orders above the tolerance -- for a pure
-    # precision reason.
-    #
-    # XLA breaks the rest of the file's contract too, for an unrelated reason:
-    # ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
-    # ``(1e-2, 1e-2)`` whenever either tensor sits on an XLA device (see ``testing/base.py``). On
-    # TPU, then, no tolerance below asserts what it derives -- _FORWARD_ATOL's 5e-4 is loosened
-    # past a U/V row swap, and _ROUND_TRIP_TOL[bfloat16]'s (8e-3, 1.5e-2) is *tightened* below
-    # the error it budgets for. That is a harness-wide gap rather than a YUV one, and no TPU runs
-    # in CI, so nothing here is skipped for it.
-    if "xla" in device.type or device.type == "mps":
-        pytest.skip(f"{device.type} does not compute in float64")
+# The #4044 regression below hardcodes float64 and asserts a raw deviation at 1e-12, so it
+# needs a backend that actually computes in float64. MPS has none at all, and XLA executes a
+# float64 request as float32 (the ``tpu`` fixture in conftest is ``xm.xla_device()``), where
+# the round trip bottoms out around 1e-7 -- five orders above the tolerance -- for a pure
+# precision reason.
+#
+# XLA breaks the rest of the file's contract too, for an unrelated reason:
+# ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
+# ``(1e-2, 1e-2)`` whenever either tensor sits on an XLA device (see ``testing/base.py``). On
+# TPU, then, no tolerance below asserts what it derives -- _FORWARD_ATOL's 5e-4 is loosened
+# past a U/V row swap, and _ROUND_TRIP_TOL[bfloat16]'s (8e-3, 1.5e-2) is *tightened* below
+# the error it budgets for. That is a harness-wide gap rather than a YUV one, and no TPU runs
+# in CI, so nothing here is skipped for it.
+REAL_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: p["device_name"] not in ("mps", "tpu"), reason="this device does not compute in float64"
+)
 
 
 def _unit_atol(base: float, dtype: torch.dtype) -> float:
@@ -190,11 +190,6 @@ def _color_image(names, height, width):
 
 
 class TestRgbToYuv(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv(img)
-        assert isinstance(out, torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -294,12 +289,12 @@ class TestRgbToYuv(BaseTester):
             rtol=rtol,
         )
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -317,12 +312,6 @@ class TestRgbToYuv(BaseTester):
 
 
 class TestRgbToYuv420(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 6, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv420(img)
-        assert isinstance(out[0], torch.Tensor)
-        assert isinstance(out[1], torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -416,12 +405,12 @@ class TestRgbToYuv420(BaseTester):
         y, uv = kornia.color.rgb_to_yuv420(data)
         self.assert_close(kornia.color.yuv420_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv420
         op_jit = torch.jit.script(op)
         self.assert_close(op(img)[0], op_jit(img)[0])
@@ -443,12 +432,6 @@ class TestRgbToYuv420(BaseTester):
 
 
 class TestRgbToYuv422(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 6, device=device, dtype=dtype)
-        out = kornia.color.rgb_to_yuv422(img)
-        assert isinstance(out[0], torch.Tensor)
-        assert isinstance(out[1], torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -539,12 +522,12 @@ class TestRgbToYuv422(BaseTester):
         y, uv = kornia.color.rgb_to_yuv422(data)
         self.assert_close(kornia.color.yuv422_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv422
         op_jit = torch.jit.script(op)
         self.assert_close(op(img)[0], op_jit(img)[0])
@@ -566,10 +549,6 @@ class TestRgbToYuv422(BaseTester):
 
 
 class TestYuvToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -623,6 +602,7 @@ class TestYuvToRgb(BaseTester):
 
         self.assert_close(kornia.color.yuv_to_rgb(yuv), expected, atol=0.0, rtol=0.0)
 
+    @REAL_FLOAT64
     def test_convention_yuv_to_rgb_inverts_rgb_to_yuv_4044(self, device):
         # Regression for kornia#4044. Two cells, both in float64 so a failure cannot be a
         # precision artefact:
@@ -636,8 +616,6 @@ class TestYuvToRgb(BaseTester):
         #   torch.linalg.inv(torch.tensor(K, dtype=torch.float64))[2, 1]  # -> 2.0319996843434343
         # 1e-12 sits four orders above the float64 noise floor of a 3x3 matmul (1.1e-16 measured)
         # and nine orders below the 1.356e-3 defect being excluded.
-        _skip_without_real_float64(device)
-
         rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
         assert (rgb_back - rgb).abs().max().item() < 1e-12
@@ -652,12 +630,12 @@ class TestYuvToRgb(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_yuv(kornia.color.yuv_to_rgb(yuv)), yuv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.yuv_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -675,11 +653,6 @@ class TestYuvToRgb(BaseTester):
 
 
 class TestYuv420ToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        imgy = torch.rand(1, 4, 6, device=device, dtype=dtype)
-        imguv = torch.rand(2, 2, 3, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv420_to_rgb(imgy, imguv), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
     def test_cardinality(self, device, dtype, shape):
         shapey = list(shape)
@@ -795,14 +768,14 @@ class TestYuv420ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 2, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 2, 2, device=device, dtype=dtype)
         op = kornia.color.yuv420_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
@@ -822,11 +795,6 @@ class TestYuv420ToRgb(BaseTester):
 
 
 class TestYuv422ToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        imgy = torch.rand(1, 4, 6, device=device, dtype=dtype)
-        imguv = torch.rand(2, 4, 3, device=device, dtype=dtype)
-        assert isinstance(kornia.color.yuv422_to_rgb(imgy, imguv), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
     def test_cardinality(self, device, dtype, shape):
         shapey = list(shape)
@@ -938,14 +906,14 @@ class TestYuv422ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 4, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 4, 2, device=device, dtype=dtype)
         op = kornia.color.yuv422_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))

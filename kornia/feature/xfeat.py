@@ -39,7 +39,8 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import load_state_dict_from_url
-from kornia.core.utils import _l2_normalize, _samples_half_in_float32
+from kornia.core.ops import _copied_literal
+from kornia.core.utils import _l2_normalize, _samples_half_in_float32, _to_device_nonblocking
 from kornia.geometry.subpix import nms2d
 
 
@@ -286,7 +287,12 @@ class InterpolateSparse2d(nn.Module):
         called with ``align_corners=False``; this asymmetry matches the
         convention the pretrained weights were trained with.
         """
-        return 2.0 * (x / torch.tensor([W - 1, H - 1], device=x.device, dtype=x.dtype)) - 1.0
+        if torch.jit.is_scripting():
+            # TorchScript cannot compile _copied_literal (its literal annotation), so it keeps the host copy.
+            wh = _to_device_nonblocking(torch.tensor([W - 1, H - 1], dtype=x.dtype), x.device)
+        else:
+            wh = _copied_literal([W - 1, H - 1], device=x.device, dtype=x.dtype)
+        return 2.0 * (x / wh) - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.
@@ -509,7 +515,7 @@ class XFeat(nn.Module):
         """
         h, w = x.shape[-2:]
         _h, _w = self._resized_size(h, w)
-        cell = torch.tensor([w / _w / factor, h / _h / factor], device=mkpts.device)
+        cell = _copied_literal([w / _w / factor, h / _h / factor], device=mkpts.device, dtype=torch.get_default_dtype())
         return cell.expand(mkpts.shape[0], mkpts.shape[1], 2)
 
     @staticmethod
@@ -601,7 +607,9 @@ class XFeat(nn.Module):
             keep = match21[b][match12[b]] == idx0
             if cossim_max is not None:
                 keep = keep & (cossim_max[b] > min_cossim)
-            batched_matches.append((idx0[keep], match12[b][keep]))
+            # one read of the device: the matched rows, then a gather, where two boolean masks would read it twice
+            rows = torch.nonzero(keep).squeeze(-1)
+            batched_matches.append((rows, match12[b][rows]))
         return batched_matches
 
     def _extract_dense(self, x: torch.Tensor, top_k: Optional[int] = 8000) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -623,7 +631,8 @@ class XFeat(nn.Module):
         feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
         # The cell's top-left pixel of the resized image, at that pixel's centre in the input (#6537).
-        mkpts = (mkpts + 0.5) * torch.tensor([rw1, rh1], device=mkpts.device).view(1, -1) - 0.5
+        scale = _copied_literal([rw1, rh1], device=mkpts.device, dtype=torch.get_default_dtype())
+        mkpts = (mkpts + 0.5) * scale.view(1, -1) - 0.5
         return mkpts, feats
 
     def _extract_dualscale(
@@ -688,8 +697,8 @@ class XFeat(nn.Module):
         # to 0.026 px off).
         mkpts_0 = mkpts_0 + offsets * cell0 + 3.0 * cell0
         mkpts_1 = mkpts_1 + 3.0 * cell1
-        mask_good = conf > fine_conf
-        return torch.cat([mkpts_0[mask_good], mkpts_1[mask_good]], dim=-1)
+        # one boolean selection of the concatenated pairs reads the device once, where one per side read it twice
+        return torch.cat([mkpts_0, mkpts_1], dim=-1)[conf > fine_conf]
 
     # ------------------------------------------------------------------
     # Public API
@@ -749,17 +758,15 @@ class XFeat(nn.Module):
         feats = normalize(feats, dim=-1).to(x.dtype)
 
         # Each keypoint is a pixel of the resized image: report that pixel's centre in the input (#6537).
-        mkpts = (mkpts + 0.5) * torch.tensor([rw1, rh1], device=mkpts.device).view(1, 1, -1) - 0.5
+        scale = _copied_literal([rw1, rh1], device=mkpts.device, dtype=torch.get_default_dtype())
+        mkpts = (mkpts + 0.5) * scale.view(1, 1, -1) - 0.5
 
-        valid = scores > 0
-        return [
-            {
-                "keypoints": mkpts[b][valid[b]],
-                "scores": scores[b][valid[b]],
-                "descriptors": feats[b][valid[b]],
-            }
-            for b in range(B)
-        ]
+        results = []
+        for b in range(B):
+            # one read of the device per image, for the kept rows; boolean masks would read it once per tensor
+            rows = torch.nonzero(scores[b] > 0).squeeze(-1)
+            results.append({"keypoints": mkpts[b][rows], "scores": scores[b][rows], "descriptors": feats[b][rows]})
+        return results
 
     @torch.inference_mode()
     def detectAndComputeDense(

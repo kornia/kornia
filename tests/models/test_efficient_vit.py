@@ -21,7 +21,6 @@ import pickle
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_lt
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
 
@@ -58,21 +57,6 @@ class TestEfficientViT:
             if key.startswith("backbone."):
                 assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
 
-    def test_load_local_checkpoint(self, tmp_path, monkeypatch):
-        state_dict = self._fake_checkpoint()
-        checkpoint = tmp_path / "b1-local.pt"
-        torch.save(state_dict, checkpoint)
-        monkeypatch.setattr(
-            "kornia.models.efficient_vit.model.load_state_dict_from_url",
-            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
-        )
-
-        model = EfficientViT.from_config(EfficientViTConfig(checkpoint=str(checkpoint)))
-
-        for key, val in state_dict.items():
-            if key.startswith("backbone."):
-                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
-
     def test_load_local_checkpoint_expands_user(self, tmp_path, monkeypatch):
         # a ``~`` path must not reach the URL loader, which resolves a name already in the hub cache to that file
         state_dict = self._fake_checkpoint()
@@ -86,8 +70,9 @@ class TestEfficientViT:
 
         model = EfficientViT.from_config(EfficientViTConfig(checkpoint="~/b1-r224.pt"))
 
-        key = "input_stem.op_list.0.conv.weight"
-        assert torch.equal(model.backbone.state_dict()[key], state_dict[f"backbone.{key}"])
+        for key, val in state_dict.items():
+            if key.startswith("backbone."):
+                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
 
     def test_load_local_checkpoint_is_weights_only(self, tmp_path, monkeypatch):
         # a local file is unpickled with weights_only=True, as the URL path and ModelBase.load_checkpoint do
@@ -188,34 +173,33 @@ class TestEfficientViT:
         assert "stage_final" in out
         assert out["stage_final"].shape[-2:] == torch.Size([expected_resolution, expected_resolution])
 
-    @pytest.mark.parametrize("model_name", ["b3"])
-    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9)])
+    # One size per variant, as in test_smoke: no backbone branches on the input size.
+    @pytest.mark.parametrize(
+        "model_name,img_size,expected_resolution",
+        [("b3", 256, 8), ("l0", 224, 7), ("l1", 256, 8), ("l2", 288, 9), ("l3", 320, 10)],
+    )
     @pytest.mark.slow
     def test_smoke_slow(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
-    @pytest.mark.parametrize("model_name", ["b0", "b1", "b2"])
-    @pytest.mark.parametrize("img_size,expected_resolution", [(64, 2), (96, 3), (128, 4)])
+    # The final resolution is the input's over the stride of 32 whatever the width and depth, so each variant runs at
+    # one of the sizes, the odd 3 x 3 grid included, rather than every variant at every size.
+    @pytest.mark.parametrize("model_name,img_size,expected_resolution", [("b0", 128, 4), ("b1", 96, 3), ("b2", 64, 2)])
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("model_name", ["b0", "l0"])
     def test_empty_batch_6266(self, device, dtype, model_name: str):
         """An empty batch goes through the linear attention and keeps every stage's channels and size."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = getattr(vit, f"efficientvit_backbone_{model_name}")().to(device, dtype).eval()
         feats = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
         ref = model(torch.rand(1, 3, 64, 64, device=device, dtype=dtype))
         assert {k: v.shape[1:] for k, v in feats.items()} == {k: v.shape[1:] for k, v in ref.items()}
         assert all(v.shape[0] == 0 for v in feats.values())
-
-    @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="requires torch 2.0.0 or higher")
-    @pytest.mark.parametrize("model_name", ["l0", "l1", "l2", "l3"])
-    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9), (320, 10), (384, 12)])
-    def test_smoke_large(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
-        self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
     @pytest.mark.slow
     def test_load_pretrained(self, device, dtype):
@@ -226,16 +210,17 @@ class TestEfficientViT:
         feats = model(image)
         assert feats["stage_final"].shape == torch.Size([1, 256, 7, 7])
 
-    @pytest.mark.parametrize("model_type", ["b1", "b2", "b3"])
-    @pytest.mark.parametrize("resolution", [224, 256, 288])
-    def test_config(self, model_type, resolution):
-        config = EfficientViTConfig.from_pretrained(model_type, resolution)
-        assert model_type in config.checkpoint
-        assert str(resolution) in config.checkpoint
+    def test_config(self):
+        # One non-default pair: tests/core/test_weights_prefetch.py enumerates every type/resolution URL.
+        config = EfficientViTConfig.from_pretrained("b2", 256)
+        assert "b2" in config.checkpoint
+        assert "256" in config.checkpoint
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_forward_returns_a_dict(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = EfficientViT(backbone=vit.efficientvit_backbone_b0()).to(device, dtype).eval()
         image = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
 

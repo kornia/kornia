@@ -19,6 +19,8 @@ r"""Losses based on the divergence between probability distributions."""
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -53,13 +55,21 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
 def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # JSD(P || Q)
     output_dtype = torch.promote_types(p.dtype, q.dtype)
-    # Halving a positive subnormal in the input dtype can make the mixture zero.
+    # Keep half inputs in float32 for the logarithms and spatial reductions.
     if p.dtype in (torch.float16, torch.bfloat16):
         p = p.float()
     if q.dtype in (torch.float16, torch.bfloat16):
         q = q.float()
-    m = 0.5 * (p + q)
-    return (0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)).to(output_dtype)
+    # Form log(p + q) instead of halving a probability: even native float32/float64 Gaussian tails can
+    # round (p + q) / 2 to zero (#6723). Substitute shared zeros before log to keep their backward finite.
+    log_sum = (p + q).masked_fill((p == 0) & (q == 0), 1.0).log()
+    terms = []
+    for a, b in ((p, q), (q, p)):
+        # Match KL's empty-cell convention without hiding invalid probabilities in either input.
+        empty = (a == 0) & (b >= 0) & torch.isfinite(b)
+        log_ratio = (a.masked_fill(empty, 1.0).log() - log_sum + math.log(2.0)).masked_fill(empty, 0.0)
+        terms.append((a * log_ratio).sum((-2, -1)))
+    return (0.5 * (terms[0] + terms[1])).to(output_dtype)
 
 
 # TODO: add this to the main module
@@ -96,8 +106,8 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
           :func:`~kornia.losses.kl_div_loss_2d`; see its Convention block.
         - A cell that is zero in both inputs contributes zero, including to the gradients. Both inputs must have
           the same shape; unsupported reductions raise ``NotImplementedError``.
-        - Float16 and bfloat16 inputs are evaluated in float32 to avoid underflow of the mixture probabilities.
-          The returned loss retains the promoted input dtype.
+        - The mixture is evaluated in log space so halving a tiny probability cannot round it to zero.
+          Float16 and bfloat16 inputs are evaluated in float32. The returned loss retains the promoted input dtype.
 
     Args:
         pred: predicted heatmaps with shape ``(B, N, H, W)``.

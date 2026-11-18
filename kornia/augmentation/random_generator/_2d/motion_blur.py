@@ -23,7 +23,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase, Unifo
 from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["MotionBlurGenerator"]
 
@@ -132,6 +132,6 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
         return {
             "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),
-            "angle_factor": angle_factor.to(device=_device, dtype=_dtype),
-            "direction_factor": direction_factor.to(device=_device, dtype=_dtype),
+            "angle_factor": _to_device_nonblocking(angle_factor, _device, _dtype),
+            "direction_factor": _to_device_nonblocking(direction_factor, _device, _dtype),
         }

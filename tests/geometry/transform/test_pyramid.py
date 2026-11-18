@@ -903,7 +903,8 @@ class TestBuildLaplacianPyramid(BaseTester):
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("dynamic_sizes", [False, True])
-    @pytest.mark.parametrize("minimal_padding", [None, False, True])
+    # False pads by the power-of-two rule of None, which a capture runs without the shape comparison of the warning.
+    @pytest.mark.parametrize("minimal_padding", [None, True])
     @pytest.mark.parametrize("height,width,max_level", [(5, 8, 2), (96, 96, 3), (64, 96, 3), (480, 640, 1)])
     def test_export_does_not_warn(self, height, width, max_level, minimal_padding, dynamic_sizes, device, dtype):
         # torch 2.5.1 cannot capture `bool` of a symbolic size, which `is_powerof_two` takes, on the base as well.

@@ -42,9 +42,8 @@ def _pad_rb(x, size):
 
 class TestSam(BaseTester):
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
-    def test_smoke(self, device, model_type):
-        model = Sam.from_config(SamConfig(model_type)).to(device)
+    def test_smoke(self, device):
+        model = Sam.from_config(SamConfig("mobile_sam")).to(device)
         assert isinstance(model, Sam)
 
         img_size = model.image_encoder.img_size
@@ -55,12 +54,12 @@ class TestSam(BaseTester):
         model(data, [{"points": (keypoints, labels)}], False)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("N", [2, 5])
     @pytest.mark.parametrize("multimask_output", [True, False])
-    def test_cardinality(self, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
+        # The prompt count and the points per prompt take no branch; ``multimask_output`` picks the masks.
+        batch_size, N = 3, 2
         data = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
         model = Sam.from_config(SamConfig("vit_b"))
         model = model.to(device=device, dtype=dtype)
@@ -90,7 +89,8 @@ class TestSam(BaseTester):
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "vit_l", "vit_h", "mobile_sam"])
+    # vit_b is built by test_cardinality, mobile_sam by test_smoke.
+    @pytest.mark.parametrize("model_type", ["vit_l", "vit_h"])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
         model = model.to(device=device)
@@ -98,13 +98,7 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
         assert next(model.parameters()).device == device
 
-    @pytest.mark.skip(reason="Unsupported at moment -- the code is not tested for training and had `torch.no_grad`")
-    def test_gradcheck(self, device): ...
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self): ...
-
-    @pytest.mark.skip(reason="Needs to be reviewed.")
+    @pytest.mark.slow
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         img = torch.rand(1, 3, 128, 75, device=device, dtype=dtype)
@@ -196,9 +190,11 @@ class TestSam(BaseTester):
         with pytest.raises(BaseError, match="needs a model_type"):
             Sam.from_config(config)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_positional_encoding_keeps_float32_precision(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder: 256-dimensional embeddings, so 128 random frequencies drawn from N(0, 1).
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device)
@@ -219,9 +215,8 @@ class TestSam(BaseTester):
         self.assert_close(dense, reference((64, 64)).to(dtype))
         self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_positional_encoding_of_a_float64_model_is_float64(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device=device, dtype=torch.float64)
         pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator, dtype=torch.float64))
@@ -240,9 +235,11 @@ class TestSam(BaseTester):
         # The same encoding computed in float32 is off by about 1e-6, so the comparison above can tell them apart.
         assert (closed_form(torch.float32) - dense).abs().max() > 1e-8
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_prompt_encoder_shifts_to_pixel_centres_in_float32(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder for a 1024 x 1024 input and a 64 x 64 embedding (``_build_sam``).
         encoder = PromptEncoder(256, (64, 64), (1024, 1024), mask_in_chans=16).to(device=device, dtype=dtype)
         seen = []

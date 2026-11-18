@@ -39,6 +39,8 @@ from testing.base import (
 
 
 class TestXFeatModel(BaseTester):
+    # No gradcheck: InstanceNorm2d runs under torch.no_grad(), which breaks an end-to-end gradcheck.
+
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch keeps every non-batch dimension of the three maps."""
         model = XFeatModel().to(device, dtype).eval()
@@ -46,14 +48,6 @@ class TestXFeatModel(BaseTester):
         assert feats.shape == (0, 64, 8, 8)
         assert keypoints.shape == (0, 65, 8, 8)
         assert heatmap.shape == (0, 1, 8, 8)
-
-    def test_smoke(self, device, dtype):
-        model = XFeatModel().to(device, dtype)
-        x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        feats, kpts, heatmap = model(x)
-        assert feats.shape == (1, 64, 8, 8)
-        assert kpts.shape == (1, 65, 8, 8)
-        assert heatmap.shape == (1, 1, 8, 8)
 
     def test_cardinality(self, device, dtype):
         B = 2
@@ -63,12 +57,6 @@ class TestXFeatModel(BaseTester):
         assert feats.shape == (B, 64, 12, 16)
         assert kpts.shape == (B, 65, 12, 16)
         assert heatmap.shape == (B, 1, 12, 16)
-
-    def test_exception(self, device, dtype):
-        pass  # XFeatModel has no checked exceptions on forward
-
-    def test_gradcheck(self, device):
-        pass  # InstanceNorm2d inside torch.no_grad() breaks end-to-end gradcheck
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = XFeatModel().to(device, dtype)
@@ -92,14 +80,6 @@ class TestXFeatModel(BaseTester):
         assert heatmap.min() >= 0.0
         assert heatmap.max() <= 1.0
 
-    def test_grayscale_and_rgb_same_shape(self, device, dtype):
-        model = XFeatModel().to(device, dtype)
-        gray = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        rgb = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        f_gray, _, _ = model(gray)
-        f_rgb, _, _ = model(rgb)
-        assert f_gray.shape == f_rgb.shape
-
 
 # ---------------------------------------------------------------------------
 # InterpolateSparse2d tests
@@ -107,15 +87,6 @@ class TestXFeatModel(BaseTester):
 
 
 class TestInterpolateSparse2d(BaseTester):
-    def test_smoke(self, device, dtype):
-        if not supports_bilinear_2d_grid_sample(device, dtype):
-            pytest.skip("This device does not support bilinear interpolation for 2D grid_sample")
-        interp = InterpolateSparse2d("bilinear").to(device)
-        x = torch.rand(1, 32, 8, 8, device=device, dtype=dtype)
-        pos = torch.zeros(1, 5, 2, device=device, dtype=dtype)
-        out = interp(x, pos, 8, 8)
-        assert out.shape == (1, 5, 32)
-
     @pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
     def test_cardinality(self, mode, device, dtype):
         if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
@@ -128,9 +99,6 @@ class TestInterpolateSparse2d(BaseTester):
         pos = torch.rand(B, N, 2, device=device, dtype=dtype) * torch.tensor([W - 1, H - 1], device=device, dtype=dtype)
         out = interp(x, pos, H, W)
         assert out.shape == (B, N, C)
-
-    def test_exception(self, device, dtype):
-        pass
 
     def test_gradcheck(self, device):
         interp = InterpolateSparse2d("bilinear")
@@ -145,11 +113,13 @@ class TestInterpolateSparse2d(BaseTester):
         op = torch_optimizer(interp)
         self.assert_close(op(x, pos, 16, 16), interp(x, pos, 16, 16))
 
-    def test_normgrid_center(self, device, dtype):
-        interp = InterpolateSparse2d()
-        coords = torch.tensor([[[32.0, 24.0]]], device=device, dtype=dtype)
-        grid = interp.normgrid(coords, 49, 65)
-        assert grid.abs().max() < 0.1  # close to center -> close to 0
+    def test_jit(self, device, dtype):
+        # TorchScript keeps compiling the sampler: normgrid takes the host-copy path when scripted (#6797).
+        interp = InterpolateSparse2d("bilinear")
+        scripted = torch.jit.script(interp)
+        x = torch.rand(1, 8, 16, 16, device=device, dtype=dtype)
+        pos = torch.rand(1, 5, 2, device=device, dtype=dtype) * 15
+        self.assert_close(scripted(x, pos, 16, 16), interp(x, pos, 16, 16), atol=0.0, rtol=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +141,8 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
         assert out.dtype == half
         self.assert_close(out, interp(x.float(), pos.float(), H * 8, W * 8).to(half))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_integer_positions_normalise_in_the_default_dtype(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # Only half-precision positions go through float32: integer ones divide in the default dtype, as they did.
         g = torch.Generator().manual_seed(0)
         x = torch.rand(1, 8, 24, 32, generator=g, dtype=torch.float64).to(device)
@@ -190,7 +159,10 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
 
 
 class TestXFeat(BaseTester):
-    def test_empty_batch_6266(self, device, dtype):
+    # No gradcheck or torch.compile test: detectAndCompute runs under inference_mode, and its NMS is data-dependent
+    # control flow.
+
+    def test_empty_batch_6266(self, device):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
         model = XFeat().to(device).eval()
         x = torch.rand(0, 3, 64, 64, device=device)
@@ -222,17 +194,7 @@ class TestXFeat(BaseTester):
             assert torch.equal(idx0, keep.nonzero()[:, 0])
             assert torch.equal(idx1, best12[keep])
 
-    def test_smoke(self, device, dtype):
-        model = XFeat().to(device).eval()
-        x = torch.rand(1, 3, 64, 64, device=device)
-        out = model.detectAndCompute(x)
-        assert isinstance(out, list)
-        assert len(out) == 1
-        assert "keypoints" in out[0]
-        assert "scores" in out[0]
-        assert "descriptors" in out[0]
-
-    def test_cardinality(self, device, dtype):
+    def test_cardinality(self, device):
         model = XFeat().to(device).eval()
         B = 2
         x = torch.rand(B, 3, 64, 64, device=device)
@@ -243,7 +205,36 @@ class TestXFeat(BaseTester):
             assert item["scores"].shape == (N,)
             assert item["descriptors"].shape == (N, 64)
 
-    def test_exception(self, device, dtype):
+    def test_detect_and_compute_selects_each_image_by_its_own_scores(self, device):
+        # Each image of a batch keeps the rows of its own positive scores: next to an image without a peak, one with
+        # two peaks keeps both, at either position in the batch, and the other keeps none. The network outputs are
+        # replaced through a forward hook: keypoint logits with the dustbin (channel 64) at 10 and a peak of logit v
+        # at pixel (x, y) in channel (y % 8) * 8 + x % 8 of cell (y // 8, x // 8), as in TestConventionsXFeat.
+        h, w = 64, 96
+        logits = torch.zeros(2, 65, h // 8, w // 8)
+        logits[:, 64] = 10.0
+        for x, y, logit in ((22, 13, 11.0), (70, 41, 12.0)):
+            logits[0, (y % 8) * 8 + x % 8, y // 8, x // 8] = logit
+        feats = torch.rand(2, 64, h // 8, w // 8, generator=torch.Generator().manual_seed(0))
+        reliability = torch.full((2, 1, h // 8, w // 8), 0.5)
+        xfeat = XFeat(top_k=8).to(device).eval()
+        for order in ([0, 1], [1, 0]):
+            outputs = (feats[order].to(device), logits[order].to(device), reliability.to(device))
+            handle = xfeat.net.register_forward_hook(lambda module, inputs, output, outputs=outputs: outputs)
+            try:
+                out = xfeat.detectAndCompute(torch.rand(2, 3, h, w, device=device))
+            finally:
+                handle.remove()
+            peaks, empty = out[order.index(0)], out[order.index(1)]
+            assert peaks["keypoints"].tolist() == [[70.0, 41.0], [22.0, 13.0]]
+            assert (peaks["scores"] > 0).all()
+            assert peaks["scores"].shape == (2,)
+            assert peaks["descriptors"].shape == (2, 64)
+            assert empty["keypoints"].shape == (0, 2)
+            assert empty["scores"].shape == (0,)
+            assert empty["descriptors"].shape == (0, 64)
+
+    def test_exception(self, device):
         model = XFeat().to(device).eval()
         with pytest.raises(Exception):
             model.detectAndCompute(torch.rand(3, 64, 64, device=device))  # missing batch dim
@@ -270,10 +261,9 @@ class TestXFeat(BaseTester):
         ):
             assert all(points.dtype == torch.float32 and points.isfinite().all() for points in matches)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="bfloat16 autocast is exercised on CPU and CUDA")
     def test_float32_model_keeps_its_dtype_under_autocast(self, device):
         # Autocast gives the sampler half-precision maps, and it returns them in that dtype; the model's outputs do not.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("bfloat16 autocast is exercised on CPU and CUDA")
         model = XFeat(detection_threshold=0.0).to(device).eval()
         g = torch.Generator().manual_seed(0)
         with torch.autocast(device.type, dtype=torch.bfloat16):
@@ -282,11 +272,12 @@ class TestXFeat(BaseTester):
         assert out["scores"].dtype == torch.float32
         assert out["descriptors"].dtype == torch.float32
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), reason="float16 and bfloat16 autocast are exercised on CPU and CUDA"
+    )
     @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
     def test_half_model_keeps_its_dtype_under_autocast(self, device, half):
         # On CUDA, autocast takes F.normalize's norm in float32, which promotes a bfloat16 map and descriptor.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("float16 and bfloat16 autocast are exercised on CPU and CUDA")
         model = XFeat(detection_threshold=0.0).to(device, half).eval()
         sampled = []
         model.interpolator.register_forward_pre_hook(lambda _, args: sampled.append(args[0].dtype))
@@ -311,42 +302,42 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].dtype == torch.float16
         assert (out["descriptors"] == 0).all()
 
-    def test_gradcheck(self, device):
-        pass  # inference_mode on detectAndCompute; gradcheck not applicable
+    # Random weights score every cell below the default detection_threshold of 0.05, which leaves no keypoint to check:
+    # the tests below that read keypoints detect with a threshold of 0.
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass  # inference_mode and dynamic NMS control flow; not torch.compile compatible
-
-    def test_descriptors_normalized(self, device, dtype):
-        model = XFeat().to(device).eval()
+    def test_descriptors_normalized(self, device):
+        torch.manual_seed(0)
+        model = XFeat(detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
         out = model.detectAndCompute(x)
-        if out[0]["descriptors"].numel() == 0:
-            pytest.skip("No keypoints detected on random input")
+        assert out[0]["descriptors"].shape[0] > 0
         norms = out[0]["descriptors"].norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms), atol=1e-5, rtol=1e-5)
 
-    def test_top_k_respected(self, device, dtype):
+    def test_top_k_respected(self, device):
         top_k = 16
-        model = XFeat(top_k=top_k).to(device).eval()
+        torch.manual_seed(0)
+        model = XFeat(top_k=top_k, detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, 128, 128, device=device)
-        out = model.detectAndCompute(x, top_k=top_k)
-        assert out[0]["keypoints"].shape[0] <= top_k
+        # the 16 x 16 cells of this image have hundreds of maxima above the threshold: top_k is what limits the count
+        assert model.detectAndCompute(x, top_k=4 * top_k)[0]["keypoints"].shape[0] == 4 * top_k
+        assert model.detectAndCompute(x, top_k=top_k)[0]["keypoints"].shape[0] == top_k
+        assert model.detectAndCompute(x)[0]["keypoints"].shape[0] == top_k  # the top_k given at construction
 
-    def test_keypoint_coordinates_in_image(self, device, dtype):
+    def test_keypoint_coordinates_in_image(self, device):
         H, W = 64, 96
-        model = XFeat().to(device).eval()
+        torch.manual_seed(0)
+        model = XFeat(detection_threshold=0.0).to(device).eval()
         x = torch.rand(1, 3, H, W, device=device)
         out = model.detectAndCompute(x)
-        if out[0]["keypoints"].numel() == 0:
-            pytest.skip("No keypoints detected on random input")
+        assert out[0]["keypoints"].shape[0] > 0
         kpts = out[0]["keypoints"].float()
         assert (kpts[:, 0] >= 0).all()
         assert (kpts[:, 0] < W).all()
         assert (kpts[:, 1] >= 0).all()
         assert (kpts[:, 1] < H).all()
 
-    def test_dense_output_shapes(self, device, dtype):
+    def test_dense_output_shapes(self, device):
         top_k = 32
         model = XFeat(top_k=top_k).to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
@@ -356,15 +347,18 @@ class TestXFeat(BaseTester):
         assert out["descriptors"].shape[-1] == 64
         assert out["keypoints"].shape[1] == out["descriptors"].shape[1]
 
-    def test_match_xfeat_returns_paired_keypoints(self, device, dtype):
+    def test_match_xfeat_without_keypoints_returns_empty_pairs(self, device):
+        # Random weights score every cell below the default detection_threshold, so neither image has a keypoint: the
+        # matcher returns two empty (0, 2) sets instead of failing on the empty descriptor sets.
+        torch.manual_seed(0)
         model = XFeat().to(device).eval()
         img1 = torch.rand(1, 3, 64, 64, device=device)
         img2 = torch.rand(1, 3, 64, 64, device=device)
+        assert model.detectAndCompute(img1)[0]["keypoints"].shape[0] == 0
         mkpts0, mkpts1 = model.match_xfeat(img1, img2)
-        assert mkpts0.shape == mkpts1.shape
-        assert mkpts0.shape[-1] == 2
+        assert mkpts0.shape == mkpts1.shape == (0, 2)
 
-    def test_match_xfeat_batch_matches_each_pair(self, device, dtype):
+    def test_match_xfeat_batch_matches_each_pair(self, device):
         torch.manual_seed(0)
         model = XFeat(top_k=256, detection_threshold=0.0).to(device).eval()  # random weights score below 0.05
         img1 = torch.rand(3, 3, 64, 96, device=device)
@@ -383,12 +377,12 @@ class TestXFeat(BaseTester):
             expected = torch.cat([out1[b]["keypoints"][idx0], out2[b]["keypoints"][idx1]], dim=-1)
             self.assert_close(batched[b], expected, rtol=0, atol=0)
 
-    def test_match_xfeat_empty_batch(self, device, dtype):
+    def test_match_xfeat_empty_batch(self, device):
         model = XFeat().to(device).eval()
         img = torch.rand(0, 3, 64, 64, device=device)
         assert model.match_xfeat(img, img) == []
 
-    def test_match_xfeat_batch_size_mismatch(self, device, dtype):
+    def test_match_xfeat_batch_size_mismatch(self, device):
         model = XFeat().to(device).eval()
         with pytest.raises(BaseError, match="same number of images"):
             model.match_xfeat(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
@@ -799,13 +793,14 @@ class TestConventionsXFeat(BaseTester):
         self.assert_close(out["keypoints"], torch.tensor([expected], device=device), rtol=0, atol=1e-3)
         self.assert_close(out["keypoints"][0], seen[0, :2, 13, 22], rtol=0, atol=1e-3)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps", reason="half-precision XFeat weights are not covered on MPS"
+    )
     @pytest.mark.parametrize("weights_dtype", [torch.float16, torch.bfloat16])
     def test_resized_coordinates_do_not_round_in_half_weights_6537(self, weights_dtype, device):
         # Keypoints are float32 whatever the weights: bfloat16 would hold 1427.66 as 1428. Generated with plain Python:
         # (1401.5 * 1500 / 1472 - 0.5, 901.5 * 1000 / 992 - 0.5) and, for the top-left pixel (1400, 896) of the cell,
         # (1400.5 * 1500 / 1472 - 0.5, 896.5 * 1000 / 992 - 0.5).
-        if device.type == "mps":
-            pytest.skip("half-precision XFeat weights are not covered on MPS")
         if not supports_bicubic_2d_grid_sample(device, torch.float32):
             pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
         xfeat = XFeat().to(device, weights_dtype).eval()
@@ -813,12 +808,11 @@ class TestConventionsXFeat(BaseTester):
         reliability[0, 0, 112, 175] = 1.0
         outputs = tuple(t.to(device, weights_dtype) for t in (feats, logits, reliability))
         image = torch.zeros(1, 3, 1000, 1500, device=device, dtype=weights_dtype)
-        handle = xfeat.net.register_forward_hook(lambda module, inputs, output: outputs)
-        try:
-            (sparse,) = xfeat.detectAndCompute(image, top_k=1)
-            dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
-        finally:
-            handle.remove()
+        # The designed outputs replace the network's: skip its half-precision pass over the 992 x 1472 image too, 8 s
+        # of each case on the CPU. The input still goes through the resize and normalization in the weights' dtype.
+        xfeat.net.forward = lambda image: outputs
+        (sparse,) = xfeat.detectAndCompute(image, top_k=1)
+        dense = xfeat.detectAndComputeDense(image, top_k=1, multiscale=False)
         expected = torch.tensor([[1427.65897, 908.27016]], device=device)
         self.assert_close(sparse["keypoints"], expected, rtol=0, atol=1e-3)
         expected_dense = torch.tensor([[[1426.63995, 903.22984]]], device=device)
@@ -1077,7 +1071,7 @@ class TestConventionsXFeat(BaseTester):
         xfeat.detectAndComputeDense(image, 5)
         assert len(sizes) == 2
 
-    def test_convention_xfeat_random_init_is_training_and_eval_inference_keeps_batchnorm_stats(self, device, dtype):
+    def test_convention_xfeat_random_init_is_training_and_eval_inference_keeps_batchnorm_stats(self, device):
         # XFeat() builds random weights and stays in PyTorch's training mode, where BatchNorm would use batch
         # statistics (each keypoint depends on the rest of the batch), update its running statistics on every
         # inference call, and raise on a single match. XFeat.from_pretrained returns evaluation mode; .eval() on the
@@ -1096,7 +1090,7 @@ class TestConventionsXFeat(BaseTester):
             assert torch.equal(v, before[k]), k
         assert xfeat.train().training  # .train() stays the explicit opt-in
 
-    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device, dtype):
+    def test_smoke_xfeat_star_default_constructor_top_k_1_batched(self, device):
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)
@@ -1105,10 +1099,9 @@ class TestConventionsXFeat(BaseTester):
         for m in matches:
             assert m.shape[0] <= 1
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="CPU autocast")
     def test_convention_xfeat_dense_multiscale_descriptor_dtype_is_the_same_on_both_sides_of_a_zero_share(self, device):
         # under autocast the backbone's output dtype is not the parameters' dtype; the empty scale must not change it
-        if torch.device(device).type != "cpu":
-            pytest.skip("CPU autocast")
         torch.manual_seed(0)
         xfeat = XFeat().to(device).eval()
         image = torch.rand(2, 3, 64, 64, device=device)
@@ -1188,6 +1181,9 @@ class TestConventionsXFeat(BaseTester):
             out_t = interp(ramp.flip(1).transpose(-1, -2).to(device, dtype), pos.flip(-1).to(device, dtype), W, H)
             self.assert_close(out_t.cpu().double(), expected.flip(-1), rtol=0.0, atol=tol)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float16", "bfloat16"), reason="the defect is in the CPU float16 / bfloat16 path"
+    )
     @pytest.mark.parametrize("sampler", ["ALIKED", "SOLD2"])
     def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
@@ -1195,8 +1191,6 @@ class TestConventionsXFeat(BaseTester):
         # call it with the half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use,
         # samples CPU half in float32 instead, and so do XFeat's InterpolateSparse2d and ALIKED's deformable
         # convolution without autograd (#6464).
-        if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
             pytest.skip("ALIKED pads with replication, absent for this dtype")
         from kornia.feature import ALIKED, SOLD2

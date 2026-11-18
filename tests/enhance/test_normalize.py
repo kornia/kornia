@@ -15,12 +15,54 @@
 # limitations under the License.
 #
 
+import io
+
 import pytest
 import torch
 
 import kornia
 
 from testing.base import BaseTester
+
+
+class TestNormalizeOnnx(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("module_name", ["Normalize", "Denormalize"])
+    @pytest.mark.parametrize("stat_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("scalar_mean,scalar_std", [(True, True), (True, False), (False, True), (False, False)])
+    def test_scalar_tensor_statistics_onnx(self, module_name, stat_dtype, scalar_mean, scalar_std):
+        """Export scalar or per-channel statistics and run the graph on another batch and spatial size."""
+        onnx = pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        mean = torch.tensor(0.5 if scalar_mean else [0.25, 0.5, 0.75], dtype=stat_dtype)
+        std = torch.tensor(0.25 if scalar_std else [0.25, 0.5, 1.0], dtype=stat_dtype)
+        module = getattr(kornia.enhance, module_name)(mean, std)
+        image = torch.linspace(0, 1, 180).reshape(2, 3, 5, 6)
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            module,
+            (image,),
+            buffer,
+            dynamo=False,
+            opset_version=17,
+            input_names=["image"],
+            output_names=["output"],
+            dynamic_axes={name: {0: "batch", 2: "height", 3: "width"} for name in ("image", "output")},
+        )
+        onnx.checker.check_model(buffer.getvalue())
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1
+        session = ort.InferenceSession(buffer.getvalue(), options, providers=["CPUExecutionProvider"])
+        for data in (image, torch.linspace(0, 1, 84).reshape(1, 3, 4, 7)):
+            broadcast_mean = mean.to(data).reshape(1, -1, 1, 1)
+            broadcast_std = std.to(data).reshape(1, -1, 1, 1)
+            expected = (
+                (data - broadcast_mean) / broadcast_std
+                if module_name == "Normalize"
+                else data * broadcast_std + broadcast_mean
+            )
+            actual = torch.from_numpy(session.run(None, {"image": data.numpy()})[0])
+            self.assert_close(actual, expected)
 
 
 class TestNormalize(BaseTester):
@@ -42,7 +84,7 @@ class TestNormalize(BaseTester):
         std = torch.tensor([0.5, 2.0], device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
 
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         mean = [0.5]
         std = [0.1]
         repr = "Normalize(mean=[0.5], std=[0.1])"
@@ -155,18 +197,6 @@ class TestNormalize(BaseTester):
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
 
-    @pytest.mark.skip(reason="union type not supported")
-    def test_jit(self, device, dtype):
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        inputs = (data, mean, std)
-
-        op = kornia.enhance.normalize
-        op_script = torch.jit.script(op)
-
-        self.assert_close(op(*inputs), op_script(*inputs))
-
     def test_gradcheck(self, device):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
@@ -216,14 +246,6 @@ class TestNormalize(BaseTester):
         with pytest.raises((ValueError, RuntimeError)):
             f(inputs)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
 
 class TestNormalizeConstantsAreBuffers(BaseTester):
     """Tensor arguments move with the module; Python constants follow the input."""
@@ -236,7 +258,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             "Rescale": kornia.enhance.Rescale(torch.tensor(2.0)),
         }
 
-    def test_constants_are_registered_buffers(self, device, dtype):
+    def test_constants_are_registered_buffers(self):
         for name, module in self._modules().items():
             assert list(module.buffers()), f"{name} registered no buffers"
 
@@ -248,7 +270,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             ("Rescale", ("factor",)),
         ],
     )
-    def test_to_moves_the_constants(self, name, attrs, device, dtype):
+    def test_to_moves_the_constants(self, name, attrs):
         """dtype stands in for device, so the check runs on CPU-only CI.
 
         Asserted on the attributes by name rather than by iterating buffers:
@@ -261,7 +283,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             assert isinstance(value, torch.Tensor), f"{name}.{attr} is not a tensor"
             assert value.dtype == torch.float64, f"{name}.{attr} stayed {value.dtype} after .to(float64)"
 
-    def test_the_constants_stay_out_of_the_state_dict(self, device, dtype):
+    def test_the_constants_stay_out_of_the_state_dict(self):
         """They are constructor arguments, not learned state.
 
         Registering them persistently would make every existing checkpoint
@@ -270,7 +292,7 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
         for name, module in self._modules().items():
             assert module.state_dict() == {}, f"{name} state_dict is not empty"
 
-    def test_denormalize_coerces_scalars(self, device, dtype):
+    def test_denormalize_coerces_scalars(self):
         """Scalar arguments stay as Python values and are materialized per input."""
         module = kornia.enhance.Denormalize(0.0, 255.0)
         assert module.mean == 0.0
@@ -327,24 +349,6 @@ class TestNormalizeConstantsAreBuffers(BaseTester):
             kornia.enhance.denormalize(x, mean, std),
         )
         self.assert_close(kornia.enhance.Rescale(2.0)(x), x * 2.0)
-
-    def test_smoke(self, device, dtype):
-        pass
-
-    def test_cardinality(self, device, dtype):
-        pass
-
-    def test_exception(self, device, dtype):
-        pass
-
-    def test_gradcheck(self, device):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        pass
 
 
 @pytest.mark.parametrize(
@@ -406,7 +410,7 @@ class TestEnhanceConstructorParameters(BaseTester):
 
 
 class TestDenormalize(BaseTester):
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         mean = [0.5]
         std = [0.1]
         repr = "Denormalize(mean=[0.5], std=[0.1])"
@@ -465,18 +469,6 @@ class TestDenormalize(BaseTester):
         f = kornia.enhance.Denormalize(mean, std)
         self.assert_close(f(data), expected)
 
-    @pytest.mark.skip(reason="union type not supported")
-    def test_jit(self, device, dtype):
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        inputs = (data, mean, std)
-
-        op = kornia.enhance.denormalize
-        op_script = torch.jit.script(op)
-
-        self.assert_close(op(*inputs), op_script(*inputs))
-
     def test_gradcheck(self, device):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
@@ -507,14 +499,6 @@ class TestDenormalize(BaseTester):
         op_module = kornia.enhance.Denormalize(mean, std)
 
         self.assert_close(op(*inputs), op_module(data))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
 
 
 class TestNormalizeIntegerStatistics(BaseTester):
@@ -640,10 +624,9 @@ class TestNormalizeIntegerInput(BaseTester):
         assert normalized.abs().max() < 3.0
         self.assert_close(kornia.enhance.denormalize(normalized, mean, std), img.to(normalized.dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_integer_input_follows_the_default_dtype_5403(self, device):
         # The promotion target is torch's default floating dtype, the same as `x * 0.5`, not a hardcoded float32.
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         img = self._image(device, torch.uint8)
         previous = torch.get_default_dtype()
         torch.set_default_dtype(torch.float64)
@@ -711,11 +694,10 @@ class TestNormalizeMinMax(BaseTester):
         actual = kornia.enhance.normalize_min_max(image, min_val=-2.0, max_val=3.0)
         self.assert_close(actual, torch.full(image.shape, -2.0, device=device))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("scripted", [False, True])
     def test_integer_follows_default_dtype(self, device, scripted):
         """The integer promotion follows normalize/denormalize and torch's default floating dtype."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         image = torch.tensor([-128, 0, 127], device=device, dtype=torch.int8).reshape(1, 3)
         previous = torch.get_default_dtype()
         try:
@@ -808,11 +790,6 @@ class TestNormalizeMinMax(BaseTester):
     def test_noncontiguous_gradcheck(self, device):
         data = torch.arange(12, device=device, dtype=torch.float64).reshape(1, 1, 3, 4).transpose(-1, -2)
         self.gradcheck(kornia.enhance.normalize_min_max, (data,))
-
-    def test_smoke(self, device, dtype):
-        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
-        assert kornia.enhance.normalize_min_max(x) is not None
-        assert kornia.enhance.normalize_min_max(x) is not None
 
     def test_exception(self, device, dtype):
         x = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)

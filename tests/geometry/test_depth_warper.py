@@ -225,24 +225,21 @@ class TestDepthWarper(BaseTester):
         pinhole_dst = kornia.geometry.camera.PinholeCamera(k_dst, extrinsics, height[:1], width[:1])
         return kornia.geometry.depth.DepthWarper(pinhole_dst, 480, 640).compute_projection_matrix(pinhole_src)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="The literal pins the float32 and float64 value.")
     def test_convention_subpixel_step_general_pair_6603(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("The literal pins the float32 and float64 value.")
         warper = self._general_warper([self.K_SRC_A], device, dtype)
         self.assert_close(warper.compute_subpixel_step().item(), self.STEP_A, rtol=1e-4, atol=0.0)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="The literals pin the float32 and float64 values.")
     @pytest.mark.parametrize("order", ["AB", "BA"])
     def test_compute_subpixel_step_uses_each_source_camera_6603(self, device, dtype, order):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("The literals pin the float32 and float64 values.")
         k_srcs = [self.K_SRC_A, self.K_SRC_B] if order == "AB" else [self.K_SRC_B, self.K_SRC_A]
         warper = self._general_warper(k_srcs, device, dtype)
         expected = min(self.STEP_A, self.STEP_B)
         self.assert_close(warper.compute_subpixel_step().item(), expected, rtol=1e-4, atol=0.0)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64.")
     def test_compute_subpixel_step_source_intrinsics_in_another_dtype_6603(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64.")
         warper = self._general_warper([self.K_SRC_A], device, torch.float32, src_intrinsics_dtype=torch.float64)
         step = warper.compute_subpixel_step()
         assert step.dtype == torch.float32
@@ -256,9 +253,8 @@ class TestDepthWarper(BaseTester):
         expected = torch.tensor([[31.5 - 500.0 * baseline, 23.5]], device=device, dtype=warper._dst_proj_src.dtype)
         self.assert_close(warper._compute_projection(31.5, 23.5, 1.0), expected, rtol=1e-4, atol=1e-3)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64.")
     def test_compute_subpixel_step_gradient_beside_a_camera_without_baseline_6603(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64.")
         dtype = torch.float64
 
         def step(baselines, scale):
@@ -294,9 +290,8 @@ class TestDepthWarper(BaseTester):
         assert torch.isinf(value)
         assert grad.item() == 0.0
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64.")
     def test_compute_subpixel_step_matches_warp_grid_6603(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64.")
         # A general pose and different intrinsics: the step is what warp_grid measures at the image centre.
         dtype = torch.float64
         height, width = 31, 41

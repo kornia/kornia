@@ -153,6 +153,7 @@ class TestTriangulation(BaseTester):
     # Cofactor sign-alignment regression
     # ------------------------------------------------------------------
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="cofactor sign test only runs for float32/float64")
     def test_cofactor_sign_alignment(self, device, dtype):
         """Cofactor solver must not produce NaN/Inf due to sign cancellation.
 
@@ -163,8 +164,6 @@ class TestTriangulation(BaseTester):
         SVD solvers, and checks that the cofactor output is finite and
         directionally consistent with the SVD result.
         """
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("cofactor sign test only runs for float32/float64")
 
         torch.manual_seed(3)
         B, N = 1, 8
@@ -224,6 +223,9 @@ class TestTriangulation(BaseTester):
     # Noisy correspondences — compare against OpenCV DLT reference
     # ------------------------------------------------------------------
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="noisy-correspondence test only runs for float32/float64"
+    )
     @pytest.mark.parametrize("solver", ["svd", "eigh"])
     def test_noisy_correspondences_dlt(self, solver, device, dtype):
         """Triangulation from noisy correspondences matches the numpy DLT reference.
@@ -244,8 +246,6 @@ class TestTriangulation(BaseTester):
         #     _, _, V = np.linalg.svd(A)
         #     X_expected[i] = V[-1, :3] / V[-1, 3]
         """
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("noisy-correspondence test only runs for float32/float64")
 
         # Hardcoded inputs (torch.manual_seed(7), noise sigma=0.05)
         P1 = torch.tensor(
@@ -438,9 +438,10 @@ class TestConventionTriangulation(BaseTester):
             assert torch.isfinite(epi.triangulate_points(P1, P2, two_view["x1"], two_view["x2"], solver=solver)).all()
             assert torch.isfinite(epi.triangulate_points(P1, P2, x1_far, x2_far, solver=solver)).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the gradient check of the NaN mask runs in float32 and float64"
+    )
     def test_convention_triangulate_points_masked_infinity_keeps_gradients_finite(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the gradient check of the NaN mask runs in float32 and float64")
         two_view = two_view_scene(device, dtype)
         # A point at infinity is NaN, but masking its row before the loss leaves every gradient finite, including
         # the cameras' gradients, which sum over all rows: the NaN is substituted, not produced by the solve.
@@ -458,10 +459,11 @@ class TestConventionTriangulation(BaseTester):
             for grad in torch.autograd.grad(out[finite].sum(), (p1, p2, x1, x2)):
                 assert torch.isfinite(grad).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="the half-precision overflow of the unnormalised cofactor null vector"
+    )
     def test_convention_triangulate_cofactor_half_precision_is_finite(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("the half-precision overflow of the unnormalised cofactor null vector")
         # The cofactor null vector of pixel-scale rows is normalised in float32 before the cast back to the input
         # dtype; cast first, it overflowed float16 and every point was NaN. bfloat16 keeps float32's exponent range
         # but only 8 bits of mantissa, hence its looser bound.
@@ -471,10 +473,11 @@ class TestConventionTriangulation(BaseTester):
         assert torch.isfinite(out).all()
         self.assert_close(out, X, rtol=0.0, atol={torch.float16: 5e-2, torch.bfloat16: 1.0}[dtype])
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="in half precision the rows' roundoff leaves the sub-systems full rank"
+    )
     def test_convention_triangulate_cofactor_rank_deficient_sub_system(self, device, dtype):
         two_view = two_view_scene(device, dtype)
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("in half precision the rows' roundoff leaves the sub-systems full rank")
         # A 3x4 sub-system of the DLT matrix that is rank-deficient, or nearly so with noise, has a null vector set
         # by roundoff or noise; cofactor used to average a fixed pair of them after normalising (#4900). It now
         # refines the longest sub-system null vector through the adjugate and returns the svd point: NaN when every

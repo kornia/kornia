@@ -23,7 +23,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase, Unifo
 from kornia.augmentation.random_generator.utils import _range_bound_dtype
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _range_bound
 from kornia.augmentation.utils.random import _with_generator
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
 class SaltAndPepperGenerator(RandomGeneratorBase):
@@ -87,9 +87,15 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.amount, self.salt_and_pepper])
 
-        amount_factor = _adapted_rsampling((batch_size,), self.amount_sampler, same_on_batch, generator=self._generator)
-        salt_and_pepper_factor = _adapted_rsampling(
-            (batch_size,), self.salt_and_pepper_sampler, same_on_batch, generator=self._generator
+        amount_factor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.amount_sampler, same_on_batch, generator=self._generator),
+            _device,
+            _dtype,
+        )
+        salt_and_pepper_factor = _to_device_nonblocking(
+            _adapted_rsampling((batch_size,), self.salt_and_pepper_sampler, same_on_batch, generator=self._generator),
+            _device,
+            _dtype,
         )
         if self._generator is None:
             amount_factor = amount_factor.to(device=_device, dtype=_dtype)

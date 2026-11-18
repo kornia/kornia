@@ -27,7 +27,7 @@ PSs = [224, 32]
 
 
 @pytest.mark.xfail(reason="May cause memory issues.")
-def test_performance_speed(device, dtype):
+def test_performance_speed(device):
     if device.type != "cuda" or not torch.cuda.is_available():
         pytest.skip("Cuda not available in system,")
 

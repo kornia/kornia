@@ -28,11 +28,6 @@ from testing.base import (
 
 
 class TestRawToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 1, 4, 6
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.raw_to_rgb(img, kornia.color.CFA.BG), torch.Tensor)
-
     @pytest.mark.parametrize("batch_size, height, width", [(1, 6, 4), (2, 2, 4), (3, 4, 2)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
@@ -95,6 +90,19 @@ class TestRawToRgb(BaseTester):
             data_out = raw(rgb(data, cfa=x), cfa=x)
             assert_close(data_out, data)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float32",), reason="autocast sample preservation")
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("cfa", list(kornia.color.CFA))
+    def test_autocast_preserves_sensor_samples(self, device, dtype, autocast_dtype, cfa):
+        """Keep the measured mosaic values when green interpolation uses autocast."""
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16 autocast")
+        image = torch.linspace(0, 1, 256, device=device, dtype=dtype).reshape(1, 1, 16, 16)
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            rgb = kornia.color.raw_to_rgb(image, cfa)
+            actual = kornia.color.rgb_to_raw(rgb, cfa)
+        self.assert_close(actual, image, rtol=0, atol=0)
+
     # make sure different cfas are actually different
     def test_cfas_not_the_same(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 16, 16, device=device, dtype=dtype)
@@ -155,32 +163,27 @@ class TestRawToRgb(BaseTester):
         assert_close(bgres[:, :, 1:5, 1:5], grres[:, :, 2:6, 1:5])
         assert_close(bgres[:, :, 1:5, 1:5], rgres[:, :, 2:6, 2:6])
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.raw_to_rgb
         op_jit = torch.jit.script(op)
         assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         raw_ops = kornia.color.RawToRgb(kornia.color.raw.CFA.BG).to(device, dtype)
         raw_fcn = kornia.color.raw_to_rgb
         assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
 
 
 class TestRgbToRaw(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 6
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_raw(img, kornia.color.raw.CFA.BG), torch.Tensor)
-
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
@@ -200,32 +203,27 @@ class TestRgbToRaw(BaseTester):
 
         # Reverse test in rawtorgb is sufficient functional test
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_raw
         op_jit = torch.jit.script(op)
         assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         raw_ops = kornia.color.RgbToRaw(kornia.color.raw.CFA.BG).to(device, dtype)
         raw_fcn = kornia.color.rgb_to_raw
         assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
 
 
 class TestRawToRgb2x2Downscaled(BaseTester):
-    def test_smoke(self, device, dtype) -> None:
-        C, H, W = 1, 4, 6
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.BG), torch.Tensor)
-
     @pytest.mark.parametrize(
         "batch_size, height, width",
         [((1,), 6, 4), ((), 6, 4), ((), 0, 0), ((4, 5), 0, 0), ((2,), 2, 4), ((3,), 4, 2), ((4, 2, 1), 4, 2)],
@@ -288,7 +286,7 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         img_rgb = kornia.color.raw_to_rgb_2x2_downscaled(data, cfa)
         self.assert_close(img_rgb, expected_rgb)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 8, 8
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(
@@ -297,21 +295,21 @@ class TestRawToRgb2x2Downscaled(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.raw_to_rgb_2x2_downscaled
         op_jit = torch.jit.script(op)
         self.assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         raw_ops = kornia.color.RawToRgb2x2Downscaled(kornia.color.raw.CFA.BG).to(device, dtype)
         raw_fcn = kornia.color.raw_to_rgb_2x2_downscaled
         self.assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 1, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.raw_to_rgb_2x2_downscaled
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img, kornia.color.CFA.BG), op_optimized(img, kornia.color.CFA.BG))

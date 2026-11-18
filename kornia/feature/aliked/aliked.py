@@ -65,7 +65,8 @@ from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
 from kornia.core.download import load_state_dict_from_url
-from kornia.core.utils import is_compiling
+from kornia.core.ops import _copied_literal
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -146,10 +147,11 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
     corner = (required_corners - ps / 2 + 1).long()
     corner[:, 0] = corner[:, 0].clamp(min=0, max=w - 1 - ps)
     corner[:, 1] = corner[:, 1].clamp(min=0, max=h - 1 - ps)
-    offset = torch.arange(0, ps)
+    # built on the device: a grid made on the host would be copied to it, a synchronization, for every image
+    offset = torch.arange(0, ps, device=corner.device, dtype=corner.dtype)
     x, y = torch.meshgrid(offset, offset, indexing="ij")
     patches = torch.stack((x, y)).permute(2, 1, 0).unsqueeze(2)
-    patches = patches.to(corner) + corner[None, None]
+    patches = patches + corner[None, None]
     pts = patches.reshape(-1, 2)
     sampled = tensor.permute(1, 2, 0)[tuple(pts.T)[::-1]]
     sampled = sampled.reshape(ps, ps, -1, c)
@@ -311,10 +313,15 @@ class DKD(nn.Module):
         is_max[:, :, : self.radius, :] = False
         is_max[:, :, :, : self.radius] = False
         if image_size is not None:
-            for i in range(b):
-                iw, ih = image_size[i].long()
-                is_max[i, :, ih.item() - self.radius :, :] = False
-                is_max[i, :, :, iw.item() - self.radius :] = False
+            # Keep size-dependent border decisions on device instead of reading two scalars per image.
+            ends = _to_device_nonblocking(image_size, scores_map.device, torch.long) - self.radius
+            w_end, h_end = ends.unbind(-1)
+            # Match Python slice starts, including a negative start when an image is smaller than the radius.
+            w_end = torch.where(w_end < 0, w_end + w, w_end)
+            h_end = torch.where(h_end < 0, h_end + h, h_end)
+            rows = torch.arange(h, device=scores_map.device).view(1, 1, h, 1)
+            cols = torch.arange(w, device=scores_map.device).view(1, 1, 1, w)
+            is_max &= (rows < h_end.view(b, 1, 1, 1)) & (cols < w_end.view(b, 1, 1, 1))
         else:
             is_max[:, :, -self.radius :, :] = False
             is_max[:, :, :, -self.radius :] = False
@@ -347,7 +354,7 @@ class DKD(nn.Module):
         # Keypoints are formed in at least float32: a half-precision dtype holds no odd integer above 256 (bfloat16)
         # or 2048 (float16), not even ``w - 1``. The grid of the score lookup is cast to the map's dtype for the call.
         coord_dtype = torch.promote_types(scores_map.dtype, torch.float32)
-        wh = torch.tensor([w - 1, h - 1], device=scores_nograd.device, dtype=coord_dtype)
+        wh = _copied_literal([w - 1, h - 1], device=scores_nograd.device, dtype=coord_dtype)
 
         keypoints = []
         scoredispersitys = []
@@ -528,9 +535,9 @@ class DeformableConv2d(nn.Module):
         max_offset = max(h, w) / 4.0
         out = self.offset_conv(x)
         if self.mask:
-            o1, o2, mask_w = torch.chunk(out, 3, dim=1)
-            offset = torch.cat((o1, o2), dim=1)
-            mask_w = torch.sigmoid(mask_w)
+            # the (o1, o2) offset chunks are the first two thirds of the channels: a slice, without copying them
+            n = out.shape[1] // 3
+            offset, mask_w = out[:, : 2 * n], torch.sigmoid(out[:, 2 * n :])
         else:
             offset = out
             mask_w = None
@@ -728,7 +735,7 @@ class SDDH(nn.Module):
         """
         b, c, h, w = x.shape
         # Positions in at least float32, as in DKD; the sampling grid is cast to the feature map's dtype for the call.
-        wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
+        wh = _copied_literal([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
         max_offset = max(h, w) / 4.0
 
         # Each convolution of the head sees one window (offset_conv) or one sample (sf_conv) per keypoint, so it is a
@@ -1071,7 +1078,9 @@ class ALIKED(nn.Module):
 
         B = images.shape[0]
         _, _, h, w = images.shape
-        wh = torch.tensor([w - 1, h - 1], device=images.device, dtype=torch.promote_types(images.dtype, torch.float32))
+        wh = _copied_literal(
+            [w - 1, h - 1], device=images.device, dtype=torch.promote_types(images.dtype, torch.float32)
+        )
 
         results = []
         for i in range(B):

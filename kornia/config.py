@@ -15,6 +15,20 @@
 # limitations under the License.
 #
 
+"""Choose how kornia handles a missing optional dependency, and where it caches downloads.
+
+``kornia_config`` holds the process-wide settings. ``kornia_config.lazyloader.installation_mode`` takes an
+:class:`InstallationMode` or its name in any case, and starts from the ``KORNIA_INSTALLATION_MODE`` environment
+variable, or ``"raise"`` when it is unset. ``kornia_config.hub_cache_dir`` (``.kornia_hub``) holds the downloaded
+sample images and ONNX configs, and ``kornia_config.hub_onnx_dir`` (default ``.kornia_hub/onnx_models``, set
+separately) the ONNX models, both relative to the working directory.
+
+Which object to use:
+
+- What a missing optional dependency does (raise, ask, install): :class:`InstallationMode`.
+- The settings object to change: ``kornia_config``.
+"""
+
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -27,12 +41,13 @@ _INSTALLATION_MODE_ENV_VAR = "KORNIA_INSTALLATION_MODE"
 
 
 class InstallationMode(StrEnum):
-    """How :class:`kornia.core.external.LazyLoader` handles a missing optional dependency.
+    """Choose whether a missing optional dependency raises, asks to install its kornia extra, or installs it.
 
-    Set the mode with ``kornia_config.lazyloader.installation_mode = "<mode>"`` or, before kornia is imported, with
-    the ``KORNIA_INSTALLATION_MODE`` environment variable. Both accept ``"raise"``, ``"ask"`` and ``"auto"`` in any
-    case; an invalid environment value raises a ``ValueError`` when a lazy loader first handles a missing module.
-    Members compare equal to their upper-case values (``InstallationMode.RAISE == "RAISE"``).
+    ``kornia_config.lazyloader.installation_mode = InstallationMode.AUTO``, or ``"auto"`` in any case, sets the mode for
+    the process, and the ``KORNIA_INSTALLATION_MODE`` environment variable sets it before kornia is imported. The mode
+    applies when a lazily imported dependency of ``kornia.core.external``, such as ``onnx`` or Pillow, is first used and
+    found missing. An invalid ``KORNIA_INSTALLATION_MODE`` value raises a ``ValueError`` at
+    that point. Members compare equal to their upper-case values (``InstallationMode.RAISE == "RAISE"``).
 
     - ``RAISE`` (the default): raise an ``ImportError`` that names the kornia extra to install, for example
       ``pip install "kornia[onnx]"``.

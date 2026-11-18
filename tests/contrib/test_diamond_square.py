@@ -103,10 +103,9 @@ class TestDiamondSquare(BaseTester):
         assert out.dtype == torch.float32
         assert out.device.type == device.type
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("tensor_arg", ["random_scale", "roughness"])
     def test_dtype_none_follows_a_tensor_argument_at_every_size(self, tensor_arg, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # With dtype=None each level promotes the map to the dtype of random_scale * roughness, and a map with a side
         # of 3 px or less, which is the seed alone, is cast to it too, without being scaled: it has the same dtype as
         # a larger one, and its values are the float32 draws.
@@ -123,6 +122,7 @@ class TestDiamondSquare(BaseTester):
                 assert ref.dtype == torch.float32
                 assert torch.equal(out, ref.double())
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize(
         ("scale_f64", "roughness_f64", "expected"),
         [
@@ -134,8 +134,6 @@ class TestDiamondSquare(BaseTester):
         ids=["floats", "roughness-f64", "scale-f64", "both-f64"],
     )
     def test_dtype_none_draws_level_by_level_as_before(self, scale_f64, roughness_f64, expected, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # random_fn is asked for the seed (dtype=None), then for each level in the dtype of the map entering it. The
         # unscaled seed enters level 1 promoted with random_scale's dtype only, as the seed scaled by random_scale did,
         # so each level draws in the same dtype, and random_scale=1 gives the same map. Expected sequences generated
@@ -157,6 +155,7 @@ class TestDiamondSquare(BaseTester):
         assert asked == expected
         assert out.dtype == expected[-1]
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the literals are CPU values, and MPS has no float64")
     @pytest.mark.parametrize(
         ("dtype", "drawn", "expected_dtype", "expected", "seed_only_dtype"),
         [
@@ -186,8 +185,6 @@ class TestDiamondSquare(BaseTester):
     def test_random_fn_ignoring_dtype_gives_the_previous_map(
         self, dtype, drawn, expected_dtype, expected, seed_only_dtype, device
     ):
-        if device.type != "cpu":
-            pytest.skip("the literals are CPU values, and MPS has no float64")
         if dtype is not None and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         # A random_fn that returns another dtype than it is asked for promotes the levels' arithmetic to its dtype,

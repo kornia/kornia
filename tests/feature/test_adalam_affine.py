@@ -27,10 +27,9 @@ from testing.base import BaseTester
 
 
 class TestAdalamSharedAffine(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="AdaLAM operates on full-precision coordinates")
     @pytest.mark.parametrize("refit", [False, True])
     def test_ragged_neighborhoods(self, device, dtype, refit):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("AdaLAM operates on full-precision coordinates")
         generator = torch.Generator().manual_seed(19)
         sizes = [40, 25]
         source = torch.rand(sum(sizes), 2, generator=generator).to(device=device, dtype=dtype) - 0.5
@@ -56,10 +55,9 @@ class TestAdalamSharedAffine(BaseTester):
         assert (confidence >= config["min_confidence"]).all()
         self.assert_close(models, expected, atol=0.03, rtol=0.03)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="AdaLAM operates on full-precision coordinates")
     @pytest.mark.parametrize("refit", [False, True])
     def test_rank_deficient_neighborhood(self, device, dtype, refit):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("AdaLAM operates on full-precision coordinates")
         source = torch.zeros(20, 2, device=device, dtype=dtype)
         source[:, 0] = torch.linspace(-0.5, 0.5, 20, device=device, dtype=dtype)
         target = source * 1.1

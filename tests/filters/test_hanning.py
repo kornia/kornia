@@ -25,28 +25,6 @@ from kornia.filters import get_hanning_kernel1d, get_hanning_kernel2d
 from testing.base import BaseTester, assert_close
 
 
-@pytest.mark.parametrize("window_size", [5, 11])
-def test_get_hanning_kernel(window_size, device, dtype):
-    kernel = get_hanning_kernel1d(window_size, dtype=dtype, device=device)
-    assert kernel.shape == (window_size,)
-    assert kernel.max().item() == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-def test_get_hanning_kernel2d(ksize_x, ksize_y, device, dtype):
-    kernel = get_hanning_kernel2d((ksize_x, ksize_y), dtype=dtype, device=device)
-    assert kernel.shape == (ksize_x, ksize_y)
-    assert kernel.max().item() == pytest.approx(1.0)
-
-
-def test_get_hanning_kernel1d_5(device, dtype):
-    kernel = get_hanning_kernel1d(5, dtype=dtype, device=device)
-    expected = torch.tensor([0, 0.5, 1.0, 0.5, 0], dtype=dtype, device=device)
-    assert kernel.shape == (5,)
-    assert_close(kernel, expected)
-
-
 def test_get_hanning_kernel2d_3x4(device, dtype):
     kernel = get_hanning_kernel2d((3, 4), dtype=dtype, device=device)
     expected = torch.tensor(
@@ -73,7 +51,7 @@ def test_get_hanning_kernel1d_without_dtype_follows_the_default_dtype(default_dt
 
 
 class TestConventionsHanningKernels(BaseTester):
-    @pytest.mark.parametrize("window_size", [4, 5, 6])
+    @pytest.mark.parametrize("window_size", [4, 5, 6, 11])
     def test_convention_hanning_kernel1d_is_the_unnormalised_symmetric_window(self, window_size, device, dtype):
         kernel = get_hanning_kernel1d(window_size, device=device, dtype=dtype)
         # numpy.hanning, torch.hann_window(periodic=False): 0.5 - 0.5 cos(2 pi n / (k - 1)), zero at both ends

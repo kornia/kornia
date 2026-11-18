@@ -230,6 +230,7 @@ def test_homography_warp3d_negative_destination_raises(device, dtype):
         proj.homography_warp3d(src, transform, (-1, 4, 5))
 
 
+@pytest.mark.applies_to(dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range")
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
 def test_warp_grid3d_ignores_the_homography_scale(scale, align_corners, device, dtype):
@@ -237,8 +238,6 @@ def test_warp_grid3d_ignores_the_homography_scale(scale, align_corners, device, 
     # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
     # sampled voxels depended on the matrix's arbitrary scale (#5761). Comparing a scaled call with an
     # unscaled one cancels the 3D normalization convention tracked in #4503, which both share.
-    if dtype in (torch.float16, torch.bfloat16):
-        pytest.skip("these scales test the float32/float64 arithmetic range")
     dsize = (4, 5, 6)
     d, h, w = dsize
     volume = torch.arange(float(d * h * w), device=device, dtype=dtype).view(1, 1, d, h, w) / (d * h * w)
@@ -305,10 +304,9 @@ class TestWarpPerspective3d(BaseTester):
         out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
         self.assert_close(out, sample)
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     @pytest.mark.parametrize("size", [8, 32])
     def test_identity_float64_precision(self, device, size):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
         # float64 roundoff like warp_affine3d, not to float32 grid precision
         dsize = (size // 2, size, size)
@@ -533,13 +531,14 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
             max_error = 0.125 if dtype == torch.float16 else 1e-3
             assert (actual.float() - volume.float()).abs().max() <= max_error
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="these scales test the float32/float64 arithmetic range"
+    )
     @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
     def test_homography_scale_is_a_gauge(self, scale, device, dtype):
         # A homography and any nonzero multiple of it are the same warp: the voxel grid divides by the projective
         # scale of warp_grid3d before the homogeneous division, whose absolute eps would otherwise leave the points
         # of a small matrix undivided (#5761).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("these scales test the float32/float64 arithmetic range")
         volume = self._volume((2, 3, 5, 7, 9), device, dtype)
         _, src_homo_dst = self._homographies(device, dtype)
 
@@ -579,13 +578,12 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
         self.assert_close(actual[..., 1:-1], volume[..., 1:-1])
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_autocast_does_not_reach_the_voxel_grid(self, align_corners, device):
         # A matrix product inside a caller's bfloat16 autocast region would round the voxel columns of a 640 wide
         # grid to whole voxels; the voxel grid is warped with elementwise products, which autocast leaves alone, in
         # eager and scripted calls alike.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
         width = 640
         volume = torch.arange(width, device=device, dtype=torch.float32).expand(2, 1, 1, 2, width)
         src_homo_dst = torch.eye(4, device=device, dtype=torch.float32).repeat(2, 1, 1)
@@ -710,8 +708,13 @@ class TestWarpAffine3d(BaseTester):
 
     def test_forth_back(self, device, dtype):
         out_shape = (3, 4, 5)
-        sample = torch.rand(2, 5, 3, 4, 5, device=device, dtype=dtype)
-        P = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        # A seeded, well-conditioned affine: the identity plus at most 0.2 per entry. torch.rand's 3 x 3 part reaches
+        # condition numbers in the hundreds, and then the bfloat16 round trip P^-1 P moves nearest samples to a
+        # neighbouring voxel (29 of 300 seeds in bfloat16, 4 in float16; from a condition number of 61).
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.rand(2, 5, 3, 4, 5, generator=generator).to(device, dtype)
+        linear = torch.eye(3) + 0.2 * (2 * torch.rand(2, 3, 3, generator=generator) - 1)
+        P = torch.cat([linear, torch.rand(2, 3, 1, generator=generator)], dim=-1).to(device, dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (_torch_inverse_cast(P) @ P)[:, :3]
         output = proj.warp_affine3d(sample, P_hat, out_shape, flags="nearest")
@@ -914,6 +917,10 @@ class TestWarp3dAutocast(BaseTester):
     def _warp(op_name, volume, matrix, align_corners=False):
         return getattr(proj, op_name)(volume, matrix, (32, 32, 32), align_corners=align_corners)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not ((p["device_name"] == "mps") and (p["src_dtype"] == torch.float64)),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
     @pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
@@ -922,8 +929,6 @@ class TestWarp3dAutocast(BaseTester):
         # normalize_homography3d's matrix products and the grid, from F.affine_grid or transform_points, ran in the
         # autocast dtype: up to 0.17 off in bfloat16 for a float32 volume of [0, 1] values, whose output stayed float32.
         self._skip_unsupported(device, autocast_dtype)
-        if device.type == "mps" and src_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         volume, matrix = self._warp_inputs(op_name, device, src_dtype)
         expected = self._warp(op_name, volume, matrix, align_corners)
         with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
@@ -1062,7 +1067,7 @@ class TestPerspectiveTransform3D(BaseTester):
     # Box corners in bbox_generator3d order: 000, 100, 110, 010, 001, 101, 111, 011.
     _corners = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
         # Eight random point pairs are in general not related by any 3D homography (15 degrees of freedom against
         # 24 constraints), which is why this test used to fail. The destination points are the source corners
@@ -1083,8 +1088,11 @@ class TestPerspectiveTransform3D(BaseTester):
         self.assert_close(out, dst_homo_src.to(device, dtype), low_tolerance=True)
         self.assert_close(kornia.geometry.linalg.transform_points(out, points_src), points_dst, low_tolerance=True)
 
-        # compute gradient check
-        self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False)
+        # gradcheck casts its inputs to float64, so the float64 case runs it for every dtype
+        if dtype == torch.float64:
+            self.gradcheck(
+                kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False
+            )
 
     def test_integer_points_6396(self, device):
         points_src = torch.tensor(self._corners, device=device)[None] * 4

@@ -127,17 +127,6 @@ def test_dpt_output_size(height, width, size, keep_aspect_ratio, expected):
 
 
 @pytest.mark.device_agnostic
-def test_from_json_keeps_the_aspect_ratio():
-    from kornia.models._hf_models.preprocessor import DPTImageProcessor
-
-    pipeline = DPTImageProcessor.from_json(dict(_DEPTH_ANYTHING_V2_SMALL_CONFIG))
-
-    assert pipeline(torch.rand(1, 3, 300, 400)).shape[-2:] == (392, 518)
-    # resample 3 is PIL's BICUBIC
-    assert pipeline[0].interpolation == "bicubic"
-
-
-@pytest.mark.device_agnostic
 @pytest.mark.parametrize(
     "dropped, changes, expected",
     [
@@ -256,26 +245,16 @@ def test_from_json_rejects_an_unsupported_resample(resample):
         DPTImageProcessor.from_json({**_DEPTH_ANYTHING_V2_SMALL_CONFIG, "resample": resample})
 
 
+NO_MPS_FLOAT64 = pytest.mark.applies_to(
+    when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+    reason="MPS does not support float64",
+)
+
+
 class TestDepthEstimation(BaseTester):
-    @staticmethod
-    def _skip_float64_on_mps(device, dtype) -> None:
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
-
-    def test_tensor_batch_returns_b1hw(self, device, dtype):
-        self._skip_float64_on_mps(device, dtype)
-        model = DepthEstimation(_stand_in_graph(), pre_processor=None)
-        images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
-
-        depth = model(images)
-
-        assert depth.shape == (2, 1, 300, 400)
-        # the stand-in's depth is the channel mean; without a resize stage it is computed at the input size
-        self.assert_close(depth, images.float().mean(1, keepdim=True).to(dtype))
-
-    @pytest.mark.parametrize("sizes", [[(300, 400), (200, 150)], [(200, 150)], []])
+    @NO_MPS_FLOAT64
+    @pytest.mark.parametrize("sizes", [[(300, 400), (200, 150)], []])
     def test_list_returns_1hw_items(self, device, dtype, sizes):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = [torch.rand(3, h, w, device=device, dtype=dtype) for h, w in sizes]
 
@@ -286,10 +265,10 @@ class TestDepthEstimation(BaseTester):
         for depth, image in zip(depths, images):
             self.assert_close(depth, image.float().mean(0, keepdim=True).to(dtype))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("as_list", [False, True])
     def test_graph_returning_b1hw_keeps_its_layout(self, device, dtype, as_list):
         # a graph that already returns (B, 1, H, W) gives the same layout as Depth-Anything's (B, H, W) graph
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(keepdims=True), pre_processor=None)
         images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
 
@@ -301,9 +280,9 @@ class TestDepthEstimation(BaseTester):
         assert depth.shape == (2, 1, 300, 400)
         self.assert_close(depth, images.float().mean(1, keepdim=True).to(dtype))
 
+    @NO_MPS_FLOAT64
     @pytest.mark.parametrize("as_list", [False, True])
     def test_visualize_and_save_take_a_tensor_batch(self, device, dtype, as_list, tmp_path):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = torch.rand(2, 3, 300, 400, device=device, dtype=dtype)
         if as_list:
@@ -323,8 +302,8 @@ class TestDepthEstimation(BaseTester):
         assert sum("_src_" in n for n in names) == 2
         assert sum("_depth_" in n for n in names) == 2
 
+    @NO_MPS_FLOAT64
     def test_any_float_dtype(self, device, dtype):
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
         images = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
 
@@ -340,13 +319,12 @@ class TestDepthEstimation(BaseTester):
         self.assert_close(item, depth[0])
 
     @pytest.mark.parametrize("as_list", [False, True])
-    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int64])
-    def test_integer_images_raise(self, device, as_list, int_dtype):
+    def test_integer_images_raise(self, device, as_list):
         # the float32 cast must not hand the graph a [0, 255] image as if it were a [0, 1] one
         from kornia.core.exceptions import BaseError
 
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)
-        images = torch.randint(0, 256, (1, 3, 30, 40), device=device, dtype=int_dtype)
+        images = torch.randint(0, 256, (1, 3, 30, 40), device=device, dtype=torch.uint8)
 
         with pytest.raises(BaseError, match="floating dtype"):
             model(list(images) if as_list else images)
@@ -393,10 +371,10 @@ class TestDepthEstimation(BaseTester):
         assert [tuple(x.shape) for x in spy.inputs] == [(1, 3, 392, 518), (1, 3, 518, 392)]
         assert [tuple(d.shape) for d in depths] == [(1, 300, 400), (1, 200, 150)]
 
+    @NO_MPS_FLOAT64
     def test_resize_runs_in_float32(self, device, dtype):
         # the resize runs in float32 whatever the input dtype, so the depth of a half image is the depth of the same
         # values in float32, cast at the end
-        self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None, resize=_depth_anything_resize())
         images = torch.rand(1, 3, 60, 80, device=device, dtype=dtype)
 

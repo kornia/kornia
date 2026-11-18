@@ -23,7 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 
 
 def _is_numpy_bool(n: Any) -> bool:
@@ -76,26 +76,37 @@ def _check_n(n: int) -> None:
 
 
 def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
-    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
+    """Build a batch of ``N x N`` identity matrices with the batch size, dtype and device of a tensor.
+
+    ``eye = eye_like(n, input)`` returns a ``(B, N, N)`` tensor holding one identity matrix per sample, where ``B`` is
+    ``input.shape[0]``, with the dtype and device of ``input`` (a ``bool`` input gives ``True`` on the diagonal). The
+    result does not require grad.
+
+    Convention:
+        - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
+        - ``shared_memory=True`` returns one identity expanded along the batch: writing into one sample, such as
+          ``eye[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
+          ``add_`` raises ``RuntimeError``.
 
     Args:
-        n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
-        input: image tensor that will determine the batch size of the output matrix.
-          The expected shape is ``(B, *)``.
-        shared_memory: when set, all samples in the batch will share the same memory.
+        n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
+            A ``float`` or a ``bool`` is rejected.
+        input: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
+        shared_memory: whether to return an expanded view instead of a copy per sample.
 
     Returns:
-       The identity matrix with the same batch size as the input ``(B, N, N)``.
+        The identity matrices, ``(B, N, N)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.
         BaseError: if ``n`` is not positive, or if ``input`` has no dimension.
 
-    Notes:
-        When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
-        without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
-        use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+    See Also:
+        - :func:`vec_like`: a batch of ``(N, 1)`` zero vectors instead.
+
+    Example:
+        >>> eye_like(2, torch.zeros(3, 5)).shape
+        torch.Size([3, 2, 2])
 
     """
     _check_n(n)
@@ -108,26 +119,36 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
 
 
 def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
-    r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
+    """Build a batch of ``N x 1`` zero column vectors with the batch size, dtype and device of a tensor.
+
+    ``vec = vec_like(n, tensor)`` returns a ``(B, N, 1)`` tensor of zeros, where ``B`` is ``tensor.shape[0]``, with the
+    dtype and device of ``tensor``. The result does not require grad.
+
+    Convention:
+        - ``shared_memory=False`` (the default) returns a contiguous copy per sample, safe to write into.
+        - ``shared_memory=True`` returns one vector expanded along the batch: writing into one sample, such as
+          ``vec[0, 0, 0] = 5``, writes every sample, and for a batch of more than one, in-place arithmetic such as
+          ``add_`` raises ``RuntimeError``.
 
     Args:
-        n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
-          A ``float`` or a ``bool`` is rejected.
-        tensor: image tensor that will determine the batch size of the output matrix.
-          The expected shape is ``(B, *)``.
-        shared_memory: when set, all samples in the batch will share the same memory.
+        n: the number of rows ``N``, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
+            A ``float`` or a ``bool`` is rejected.
+        tensor: the tensor whose batch size ``B``, dtype and device the result takes, of shape ``(B, *)``.
+        shared_memory: whether to return an expanded view instead of a copy per sample.
 
     Returns:
-        The vector with the same batch size as the input ``(B, N, 1)``.
+        The zero vectors, ``(B, N, 1)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.
         BaseError: if ``n`` is not positive, or if ``tensor`` has no dimension.
 
-    Notes:
-        When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
-        without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
-        use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+    See Also:
+        - :func:`eye_like`: a batch of ``(N, N)`` identity matrices instead.
+
+    Example:
+        >>> vec_like(3, torch.zeros(2, 4)).shape
+        torch.Size([2, 3, 1])
 
     """
     _check_n(n)
@@ -225,6 +246,24 @@ def _device_literal(
     if is_compiling() or (dtype == torch.float16 and not _fits_float16(data)):
         return torch.tensor(data, device=device, dtype=dtype)
     return _constant_tensor(data, device=device, dtype=dtype)
+
+
+def _copied_literal(
+    data: Union[float, List[Any], Tuple[Any, ...]], *, device: torch.device, dtype: torch.dtype
+) -> torch.Tensor:
+    """Return ``torch.tensor(data, device=device, dtype=dtype)`` for a literal of Python numbers, without a host sync.
+
+    An eager call builds the literal on the host and copies it with :func:`~kornia.core.utils._to_device_nonblocking`:
+    one copy that does not wait for queued kernels, where :func:`_device_literal` fills one kernel per distinct value,
+    so this suits a literal with many distinct values. Under ``torch.compile`` and ``torch.export`` the literal stays
+    ``torch.tensor(..., device=device)``, as in :func:`_device_literal`: a host tensor moved inside the graph is no
+    graph constant to Inductor. Moving it there made compiled CUDA ``extract_patches_from_pyramid`` 1.2-1.6x slower
+    than ``torch.tensor(..., device=device)`` (torch 2.14, RTX 4090). Both round the same Python numbers to ``dtype``,
+    so the values are the same.
+    """
+    if is_compiling():
+        return torch.tensor(data, device=device, dtype=dtype)
+    return _to_device_nonblocking(torch.tensor(data, dtype=dtype), device)
 
 
 def _fits_float16(data: Union[float, List[Any], Tuple[Any, ...]]) -> bool:

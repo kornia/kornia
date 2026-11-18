@@ -292,8 +292,8 @@ class Boxes:
           ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
           ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
           :meth:`transform_boxes` import unchanged.
-        - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
-          checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
+        - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (for list inputs,
+          every element is checked); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
         - A list of per-image tensors, ``(N_i, 4)`` or ``(N_i, 4, 2)`` in :meth:`from_tensor` and ``(N_i, 4, 2)``
           in the constructor, is zero-padded to one ``(B, max N_i, 4, 2)`` batch; :meth:`to_tensor` then returns a
@@ -357,6 +357,19 @@ class Boxes:
         padding_counts: Optional[list[int]] = None
 
         if isinstance(boxes, list):
+            if raise_if_not_floating_point:
+                invalid_box = next(
+                    (box for box in boxes if not box.is_floating_point()),
+                    None,
+                )
+                if invalid_box is not None:
+                    raise ValueError(f"Coordinates must be in floating point. Got {invalid_box.dtype}")
+            elif any(not box.is_floating_point() for box in boxes):
+                merged_dtype = torch.promote_types(torch.get_default_dtype(), torch.float32)
+                for box in boxes:
+                    if box.is_floating_point():
+                        merged_dtype = torch.promote_types(merged_dtype, box.dtype)
+                boxes = [box.to(dtype=merged_dtype) for box in boxes]
             boxes, padding_counts = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):

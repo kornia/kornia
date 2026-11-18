@@ -82,9 +82,8 @@ class TestRobustLossPrecision(BaseTester):
         # At r=1000 the Geman-McClure derivative is below half a float16 subnormal.
         self.assert_close(grad1[~representable], expected_grad[~representable], rtol=0, atol=0)
 
+    @pytest.mark.applies_to(dtypes=("float16",), reason="the float16 overflow regression has a finite float32 square")
     def test_float16_limit(self, device, dtype, loss_fn, loss_module):
-        if dtype != torch.float16:
-            pytest.skip("the float16 overflow regression has a finite float32 square")
         limit = torch.finfo(dtype).max
         img1 = torch.tensor([limit, -limit], device=device, dtype=dtype, requires_grad=True)
         actual = loss_fn(img1, torch.zeros_like(img1))
@@ -102,9 +101,10 @@ class TestRobustLossPrecision(BaseTester):
         assert torch.isfinite(gradient).all()
         self.assert_close(gradient, img1.new_tensor([derivative, -derivative]), rtol=4 * torch.finfo(dtype).eps, atol=0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only half-precision inputs are evaluated in float32"
+    )
     def test_half_precision_is_evaluated_in_float32(self, device, dtype, loss_fn, loss_module):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("only half-precision inputs are evaluated in float32")
         # Half-precision inputs are evaluated in float32 and rounded once. bfloat16 does not overflow at these
         # residuals, but evaluated in bfloat16 instead, 6 to 19 percent of these losses round differently.
         residual = torch.linspace(-40.0, 40.0, 641, device=device, dtype=dtype)

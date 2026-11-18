@@ -291,9 +291,9 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
 - **Local features on the GPU** — SIFT, HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue.
 - **Compiles and exports** — nearly all probed operator configurations run under ``torch.compile``; see
   :doc:`get-started/export-support`.
-- **Fast on batched GPU tensors** — in the published 0.9.0 benchmarks (RTX 4090, batch 32), many filters, warps,
-  matching steps and metrics run about 10× to 70× faster in eager mode than per-image CPU OpenCV or scikit-image, and
-  more under ``torch.compile``. Results vary with hardware and workload; :doc:`get-started/performance` shows every
+- **Fast on batched GPU tensors** — in the published 0.9.1 and 0.9.2 benchmarks (RTX 4090, batch 32), many filters,
+  warps, matching steps and metrics run about 10× to 70× faster in eager mode than per-image CPU OpenCV or
+  scikit-image, and more under ``torch.compile``. Results vary with hardware and workload; :doc:`get-started/performance` shows every
   win and loss, including the small overlap with torchvision.
 
 For a single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are

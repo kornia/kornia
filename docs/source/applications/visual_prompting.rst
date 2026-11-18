@@ -46,10 +46,10 @@ How to use with Kornia
    prompter.set_image(image)
 
    # Generate the prompts
-   keypoints = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
+   keypoints = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # (K, N, 2)
 
    # For the keypoints label: 1 indicates a foreground point; 0 indicates a background point
-   keypoints_labels = torch.tensor([[1]], device=device) # BxN
+   keypoints_labels = torch.tensor([[1]], device=device) # (K, N)
 
    # Runs the prediction with the keypoint prompts
    prediction = prompter.predict(

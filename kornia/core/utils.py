@@ -16,6 +16,7 @@
 #
 
 
+import copy
 import importlib.util
 import platform
 import sys
@@ -157,26 +158,43 @@ def is_mps_tensor_safe(x: torch.Tensor) -> bool:
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
-    """Try to get cuda device, if fail, return cpu.
+    """Return the CUDA device of a given index when CUDA is available, else the CPU.
+
+    ``device = get_cuda_device_if_available(index)`` returns ``torch.device(f"cuda:{index}")`` when
+    ``torch.cuda.is_available()`` is true and ``index`` is inside ``[0, torch.cuda.device_count())``;
+    ``torch.device("cpu")`` otherwise, so an out-of-range ``index`` on a machine with one GPU never hands
+    out a ``cuda:3`` device that only fails when a tensor is placed on it.
 
     Args:
-        index: cuda device index
+        index: the CUDA device index. Falls back to the CPU device when CUDA is unavailable or
+            ``index`` is outside ``[0, torch.cuda.device_count())``.
 
     Returns:
-        torch.device
+        ``cuda:<index>`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS instead on Apple silicon.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device, else the CPU.
 
     """
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and 0 <= index < torch.cuda.device_count():
         return torch.device(f"cuda:{index}")
 
     return torch.device("cpu")
 
 
 def get_mps_device_if_available() -> torch.device:
-    """Try to get mps device, if fail, return cpu.
+    """Return the Apple MPS device when it is available, else the CPU.
+
+    ``device = get_mps_device_if_available()`` returns ``torch.device("mps")`` when
+    ``torch.backends.mps.is_available()`` is true and ``torch.device("cpu")`` otherwise.
 
     Returns:
-        torch.device
+        ``mps`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device, else the CPU.
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS or CUDA by platform.
 
     """
     dev = "cpu"
@@ -186,10 +204,17 @@ def get_mps_device_if_available() -> torch.device:
 
 
 def get_cuda_or_mps_device_if_available() -> torch.device:
-    """Check OS and platform and run get_cuda_device_if_available or get_mps_device_if_available.
+    """Return the platform's accelerator, MPS on Apple silicon and CUDA elsewhere, else the CPU.
+
+    ``device = get_cuda_or_mps_device_if_available()`` returns :func:`~kornia.core.utils.get_mps_device_if_available` on
+    macOS on ``arm64`` and :func:`~kornia.core.utils.get_cuda_device_if_available` with index 0 on every other platform.
 
     Returns:
-        torch.device
+        ``mps``, ``cuda:0`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device of a chosen index.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device on any platform.
 
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
@@ -245,6 +270,18 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
         torch.float32 if dtype is not float32 or float64, otherwise returns the original dtype.
     """
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
+
+
+def _at_least_float32(input: torch.Tensor) -> torch.Tensor:
+    """Return a float16 or bfloat16 ``input`` in float32, and a float32 or float64 one as it is.
+
+    For an estimator that fits half-precision data in float32 and rounds its result once, on return: no backend
+    factorizes half precision, and the steps around the solve would each round to the input dtype. A float32 or
+    float64 input is the same tensor, so its result keeps its bits and its autograd graph.
+    """
+    if input.dtype in (torch.float16, torch.bfloat16):
+        return input.float()
+    return input
 
 
 def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
@@ -769,6 +806,10 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     therefore never sees a singular matrix, and the gradient with respect to the valid systems (and to
     any parameter they share with an invalid one) stays finite.
 
+    .. note::
+        On MPS this needs torch 2.10 or later, or ``PYTORCH_ENABLE_MPS_FALLBACK=1`` on an older torch; see
+        :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         B: right-hand side of shape ``(*, N, K)`` or ``(*, N)``.
         A: square matrices of shape ``(*, N, N)``.
@@ -861,16 +902,19 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
 
 def is_autocast_enabled(both: bool = True) -> bool:
-    """Check if torch autocast is enabled.
+    """Report whether a ``torch.autocast`` region is active, for any device type or for torch's default one.
+
+    ``on = is_autocast_enabled()`` returns whether autocast is enabled for any of the CPU, CUDA, MPS and XPU device
+    types, so a ``torch.autocast("cpu")`` region counts. ``is_autocast_enabled(both=False)`` returns
+    ``torch.is_autocast_enabled()`` without a device type instead, which never reports CPU autocast, and on torch 2.5.1
+    does not report MPS autocast either. A region entered with ``enabled=False`` counts as off.
 
     Args:
-        both: if True, consider the autocast regions of the CPU, CUDA, MPS and XPU device types.
+        both: whether to consider the CPU, CUDA, MPS and XPU device types (``True``) or only the one
+            ``torch.is_autocast_enabled()`` reports (``False``).
 
     Returns:
-        If ``both`` is True, whether autocast is enabled for any of the CPU, CUDA, MPS or XPU device types, on every
-        supported torch version. If ``both`` is False, ``torch.is_autocast_enabled()`` without a device type, whose
-        device type depends on the torch version: it never reports CPU autocast, and on torch 2.5.1 it does not
-        report MPS autocast either.
+        Whether autocast is enabled.
 
     """
     if both:
@@ -1036,7 +1080,8 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
     ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
     (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
     buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
-    built.
+    built. torch cannot deep-copy such a buffer, so a module using it takes ``_deepcopy_module_state`` as its
+    ``__deepcopy__``.
 
     Raises:
         TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
@@ -1055,6 +1100,27 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
             module.register_buffer(name, x)
             return
     setattr(module, name, x)
+
+
+def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> torch.nn.Module:
+    """``copy.deepcopy`` for a module whose state ``register_module_state`` registered.
+
+    torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
+    raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
+    like a ``torch.save`` / ``torch.load`` round trip; the copy has no history, so no gradient flows
+    back through it. The same applies to a plain tensor attribute, which is where ``register_module_state``
+    stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
+    ``__deepcopy__``.
+    """
+    attributes = [value for value in module.__dict__.values() if isinstance(value, torch.Tensor)]
+    for tensor in [*module.buffers(recurse=False), *attributes]:
+        if tensor.grad_fn is not None and id(tensor) not in memo:
+            memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
+    copied = module.__class__.__new__(module.__class__)
+    memo[id(module)] = copied
+    # __setstate__, as the default deepcopy path calls it, so a class that normalizes its state there stays correct.
+    copied.__setstate__(copy.deepcopy(module.__dict__, memo))
+    return copied
 
 
 def dataclass_to_dict(obj: Any) -> Any:
@@ -1167,23 +1233,26 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
 def batched_forward(
     model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs: Any
 ) -> torch.Tensor:
-    r"""Run the forward in micro-batches.
+    """Run a model in micro-batches on a chosen device and return the output on the input's device.
 
-    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
-    In the end, it transfers the output to the device of the input data tensor.
-    E.g. running HardNet on 8000x1x32x32 tensor.
-
-    Removed from ``kornia.utils.memory`` in 0.8.3 and restored here as public API.
+    ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
+    slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
+    the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference.
 
     Args:
-        model: Any torch model, which outputs a single tensor as an output.
-        data: Input data of Bx(Any) shape.
-        device: which device should we run on.
-        batch_size: "micro-batch" size.
-        **kwargs: any other arguments, which accepts model.
+        model: a module that returns one tensor whose first dimension follows its input's.
+        data: the input tensor, ``(B, *)``.
+        device: the device to run the model on.
+        batch_size: the number of samples per call, a positive integer.
+        **kwargs: keyword arguments passed to every call of ``model``.
 
     Returns:
-        output of the model.
+        The concatenated model output, on ``data.device``.
+
+    Raises:
+        BaseError: if ``batch_size`` is not positive, or the model returns anything but a
+            single tensor (e.g. a tuple of tensors).
 
     Example:
         >>> import torch
@@ -1207,7 +1276,18 @@ def batched_forward(
             end = min((batch_idx + 1) * bs, B)
             if st >= end:
                 continue
-            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+            out = model_dev(data[st:end].to(device), **kwargs)
+            _check_batched_forward_output(out)
+            out_list.append(out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
-    return model_dev(data.to(device), **kwargs).to(data.device)
+    out = model_dev(data.to(device), **kwargs)
+    _check_batched_forward_output(out)
+    return out.to(data.device)
+
+
+def _check_batched_forward_output(output: Any) -> None:
+    KORNIA_CHECK(
+        isinstance(output, torch.Tensor),
+        lambda: f"batched_forward expects a model that returns a single tensor, got {type(output).__name__}",
+    )

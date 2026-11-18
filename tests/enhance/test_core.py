@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-import random
-
 import pytest
 import torch
 
@@ -25,25 +23,18 @@ import kornia
 from testing.base import BaseTester
 
 
-def random_shape(dim, min_elem=1, max_elem=10):
-    return tuple(random.randint(min_elem, max_elem) for _ in range(dim))
-
-
 class TestAddWeighted(BaseTester):
     fcn = kornia.enhance.add_weighted
 
-    def get_input(self, device, dtype, size, max_elem=10):
-        shape = random_shape(size, max_elem=max_elem)
+    def get_input(self, device, dtype, shape):
         src1 = torch.randn(shape, device=device, dtype=dtype)
         src2 = torch.randn(shape, device=device, dtype=dtype)
-        alpha = random.random()
-        beta = random.random()
-        gamma = random.random()
+        alpha, beta, gamma = 0.3, 0.7, 0.2
         return src1, src2, alpha, beta, gamma
 
-    @pytest.mark.parametrize("size", [2, 3, 4, 5])
-    def test_smoke(self, device, dtype, size):
-        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=size)
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 4), (2, 3, 4, 5), (2, 1, 3, 4, 5)])
+    def test_smoke(self, device, dtype, shape):
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, shape)
         expected = src1 * alpha + src2 * beta + gamma
         self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), expected)
 
@@ -73,16 +64,6 @@ class TestAddWeighted(BaseTester):
 
         assert actual.dtype == torch.float32
         assert torch.equal(actual, torch.full((2, 2), 3.0))
-
-    def test_get_input_respects_size_and_max_elem(self, device, dtype, monkeypatch):
-        rng = random.Random(0)
-        monkeypatch.setattr(random, "randint", rng.randint)
-        monkeypatch.setattr(random, "random", rng.random)
-
-        src1, src2, *_ = self.get_input(device, dtype, size=5, max_elem=2)
-
-        assert src1.ndim == src2.ndim == 5
-        assert max(src1.shape) <= 2
 
     @pytest.mark.parametrize("size1, size2", [((2, 5, 5), (4, 5, 5)), ((2, 5, 5), (2, 3, 5, 5))])
     def test_shape_mismatch(self, device, dtype, size1, size2):
@@ -131,7 +112,7 @@ class TestAddWeighted(BaseTester):
             TestAddWeighted.fcn(src1, coefs["alpha"], src2, coefs["beta"], coefs["gamma"])
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, (2, 3, 4))
         inputs = (src1, alpha, src2, beta, gamma)
 
         op = TestAddWeighted.fcn
@@ -139,15 +120,13 @@ class TestAddWeighted(BaseTester):
 
         self.assert_close(op(*inputs), op_optimized(*inputs), atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("size", [2, 3])
-    def test_gradcheck(self, size, device):
-        src1, src2, alpha, beta, gamma = self.get_input(
-            device, torch.float64, size=size, max_elem=5
-        )  # to shave time on gradcheck
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 4)])
+    def test_gradcheck(self, shape, device):
+        src1, src2, alpha, beta, gamma = self.get_input(device, torch.float64, shape)
         self.gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2))
 
     def test_module(self, device, dtype):
-        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, (2, 3, 4))
         inputs = (src1, alpha, src2, beta, gamma)
 
         op = TestAddWeighted.fcn

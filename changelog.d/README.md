@@ -31,6 +31,7 @@ If there is no PR number yet, use a unique name such as
 `+fix-camera-shape.fixed.md`, then rename it to the PR number before merging.
 Internal refactors, tests, and CI-only changes may omit a fragment; explain why
 in the PR description and ask a maintainer to apply the `no-changelog` label.
+Dependabot PRs get the label automatically from `.github/dependabot.yml`.
 CI requires a fragment and rejects edits to `CHANGELOG.md` on ordinary PRs.
 The label permits internal and release PRs to omit a fragment and, when needed,
 edit the assembled changelog. Filename and rendering checks still run. Rename temporary `+name` files before merging: CI rejects them.
