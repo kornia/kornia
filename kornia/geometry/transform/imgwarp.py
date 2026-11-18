@@ -194,14 +194,13 @@ def _pad_one_pixel_axes(src: torch.Tensor, padding_mode: str) -> torch.Tensor:
 def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
     """Return the detached projective scale of ``matrix``: the value closest to 1 in its nonzero-magnitude range.
 
-    A homography and any nonzero multiple of it describe the same map, yet
-    :func:`kornia.geometry.convert_points_from_homogeneous` leaves a point with ``|w| <= eps``
-    undivided using an *absolute* ``eps``. Feeding that routine a grid built from an arbitrarily
-    scaled matrix therefore changes the sampled pixels instead of the warp. Dividing by this scale
-    first puts every equivalent matrix in the same numeric range. Choosing between the largest and
-    smallest nonzero magnitude, rather than just dividing by the largest, keeps a unit diagonal from
-    being shrunk toward zero by large translations. The scale is a projective gauge, so detaching it
-    leaves the warp's derivative unchanged.
+    A homography and any nonzero multiple of it describe the same map. Dividing by this scale places
+    or keeps unit magnitude in the matrix's nonzero-magnitude range before coordinate changes,
+    inversion, matrix products and homogeneous division, limiting scale-driven overflow and
+    underflow. Choosing between the largest and smallest nonzero magnitude, rather than just
+    dividing by the largest, keeps a unit diagonal from being shrunk toward zero by large
+    translations. The scale is a projective gauge, so detaching it leaves the warp's derivative
+    unchanged.
     """
     magnitude = matrix.detach().abs()
     largest = magnitude.amax(dim=(-2, -1), keepdim=True)
@@ -803,10 +802,8 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
           homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid, except at grid points whose homogeneous coordinate is within
-          ``1e-8`` of zero after that rescaling: those are left undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
-          infinity
+          returns the same grid up to rounding. A grid point whose homogeneous coordinate is exactly
+          zero is left undivided, as in :func:`~kornia.geometry.linalg.transform_points`
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:
@@ -839,8 +836,8 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 3, 3)  # Nx1x3x3
-    # H and s*H are the same warp, but the absolute eps inside convert_points_from_homogeneous
-    # would otherwise make the sampled grid depend on the matrix's arbitrary scale.
+    # Normalize the arbitrary projective gauge toward unit magnitude before the matrix product,
+    # limiting scale-driven overflow and underflow without changing the represented warp.
     if src_homo_dst.is_floating_point():
         src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
@@ -918,10 +915,8 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           grid requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
           homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid, except at grid points whose homogeneous coordinate is within
-          ``1e-8`` of zero after that rescaling: those are left undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
-          infinity
+          returns the same grid up to rounding. A grid point whose homogeneous coordinate is exactly
+          zero is left undivided, as in :func:`~kornia.geometry.linalg.transform_points`
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:

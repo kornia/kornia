@@ -188,7 +188,7 @@ class TestTransformPoints(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.applies_to(
-        devices=("cpu",), dtypes=("float32", "float64"), reason="the reported CPU projective-scale workflow"
+        dtypes=("float32", "float64"), reason="the projective gradient regression covers standard precision"
     )
     @pytest.mark.parametrize("matrix_scale", [1.0, 1e-10, -1e-10])
     def test_projective_matrix_scale_does_not_change_points_gradient_6813(self, matrix_scale, device, dtype):

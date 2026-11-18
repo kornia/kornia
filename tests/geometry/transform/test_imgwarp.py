@@ -909,7 +909,7 @@ class TestWarpPerspective(BaseTester):
         traced = torch.jit.trace(warp, (image, matrix))
         expected = warp(image, matrix)
         assert expected.count_nonzero() > 0  # samples inside the image, not only padding
-        # 1e8 overflows nothing: the traced grid goes through transform_points, which leaves |w| <= 1e-8 undivided.
+        # The traced grid goes through transform_points, so it exercises direct division for every nonzero w.
         scales = [1.0, 1e8, 1e-15, -1e15] if dtype == torch.float32 else [1.0, 1e8, 1e-110, -1e110]
         batched_matrix = matrix * torch.tensor(scales, device=device, dtype=dtype).reshape(-1, 1, 1)
         actual = traced(image.expand(len(scales), -1, -1, -1), batched_matrix)

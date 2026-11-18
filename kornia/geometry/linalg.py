@@ -314,10 +314,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         - A matrix batch with more than one leading axis pairs with the leading batch axes of the points, either as
           it stands or once its size-1 axes are left out, as the ``trans_01`` argument describes; any other
           multi-axis batch raises ``ValueError``.
-        - Every nonzero ``w`` is divided exactly, so finite projective points are unchanged when ``trans_01`` is
+        - Every nonzero ``w`` is divided, so finite projective points are unchanged when ``trans_01`` is
           multiplied by a nonzero scalar, up to rounding, provided the scaled homogeneous products remain
-          representable and nonzero. A point mapped to exactly ``w = 0`` is returned undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does with ``eps = 0``.
+          representable and nonzero. Division is like
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` with ``eps = 0``, up to rounding; a
+          point mapped to exactly ``w = 0`` is returned undivided.
         - Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
           (pixel indices from ``torch.nonzero`` or ``argmax``) to fractional ones. Integer points return in the
           floating dtype of ``trans_01``, or in the default floating dtype when both operands are integer, and an
