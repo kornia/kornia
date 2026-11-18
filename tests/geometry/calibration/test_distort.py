@@ -150,11 +150,14 @@ class TestTiltAutocast(BaseTester):
         if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
             pytest.skip("CUDA device does not support bfloat16")
 
-        K = torch.tensor([[650.0, 0.0, 320.0], [0.0, 625.0, 240.0], [0.0, 0.0, 1.0]], device=device)
-        ideal = torch.tensor([[32.0, 40.0], [599.0, 428.0], [180.0, 396.0]], device=device)
+        K = torch.tensor(
+            [[650.0, 0.0, 320.0], [0.0, 625.0, 240.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float32
+        )
+        ideal = torch.tensor([[32.0, 40.0], [599.0, 428.0], [180.0, 396.0]], device=device, dtype=torch.float32)
         dist = torch.tensor(
             [0.025, -0.015, 0.001, -0.002, 0.005, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10, 0.04],
             device=device,
+            dtype=torch.float32,
             requires_grad=True,
         )
         # OpenCV 4.12 projectPoints on the rays K^-1 @ [u, v, 1], with zero rotation and translation.
