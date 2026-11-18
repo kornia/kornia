@@ -93,7 +93,15 @@ class OtsuThreshold(torch.nn.Module):
         # and compiled bin it alike.
         coordinates = torch.addcdiv(values.new_zeros(()), (values - min_values) * bins, safe_widths)
         indices = coordinates.to(torch.int64).clamp(0, bins - 1)
-        histograms = values.new_zeros((values.shape[0], bins)).scatter_add(1, indices, torch.ones_like(values))
+        # Float32 stops accumulating unit counts at 2**24: a populated bin in a high-resolution image can then
+        # lose pixels and select a different threshold. Count in int64 before normalizing in the working dtype.
+        # Expand one unit instead of allocating a count per pixel; one-thread float32 CPU probes cost about
+        # 6% more at 256x256 and 3% at 1024x1024, without increasing the per-pixel temporary storage.
+        histograms = (
+            torch.zeros((values.shape[0], bins), device=xs.device, dtype=torch.int64)
+            .scatter_add(1, indices, indices.new_ones(1).expand_as(indices))
+            .to(edge_dtype)
+        )
 
         # Match linspace's symmetric interpolation and exact end points with the arithmetic of `_upper_edge`'s
         # ordinary ranges. The membership guard in `forward` keeps the mask independent of the edges' last bit.
