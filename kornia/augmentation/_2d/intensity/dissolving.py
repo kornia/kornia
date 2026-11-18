@@ -67,6 +67,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
           into the same range. This applies only to samples selected by the probability gate.
         - the clamped input is encoded by the Stable Diffusion VAE; its decoded result is also clamped.
+        - an empty image batch keeps its shape and skips model inference.
 
     .. note::
         The transform is delegated to ``kornia.filters.StableDiffusionDissolving``, which the constructor
@@ -101,5 +102,8 @@ class RandomDissolving(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if input.shape[0] == 0:
+            # No diffusion step is sampled for an empty batch (#4429).
+            return input.clone()
         input = _clamp_unit_range(input)
         return _clamp_unit_range(self._dslv(input, params["step_range_factor"][0].long().item()))

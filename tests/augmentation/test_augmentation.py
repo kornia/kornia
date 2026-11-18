@@ -6413,6 +6413,29 @@ class TestRandomJPEGEmptyBatch(BaseTester):
             RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 
+class TestRandomDissolvingEmptyBatch(BaseTester):
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("mode", ["direct", "replay", "sequence"])
+    def test_empty_batch_4429(self, p, mode, device, dtype):
+        image = torch.empty((0, 3, 8, 10), device=device, dtype=dtype, requires_grad=True)
+        model = torch.nn.Identity()
+        with (
+            patch("kornia.augmentation._2d.intensity.dissolving.StableDiffusionDissolving", return_value=model),
+            patch.object(model, "forward", side_effect=AssertionError("Empty images must bypass the diffusion model")),
+        ):
+            aug = RandomDissolving(p=p)
+            if mode == "sequence":
+                output = AugmentationSequential(aug)(image)
+            elif mode == "replay":
+                output = aug(image, params=aug.forward_parameters(image.shape))
+            else:
+                output = aug(image)
+
+        self.assert_close(output, image)
+        output.sum().backward()
+        self.assert_close(image.grad, torch.empty_like(image))
+
+
 @pytest.mark.slow
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
