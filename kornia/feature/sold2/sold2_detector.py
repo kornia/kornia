@@ -343,8 +343,10 @@ class LineSegmentDetectionModule:
         """Refine overlapping heatmap blocks with batched threshold and normalization decisions.
 
         Pack equal-sized blocks together to avoid a scalar read and variable-length selection per block. One count
-        transfer per shape group keeps Python's ceil and slice semantics for the selected fraction. Packed values and
-        indices need memory proportional to the covered block area, about four image areas at the default overlap.
+        transfer per shape group keeps Python's ceil and slice semantics for the selected fraction. Only active blocks
+        are ranked, and topk retains the selected fraction. Packed values cover about four image areas at the default
+        overlap; indices and ranking intermediates can raise peak memory to a few dozen heatmap sizes. CUDA overlap
+        sums use atomics, so repeated outputs can differ in the last bit; deterministic algorithms remain supported.
         """
         # Get the shape of the heatmap
         H, W = heatmap.shape
@@ -375,14 +377,19 @@ class LineSegmentDetectionModule:
             active = values.amax(-1) > valid_thresh
             valid = values > valid_thresh
             counts = valid.sum(-1).masked_fill(~active, 0).tolist()
-            lengths = [slice(None, math.ceil(n * ratio)).indices(n)[1] if n else 0 for n in counts]
-            lengths_t = _copied_literal(lengths, device=heatmap.device, dtype=torch.int64)
-            sorted_values = values.masked_fill(~valid, float("-inf")).sort(descending=True, dim=-1).values
-            selected = torch.arange(values.shape[-1], device=heatmap.device)[None] < lengths_t[:, None]
-            scale = torch.where(selected, sorted_values, 0).sum(-1, dtype=mean_dtype)
-            scale = (scale / torch.where(active, lengths_t, 1)).to(heatmap.dtype)
-            scale = torch.where(active, scale, 1)
-            refined = torch.where(active[:, None], (values / scale[:, None]).clamp(0, 1), values)
+            # Inactive blocks pass through unscaled; an all-inactive group needs no ranking or normalization.
+            rows = [i for i, n in enumerate(counts) if n]
+            refined = values
+            if rows:
+                lengths = [slice(None, math.ceil(n * ratio)).indices(n)[1] for n in counts if n]
+                rows_t = _copied_literal(rows, device=heatmap.device, dtype=torch.int64)
+                lengths_t = _copied_literal(lengths, device=heatmap.device, dtype=torch.int64)
+                active_values = values[rows_t]
+                top = active_values.masked_fill(~valid[rows_t], float("-inf")).topk(max(lengths), dim=-1).values
+                selected = torch.arange(top.shape[-1], device=heatmap.device)[None] < lengths_t[:, None]
+                scale = torch.where(selected, top, 0).sum(-1, dtype=mean_dtype)
+                scale = (scale / lengths_t).to(heatmap.dtype)
+                refined = values.index_copy(0, rows_t, (active_values / scale[:, None]).clamp(0, 1))
             heatmap_output.index_add_(0, indices, refined.flatten().to(heatmap_output.dtype))
             count_map.index_add_(0, indices, torch.ones_like(indices, dtype=count_map.dtype))
         return torch.clamp((heatmap_output / count_map).reshape(H, W), max=1.0, min=0.0)
