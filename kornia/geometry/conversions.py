@@ -1598,13 +1598,13 @@ def euler_from_quaternion(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    KORNIA_CHECK(
-        w.shape == x.shape == y.shape == z.shape,
-        lambda: (
+    # The message is a string built on failure only, as in quaternion_from_euler: TorchScript takes only a string.
+    if not w.shape == x.shape == y.shape == z.shape:
+        KORNIA_CHECK(
+            False,
             f"w, x, y and z must have the same shape, got {list(w.shape)}, {list(x.shape)}, "
-            f"{list(y.shape)} and {list(z.shape)}."
-        ),
-    )
+            f"{list(y.shape)} and {list(z.shape)}.",
+        )
 
     quaternion = torch.stack((w, x, y, z), dim=-1)
     # float16 and bfloat16 are computed in float32 and rounded once; the half-precision arithmetic was up to 5 eps
