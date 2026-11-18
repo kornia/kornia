@@ -21,6 +21,7 @@ import pickle
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector2, Vector3
 
@@ -57,6 +58,14 @@ class TestVector3(BaseTester):
         assert vec.x == 0.0
         assert vec.y == 1.0
         assert vec.z == 0.0
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector3 needs a last dimension of 3, got shape \[4, 2\]"):
+            Vector3(torch.rand(4, 2, device=device, dtype=dtype))
+        with pytest.raises(BaseError, match="x, y and z must have the same type, got float, Tensor and float"):
+            Vector3.from_coords(0.0, torch.tensor(1.0, device=device, dtype=dtype), 0.0)
+        with pytest.raises(BaseError, match="x, y and z must be floats or tensors, got int"):
+            Vector3.from_coords(0, 1, 0)
 
     @pytest.mark.parametrize("shape", [(), (1,), (2, 4)])
     def test_from_coords_tensor(self, device, dtype, shape):
@@ -147,6 +156,14 @@ class TestVector2(BaseTester):
         assert vec.shape == (2,)
         assert vec.x == 0.0
         assert vec.y == 1.0
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(BaseError, match=r"Vector2 needs a last dimension of 2, got shape \[4, 3\]"):
+            Vector2(torch.rand(4, 3, device=device, dtype=dtype))
+        with pytest.raises(BaseError, match="x and y must have the same type, got Tensor and float"):
+            Vector2.from_coords(torch.tensor(0.0, device=device, dtype=dtype), 1.0)
+        with pytest.raises(BaseError, match="x and y must be floats or tensors, got int"):
+            Vector2.from_coords(0, 1)
 
     @pytest.mark.parametrize("shape", [(), (1,), (2, 4)])
     def test_from_coords_tensor(self, device, dtype, shape):

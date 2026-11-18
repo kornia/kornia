@@ -302,6 +302,23 @@ class TestHyperplane(BaseTester):
         with pytest.raises(BaseError, match="requires three points"):
             Hyperplane.through(p0, p1)
 
+    def test_through_mismatched_shapes_raises(self, device, dtype):
+        p0 = torch.rand(2, 3, device=device, dtype=dtype)
+        p2 = torch.rand(1, 3, device=device, dtype=dtype)
+        with pytest.raises(
+            BaseError, match=r"p0, p1 and p2 must have the same shape, got \[2, 3\], \[2, 3\] and \[1, 3\]"
+        ):
+            Hyperplane.through(p0, p0, p2)
+
+    def test_signed_distance_rejects_non_point(self, device, dtype):
+        plane = Hyperplane.through(
+            torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype),
+        )
+        with pytest.raises(BaseError, match="p must be a Vector3 or a Tensor, got list"):
+            plane.signed_distance([0.0, 0.0, 1.0])
+
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
         v0 = Vector3.random(shape, device, dtype)

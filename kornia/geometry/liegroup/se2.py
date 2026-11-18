@@ -529,7 +529,9 @@ class Se2(nn.Module):
             y: the y-axis translation.
 
         """
-        KORNIA_CHECK(x.shape == y.shape)
+        KORNIA_CHECK(
+            x.shape == y.shape, lambda: f"x and y must have the same shape, got {list(x.shape)} and {list(y.shape)}."
+        )
         KORNIA_CHECK_SAME_DEVICES([x, y])
         batch_size = x.shape[0] if len(x.shape) > 0 else None
         rotation = So2.identity(batch_size, x.device, x.dtype)
