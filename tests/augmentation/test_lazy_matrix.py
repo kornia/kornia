@@ -289,3 +289,42 @@ class TestLazyMatrixState(BaseTester):
         expected = torch.tensor([[-1, 0, 5], [0, 1, 0], [0, 0, 1]], device=device, dtype=dtype).expand(2, 3, 3)
         self.assert_close(restored.transform_matrix, expected)
         self.assert_close(restored(input, params=restored._params), output)
+
+    def test_container_defers_child_matrices(self, device, dtype):
+        flip = K.RandomHorizontalFlip(p=1.0)
+        crop = make_augmentation("resized_crop")
+        augmentation = K.AugmentationSequential(flip, crop, K.RandomBrightness((1.1, 1.1), p=1.0))
+        input = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        augmentation(input)
+        # The container keeps the children's matrices lazy until its own matrix is read.
+        assert flip._transform_matrix is None
+        assert crop._transform_matrix is None
+        expected = crop.transform_matrix @ flip.transform_matrix
+        self.assert_close(augmentation.transform_matrix, expected)
+
+    def test_container_matrix_survives_a_later_child_call(self, device, dtype):
+        flip = K.RandomHorizontalFlip(p=1.0)
+        augmentation = K.AugmentationSequential(flip, make_augmentation("resized_crop"))
+        augmentation(torch.rand(2, 1, 8, 10, device=device, dtype=dtype))
+        # Calling the child again, on an input of another width, must not change the container's unread matrix.
+        flip(torch.rand(3, 1, 5, 7, device=device, dtype=dtype))
+        crop = augmentation[1]
+        flip_10 = torch.tensor([[-1.0, 0.0, 9.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(augmentation.transform_matrix, crop.transform_matrix @ flip_10.expand(2, 3, 3))
+        self.assert_close(flip.transform_matrix[:, 0, 2], torch.full((3,), 6.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("serializer", ["pickle", "deepcopy", "torch"])
+    def test_container_serialization_preserves_unread_matrix(self, serializer, device, dtype):
+        augmentation = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), make_augmentation("resized_crop"))
+        input = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        augmentation(input)
+        if serializer == "pickle":
+            restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
+        elif serializer == "deepcopy":
+            restored = copy.deepcopy(augmentation)
+        else:
+            stream = io.BytesIO()
+            torch.save(augmentation, stream)
+            stream.seek(0)
+            restored = torch.load(stream, weights_only=False)
+        self.assert_close(restored.transform_matrix, augmentation.transform_matrix)
