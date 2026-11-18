@@ -801,9 +801,11 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         - only the ``(1, H, W, 2)`` grid broadcasts over homography batches; a batched grid
           requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
-          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid up to rounding. A grid point whose homogeneous coordinate is exactly
-          zero is left undivided, as in :func:`~kornia.geometry.linalg.transform_points`
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it returns the same
+          coordinates up to rounding for grid points whose homogeneous coordinate is nonzero. A grid point whose
+          homogeneous coordinate is exactly zero is left undivided, as in
+          :func:`~kornia.geometry.linalg.transform_points`; because this fallback returns the numerator, such points
+          are not scale-invariant
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:
@@ -914,9 +916,11 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         - only the ``(1, D, H, W, 3)`` grid broadcasts over homography batches; a batched
           grid requires a matching batch of ``N`` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
-          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
-          returns the same grid up to rounding. A grid point whose homogeneous coordinate is exactly
-          zero is left undivided, as in :func:`~kornia.geometry.linalg.transform_points`
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it returns the same
+          coordinates up to rounding for grid points whose homogeneous coordinate is nonzero. A grid point whose
+          homogeneous coordinate is exactly zero is left undivided, as in
+          :func:`~kornia.geometry.linalg.transform_points`; because this fallback returns the numerator, such points
+          are not scale-invariant
         - a caller's autocast region does not change the grid, outside TorchScript
 
     Args:
@@ -948,7 +952,8 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1, -1)  # NxDxHxWx3
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 4, 4)  # Nx1x3x3
-    # Same projective gauge as in warp_grid: a scaled 4x4 matrix must not move the grid.
+    # Same projective gauge as in warp_grid: a scaled 4x4 matrix represents the same points when
+    # their homogeneous weight is nonzero; the exact-zero fallback returns the numerator.
     if src_homo_dst.is_floating_point():
         src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,

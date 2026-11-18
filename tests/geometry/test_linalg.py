@@ -190,6 +190,10 @@ class TestTransformPoints(BaseTester):
     @pytest.mark.applies_to(
         dtypes=("float32", "float64"), reason="the projective gradient regression covers standard precision"
     )
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("matrix_scale", [1.0, 1e-10, -1e-10])
     def test_projective_matrix_scale_does_not_change_points_gradient_6813(self, matrix_scale, device, dtype):
         # For f(x, y) = ((x + 2) + (y + 1)) / (0.1x + 0.2y + 1), evaluated at (2, 3),
