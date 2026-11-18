@@ -95,9 +95,10 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
     :class:`~kornia.geometry.boxes.Boxes` records which rows are list padding in ``_padding`` and its default export
-    returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
-    zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
-    ``'vertices'`` modes, which reads as a real one-pixel box.
+    returns a ragged list for such an object. The padding rows are zeroed after the export rather than relying on
+    zero storage: a transform moves stored padding, and a zero row stored inclusive, as the bare tensor keys store
+    their boxes, exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and ``'vertices'`` modes, which
+    reads as a real one-pixel box.
     """
     out = boxes.to_tensor(mode, as_padded_sequence=True)
     if not isinstance(out, torch.Tensor):
@@ -115,7 +116,7 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
     ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
     videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
-    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames = Boxes._wrap(boxes._data, boxes._mode, boxes._inclusive)
     frames._valid = boxes._valid
     if frames._data is not boxes._data:  # the constructor cast integer coordinates, into a copy
         frames._detach_masks()
@@ -130,7 +131,7 @@ def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
     ``RandomMosaic`` gate pads a skipped frame with, is marked invalid instead; every export zeroes invalid rows and
     every indexed read or write carries them.
     """
-    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes = VideoBoxes._wrap(frames._data, frames._mode, frames._inclusive)
     boxes._valid = frames._valid
     boxes._set_padding(frames._padding)
     boxes._is_batched = frames._is_batched
