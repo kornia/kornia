@@ -730,6 +730,10 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             return _pad_to_size(out, size, left[0], top[0])
+        if size is not None:
+            # The whole batch is already the requested size (#4531). Copy once rather than rebuilding
+            # per-row views; keep the fresh, default-contiguous output of the general path.
+            return out.clone(memory_format=torch.contiguous_format)
 
     if size is None:
         h, w = infer_bbox_shape(src)

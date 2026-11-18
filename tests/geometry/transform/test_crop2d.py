@@ -845,6 +845,67 @@ class TestCropOnePixelInputAxis6433(BaseTester):
 
 
 class TestCropByIndices(BaseTester):
+    @pytest.mark.parametrize("batch", [1, 4])
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "transposed", "expanded"])
+    @pytest.mark.parametrize("size", [(3, 4), [3, 4]])
+    @pytest.mark.parametrize("shape_compensation", ["resize", "pad"])
+    def test_uniform_exact_size_values_and_gradients_4531(self, batch, layout, size, shape_compensation, device, dtype):
+        inp = torch.rand(batch, 2, 8, 9, device=device, dtype=dtype)
+        if layout == "channels_last":
+            inp = inp.contiguous(memory_format=torch.channels_last)
+        elif layout == "transposed":
+            inp = inp.transpose(-2, -1)
+        elif layout == "expanded":
+            inp = inp[:1].expand(batch, -1, -1, -1)
+        inp.requires_grad_()
+        box = torch.tensor([[[2, 1], [5, 1], [5, 3], [2, 3]]], device=device, dtype=dtype).expand(batch, -1, -1)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=size, shape_compensation=shape_compensation)
+        expected = inp[..., 1:4, 2:6]
+        self.assert_close(out, expected, atol=0, rtol=0)
+        assert out.is_contiguous()
+        assert out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+
+        weights = torch.arange(1, out.numel() + 1, device=device, dtype=dtype).reshape_as(out)
+        (gradient,) = torch.autograd.grad(out, inp, weights)
+        expected_gradient = torch.zeros_like(inp)
+        expected_gradient[..., 1:4, 2:6] = weights
+        self.assert_close(gradient, expected_gradient, atol=0, rtol=0)
+
+    def test_uniform_exact_size_avoids_per_row_slices_4531(self, device, dtype):
+        inp = torch.rand(4, 2, 8, 9, device=device, dtype=dtype)
+        box = torch.tensor([[[2, 1], [5, 1], [5, 3], [2, 3]]], device=device, dtype=dtype).expand(4, -1, -1)
+        batch_slices = []
+
+        class BatchSlices(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                if func == torch.ops.aten.slice.Tensor and args[0] is inp and args[1] == 0:
+                    batch_slices.append(func)
+                return func(*args, **(kwargs or {}))
+
+        # Identical boxes need one spatial slice across the batch, rather than B separate row slices.
+        with BatchSlices():
+            out = kornia.geometry.transform.crop_by_indices(inp, box, size=(3, 4))
+        assert out.shape == (4, 2, 3, 4)
+        assert not batch_slices
+
+    def test_uniform_full_image_does_not_alias_input_4531(self, device, dtype):
+        # Even an already-contiguous full-image slice must be copied, rather than returned by contiguous().
+        inp = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        original = inp.clone()
+        box = torch.tensor([[[0, 0], [4, 0], [4, 3], [0, 3]]], device=device, dtype=dtype).expand(2, -1, -1)
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=(4, 5))
+        self.assert_close(out, original, atol=0, rtol=0)
+        out.zero_()
+        self.assert_close(inp, original, atol=0, rtol=0)
+
+    def test_uniform_exact_size_gradcheck_4531(self, device):
+        inp = torch.rand(2, 1, 5, 6, device=device, dtype=torch.float64)
+        box = torch.tensor([[[1, 1], [3, 1], [3, 2], [1, 2]]], device=device).expand(2, -1, -1)
+        self.gradcheck(
+            kornia.geometry.transform.crop_by_indices, (inp, box, (2, 3)), requires_grad=(True, False, False)
+        )
+
     @pytest.mark.parametrize("batch", [1, 2, 5])
     @pytest.mark.parametrize("requires_grad", [False, True])
     @pytest.mark.parametrize("grad_enabled", [False, True])
