@@ -22,7 +22,7 @@ import kornia
 from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import AsyncCheckError, ShapeError
 
-from testing.base import BaseTester
+from testing.base import BaseTester, raises_value_check
 
 
 class TestImageHistogram2d(BaseTester):
@@ -240,9 +240,10 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ValueError, match="automatically generated histogram range"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5)
 
-    def test_explicit_centers_without_spacing_need_a_bandwidth(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_explicit_centers_without_spacing_need_a_bandwidth(self, device, dtype, capfd):
         centers = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
-        with pytest.raises(AsyncCheckError, match="bandwidth derived from the bin centers"):
+        with raises_value_check(device, "bandwidth derived from the bin centers", capfd, AsyncCheckError):
             TestImageHistogram2d.fcn(torch.ones(4, 4, device=device, dtype=dtype), centers=centers)
 
     def test_negative_one_bandwidth_with_explicit_centers_does_not_need_a_range(self, device, dtype):
