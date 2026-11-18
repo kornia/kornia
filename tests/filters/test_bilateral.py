@@ -295,8 +295,8 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.float16])
     def test_half_precision_sigma_gradients(self, device, half_dtype):
         # A two-step window sum in half precision truncated intermediate partial sums (#6284). Compare the same
-        # representable inputs and output gradients: rounding this image alone changes the true sigma_color gradient
-        # from -0.178865 to -0.190558 (float64). Arithmetic error must not be rewarded for cancelling that difference.
+        # representable inputs and output gradients: quantization changes the true sigma_color gradient from -0.178865
+        # to -0.190558 (float64). Arithmetic error must not be rewarded for cancelling that difference.
         if not supports_reflect_padding(device, half_dtype):
             pytest.skip("reflection padding is unsupported for this device/dtype")
         torch.manual_seed(0)
