@@ -372,31 +372,54 @@ class TestBilateralBlur(BaseTester):
         args = (image, guide) if joint else (image,)
         actual = op(*args, (1, 3), sigma, (1.0, 1.0), "replicate")
         assert actual.dtype == dtype
-        actual[..., 1].sum().backward()
+        upstream = 4096 if joint and sigma_dtype == torch.float32 else 1
+        (actual[..., 1] * upstream).sum().backward()
         expected_value = 0.4355450559873709 if joint else 0.0007295721806632388
         expected_gradient = -25.349232186725377 if joint else -0.05643328126633213
         self.assert_close(actual[..., 1], torch.full_like(actual[..., 1], expected_value), rtol=1e-3, atol=6e-8)
-        self.assert_close(sigma.grad, torch.full_like(sigma, expected_gradient), rtol=1e-3, atol=1e-5)
+        self.assert_close(sigma.grad, torch.full_like(sigma, expected_gradient * upstream), rtol=1e-3, atol=1e-5)
 
     @pytest.mark.applies_to(dtypes=("float16",), reason="keep wider tensor sigmas in the promoted arithmetic dtype")
     @pytest.mark.parametrize("joint", [False, True])
     @pytest.mark.parametrize("distance", ["l1", "l2"])
     @pytest.mark.parametrize("small_parameter", ["color", "space"])
-    def test_half_input_preserves_small_float32_sigmas(self, joint, distance, small_parameter, device, dtype):
+    @pytest.mark.parametrize("small_sigma", [2**-26, 2**-40])
+    def test_half_input_preserves_small_float32_sigmas(
+        self, joint, distance, small_parameter, small_sigma, device, dtype
+    ):
         guide = torch.tensor([0.0, 2**-10, 2**-8], device=device, dtype=dtype).view(1, 1, 1, 3)
         image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view_as(guide) if joint else guide
-        # 2**-26 is a valid positive float32 sigma, but rounds to zero in float16. Either narrow kernel must leave
+        # These positive float32 sigmas round to zero in float16. Either narrow kernel must leave
         # these pixels unchanged: the nearest nonzero colour distance and nearest spatial offset have zero weight.
-        color = 2**-26 if small_parameter == "color" else 1.0
-        space = (1.0, 2**-26) if small_parameter == "space" else (1.0, 1.0)
+        color = small_sigma if small_parameter == "color" else 1.0
+        space = (1.0, small_sigma) if small_parameter == "space" else (1.0, 1.0)
         sigma_color = torch.tensor([color], device=device, dtype=torch.float32)
-        sigma_space = torch.tensor([space], device=device, dtype=torch.float32)
+        sigma_space = torch.tensor(
+            [space], device=device, dtype=torch.float32, requires_grad=small_parameter == "space"
+        )
         op = joint_bilateral_blur if joint else bilateral_blur
         args = (image, guide) if joint else (image,)
         actual = op(*args, (1, 3), sigma_color, sigma_space, "replicate", distance)
         assert actual.dtype == dtype
         self.assert_close(actual, image, rtol=0, atol=0)
         self.assert_close(actual, op(*args, (1, 3), color, space, "replicate", distance), rtol=0, atol=0)
+        if small_parameter == "space":
+            # All nonzero spatial offsets have zero weight, so the impulse's sigma derivative is exactly zero.
+            actual.sum().backward()
+            self.assert_close(sigma_space.grad, torch.zeros_like(sigma_space), rtol=0, atol=0)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="compile the promoted spatial impulse and its zero gradient")
+    @pytest.mark.parametrize("joint", [False, True])
+    def test_dynamo_half_spatial_impulse_gradient(self, joint, device, dtype, torch_optimizer):
+        image = torch.tensor([0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 3)
+        sigma = torch.tensor([[1.0, 2**-40]], device=device, dtype=torch.float32, requires_grad=True)
+        op = torch_optimizer(joint_bilateral_blur if joint else bilateral_blur)
+        args = (image, image) if joint else (image,)
+        actual = op(*args, (1, 3), 1.0, sigma, "replicate")
+        assert actual.dtype == dtype
+        self.assert_close(actual, image, rtol=0, atol=0)
+        actual.sum().backward()
+        self.assert_close(sigma.grad, torch.zeros_like(sigma), rtol=0, atol=0)
 
     @pytest.mark.applies_to(dtypes=("float16",), reason="float32 parameter gradients must not pass through float16")
     @pytest.mark.parametrize("distance", ["l1", "l2"])
@@ -423,22 +446,36 @@ class TestBilateralBlur(BaseTester):
         # Keep sigmas on the CPU until the filter moves and casts them together (MPS cannot first allocate float64).
         color = torch.tensor([0.3], dtype=sigma_dtype)
         space = torch.tensor([[1.0, 0.9]], dtype=sigma_dtype)
-        working_dtype = torch.float32 if dtype == torch.float16 else dtype
-        color_value = color.to(working_dtype).item()
-        space_value = space.to(working_dtype)[0, 1].item()
-        expected_values = []
-        for center in range(3):
-            indices = [max(0, min(2, center + offset)) for offset in (-1, 0, 1)]
-            weights = [
-                math.exp(
-                    -(offset**2) / (2 * space_value**2)
-                    - (guide_values[idx] - guide_values[center]) ** 2 / (2 * color_value**2)
-                )
-                for offset, idx in zip((-1, 0, 1), indices)
-            ]
-            expected_values.append(
-                sum(image_values[idx] * weight for idx, weight in zip(indices, weights)) / sum(weights)
-            )
+        # Independent Python-math literals. Round (c, s)=(.3, .9) to the parameter then working dtype, and use:
+        # for j in range(3):
+        #     ids = [max(0, min(2, j+i)) for i in (-1, 0, 1)]
+        #     w = [math.exp(-i*i/(2*s*s) - (guide_values[k]-guide_values[j])**2/(2*c*c))
+        #          for i, k in zip((-1, 0, 1), ids)]
+        #     y = sum(image_values[k]*v for k, v in zip(ids, w)) / sum(w)
+        expected_rows = {
+            torch.float16: (
+                [0.040189618269375865, 0.457279262862899, 1.2386180434577096],
+                [0.15514221370203188, 0.4641195184924751, 0.8693090217288548],
+            ),
+            torch.bfloat16: (
+                [0.04039129152055616, 0.4572423875113197, 1.2384613370284696],
+                [0.15529346864041715, 0.4640441153465342, 0.8692306685142348],
+            ),
+            torch.float32: (
+                [0.0401761347838798, 0.45728182309783655, 1.2386284604373587],
+                [0.15513210108790984, 0.4641246160764675, 0.8693142302186794],
+            ),
+            torch.float64: (
+                [0.04017613149057195, 0.4572818237246134, 1.238628462980764],
+                [0.15513209861792895, 0.46412461732239774, 0.8693142314903819],
+            ),
+        }
+        expected_sigma_dtype = sigma_dtype
+        if dtype == torch.bfloat16:
+            expected_sigma_dtype = dtype
+        elif dtype != torch.float64 and sigma_dtype == torch.float64:
+            expected_sigma_dtype = torch.float32
+        expected_values = expected_rows[expected_sigma_dtype][joint]
         op = joint_bilateral_blur if joint else bilateral_blur
         args = (image, guide) if joint else (image,)
         actual = op(*args, (1, 3), color, space, "replicate", distance)

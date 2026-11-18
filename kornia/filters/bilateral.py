@@ -252,6 +252,12 @@ def _bilateral_blur(
         # the spatial kernel takes the dtype of a tensor sigma, so match a floating input as for sigma_color
         if input.is_floating_point():
             sigma_space = sigma_space.to(device=input.device, dtype=sigma_dtype)
+        if input.dtype == torch.float16:
+            # These centred odd kernels have their nearest nonzero offset at one pixel. Once that tap rounds to
+            # zero, use the Gaussian helper's impulse branch before division: preserving a tiny wider sigma must
+            # not turn its zero derivative into 0 * inf. Ordinary sigmas keep the Gaussian calculation unchanged.
+            is_impulse = (-torch.ones_like(sigma_space) / (2 * sigma_space.detach().square())).exp() == 0
+            sigma_space = torch.where(is_impulse, torch.zeros_like(sigma_space), sigma_space)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -368,8 +374,11 @@ def bilateral_blur(
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
         - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is moved to its device and
-          cast to its dtype, except for float16 inputs, which use float32 sigmas and window arithmetic so small positive
-          sigmas do not overflow the inverse variance or lose squared differences. The result is cast back to float16.
+          cast to its dtype, except for float16 inputs, which use float32 sigmas and window arithmetic. This avoids
+          inverse-variance overflow for positive colour sigmas representable in float16 and preserves squared
+          differences lost in float16. Arbitrarily small wider colour sigmas can still exceed float32's range in
+          forward or backward arithmetic. The result is cast back to float16. A spatial axis whose nonzero offsets
+          all have zero float32 weight uses the Gaussian impulse limit with a zero sigma derivative.
           Eager inference reuses its colour-difference buffer; gradient-recorded window temporaries use four bytes per
           value instead of two, which can increase the memory needed for large images and kernels.
         - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
