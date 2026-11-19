@@ -68,6 +68,8 @@ def undistort_points(
         - the skew entries ``K[0, 1]`` and ``new_K[0, 1]`` are ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
         - float16 and bfloat16 inputs are iterated in float32 and the result is returned in their dtype.
+        - a caller's autocast region does not change the result, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard: outside the convergence region it can

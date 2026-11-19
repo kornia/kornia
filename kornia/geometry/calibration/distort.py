@@ -23,7 +23,17 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import _at_least_float32
+from kornia.core.utils import _at_least_float32, _autocast_disabled
+
+
+def _tilt_matmul(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    """Keep float32 tilt products in float32 inside a caller's autocast region."""
+    if torch.jit.is_scripting():
+        return left @ right
+    if left.dtype == torch.float32 and right.dtype == torch.float32:
+        with _autocast_disabled(left.device.type):
+            return left @ right
+    return left @ right
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
@@ -44,6 +54,9 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``eye(3)``.
         - scalar angles return ``(3, 3)``; otherwise a trailing singleton angle axis, if present, is
           consumed and the remaining dimensions are the batch shape.
+        - a caller's autocast region does not change the products of float32 angles, outside TorchScript, where a
+          scripted call keeps the caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores
+          the nested guard there).
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -93,7 +106,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         ],
         -2,
     )
-    R = Ry @ Rx
+    R = _tilt_matmul(Ry, Rx)
 
     if return_inverse:
         invR22 = 1 / R[..., 2, 2]
@@ -106,7 +119,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
             -2,
         )
 
-        return R.transpose(-1, -2) @ invPz
+        return _tilt_matmul(R.transpose(-1, -2), invPz)
 
     Pz = torch.stack(
         [
@@ -117,7 +130,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         -2,
     )
 
-    return Pz @ R
+    return _tilt_matmul(Pz, R)
 
 
 def distort_points(
@@ -155,6 +168,8 @@ def distort_points(
         - ``points`` must be ``(*, N, 2)``: a trailing size other than 2, or a single ``(2,)`` point, raises
           :class:`~kornia.core.exceptions.ShapeError`.
         - float16 and bfloat16 inputs are distorted in float32 and the result is returned in their dtype.
+        - a caller's autocast region does not change the result, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
@@ -255,7 +270,7 @@ def distort_points(
         tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        points_untilt = torch.stack([xd, yd, torch.ones_like(xd)], -1) @ tilt.transpose(-2, -1)
+        points_untilt = _tilt_matmul(torch.stack([xd, yd, torch.ones_like(xd)], -1), tilt.transpose(-2, -1))
         xd = points_untilt[..., 0] / points_untilt[..., 2]
         yd = points_untilt[..., 1] / points_untilt[..., 2]
 
