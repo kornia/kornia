@@ -203,6 +203,10 @@ class VideoSequential(ImageSequential):
         if same_on_frame:
             return self.__repeat_param_across_channels__(v, frame_num)
         if same_on_batch:
+            # Gaussian noise stores one shared map, rather than one row per frame. Expand that
+            # singleton over all flattened frames; repeating it only B times gives the wrong batch size.
+            if v.shape[0] == 1:
+                return v.expand(batch_shape[0] * frame_num, *v.shape[1:])
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 

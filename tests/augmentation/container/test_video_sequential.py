@@ -103,6 +103,27 @@ class TestVideoSequential:
 
     @pytest.mark.parametrize("same_on_frame", [True, False])
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_shared_gaussian_noise(self, same_on_frame, data_format, batch_size, device, dtype):
+        noise = K.RandomGaussianNoise(mean=0.0, std=0.1, same_on_batch=True, p=1.0)
+        aug = K.VideoSequential(noise, same_on_frame=same_on_frame, data_format=data_format)
+        input = torch.zeros(batch_size, 3, 1, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        if data_format == "BCTHW":
+            input = input.transpose(1, 2).detach().requires_grad_()
+        torch.manual_seed(42)
+        output = aug(input)
+        frames = output.transpose(1, 2) if data_format == "BCTHW" else output
+        # same_on_batch shares the generator's one noise map across every flattened frame.
+        assert_close(frames, frames[:1, :1].expand_as(frames))
+        assert output.shape == input.shape
+        assert output.dtype == dtype
+        assert not torch.equal(output, input)
+        assert_close(aug(input, params=aug._params), output)
+        output.sum().backward()
+        assert_close(input.grad, torch.ones_like(input))
+
+    @pytest.mark.parametrize("same_on_frame", [True, False])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_zero_probability_passes_through(self, data_format, same_on_frame, device, dtype):
         aug_list = K.VideoSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0),
