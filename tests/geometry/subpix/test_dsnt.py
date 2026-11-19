@@ -23,7 +23,12 @@ import kornia
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError
 
-from testing.base import BaseTester, raises_cuda_device_assert
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamic_export_is_available,
+    raises_cuda_device_assert,
+)
 
 
 def _tolerances(dtype):
@@ -339,6 +344,39 @@ class TestSpatialExpectation2d(BaseTester):
         actual_grad = torch.autograd.grad((actual * actual.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
         reference_grad = torch.autograd.grad((reference * reference.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
         self.assert_close(actual_grad, reference_grad, rtol=0.0, atol=0.0)
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("capture", ["dynamo", "export"])
+    def test_marginal_selector_keeps_dynamic_shapes(self, capture):
+        from torch._dynamo.testing import CompileCounter
+
+        class Expectation(torch.nn.Module):
+            def forward(self, probabilities):
+                return kornia.geometry.subpix.spatial_expectation2d(probabilities)
+
+        example = torch.rand(2, 3, 48, 64)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        try:
+            if capture == "dynamo":
+                captured = torch.compile(Expectation(), backend=counter, fullgraph=True, dynamic=True)
+            else:
+                captured = torch.export.export(
+                    Expectation(),
+                    (example,),
+                    dynamic_shapes=(
+                        {2: torch.export.Dim("height", min=16, max=256), 3: torch.export.Dim("width", min=16, max=256)},
+                    ),
+                    strict=True,
+                ).module()
+            for height, width in ((48, 64), (192, 128), (16, 256), (128, 256)):
+                probabilities = torch.rand(2, 3, height, width)
+                probabilities /= probabilities.sum((-2, -1), keepdim=True)
+                self.assert_close(captured(probabilities), Expectation()(probabilities), rtol=1e-6, atol=1e-6)
+            if capture == "dynamo":
+                assert counter.frame_count == 1
+        finally:
+            torch._dynamo.reset()
 
     @pytest.fixture(
         params=[

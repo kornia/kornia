@@ -169,13 +169,13 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
 
     if (
         not torch.jit.is_scripting()
+        and input.device.type == "cpu"
+        and not torch.jit.is_tracing()
+        and not is_compiling()
+        and input.dtype in (torch.float32, torch.float64)
         and input.numel() >= 2**17
         and height >= 16
         and width >= 16
-        and input.device.type == "cpu"
-        and input.dtype in (torch.float32, torch.float64)
-        and not torch.jit.is_tracing()
-        and not is_compiling()
     ):
         # Marginalize before weighting: each coordinate is constant along the other axis.
         # This saves full heatmap products for large 2D maps; capture can fuse those products itself.
