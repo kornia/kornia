@@ -97,6 +97,9 @@ class OtsuThreshold(torch.nn.Module):
         # lose pixels and select a different threshold. Count in int64 before normalizing in the working dtype.
         # Expand one unit instead of allocating a count per pixel; one-thread float32 CPU probes cost about
         # 6% more at 256x256 and 3% at 1024x1024, without increasing the per-pixel temporary storage.
+        # The PR #6818 review measured 70-150 us (1.19-1.43x) extra for compiled float32 CUDA at 1024x1024 and
+        # 3x1080p on RTX 4090 / PyTorch 2.15: Inductor did not fuse int64 scatter. Keep int64's count range;
+        # revisit this cost when the backend can fuse it.
         histograms = (
             torch.zeros((values.shape[0], bins), device=xs.device, dtype=torch.int64)
             .scatter_add(1, indices, indices.new_ones(1).expand_as(indices))
