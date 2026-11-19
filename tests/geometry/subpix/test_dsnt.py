@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core._compat import torch_version_ge
@@ -307,6 +308,38 @@ class TestSpatialSoftmax2d(BaseTester):
 
 
 class TestSpatialExpectation2d(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=(torch.float32, torch.float64), reason="CPU reduction path")
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("transposed", [False, True])
+    def test_large_maps_use_marginal_storage(self, device, dtype, normalized, transposed):
+        probabilities = torch.rand(2, 3, 96, 128, device=device, dtype=dtype)
+        probabilities /= probabilities.sum((-2, -1), keepdim=True)
+        if transposed:
+            probabilities = probabilities.transpose(-2, -1)
+        probabilities.requires_grad_()
+        height, width = probabilities.shape[-2:]
+        grid = kornia.geometry.create_meshgrid(height, width, normalized, device=device, dtype=dtype)[0]
+        reference = torch.stack([(probabilities * grid[..., axis]).sum((-2, -1)) for axis in range(2)], -1)
+        input_storage = probabilities.untyped_storage().data_ptr()
+
+        class BoundedStorage(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                for tensor in output if isinstance(output, (tuple, list)) else (output,):
+                    if isinstance(tensor, torch.Tensor) and tensor.untyped_storage().data_ptr() != input_storage:
+                        assert tensor.numel() <= probabilities.numel() // 2, "allocated a full heatmap intermediate"
+                return output
+
+        with BoundedStorage():
+            actual = kornia.geometry.subpix.spatial_expectation2d(probabilities, normalized)
+
+        assert actual.dtype == dtype
+        tolerance = 1e-6 if dtype == torch.float32 else 1e-12
+        self.assert_close(actual, reference, rtol=tolerance, atol=tolerance)
+        actual_grad = torch.autograd.grad((actual * actual.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
+        reference_grad = torch.autograd.grad((reference * reference.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
+        self.assert_close(actual_grad, reference_grad, rtol=0.0, atol=0.0)
+
     @pytest.fixture(
         params=[
             (
