@@ -110,10 +110,11 @@ _INVERSE_ATOL = 6.0e-4
 # Per-dtype tolerances for every RGB <-> YUV round trip in this file. Now that ``yuv_to_rgb``
 # inverts ``rgb_to_yuv`` exactly, these are pure float precision: the two kernels compose to the
 # identity to 1.1e-16 in float64 and 1.2e-7 in float32, and a round trip over the whole file's
-# inputs measures 3.3e-16 / 1.3e-7 on cpu. The float32 entry is two orders above that measured
-# floor rather than one, because off cpu ``_apply_linear_transformation`` runs a cuDNN conv2d
-# instead of an einsum and no CUDA device is available to measure it; it still sits 100x below
-# the 1.356e-3 of kornia#4044, which is what these bounds have to exclude. float16/bfloat16 keep
+# inputs measures 3.3e-16 / 1.3e-7 on cpu. ``_apply_linear_transformation`` runs the same matmul on
+# every device, and a float32 round trip on CUDA (RTX 4050) measures 2.1e-7, as on cpu. The float32
+# entry keeps two orders above that floor; it still sits 100x below the 1.356e-3 of kornia#4044,
+# which is what these bounds have to exclude. (The cuDNN conv2d used off cpu before reached 8.5e-4
+# on CUDA for a (1, 3, 224, 224) image with PyTorch's default cuDNN TF32.) float16/bfloat16 keep
 # their own representation floors, measured at 6.6e-4 and 7.8e-3 and unchanged by this fix.
 _ROUND_TRIP_TOL = {
     torch.float64: (1e-12, 1e-12),
