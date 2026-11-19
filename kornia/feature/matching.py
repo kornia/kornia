@@ -142,12 +142,14 @@ def _chunked_neighbours(
     """Select row neighbours without retaining the full CPU distance matrix.
 
     Return each descriptor's nearest distance (or nearest-to-second-nearest ratio) and neighbour index. Only
-    eager CPU float32/float64 calls with at least 2,048 descriptors on each side, no supplied matrix, no autocast
-    and no needed gradients use this path. Captured, smaller and other-device calls keep the matrix path.
+    eager CPU float32/float64 calls with at least 2,048 descriptors on each side and 2**23 pairwise elements,
+    no supplied matrix, no autocast and no needed gradients use this path. Captured, smaller and other-device
+    calls keep the matrix path.
 
     Pad once as in :func:`_squared_distances`, reduce each 512-row product, then discard it before making the next.
     An 8,192 x 8,192 float32 distance product thus takes 16 MiB instead of 256 MiB; padding and selections add
-    linear storage. Smaller inputs keep one matrix because extra chunk calls do not consistently pay there.
+    linear storage. Smaller inputs keep one matrix because fixed chunk/reduction overhead does not consistently
+    pay for modest matrices; the element threshold also keeps the minimum float32 matrix saving above 16 MiB.
     Minima keep the first tied index and first nan; ratio tests keep ``topk``'s unordered ties. Changing GEMM's
     row count can change its last floating-point bits. Reverse matching keeps its existing implementation: the
     measured CPU time of streaming column selections was not consistently better.
@@ -166,7 +168,7 @@ def _chunked_neighbours(
         or (torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad))
     ):
         return None
-    if desc1.size(0) < 2048 or desc2.size(0) < 2048:
+    if desc1.size(0) < 2048 or desc2.size(0) < 2048 or desc1.size(0) * desc2.size(0) < 2**23:
         return None
     norms1 = desc1.pow(2).sum(-1, keepdim=True)
     norms2 = desc2.pow(2).sum(-1, keepdim=True)
