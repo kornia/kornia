@@ -22,6 +22,8 @@ import torch
 import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
+from kornia.augmentation.utils.random import _sample_distribution
+
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.exceptions import InputRankError
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
@@ -433,6 +435,7 @@ def _adapted_rsampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     r"""Draw a reparameterized sample of ``shape`` from ``dist``, one draw repeated over the batch if same_on_batch.
 
@@ -444,9 +447,9 @@ def _adapted_rsampling(
 
     if same_on_batch:
         rsample_size = torch.Size((1, *shape[1:]))
-        rsample = dist.rsample(rsample_size)
+        rsample = _sample_distribution(dist, rsample_size, generator, True)
         return rsample.repeat(shape[0], *[1] * (len(rsample.shape) - 1))
-    return dist.rsample(shape)
+    return _sample_distribution(dist, shape, generator, True)
 
 
 def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor:
@@ -464,6 +467,7 @@ def _adapted_sampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     r"""Draw a sample of ``shape`` from ``dist`` without reparameterization, one draw for the batch if same_on_batch.
 
@@ -474,8 +478,10 @@ def _adapted_sampling(
         shape = torch.Size(shape)
 
     if same_on_batch:
-        return dist.sample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
-    return dist.sample(shape)
+        return _sample_distribution(dist, torch.Size((1, *shape[1:])), generator, False).repeat(
+            shape[0], *[1] * (len(shape) - 1)
+        )
+    return _sample_distribution(dist, shape, generator, False)
 
 
 def _adapted_uniform(
@@ -483,6 +489,7 @@ def _adapted_uniform(
     low: Union[float, torch.Tensor],
     high: Union[float, torch.Tensor],
     same_on_batch: bool = False,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     r"""Draw a reparameterized sample of ``shape`` from Uniform(low, high), one draw for the batch if same_on_batch.
 
@@ -500,7 +507,7 @@ def _adapted_uniform(
     # validate_args=False to fix pytorch 1.7.1 error:
     #     ValueError: Uniform is not defined when low>= high.
     dist = Uniform(low, high, validate_args=False)
-    return _adapted_rsampling(shape, dist, same_on_batch)
+    return _adapted_rsampling(shape, dist, same_on_batch, generator=generator)
 
 
 def _adapted_beta(
@@ -508,6 +515,7 @@ def _adapted_beta(
     a: Union[float, torch.Tensor],
     b: Union[float, torch.Tensor],
     same_on_batch: bool = False,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     r"""Sample from a beta sampling function that accepts 'same_on_batch'.
 
@@ -523,7 +531,7 @@ def _adapted_beta(
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)
-    return _adapted_rsampling(shape, dist, same_on_batch)
+    return _adapted_rsampling(shape, dist, same_on_batch, generator=generator)
 
 
 def _shape_validation(param: torch.Tensor, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:

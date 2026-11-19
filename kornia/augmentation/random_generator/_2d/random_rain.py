@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Optional, Union
 
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -50,7 +51,11 @@ def _closed_integer_range(
 
 
 def _draw_closed_integer(
-    batch_size: int, sampler: UniformDistribution, same_on_batch: bool, device: torch.device
+    batch_size: int,
+    sampler: UniformDistribution,
+    same_on_batch: bool,
+    device: torch.device,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """Draw one integer per sample, uniformly over the closed range ``sampler`` was built from.
 
@@ -60,7 +65,7 @@ def _draw_closed_integer(
     ``hi + 1`` in ``float32`` for the largest draw ``u = 1 - 2 ** -24`` (``5 + u * 16`` is exactly
     ``21.0``), which ``floor`` would keep, so about one draw in ``2 ** 24`` would leave the closed range.
     """
-    drawn = _adapted_rsampling((batch_size,), sampler, same_on_batch).floor()
+    drawn = _adapted_rsampling((batch_size,), sampler, same_on_batch, generator=generator).floor()
     return drawn.clamp(max=sampler.high - 1).to(device=device, dtype=torch.long)
 
 
@@ -91,17 +96,27 @@ class RainGenerator(RandomGeneratorBase):
         self.drop_width_sampler = UniformDistribution(drop_width[0], drop_width[1], validate_args=False)
         self.coordinates_sampler = UniformDistribution(drop_coordinates[0], drop_coordinates[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
-        number_of_drops_factor = _draw_closed_integer(batch_size, self.number_of_drops_sampler, same_on_batch, _device)
-        drop_height_factor = _draw_closed_integer(batch_size, self.drop_height_sampler, same_on_batch, _device)
-        drop_width_factor = _draw_closed_integer(batch_size, self.drop_width_sampler, same_on_batch, _device)
+        number_of_drops_factor = _draw_closed_integer(
+            batch_size, self.number_of_drops_sampler, same_on_batch, _device, generator=self._generator
+        )
+        drop_height_factor = _draw_closed_integer(
+            batch_size, self.drop_height_sampler, same_on_batch, _device, generator=self._generator
+        )
+        drop_width_factor = _draw_closed_integer(
+            batch_size, self.drop_width_sampler, same_on_batch, _device, generator=self._generator
+        )
         coordinates_factor = _adapted_rsampling(
             (batch_size, int(number_of_drops_factor.max().item()) if number_of_drops_factor.numel() > 0 else 0, 2),
             self.coordinates_sampler,
             same_on_batch=same_on_batch,
+            generator=self._generator,
         ).to(device=_device)
         return {
             "number_of_drops_factor": number_of_drops_factor,

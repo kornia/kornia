@@ -22,6 +22,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["ProbabilityGenerator"]
 
@@ -54,9 +55,14 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
-        probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
+        probs_mask: torch.Tensor = _adapted_sampling(
+            (batch_size,), self.sampler, same_on_batch, generator=self._generator
+        ).bool()
         return {"probs": probs_mask}
 
 
