@@ -409,6 +409,16 @@ class TestConvDistanceTransform(BaseTester):
         expected[0, 0, 0, 0] = -0.35 / math.sqrt(1 - 0.35 * math.log(0.5))
         self.assert_close(image.grad, expected)
 
+    @pytest.mark.parametrize("strict", [False, True])
+    def test_convention_export_keeps_tie_gradient(self, device, dtype, strict):
+        image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype).reshape(1, 1, 1, 3)
+        exported = torch.export.export(kornia.contrib.DistanceTransform(), (image,), strict=strict).module()
+        image.requires_grad_()
+        exported(image)[0, 0, 0, 1].backward()
+        # The two sources tie at the center; the first gets the whole derivative.
+        expected = image.new_tensor([-0.35 / math.sqrt(1 - 0.35 * math.log(0.5)), 0, 0]).reshape_as(image)
+        self.assert_close(image.grad, expected)
+
     def test_zero_distance_has_zero_finite_gradient(self, device, dtype):
         image = torch.ones(1, 1, 3, 4, device=device, dtype=dtype, requires_grad=True)
         result = kornia.contrib.distance_transform(image)

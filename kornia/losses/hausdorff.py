@@ -24,12 +24,114 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.contrib.distance_transform import distance_transform
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.ops import _is_numpy_bool
 from kornia.core.utils import is_compiling
 
 # Squared error of a probability whose 0.5 threshold gets the pixel wrong: |p - q| > 1/2.
 _MISCLASSIFIED_SQUARED_ERROR = 0.25
+
+
+class HausdorffDTLoss(nn.Module):
+    r"""Compute a thresholded distance-transform Hausdorff loss for images or volumes.
+
+    ``criterion = HausdorffDTLoss(alpha, reduction)`` stores its arguments, and
+    ``loss = criterion(pred, target)`` weights misclassified probabilities by their distance from the predicted
+    and target regions. Use it as an auxiliary term alongside a region loss such as Dice.
+
+    This variant of Eq. 8 in :cite:`karimi2019reducing` uses the following per-pixel loss, where :math:`p` is the
+    predicted probability and :math:`q` is the binary target for the channel:
+
+    .. math::
+        \max\!\left(\frac{(p-q)^2 - 1/4}{3/4}, 0\right) (d_p^\alpha + d_q^\alpha).
+
+    Convention:
+        - A single prediction channel is a foreground probability and takes labels 0 and 1. With multiple channels,
+          each is scored independently against its class, including class 0. Pass probabilities after sigmoid or
+          softmax, as appropriate.
+        - The predicted mask uses ``p > 0.5``. Each distance is to the nearest pixel or voxel of the opposite label
+          within the same image or volume. A spatially constant mask contributes zero distance.
+        - Gradients pass only through the thresholded error; at the threshold its gradient is zero. When both masks are
+          spatially constant, even if they disagree, the loss is zero for that channel.
+        - Half and bfloat16 inputs are computed in float32 and return a float32 loss.
+
+    Args:
+        alpha: Positive finite exponent of each distance field. Default: 2. The distance weights on misclassified
+            pixels must be representable in the working dtype.
+        reduction: ``"none"`` returns the per-pixel loss in the prediction layout; ``"mean"`` averages all entries;
+            ``"sum"`` sums them.
+
+    See Also:
+        - :class:`HausdorffERLoss`: a loss that weights errors by erosion depth instead of distance.
+        - :func:`~kornia.contrib.distance_transform`: the Euclidean distance transform used for the binary masks.
+
+    Example:
+        >>> pred = torch.tensor([[[[1., 0., 1.]]]])
+        >>> target = torch.tensor([[[[1, 0, 0]]]])
+        >>> HausdorffDTLoss(reduction="sum")(pred, target)
+        tensor(5.)
+
+    """
+
+    def __init__(self, alpha: float = 2.0, reduction: str = "mean") -> None:
+        super().__init__()
+        if not math.isfinite(alpha) or alpha <= 0:
+            raise ValueError("alpha must be positive and finite.")
+        if reduction not in ("mean", "sum", "none"):
+            raise NotImplementedError("reduction must be 'mean', 'sum' or 'none'.")
+        self.alpha = alpha
+        self.reduction = reduction
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Score probabilities of shape ``(B, C, H, W)`` or ``(B, C, D, H, W)`` against matching int64 labels.
+
+        The target has the same batch and spatial dimensions as the prediction and one channel.
+        """
+        KORNIA_CHECK_SAME_DEVICE(pred, target)
+        if pred.ndim not in (4, 5) or target.ndim != pred.ndim:
+            raise ValueError("Expected prediction and target of rank 4 or 5.")
+        if target.shape[0] != pred.shape[0] or target.shape[1] != 1 or target.shape[2:] != pred.shape[2:]:
+            raise ValueError("Target must have one channel and match prediction batch and spatial dimensions.")
+        if not pred.is_floating_point() or target.dtype != torch.int64:
+            raise ValueError("Expected floating point probabilities and int64 labels.")
+        channels = pred.shape[1]
+        if channels == 0:
+            raise ValueError("Prediction must have at least one channel.")
+        # The range check reads tensor values, which graph capture cannot do.
+        if (
+            not is_compiling()
+            and not torch.jit.is_tracing()
+            and not ((target >= 0) & (target < max(channels, 2))).all()
+        ):
+            raise ValueError("Target labels must be in range for the number of prediction channels.")
+
+        if channels == 1:
+            target_mask = target == 1
+        else:
+            classes = torch.arange(channels, device=pred.device).view(1, -1, *([1] * (pred.ndim - 2)))
+            target_mask = target == classes
+
+        if pred.dtype in (torch.float16, torch.bfloat16):
+            pred = pred.float()
+        target_sources = target_mask.to(pred.dtype)
+        pred_mask = (pred > 0.5).to(pred.dtype)
+        pred_distance = distance_transform(pred_mask) + distance_transform(1 - pred_mask)
+        target_distance = distance_transform(target_sources) + distance_transform(1 - target_sources)
+
+        # Factor the squared error about 0.5 to retain the first representable error below the foreground threshold.
+        margin = torch.where(target_mask, 0.5 - pred, pred - 0.5)
+        error = margin.relu() * (1 + margin) / (1 - _MISCLASSIFIED_SQUARED_ERROR)
+        weight = pred_distance.pow(self.alpha) + target_distance.pow(self.alpha)
+        # Inactive pixels have exactly zero loss and gradient, even if their unused distance weights overflow.
+        loss = error * weight.masked_fill(margin <= 0, 0)
+        if self.reduction == "mean":
+            # Scale before summing so large finite weights cannot overflow an otherwise finite mean.
+            count = loss.numel()
+            return (loss / count).sum() if count else loss.mean()
+        if self.reduction == "sum":
+            return loss.sum()
+        return loss
 
 
 class _HausdorffERLossBase(nn.Module):

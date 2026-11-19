@@ -33,6 +33,114 @@ _CAPTURE_UNAVAILABLE_REASON = (
 )
 
 
+class TestHausdorffDTLoss(BaseTester):
+    @pytest.mark.parametrize("alpha,weight", [(1.0, 3.0), (2.0, 5.0)])
+    def test_convention_thresholded_error_and_reduction(self, alpha, weight, device, dtype):
+        pred = torch.tensor([[[[1.0, 0.0, 0.75, 0.49, 0.5]]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[[1, 0, 0, 0, 0]]]], device=device)
+        actual = kornia.losses.HausdorffDTLoss(alpha, "none")(pred, target)
+        # At index 2, the nearest opposite labels are 1 pixel away in the prediction and 2 in the target.
+        # The thresholded error is (0.75² - 0.25) / 0.75 = 5/12, with derivative 2 * 0.75 / 0.75 = 2.
+        expected = actual.new_tensor([[[[0, 0, weight * (5 / 12), 0, 0]]]])
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.HausdorffDTLoss(alpha)(pred, target), expected.mean())
+        self.assert_close(kornia.losses.HausdorffDTLoss(alpha, "sum")(pred, target), expected.sum())
+        gradient = torch.autograd.grad(actual.sum(), pred)[0]
+        self.assert_close(gradient, pred.new_tensor([[[[0, 0, 2 * weight, 0, 0]]]]))
+
+    def test_convention_volume_and_single_voxel_error(self, device, dtype):
+        target = torch.zeros(1, 1, 2, 3, 3, device=device, dtype=torch.long)
+        target[..., 0, 0, 0] = 1
+        pred = target.to(dtype)
+        pred[..., 1, 2, 2] = 1
+        actual = kornia.losses.HausdorffDTLoss(reduction="none")(pred, target)
+        expected = torch.zeros_like(actual)
+        # The squared distance to the target is 1² + 2² + 2² = 9, plus 1² to prediction background.
+        expected[..., 1, 2, 2] = 10
+        self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(dtypes=["float32", "float64"], reason="Checks rounding at the foreground threshold.")
+    def test_convention_foreground_just_below_threshold(self, device, dtype):
+        gap = torch.finfo(dtype).eps / 4  # The adjacent representable value below 0.5.
+        pred = torch.tensor([[[[0.0, 0.5 - gap, 1.0]]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[[0, 1, 1]]]], device=device)
+        actual = kornia.losses.HausdorffDTLoss(reduction="sum")(pred, target)
+        # Both distances at the middle pixel are 1; its thresholded error is gap * (1 + gap) / 0.75.
+        # Purely relative tolerance so the adjacent representable value cannot compare equal to zero.
+        self.assert_close(actual, pred.new_tensor(2 * gap * (1 + gap) / 0.75), rtol=2 * torch.finfo(dtype).eps, atol=0)
+        gradient = torch.autograd.grad(actual, pred)[0]
+        self.assert_close(gradient, pred.new_tensor([[[[0, -2 * (1 + 2 * gap) / 0.75, 0]]]]))
+
+    def test_convention_inactive_pixels_ignore_overflowing_weights(self, device):
+        target = torch.zeros(1, 1, 1, 257, device=device, dtype=torch.long)
+        target[..., 0] = 1
+        pred = target.float().requires_grad_()
+        actual = kornia.losses.HausdorffDTLoss(alpha=16)(pred, target)
+        # The farthest weight exceeds float32 range, but every pixel is correct.
+        self.assert_close(actual, pred.new_zeros(()))
+        self.assert_close(torch.autograd.grad(actual, pred)[0], torch.zeros_like(pred))
+
+    def test_mean_with_unrepresentable_sum(self, device):
+        pred = torch.ones(1, 1, 1, 256, device=device, dtype=torch.float32, requires_grad=True)
+        target = torch.zeros_like(pred, dtype=torch.long)
+        target[..., 0] = 1
+        actual = kornia.losses.HausdorffDTLoss(alpha=16)(pred, target)
+        # Each pixel i has loss i**16. The mean from sum(i**16 for i in range(256)) / 256 fits in float32.
+        self.assert_close(actual, pred.new_tensor(1.935891851375385e37))
+        gradient = torch.autograd.grad(actual, pred)[0]
+        assert torch.isfinite(gradient).all()
+        # At the last pixel, d(error)/dp = 8/3, so the derivative is 8 * 255**16 / (3 * 256).
+        self.assert_close(gradient[0, 0, 0, -1], pred.new_tensor(3.3294435345320675e36))
+
+    def test_convention_classes_batches_and_uniform_masks(self, device, dtype):
+        target = torch.tensor([[[[0, 1, 2]]], [[[1, 1, 1]]]], device=device)
+        pred = torch.tensor(
+            [[[[1, 0, 1]], [[0, 1, 0]], [[0, 0, 0]]], [[[1, 1, 1]], [[0, 0, 0]], [[0, 0, 0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        actual = kornia.losses.HausdorffDTLoss(reduction="none")(pred, target)
+        # Class 0 has distances 1 and 2 at the wrong pixel. Class 2 has distances 0 (empty) and 1.
+        # In the second image, all class masks on both sides are uniform and contribute zero.
+        expected = actual.new_tensor([[[0, 0, 5], [0, 0, 0], [0, 0, 1]], [[0, 0, 0]] * 3]).unsqueeze(-2)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(dtypes=["float16", "bfloat16"], reason="Checks low precision accumulation.")
+    def test_half_precision_distance_weight(self, device, dtype):
+        target = torch.zeros(1, 1, 1, 257, device=device, dtype=torch.long)
+        target[..., 0] = 1
+        pred = target.to(dtype)
+        pred[..., -1] = 1
+        actual = kornia.losses.HausdorffDTLoss(reduction="sum")(pred, target)
+        # A false positive 256 pixels away needs a squared distance beyond the float16 range.
+        self.assert_close(actual, torch.tensor(65537.0, device=device))
+
+    def test_gradcheck(self, device):
+        pred = torch.tensor([[[[0.8, 0.1, 0.9]]]], device=device, dtype=torch.float64)
+        target = torch.tensor([[[[1, 0, 0]]]], device=device)
+        self.gradcheck(kornia.losses.HausdorffDTLoss(), (pred, target), dtypes=[torch.float64, torch.int64])
+
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit",
+        reason="Checks full-graph Dynamo capture of the distance transform.",
+    )
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pred = torch.tensor([[[[1.0, 0.0, 0.75]]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[[1, 0, 0]]]], device=device)
+        loss = kornia.losses.HausdorffDTLoss()
+        compiled = torch_optimizer(loss, fullgraph=True)(pred, target)
+        eager = loss(pred, target)
+        self.assert_close(compiled, eager)
+        self.assert_close(torch.autograd.grad(compiled, pred)[0], torch.autograd.grad(eager, pred)[0])
+
+    @pytest.mark.parametrize("label", [-1, 2])
+    def test_invalid_binary_label(self, label, device):
+        pred = torch.zeros(1, 1, 1, 1, device=device)
+        target = torch.full((1, 1, 1, 1), label, device=device)
+        with pytest.raises(ValueError, match="Target labels must be in range"):
+            kornia.losses.HausdorffDTLoss()(pred, target)
+
+
 class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
     def test_input_type_validation(self, loss_cls):

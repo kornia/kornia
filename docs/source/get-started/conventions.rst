@@ -973,7 +973,7 @@ What the families take:
 - :func:`~kornia.losses.kl_div_loss_2d` and :func:`~kornia.losses.js_div_loss_2d` take probabilities: every
   ``(b, n)`` slice of a ``(B, N, H, W)`` input is a distribution over ``H x W``.
 - The losses on the segmentation page take raw logits (see `Dense-prediction losses`_) and
-  :class:`~kornia.losses.HausdorffERLoss` takes probabilities; the mutual-information losses take intensities of any
+  the Hausdorff losses take probabilities; the mutual-information losses take intensities of any
   range, which they normalise per signal: per channel of each sample for an image batch.
 
 Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
@@ -994,7 +994,8 @@ string outside a function's vocabulary raises, ``BaseError`` from the robust los
      - one value per element, in the shape of the prediction
    * - :func:`~kornia.losses.ssim_loss`, :func:`~kornia.losses.ssim3d_loss`, :class:`~kornia.losses.MS_SSIMLoss`,
        :func:`~kornia.losses.kl_div_loss_2d`, :func:`~kornia.losses.js_div_loss_2d`,
-       :class:`~kornia.losses.HausdorffERLoss`, :class:`~kornia.losses.HausdorffERLoss3D`,
+       :class:`~kornia.losses.HausdorffDTLoss`, :class:`~kornia.losses.HausdorffERLoss`,
+       :class:`~kornia.losses.HausdorffERLoss3D`,
        :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.mean_absolute_disparity_error` and the other disparity
        metrics
      - ``'mean'``
@@ -1074,7 +1075,8 @@ as the target.
 :func:`~kornia.metrics.mean_average_precision` never scores class 0, which its ``n_classes`` still counts. Keep the
 background at label 0 when porting a label map: moving it changes both results. ``focal_loss`` with ``alpha=None``,
 :func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_softmax_loss` and
-:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class.
+:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class, as does
+:class:`~kornia.losses.HausdorffDTLoss` with multiple prediction channels.
 
 With ``alpha=None`` and ``gamma=0``, the target slice of :func:`~kornia.losses.focal_loss` is the cross entropy, but
 its ``'mean'`` is not that of :func:`~torch.nn.functional.cross_entropy`. It divides the sum by every element of the
