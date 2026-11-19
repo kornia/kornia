@@ -1,0 +1,1 @@
+`AdaptiveDiscriminatorAugmentation` now keeps its adapted probability `p`, the accuracy EMA, and the update counter in `state_dict()`, so a run resumed from a checkpoint continues with the adapted `p` instead of restarting at `initial_p`.

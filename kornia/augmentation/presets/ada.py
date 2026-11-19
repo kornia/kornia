@@ -226,6 +226,26 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
+    def get_extra_state(self) -> Dict[str, Any]:
+        """Return the adapted state, so ``state_dict()`` keeps it when training is checkpointed and resumed.
+
+        ``p``, ``real_acc_ema`` and the update counter are plain Python numbers, which ``state_dict()`` would otherwise
+        drop: a resumed run would restart from ``initial_p``.
+        """
+        return {"p": self.p, "real_acc_ema": self.real_acc_ema, "num_calls": self._num_calls}
+
+    def set_extra_state(self, state: Dict[str, Any]) -> None:
+        """Restore the adapted state saved by :meth:`get_extra_state`."""
+        self.p = state["p"]
+        self.real_acc_ema = state["real_acc_ema"]
+        self._num_calls = state["num_calls"]
+
+    def _load_from_state_dict(self, state_dict: Dict[str, Any], prefix: str, *args: Any, **kwargs: Any) -> None:
+        # Checkpoints saved before the adapted state was stored have no ``_extra_state`` entry. Keep the current values
+        # for those instead of failing a strict load.
+        state_dict.setdefault(prefix + "_extra_state", self.get_extra_state())
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
     def _preproc_dict_data(
         self, data: Dict[str, DataType]
     ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:
