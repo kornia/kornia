@@ -170,8 +170,8 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     if (
         not torch.jit.is_scripting()
         and input.numel() >= 2**17
-        and height > 1
-        and width > 1
+        and height >= 16
+        and width >= 16
         and input.device.type == "cpu"
         and input.dtype in (torch.float32, torch.float64)
         and not torch.jit.is_tracing()
