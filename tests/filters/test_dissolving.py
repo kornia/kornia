@@ -65,6 +65,80 @@ class TestStableDiffusionDissolvingVersion(BaseTester):
         assert model.model.is_sdxl is (version == "xl")
 
 
+class TestStableDiffusionDissolvingPrecision(BaseTester):
+    @pytest.mark.parametrize(
+        "version, model_dtype, force_upcast, expected_vae_dtype",
+        [
+            pytest.param("xl", torch.float16, True, torch.float32, id="sdxl-upcast"),
+            pytest.param("xl", torch.float16, False, torch.float16, id="sdxl-half-safe"),
+            pytest.param("xl", torch.float32, True, torch.float32, id="sdxl-float32"),
+            pytest.param("xl", torch.bfloat16, True, torch.bfloat16, id="sdxl-bfloat16"),
+            pytest.param("1.5", torch.float16, True, torch.float16, id="sd15-half"),
+        ],
+    )
+    def test_vae_unet_precision_boundaries_6826(
+        self, version, model_dtype, force_upcast, expected_vae_dtype, device, dtype, monkeypatch
+    ):
+        class VAE(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = SimpleNamespace(force_upcast=force_upcast)
+                self.encoder = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
+                self.post_quant_conv = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
+                self.decoder = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
+                for layer in (self.encoder, self.post_quant_conv, self.decoder):
+                    with torch.no_grad():
+                        layer.weight.copy_(torch.eye(3, device=device, dtype=model_dtype).view(3, 3, 1, 1))
+
+            @property
+            def dtype(self):
+                return self.encoder.weight.dtype
+
+            def encode(self, image):
+                encoded = self.encoder(image)
+                return {"latent_dist": SimpleNamespace(sample=lambda: encoded)}
+
+            def decode(self, latents):
+                return {"sample": self.decoder(self.post_quant_conv(latents))}
+
+        # Real small convolutions make a mixed input/weight dtype fail at the same
+        # boundary as the checkpoint, without downloading it or emulating its weights.
+        denoiser = torch.nn.Conv2d(3, 3, 1, device=device, dtype=model_dtype)
+        unet = Mock(side_effect=lambda latent, *args, **kwargs: SimpleNamespace(sample=denoiser(latent)))
+        unet.dtype = model_dtype
+        scheduler = Mock(timesteps=[999], alphas_cumprod=torch.ones(1001, device=device))
+        scheduler.scale_model_input.side_effect = lambda latent, timestep: latent
+        pipeline = SimpleNamespace(vae=VAE(), unet=unet, tokenizer=Mock(), scheduler=scheduler, device=device)
+        pipeline_class = Mock()
+        pipeline_class.from_pretrained.return_value = pipeline
+        monkeypatch.setattr(
+            "kornia.filters.dissolving.diffusers",
+            SimpleNamespace(
+                DDIMScheduler=Mock(), StableDiffusionPipeline=pipeline_class, StableDiffusionXLPipeline=pipeline_class
+            ),
+        )
+        model = StableDiffusionDissolving(version=version)
+        assert {parameter.dtype for parameter in pipeline.vae.parameters()} == {expected_vae_dtype}
+        assert denoiser.weight.dtype == model_dtype
+        wrapper = model.model
+        wrapper.init_prompt = Mock()
+        wrapper.context = torch.zeros(2, 1, 4, device=device, dtype=model_dtype)
+        wrapper.pooled_embeddings = torch.zeros(2, 4, device=device, dtype=model_dtype)
+        wrapper.add_time_ids = torch.zeros(2, 6, device=device, dtype=model_dtype)
+        image = torch.tensor([0.0, 0.25, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 2, 2)
+        image = image.expand(2, 3, 2, 2).clone().requires_grad_()
+
+        output = wrapper.dissolve(image, 0)
+
+        assert unet.call_args.args[0].dtype == model_dtype
+        assert output.dtype == expected_vae_dtype
+        assert output.device == image.device
+        assert not output.requires_grad
+        assert torch.isfinite(output).all()
+        # Alpha=1 leaves the encoded image unchanged; only VAE dtype roundoff remains.
+        self.assert_close(output, image.to(expected_vae_dtype), atol=torch.finfo(expected_vae_dtype).eps, rtol=0)
+
+
 @pytest.mark.slow
 class TestStableDiffusionDissolving(BaseTester):
     @pytest.fixture(scope="class")
