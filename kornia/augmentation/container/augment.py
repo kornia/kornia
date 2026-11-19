@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple
 import torch
 from torch import nn
 
-from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D, _InputMetadata
 from kornia.augmentation._2d.geometric.elastic_transform import RandomElasticTransform
 from kornia.augmentation._2d.geometric.fisheye import RandomFisheye
 from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
@@ -40,7 +40,7 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.image.utils import image_to_tensor
 
-from .base import TransformMatrixMinIn
+from .base import TransformMatrixMinIn, _DeferredMatrix
 from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType, InputSequentialOps, _filter_child_options, _validate_extra_args
 from .params import ParamItem
@@ -434,6 +434,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         if is_exporting():
+            return
+        lazy_args = getattr(module, "_lazy_matrix_args", None)
+        if (
+            lazy_args is not None
+            and isinstance(lazy_args[0], _InputMetadata)
+            and getattr(module, "_transform_matrix", None) is None
+        ):
+            # The child deferred its matrix and keeps only the input's shape, dtype and device for it: keep deferring
+            # it until the chained matrix is read. Reading it here built every child's matrix on every forward, even
+            # when nothing reads them. A child that needs the pixels is read now, as before, so the container never
+            # holds an input.
+            self._transform_matrices.append(_DeferredMatrix(module, lazy_args))
             return
         matrix = module.transform_matrix
         # A nested container whose children are all non-rigid records no matrix under its own mode: skip it, as its
