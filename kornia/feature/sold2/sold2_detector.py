@@ -56,6 +56,14 @@ class SOLD2_detector(nn.Module):
           the same row, the smaller column, whatever the junction scores.
         - The endpoints are junction coordinates. The default junction refinement (``use_junction_refinement`` of
           ``LineDetectorCfg``) can produce sub-pixel endpoints in 0.25-pixel steps, up to one pixel per axis.
+        - After a float16 conversion (``.half()`` or ``.to(torch.float16)``), the BatchNorm that ends each hourglass
+          stack keeps its running statistics in float32 and normalizes in float32 with float32 copies of its weight
+          and bias: the pretrained running variances exceed float16's range. Convert the model to float16 before
+          tracing, scripting or exporting it; a trace or export taken from the float16 model cannot be converted to
+          another dtype. In the float16 model, module hooks or ``torch.nn.utils.prune`` on these two BatchNorms,
+          ``torch.nn.SyncBatchNorm.convert_sync_batchnorm``, ``fuse_modules_qat`` and wrapping either BatchNorm in
+          FSDP on its own make the next forward raise on CPU; on MPS the hooks, pruning and the two conversions abort
+          the process.
 
     Args:
         config (DetectorCfg): Configuration object containing all parameters, or a dict of its fields. None will load
