@@ -41,6 +41,8 @@ Which function to use:
   and :func:`undistort_points_kannala_brandt` (fisheye, eight parameters); their Jacobians
   :func:`dx_distort_points_affine` and :func:`dx_distort_points_kannala_brandt`. For OpenCV's Brown-Conrady
   coefficients on pixel coordinates, use :mod:`kornia.geometry.calibration`.
+- Complete 3D Double Sphere projection and unit-ray unprojection, including rays with negative ``z`` where valid:
+  :func:`project_points_double_sphere` and :func:`unproject_points_double_sphere`.
 - 3D points from a rectified stereo disparity map: :class:`StereoCamera`, from the two projection matrices, or
   :func:`reproject_disparity_to_3D`, from a ``Q`` matrix.
 """
@@ -53,6 +55,7 @@ from .distortion_kannala_brandt import (
 )
 from .perspective import project_points, unproject_points
 from .pinhole import PinholeCamera, cam2pixel, pixel2cam
+from .projection_double_sphere import project_points_double_sphere, unproject_points_double_sphere
 from .projection_orthographic import (
     dx_project_points_orthographic,
     project_points_orthographic,
@@ -73,12 +76,14 @@ __all__ = [
     "dx_project_points_z1",
     "pixel2cam",
     "project_points",
+    "project_points_double_sphere",
     "project_points_orthographic",
     "project_points_z1",
     "reproject_disparity_to_3D",
     "undistort_points_affine",
     "undistort_points_kannala_brandt",
     "unproject_points",
+    "unproject_points_double_sphere",
     "unproject_points_orthographic",
     "unproject_points_z1",
 ]
