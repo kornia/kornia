@@ -1,0 +1,1 @@
+`center_crop`, `CenterCrop2D` and, under `torch.export`, `crop_by_indices` with `size` now crop a float16 or bfloat16 image at the same window as a float32 one, where a start the half type cannot hold had moved the crop by one or more pixels or, in the slice mode of `CenterCrop2D`, given a box of the wrong width that was resized instead of sliced.

@@ -235,6 +235,8 @@ def center_crop(
         - offset: the crop starts at the integer pixel ``int(H / 2 - h / 2)`` (likewise for the width), as in
           :class:`CenterCrop2D`, so the output is a sub-image of the input. With an odd margin the extra pixel is
           left at the bottom/right; for a ``size`` larger than the input, the extra padding pixel goes there too.
+        - a ``float16`` or ``bfloat16`` image is cropped in ``float32`` and the patches rounded once to the image
+          dtype, so the window starts at the same pixel as in ``float32``
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -294,6 +296,12 @@ def center_crop(
     end_x: int = start_x + dst_w - 1
     end_y: int = start_y + dst_h - 1
 
+    # A float16/bfloat16 image is cropped in float32, as in crop_by_boxes: in the half dtype the corners below and
+    # the matrix that crop_by_transform_mat casts to it round a start such as 257 (bfloat16) to a nearby value.
+    out_dtype = input_tensor.dtype
+    if _samples_half_in_float32(input_tensor):
+        input_tensor = input_tensor.float()
+
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = torch.tensor(
@@ -314,7 +322,7 @@ def center_crop(
 
     return crop_by_transform_mat(
         input_tensor, transform, (dst_h, dst_w), mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
+    ).to(out_dtype)
 
 
 def crop_by_boxes(
@@ -812,14 +820,16 @@ def _crop_by_indices_export(
             f"`crop_by_indices` can export with bilinear, nearest or bicubic interpolation. Got {interpolation}."
         )
     dst_h, dst_w = size
+    # at least float32, as _crop_by_boxes_to_size samples a float16/bfloat16 image: in the half dtype the corners
+    # round to the nearest value it holds (bfloat16 257 -> 256), and the crop moves with them
+    box_dtype = torch.promote_types(input_tensor.dtype, torch.float32)
     points_dst = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     ).expand(src_box.shape[0], -1, -1)
-    return _crop_by_boxes_to_size(
-        input_tensor, src_box.to(input_tensor), points_dst, size, interpolation, "zeros", align_corners=True
-    )
+    src_box = src_box.to(device=input_tensor.device, dtype=box_dtype)
+    return _crop_by_boxes_to_size(input_tensor, src_box, points_dst, size, interpolation, "zeros", align_corners=True)
 
 
 class CenterCrop2D(nn.Module):
@@ -924,20 +934,22 @@ class CenterCrop2D(nn.Module):
         self.points_src[0, 3, 1] = end_y
 
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+            # in float32 for a float16/bfloat16 image, as in center_crop
+            image = input.float() if _samples_half_in_float32(input) else input
             transform = _crop_translation(
-                self.points_src.expand(batch_size, -1, -1).to(input),
-                self.points_dst.expand(batch_size, -1, -1).to(input),
+                self.points_src.expand(batch_size, -1, -1).to(image),
+                self.points_dst.expand(batch_size, -1, -1).to(image),
             )
             transform = transform.expand(batch_size, -1, -1)
 
             return crop_by_transform_mat(
-                input,
+                image,
                 transform[:, :2, :],
                 self.size,
                 self.flags["resample"].name.lower(),
                 "zeros",
                 self.flags["align_corners"],
-            )
+            ).to(input.dtype)
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             if dst_h > src_h or dst_w > src_w:
@@ -946,6 +958,10 @@ class CenterCrop2D(nn.Module):
                 left, top = max(-start_x, 0), max(-start_y, 0)
                 padded = F.pad(input, [left, max(end_x + 1 - src_w, 0), top, max(end_y + 1 - src_h, 0)])
                 return padded[..., start_y + top : end_y + 1 + top, start_x + left : end_x + 1 + left].contiguous()
-            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
+            # at least float32: in a half dtype the box corners round to the nearest value it holds (bfloat16 257 ->
+            # 256, 259 -> 260), which moves the box and can change its width, so crop_by_indices resized it
+            box_dtype = torch.promote_types(input.dtype, torch.float32)
+            box = self.points_src.expand(batch_size, -1, -1).to(device=input.device, dtype=box_dtype)
+            return crop_by_indices(input, box, self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
