@@ -591,7 +591,169 @@ class TestMatchSMNN(BaseTester):
         dists, idxs = match_smnn(desc1, desc2, th, dm=dm)
         rows, cols = dm.sort(dim=1), dm.t().sort(dim=1)
         ratios1 = rows.values[:, 0] / rows.values[:, 1]
-        ratios2 = …2250 tokens truncated…orch.rand(7, 8, device=device, dtype=torch.float64)
+        ratios2 = cols.values[:, 0] / cols.values[:, 1]
+        passes1, passes2 = (ratios1 <= th).tolist(), (ratios2 <= th).tolist()
+        nearest2, nearest1 = rows.indices[:, 0].tolist(), cols.indices[:, 0].tolist()
+        expected_idxs, expected_dists = [], []
+        for i, j in enumerate(nearest2):
+            if nearest1[j] == i and passes1[i] and passes2[j]:
+                expected_idxs.append([i, j])
+                expected_dists.append(torch.maximum(ratios1[i], ratios2[j]))
+        assert len(expected_idxs) > 100
+        assert torch.equal(idxs, torch.tensor(expected_idxs, device=device))
+        assert torch.equal(dists, torch.stack(expected_dists).view(-1, 1))
+
+
+class TestMatchFGINN(BaseTester):
+    @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 5, 128)])
+    def test_shape_one_way(self, num_desc1, num_desc2, dim, device):
+        desc1 = torch.rand(num_desc1, dim, device=device)
+        desc2 = torch.rand(num_desc2, dim, device=device)
+        lafs1 = torch.rand(1, num_desc1, 2, 3, device=device)
+        lafs2 = torch.rand(1, num_desc2, 2, 3, device=device)
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.9, 1000)
+        assert idxs.shape[1] == 2
+        assert dists.shape[1] == 1
+        assert idxs.shape[0] == dists.shape[0]
+        assert dists.shape[0] <= num_desc1
+
+    @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4)])
+    def test_shape_two_way(self, num_desc1, num_desc2, dim, device):
+        desc1 = torch.rand(num_desc1, dim, device=device)
+        desc2 = torch.rand(num_desc2, dim, device=device)
+        lafs1 = torch.rand(1, num_desc1, 2, 3, device=device)
+        lafs2 = torch.rand(1, num_desc2, 2, 3, device=device)
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.9, 1000, mutual=True)
+        assert idxs.shape[1] == 2
+        assert dists.shape[1] == 1
+        assert idxs.shape[0] == dists.shape[0]
+        assert dists.shape[0] <= num_desc1
+        assert dists.shape[0] <= num_desc2
+
+    def test_matching1(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
+        # Exact half-precision coordinates keep the ratio independent of input rounding.
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.25, 2.25], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
+        lafs1 = laf_from_center_scale_ori(desc1[None])
+        lafs2 = laf_from_center_scale_ori(desc2[None])
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 0.01)
+        # The third query's nearest distances are sqrt(2) / 4 and sqrt(2).
+        expected_dists = torch.tensor([0, 0, 0.25, 0, 0], dtype=dtype, device=device).view(-1, 1)
+        expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
+        self.assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs, expected_idx)
+        matcher = GeometryAwareDescriptorMatcher("fginn", {"spatial_th": 0.01}).to(device)
+        dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
+        self.assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs1, expected_idx)
+
+    def test_matching_mutual(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.1], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0], [0.0, 0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
+        lafs1 = laf_from_center_scale_ori(desc1[None])
+        lafs2 = laf_from_center_scale_ori(desc2[None])
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 2.0, mutual=True)
+        expected_dists = torch.tensor([0, 0.1768, 0, 0, 0], dtype=dtype, device=device).view(-1, 1)
+        expected_idx = torch.tensor([[1, 3], [2, 2], [3, 1], [4, 0], [5, 4]], device=device)
+        self.assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs, expected_idx)
+        matcher = GeometryAwareDescriptorMatcher("fginn", {"spatial_th": 2.0, "mutual": True}).to(device)
+        dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
+        self.assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs1, expected_idx)
+
+    def test_nomatch(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0]], dtype=dtype, device=device)
+        lafs1 = laf_from_center_scale_ori(desc1[None])
+        lafs2 = laf_from_center_scale_ori(desc2[None])
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8)
+        assert len(dists) == 0
+        assert len(idxs) == 0
+
+    def test_matching2(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
+        lafs1 = laf_from_center_scale_ori(desc1[None])
+        lafs2 = laf_from_center_scale_ori(desc2[None])
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 2.0)
+        expected_dists = torch.tensor([0, 0, 0.1768, 0, 0], dtype=dtype, device=device).view(-1, 1)
+        expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
+        self.assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs, expected_idx)
+        matcher = GeometryAwareDescriptorMatcher("fginn", {"spatial_th": 2.0}).to(device)
+        dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
+        self.assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
+        self.assert_close(idxs1, expected_idx)
+
+    @staticmethod
+    def _suppression_case(device, dtype):
+        """A textbook FGINN case.
+
+        The 2nd nearest neighbour in descriptor space sits 1 px from the 1st, so it is a repeated
+        detection of the same structure and must not be used for the ratio test. The effective 2nd
+        neighbour is then ``desc2[2]``, giving ``0.1 / 0.5 = 0.2`` rather than ``0.1 / 0.2 = 0.5``.
+        """
+        desc2 = torch.tensor([[0.1, 0.0], [0.2, 0.0], [0.5, 0.0], [0.9, 0.0]], device=device, dtype=dtype)
+        xy2 = torch.tensor(
+            [
+                [10.0, 10.0],  # 1st NN
+                [11.0, 10.0],  # 1 px away -> suppressed by the spatial check
+                [50.0, 50.0],  # far -> the effective 2nd NN
+                [90.0, 90.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        lafs2 = laf_from_center_scale_ori(xy2[None], torch.ones(1, 4, 1, 1, device=device, dtype=dtype))
+        return desc2, lafs2
+
+    def test_second_neighbour_near_the_first_is_suppressed(self, device, dtype):
+        desc2, lafs2 = self._suppression_case(device, dtype)
+        query = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        desc1 = torch.stack([query, query])
+        lafs1 = laf_from_center_scale_ori(
+            torch.zeros(1, 2, 2, device=device, dtype=dtype), torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
+        )
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th=0.3, spatial_th=5.0)
+
+        expected_dists = torch.tensor([0.2, 0.2], device=device, dtype=dtype).view(-1, 1)
+        expected_idx = torch.tensor([[0, 0], [1, 0]], device=device)
+        self.assert_close(dists, expected_dists, rtol=1e-3, atol=1e-3)
+        self.assert_close(idxs, expected_idx)
+
+    def test_result_is_independent_of_the_other_queries(self, device, dtype):
+        """A query's ratio must not depend on unrelated queries in the same batch (see #4062)."""
+        desc2, lafs2 = self._suppression_case(device, dtype)
+        query = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        # a decoy whose own nearest neighbour is desc2[3], i.e. a different candidate ordering
+        decoy = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+
+        ratios = []
+        for first in (query, decoy):
+            desc1 = torch.stack([first, query])
+            lafs1 = laf_from_center_scale_ori(
+                torch.zeros(1, 2, 2, device=device, dtype=dtype),
+                torch.ones(1, 2, 1, 1, device=device, dtype=dtype),
+            )
+            dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th=0.3, spatial_th=5.0)
+            hit = dists[idxs[:, 0] == 1]
+            assert len(hit) == 1, "the second query must match regardless of the first"
+            ratios.append(hit[0, 0])
+
+        self.assert_close(ratios[0], ratios[1], rtol=1e-4, atol=1e-4)
+        self.assert_close(ratios[1], torch.tensor(0.2, device=device, dtype=dtype), rtol=1e-3, atol=1e-3)
+
+    def test_gradcheck(self, device):
+        desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
+        desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         center1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         center2 = torch.rand(1, 7, 2, device=device, dtype=torch.float64)
         lafs1 = laf_from_center_scale_ori(center1)
