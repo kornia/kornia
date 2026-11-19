@@ -58,6 +58,12 @@ class InheritedFlip(K.RandomHorizontalFlip):
     pass
 
 
+class InheritedComputeFlip(K.RandomHorizontalFlip):
+    # Overriding compute_transformation, even only to call super(), drops the promise that it ignores pixels.
+    def compute_transformation(self, input, params, flags):
+        return super().compute_transformation(input, params, flags)
+
+
 def make_augmentation(name):
     factories = {
         "hflip": lambda: K.RandomHorizontalFlip(p=1.0),
@@ -245,13 +251,16 @@ class TestLazyMatrixState(BaseTester):
     def test_container_releases_input(self, device, dtype):
         # One collection for every mode, as in test_forward_releases_input_4482.
         children, containers, references = {}, {}, {}
-        for mode in ("image", "silent", "skip"):
-            child = children[mode] = K.RandomHorizontalFlip(p=1.0)
+        for mode in ("image", "silent", "skip", "silent-custom"):
+            # A subclass that overrides the matrix path may read pixels, so its lazy matrix keeps the input.
+            child = children[mode] = (
+                InheritedComputeFlip(p=1.0) if mode == "silent-custom" else K.RandomHorizontalFlip(p=1.0)
+            )
             # Kept alive until the collection, so that a container holding its input would show.
             augmentation = containers[mode] = (
                 K.ImageSequential(child)
                 if mode == "image"
-                else K.AugmentationSequential(child, transformation_matrix_mode=mode)
+                else K.AugmentationSequential(child, transformation_matrix_mode=mode.split("-")[0])
             )
             input = torch.linspace(0, 1, 24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
             references[mode] = weakref.ref(input)
@@ -291,16 +300,40 @@ class TestLazyMatrixState(BaseTester):
         self.assert_close(restored(input, params=restored._params), output)
 
     def test_container_defers_child_matrices(self, device, dtype):
-        flip = K.RandomHorizontalFlip(p=1.0)
-        crop = make_augmentation("resized_crop")
-        augmentation = K.AugmentationSequential(flip, crop, K.RandomBrightness((1.1, 1.1), p=1.0))
-        input = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        def pipeline(*data_keys):
+            torch.manual_seed(0)
+            children = [K.RandomHorizontalFlip(p=0.5), make_augmentation("resized_crop"), K.RandomBrightness(p=1.0)]
+            return K.AugmentationSequential(*children, data_keys=list(data_keys)), children
+
+        input = torch.rand(4, 3, 8, 10, device=device, dtype=dtype)
+        points = torch.rand(4, 5, 2, device=device, dtype=dtype) * 8
+        augmentation, (flip, crop, _) = pipeline("input")
         augmentation(input)
         # The container keeps the children's matrices lazy until its own matrix is read.
         assert flip._transform_matrix is None
         assert crop._transform_matrix is None
-        expected = crop.transform_matrix @ flip.transform_matrix
-        self.assert_close(augmentation.transform_matrix, expected)
+        actual = augmentation.transform_matrix
+        # Read first, the container builds each matrix through its child, which keeps it for its own reads.
+        assert flip._transform_matrix is not None
+        assert crop._transform_matrix is not None
+        # Keypoints read every child's matrix during the forward, so this container builds them eagerly.
+        eager, _ = pipeline("input", "keypoints")
+        eager(input, points)
+        self.assert_close(actual, eager.transform_matrix)
+
+    def test_container_matrix_keeps_the_call_gradient_mode(self, device, dtype):
+        augmentation = K.AugmentationSequential(K.Resize((4, 6)))
+        input = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        augmentation(input)
+        item = augmentation._params[0]
+        destination = item.data["dst"].clone().requires_grad_(True)
+        augmentation(input, params=[type(item)(item.name, {**item.data, "dst": destination})])
+        # Read under no_grad, the matrix still carries the graph of the call that ran with gradients enabled.
+        with torch.no_grad():
+            matrix = augmentation.transform_matrix
+        assert matrix.requires_grad
+        matrix.sum().backward()
+        assert destination.grad is not None
 
     def test_container_matrix_survives_a_later_child_call(self, device, dtype):
         flip = K.RandomHorizontalFlip(p=1.0)

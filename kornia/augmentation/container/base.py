@@ -537,25 +537,28 @@ class _DeferredMatrix:
     container build the matrices that the children defer, on every forward, even when nothing reads them.
     """
 
-    __slots__ = ("args", "module")
+    __slots__ = ("args", "grad_enabled", "module")
 
-    def __init__(self, module: Any, args: Any) -> None:
+    def __init__(self, module: Any, args: Any, grad_enabled: Optional[bool] = None) -> None:
         self.module = module
         self.args = args
+        # The gradient mode of the call, which the matrix would have been built in before deferral.
+        self.grad_enabled = torch.is_grad_enabled() if grad_enabled is None else grad_enabled
 
-    def __reduce__(self) -> Tuple[Any, Tuple[Any, Any]]:
+    def __reduce__(self) -> Tuple[Any, Tuple[Any, Any, bool]]:
         # With a learnable range the recorded params are part of the call's graph; a copy or pickle keeps their
         # values, detached, as the containers' ``__getstate__`` does for the rest of the recorded state.
-        return _DeferredMatrix, (self.module, _detach_graph_tensors(self.args, {}))
+        return _DeferredMatrix, (self.module, _detach_graph_tensors(self.args, {}), self.grad_enabled)
 
     def materialize(self) -> torch.Tensor:
         module = self.module
-        if module._transform_matrix is None and module._lazy_matrix_args is self.args:
-            # Still the child's latest call: build it through the child, which keeps it for its own reads.
-            return module.transform_matrix
-        matrix_input, params, flags = self.args
-        in_tensor = matrix_input.materialize() if hasattr(matrix_input, "materialize") else matrix_input
-        return module.generate_transformation_matrix(in_tensor, params, flags)
+        with torch.set_grad_enabled(self.grad_enabled):
+            if module._transform_matrix is None and module._lazy_matrix_args is self.args:
+                # Still the child's latest call: build it through the child, which keeps it for its own reads.
+                return module.transform_matrix
+            matrix_input, params, flags = self.args
+            in_tensor = matrix_input.materialize() if hasattr(matrix_input, "materialize") else matrix_input
+            return module.generate_transformation_matrix(in_tensor, params, flags)
 
 
 def _materialize_matrix(matrix: Any) -> Optional[torch.Tensor]:
