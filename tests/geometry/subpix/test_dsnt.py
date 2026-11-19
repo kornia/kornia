@@ -346,8 +346,12 @@ class TestSpatialExpectation2d(BaseTester):
         self.assert_close(actual_grad, reference_grad, rtol=0.0, atol=0.0)
 
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.applies_to(
+        when=lambda p: p["capture"] != "dynamo" or p["optimizer_backend"] not in (None, "", "jit"),
+        reason="The Dynamo shape check requires a torch.compile-backed optimizer; export is independent of it.",
+    )
     @pytest.mark.parametrize("capture", ["dynamo", "export"])
-    def test_marginal_selector_keeps_dynamic_shapes(self, capture, torch_optimizer):
+    def test_marginal_selector_keeps_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
 
         class Expectation(torch.nn.Module):
