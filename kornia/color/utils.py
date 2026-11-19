@@ -46,12 +46,12 @@ def _apply_linear_transformation(
     # default in PyTorch), and with older cuDNN (seen with torch 2.5.1's cuDNN 9.1) the conv picked TF32
     # per shape, e.g. for a single (1, 3, 224, 224) float32 image and under torch.compile. A matmul follows
     # torch.backends.cuda.matmul.allow_tf32 (off by default) like every other matrix product. On the cpu
-    # it gives bitwise the einsum's result, faster.
+    # it agrees with einsum up to floating-point rounding (bitwise on tested x86), faster.
     if image_compute.device.type == "cuda" and image_compute.stride(-3) == 1 and input_shape[-2] * input_shape[-1] > 1:
         # Channel-innermost input (channels_last, or HWC permuted to CHW): cuBLAS takes a slow strided path
         # for the flattened view below, 2-3x slower than the conv2d this replaced (#6768). Contract over the
         # last axis instead, which keeps the caller's channels_last layout. Not on the cpu, where the view
-        # below is already fast and bitwise equal to the einsum.
+        # below is already fast and preserves the CPU contraction.
         out_cl = torch.matmul(image_compute.movedim(-3, -1), kernel_compute.t())
         if bias_compute is not None:
             out_cl = out_cl + bias_compute

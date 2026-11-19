@@ -25,8 +25,9 @@ from testing.base import BaseTester
 
 class TestApplyLinearTransformation(BaseTester):
     @pytest.mark.device_agnostic
-    def test_cpu_channels_last_matches_einsum_exactly(self):
+    def test_cpu_channels_last_matches_flattened_matmul_exactly(self):
         # The CUDA channel-innermost branch can differ by an ulp on CPU; preserve the original CPU contraction.
+        # Compare its own matmul: einsum can round differently with Apple's BLAS.
         image = torch.rand(
             (4, 3, 32, 32), generator=torch.Generator().manual_seed(0), device="cpu", dtype=torch.float32
         ).contiguous(memory_format=torch.channels_last)
@@ -35,7 +36,7 @@ class TestApplyLinearTransformation(BaseTester):
             device="cpu",
             dtype=torch.float32,
         )
-        expected = torch.einsum("oi, ...ihw -> ...ohw", kernel, image)
+        expected = torch.matmul(kernel, image.reshape(4, 3, 32 * 32)).reshape(4, 3, 32, 32)
 
         actual = _apply_linear_transformation(image, kernel)
 
