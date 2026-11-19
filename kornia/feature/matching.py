@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_exporting, is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_compiling, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -88,6 +88,15 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
 _SQUARED_MIN_NUMEL: Dict[str, int] = {"cpu": 256 * 256, "cuda": 2048 * 2048}
 
 
+def _squared_distance_inputs(desc1: torch.Tensor, desc2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Pad descriptors as ATen's ``_euclidean_dist`` does before multiplying them."""
+    norms1 = desc1.pow(2).sum(-1, keepdim=True)
+    norms2 = desc2.pow(2).sum(-1, keepdim=True)
+    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
+    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    return padded1, padded2
+
+
 def _squared_distances(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Optional[torch.Tensor]:
@@ -126,11 +135,87 @@ def _squared_distances(
         return None
     if torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad):
         return None
-    norms1 = desc1.pow(2).sum(-1, keepdim=True)
-    norms2 = desc2.pow(2).sum(-1, keepdim=True)
-    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
-    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    padded1, padded2 = _squared_distance_inputs(desc1, desc2)
     return padded1.matmul(padded2.mT)
+
+
+def _chunked_neighbours(
+    desc1: torch.Tensor,
+    desc2: torch.Tensor,
+    dm: Optional[torch.Tensor],
+    ratio: bool = False,
+    mutual: bool = False,
+) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
+    """Select nearest neighbours without retaining the whole CPU distance matrix.
+
+    Return the distance (or nearest-to-second-nearest ratio) and neighbour index of each row, followed by the
+    corresponding column results when ``mutual`` is set. The last two tensors are empty otherwise. Only the
+    non-scripted, eager CPU float32/float64 path calls this, with no supplied matrix, autocast or needed gradients.
+    Calls outside that scope, or with fewer than 2,048 descriptors on either side, keep the matrix implementation.
+
+    A 512-row product is reduced before the next is built. The reverse direction uses a contiguous transpose of
+    that block: strided column reductions lose the time saved by avoiding the full matrix. Only the best one or
+    two reverse candidates survive each block. Minima retain the first tied index and first nan; ratio tests use
+    ``topk``, which does not order ties, just as the matrix implementation does. Padding and square-root selection
+    follow :func:`_squared_distances`; changing GEMM's row count can change its last floating-point bits.
+    """
+    # Capture checks precede shape comparisons, so the block selector adds no dynamic-shape guards.
+    if (
+        dm is not None
+        or desc1.device.type != "cpu"
+        or desc2.device.type != "cpu"
+        or is_compiling()
+        or is_exporting()
+        or torch.jit.is_tracing()
+        or desc1.dtype != desc2.dtype
+        or desc1.dtype not in (torch.float32, torch.float64)
+        or is_autocast_enabled()
+        or (torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad))
+    ):
+        return None
+    if desc1.size(0) < 2048 or desc2.size(0) < 2048:
+        return None
+    padded1, padded2 = _squared_distance_inputs(desc1, desc2)
+    forward_values: List[torch.Tensor] = []
+    forward_indices: List[torch.Tensor] = []
+    reverse_values = desc1.new_empty((0, desc2.size(0)))
+    reverse_indices = torch.empty((0, desc2.size(0)), device=desc1.device, dtype=torch.long)
+    for begin in range(0, desc1.size(0), 512):
+        squared = padded1[begin : begin + 512].matmul(padded2.mT)
+        if ratio:
+            values, indices = squared.topk(2, dim=1, largest=False)
+        else:
+            values, indices = squared.min(dim=1)
+        forward_values.append(values)
+        forward_indices.append(indices)
+        if mutual:
+            columns = squared.mT.contiguous()
+            if ratio:
+                values, indices = columns.topk(min(2, squared.size(0)), dim=1, largest=False)
+                values, indices = values.mT, indices.mT
+            else:
+                values, indices = columns.min(dim=1)
+                values, indices = values[None], indices[None]
+            values = torch.cat([reverse_values, values])
+            indices = torch.cat([reverse_indices, indices + begin])
+            if ratio:
+                reverse_values, picked = values.topk(2, dim=0, largest=False)
+            else:
+                reverse_values, picked = values.min(dim=0, keepdim=True)
+            reverse_indices = indices.gather(0, picked)
+            del columns
+        del squared
+    values, indices = torch.cat(forward_values), torch.cat(forward_indices)
+    if ratio:
+        distances = _distance_from_squared(values)
+        nearest_values, nearest_indices = distances[:, 0] / distances[:, 1], indices[:, 0]
+    else:
+        nearest_values, nearest_indices = _distance_from_squared(values), indices
+    if mutual:
+        reverse_values = _distance_from_squared(reverse_values)
+        second_values = reverse_values[0] / reverse_values[1] if ratio else reverse_values[0]
+        return nearest_values, nearest_indices, second_values, reverse_indices[0]
+    return nearest_values, nearest_indices, reverse_values[0:0, 0], reverse_indices[0:0, 0]
 
 
 def _distance_from_squared(squared: torch.Tensor) -> torch.Tensor:
@@ -361,13 +446,19 @@ def match_nn(
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
     squared: Optional[torch.Tensor] = None
+    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None
     # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
     if not torch.jit.is_scripting():
-        squared = _squared_distances(desc1, desc2, dm)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
-    match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-    if squared is not None:
-        match_dists = _distance_from_squared(match_dists)
+        neighbours = _chunked_neighbours(desc1, desc2, dm)
+        if neighbours is None:
+            squared = _squared_distances(desc1, desc2, dm)
+    if neighbours is None:
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+        if squared is not None:
+            match_dists = _distance_from_squared(match_dists)
+    else:
+        match_dists, idxs_in_2 = neighbours[0], neighbours[1]
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
@@ -412,17 +503,23 @@ def match_mnn(
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
     squared: Optional[torch.Tensor] = None
+    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None
     # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
     if not torch.jit.is_scripting():
-        squared = _squared_distances(desc1, desc2, dm)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
-    ms = min(distance_matrix.size(0), distance_matrix.size(1))
-    match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-    match_dists2, idxs_in_1 = _min_over_rows(distance_matrix)
-    minsize_idxs = torch.arange(ms, device=distance_matrix.device)
+        neighbours = _chunked_neighbours(desc1, desc2, dm, mutual=True)
+        if neighbours is None:
+            squared = _squared_distances(desc1, desc2, dm)
+    if neighbours is None:
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+        match_dists2, idxs_in_1 = _min_over_rows(distance_matrix)
+    else:
+        match_dists, idxs_in_2, match_dists2, idxs_in_1 = neighbours
+    ms = min(desc1.size(0), desc2.size(0))
+    minsize_idxs = torch.arange(ms, device=idxs_in_2.device)
 
     # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
-    if distance_matrix.size(0) <= distance_matrix.size(1):
+    if desc1.size(0) <= desc2.size(0):
         mutual = torch.nonzero(minsize_idxs == idxs_in_1[idxs_in_2][:ms])[:, 0]  # rows of desc1
         matches_idxs = torch.stack([mutual, idxs_in_2[mutual]], 1)
         match_dists = match_dists[mutual]
@@ -528,10 +625,15 @@ def match_snn(
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
     squared: Optional[torch.Tensor] = None
+    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None
     # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
     if not torch.jit.is_scripting():
-        squared = _squared_distances(desc1, desc2, dm)
-    if squared is not None and squared.is_cuda:
+        neighbours = _chunked_neighbours(desc1, desc2, dm, ratio=True)
+        if neighbours is None:
+            squared = _squared_distances(desc1, desc2, dm)
+    if neighbours is not None:
+        ratio, idxs_in_2 = neighbours[0], neighbours[1]
+    elif squared is not None and squared.is_cuda:
         distance_matrix = _topk_order_key_(squared)
         first, second, idxs_in_2 = _two_smallest_(distance_matrix, 1)
         ratio = _ratio_from_keys(first, second)
@@ -541,7 +643,7 @@ def match_snn(
     # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
     idxs_in1 = torch.nonzero(ratio <= th)[:, 0]
     if idxs_in1.numel() == 0:
-        return _no_match(distance_matrix)
+        return _no_match(ratio)
     matches_idxs = torch.stack([idxs_in1, idxs_in_2[idxs_in1]], 1)
     return ratio[idxs_in1].view(-1, 1), matches_idxs
 
@@ -595,10 +697,15 @@ def match_smnn(
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
         return _no_match(desc1)
     squared: Optional[torch.Tensor] = None
+    neighbours: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None
     # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
     if not torch.jit.is_scripting():
-        squared = _squared_distances(desc1, desc2, dm)
-    if squared is not None and squared.is_cuda:
+        neighbours = _chunked_neighbours(desc1, desc2, dm, ratio=True, mutual=True)
+        if neighbours is None:
+            squared = _squared_distances(desc1, desc2, dm)
+    if neighbours is not None:
+        ratio1, nearest2, ratio2, nearest1 = neighbours
+    elif squared is not None and squared.is_cuda:
         distance_matrix = _topk_order_key_(squared)
         first1, second1, nearest2 = _two_smallest_(distance_matrix, 1)
         first2, second2, nearest1 = _two_smallest_(distance_matrix, 0)
@@ -610,10 +717,10 @@ def match_smnn(
     # Join the two directions on integer indices: i and nearest2[i] are mutual when nearest1[nearest2[i]] == i. Both
     # ratio tests and the mutual check form one mask, so one nonzero is the only wait for the device.
     reverse_ratio = ratio2[nearest2]
-    mutual = nearest1[nearest2] == torch.arange(distance_matrix.size(0), device=distance_matrix.device)
+    mutual = nearest1[nearest2] == torch.arange(desc1.size(0), device=nearest2.device)
     idxs_in1 = torch.nonzero(mutual & (ratio1 <= th) & (reverse_ratio <= th))[:, 0]
     if idxs_in1.numel() == 0:
-        return _no_match(distance_matrix)
+        return _no_match(ratio1)
     matches_idxs = torch.stack([idxs_in1, nearest2[idxs_in1]], 1)
     match_dists = torch.maximum(ratio1[idxs_in1], reverse_ratio[idxs_in1])
     return match_dists.view(-1, 1), matches_idxs
