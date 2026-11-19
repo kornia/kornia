@@ -41,7 +41,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _autocast_disabled
-from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.conversions import convert_points_to_homogeneous
 
 __all__ = [
     "batched_dot_product",
@@ -314,8 +314,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         - A matrix batch with more than one leading axis pairs with the leading batch axes of the points, either as
           it stands or once its size-1 axes are left out, as the ``trans_01`` argument describes; any other
           multi-axis batch raises ``ValueError``.
-        - A point mapped to ``|w| <= 1e-8`` is returned undivided, as
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does.
+        - Every nonzero ``w`` is divided, so finite projective points are unchanged when ``trans_01`` is
+          multiplied by a nonzero scalar, up to rounding, provided the scaled homogeneous products remain
+          representable and nonzero. Division is like
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` with ``eps = 0``, up to rounding; a
+          point mapped to exactly ``w = 0`` is returned undivided.
         - Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
           (pixel indices from ``torch.nonzero`` or ``argmax``) to fractional ones. Integer points return in the
           floating dtype of ``trans_01``, or in the default floating dtype when both operands are integer, and an
@@ -412,8 +415,14 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     else:
         with _autocast_disabled(trans_01.device.type):
             points_0_h = torch.bmm(points_1_h, trans_01)
-    # to euclidean
-    points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
+    # Divide every finite projective point, even when the matrix's arbitrary scale makes w smaller than the
+    # converter's default absolute eps (#6813). Divide directly instead of forming 1 / w: a subnormal w can have a
+    # finite numerator / w even though its reciprocal overflows. The safe divisor keeps the exact-zero branch's
+    # gradient finite and leaves points at infinity undivided.
+    w = points_0_h[..., -1:]
+    nonzero = w != 0
+    safe_w = torch.where(nonzero, w, torch.ones_like(w))
+    points_0 = torch.where(nonzero, points_0_h[..., :-1] / safe_w, points_0_h[..., :-1])
     # reshape to the input shape
     shape_inp[-2] = points_0.shape[-2]
     shape_inp[-1] = points_0.shape[-1]

@@ -171,6 +171,73 @@ class TestTransformPoints(BaseTester):
 
         self.assert_close(actual, expected)
 
+    @pytest.mark.applies_to(
+        dtypes=("bfloat16", "float32", "float64"), reason="a 1e-10 matrix scale underflows to zero in float16"
+    )
+    @pytest.mark.parametrize("matrix_scale", [1.0, 1e-10, -1e-10])
+    def test_projective_matrix_scale_does_not_change_finite_points_6813(self, matrix_scale, device, dtype):
+        # H and s*H represent the same projective map. For (2, 3), H gives the homogeneous point (4, 4, 1.8),
+        # hence (20/9, 20/9). The default absolute eps of convert_points_from_homogeneous used to leave s*H's
+        # numerator undivided when |s*1.8| <= 1e-8, returning (4e-10, 4e-10) for s=1e-10 instead.
+        transform = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [0.1, 0.2, 1.0]]], device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[20.0 / 9.0, 20.0 / 9.0]]], device=device, dtype=dtype)
+
+        actual = kgl.transform_points(matrix_scale * transform, points)
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="the projective gradient regression covers standard precision"
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
+    @pytest.mark.parametrize("matrix_scale", [1.0, 1e-10, -1e-10])
+    def test_projective_matrix_scale_does_not_change_points_gradient_6813(self, matrix_scale, device, dtype):
+        # For f(x, y) = ((x + 2) + (y + 1)) / (0.1x + 0.2y + 1), evaluated at (2, 3),
+        # df/dx = (1.8 - 0.1 * 8) / 1.8**2 = 25/81 and df/dy = (1.8 - 0.2 * 8) / 1.8**2 = 5/81.
+        transform = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [0.1, 0.2, 1.0]]], device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]]], device=device, dtype=dtype, requires_grad=True)
+        expected = torch.tensor([[[25.0 / 81.0, 5.0 / 81.0]]], device=device, dtype=dtype)
+
+        actual = torch.autograd.grad(kgl.transform_points(matrix_scale * transform, points).sum(), points)[0]
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(
+        devices=("cpu",),
+        dtypes=("float32",),
+        reason="this pins CPU float32 subnormal arithmetic; accelerators may flush subnormals to zero",
+    )
+    def test_subnormal_projective_scale_does_not_overflow_the_reciprocal_6813(self, device, dtype):
+        # At s=1e-40 the homogeneous output is approximately (4e-40, 4e-40, 1.8e-40). Direct division is finite,
+        # but forming 1/w first overflows float32 before it is multiplied by the equally small numerator.
+        transform = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [0.1, 0.2, 1.0]]], device=device, dtype=dtype)
+        points = torch.tensor([[[2.0, 3.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[20.0 / 9.0, 20.0 / 9.0]]], device=device, dtype=dtype)
+
+        actual = kgl.transform_points(1e-40 * transform, points)
+
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected)
+
+    def test_exact_zero_projective_weight_stays_undivided(self, device, dtype):
+        # The scale-invariance fix divides every nonzero w, but preserves the established fallback at infinity:
+        # (2, 3, 1) maps to (4, 4, 0), whose numerator is returned unchanged.
+        transform = torch.tensor(
+            [[[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [1.0, 0.0, -2.0]]], device=device, dtype=dtype, requires_grad=True
+        )
+        points = torch.tensor([[[2.0, 3.0]]], device=device, dtype=dtype, requires_grad=True)
+
+        actual = kgl.transform_points(transform, points)
+
+        self.assert_close(actual, torch.tensor([[[4.0, 4.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        actual.sum().backward()
+        assert torch.isfinite(transform.grad).all()
+        assert torch.isfinite(points.grad).all()
+
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points_empty(self, num_dims, device, dtype):
         # No points to transform (e.g. an image chip with no annotations) must return an empty
