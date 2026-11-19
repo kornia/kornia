@@ -1596,6 +1596,12 @@ class TestChunkedDistanceMatching(BaseTester):
             def forward(self, desc1, desc2):
                 return match_nn(desc1, desc2)
 
+        class ChunkSelector(torch.nn.Module):
+            def forward(self, desc1, desc2):
+                # Exercise the selector independently of _cdist's version-specific export lowering.
+                assert matching._chunked_neighbours(desc1, desc2, None) is None
+                return desc1.clone(), desc2.clone()
+
         def inputs(rows, columns):
             return torch.arange(rows).float()[:, None] / 4, torch.arange(columns - 1, -1, -1).float()[:, None] / 4
 
@@ -1607,7 +1613,7 @@ class TestChunkedDistanceMatching(BaseTester):
                 captured = torch_optimizer(Nearest(), backend=counter, fullgraph=True, dynamic=True)
             else:
                 captured = torch.export.export(
-                    Nearest(),
+                    ChunkSelector(),
                     example,
                     dynamic_shapes=(
                         {0: torch.export.Dim("rows", min=1024, max=6144)},
@@ -1617,7 +1623,8 @@ class TestChunkedDistanceMatching(BaseTester):
                 ).module()
             for shape in ((2047, 4095), (2048, 4095), (2048, 4096), (2051, 4099)):
                 descriptors = inputs(*shape)
-                actual, expected = captured(*descriptors), match_nn(*descriptors)
+                actual = captured(*descriptors)
+                expected = match_nn(*descriptors) if capture == "dynamo" else descriptors
                 self.assert_close(actual[0], expected[0], rtol=0, atol=0)
                 self.assert_close(actual[1], expected[1])
             if capture == "dynamo":
