@@ -103,12 +103,14 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     for _ in range(num_iterations):
         out = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
-        out = torch.mul(out, mask)  # mask using element-wise multiplication
+        # The freshly pooled labels have no autograd history and can be masked in place.
+        out.mul_(mask)
 
-    labels = out.to(torch.int64)
+    # Release the floating working buffer before the final foreground masking.
+    out = out.to(torch.int64)
     offset = torch.arange(B, device=image.device, dtype=torch.int64).view(-1, 1, 1, 1) * num_ids
     # Shift the foreground labels by the plane offset in place; the mask zeroes the background again.
-    return labels.add_(offset).mul_(mask).view(image.shape)
+    return out.add_(offset).mul_(mask).view(image.shape)
 
 
 def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
