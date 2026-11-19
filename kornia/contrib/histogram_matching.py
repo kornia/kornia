@@ -70,8 +70,9 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     template = template.ravel()
 
     # get the set of unique pixel values and their corresponding indices and counts.
-    _, bin_idx, s_counts = torch.unique(source, return_inverse=True, return_counts=True)
-    t_values, t_counts = torch.unique(template, return_counts=True)
+    s_values, bin_idx, s_counts = torch.unique(source, return_inverse=True, return_counts=True)
+    # Only the inverse indices and counts are needed from the source histogram.
+    del s_values
 
     # take the cumsum of the counts and normalize by the number of pixels to
     # get the empirical cumulative distribution functions for the source and
@@ -79,8 +80,12 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     # in float32 (float64 for float64 input): a uint8 sum wraps past 255, and float16/bfloat16 sums stop being exact
     # past 2048/256, which repeats quantiles and makes interp divide by zero.
     s_quantiles = torch.cumsum(s_counts, dim=0).to(compute_dtype)
+    del s_counts
     s_quantiles = s_quantiles / s_quantiles[-1]
+    # Finish consuming the source histogram before allocating the template histogram.
+    t_values, t_counts = torch.unique(template, return_counts=True)
     t_quantiles = torch.cumsum(t_counts, dim=0).to(compute_dtype)
+    del t_counts
     t_quantiles = t_quantiles / t_quantiles[-1]
     t_values = t_values.to(compute_dtype)
 

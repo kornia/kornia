@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import weakref
+from importlib import import_module
+
 import pytest
 import torch
 
@@ -26,6 +29,38 @@ inf = float("inf")
 
 
 class TestHistMatch(BaseTester):
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_histmatch_releases_consumed_histogram_storage(self, device, dtype, requires_grad, monkeypatch):
+        module = import_module("kornia.contrib.histogram_matching")
+        unique = torch.unique
+        interp = module.interp
+        consumed = {}
+
+        def track_unique(values, **kwargs):
+            if not kwargs.get("return_inverse", False):
+                assert consumed["source_values"]() is None
+                assert consumed["source_counts"]() is None
+            result = unique(values, **kwargs)
+            if kwargs.get("return_inverse", False):
+                consumed["source_values"] = weakref.ref(result[0].untyped_storage())
+                consumed["source_counts"] = weakref.ref(result[2].untyped_storage())
+            else:
+                consumed["template_counts"] = weakref.ref(result[1].untyped_storage())
+            return result
+
+        def check_interp(*args):
+            assert all(storage() is None for storage in consumed.values())
+            return interp(*args)
+
+        monkeypatch.setattr(torch, "unique", track_unique)
+        monkeypatch.setattr(module, "interp", check_interp)
+        source = torch.tensor([0.75, 0.0, 0.25, 0.75], device=device, dtype=dtype, requires_grad=requires_grad)
+        template = torch.tensor([0.1, 0.1, 0.6, 0.9], device=device, dtype=dtype, requires_grad=requires_grad)
+        actual = kornia.contrib.histogram_matching(source, template)
+        # Source quantiles 1/4 and 1/2 both map to the repeated template minimum; quantile 1 maps to its maximum.
+        expected = torch.tensor([0.9, 0.1, 0.1, 0.9], device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+
     def test_interp(self, device, dtype):
         xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)
         fp = torch.tensor([4, 2, 0], device=device, dtype=dtype)
