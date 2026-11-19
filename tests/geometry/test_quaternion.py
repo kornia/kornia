@@ -21,6 +21,7 @@ from typing import Union
 import pytest
 import torch
 from torch.nn import Parameter
+from torch.utils._python_dispatch import TorchDispatchMode
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
@@ -836,6 +837,34 @@ class TestQuaternionAverage(BaseTester):
         dot1 = torch.dot(q, q1.data.squeeze())
         dot2 = torch.dot(q, q2.data.squeeze())
         assert dot1 > dot2  # should align closer to q1
+
+    @pytest.mark.parametrize("column_weights", [False, True])
+    def test_weighted_average_uses_linear_storage(self, device, dtype, column_weights):
+        # Repeating a pose and its negation cannot change their mean rotation. Observe tensor sizes during the
+        # public call so a quadratic weight matrix fails at a modest batch size, without an out-of-memory test.
+        members = 256
+        pose = torch.tensor([0.5, -0.5, 0.5, -0.5], device=device, dtype=dtype)
+        data = pose.expand(members, -1).clone()
+        data[1::2] = -data[1::2]
+        weights = torch.tensor([1.0, 0.0, 2.0, 0.0], device=device, dtype=dtype).repeat(members // 2)[::2]
+        if column_weights:
+            weights = weights[:, None]
+
+        class LinearStorage(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                tensors = output if isinstance(output, (tuple, list)) else (output,)
+                for tensor in tensors:
+                    if isinstance(tensor, torch.Tensor):
+                        assert tensor.numel() <= 8 * members
+                return output
+
+        with LinearStorage():
+            result = average_quaternions(Quaternion(data), weights)
+
+        self.assert_close(result.data.abs(), pose[None].abs())
+        assert result.data.dtype == dtype
+        assert result.data.device == device
 
     def test_single_quaternion_returns_itself(self, device, dtype):
         """Averaging a single quaternion should return it"""
