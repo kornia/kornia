@@ -219,7 +219,9 @@ def diamond_square(
     """
     KORNIA_CHECK(len(output_size) == 4, "output_size must be (B,C,H,W)")
     if not isinstance(random_scale, torch.Tensor):
-        random_scale = torch.Tensor([[[[random_scale]]]]).to(device, dtype)
+        random_scale = torch.tensor(
+            [[[[random_scale]]]], device=device, dtype=dtype if dtype is not None else torch.get_default_dtype()
+        )
         random_scale = random_scale.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
         KORNIA_CHECK_IS_TENSOR(random_scale)
@@ -228,7 +230,9 @@ def diamond_square(
         random_scale = random_scale.reshape([-1, 1, 1, 1])
 
     if not isinstance(roughness, torch.Tensor):
-        roughness = torch.Tensor([[[[roughness]]]]).to(device, dtype)
+        roughness = torch.tensor(
+            [[[[roughness]]]], device=device, dtype=dtype if dtype is not None else torch.get_default_dtype()
+        )
         roughness = roughness.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
         roughness = roughness.to(device=device, dtype=dtype).view(-1, 1, 1, 1)
