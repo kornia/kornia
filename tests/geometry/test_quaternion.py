@@ -862,7 +862,7 @@ class TestQuaternionAverage(BaseTester):
         with LinearStorage():
             result = average_quaternions(Quaternion(data), weights)
 
-        self.assert_close(result.data.abs(), pose[None].abs())
+        self.assert_close(_align_sign(result.data[0], pose), pose)
         assert result.data.dtype == dtype
         assert result.data.device == device
 
