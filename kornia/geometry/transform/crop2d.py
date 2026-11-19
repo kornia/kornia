@@ -958,10 +958,8 @@ class CenterCrop2D(nn.Module):
                 left, top = max(-start_x, 0), max(-start_y, 0)
                 padded = F.pad(input, [left, max(end_x + 1 - src_w, 0), top, max(end_y + 1 - src_h, 0)])
                 return padded[..., start_y + top : end_y + 1 + top, start_x + left : end_x + 1 + left].contiguous()
-            # at least float32: in a half dtype the box corners round to the nearest value it holds (bfloat16 257 ->
-            # 256, 259 -> 260), which moves the box and can change its width, so crop_by_indices resized it
-            box_dtype = torch.promote_types(input.dtype, torch.float32)
-            box = self.points_src.expand(batch_size, -1, -1).to(device=input.device, dtype=box_dtype)
+            # the integer box as is: crop_by_indices converts it, where a half dtype rounded it (bfloat16 257 -> 256)
+            box = self.points_src.expand(batch_size, -1, -1).to(device=input.device)
             return crop_by_indices(input, box, self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
