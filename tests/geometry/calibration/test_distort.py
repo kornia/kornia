@@ -22,7 +22,7 @@ from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, skip_unsupported_autocast
 from testing.geometry.linalg import euler_angles_to_rotation_matrix
 
 
@@ -144,11 +144,9 @@ class TestZeroTiltGradients(BaseTester):
 
 @pytest.mark.parametrize("op", [distort_points, undistort_points])
 class TestTiltAutocast(BaseTester):
-    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="CPU and CUDA autocast")
-    @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
-    def test_tilt_keeps_float32_accuracy_under_autocast(self, op, device, amp_dtype):
-        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
-            pytest.skip("CUDA device does not support bfloat16")
+    @pytest.mark.parametrize("amp_dtype", ["float16", "bfloat16"])
+    def test_tilt_keeps_float32_accuracy_in_a_caller_region(self, op, device, amp_dtype):
+        skip_unsupported_autocast(device, amp_dtype)
 
         K = torch.tensor(
             [[650.0, 0.0, 320.0], [0.0, 625.0, 240.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float32
@@ -165,7 +163,7 @@ class TestTiltAutocast(BaseTester):
         points, expected = (ideal, measured) if op is distort_points else (measured, ideal)
 
         reference = op(points, K, dist)
-        with torch.autocast(device.type, dtype=amp_dtype):
+        with torch.autocast(device.type, dtype=getattr(torch, amp_dtype)):
             actual = op(points, K, dist)
 
         self.assert_close(actual, expected, atol=2e-4, rtol=0)

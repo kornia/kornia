@@ -54,6 +54,9 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``eye(3)``.
         - scalar angles return ``(3, 3)``; otherwise a trailing singleton angle axis, if present, is
           consumed and the remaining dimensions are the batch shape.
+        - a caller's autocast region does not change the products of float32 angles, outside TorchScript, where a
+          scripted call keeps the caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores
+          the nested guard there).
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -165,6 +168,8 @@ def distort_points(
         - ``points`` must be ``(*, N, 2)``: a trailing size other than 2, or a single ``(2,)`` point, raises
           :class:`~kornia.core.exceptions.ShapeError`.
         - float16 and bfloat16 inputs are distorted in float32 and the result is returned in their dtype.
+        - a caller's autocast region does not change the result, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
