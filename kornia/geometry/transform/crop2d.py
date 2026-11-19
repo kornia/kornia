@@ -786,6 +786,10 @@ def crop_by_indices(
             out[i] = _out
     if out is None:
         return torch.cat(crops).contiguous()
+    if B == 0:
+        # No row was copied into ``out`` (#4429). A zero-element copy keeps the image autograd link, with no
+        # pixel work; measured eager overhead is a few microseconds (CPU/CUDA, torch 2.5.1).
+        out.copy_(input_tensor.reshape_as(out))
     return out
 
 
