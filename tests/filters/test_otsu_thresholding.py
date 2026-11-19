@@ -132,6 +132,22 @@ class TestOtsuThreshold(BaseTester):
         atol = 1 / 256 if dtype == torch.float64 else 0.0
         self.assert_close(threshold, expected.to(dtype), rtol=0.0, atol=atol)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] == "cpu", reason="large CPU histogram regression")
+    def test_large_bin_population_selects_correct_split(self, device):
+        # A 34.6-megapixel plane with ordinary [0, 1] intensities. Counts in occupied bins 0, 80 and 255 are
+        # (27, 5, 1) * 2**20. The two between-class variances are independently
+        # 27 * 655**2 / (33**2 * 6) = 1772.8306 and 7760**2 / (33**2 * 32) = 1728.0073,
+        # so the first split wins. A float32 scatter of unit counts stops at 2**24 in the first bin,
+        # changes the ratio to (16, 5, 1), and incorrectly selects the split after bin 80.
+        unit = 2**20
+        image = torch.zeros(33 * unit, device=device, dtype=torch.float32)
+        image[27 * unit : 32 * unit] = 0.3125
+        image[32 * unit :] = 1.0
+        mask, threshold = otsu_threshold(image.reshape(4096, 8448), return_mask=True)
+
+        self.assert_close(threshold, image.new_tensor([1 / 256]), rtol=0, atol=0)
+        assert mask.sum().item() == 6 * unit
+
     @pytest.mark.parametrize(
         "input_dtype,sign,offset,nbins,expected,kept,dropped",
         [
