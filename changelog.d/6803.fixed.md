@@ -1,0 +1,1 @@
+`mean_average_precision` computes detection counts, precision and recall in at least float32. Float16 and bfloat16 box inputs keep their output dtype but no longer receive AP credit for recall thresholds reached only by rounding; for example, 512 detections of 513 objects in bfloat16 score approximately 0.9102 instead of 1.
