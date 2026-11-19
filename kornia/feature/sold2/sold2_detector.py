@@ -23,6 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.ops import _copied_literal
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
@@ -339,32 +340,61 @@ class LineSegmentDetectionModule:
         ratio: float = 0.2,
         valid_thresh: float = 2e-3,
     ) -> torch.Tensor:
-        """Local heatmap refinement method."""
+        """Refine overlapping heatmap blocks with batched threshold and normalization decisions.
+
+        Pack equal-sized blocks together to avoid a scalar read and variable-length selection per block. One count
+        transfer per shape group keeps Python's ceil and slice semantics for the selected fraction. Only active blocks
+        are ranked, and topk retains the selected fraction. Packed values cover about four image areas at the default
+        overlap; indices and ranking intermediates can raise peak memory to a few dozen heatmap sizes. CUDA overlap
+        sums use atomics, so repeated outputs can differ in the last bit; deterministic algorithms remain supported.
+        """
         # Get the shape of the heatmap
         H, W = heatmap.shape
         increase_ratio = 1 - overlap_ratio
         h_block = round(H / (1 + (num_blocks - 1) * increase_ratio))
         w_block = round(W / (1 + (num_blocks - 1) * increase_ratio))
 
-        # Iterate through each block
-        count_map = torch.zeros(heatmap.shape, dtype=torch.int, device=heatmap.device)
-        heatmap_output = torch.zeros(heatmap.shape, dtype=torch.float, device=heatmap.device)
+        blocks: Dict[Tuple[int, int], List[int]] = {}
         for h_idx in range(num_blocks):
             for w_idx in range(num_blocks):
-                # Fetch the heatmap
                 h_start = round(h_idx * h_block * increase_ratio)
                 w_start = round(w_idx * w_block * increase_ratio)
-                h_end = h_start + h_block if h_idx < num_blocks - 1 else H
-                w_end = w_start + w_block if w_idx < num_blocks - 1 else W
+                h_end = min(h_start + h_block, H) if h_idx < num_blocks - 1 else H
+                w_end = min(w_start + w_block, W) if w_idx < num_blocks - 1 else W
+                blocks.setdefault((h_end - h_start, w_end - w_start), []).append(h_start * W + w_start)
 
-                subheatmap = heatmap[h_start:h_end, w_start:w_end]
-                if subheatmap.max() > valid_thresh:
-                    subheatmap = self.refine_heatmap(subheatmap, ratio, valid_thresh=valid_thresh)
-
-                # Aggregate it to the final heatmap
-                heatmap_output[h_start:h_end, w_start:w_end] += subheatmap
-                count_map[h_start:h_end, w_start:w_end] += 1
-        return torch.clamp(heatmap_output / count_map, max=1.0, min=0.0)
+        count_map = torch.zeros(H * W, dtype=torch.int, device=heatmap.device)
+        heatmap_output = torch.zeros(H * W, dtype=torch.float, device=heatmap.device)
+        mean_dtype = torch.float64 if heatmap.dtype == torch.float64 else torch.float32
+        for (height, width), starts in blocks.items():
+            offsets = torch.arange(height, device=heatmap.device)[:, None] * W + torch.arange(
+                width, device=heatmap.device
+            )
+            indices = (
+                _copied_literal(starts, device=heatmap.device, dtype=torch.int64)[:, None] + offsets.flatten()
+            ).flatten()
+            values = heatmap.reshape(-1)[indices].reshape(len(starts), -1)
+            active = values.amax(-1) > valid_thresh
+            valid = values > valid_thresh
+            counts = valid.sum(-1).masked_fill(~active, 0).tolist()
+            # Inactive blocks pass through unscaled; an all-inactive group needs no ranking or normalization.
+            rows = [i for i, n in enumerate(counts) if n]
+            refined = values
+            if rows:
+                lengths = [slice(None, math.ceil(n * ratio)).indices(n)[1] for n in counts if n]
+                rows_t = _copied_literal(rows, device=heatmap.device, dtype=torch.int64)
+                lengths_t = _copied_literal(lengths, device=heatmap.device, dtype=torch.int64)
+                active_values = values[rows_t]
+                top = active_values.masked_fill(~valid[rows_t], float("-inf")).topk(max(lengths), dim=-1).values
+                selected = torch.arange(top.shape[-1], device=heatmap.device)[None] < lengths_t[:, None]
+                scale = torch.where(selected, top, 0).sum(-1, dtype=mean_dtype)
+                scale = (scale / lengths_t).to(heatmap.dtype)
+                refined = values.scatter(
+                    0, rows_t[:, None].expand_as(active_values), (active_values / scale[:, None]).clamp(0, 1)
+                )
+            heatmap_output.index_add_(0, indices, refined.flatten().to(heatmap_output.dtype))
+            count_map.index_add_(0, indices, torch.ones_like(indices, dtype=count_map.dtype))
+        return torch.clamp((heatmap_output / count_map).reshape(H, W), max=1.0, min=0.0)
 
     def candidate_suppression(self, junctions: torch.Tensor, candidate_map: torch.Tensor) -> torch.Tensor:
         """Suppress overlapping long lines in the candidate segments."""
