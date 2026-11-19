@@ -48,6 +48,7 @@ Gaussian or Laplacian pyramid (:func:`build_pyramid`, :func:`build_laplacian_pyr
 :func:`is_powerof_two` and :func:`find_next_powerof_two`).
 
 .. autofunction:: affine
+.. autofunction:: letterbox
 .. autofunction:: rotate
 .. autofunction:: translate
 .. autofunction:: scale
@@ -150,6 +151,7 @@ interface for writing another warper.
 .. autoclass:: Rescale
 .. autoclass:: Affine
 .. autoclass:: BaseWarper
+.. autoclass:: Letterbox
 .. autoclass:: HomographyWarper
 .. autoclass:: CenterCrop2D
 
