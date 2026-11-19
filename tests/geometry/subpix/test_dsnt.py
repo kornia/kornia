@@ -347,7 +347,7 @@ class TestSpatialExpectation2d(BaseTester):
 
     @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("capture", ["dynamo", "export"])
-    def test_marginal_selector_keeps_dynamic_shapes(self, capture):
+    def test_marginal_selector_keeps_dynamic_shapes(self, capture, torch_optimizer):
         from torch._dynamo.testing import CompileCounter
 
         class Expectation(torch.nn.Module):
@@ -359,7 +359,7 @@ class TestSpatialExpectation2d(BaseTester):
         torch._dynamo.reset()
         try:
             if capture == "dynamo":
-                captured = torch.compile(Expectation(), backend=counter, fullgraph=True, dynamic=True)
+                captured = torch_optimizer(Expectation(), backend=counter, fullgraph=True, dynamic=True)
             else:
                 captured = torch.export.export(
                     Expectation(),
