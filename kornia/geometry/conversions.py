@@ -1598,7 +1598,8 @@ def euler_from_quaternion(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    # The message is a string built on failure only, as in quaternion_from_euler: TorchScript takes only a string.
+    # The message is a string built on failure only, as in quaternion_from_euler. This function does not compile with
+    # TorchScript (torch.finfo below), so a lambda message would work here too.
     if not w.shape == x.shape == y.shape == z.shape:
         KORNIA_CHECK(
             False,
