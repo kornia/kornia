@@ -54,7 +54,7 @@ from kornia.core.utils import (
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
-from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
+from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points
 from .camera.pinhole import _embed_intrinsics
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
@@ -135,20 +135,17 @@ def unproject_meshgrid(
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
-    # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
-    # would then broadcast across a phantom axis instead of keeping the documented ``(*, H, W, 3)`` shape.
-    points_uv: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates=False, device=device, dtype=dtype
-    ).squeeze(0)  # HxWx2
-
-    # project pixels to camera frame
-    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
-
-    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix_tmp)  # HxWx2
-
-    # unproject pixels to camera frame
-    points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
+    # Each column shares its x ray coordinate, and each row its y coordinate. Normalize the two
+    # ramps before broadcasting, so neither the pixel grid nor the intermediate xy maps are allocated.
+    # Match create_meshgrid's pixel ramp and its default floating dtype, including under TorchScript.
+    ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
+    xs = torch.arange(width, device=device, dtype=ramp_dtype)
+    ys = torch.arange(height, device=device, dtype=ramp_dtype)
+    xs = (xs - camera_matrix[:, 0, 2, None]) / camera_matrix[:, 0, 0, None]
+    ys = (ys - camera_matrix[:, 1, 2, None]) / camera_matrix[:, 1, 1, None]
+    xx = xs[:, None, :].expand(-1, height, -1)
+    yy = ys[:, :, None].expand(-1, -1, width)
+    points_xyz = torch.stack((xx, yy, xs.new_ones(()).expand_as(xx)), dim=-1)  # BxHxWx3
 
     if normalize_points:
         points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
@@ -280,25 +277,16 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # create base coordinates grid
     _, _, height, width = depth.shape
-    points_2d: torch.Tensor = create_meshgrid(
+    points_xyz = unproject_meshgrid(
         height,
         width,
-        normalized_coordinates=False,
+        camera_matrix,
+        normalize_points,
         device=depth.device,
         dtype=_depth_grid_dtype(depth, camera_matrix),
-    )  # 1xHxWx2
-
-    # depth should come in Bx1xHxW
-    points_depth: torch.Tensor = depth.permute(0, 2, 3, 1)  # 1xHxWx1
-
-    # project pixels to camera frame
-    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
-    points_3d: torch.Tensor = unproject_points(
-        points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points
     )  # BxHxWx3
-
+    points_3d = points_xyz * depth.permute(0, 2, 3, 1)
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW
 
 
