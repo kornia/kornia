@@ -1621,7 +1621,7 @@ class TestEmptySliceCropAutograd(BaseTester):
         output = aug(*inputs)
         saved = copy.deepcopy(aug._params)
         outputs = output if in_sequence else [output]
-        for actual, image in zip(outputs, inputs):
+        for actual, image in zip(outputs, inputs, strict=True):
             assert actual.shape == (0, image.shape[1], 4, 5)
             assert actual.dtype == dtype
             assert actual.device == device
@@ -1634,7 +1634,7 @@ class TestEmptySliceCropAutograd(BaseTester):
         fresh_inputs = [image.detach().requires_grad_() for image in inputs]
         replay = aug(*fresh_inputs, params=saved)
         replayed = replay if in_sequence else [replay]
-        for actual, image in zip(replayed, fresh_inputs):
+        for actual, image in zip(replayed, fresh_inputs, strict=True):
             assert actual.shape == (0, image.shape[1], 4, 5)
             actual.sum().backward()
             self.assert_close(image.grad, torch.empty_like(image))
