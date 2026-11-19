@@ -1598,9 +1598,14 @@ def euler_from_quaternion(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    KORNIA_CHECK(w.shape == x.shape)
-    KORNIA_CHECK(x.shape == y.shape)
-    KORNIA_CHECK(y.shape == z.shape)
+    # The message is a string built on failure only, as in quaternion_from_euler. This function does not compile with
+    # TorchScript (torch.finfo below), so a lambda message would work here too.
+    if not w.shape == x.shape == y.shape == z.shape:
+        KORNIA_CHECK(
+            False,
+            f"w, x, y and z must have the same shape, got {list(w.shape)}, {list(x.shape)}, "
+            f"{list(y.shape)} and {list(z.shape)}.",
+        )
 
     quaternion = torch.stack((w, x, y, z), dim=-1)
     # float16 and bfloat16 are computed in float32 and rounded once; the half-precision arithmetic was up to 5 eps
@@ -1718,8 +1723,14 @@ def quaternion_from_euler(
           :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
-    KORNIA_CHECK(roll.shape == pitch.shape)
-    KORNIA_CHECK(pitch.shape == yaw.shape)
+    # The message is a string built on failure only, not a function: TorchScript compiles this function and takes only
+    # a string, and building it on every call would specialize the sizes under a dynamic-shape torch.compile.
+    if not roll.shape == pitch.shape == yaw.shape:
+        KORNIA_CHECK(
+            False,
+            f"roll, pitch and yaw must have the same shape, got {list(roll.shape)}, {list(pitch.shape)} and "
+            f"{list(yaw.shape)}.",
+        )
 
     # float16 and bfloat16 are computed in float32 and rounded once, which keeps every coefficient within rounding of
     # the exact value for the given angles; the half-precision arithmetic was up to 1.1 eps off. Other dtypes run

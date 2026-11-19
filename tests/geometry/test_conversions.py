@@ -5979,7 +5979,9 @@ class TestEulerFromQuaternion(BaseTester):
     def test_exception(self, device, dtype):
         q = Quaternion.random(batch_size=2)
         q = q.to(device, dtype)
-        with pytest.raises(BaseError):
+        with pytest.raises(
+            BaseError, match=r"w, x, y and z must have the same shape, got \[2\], \[1\], \[2\] and \[2\]"
+        ):
             euler_from_quaternion(q.w, torch.rand(1), q.y, q.z)
 
     def test_gradcheck(self, device):
@@ -6367,7 +6369,9 @@ class TestQuaternionFromEuler(BaseTester):
 
     def test_exception(self, device, dtype):
         _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        with pytest.raises(BaseError):
+        with pytest.raises(
+            BaseError, match=r"roll, pitch and yaw must have the same shape, got \[1\], \[2\] and \[2\]"
+        ):
             quaternion_from_euler(torch.rand(1), pitch, yaw)
 
     def test_gradcheck(self, device):
