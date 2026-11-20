@@ -272,12 +272,6 @@ class ParametrizedLine(nn.Module):
         d = point - self.origin
         return d - torch.sum(d * self.direction, dim=-1, keepdim=True) * self.direction
 
-    # TODO(edgar) implement the following:
-    # - intersection
-    # - intersection_parameter
-    # - intersection_point
-
-    # TODO: add tests, and possibly return a mask
     def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor]:
         """Return the intersection point between the line and a given plane.
 
@@ -292,9 +286,24 @@ class ParametrizedLine(nn.Module):
             the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
-            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
-            intersection; the function returns lambda ``0`` and the line origin as the point.
-            Within this fallback branch, lambda has zero derivatives and the point differentiates as the origin.
+            If ``|normal . direction| < eps``, the method treats the line as parallel and returns step ``0``
+            and the line origin. This fallback also applies to nonzero dot products below the threshold.
+            In the fallback branch, the step has zero derivatives and the point differentiates as the origin.
+            A zero step can also represent a valid intersection at the line origin. Check
+            ``|normal . direction| >= eps`` to tell whether the method computed an intersection or used the fallback.
+
+        Examples:
+            >>> from kornia.geometry.vector import Vector3
+            >>> normal = Vector3(torch.tensor([0., 0., 1.]))
+            >>> plane = Hyperplane.from_vector(normal, Vector3(torch.tensor([0., 0., 4.])))
+            >>> line = ParametrizedLine(torch.zeros(3), torch.tensor([0., 0., 2.]))
+            >>> step, point = line.intersect(plane)
+            >>> step.item(), point.tolist()
+            (2.0, [0.0, 0.0, 4.0])
+            >>> parallel = ParametrizedLine(torch.zeros(3), torch.tensor([1., 0., 0.]))
+            >>> step, point = parallel.intersect(plane)
+            >>> step.item(), point.tolist()
+            (0.0, [0.0, 0.0, 0.0])
 
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction)
