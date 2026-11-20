@@ -467,6 +467,41 @@ class TestDepthTo3d(BaseTester):
 
 
 class TestUnprojectMeshgrid(BaseTester):
+    @pytest.mark.parametrize("entry_point", ["unproject_meshgrid", "depth_to_3d", "depth_to_3d_v2"])
+    @pytest.mark.parametrize("coordinate", [0, 1])
+    @pytest.mark.parametrize("traced", [False, True])
+    def test_scaled_intrinsics_gradients_remain_finite(self, entry_point, coordinate, traced, device, dtype):
+        camera_matrix = torch.tensor(
+            [[[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+
+        def project(matrix):
+            if entry_point == "unproject_meshgrid":
+                return unproject_meshgrid(2, 3, matrix, device=device, dtype=dtype)
+            if entry_point == "depth_to_3d":
+                depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
+                return depth_to_3d(depth, matrix).permute(0, 2, 3, 1)
+            depth = torch.ones(1, 2, 3, device=device, dtype=dtype)
+            return depth_to_3d_v2(depth, matrix)
+
+        # Capture with no gradient-requiring input, then differentiate the captured graph.
+        operation = torch.jit.trace(project, (camera_matrix.detach(),)) if traced else project
+        points = operation(camera_matrix)
+
+        values = points[..., coordinate]
+        (gradient,) = torch.autograd.grad(values, camera_matrix, torch.full_like(values, 40000.0))
+        # For six unit-depth pixels and incoming gradient 40000, d/dc = -6*40000/4 = -60000.
+        # The column sum is 6 and the row sum is 3, so d/df is -15000 or -7500. These derivatives
+        # fit in float16, but summing a broadcast ramp's gradients before dividing by f overflows.
+        expected = torch.zeros_like(camera_matrix)
+        expected[0, coordinate, coordinate] = -15000.0 if coordinate == 0 else -7500.0
+        expected[0, coordinate, 2] = -60000.0
+        assert torch.isfinite(gradient).all()
+        self.assert_close(gradient, expected)
+
     def test_independent_camera_rays_and_intrinsics_gradients(self, device, dtype):
         camera_matrix = torch.tensor(
             [

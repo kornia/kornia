@@ -135,17 +135,26 @@ def unproject_meshgrid(
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # Each column shares its x ray coordinate, and each row its y coordinate. Normalize the two
-    # ramps before broadcasting, so neither the pixel grid nor the intermediate xy maps are allocated.
     # Match create_meshgrid's pixel ramp and its default floating dtype, including under TorchScript.
     ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
-    xs = torch.arange(width, device=device, dtype=ramp_dtype)
-    ys = torch.arange(height, device=device, dtype=ramp_dtype)
-    xs = (xs - camera_matrix[:, 0, 2, None]) / camera_matrix[:, 0, 0, None]
-    ys = (ys - camera_matrix[:, 1, 2, None]) / camera_matrix[:, 1, 1, None]
-    xx = xs[:, None, :].expand(-1, height, -1)
-    yy = ys[:, :, None].expand(-1, -1, width)
-    points_xyz = torch.stack((xx, yy, xs.new_ones(()).expand_as(xx)), dim=-1)  # BxHxWx3
+    if ramp_dtype == torch.float16 and camera_matrix.dtype == torch.float16:
+        # Keep per-pixel normalization for float16 camera gradients: expand backward would sum
+        # before focal-length division, which can overflow even when the final derivative fits.
+        # Keep the same path in inference so a captured graph remains safe when differentiated later.
+        # Float16 retains the original grid allocations; wider arithmetic uses the separable ramps below.
+        points_uv = create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype).squeeze(0)
+        points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix[:, None, None])
+        points_xyz = convert_points_to_homogeneous(points_xy)
+    else:
+        # Each column shares its x ray coordinate, and each row its y coordinate. Normalize the two
+        # ramps before broadcasting, so neither the pixel grid nor the intermediate xy maps are allocated.
+        xs = torch.arange(width, device=device, dtype=ramp_dtype)
+        ys = torch.arange(height, device=device, dtype=ramp_dtype)
+        xs = (xs - camera_matrix[:, 0, 2, None]) / camera_matrix[:, 0, 0, None]
+        ys = (ys - camera_matrix[:, 1, 2, None]) / camera_matrix[:, 1, 1, None]
+        xx = xs[:, None, :].expand(-1, height, -1)
+        yy = ys[:, :, None].expand(-1, -1, width)
+        points_xyz = torch.stack((xx, yy, xs.new_ones(()).expand_as(xx)), dim=-1)  # BxHxWx3
 
     if normalize_points:
         points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
