@@ -1,0 +1,1 @@
+`Boxes.from_tensor` and `to_tensor` now support `"cxcywh"` (and `"cxcywh_plus"`) bounding box formats, enabling continuous center-coordinate conversions and native usage in detection post-processors such as `DETRPostProcessor`.

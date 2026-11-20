@@ -19,12 +19,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 import torch
 from torch import nn
 
 from kornia.contrib.object_detection import BoxFiltering
+from kornia.geometry.boxes import Boxes
 
 
 def mod(a: torch.Tensor, b: int) -> torch.Tensor:
@@ -109,18 +110,15 @@ class DETRPostProcessor(nn.Module):
         # NOTE: consider using kornia BoundingBox
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes
 
-        # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
-        # box format is cxcywh
-        # convert to xywh
-        # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
-        # TODO: replace using kornia BoundingBox
-        cxcy, wh = boxes[..., :2], boxes[..., 2:]
-        boxes_xy = torch.cat([cxcy - wh * 0.5, wh], -1)
-
         # (B, 2) (H, W) -> (B, 1, 4) (W, H, W, H): each image is scaled by its own size
-        sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes_xy.dtype)
+        sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes.dtype)
+        boxes_scaled = boxes * sizes_wh
 
-        boxes_xy = boxes_xy * sizes_wh
+        # box format is cxcywh, convert to xywh using Kornia Boxes API
+        boxes_xy = cast(
+            torch.Tensor,
+            Boxes.from_tensor(boxes_scaled, mode="cxcywh", validate_boxes=False).to_tensor(mode="xywh"),
+        )
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
 
         # retrieve the boxes with the highest score for each class
