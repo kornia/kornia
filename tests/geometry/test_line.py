@@ -306,7 +306,8 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, torch.tensor(1.25, device=device, dtype=dtype))
         self.assert_close(point, torch.tensor([1.0, 1.75, 2.0], device=device, dtype=dtype))
 
-    def test_intersect_plane_parallel(self, device, dtype):
+    @pytest.mark.parametrize("eps", [0.0, 1e-6])
+    def test_intersect_plane_parallel(self, device, dtype, eps):
         # the degenerate branch must return deterministic values, not uninitialized memory
         p0 = torch.tensor([0.0, 4.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 4.0, 0.0], device=device, dtype=dtype)
@@ -317,7 +318,7 @@ class TestParametrizedLine(BaseTester):
         v2 = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
         pl0 = Hyperplane.through(v0, v1, v2)
 
-        lmbda, point = l1.intersect(pl0)
+        lmbda, point = l1.intersect(pl0, eps=eps)
 
         self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
         self.assert_close(point, p0)
