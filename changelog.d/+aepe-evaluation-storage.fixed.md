@@ -1,0 +1,1 @@
+Reduced temporary tensor memory in `aepe`, `average_endpoint_error` and `AEPE` when neither operand needs a derivative, preserving their values and zero-distance gradients in reverse mode, forward mode and traced graphs.

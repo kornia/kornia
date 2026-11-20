@@ -154,6 +154,38 @@ class TestAepeGradientAtExactMatch(BaseTester):
         (grad,) = torch.autograd.grad(kornia.metrics.aepe(flow, target), target)
         assert (grad == 0).all()
 
+    @pytest.mark.parametrize("differentiate_target", [False, True])
+    def test_forward_tangents_inside_no_grad(self, device, dtype, differentiate_target):
+        flow = torch.tensor([[0.0, 0.0], [3.0, 4.0]], device=device, dtype=dtype)
+        target = torch.zeros_like(flow)
+        moving, fixed = torch.ones_like(flow), torch.zeros_like(flow)
+        tangents = (fixed, moving) if differentiate_target else (moving, fixed)
+        # no_grad disables reverse-mode recording, but a matching pixel's forward derivative must still be zero.
+        with torch.no_grad():
+            value, tangent = torch.func.jvp(
+                lambda p, t: kornia.metrics.aepe(p, t, reduction="none"), (flow, target), tangents
+            )
+        self.assert_close(value, torch.tensor([0.0, 5.0], device=device, dtype=dtype))
+        expected = torch.tensor([0.0, -1.4 if differentiate_target else 1.4], device=device, dtype=dtype)
+        self.assert_close(tangent, expected)
+
+    def test_vmap_reverse_gradients(self, device, dtype):
+        flow = torch.tensor([[[0.0, 0.0], [3.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        target = torch.zeros_like(flow)
+        grad_flow, grad_target = torch.vmap(torch.func.grad(kornia.metrics.aepe, argnums=(0, 1)))(flow, target)
+        expected = torch.tensor([[[0.0, 0.0], [0.3, 0.4]]], device=device, dtype=dtype).expand_as(flow)
+        self.assert_close(grad_flow, expected)
+        self.assert_close(grad_target, -expected)
+
+    def test_trace_preserves_matching_gradient(self, device, dtype):
+        flow = torch.tensor([[0.0, 0.0], [3.0, 4.0]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros_like(flow)
+        op = torch.jit.trace(kornia.metrics.AEPE("none"), (flow, target))
+        value = op(flow, target)
+        (grad,) = torch.autograd.grad(value.sum(), flow)
+        self.assert_close(value, torch.tensor([0.0, 5.0], device=device, dtype=dtype))
+        self.assert_close(grad, torch.tensor([[0.0, 0.0], [0.6, 0.8]], device=device, dtype=dtype))
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     def test_value_matches_the_plain_sqrt_formula(self, device, dtype, reduction):
         gen = torch.Generator(device="cpu").manual_seed(0)
