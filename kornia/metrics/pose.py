@@ -36,7 +36,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_SHAPE,
     KORNIA_CHECK_SHAPE,
 )
-from kornia.core.utils import _autocast_disabled
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast
 
 
 def _angle_deg(sin_theta: Tensor, cos_theta: Tensor) -> Tensor:
@@ -101,6 +101,7 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     if torch.jit.is_scripting():
         relative = R1.transpose(-2, -1) @ R2
     else:
+        R1, R2 = _reconcile_under_autocast(R1, R2)
         with _autocast_disabled(R1.device.type):
             relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)

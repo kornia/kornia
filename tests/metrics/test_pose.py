@@ -80,6 +80,25 @@ class TestAngleErrorMat(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual, torch.tensor(45.0, device=device, dtype=dtype), rtol=0.0, atol=1e-4)
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="CPU bfloat16 autocast accepts mixed precision matrices")
+    @pytest.mark.parametrize("swap_inputs", [False, True])
+    def test_outer_autocast_mixed_operand_dtypes(self, device, dtype, swap_inputs):
+        if device.type != "cpu":
+            pytest.skip("CPU bfloat16 autocast regression")
+        R32 = torch.eye(3, device=device, dtype=dtype, requires_grad=True)
+        R16 = torch.tensor(ROT_Z_90, device=device, dtype=torch.bfloat16, requires_grad=True)
+        R1, R2 = (R16, R32) if swap_inputs else (R32, R16)
+        # Without autocast, mismatched matmul operands still raise. Autocast used to make them compatible.
+        with pytest.raises(RuntimeError):
+            kornia.metrics.angle_error_mat(R1, R2)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            angle = kornia.metrics.angle_error_mat(R1, R2)
+        assert angle.dtype == torch.float32
+        self.assert_close(angle, torch.tensor(90.0, device=device, dtype=torch.float32))
+        angle.backward()
+        assert R32.grad is not None and torch.isfinite(R32.grad).all()
+        assert R16.grad is not None and torch.isfinite(R16.grad).all()
+
     def test_known_angle(self, device, dtype):
         eye = torch.eye(3, device=device, dtype=dtype)
         rot = torch.tensor(ROT_Z_90, device=device, dtype=dtype)
