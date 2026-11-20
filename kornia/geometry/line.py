@@ -286,11 +286,11 @@ class ParametrizedLine(nn.Module):
             the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
-            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
-            intersection; the function returns lambda ``0`` and the line origin as the point.
-            Within this fallback branch, lambda has zero derivatives and the point differentiates as the origin.
+            If ``|normal . direction| < eps``, the method treats the line as parallel and returns step ``0``
+            and the line origin. This fallback also applies to nonzero dot products below the threshold.
+            In the fallback branch, the step has zero derivatives and the point differentiates as the origin.
             A zero step can also represent a valid intersection at the line origin. Check
-            ``|normal . direction| >= eps`` to tell whether an intersection is unique.
+            ``|normal . direction| >= eps`` to tell whether the method computed an intersection or used the fallback.
 
         Examples:
             >>> from kornia.geometry.vector import Vector3
