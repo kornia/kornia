@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 from kornia.feature import matching
 from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
@@ -51,7 +52,7 @@ from kornia.feature.matching import (
 )
 from kornia.feature.steerers import DiscreteSteerer
 
-from testing.base import BaseTester, supports_matmul
+from testing.base import DYNAMIC_EXPORT_UNAVAILABLE_REASON, BaseTester, dynamic_export_is_available, supports_matmul
 from testing.casts import dict_to
 
 
@@ -1470,6 +1471,166 @@ class TestSquaredDistanceMatching(BaseTester):
         expected_dists, expected_idxs = match(desc1, desc2)
         self.assert_close(dists, expected_dists)
         self.assert_close(idxs, expected_idxs)
+
+
+@pytest.mark.applies_to(
+    devices=("cpu",), dtypes=("float32", "float64"), reason="The chunked distance path is CPU float32/float64 only."
+)
+class TestChunkedDistanceMatching(BaseTester):
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    def test_avoids_full_distance_matrix(self, device, dtype, match):
+        # Quarter-grid positions have unique, exactly representable zero-distance matches in reverse order. 2,051
+        # rows also leave a partial final block. No full pairwise tensor is needed to express that result.
+        desc1 = torch.arange(2051, device=device, dtype=dtype)[:, None] / 4
+        desc2 = torch.arange(4098, -1, -1, device=device, dtype=dtype)[:, None] / 4
+
+        class BoundedStorage(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                for tensor in output if isinstance(output, (tuple, list)) else (output,):
+                    if isinstance(tensor, torch.Tensor):
+                        assert tensor.numel() <= len(desc1) * len(desc2) // 2, "allocated the full distance matrix"
+                return output
+
+        with BoundedStorage():
+            distances, indices = match(desc1, desc2)
+        expected_indices = torch.stack(
+            [torch.arange(2051, device=device), torch.arange(4098, 2047, -1, device=device)], 1
+        )
+        self.assert_close(indices, expected_indices)
+        self.assert_close(distances, torch.zeros(2051, 1, device=device, dtype=dtype), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("match", [match_nn, match_snn])
+    @pytest.mark.parametrize("swap", [False, True])
+    @pytest.mark.parametrize("nonfinite", [False, True])
+    def test_matches_matrix_selection(self, device, dtype, match, swap, nonfinite, monkeypatch):
+        generator = torch.Generator().manual_seed(19)
+        desc1 = torch.randn(4099, 32, generator=generator, dtype=torch.float64).to(device, dtype)[:, ::2]
+        desc2 = torch.randn(2049, 32, generator=generator, dtype=torch.float64).to(device, dtype)[:, ::2]
+        desc2[:1024] = desc1[:1024] + 0.05
+        desc1[512] = desc1[0]
+        desc2[1024] = desc2[0]  # ties on both sides, including across row blocks
+        if nonfinite:
+            desc1[513] = float("nan")
+            desc1[2048, 1] = float("inf")
+            desc2[1025] = float("nan")
+            desc2[2048, 1] = -float("inf")
+        if swap:
+            desc1, desc2 = desc2, desc1
+        assert not desc1.is_contiguous()
+        assert not desc2.is_contiguous()
+        with monkeypatch.context() as patch:
+            patch.setattr(matching, "_chunked_neighbours", lambda *_args, **_kwargs: None)
+            expected_values, expected_indices = match(desc1, desc2)
+        values, indices = match(desc1, desc2)
+        self.assert_close(indices, expected_indices)
+        assert torch.equal(torch.isnan(values), torch.isnan(expected_values))
+        finite = ~torch.isnan(expected_values)
+        self.assert_close(values[finite], expected_values[finite])
+
+    def test_ties_keep_first_index_across_blocks(self, device, dtype):
+        desc1 = torch.arange(4099, device=device, dtype=dtype)[:, None] / 4
+        desc2 = torch.arange(2049, device=device, dtype=dtype)[:, None] / 4
+        desc1[512] = desc1[2048] = 0
+        desc2[1024] = 0
+        distances, indices = match_nn(desc1, desc2)
+        assert indices[0].tolist() == [0, 0]
+        assert indices[512].tolist() == [512, 0]
+        assert indices[2048].tolist() == [2048, 0]
+        assert distances[0].item() == 0
+
+    @pytest.mark.parametrize("threshold, count", [(0.5, 2051), (0.49, 0)])
+    def test_ratio_threshold_is_inclusive(self, device, dtype, threshold, count):
+        desc1 = torch.ones(2051, 1, device=device, dtype=dtype)
+        desc2 = torch.arange(100, 4199, device=device, dtype=dtype)[:, None]
+        desc2[0], desc2[1] = 0, 3
+        scores, indices = match_snn(desc1, desc2, th=threshold)
+        assert len(indices) == count
+        self.assert_close(scores, torch.full((count, 1), 0.5, device=device, dtype=dtype), rtol=0, atol=0)
+        self.assert_close(indices[:, 0], torch.arange(count, device=device))
+        self.assert_close(indices[:, 1], torch.zeros(count, dtype=torch.long, device=device))
+
+    def test_empty_given_matrix_preserves_dtype(self, device):
+        desc1, desc2 = torch.zeros(1, 2, device=device), torch.zeros(2, 2, device=device)
+        matrix = torch.ones(1, 2, device=device, dtype=torch.int64)
+        scores, indices = match_snn(desc1, desc2, th=0.5, dm=matrix)
+        assert scores.shape == (0, 1)
+        assert scores.dtype == matrix.dtype
+        assert indices.shape == (0, 2)
+
+    def test_keeps_matrix_path_for_other_modes(self, device, monkeypatch):
+        desc1 = torch.ones(2048, 4, device=device)
+        desc2 = torch.ones(4096, 4, device=device)
+        select = matching._chunked_neighbours
+        assert select(desc1, desc2, torch.empty(0, device=device)) is None
+        assert select(desc1[:2047], desc2, None) is None
+        assert select(desc1, desc2[:2047], None) is None
+        assert select(desc1, desc2[:4095], None) is None
+        assert select(desc1.half(), desc2.half(), None) is None
+        assert select(desc1.bfloat16(), desc2.bfloat16(), None) is None
+        assert select(desc1, desc2.double(), None) is None
+        assert select(desc1.requires_grad_(), desc2, None) is None
+        with torch.no_grad():
+            assert select(desc1, desc2, None) is not None
+        desc1 = desc1.detach()
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            assert select(desc1, desc2, None) is None
+        for flag in ("is_exporting", "is_compiling"):
+            with monkeypatch.context() as patch:
+                patch.setattr(matching, flag, lambda: True)
+                assert select(desc1, desc2, None) is None
+        with monkeypatch.context() as patch:
+            patch.setattr(torch.jit, "is_tracing", lambda: True)
+            assert select(desc1, desc2, None) is None
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.applies_to(
+        when=lambda p: p["capture"] != "dynamo" or p["optimizer_backend"] not in (None, "", "jit"),
+        reason="The Dynamo shape check requires a torch.compile-backed optimizer; export is independent of it.",
+    )
+    @pytest.mark.parametrize("capture", ["dynamo", "export"])
+    def test_chunk_selector_keeps_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
+        from torch._dynamo.testing import CompileCounter
+
+        class Nearest(torch.nn.Module):
+            def forward(self, desc1, desc2):
+                return match_nn(desc1, desc2)
+
+        class ChunkSelector(torch.nn.Module):
+            def forward(self, desc1, desc2):
+                # Exercise the selector independently of _cdist's version-specific export lowering.
+                assert matching._chunked_neighbours(desc1, desc2, None) is None
+                return desc1.clone(), desc2.clone()
+
+        def inputs(rows, columns):
+            return torch.arange(rows).float()[:, None] / 4, torch.arange(columns - 1, -1, -1).float()[:, None] / 4
+
+        example = inputs(2047, 4095)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        try:
+            if capture == "dynamo":
+                captured = torch_optimizer(Nearest(), backend=counter, fullgraph=True, dynamic=True)
+            else:
+                captured = torch.export.export(
+                    ChunkSelector(),
+                    example,
+                    dynamic_shapes=(
+                        {0: torch.export.Dim("rows", min=1024, max=6144)},
+                        {0: torch.export.Dim("columns", min=1024, max=6144)},
+                    ),
+                    strict=True,
+                ).module()
+            for shape in ((2047, 4095), (2048, 4095), (2048, 4096), (2051, 4099)):
+                descriptors = inputs(*shape)
+                actual = captured(*descriptors)
+                expected = match_nn(*descriptors) if capture == "dynamo" else descriptors
+                self.assert_close(actual[0], expected[0], rtol=0, atol=0)
+                self.assert_close(actual[1], expected[1])
+            if capture == "dynamo":
+                assert counter.frame_count == 1
+        finally:
+            torch._dynamo.reset()
 
 
 class TestMatchSMNNBatched(BaseTester):
