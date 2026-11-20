@@ -23,10 +23,24 @@ import torch
 
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
+from kornia.models.efficient_vit.nn.ops import LiteMLA
+
+from testing.base import BaseTester
 
 
 class _NotAWeight:
     """An arbitrary class, which ``torch.load(..., weights_only=True)`` refuses to unpickle."""
+
+
+class TestLiteMLA(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float16",), reason="float16 autocast")
+    def test_autocast_zero_query_and_uniform_values(self, device, dtype):
+        # ReLU removes a negative query, giving 0 / eps. A positive query averages the two identical values.
+        layer = LiteMLA(1, 1, dim=1)
+        qkv = torch.tensor([[[[-1, 1]], [[1, 1]], [[3, 3]]]], device=device, dtype=dtype)
+        with torch.autocast(device.type, dtype=dtype):
+            out = layer.relu_linear_att(qkv)
+        self.assert_close(out, qkv.new_tensor([[[[0.0, 3.0]]]]))
 
 
 class TestEfficientViT:
