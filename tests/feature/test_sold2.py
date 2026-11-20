@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 import warnings
 
 import pytest
@@ -22,12 +23,13 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import ShapeError
+from kornia.feature._normalization import _Float32BatchNormSequential
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
 from kornia.feature.sold2.sold2 import WunschLineMatcher, keypoints_to_grid
 from kornia.feature.sold2.sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 from kornia.feature.sold2.structures import DetectorCfg, LineDetectorCfg
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 
 
 class TestLocalHeatmapRefinement(BaseTester):
@@ -570,3 +572,228 @@ class TestConventionsSOLD2(BaseTester):
         # two non-empty sets give int64 as well (float32 maps: torch 2.5.1 has no CPU half grid_sample)
         matches = model.match(segments, segments, maps[0].float(), maps[1].float())
         assert matches.dtype == torch.int64
+
+
+def _block(
+    weight: list[float], bias: list[float], mean: list[float], var: float, identity: bool = False, momentum: float = 0.1
+) -> list[torch.nn.Module]:
+    """A float32 ``_Float32BatchNormSequential`` and a plain ``nn.Sequential`` copy of it."""
+    norm = torch.nn.BatchNorm2d(len(weight), momentum=momentum)
+    conv = torch.nn.Conv2d(len(weight), len(weight), 1)
+    with torch.no_grad():
+        norm.weight.copy_(torch.tensor(weight))
+        norm.bias.copy_(torch.tensor(bias))
+        norm.running_mean.copy_(torch.tensor(mean))
+        norm.running_var.fill_(var)
+        if identity:  # exact in float16 too, so a float16 block and a float32 reference see the same input
+            conv.weight.copy_(torch.eye(len(weight)).reshape(len(weight), len(weight), 1, 1))
+            conv.bias.zero_()
+        else:  # fixed, so every run checks the same numbers
+            conv.weight.copy_(torch.tensor([[0.7, -0.3], [0.2, 1.1]]).reshape(2, 2, 1, 1))
+            conv.bias.copy_(torch.tensor([0.05, -0.1]))
+    block = _Float32BatchNormSequential(conv, norm, torch.nn.ReLU())
+    plain = torch.nn.Sequential(*copy.deepcopy(list(block)))
+    return [block, plain]
+
+
+_X = [256.1, -512.3, 1024.7, -2048.9]
+
+
+class TestFloat16HourglassBatchNorm(BaseTester):
+    @pytest.mark.parametrize("convert", ["half", "to", "type"])
+    @pytest.mark.parametrize("model_cls", [SOLD2, SOLD2_detector])
+    def test_half_keeps_the_hourglass_statistics_in_float32(self, device, model_cls, convert):
+        # The pretrained running variances of these two BatchNorms reach 2.6e6, beyond float16's 65504. Converted to
+        # float16 they became inf, those channels normalized to 0 and the heatmaps held no lines. The statistics stay
+        # in float32 (0.1 is not a float16 number, so nothing is rounded through float16), and every parameter
+        # converts as usual, so the model keeps one parameter dtype.
+        model = model_cls(pretrained=False).to(device).eval()
+        norms = [fc[1] for fc in model.model.backbone_net.net.fc]
+        assert len(norms) == 2
+        assert all(type(norm) is torch.nn.BatchNorm2d for norm in norms)
+        with torch.no_grad():
+            for norm in norms:
+                norm.running_mean.fill_(0.1)
+                norm.running_var.fill_(2.6e6)
+        reference = copy.deepcopy(norms)
+        if convert == "half":
+            model.half()
+        elif convert == "to":
+            model.to(torch.float16)
+        else:
+            model.type(torch.float16)
+        model.to(device)
+        assert {parameter.dtype for parameter in model.parameters()} == {torch.float16}
+        for norm, ref in zip(norms, reference):
+            for name in ("running_mean", "running_var"):
+                assert getattr(norm, name).dtype == torch.float32
+                self.assert_close(getattr(norm, name), getattr(ref, name), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("momentum", [0.1, None])
+    @pytest.mark.parametrize("training", [True, False])
+    def test_float16_block_normalizes_in_float32(self, device, training, momentum):
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6, identity=True, momentum=momentum)
+        block, plain = block.to(device).train(training), plain.to(device).train(training)
+        block.half().to(device)
+        with torch.no_grad():  # the reference has the float16 parameters and the exact float32 statistics
+            for parameter in plain.parameters():
+                parameter.copy_(parameter.half().float())
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).half().requires_grad_()
+        ref_x = x.detach().float().requires_grad_()
+        for _ in range(2):
+            actual = block(x)
+            expected = plain(ref_x).half()
+            assert actual.dtype == torch.float16
+            self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+        actual.sum().backward()
+        expected.float().sum().backward()
+        self.assert_close(x.grad, ref_x.grad.half(), rtol=0.0, atol=0.0)
+        for name in ("weight", "bias"):
+            self.assert_close(getattr(block[1], name).grad, getattr(plain[1], name).grad.half(), rtol=0.0, atol=0.0)
+        for name in ("running_mean", "running_var", "num_batches_tracked"):
+            self.assert_close(getattr(block[1], name), getattr(plain[1], name), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("track_running_stats", [True, False])
+    def test_float16_block_keeps_the_batchnorm_settings(self, device, track_running_stats):
+        # eps and a later track_running_stats=False reach the float32 normalization as they reach the BatchNorm.
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6, identity=True)
+        for norm in (block[1], plain[1]):
+            norm.eps = 1e-3
+            norm.track_running_stats = track_running_stats
+        block, plain = block.to(device).train(), plain.to(device).train()
+        block.half().to(device)
+        with torch.no_grad():
+            for parameter in plain.parameters():
+                parameter.copy_(parameter.half().float())
+        x = torch.tensor([0.75, -0.5, 1.25, -1.5], device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        self.assert_close(block(x), plain(x.float()).half(), rtol=0.0, atol=0.0)
+        for name in ("running_mean", "running_var", "num_batches_tracked"):
+            self.assert_close(getattr(block[1], name), getattr(plain[1], name), rtol=0.0, atol=0.0)
+
+    def test_half_with_gradients_keeps_one_parameter_dtype(self, device):
+        # Tools that need one dtype across the parameters keep working: optimizers, parameters_to_vector.
+        block, _ = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6)
+        block = block.to(device).train()
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2)
+        block(x).sum().backward()
+        optimizer = torch.optim.Adam(block.parameters())
+        block.half()
+        assert {p.dtype for p in block.parameters()} == {torch.float16}
+        assert {p.grad.dtype for p in block.parameters()} == {torch.float16}
+        optimizer.step()
+        vector = torch.nn.utils.parameters_to_vector(block.parameters())
+        torch.nn.utils.vector_to_parameters(vector, block.parameters())
+        assert block(x.half()).dtype == torch.float16
+
+    def test_weight_held_as_a_plain_tensor(self, device):
+        # FSDP and DataParallel replicas hold the BatchNorm's weight and bias as plain tensors instead of parameters.
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6, identity=True)
+        block, plain = block.to(device).eval().half(), plain.to(device).eval()
+        for name in ("weight", "bias"):
+            setattr(block[1], name, block[1]._parameters.pop(name).detach())
+        assert not list(block[1].parameters())
+        with torch.no_grad():
+            for parameter in plain.parameters():
+                parameter.copy_(parameter.half().float())
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        self.assert_close(block(x), plain(x.float()).half(), rtol=0.0, atol=0.0)
+
+    def test_subclassed_batchnorm_runs_its_own_forward(self, device):
+        # A wrapper or subclass of the BatchNorm, such as an FSDP-wrapped layer, is called as it is.
+        class Counting(torch.nn.BatchNorm2d):
+            calls = 0
+
+            def forward(self, input: torch.Tensor) -> torch.Tensor:
+                Counting.calls += 1
+                return input
+
+        block, _ = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6, identity=True)
+        block = block.to(device).eval().half()
+        block[1].__class__ = Counting
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        self.assert_close(block(x), torch.relu(x), rtol=0.0, atol=0.0)
+        assert Counting.calls == 1
+
+    def test_batchnorm_made_float16_again_runs_as_a_plain_sequential(self, device):
+        # A BatchNorm converted to float16 by its own call after the block's conversion runs in float16, as before.
+        block, plain = _block([0.5, -2.0], [0.25, 1.0], [0.5, -0.25], 2.0)
+        block, plain = block.to(device).eval().half(), plain.to(device).eval().half()
+        block[1].half()
+        x = torch.tensor([0.75, -0.5, 1.25, -1.5], device=device).repeat(4).reshape(2, 2, 2, 2).half()
+        self.assert_close(block(x), plain(x), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("target", [torch.bfloat16, torch.float64])
+    def test_other_dtypes_convert_as_a_plain_sequential(self, device, target):
+        if device.type == "mps" and target == torch.float64:
+            pytest.skip("MPS does not support float64")
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6)
+        block, plain = block.to(device, target).eval(), plain.to(device, target).eval()
+        for (name, value), (_, ref) in zip(block.state_dict().items(), plain.state_dict().items()):
+            assert value.dtype == ref.dtype, name
+            self.assert_close(value, ref, rtol=0.0, atol=0.0)
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2).to(target)
+        self.assert_close(block(x), plain(x), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("target", [torch.bfloat16, torch.float64])
+    def test_conversion_back_from_float16_runs_as_a_plain_sequential(self, device, target):
+        # With statistics float16 can hold, a block converted to float16 and then to another dtype matches a plain
+        # Sequential converted the same way.
+        if device.type == "mps" and target == torch.float64:
+            pytest.skip("MPS does not support float64")
+        block, plain = _block([0.5, -2.0], [0.25, 1.0], [0.5, -0.25], 2.0)
+        block, plain = block.to(device).eval().half().to(target), plain.to(device).eval().half().to(target)
+        x = torch.tensor([0.75, -0.5, 1.25, -1.5], device=device).repeat(4).reshape(2, 2, 2, 2).to(target)
+        self.assert_close(block(x), plain(x), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("training", [True, False])
+    @pytest.mark.parametrize("autocast_dtype", ["float16", "bfloat16"])
+    def test_autocast_runs_as_a_plain_sequential(self, device, training, autocast_dtype):
+        # A float32 block under autocast was never converted to float16: its BatchNorm runs exactly as before.
+        skip_unsupported_autocast(device, autocast_dtype)
+        block, plain = _block([0.1, -2.3], [0.3, 0.7], [0.1, -0.2], 2.6e6)
+        block, plain = block.to(device).train(training), plain.to(device).train(training)
+        x = torch.tensor(_X, device=device).repeat(4).reshape(2, 2, 2, 2)
+        x, ref_x = x.clone().requires_grad_(), x.clone().requires_grad_()
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual, expected = block(x), plain(ref_x)
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+        actual.float().sum().backward()
+        expected.float().sum().backward()
+        self.assert_close(x.grad, ref_x.grad, rtol=0.0, atol=0.0)
+        self.assert_close(block[1].weight.grad, plain[1].weight.grad, rtol=0.0, atol=0.0)
+        self.assert_close(block[1].running_var, plain[1].running_var, rtol=0.0, atol=0.0)
+
+    def test_fx_fusion_and_scripting_see_a_plain_batchnorm(self, device):
+        model = SOLD2_detector(pretrained=False).to(device).eval()
+        x = torch.rand(1, 1, 64, 64, device=device)
+        traced = torch.fx.symbolic_trace(model.model)
+        expected, actual = model.model(x), traced(x)
+        for key in ("junctions", "heatmap"):
+            self.assert_close(actual[key], expected[key], rtol=0.0, atol=0.0)
+        block = model.model.backbone_net.net.fc[0]
+        features = torch.rand(1, 256, 8, 8, device=device)
+        self.assert_close(torch.jit.script(block)(features), block(features), rtol=0.0, atol=0.0)
+        fused = torch.ao.quantization.fuse_modules(block, [["0", "1", "2"]], inplace=False)
+        self.assert_close(torch.jit.script(fused)(features), fused(features), rtol=0.0, atol=0.0)
+        block16 = copy.deepcopy(block).half()
+        self.assert_close(torch.jit.script(block16)(features.half()), block16(features.half()), rtol=0.0, atol=0.0)
+        model16 = copy.deepcopy(model).half()
+        traced16 = torch.fx.symbolic_trace(model16.model)
+        expected, actual = model16.model(x.half()), traced16(x.half())
+        for key in ("junctions", "heatmap"):
+            self.assert_close(actual[key], expected[key], rtol=0.0, atol=0.0)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_pretrained_half_detects_lines(self, device, data):
+        img = data["image0"][..., :448, :576].to(device)
+        sold2 = SOLD2(pretrained=True).to(device).eval()
+        with torch.no_grad():
+            out32 = sold2(img)
+            out16 = sold2.half()(img.half())
+        n32, n16 = len(out32["line_segments"][0]), len(out16["line_segments"][0])
+        # On macOS arm64 with torch 2.14: 80 segments in float32, 80 (CPU) or 81 (MPS) in float16, and the line
+        # heatmaps differ by at most 0.007. Float16 used to find no segment, with a line heatmap below 0.007.
+        assert n32 > 0
+        assert 0.75 * n32 <= n16 <= 1.25 * n32
+        self.assert_close(out16["line_heatmap"].float(), out32["line_heatmap"], rtol=0.0, atol=0.05)

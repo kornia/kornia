@@ -53,6 +53,14 @@ class SOLD2(nn.Module):
           returns an int64 tensor ``(N_1,)``: for each segment of ``line_seg1``, the index of its match in
           ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
           ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
+        - After a float16 conversion (``.half()`` or ``.to(torch.float16)``), the BatchNorm that ends each hourglass
+          stack keeps its running statistics in float32 and normalizes in float32 with float32 copies of its weight
+          and bias: the pretrained running variances exceed float16's range. Convert the model to float16 before
+          tracing, scripting or exporting it; a trace or export taken from the float16 model cannot be converted to
+          another dtype. In the float16 model, module hooks or ``torch.nn.utils.prune`` on these two BatchNorms,
+          ``torch.nn.SyncBatchNorm.convert_sync_batchnorm``, ``fuse_modules_qat`` and wrapping either BatchNorm in
+          FSDP on its own make the next forward raise on CPU; on MPS the hooks, pruning and the two conversions abort
+          the process.
         - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
           without an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has
           none the call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
