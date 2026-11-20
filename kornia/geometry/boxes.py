@@ -788,6 +788,8 @@ class Boxes:
 
         Convention:
             Vertices are sorted by angle about their centroid, so a convex quadrilateral is assumed.
+            Area is evaluated relative to one vertex to avoid cancellation from a large translation.
+            Half-precision coordinates use float32 for the calculation; the result keeps the input dtype.
 
         .. warning::
             On the stored inclusive vertices an axis-aligned box gives ``(width - 1) * (height - 1)``, not the
@@ -797,6 +799,11 @@ class Boxes:
             Area for each box, shaped ``(N,)`` or ``(B, N)``.
         """
         coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
+        # Avoid overflowing half products and cancelling small areas at ordinary image offsets.
+        # CPU profile, 1024 float32 boxes: +32 KiB forward allocations for the translated coordinates.
+        if coords.dtype in (torch.float16, torch.bfloat16):
+            coords = coords.float()
+        coords = coords - coords[:, :1]
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner
@@ -808,6 +815,7 @@ class Boxes:
         x, y = ordered_corners[..., 0], ordered_corners[..., 1]
         # Gaussian/Shoelace formula https://en.wikipedia.org/wiki/Shoelace_formula
         area = 0.5 * torch.abs(torch.sum((x * torch.roll(y, 1, 1)) - (y * torch.roll(x, 1, 1)), dim=1))
+        area = area.to(self._data.dtype)
         return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
