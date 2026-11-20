@@ -16,7 +16,8 @@ followed by a distortion, from the image plane to pixels. Points are
 
 - Build a built-in model by name with :class:`CameraModel` and a :class:`CameraModelType`, or with its class:
   :class:`PinholeModel` (no lens distortion), :class:`BrownConradyModel` (OpenCV's radial and tangential
-  distortion), :class:`KannalaBrandtK3` (fisheye) or :class:`Orthographic` (parallel projection).
+  distortion), :class:`KannalaBrandtK3` (fisheye), :class:`Orthographic` (parallel projection) or
+  :class:`DoubleSphereModel` (wide-angle and fisheye with closed-form inverse).
 - Compose a custom model with :class:`CameraModelBase` from one of the distortions and one of the projections below.
 - For cameras with extrinsics, on plain tensors, use :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
@@ -65,6 +66,9 @@ Defining the same model from its distortion and projection with :class:`CameraMo
 .. autoclass:: Orthographic
     :members:
 
+.. autoclass:: DoubleSphereModel
+    :members:
+
 Distortions
 -----------
 
@@ -77,6 +81,9 @@ Distortions
     :members:
 
 .. autoclass:: KannalaBrandtK3Transform
+    :members:
+
+.. autoclass:: DoubleSphereTransform
     :members:
 
 

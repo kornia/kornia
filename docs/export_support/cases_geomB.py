@@ -108,6 +108,7 @@ dist5 = torch.tensor([[0.1, -0.02, 0.001, 0.002, 0.005]])
 dist14 = torch.tensor([[0.1, -0.02, 0.001, 0.002, 0.005, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.01, 0.02]])
 img_pts = torch.rand(1, N, 2) * torch.tensor([40.0, 32.0])
 kb_params = torch.tensor([50.0, 50.0, 20.0, 16.0, 0.1, 0.01, 0.001, 0.0001])
+ds_params = torch.tensor([50.0, 50.0, 20.0, 16.0, -0.18, 0.59])
 aff_params = torch.tensor([50.0, 50.0, 20.0, 16.0])
 z1_pts = torch.rand(N, 2) * 0.6 - 0.3
 cam_pts3 = torch.rand(N, 3) + torch.tensor([-0.5, -0.5, 2.0])
@@ -487,6 +488,9 @@ CASES = [
     _cam("distort_points_affine", K.geometry.camera.distort_points_affine, [z1_pts, aff_params]),
     _cam("undistort_points_affine", K.geometry.camera.undistort_points_affine, [img_pts[0], aff_params]),
     _cam("dx_distort_points_affine", K.geometry.camera.dx_distort_points_affine, [z1_pts, aff_params]),
+    _cam("distort_points_double_sphere", K.geometry.camera.distort_points_double_sphere, [z1_pts, ds_params]),
+    _cam("undistort_points_double_sphere", K.geometry.camera.undistort_points_double_sphere, [img_pts[0], ds_params]),
+    _cam("dx_distort_points_double_sphere", K.geometry.camera.dx_distort_points_double_sphere, [z1_pts, ds_params]),
     _cam("distort_points_kannala_brandt", K.geometry.camera.distort_points_kannala_brandt, [z1_pts, kb_params]),
     _cam(
         "undistort_points_kannala_brandt",
