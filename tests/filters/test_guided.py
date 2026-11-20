@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import re
+import weakref
 from fractions import Fraction
 from functools import partial
 from unittest.mock import patch
@@ -109,6 +110,44 @@ def _scale_factor_interpolate(x, size=None, scale_factor=None, mode=None, **kwar
 
 
 class TestGuidedBlur(BaseTester):
+    @pytest.mark.parametrize("self_guidance", [False, True])
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_multichannel_moments_released_before_solve(self, self_guidance, separable, device, dtype):
+        """Second-moment image buffers should not overlap the linear solve in a forward-only call."""
+        guide = torch.rand(1, 3, 5, 7, device=device, dtype=dtype)
+        image = guide if self_guidance else torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        buffers: list[weakref.ReferenceType[torch.Tensor]] = []
+        solved = False
+        original_solve = torch.linalg.solve
+
+        def base_reference(tensor):
+            # Permutes and reshapes can discard a view while its allocation is still live.
+            while tensor._base is not None:
+                tensor = tensor._base
+            return weakref.ref(tensor)
+
+        def tracked_blur(tensor, *args, **kwargs):
+            output = box_blur(tensor, *args, **kwargs)
+            if not solved and tensor.shape[1] in (6, 9):
+                buffers.extend((base_reference(tensor), base_reference(output)))
+            return output
+
+        def checked_solve(*args, **kwargs):
+            nonlocal solved
+            assert len(buffers) == (2 if self_guidance else 4)
+            assert all(reference() is None for reference in buffers)
+            solved = True
+            return original_solve(*args, **kwargs)
+
+        # Use plain replacements: a Mock's call history would retain the very tensors being observed.
+        with (
+            patch("kornia.filters.guided.box_blur", new=tracked_blur),
+            patch("torch.linalg.solve", new=checked_solve),
+            torch.no_grad(),
+        ):
+            guided_blur(guide, image, 3, 0.1, separable=separable)
+        assert solved
+
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("eps", [1e-4, 1e-3])
     def test_flat_guidance_small_regularization(self, guide_dim, eps, device, dtype):

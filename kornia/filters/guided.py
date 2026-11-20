@@ -134,7 +134,10 @@ def _guided_blur_multichannel_guidance(
     mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
     corr_I = box_blur(II, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
+    # Release channel-pair buffers after their last use; autograd owns any saved tensors.
+    del II
     var_I = torch.addcmul(corr_I.reshape(B, H, W, C, C), mean_I.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
+    del corr_I
 
     if guidance is input:
         mean_p = mean_I
@@ -144,7 +147,9 @@ def _guided_blur_multichannel_guidance(
         mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
         corr_Ip = box_blur(Ip, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
+        del Ip
         cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, C_in), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
+        del corr_Ip
 
     if isinstance(eps, torch.Tensor):
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
