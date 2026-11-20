@@ -159,7 +159,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         batched = boxes.ndim == 4
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == torch.Size([4, 2])):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2) when {mode} mode. Got {boxes.shape}.")
-    elif mode.startswith("xy"):
+    elif mode.startswith(("xy", "cxcy")):
         batched = boxes.ndim == 3
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4) when {mode} mode. Got {boxes.shape}.")
@@ -189,13 +189,24 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-    elif mode.startswith("xy"):
+    elif mode.startswith(("xy", "cxcy")):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
         elif mode == "xyxy_plus":
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
         elif mode == "xywh":
             height, width = boxes[..., 3], boxes[..., 2]
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
+        elif mode == "cxcywh":
+            width, height = boxes[..., 2], boxes[..., 3]
+            xmin = boxes[..., 0] - 0.5 * width
+            ymin = boxes[..., 1] - 0.5 * height
+        elif mode == "cxcywh_plus":
+            width, height = boxes[..., 2], boxes[..., 3]
+            xmin = boxes[..., 0] - 0.5 * (width - 1)
+            ymin = boxes[..., 1] - 0.5 * (height - 1)
         else:
             raise ValueError(f"Unknown mode {mode}")
 
@@ -204,7 +215,6 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         if validate_boxes and not is_compiling():
             _validate_box_values(boxes, width, height)
 
-        xmin, ymin = boxes[..., 0], boxes[..., 1]
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
     else:
         raise ValueError(f"Unknown mode {mode}")
@@ -282,16 +292,17 @@ class Boxes:
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
         - The modes of :meth:`from_tensor` and :meth:`to_tensor`, case-insensitive: ``'xyxy'`` is
           ``(xmin, ymin, xmax, ymax)`` with ``xmax`` and ``ymax`` one past the last pixel, ``'xyxy_plus'`` the same
-          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'vertices'`` the corners with ``xmax``
-          and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the stored corners.
+          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'cxcywh'`` is
+          ``(center_x, center_y, width, height)``, ``'cxcywh_plus'`` the same with inclusive center, ``'vertices'``
+          the corners with ``xmax`` and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the stored corners.
           ``from_tensor(torch.tensor([[[0., 0., 10., 20.]]]))`` stores ``[[0, 0], [9, 0], [9, 19], [0, 19]]``,
-          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'`` and ``[0, 0, 9, 19]`` in
-          ``'xyxy_plus'``.
-        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
-          ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
-          ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
-          ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
-          :meth:`transform_boxes` import unchanged.
+          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'``, ``[5, 10, 10, 20]`` in
+          ``'cxcywh'``, and ``[0, 0, 9, 19]`` in ``'xyxy_plus'``.
+        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The coordinate modes
+          (``'xy*'``, ``'cxcy*'``) raise ``ValueError`` and also reject non-positive extents. The vertex modes raise
+          ``RuntimeError`` through ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from
+          torch 2.13), so they stay ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary
+          quadrilaterals of :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (for list inputs,
           every element is checked); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
@@ -829,16 +840,20 @@ class Boxes:
                   ``(B, N, 4)``.
                 * 'xywh': ``xmin, ymin, width, height`` with exclusive extent. With shape ``(N, 4)``,
                   ``(B, N, 4)``.
+                * 'cxcywh': ``center_x, center_y, width, height`` with exclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
+                * 'cxcywh_plus': ``center_x, center_y, width, height`` with inclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
                   the exclusive input form. With shape ``(N, 4, 2)``, ``(B, N, 4, 2)``.
                 * 'vertices_plus': the inclusive stored vertex form. With shape ``(N, 4, 2)``,
                   ``(B, N, 4, 2)``.
 
-            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
-                which also reject non-positive extents in each mode's convention, and ``RuntimeError`` from
-                ``torch._assert_async`` for the vertex modes, which take no extent or shape check.
-                The ``'xy*'`` checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
+            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the coordinate modes
+                (``'xy*'``, ``'cxcy*'``), which also reject non-positive extents in each mode's convention, and
+                ``RuntimeError`` from ``torch._assert_async`` for the vertex modes, which take no extent or shape check.
+                The coordinate checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
                 them.
 
         Returns:
@@ -905,6 +920,8 @@ class Boxes:
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent.
                 * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.
                 * 'xywh': ``xmin, ymin, width, height`` with exclusive extent.
+                * 'cxcywh': ``center_x, center_y, width, height`` with exclusive extent.
+                * 'cxcywh_plus': ``center_x, center_y, width, height`` with inclusive extent.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
                   the exclusive export form.
@@ -948,6 +965,15 @@ class Boxes:
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
             boxes[..., 2] = width
             boxes[..., 3] = height
+        elif mode in ("cxcywh", "cxcywh_plus"):
+            height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+            if mode == "cxcywh":
+                cx = boxes[..., 0] + 0.5 * width
+                cy = boxes[..., 1] + 0.5 * height
+            else:
+                cx = boxes[..., 0] + 0.5 * (width - 1)
+                cy = boxes[..., 1] + 0.5 * (height - 1)
+            boxes = torch.stack([cx, cy, width, height], dim=-1)
         else:
             raise ValueError(f"Unknown mode {mode}")
 
@@ -1159,7 +1185,7 @@ class Boxes:
 
         Returns:
             Mode string used as the default by :meth:`to_tensor`, such as
-            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"vertices"`` or
+            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"cxcywh"``, ``"vertices"`` or
             ``"vertices_plus"``.
         """
         return self._mode
