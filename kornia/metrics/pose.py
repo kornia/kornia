@@ -36,6 +36,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_SHAPE,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast
 
 
 def _angle_deg(sin_theta: Tensor, cos_theta: Tensor) -> Tensor:
@@ -58,6 +59,9 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
         See the Convention block of :func:`~kornia.metrics.pose_errors`, whose ``"R_err"`` this is: one angle in
         degrees per pair, symmetric in ``R1`` and ``R2``. An unbatched pair gives a 0-d tensor. The inputs are not
         checked to be rotations.
+        The relative rotation is computed outside an enclosing autocast region, preserving float32 input accuracy
+        and output dtype. Mixed float16/bfloat16/float32 operands in that region compute in float32. A scripted
+        call retains the caller's autocast behavior.
 
     Args:
         R1: a rotation matrix of shape ``(*, 3, 3)``.
@@ -93,7 +97,14 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
     KORNIA_CHECK_SAME_SHAPE(R1, R2)
 
-    relative = R1.transpose(-2, -1) @ R2
+    # Rounding a relative rotation to half precision can erase a small angle before the skew part reads it.
+    # Keep the input precision, as the geometric estimators do. TorchScript does not support the context helper.
+    if torch.jit.is_scripting():
+        relative = R1.transpose(-2, -1) @ R2
+    else:
+        R1, R2 = _reconcile_under_autocast(R1, R2)
+        with _autocast_disabled(R1.device.type):
+            relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)
     cos_theta = (trace - 1.0) / 2.0
     # (R - R^T) / 2 = sin(theta) [n]_x, so its three independent entries have norm sin(theta).
