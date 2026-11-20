@@ -87,10 +87,11 @@ class ParametrizedLine(nn.Module):
           ``N`` points per line. ``(B, N, D)`` is not ``N`` points per line: it raises unless ``N`` is ``B`` or 1.
           With ``N = B``, line ``j`` meets ``point[:, j]``; with ``N = 1``, every line meets every point and the
           result is ``(B, B)``.
-        - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
-          the stored direction, and the plane's normal need not be unit. It takes a 3D line. A batch of ``B`` lines
-          meets one plane, a batch of ``B`` planes or a batch of one, and one unbatched line or a batch of one meets a
-          batch of planes of any size.
+        - :meth:`intersect` returns ``(lambda, point)`` with ``point = origin + lambda * direction``, where each
+          step scales the full direction vector. For steps with multiple batch axes, use the returned points or
+          reconstruct them with ``origin + lambda[..., None] * direction``. The plane's normal need not be unit.
+          It takes a 3D line. A batch of ``B`` lines meets one plane, a batch of ``B`` planes or a batch of one,
+          and one unbatched line or a batch of one meets a batch of planes of any size.
         - ``origin`` and ``direction`` are registered module state, so ``state_dict()`` and ``.to()`` include them.
           Outside graph capture, a floating-point tensor that takes no part in autograd (no ``grad_fn`` and
           ``requires_grad=False``) becomes an ``nn.Parameter``, so a line built from plain tensors, including the
@@ -114,6 +115,20 @@ class ParametrizedLine(nn.Module):
         tensor([6., 8.], grad_fn=<AddBackward0>)
         >>> line.distance(torch.tensor([[4.0, 3.0], [-3.0, -4.0]]))
         tensor([1.4000, 0.0000], grad_fn=<LinalgVectorNormBackward0>)
+
+        For one line and a two-axis grid of planes, the steps have the grid shape and the points
+        have an extra coordinate axis:
+
+        >>> from kornia.geometry.vector import Scalar, Vector3
+        >>> line = ParametrizedLine(torch.zeros(3), torch.tensor([0., 0., 2.]))
+        >>> heights = torch.tensor([[2., 4.], [6., 8.]])
+        >>> planes = Hyperplane(Vector3(torch.tensor([0., 0., 1.])), Scalar(-heights))
+        >>> steps, points = line.intersect(planes)
+        >>> steps.tolist()
+        [[1.0, 2.0], [3.0, 4.0]]
+        >>> tuple(points.shape)
+        (2, 2, 3)
+        >>> torch.testing.assert_close(points, line.origin + steps[..., None] * line.direction)
 
     """
 
