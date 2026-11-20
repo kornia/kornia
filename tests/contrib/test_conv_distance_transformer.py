@@ -24,7 +24,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestConvDistanceTransform(BaseTester):
@@ -409,7 +409,13 @@ class TestConvDistanceTransform(BaseTester):
         expected[0, 0, 0, 0] = -0.35 / math.sqrt(1 - 0.35 * math.log(0.5))
         self.assert_close(image.grad, expected)
 
-    @pytest.mark.parametrize("strict", [False, True])
+    @pytest.mark.parametrize(
+        "strict",
+        [
+            False,
+            pytest.param(True, marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)),
+        ],
+    )
     def test_convention_export_keeps_tie_gradient(self, device, dtype, strict):
         image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype).reshape(1, 1, 1, 3)
         exported = torch.export.export(kornia.contrib.DistanceTransform(), (image,), strict=strict).module()
