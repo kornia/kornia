@@ -347,6 +347,56 @@ class TestMedianBlur(BaseTester):
         assert actual.dtype == expected.dtype == autocast_dtype
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("kernel_size,indices", [(3, [4] * 9), (5, [6, 6, 6, 6, 8, 8, 6, 8, 8])])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    def test_vmapped_forward_derivatives(self, kernel_size, indices, grad_enabled, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        # For each pixel, sort its clamped-coordinate window of [9,1,8;2,5,3;7,4,6] and take k*k//2.
+        # These are the original pixel indices of those medians; repeated padding entries share one source.
+        values = torch.tensor([9, 1, 8, 2, 5, 3, 7, 4, 6], device=device, dtype=dtype)
+        images = torch.stack((values, 2 * values + 10)).reshape(2, 1, 1, 3, 3)
+        tangents = torch.arange(18, device=device, dtype=dtype).reshape_as(images) / 16
+        selected = torch.tensor(indices, device=device, dtype=torch.long)
+        expected = torch.stack((values[selected], 2 * values[selected] + 10)).reshape_as(images)
+        expected_jvp = torch.stack((selected, selected + 9)).to(dtype).reshape_as(images) / 16
+        op = torch.vmap(lambda image: median_blur(image, kernel_size, "replicate"))
+        with torch.set_grad_enabled(grad_enabled):
+            actual, actual_jvp = torch.func.jvp(op, (images,), (tangents,))
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(actual_jvp, expected_jvp, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    def test_vmapped_tied_reverse_derivatives(self, kernel_size, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"this torch build has no replicate padding kernel for {dtype} on {device.type}")
+        images = torch.zeros(2, 1, 1, 3, 3, device=device, dtype=dtype, requires_grad=True)
+
+        def op(image):
+            return median_blur(image, kernel_size, "replicate")
+
+        # median's chosen tie index can vary by backend; batching must preserve that backend's unbatched choice.
+        expected = torch.stack([op(image) for image in images])
+        expected_grad = torch.autograd.grad(expected.sum(), images)[0]
+        actual = torch.vmap(op)(images)
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(torch.autograd.grad(actual.sum(), images)[0], expected_grad, atol=0, rtol=0)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="compiled function-transform derivatives")
+    def test_dynamo_vmapped_tied_derivatives(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("vmap requires function transforms outside TorchScript")
+        images = torch.zeros(2, 1, 1, 3, 3, device=device, dtype=dtype, requires_grad=True)
+
+        def op(image):
+            return median_blur(image, 3, "replicate")
+
+        expected = torch.stack([op(image) for image in images])
+        expected_grad = torch.autograd.grad(expected.sum(), images)[0]
+        actual = torch_optimizer(torch.vmap(op))(images)
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(torch.autograd.grad(actual.sum(), images)[0], expected_grad, atol=0, rtol=0)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)

@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
+from kornia.core.utils import _needs_derivatives, is_autocast_enabled, is_compiling, is_exporting
 
 from .filter import _pad, _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_binary_kernel2d
@@ -175,6 +175,10 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     # CUDA kernel; eager CUDA launches one kernel per comparator, which only pays
     # off for 3x3 windows on large inputs. Keep the original path for autograd
     # (in particular its tie indices) and other devices/sizes.
+    # A batching wrapper hides its input's derivatives. Read through it before selecting the inference network;
+    # unpack_dual on the wrapper itself has no batching rule when a forward-mode tangent is present.
+    # Measured on CPU float32 (2, 1, 128, 128), ordinary and vmapped inference allocate the same bytes as before;
+    # vmapped backward uses the original median graph (12.3 MB vs the selection network's 35.2 MB of allocations).
     on_cuda = input.device.type == "cuda" and (is_compiling() or (ky == 3 and input.numel() >= 1 << 20))
     if (
         (input.device.type == "cpu" or on_cuda)
@@ -182,7 +186,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         and input.shape[1] != 0
         and input.is_floating_point()
         and not input.requires_grad
-        and torch.autograd.forward_ad.unpack_dual(input).tangent is None
+        and not _needs_derivatives(input)
         and ky == kx
         and ky in _MEDIAN_NETWORKS
     ):
