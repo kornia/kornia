@@ -232,6 +232,9 @@ def _bilateral_blur(
     input = _to_floating(input)
     if guidance is not None and not guidance.is_floating_point():
         guidance = guidance.to(input.dtype)
+    # Half inputs use float32 window arithmetic below. Convert tensor sigmas directly to that dtype: an intermediate
+    # cast through float16 would still erase small positive values and overflow otherwise finite parameter gradients.
+    sigma_dtype = torch.float32 if input.dtype == torch.float16 else input.dtype
 
     if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
@@ -239,7 +242,7 @@ def _bilateral_blur(
         # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
         if not is_compiling() and not bool((sigma_color > 0).all()):
             KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype)
+        sigma_color = sigma_color.to(device=input.device, dtype=sigma_dtype)
     elif not sigma_color > 0:
         KORNIA_CHECK(False, f"sigma_color must be positive. Got {sigma_color}")
 
@@ -248,7 +251,13 @@ def _bilateral_blur(
         _check_sigma_batch("sigma_space", sigma_space, input)
         # the spatial kernel takes the dtype of a tensor sigma, so match a floating input as for sigma_color
         if input.is_floating_point():
-            sigma_space = sigma_space.to(device=input.device, dtype=input.dtype)
+            sigma_space = sigma_space.to(device=input.device, dtype=sigma_dtype)
+        if input.dtype == torch.float16:
+            # These centred odd kernels have their nearest nonzero offset at one pixel. Once that tap rounds to
+            # zero, use the Gaussian helper's impulse branch before division: preserving a tiny wider sigma must
+            # not turn its zero derivative into 0 * inf. Ordinary sigmas keep the Gaussian calculation unchanged.
+            is_impulse = (-torch.ones_like(sigma_space) / (2 * sigma_space.detach().square())).exp() == 0
+            sigma_space = torch.where(is_impulse, torch.zeros_like(sigma_space), sigma_space)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
@@ -263,6 +272,15 @@ def _bilateral_blur(
         return _bilateral_blur_cpu(
             input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type
         )
+
+    output_dtype = input.dtype
+    if input.dtype == torch.float16:
+        # A positive sigma of 2**-10 makes -0.5 / sigma**2 overflow float16: even the centre's zero distance then
+        # produces NaN. Smaller, representable differences can also vanish when squared. Promote before unfolding
+        # so only the image, rather than every overlapping window, needs a conversion; return the original dtype.
+        input = input.float()
+        if guidance is not None:
+            guidance = guidance.float()
 
     if isinstance(sigma_color, torch.Tensor):
         sigma_color = sigma_color.view(-1, 1, 1, 1, 1, 1)
@@ -291,15 +309,26 @@ def _bilateral_blur(
     # gradient over one axis at a time.
     centre = guidance.unsqueeze(-1).expand(-1, -1, -1, -1, kx).unsqueeze(3)  # (B, C, H, 1, W, Kx)
     diff = unfolded_guidance - centre
+    # Reuse the promoted half path's fresh difference in eager inference, avoiding a second float32 colour window.
+    # Autograd needs the original difference; compilers fuse the functional form, and tracers/transforms keep it too.
+    in_place = (
+        output_dtype == torch.float16
+        and not is_compiling()
+        and not torch.jit.is_tracing()
+        and not torch._C._are_functorch_transforms_active()
+        and not _records_gradient(input, guidance, sigma_color, sigma_space)
+    )
     if diff.shape[1] == 1:
         # One channel's sum is the value itself, so the sum is skipped: on torch 2.14, MPS reduces over an axis of
         # size 1 about 270 times slower than it squares (222 ms against 0.8 ms). l1 keeps its abs(): |d|^2 is d^2
         # only for a real difference, not for a complex one.
-        color_distance_sq = diff.abs().square() if color_distance_type == "l1" else diff.square()
+        color_distance_sq = (
+            diff.square_() if in_place else (diff.abs().square() if color_distance_type == "l1" else diff.square())
+        )
     elif color_distance_type == "l1":
-        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
+        color_distance_sq = (diff.abs_() if in_place else diff.abs()).sum(1, keepdim=True).square()
     else:
-        color_distance_sq = diff.square().sum(1, keepdim=True)
+        color_distance_sq = (diff.square_() if in_place else diff.square()).sum(1, keepdim=True)
     del diff
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
@@ -311,11 +340,12 @@ def _bilateral_blur(
     kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
     del color_distance_sq
     # On MPS over Kx, then over Ky, for the speed above. Elsewhere one reduction over both window axes: the two-step sum
-    # rounds every partial sum over Kx to a half dtype, which costs float16 and bfloat16 gradients with respect to
-    # tensor sigmas their accuracy.
+    # rounds every partial sum over Kx, which costs bfloat16 gradients with respect to tensor sigmas their accuracy.
     if input.device.type == "mps":
-        return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
-    return (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
+        output = (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    else:
+        output = (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
+    return output.to(output_dtype) if output_dtype == torch.float16 else output
 
 
 def bilateral_blur(
@@ -343,8 +373,14 @@ def bilateral_blur(
         - ``sigma_color`` is in the units of the input values: an image scaled by ``s > 0``, filtered with
           ``sigma_color * s``, gives the result scaled by ``s``.
         - The border modes are :func:`~kornia.filters.filter2d`'s, but only in lower case; see its Convention block.
-        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is cast to it and moved to
-          its device.
+        - A floating input keeps its dtype: a tensor ``sigma_color`` or ``sigma_space`` is moved to its device and
+          cast to its dtype, except for float16 inputs, which use float32 sigmas and window arithmetic. This avoids
+          inverse-variance overflow for positive colour sigmas representable in float16 and preserves squared
+          differences lost in float16. Arbitrarily small wider colour sigmas can still exceed float32's range in
+          forward or backward arithmetic. The result is cast back to float16. A spatial axis whose nonzero offsets
+          all have zero float32 weight uses the Gaussian impulse limit with a zero sigma derivative.
+          Eager inference reuses its colour-difference buffer; gradient-recorded window temporaries use four bytes per
+          value instead of two, which can increase the memory needed for large images and kernels.
         - An integer or bool input is differenced and averaged in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`, so uint8 differences do not wrap.
         - On the CPU, a float32 or float64 input (after that conversion) with at least 65,536 values is filtered tap
@@ -355,7 +391,7 @@ def bilateral_blur(
           tap, since the compiled loop has a block of operations per tap. Both forms compute the same weights and add
           up the weighted values in a different order, so they agree to rounding.
         - On MPS, each window is summed over its columns and then over its rows, because MPS reduces two non-adjacent
-          axes much more slowly than one. In float16 and bfloat16 that rounds every partial sum, so there the
+          axes much more slowly than one. In bfloat16 that rounds every partial sum, so there the
           gradients with respect to a tensor ``sigma_color`` or ``sigma_space`` are less accurate than on the CPU or
           CUDA. Tensor sigmas are cast to the input's dtype, so keeping them in float32 does not help; pass a float32
           input on MPS when those gradients matter.
