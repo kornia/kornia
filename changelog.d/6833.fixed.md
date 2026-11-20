@@ -1,0 +1,1 @@
+`StableDiffusionDissolving` honors SD XL's VAE `force_upcast` setting and matches the UNet input dtype, avoiding float16 VAE overflow and mixed-dtype failures. Required VAE upcasting uses more memory while keeping the UNet in its loaded dtype.
