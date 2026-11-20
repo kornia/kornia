@@ -1008,6 +1008,67 @@ def _vertex_rounding_band(dtype, radius, area):
 
 
 class TestFillConvexPolygon(BaseTester):
+    @pytest.mark.parametrize("first_kind", ["integer", "image_dtype", "empty_integer"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_mixed_dtype_list_preserves_fractional_vertices(self, device, dtype, first_kind, reverse):
+        """Batching must not truncate a later polygon to an earlier polygon's dtype."""
+        first_dtype = dtype if first_kind == "image_dtype" else torch.int64
+        first = torch.tensor([[0, 0], [1, 0], [0, 2]], device=device, dtype=first_dtype)
+        if first_kind == "empty_integer":
+            first = first[:0]
+        second = torch.tensor(
+            [[2.00048828125, 0], [4.5, 0], [4.5, 2], [2.00048828125, 2]],
+            device=device,
+            dtype=torch.float32,
+        )
+        polygons = [first, second]
+        originals = [polygon.clone() for polygon in polygons]
+        expected = torch.zeros(2, 1, 3, 6, device=device, dtype=dtype)
+        if first_kind != "empty_integer":
+            # The triangle has x=0 on every row, plus x=1 on y=0.
+            expected[0, 0, :, 0] = 1
+            expected[0, 0, 0, 1] = 1
+        # Integer pixel centres inside [2 + 2**-11, 4.5] are exactly x=3 and x=4.
+        expected[1, 0, :, 3:5] = 1
+        if reverse:
+            polygons = polygons[::-1]
+            expected = expected.flip(0)
+        image = torch.zeros_like(expected)
+        actual = draw_convex_polygon(image, polygons, torch.ones(1, device=device, dtype=dtype))
+        assert actual is image
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        assert torch.equal(first, originals[0])
+        assert torch.equal(second, originals[1])
+
+    def test_mixed_dtype_list_preserves_float64_vertices(self, device, dtype):
+        """A float32 first polygon must not erase a float64 edge just beyond a pixel centre."""
+        left = 2.0 + 2**-24 if dtype == torch.float64 else 2.5
+        first = torch.tensor([[0, 0], [1, 0], [1, 2], [0, 2]], device=device, dtype=torch.float32)
+        second = torch.tensor([[left, 0], [4.5, 0], [4.5, 2], [left, 2]], device=device, dtype=dtype)
+        image = torch.zeros(2, 1, 3, 6, device=device, dtype=dtype)
+        actual = draw_convex_polygon(image, [first, second], torch.ones(1, device=device, dtype=dtype))
+        expected = torch.zeros(3, 6, device=device, dtype=dtype)
+        expected[:, 3:5] = 1  # 2 < left < 3, so the leftmost filled pixel centre is always x=3.
+        self.assert_close(actual[1, 0], expected, atol=0, rtol=0)
+
+    def test_dynamo_mixed_dtype_list(self, device, dtype, torch_optimizer, optimizer_backend):
+        """Keep the fractional polygon when Dynamo compiles a caller accepting a polygon list."""
+        if optimizer_backend == "jit":
+            pytest.skip("This regression exercises Dynamo's list handling")
+
+        def draw(image, first, second, color):
+            return draw_convex_polygon(image, [first, second], color)
+
+        first = torch.tensor([[0, 0], [1, 0], [0, 2]], device=device)
+        second = torch.tensor([[2.5, 0], [4.5, 0], [4.5, 2], [2.5, 2]], device=device)
+        image = torch.zeros(2, 1, 3, 6, device=device, dtype=dtype)
+        actual = torch_optimizer(draw)(image, first, second, torch.ones(1, device=device, dtype=dtype))
+        expected = torch.zeros_like(image)
+        expected[0, 0, :, 0] = 1
+        expected[0, 0, 0, 1] = 1
+        expected[1, 0, :, 3:5] = 1
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
     @pytest.mark.parametrize("as_list", [False, True])
     @pytest.mark.parametrize("reverse", [False, True])
     def test_near_coincident_endpoints_close_independently(self, device, dtype, as_list, reverse):
