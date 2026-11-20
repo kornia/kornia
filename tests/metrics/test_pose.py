@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import math
+import platform
 
 import pytest
 import torch
@@ -126,6 +127,10 @@ class TestAngleErrorMat(BaseTester):
             self.assert_close(actual_grad, expected_grad)
 
     @pytest.mark.applies_to(dtypes=("float32",), reason="float32 target with an autocast prediction")
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and int(platform.mac_ver()[0].split(".")[0] or 0) < 14),
+        reason="MPS bfloat16 requires macOS 14 or newer",
+    )
     @pytest.mark.parametrize("reverse", [False, True])
     def test_dynamo_outer_mixed_input_dtypes(self, device, dtype, reverse, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit":
