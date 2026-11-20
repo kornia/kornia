@@ -40,7 +40,8 @@ Which function to use, with the module form after the function:
   :class:`BinaryFocalLossWithLogits`.
 - One-hot encoding of a class-index map: :func:`one_hot`.
 - Divergence between probability heatmaps: :func:`kl_div_loss_2d`, :func:`js_div_loss_2d`.
-- Segmentation boundary distance: :class:`HausdorffERLoss`; of volumes, :class:`HausdorffERLoss3D`.
+- Segmentation boundary distance: :class:`HausdorffDTLoss` for images and volumes; erosion-based alternatives
+  :class:`HausdorffERLoss` for images and :class:`HausdorffERLoss3D` for volumes.
 - Registration by mutual information: of flat signals, :func:`mutual_information_loss`, :class:`MILossFromRef`; of
   images, :func:`mutual_information_loss_2d`, :class:`MILossFromRef2D`; of volumes,
   :func:`mutual_information_loss_3d`, :class:`MILossFromRef3D`.
@@ -59,7 +60,7 @@ from .dice import DiceLoss, dice_loss
 from .divergence import js_div_loss_2d, kl_div_loss_2d
 from .focal import BinaryFocalLossWithLogits, FocalLoss, binary_focal_loss_with_logits, focal_loss
 from .geman_mcclure import GemanMcclureLoss, geman_mcclure_loss
-from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
+from .hausdorff import HausdorffDTLoss, HausdorffERLoss, HausdorffERLoss3D
 from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
 from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 from .ms_ssim import MS_SSIMLoss
@@ -93,6 +94,7 @@ __all__ = [
     "DiceLoss",
     "FocalLoss",
     "GemanMcclureLoss",
+    "HausdorffDTLoss",
     "HausdorffERLoss",
     "HausdorffERLoss3D",
     "InverseDepthSmoothnessLoss",

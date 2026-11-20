@@ -20,7 +20,7 @@ defaults. Each loss function except :func:`kl_div_loss_2d` and :func:`js_div_los
    * - :doc:`losses.distributions`
      - Jensen-Shannon and Kullback-Leibler divergences between probability heatmaps.
    * - :doc:`losses.morphology`
-     - Erosion-based Hausdorff losses for images and volumes.
+     - Distance-transform and erosion-based Hausdorff losses for images and volumes.
    * - :doc:`losses.registration`
      - Mutual information and normalized mutual information losses (flat signals, 2D and 3D) for image registration.
 

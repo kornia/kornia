@@ -1119,6 +1119,7 @@
     "DiceLoss",
     "FocalLoss",
     "GemanMcclureLoss",
+    "HausdorffDTLoss",
     "HausdorffERLoss",
     "HausdorffERLoss3D",
     "InverseDepthSmoothnessLoss",

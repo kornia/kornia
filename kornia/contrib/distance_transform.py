@@ -23,6 +23,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
+from kornia.core.utils import is_exporting
 
 
 def _use_eager_scratch(tensor: torch.Tensor) -> bool:
@@ -41,7 +42,10 @@ def _needs_grad(tensor: torch.Tensor) -> bool:
         tensor.requires_grad
         or torch.autograd.forward_ad.unpack_dual(tensor).tangent is not None
         or torch.jit.is_tracing()
-        or torch._C._len_torch_dispatch_stack() > 0
+        # The exported graph may be differentiated even if its example input does not require gradients.
+        or is_exporting()
+        # Inspect dispatch modes only in eager execution; Dynamo cannot trace this integer query.
+        or (not torch.compiler.is_compiling() and torch._C._len_torch_dispatch_stack() > 0)
     )
 
 
