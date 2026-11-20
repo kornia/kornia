@@ -60,7 +60,7 @@ class TestCoordinateDtypes(BaseTester):
                 partial(Keypoints3D, raise_if_not_floating_point=False), [[2049, 2051, 257]], id="keypoints3d"
             ),
             pytest.param(partial(Boxes, raise_if_not_floating_point=False), _BOX, id="boxes"),
-            pytest.param(partial(Boxes.from_tensor, mode="vertices_plus"), _BOX, id="boxes-from-tensor"),
+            pytest.param(partial(Boxes.from_tensor, mode="vertices"), _BOX, id="boxes-from-tensor"),
             pytest.param(partial(Boxes3D, raise_if_not_floating_point=False), _CUBE, id="boxes3d"),
             pytest.param(
                 partial(Boxes3D.from_tensor, mode="xyzxyz_plus"),
