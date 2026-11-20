@@ -60,7 +60,8 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
         degrees per pair, symmetric in ``R1`` and ``R2``. An unbatched pair gives a 0-d tensor. The inputs are not
         checked to be rotations.
         The relative rotation is computed outside an enclosing autocast region, preserving float32 input accuracy
-        and output dtype. A scripted call retains the caller's autocast behavior.
+        and output dtype. Mixed float16/bfloat16/float32 operands in that region compute in float32. A scripted
+        call retains the caller's autocast behavior.
 
     Args:
         R1: a rotation matrix of shape ``(*, 3, 3)``.

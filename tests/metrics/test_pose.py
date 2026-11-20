@@ -96,8 +96,50 @@ class TestAngleErrorMat(BaseTester):
         assert angle.dtype == torch.float32
         self.assert_close(angle, torch.tensor(90.0, device=device, dtype=torch.float32))
         angle.backward()
-        assert R32.grad is not None and torch.isfinite(R32.grad).all()
-        assert R16.grad is not None and torch.isfinite(R16.grad).all()
+        assert R32.grad is not None
+        assert torch.isfinite(R32.grad).all()
+        assert R16.grad is not None
+        assert torch.isfinite(R16.grad).all()
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="mixed autocast operands and float64 control")
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_outer_float16_mixed_input_dtypes(self, device, dtype, reverse):
+        skip_unsupported_autocast(device, "float16")
+        R1 = torch.eye(3, device=device, dtype=dtype).requires_grad_()
+        R2 = torch.tensor(ROT_Z_90, device=device, dtype=torch.float16, requires_grad=True)
+        if reverse:
+            R1, R2 = R2, R1
+        # Dtype mismatches outside autocast, and float64 operands inside it, keep raising as before.
+        with pytest.raises(RuntimeError):
+            kornia.metrics.angle_error_mat(R1, R2)
+        if dtype == torch.float64:
+            with torch.autocast(device.type, dtype=torch.float16), pytest.raises(RuntimeError):
+                kornia.metrics.angle_error_mat(R1, R2)
+            return
+        reference = kornia.metrics.angle_error_mat(R1.float(), R2.float())
+        reference_grad = torch.autograd.grad(reference, (R1, R2))
+        with torch.autocast(device.type, dtype=torch.float16):
+            actual = kornia.metrics.angle_error_mat(R1, R2)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.tensor(90.0, device=device, dtype=torch.float32))
+        for actual_grad, expected_grad in zip(torch.autograd.grad(actual, (R1, R2)), reference_grad):
+            self.assert_close(actual_grad, expected_grad)
+
+    @pytest.mark.applies_to(dtypes=("float32",), reason="float32 target with an autocast prediction")
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_dynamo_outer_mixed_input_dtypes(self, device, dtype, reverse, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("Scripted calls retain the caller's autocast behavior.")
+        skip_unsupported_autocast(device, "bfloat16")
+        R1 = torch.eye(3, device=device, dtype=dtype)
+        R2 = torch.tensor(ROT_Z_90, device=device, dtype=torch.bfloat16)
+        if reverse:
+            R1, R2 = R2, R1
+        op = torch_optimizer(kornia.metrics.angle_error_mat)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = op(R1, R2)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, torch.tensor(90.0, device=device, dtype=torch.float32))
 
     def test_known_angle(self, device, dtype):
         eye = torch.eye(3, device=device, dtype=dtype)
