@@ -1,0 +1,1 @@
+`integral_tensor`, `integral_image`, and their module forms now accumulate multiple axes in float32 for float16 and bfloat16 inputs. This prevents intermediate rounding and overflow from corrupting representable sums and gradients, at the cost of wider intermediate tensors; the output dtype is unchanged, and final sums outside its range can still overflow.
