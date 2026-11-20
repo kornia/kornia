@@ -24,6 +24,27 @@ from testing.base import BaseTester
 
 
 class TestIntegralTensor(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="Half-precision accumulation regression")
+    @pytest.mark.parametrize("dim", [(0, 1), (1, 0)])
+    def test_half_cancellation_across_axes(self, device, dtype, dim):
+        eps = torch.finfo(dtype).eps
+        rows = int(2 / eps) + 1
+        tensor = torch.tensor([1.0, -(1.0 - eps)], device=device, dtype=dtype).expand(rows, 2)
+        actual = integral_tensor(tensor, dim)
+        # Each complete row sums to eps. The last sum is 2 + eps, which rounds
+        # to exactly 2 in either half dtype; rounding each axis first gives 1.
+        expected = torch.tensor([rows, 2.0], device=device, dtype=dtype)
+        self.assert_close(actual[-1], expected)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="Float16 intermediate overflow")
+    def test_half_representable_sum_after_overflowing_prefix(self, device, dtype):
+        tensor = torch.tensor([1.0, -1.0], device=device, dtype=dtype).expand(256, 256, 2)
+        actual = integral_tensor(tensor, (0, 1, 2))
+        # All inputs are in [-1, 1]. The positive-only prefix truly exceeds the
+        # output range, but adding its negative partner has the exact sum zero.
+        expected = torch.tensor([float("inf"), 0.0], device=device, dtype=dtype)
+        self.assert_close(actual[-1, -1], expected)
+
     def test_smoke(self, device, dtype):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
         output = integral_tensor(tensor)
@@ -83,6 +104,31 @@ class TestIntegralTensor(BaseTester):
 
 
 class TestIntegralImage(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="Half-precision accumulation regression")
+    def test_half_gradient_cancellation_across_axes(self, device, dtype):
+        eps = torch.finfo(dtype).eps
+        columns = int(2 / eps) + 1
+        tensor = torch.zeros(2, columns, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.tensor([[1.0], [-(1.0 - eps)]], device=device, dtype=dtype).expand(2, columns)
+        actual = IntegralImage()(tensor)
+        (gradient,) = torch.autograd.grad(actual, tensor, weights)
+        # Every output contains the top-left input. Its derivative is the sum
+        # of all weights: columns * eps = 2 + eps, rounded to 2, not 1.
+        self.assert_close(gradient[0, 0], torch.tensor(2.0, device=device, dtype=dtype))
+
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="Half-precision accumulation regression")
+    def test_dynamo_half_cancellation(self, device, dtype, torch_optimizer):
+        eps = torch.finfo(dtype).eps
+        length = int(2 / eps) + 1
+        op = torch_optimizer(IntegralImage())
+        tensor = torch.tensor([1.0, -(1.0 - eps)], device=device, dtype=dtype).expand(length, 2)
+        self.assert_close(op(tensor)[-1], torch.tensor([length, 2.0], device=device, dtype=dtype))
+
+        tensor = torch.zeros(2, length, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.tensor([[1.0], [-(1.0 - eps)]], device=device, dtype=dtype).expand(2, length)
+        (gradient,) = torch.autograd.grad(op(tensor), tensor, weights)
+        self.assert_close(gradient[0, 0], torch.tensor(2.0, device=device, dtype=dtype))
+
     def test_smoke(self, device, dtype):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
         output = integral_image(tensor)

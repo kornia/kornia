@@ -33,6 +33,8 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
         - ``dim`` is a non-empty tuple of unique axes; an ``int`` raises ``TypeError``.
         - There is no zero row or column in front, so ``cv2.integral(x)[1:, 1:]`` equals the result for the two
           spatial axes.
+        - For multiple axes, float16 and bfloat16 inputs accumulate in float32 and return the input dtype.
+          A final sum outside that dtype's range can still overflow.
 
     Args:
         input: tensor with shape ``(*, D)``, one axis or more.
@@ -72,10 +74,13 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
         "dim must contain unique dimensions.",
     )
 
-    output = input
+    # Keep intermediate prefixes in float32: rounding each half-precision axis can destroy cancellation
+    # in later axes (and in backward). The wider intermediates cost extra memory only for multi-axis half inputs.
+    accumulate_in_float32 = len(normalized_dim) > 1 and input.dtype in (torch.float16, torch.bfloat16)
+    output = input.float() if accumulate_in_float32 else input
     for i in normalized_dim:
         output = output.cumsum(i)
-    return output
+    return output.to(input.dtype) if accumulate_in_float32 else output
 
 
 def integral_image(image: torch.Tensor) -> torch.Tensor:
@@ -85,8 +90,9 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
     ``image[..., :i + 1, :j + 1]``.
 
     Convention:
-        There is no zero row or column in front, unlike ``cv2.integral``, whose result is larger by one row and
-        column.
+        - There is no zero row or column in front, unlike ``cv2.integral``, whose result is larger by one row and
+          column.
+        - Float16 and bfloat16 inputs accumulate in float32 and return the input dtype, as in :func:`integral_tensor`.
 
     Args:
         image: image with shape ``(*, H, W)``.
