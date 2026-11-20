@@ -213,6 +213,12 @@ class TestVector2(BaseTester):
 
 
 @pytest.mark.usefixtures("restore_torch_rng")
+@pytest.mark.parametrize(("vector_type", "width"), [(Vector2, 2), (Vector3, 3)])
+def test_vector_rejects_scalar_tensor(device, dtype, vector_type, width):
+    with pytest.raises(BaseError, match=rf"{vector_type.__name__} needs a last dimension of {width}, got shape \[\]"):
+        vector_type(torch.tensor(1.0, device=device, dtype=dtype))
+
+
 class TestConventionsVector(BaseTester):
     """Pins for the value conventions and known defects of :class:`Vector2` and :class:`Vector3`."""
 
