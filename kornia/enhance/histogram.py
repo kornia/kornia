@@ -22,6 +22,7 @@ import torch
 
 from kornia.core.check import _check_async
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _autocast_disabled
 
 
 def marginal_pdf(
@@ -167,7 +168,8 @@ def histogram2d(
     Convention:
         - ``x1`` and ``x2`` must have the same shape.
         - When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and normalization are
-          evaluated in float32 and the result is cast back to that dtype.
+          evaluated in float32 and the result is cast back to that dtype. Eager float16 autocast also keeps the
+          joint counts and their normalization in float32 for float32 kernels.
 
     Args:
         x1: first samples with shape ``(B, D)``.
@@ -201,7 +203,11 @@ def histogram2d(
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
+    # A 256 x 256 image can contribute 65536 votes to one bin. Autocast would narrow the matmul back to float16.
+    if torch.jit.is_scripting():
+        return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
+    with _autocast_disabled(x1.device.type):
+        return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
 
 
 def _check_image_rank(image: torch.Tensor) -> None:
