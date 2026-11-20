@@ -485,6 +485,15 @@ class TestConventionsMeanAveragePrecision(BaseTester):
         self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
         self._assert_aps(ap, {1: 1.0}, device, dtype)
 
+    def test_convention_mean_average_precision_keeps_exact_iou_threshold(self, device, dtype):
+        # The contained box is exactly half as wide as the target and has the same height.
+        # Its IoU is exactly 0.5, even if adding both areas first would round the union down.
+        prediction = [[[-0.5, 1.0, 2048.0, 4096.0]]]
+        target = [[[-1.0, 1.0, 4096.0, 4096.0]]]
+        mean_ap, ap = self._map(device, dtype, prediction, [[1]], [[0.9]], target, [[1]], 2)
+        self.assert_close(mean_ap, torch.tensor(0.0, device=device, dtype=dtype))
+        self._assert_aps(ap, {1: 0.0}, device, dtype)
+
     def test_convention_mean_average_precision_greedy_voc_matching(self, device, dtype):
         """A detection takes its highest-IoU object; if that one is already matched, it is a false positive."""
         objects = [[[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 16.0]]]
