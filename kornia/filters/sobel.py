@@ -181,7 +181,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
         out[..., 0, :, :, :] = x[..., center, center, right] - x[..., center, center, left]
         out[..., 1, :, :, :] = x[..., center, right, center] - x[..., center, left, center]
         out[..., 2, :, :, :] = x[..., right, center, center] - x[..., left, center, center]
-        out = 0.5 * out
+        # The differences own this buffer; scaling it does not need another full volume.
+        out.mul_(0.5)
     else:
         # prepare kernel
         # allocate kernel
