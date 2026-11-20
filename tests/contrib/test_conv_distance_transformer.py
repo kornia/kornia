@@ -72,6 +72,35 @@ class TestConvDistanceTransform(BaseTester):
             _, actual_jvp = torch.autograd.forward_ad.unpack_dual(op(dual))
         self.assert_close(actual_jvp, expected_jvp)
 
+    @pytest.mark.parametrize("ndim", [2, 3])
+    def test_convention_vmap_tie_selects_one_source_gradient(self, ndim, device, dtype):
+        image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype)
+        image = image.reshape((1, 1) + (1,) * (ndim - 1) + (3,)).repeat((2,) + (1,) * (ndim + 1))
+        image.requires_grad_()
+        result = torch.vmap(lambda x: kornia.contrib.distance_transform(x.unsqueeze(0)).squeeze(0))(image)
+        self.assert_close(result[..., 1], torch.full_like(result[..., 1], 1.114720374441941))
+        result[..., 1].sum().backward()
+        # D = sqrt(1 - .35*log(.5)); -h/(2*v*D) = -.31398008686727324.
+        # Batching must keep the documented first-minimum subgradient, rather than splitting ties.
+        expected = torch.zeros_like(image)
+        expected[..., 0] = -0.31398008686727324
+        self.assert_close(image.grad, expected)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="forward derivatives through a batched transform")
+    @pytest.mark.parametrize("ndim", [2, 3])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    def test_vmap_forward_derivatives(self, ndim, grad_enabled, device, dtype):
+        image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype)
+        image = image.reshape((1, 1) + (1,) * (ndim - 1) + (3,)).repeat((2,) + (1,) * (ndim + 1))
+        tangent = torch.zeros_like(image)
+        tangent[..., 0] = 1
+        op = torch.vmap(lambda x: kornia.contrib.distance_transform(x.unsqueeze(0)).squeeze(0))
+        with torch.set_grad_enabled(grad_enabled):
+            _, actual = torch.func.jvp(op, (image,), (tangent,))
+        # -h/(2*v*sqrt(d**2-h*log(v))), v=.5, d=0 and 1; the last source is independent.
+        expected = torch.tensor([-0.7105935999649428, -0.31398008686727324, 0.0], device=device, dtype=dtype)
+        self.assert_close(actual, expected.expand_as(image))
+
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("ndim", [2, 3])
     def test_shape_only_tensors(self, ndim):
@@ -294,6 +323,20 @@ class TestConvDistanceTransform(BaseTester):
                 self.assert_close(
                     torch.autograd.grad(actual.sum(), sample)[0], torch.autograd.grad(expected.sum(), sample)[0]
                 )
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="compiled batched differentiation")
+    def test_dynamo_vmap_tied_gradient(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("vmap is not a TorchScript operation")
+
+        def op(image):
+            return torch.vmap(lambda x: kornia.contrib.distance_transform(x.unsqueeze(0)).squeeze(0))(image)
+
+        image = torch.tensor([0.5, 0.0, 0.5], device=device, dtype=dtype).reshape(1, 1, 1, 3).requires_grad_()
+        result = torch_optimizer(op)(image)
+        gradient = torch.autograd.grad(result[..., 1].sum(), image)[0]
+        expected = torch.tensor([-0.31398008686727324, 0.0, 0.0], device=device, dtype=dtype).reshape_as(image)
+        self.assert_close(gradient, expected)
 
     def test_convention_distance_is_to_the_nearest_nonzero_pixel(self, device, dtype):
         image = torch.zeros(1, 1, 23, 37, device=device, dtype=dtype)
