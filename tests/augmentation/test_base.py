@@ -1349,6 +1349,7 @@ class TestConventionAugmentationBase2D(BaseTester):
             device=device,
             vae=SimpleNamespace(
                 dtype=dtype,
+                config=SimpleNamespace(scaling_factor=0.18215),
                 encode=Mock(return_value={"latent_dist": latent_dist}),
                 decode=lambda latent: {"sample": latent},
             ),

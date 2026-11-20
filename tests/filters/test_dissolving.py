@@ -22,7 +22,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 
-from kornia.filters.dissolving import StableDiffusionDissolving
+from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWraper_HF
 
 from testing.base import BaseTester
 
@@ -63,6 +63,49 @@ class TestStableDiffusionDissolvingVersion(BaseTester):
         pipeline.from_pretrained.assert_called_once()
         assert pipeline.from_pretrained.call_args.args == (model_id,)
         assert model.model.is_sdxl is (version == "xl")
+
+
+class TestStableDiffusionDissolvingLatentScale(BaseTester):
+    @pytest.mark.parametrize(
+        "scaling_factor, expected_scaled",
+        [
+            pytest.param(0.18215, [-0.3643, 0.0, 0.18215, 0.7286], id="sd15"),
+            pytest.param(0.13025, [-0.2605, 0.0, 0.13025, 0.521], id="sdxl"),
+            pytest.param(0.5, [-1.0, 0.0, 0.5, 2.0], id="custom-vae"),
+        ],
+    )
+    def test_convention_latents_use_vae_scaling_factor(self, scaling_factor, expected_scaled, device, dtype):
+        # The SDXL VAE config specifies 0.13025; SD 1.5 uses 0.18215.
+        # Pin both directions separately: an encode/decode round trip alone hides
+        # a wrong scale when the same constant is used in both directions.
+        latent = torch.tensor([-2.0, 0.0, 1.0, 4.0], device=device, dtype=dtype).view(1, 1, 2, 2).repeat(2, 4, 1, 1)
+        image = torch.full((2, 3, 16, 16), 0.25, device=device, dtype=dtype)
+        decoded = torch.full_like(image, -0.5)
+        vae = SimpleNamespace(
+            dtype=dtype,
+            config=SimpleNamespace(scaling_factor=scaling_factor),
+            encode=Mock(return_value={"latent_dist": SimpleNamespace(sample=lambda: latent)}),
+            decode=Mock(return_value={"sample": decoded}),
+        )
+        model = SimpleNamespace(
+            device=device,
+            vae=vae,
+            tokenizer=None,
+            scheduler=SimpleNamespace(set_timesteps=Mock(), timesteps=[0]),
+        )
+        wrapper = _DissolvingWraper_HF(model)
+        scaled = torch.tensor(expected_scaled, device=device, dtype=dtype).view(1, 1, 2, 2).repeat(2, 4, 1, 1)
+        original = scaled.clone()
+
+        encoded = wrapper.encode_tensor_to_latent(image)
+        self.assert_close(encoded, scaled)
+        self.assert_close(vae.encode.call_args.args[0], image.new_full(image.shape, -0.5))
+
+        output = wrapper.decode_tensor_to_latent(scaled)
+        self.assert_close(vae.decode.call_args.args[0], latent)
+        self.assert_close(output, image)
+        # Decoding must not rescale the caller's latent tensor in place.
+        self.assert_close(scaled, original)
 
 
 @pytest.mark.slow

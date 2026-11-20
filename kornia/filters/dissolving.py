@@ -146,13 +146,13 @@ class _DissolvingWraper_HF:
             # user dtype (e.g. float64) must be cast to it, not only moved to the device.
             image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
-            return latents * 0.18215
+            return latents * self.model.vae.config.scaling_factor
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
         # Detach from autograd, then match the VAE device/dtype (allocates only on mismatch).
         latents = latents.detach().to(device=self.model.device, dtype=self.model.vae.dtype)
-        latents = latents * (1.0 / 0.18215)  # Fused division as multiplication (faster)
+        latents = latents * (1.0 / self.model.vae.config.scaling_factor)
         # Reduce attribute lookups by localizing frequently used attributes
         vae_decode = self.model.vae.decode
         image = vae_decode(latents)["sample"]
