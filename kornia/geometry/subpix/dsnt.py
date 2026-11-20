@@ -167,6 +167,22 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
     grid = grid.to(input.dtype)
 
+    if (
+        not torch.jit.is_scripting()
+        and input.device.type == "cpu"
+        and not torch.jit.is_tracing()
+        and not is_compiling()
+        and input.dtype in (torch.float32, torch.float64)
+        and input.numel() >= 2**17
+        and height >= 16
+        and width >= 16
+    ):
+        # Marginalize before weighting: each coordinate is constant along the other axis.
+        # This saves full heatmap products for large 2D maps; capture can fuse those products itself.
+        expected_x = (input.sum(-2) * grid[0, 0, :, 0]).sum(-1)
+        expected_y = (input.sum(-1) * grid[0, :, 0, 1]).sum(-1)
+        return torch.stack([expected_x, expected_y], -1)
+
     pos_x = grid[..., 0].reshape(-1)
     pos_y = grid[..., 1].reshape(-1)
 

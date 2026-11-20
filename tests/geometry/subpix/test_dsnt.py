@@ -17,12 +17,18 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError
 
-from testing.base import BaseTester, raises_cuda_device_assert
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamic_export_is_available,
+    raises_cuda_device_assert,
+)
 
 
 def _tolerances(dtype):
@@ -307,6 +313,75 @@ class TestSpatialSoftmax2d(BaseTester):
 
 
 class TestSpatialExpectation2d(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU reduction path")
+    @pytest.mark.parametrize("normalized", [False, True])
+    @pytest.mark.parametrize("transposed", [False, True])
+    def test_large_maps_use_marginal_storage(self, device, dtype, normalized, transposed):
+        probabilities = torch.rand(2, 3, 192, 128, device=device, dtype=dtype)
+        probabilities /= probabilities.sum((-2, -1), keepdim=True)
+        if transposed:
+            probabilities = probabilities.transpose(-2, -1)
+        probabilities.requires_grad_()
+        height, width = probabilities.shape[-2:]
+        grid = kornia.geometry.create_meshgrid(height, width, normalized, device=device, dtype=dtype)[0]
+        reference = torch.stack([(probabilities * grid[..., axis]).sum((-2, -1)) for axis in range(2)], -1)
+        input_storage = probabilities.untyped_storage().data_ptr()
+
+        class BoundedStorage(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                for tensor in output if isinstance(output, (tuple, list)) else (output,):
+                    if isinstance(tensor, torch.Tensor) and tensor.untyped_storage().data_ptr() != input_storage:
+                        assert tensor.numel() <= probabilities.numel() // 2, "allocated a full heatmap intermediate"
+                return output
+
+        with BoundedStorage():
+            actual = kornia.geometry.subpix.spatial_expectation2d(probabilities, normalized)
+
+        assert actual.dtype == dtype
+        tolerance = 1e-6 if dtype == torch.float32 else 1e-12
+        self.assert_close(actual, reference, rtol=tolerance, atol=tolerance)
+        actual_grad = torch.autograd.grad((actual * actual.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
+        reference_grad = torch.autograd.grad((reference * reference.new_tensor([2.0, -3.0])).sum(), probabilities)[0]
+        self.assert_close(actual_grad, reference_grad, rtol=0.0, atol=0.0)
+
+    @pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+    @pytest.mark.applies_to(
+        when=lambda p: p["capture"] != "dynamo" or p["optimizer_backend"] not in (None, "", "jit"),
+        reason="The Dynamo shape check requires a torch.compile-backed optimizer; export is independent of it.",
+    )
+    @pytest.mark.parametrize("capture", ["dynamo", "export"])
+    def test_marginal_selector_keeps_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
+        from torch._dynamo.testing import CompileCounter
+
+        class Expectation(torch.nn.Module):
+            def forward(self, probabilities):
+                return kornia.geometry.subpix.spatial_expectation2d(probabilities)
+
+        example = torch.rand(2, 3, 48, 64)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        try:
+            if capture == "dynamo":
+                captured = torch_optimizer(Expectation(), backend=counter, fullgraph=True, dynamic=True)
+            else:
+                captured = torch.export.export(
+                    Expectation(),
+                    (example,),
+                    dynamic_shapes=(
+                        {2: torch.export.Dim("height", min=16, max=256), 3: torch.export.Dim("width", min=16, max=256)},
+                    ),
+                    strict=True,
+                ).module()
+            for height, width in ((48, 64), (192, 128), (16, 256), (128, 256)):
+                probabilities = torch.rand(2, 3, height, width)
+                probabilities /= probabilities.sum((-2, -1), keepdim=True)
+                self.assert_close(captured(probabilities), Expectation()(probabilities), rtol=1e-6, atol=1e-6)
+            if capture == "dynamo":
+                assert counter.frame_count == 1
+        finally:
+            torch._dynamo.reset()
+
     @pytest.fixture(
         params=[
             (
