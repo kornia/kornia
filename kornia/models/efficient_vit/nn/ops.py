@@ -468,12 +468,14 @@ class LiteMLA(nn.Module):
         )
 
     @torch.amp.autocast(device_type="cuda", enabled=False)
+    @torch.amp.autocast(device_type="cpu", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         _, _, H, W = list(qkv.size())
 
         dtype = qkv.dtype
 
         if qkv.dtype == torch.float16:
+            # Both matmuls must stay in float32: for a zero ReLU query, eps rounds to zero in float16.
             qkv = qkv.float()
 
         qkv = qkv.unflatten(1, (-1, 3 * self.dim)).flatten(-2)
