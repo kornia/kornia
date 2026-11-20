@@ -1680,6 +1680,59 @@ class TestBoxes2D(BaseTester):
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
 
+    def test_compute_area_translated_values_and_gradients(self, device, dtype):
+        # Areas are width*height, (parallel sides' sum)*height/2, and the determinant of the two edge vectors.
+        # For these CCW corners, dA/d(x_i,y_i) = (y_next-y_prev, x_prev-x_next)/2.
+        corners = torch.tensor(
+            [
+                [[300, 300], [310, 300], [310, 310], [300, 310]],
+                [[300, 300], [316, 300], [312, 308], [304, 308]],
+                [[300, 300], [316, 304], [312, 312], [296, 308]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        area = Boxes(corners).compute_area()
+        assert area.dtype == dtype
+        self.assert_close(area, torch.tensor([100, 96, 144], device=device, dtype=dtype), atol=0, rtol=0)
+        expected_grad = torch.tensor(
+            [
+                [[-5, -5], [5, -5], [5, 5], [-5, 5]],
+                [[-4, -6], [4, -6], [4, 6], [-4, 6]],
+                [[-2, -10], [6, -6], [2, 10], [-6, 6]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(torch.autograd.grad(area.sum(), corners)[0], expected_grad, atol=0, rtol=0)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="these dtypes represent adjacent pixels at 8192")
+    def test_compute_area_small_box_at_image_edge(self, device, dtype):
+        corners = torch.tensor([[[8192, 8192], [8193, 8192], [8193, 8193], [8192, 8193]]], device=device, dtype=dtype)
+        self.assert_close(Boxes(corners).compute_area(), torch.ones(1, device=device, dtype=dtype), atol=0, rtol=0)
+
+    def test_filter_boxes_by_area_keeps_translated_small_boxes(self, device, dtype):
+        corners = torch.tensor([[[300, 300], [310, 300], [310, 310], [300, 310]]], device=device, dtype=dtype)
+        filtered = Boxes(corners).filter_boxes_by_area(min_area=50, max_area=150)
+        self.assert_close(filtered.data, corners, atol=0, rtol=0)
+
+    def test_gradcheck_compute_area_translated(self, device):
+        corners = torch.tensor(
+            [[[300, 300], [316, 304], [312, 312], [296, 308]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        self.gradcheck(lambda data: Boxes(data).compute_area(), (corners,))
+
+    def test_dynamo_compute_area_translated(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("Boxes is a Python container outside TorchScript")
+        corners = torch.tensor([[[300, 300], [310, 300], [310, 310], [300, 310]]], device=device, dtype=dtype)
+        actual = torch_optimizer(lambda data: Boxes(data).compute_area())(corners)
+        self.assert_close(actual, torch.tensor([100], device=device, dtype=dtype), atol=0, rtol=0)
+
     def test_compute_area_supports_non_contiguous_batched_boxes(self, device, dtype):
         boxes_n_b = torch.tensor(
             [

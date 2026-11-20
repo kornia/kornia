@@ -1,0 +1,1 @@
+`Boxes.compute_area` avoids cancellation for small boxes translated within image coordinates and evaluates half-precision coordinates in float32, preserving the output dtype and existing vertex convention. This also keeps valid translated boxes when filtering by area.
