@@ -19,13 +19,12 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union, cast
+from typing import Optional, Union
 
 import torch
 from torch import nn
 
 from kornia.contrib.object_detection import BoxFiltering
-from kornia.geometry.boxes import Boxes
 
 
 def mod(a: torch.Tensor, b: int) -> torch.Tensor:
@@ -107,18 +106,18 @@ class DETRPostProcessor(nn.Module):
             number of detections above the threshold in that image.
 
         """
-        # NOTE: consider using kornia BoundingBox
+        # Box format is normalized cxcywh; convert to exclusive xywh:
+        # (x, y, w, h) = (cx - 0.5 * w, cy - 0.5 * h, w, h).
+        # Note: BoundingBox / Boxes uses an inclusive pixel-center convention (width = xmax - xmin + 1)
+        # with integer offsets (-1 / +1), which corrupts sub-pixel extents (w < 1px) and breaks dynamic
+        # batching under TorchScript ONNX export. We therefore use continuous exclusive arithmetic here.
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes
+        cxcy, wh = boxes[..., :2], boxes[..., 2:]
+        boxes_xy = torch.cat([cxcy - wh * 0.5, wh], dim=-1)
 
         # (B, 2) (H, W) -> (B, 1, 4) (W, H, W, H): each image is scaled by its own size
-        sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes.dtype)
-        boxes_scaled = boxes * sizes_wh
-
-        # box format is cxcywh, convert to xywh using Kornia Boxes API
-        boxes_xy = cast(
-            torch.Tensor,
-            Boxes.from_tensor(boxes_scaled, mode="cxcywh", validate_boxes=False).to_tensor(mode="xywh"),
-        )
+        sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes_xy.dtype)
+        boxes_xy = boxes_xy * sizes_wh
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
 
         # retrieve the boxes with the highest score for each class

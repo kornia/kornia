@@ -107,6 +107,38 @@ class TestDETRPostProcessor(BaseTester):
         # the top query of sigmoid([5, -5]) is class 0
         assert out[..., 0].tolist() == [[0.0], [0.0]]
 
+    def test_postprocessor_preserves_exclusive_subpixel_widths(self, device, dtype):
+        # A box with normalized width under 1 pixel preserves its exact exclusive width (w * W).
+        post_processor = DETRPostProcessor(
+            confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False
+        )
+        logits = torch.tensor([[[5.0, -5.0]]], device=device, dtype=dtype)
+        # width = 0.005, height = 0.02
+        boxes = torch.tensor([[[0.5, 0.5, 0.005, 0.02]]], device=device, dtype=dtype)
+        sizes = torch.tensor([[100, 100]], device=device, dtype=torch.int64)
+
+        out = post_processor(logits, boxes, sizes)
+
+        # Expected: x = (0.5 - 0.005 / 2) * 100 = 49.75, y = (0.5 - 0.02 / 2) * 100 = 49.0
+        # w = 0.005 * 100 = 0.5, h = 0.02 * 100 = 2.0
+        expected = torch.tensor([[[49.75, 49.0, 0.5, 2.0]]], device=device, dtype=dtype)
+        self.assert_close(out[..., 2:], expected)
+
+    def test_postprocessor_preserves_float16_box_extents_above_2048(self, device):
+        # Above 2048, float16 cannot represent odd integers. Ensure corner arithmetic preserves exact extents.
+        post_processor = DETRPostProcessor(
+            confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False
+        )
+        logits = torch.tensor([[[5.0, -5.0]]], device=device, dtype=torch.float16)
+        boxes = torch.tensor([[[0.5, 0.5, 1 / 1024, 1 / 1024]]], device=device, dtype=torch.float16)
+        sizes = torch.tensor([[4096, 4096]], device=device, dtype=torch.int64)
+
+        out = post_processor(logits, boxes, sizes)
+
+        # Expected: x = 2046, y = 2046, w = 4, h = 4
+        expected = torch.tensor([[[2046.0, 2046.0, 4.0, 4.0]]], device=device, dtype=torch.float16)
+        self.assert_close(out[..., 2:], expected)
+
 
 class TestRTDETR(BaseTester):
     @pytest.mark.slow  # This will be slow for the bigger variants
