@@ -286,11 +286,11 @@ class ParametrizedLine(nn.Module):
             the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
-            If ``|normal . direction| < eps``, the method treats the line as parallel and returns step ``0``
-            and the line origin. This fallback also applies to nonzero dot products below the threshold.
+            If the dot product is zero or ``|normal . direction| < eps``, the method returns step ``0`` and the
+            line origin. With ``eps=0``, only an exactly zero dot product uses this fallback.
             In the fallback branch, the step has zero derivatives and the point differentiates as the origin.
-            A zero step can also represent a valid intersection at the line origin. Check
-            ``|normal . direction| >= eps`` to tell whether the method computed an intersection or used the fallback.
+            A zero step can also represent a valid intersection at the line origin. Use the dot-product checks
+            above to distinguish that result from the fallback.
 
         Examples:
             >>> from kornia.geometry.vector import Vector3
@@ -307,7 +307,7 @@ class ParametrizedLine(nn.Module):
 
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction)
-        dot_prod_mask = dot_prod.abs() >= eps
+        dot_prod_mask = (dot_prod != 0) & (dot_prod.abs() >= eps)
 
         # torch.where differentiates both branches: dividing by zero in a parallel row gives NaN gradients
         # even though its selected lambda is zero. Substitute a safe denominator before the division.
