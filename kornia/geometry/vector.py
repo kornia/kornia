@@ -117,7 +117,8 @@ class Vector3(TensorWrapper):
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(
-            vector.shape[-1] == 3, lambda: f"Vector3 needs a last dimension of 3, got shape {list(vector.shape)}."
+            vector.ndim > 0 and vector.shape[-1] == 3,
+            lambda: f"Vector3 needs a last dimension of 3, got shape {list(vector.shape)}.",
         )
 
     def __repr__(self) -> str:
@@ -280,7 +281,8 @@ class Vector2(TensorWrapper):
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(
-            vector.shape[-1] == 2, lambda: f"Vector2 needs a last dimension of 2, got shape {list(vector.shape)}."
+            vector.ndim > 0 and vector.shape[-1] == 2,
+            lambda: f"Vector2 needs a last dimension of 2, got shape {list(vector.shape)}.",
         )
 
     def __repr__(self) -> str:
