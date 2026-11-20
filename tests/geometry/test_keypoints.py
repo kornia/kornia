@@ -259,21 +259,54 @@ class TestKeypoints(BaseTester):
             self.assert_close(kp.data[..., 0], torch.full(data.shape[:-1], 1.0, device=device, dtype=dtype))
             self.assert_close(kp.data[..., 1], torch.full(data.shape[:-1], 2.0, device=device, dtype=dtype))
 
-    def test_index_put(self, device, dtype):
-        data = torch.zeros(10, 2, device=device, dtype=dtype)
-        kp = Keypoints(data)
-        new_vals = torch.ones(3, 2, device=device, dtype=dtype)
-        idx = (torch.tensor([0, 1, 2], device=device),)
-        kp2 = kp.index_put(idx, new_vals)
-        self.assert_close(kp2.data[:3], new_vals)
+    @pytest.mark.parametrize("layout", ["unbatched", "batched", "strided", "video"])
+    @pytest.mark.parametrize("wrapped_values", [False, True])
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_index_put(self, layout, wrapped_values, inplace, device, dtype):
+        data = torch.arange(12, device=device, dtype=dtype).reshape(6, 2)
+        expected = torch.tensor(
+            [[0.0, 1.0], [-1.0, -2.0], [4.0, 5.0], [6.0, 7.0], [-3.0, -4.0], [10.0, 11.0]],
+            device=device,
+            dtype=dtype,
+        )
+        if layout == "unbatched":
+            indices = (torch.tensor([1, 4], device=device),)
+        else:
+            data = data.reshape(2, 3, 2)
+            expected = expected.reshape(2, 3, 2)
+            indices = (torch.tensor([0, 1], device=device), torch.tensor([1, 1], device=device))
+        if layout == "strided":
+            data = data.transpose(-1, -2).contiguous().transpose(-1, -2)
+        keypoints = VideoKeypoints.from_tensor(data[None]) if layout == "video" else Keypoints(data)
+        original = data.clone()
+        replacements = torch.tensor([[-1.0, -2.0], [-3.0, -4.0]], device=device, dtype=dtype)
+        values = Keypoints(replacements) if wrapped_values else replacements
 
-    def test_index_put_inplace(self, device, dtype):
-        data = torch.zeros(10, 2, device=device, dtype=dtype)
-        kp = Keypoints(data)
-        new_vals = torch.ones(3, 2, device=device, dtype=dtype)
-        idx = (torch.tensor([0, 1, 2], device=device),)
-        kp.index_put(idx, new_vals, inplace=True)
-        self.assert_close(kp.data[:3], new_vals)
+        updated = keypoints.index_put(indices, values, inplace=inplace)
+
+        self.assert_close(updated.data, expected)
+        self.assert_close(data, expected if inplace else original)
+        assert (updated is keypoints) is inplace
+        assert type(updated) is type(keypoints)
+        if layout == "video":
+            assert updated.temporal_channel_size == 2
+            self.assert_close(updated.to_tensor(), expected[None])
+        # Updating the result can change the caller's storage only for the in-place operation.
+        updated.data.add_(1)
+        self.assert_close(data, expected + 1 if inplace else original)
+        self.assert_close(replacements, torch.tensor([[-1.0, -2.0], [-3.0, -4.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("wrapped_values", [False, True])
+    def test_index_put_gradients(self, wrapped_values, device, dtype):
+        data = torch.tensor([[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]], device=device, dtype=dtype, requires_grad=True)
+        replacement = torch.tensor([[-1.0, -2.0]], device=device, dtype=dtype, requires_grad=True)
+        values = Keypoints(replacement) if wrapped_values else replacement
+        result = Keypoints(data).index_put((torch.tensor([1], device=device),), values)
+
+        result.data.sum().backward()
+
+        self.assert_close(data.grad, torch.tensor([[1.0, 1.0], [0.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype))
+        self.assert_close(replacement.grad, torch.ones_like(replacement))
 
     @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_type(self, device):

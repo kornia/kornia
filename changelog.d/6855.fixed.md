@@ -1,0 +1,1 @@
+`Keypoints.index_put` and `VideoKeypoints.index_put` no longer make a second full coordinate copy when returning an updated container. Input storage, gradients, and video metadata keep their existing behavior.
