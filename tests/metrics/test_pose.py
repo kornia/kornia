@@ -24,13 +24,62 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import BaseTester, skip_unsupported_autocast
 
 # 90-degree rotation about +z.
 ROT_Z_90 = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 class TestAngleErrorMat(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="autocast must preserve full-precision rotations")
+    @pytest.mark.parametrize("autocast_dtype", ["float16", "bfloat16"])
+    def test_outer_mixed_precision_preserves_angles_and_gradients(self, device, dtype, autocast_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        # R1 is an orthogonal rational matrix. R2 = R1 Rz(theta), so the relative angles below are theta,
+        # independently of the implementation's trace/skew formula. Build Rz with Python double-precision trig.
+        angles = [0.01, 45.0, 179.99]
+        rotations = []
+        for angle in angles:
+            c, s = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+            rotations.append([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        R1 = torch.tensor([[0.36, 0.48, -0.8], [-0.8, 0.6, 0.0], [0.48, 0.64, 0.6]], dtype=torch.float64)
+        R2 = (R1 @ torch.tensor(rotations, dtype=torch.float64)).to(device=device, dtype=dtype).requires_grad_()
+        R1 = R1.expand_as(R2).to(device=device, dtype=dtype).requires_grad_()
+        expected = torch.tensor(angles, device=device, dtype=dtype)
+        reference = kornia.metrics.angle_error_mat(R1, R2)
+        reference_grad = torch.autograd.grad(reference.sum(), (R1, R2))
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = kornia.metrics.angle_error_mat(R1, R2)
+        assert actual.dtype == dtype
+        # The inputs have one dtype rounding; 1e-4 degrees allows float32 matmul rounding while rejecting the
+        # old half-precision result (which can turn the 0.01-degree rotation into a perfect match).
+        self.assert_close(actual, expected, rtol=0.0, atol=1e-4 if dtype == torch.float32 else 1e-9)
+        for actual_grad, expected_grad in zip(torch.autograd.grad(actual.sum(), (R1, R2)), reference_grad):
+            self.assert_close(actual_grad, expected_grad)
+
+        # The public pose metric must keep the same rotation error when it is called inside a training region.
+        translation = torch.ones(3, 3, 1, device=device, dtype=dtype)
+        P1 = torch.cat((R1.detach(), translation), dim=-1)
+        P2 = torch.cat((R2.detach(), translation), dim=-1)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            errors = kornia.metrics.pose_errors(P1, P2)
+        self.assert_close(errors["R_err"], actual)
+        self.assert_close(errors["max_err"], actual)
+
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="autocast must preserve full-precision rotations")
+    def test_dynamo_outer_mixed_precision(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("Scripted calls retain the caller's autocast behavior.")
+        skip_unsupported_autocast(device, "bfloat16")
+        R1 = torch.tensor([[0.36, 0.48, -0.8], [-0.8, 0.6, 0.0], [0.48, 0.64, 0.6]], device=device, dtype=dtype)
+        c = math.sqrt(0.5)
+        R2 = R1 @ torch.tensor([[c, -c, 0.0], [c, c, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        op = torch_optimizer(kornia.metrics.angle_error_mat)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = op(R1, R2)
+        assert actual.dtype == dtype
+        self.assert_close(actual, torch.tensor(45.0, device=device, dtype=dtype), rtol=0.0, atol=1e-4)
+
     def test_known_angle(self, device, dtype):
         eye = torch.eye(3, device=device, dtype=dtype)
         rot = torch.tensor(ROT_Z_90, device=device, dtype=dtype)

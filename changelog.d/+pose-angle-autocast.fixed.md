@@ -1,0 +1,1 @@
+`angle_error_mat` and the rotation errors returned by `pose_errors` preserve float32 accuracy and output dtype inside an autocast region, instead of rounding the relative rotation to half precision. Scripted calls retain their existing autocast behavior.
