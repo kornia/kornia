@@ -30,6 +30,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn.utils.fusion import fuse_conv_bn_weights
 
+from kornia.core._compat import _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
+from kornia.core.utils import _needs_derivatives
 from kornia.models.common import ConvNormAct
 
 
@@ -142,6 +144,7 @@ class AIFI(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
+        self._keep_attention_weights = _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
 
         self.linear1 = nn.Linear(embed_dim, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
@@ -171,7 +174,14 @@ class AIFI(nn.Module):
         pos_emb = self.build_2d_sincos_pos_emb(W, H, C, device=x.device, dtype=x.dtype)
         q = k = x + pos_emb
 
-        attn, _ = self.self_attn(q, k, x, need_weights=True)
+        # SDPA avoids unused weights in inference. The original math path retains forward AD and
+        # higher derivatives, and avoids the Windows torch 2.5 float64 kernel fault (#6614).
+        need_weights = (
+            torch.is_grad_enabled()
+            or _needs_derivatives(x)
+            or (self._keep_attention_weights and x.dtype == torch.float64 and x.device.type == "cpu")
+        )
+        attn, _ = self.self_attn(q, k, x, need_weights=need_weights)
         x = self.norm1(x + self.dropout1(attn))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
 

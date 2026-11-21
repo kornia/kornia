@@ -26,7 +26,9 @@ from typing import Optional
 import torch
 from torch import nn
 
+from kornia.core._compat import _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _needs_derivatives
 from kornia.models.common import MLP, ConvNormAct
 
 
@@ -172,6 +174,7 @@ class TransformerDecoderLayer(nn.Module):
         super().__init__()
         # self attn
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
+        self._keep_attention_weights = _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(embed_dim)
 
@@ -220,7 +223,14 @@ class TransformerDecoderLayer(nn.Module):
         # TODO: rename variables because is confusing
         # self attention
         q = k = tgt + query_pos_embed
-        out, _ = self.self_attn(q, k, value=tgt)
+        # Keep derivative support and the known Windows torch 2.5 float64 fallback (#6614).
+        need_weights = (
+            torch.is_grad_enabled()
+            or _needs_derivatives(q)
+            or _needs_derivatives(tgt)
+            or (self._keep_attention_weights and tgt.dtype == torch.float64 and tgt.device.type == "cpu")
+        )
+        out, _ = self.self_attn(q, k, value=tgt, need_weights=need_weights)
         tgt = self.norm1(tgt + self.dropout1(out))
 
         # cross attention

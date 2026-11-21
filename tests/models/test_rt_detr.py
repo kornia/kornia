@@ -16,19 +16,132 @@
 #
 
 from functools import partial
+from unittest.mock import patch
 
 import pytest
 import torch
 
+from kornia.core._compat import _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
 from kornia.core.exceptions import BaseError
 from kornia.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
-from kornia.models.rt_detr.architecture.hybrid_encoder import HybridEncoder, RepVggBlock
+from kornia.models.rt_detr.architecture.hybrid_encoder import AIFI, HybridEncoder, RepVggBlock
 from kornia.models.rt_detr.architecture.resnet_d import ResNetD
-from kornia.models.rt_detr.architecture.rtdetr_head import RTDETRHead
+from kornia.models.rt_detr.architecture.rtdetr_head import RTDETRHead, TransformerDecoderLayer
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.rt_detr.post_processor import DETRPostProcessor
 
 from testing.base import BaseTester, assert_close
+
+
+class TestAIFI(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU SDPA allocation probe")
+    def test_attention_workspace(self, device, dtype):
+        if _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY and dtype == torch.float64:
+            pytest.skip("Windows torch 2.5 float64 retains the original math path (#6614).")
+        from torch.utils._python_dispatch import TorchDispatchMode
+        from torch.utils._pytree import tree_flatten
+
+        largest = 0
+
+        class AllocationProbe(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                nonlocal largest
+                output = func(*args, **(kwargs or {}))
+                for value in tree_flatten(output)[0]:
+                    if isinstance(value, torch.Tensor):
+                        largest = max(largest, value.untyped_storage().nbytes())
+                return output
+
+        model = AIFI(32, 4, 64).to(device, dtype).eval()
+        image = torch.rand(2, 32, 32, 32, device=device, dtype=dtype)
+        with torch.no_grad(), AllocationProbe():
+            output = model(image)
+        assert output.shape == image.shape
+        assert largest <= 8 * image.numel() * image.element_size()
+
+    @pytest.mark.device_agnostic
+    def test_faulty_cpu_float64_backend_is_not_selected(self):
+        model = RTDETR.from_config(RTDETRConfig("resnet18d", 2, head_num_queries=10)).double().eval()
+        for module in model.modules():
+            if isinstance(module, (AIFI, TransformerDecoderLayer)):
+                module._keep_attention_weights = True
+        with (
+            torch.no_grad(),
+            patch("torch.nn.functional.scaled_dot_product_attention", side_effect=AssertionError("faulty kernel")),
+        ):
+            logits, boxes = model(torch.rand(1, 3, 64, 64, dtype=torch.float64))
+        assert torch.isfinite(logits).all()
+        assert torch.isfinite(boxes).all()
+
+    def test_reference_values(self, device, dtype):
+        model = AIFI(4, 1, 8).to(device, dtype).eval()
+        with torch.no_grad():
+            model.self_attn.in_proj_weight.copy_(torch.eye(4, device=device, dtype=dtype).repeat(3, 1))
+            model.self_attn.in_proj_bias.zero_()
+            model.self_attn.out_proj.weight.copy_(torch.eye(4, device=device, dtype=dtype))
+            model.self_attn.out_proj.bias.zero_()
+            model.linear1.weight.zero_()
+            model.linear1.bias.zero_()
+            model.linear2.weight.zero_()
+            model.linear2.bias.zero_()
+        image = torch.tensor(
+            [0.1, -0.4, 0.7, 0.2, 1.1, 0.3, -0.2, 0.8, -0.6, 0.9, 0.4, -1.2, 0.5, -0.7, 1.3, 0.6],
+            device=device,
+            dtype=dtype,
+        ).reshape(1, 4, 2, 2)
+        # NumPy float64 reference, with x = image.reshape(4, 4).T and xy = [(0,0),(0,1),(1,0),(1,1)]:
+        # p = stack([sin(xy[:,0]), cos(xy[:,0]), sin(xy[:,1]), cos(xy[:,1])], axis=1)
+        # w = (x+p) @ (x+p).T / 2; w = exp(w - w.max(1, keepdims=True)); w /= w.sum(1, keepdims=True)
+        # y = x + w @ x
+        # for _ in range(2): y = (y-y.mean(-1, keepdims=True)) / sqrt(y.var(-1, keepdims=True)+1e-5)
+        expected = torch.tensor(
+            [
+                -0.2281187582,
+                -0.7547982673,
+                0.2665449378,
+                0.0775434004,
+                1.2281362038,
+                0.5984286115,
+                -1.1947423526,
+                0.8090691039,
+                -1.4847893713,
+                1.3150957055,
+                -0.5534299868,
+                -1.6570429081,
+                0.4847719256,
+                -1.1587260496,
+                1.4816274015,
+                0.7704304037,
+            ],
+            device=device,
+            dtype=dtype,
+        ).reshape_as(image)
+        with torch.no_grad():
+            self.assert_close(model(image), expected)
+
+    def test_gradcheck(self, device):
+        model = AIFI(4, 1, 8).to(device, torch.float64).eval()
+        image = torch.rand(1, 4, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(model, (image,))
+        gradient = torch.autograd.grad(model(image).square().sum(), image, create_graph=True)[0]
+        second = torch.autograd.grad(gradient.square().sum(), image)[0]
+        assert torch.isfinite(second).all()
+        with torch.no_grad():
+            _, tangent = torch.func.jvp(model, (image,), (torch.ones_like(image),))
+        assert torch.isfinite(tangent).all()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        model = AIFI(8, 2, 16).to(device, dtype).eval()
+        image = torch.rand(2, 8, 4, 3, device=device, dtype=dtype)
+        with torch.no_grad():
+            actual, expected = torch_optimizer(model)(image), model(image)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Fused reductions round differently through attention and two LayerNorms. The original
+            # math path also exceeds the default bfloat16 tolerance; allow two dtype-epsilon steps.
+            tolerance = 2 * torch.finfo(dtype).eps
+            self.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
+        else:
+            self.assert_close(actual, expected)
 
 
 @pytest.mark.parametrize(
