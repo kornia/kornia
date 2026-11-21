@@ -299,15 +299,15 @@ def center_crop(
     # A float16/bfloat16 image is cropped in float32, as in crop_by_boxes: in the half dtype the corners below and
     # the matrix that crop_by_transform_mat casts to it round a start such as 257 (bfloat16) to a nearby value.
     out_dtype = input_tensor.dtype
-    if _samples_half_in_float32(input_tensor):
-        input_tensor = input_tensor.float()
+    in_float32 = _samples_half_in_float32(input_tensor)
+    box_dtype = torch.float32 if in_float32 else input_tensor.dtype
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = torch.tensor(
         [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     )
 
     # [y, x] destination
@@ -315,10 +315,14 @@ def center_crop(
     points_dst: torch.Tensor = torch.tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
         device=input_tensor.device,
-        dtype=input_tensor.dtype,
+        dtype=box_dtype,
     ).expand(points_src.shape[0], -1, -1)
 
     transform = _crop_translation(points_src, points_dst)
+    # Upcast after the two host-to-device corner copies above: queued before them, the image copy would make those
+    # pageable copies wait for it on the host.
+    if in_float32:
+        input_tensor = input_tensor.float()
 
     return crop_by_transform_mat(
         input_tensor, transform, (dst_h, dst_w), mode=mode, padding_mode=padding_mode, align_corners=align_corners
