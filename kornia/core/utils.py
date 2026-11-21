@@ -1238,7 +1238,9 @@ def batched_forward(
     ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
     slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
     the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
-    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference.
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference. When another
+    micro-batch follows, its preceding output is copied before the next call, so a model may reuse its output buffer
+    without overwriting earlier results. The single-call path returns the model output without that extra copy.
 
     Args:
         model: a module that returns one tensor whose first dimension follows its input's.
@@ -1278,7 +1280,9 @@ def batched_forward(
                 continue
             out = model_dev(data[st:end].to(device), **kwargs)
             _check_batched_forward_output(out)
-            out_list.append(out)
+            # A later model call may overwrite this output binding. The final batch is copied by cat itself;
+            # earlier batches need their own storage, at the cost of one copy per retained micro-batch output.
+            out_list.append(out.clone() if end < B else out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
     out = model_dev(data.to(device), **kwargs)
