@@ -1184,16 +1184,15 @@ class TestConventionsXFeat(BaseTester):
     @pytest.mark.applies_to(
         devices=("cpu",), dtypes=("float16", "bfloat16"), reason="the defect is in the CPU float16 / bfloat16 path"
     )
-    @pytest.mark.parametrize("sampler", ["ALIKED", "SOLD2"])
-    def test_wart_samplers_send_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype, sampler):
+    def test_wart_aliked_sends_cpu_half_maps_to_the_half_grid_sample_5810(self, device, dtype):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
-        # maps (#5810), and torch 2.5.1 has no such kernel. ALIKED (DKD scores and SDDH descriptors) and SOLD2.match
-        # call it with the half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use,
-        # samples CPU half in float32 instead, and so do XFeat's InterpolateSparse2d and ALIKED's deformable
+        # maps (#5810), and torch 2.5.1 has no such kernel. ALIKED (DKD scores and SDDH descriptors) calls it with the
+        # half map and grid directly; kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in
+        # float32 instead, and so do XFeat's InterpolateSparse2d, SOLD2's WunschLineMatcher and ALIKED's deformable
         # convolution without autograd (#6464).
-        if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
+        if not supports_replicate_padding(device, dtype):
             pytest.skip("ALIKED pads with replication, absent for this dtype")
-        from kornia.feature import ALIKED, SOLD2
+        from kornia.feature import ALIKED
 
         calls = []
 
@@ -1211,12 +1210,6 @@ class TestConventionsXFeat(BaseTester):
                 return func(source.float(), grid.float(), *rest, **kwargs).to(source.dtype)
 
         with torch.no_grad(), GridSampleRecorder():
-            if sampler == "ALIKED":
-                ALIKED(model_name="aliked-t16").to(dtype=dtype).eval()(torch.rand(1, 3, 64, 96, dtype=dtype))
-            else:
-                segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]])
-                maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
-                SOLD2(pretrained=False).eval().match(segments, segments + 1.0, maps[0], maps[1])
+            ALIKED(model_name="aliked-t16").to(dtype=dtype).eval()(torch.rand(1, 3, 64, 96, dtype=dtype))
         assert calls
-        expected = {(dtype, dtype), (torch.float32, torch.float32)} if sampler == "ALIKED" else {(dtype, dtype)}
-        assert set(calls) == expected
+        assert set(calls) == {(dtype, dtype), (torch.float32, torch.float32)}
