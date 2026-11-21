@@ -114,6 +114,14 @@ class _HausdorffERLossBase(nn.Module):
             padded[(..., *[slice(r + o, r + o + n) for r, o, n in zip(self._radius, offset, spatial)])]
             for offset in self._offsets
         ]
+        if x.device.type == "cpu" and not x.requires_grad:
+            # The binary survivor maps in perform_erosion need no derivatives. Reduce their views directly:
+            # stacking the five (2D) or seven (3D) neighbours retains a full image/volume for each one.
+            # Keep amin for differentiable callers, where it distributes a tied minimum's gradient equally.
+            eroded = windows[0]
+            for window in windows[1:]:
+                eroded = torch.minimum(eroded, window)
+            return eroded
         return torch.stack(windows).amin(0)
 
     def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
