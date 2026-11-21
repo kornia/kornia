@@ -275,6 +275,9 @@ class KMeans:
                 index = cluster_assignment[:, None].expand(-1, X_work.shape[1])
                 cluster_sums = X_work.new_zeros(self.num_clusters, X_work.shape[1]).scatter_add_(0, index, X_work)
 
+            # Release the assignment buffer before the next iteration builds its distance tensors.
+            del one_hot
+
             # edge case when a certain cluster centre has no points assigned to it:
             # just choose a random point as its update. A random index is drawn for every
             # cluster unconditionally and masked with torch.where, so the branch never depends
