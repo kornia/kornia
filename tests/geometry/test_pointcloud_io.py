@@ -537,3 +537,45 @@ class TestConventionsPointCloudPly(BaseTester):
             self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
             with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix))
+
+
+class TestMixedBinaryPointCloudBuffer(BaseTester):
+    @pytest.mark.parametrize("endian, fmt", [("<", "binary_little_endian"), (">", "binary_big_endian")])
+    @pytest.mark.parametrize(
+        "scalar, code, first, second",
+        [
+            ("char", "b", -7, 13),
+            ("uchar", "B", 7, 255),
+            ("short", "h", -123, 456),
+            ("ushort", "H", 123, 65535),
+            ("int", "i", -100000, 100000),
+            ("uint", "I", 0, 4294967295),
+            ("float", "f", 1.25, -2.5),
+            ("double", "d", 1.25, -2.5),
+        ],
+    )
+    def test_mixed_scalar_columns_keep_order_and_owned_output(self, tmp_path, endian, fmt, scalar, code, first, second):
+        filename = tmp_path / "mixed_scalars.ply"
+        # Reordered coordinates and repeated unrelated property names are legal.
+        props = f"property double z\nproperty uchar red\nproperty {scalar} x\nproperty uchar red\nproperty float y\n"
+        payload = struct.pack(endian + f"dB{code}Bf", 1.5, 128, first, 64, -2.5)
+        payload += struct.pack(endian + f"dB{code}Bf", -3.5, 0, second, 255, 4.5)
+        filename.write_bytes(_ply_header(fmt, 2, props) + payload)
+        expected = torch.tensor([[first, -2.5, 1.5], [second, 4.5, -3.5]], dtype=torch.float32)
+        actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+        assert actual.device.type == "cpu"
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        actual.zero_()
+        # The result owns writable storage independent of the source file.
+        self.assert_close(kornia.geometry.load_pointcloud_ply_binary(filename), expected, rtol=0, atol=0)
+
+    def test_mixed_float64_nonfinite_conversion(self, tmp_path):
+        filename = tmp_path / "mixed_nonfinite.ply"
+        props = "property double x\nproperty uchar red\nproperty double y\nproperty double z\n"
+        payload = struct.pack("<dBdd", float("nan"), 128, float("inf"), -float("inf"))
+        filename.write_bytes(_ply_header("binary_little_endian", 1, props) + payload)
+        actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+        expected = torch.tensor([[float("nan"), float("inf"), -float("inf")]])
+        assert torch.isnan(actual[0, 0])
+        self.assert_close(actual[:, 1:], expected[:, 1:])
