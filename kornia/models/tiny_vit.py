@@ -232,7 +232,7 @@ class ConvLayer(nn.Module):
             The output may be a token tensor when downsampling is configured.
         """
         for blk in self.blocks:
-            x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
+            x = checkpoint.checkpoint(blk, x, use_reentrant=False) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
         return x
@@ -500,7 +500,7 @@ class BasicLayer(nn.Module):
             configured.
         """
         for blk in self.blocks:
-            x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
+            x = checkpoint.checkpoint(blk, x, use_reentrant=False) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
         return x
@@ -525,7 +525,8 @@ class TinyViT(nn.Module):
         mlp_ratio: Ratio of MLP dimension to embedding dimension in self-attention.
         drop_rate: Dropout rate.
         drop_path_rate: Stochastic depth rate.
-        use_checkpoint: Whether to use activation checkpointing to trade compute for memory.
+        use_checkpoint: Whether to use activation checkpointing to trade compute for memory. Parameter gradients
+            remain enabled when preceding layers are frozen, and ``torch.autograd.grad`` is supported.
         mbconv_expand_ratio: Expansion ratio used in MBConv block.
         local_conv_size: Kernel size of convolution used in TinyViTBlock
         activation: activation function.
