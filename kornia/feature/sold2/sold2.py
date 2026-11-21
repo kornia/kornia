@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
-from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
+from kornia.core.utils import _samples_half_in_float32, dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 
 from .backbones import SOLD2Net
@@ -53,9 +53,10 @@ class SOLD2(nn.Module):
           returns an int64 tensor ``(N_1,)``: for each segment of ``line_seg1``, the index of its match in
           ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
           ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
-        - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
-          without an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has
-          none the call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - Known defects: ``match`` samples float16 and bfloat16 descriptor maps in float32 and returns them in their
+          own dtype, since torch's CPU half-precision ``grid_sample`` can return wrong values
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). Only that sampling is covered: SOLD2 as a whole
+          is not supported in half precision (see `#6799 <https://github.com/kornia/kornia/issues/6799>`_).
 
     Args:
         pretrained: If True, download and set pretrained weights to the model, and return it in eval mode; otherwise
@@ -203,6 +204,12 @@ class WunschLineMatcher(nn.Module):
         self.grid_size = self.config.grid_size
         self.line_score = self.config.line_score
 
+    def _sample_descriptors(self, desc: torch.Tensor, grid: torch.Tensor) -> torch.Tensor:
+        """Sample ``desc`` at ``grid``; float16/bfloat16 maps are sampled in float32 and returned in their dtype."""
+        if _samples_half_in_float32(desc):
+            return F.grid_sample(desc.float(), grid.float(), align_corners=False).to(desc.dtype)
+        return F.grid_sample(desc, grid.to(desc.dtype), align_corners=False)
+
     def forward(
         self, line_seg1: torch.Tensor, line_seg2: torch.Tensor, desc1: torch.Tensor, desc2: torch.Tensor
     ) -> torch.Tensor:
@@ -227,12 +234,12 @@ class WunschLineMatcher(nn.Module):
         line_points1 = line_points1.reshape(-1, 2)
         line_points2 = line_points2.reshape(-1, 2)
 
-        # Extract the descriptors for each point. F.grid_sample needs the grid in the dtype of the map it samples,
-        # and the segments need not share it (SOLD2.forward returns float32 segments whatever the model dtype).
-        grid1 = keypoints_to_grid(line_points1, img_size1).to(desc1.dtype)
-        grid2 = keypoints_to_grid(line_points2, img_size2).to(desc2.dtype)
-        desc1 = F.normalize(F.grid_sample(desc1, grid1, align_corners=False)[0, :, :, 0], dim=0)
-        desc2 = F.normalize(F.grid_sample(desc2, grid2, align_corners=False)[0, :, :, 0], dim=0)
+        # Extract the descriptors for each point. Half-precision maps are sampled in float32 (see _sample_descriptors);
+        # the segments need not share the map's dtype (SOLD2.forward returns float32 segments whatever the model dtype).
+        grid1 = keypoints_to_grid(line_points1, img_size1)
+        grid2 = keypoints_to_grid(line_points2, img_size2)
+        desc1 = F.normalize(self._sample_descriptors(desc1, grid1)[0, :, :, 0], dim=0)
+        desc2 = F.normalize(self._sample_descriptors(desc2, grid2)[0, :, :, 0], dim=0)
 
         # Precompute the distance between line points for every pair of lines
         # Assign a score of -1 for invalid points
