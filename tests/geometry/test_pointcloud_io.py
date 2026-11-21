@@ -537,3 +537,34 @@ class TestConventionsPointCloudPly(BaseTester):
             self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
             with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix))
+
+
+class TestBinaryPointCloudBuffer(BaseTester):
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_binary_payload_matches_little_endian_literals(self, tmp_path, device, dtype, strided):
+        values = torch.tensor([[1.25, -2.5, 3.75], [4.5, -0.0, -6.25]], device=device, dtype=dtype)
+        if strided:
+            storage = torch.zeros(2, 6, device=device, dtype=dtype)
+            storage[:, ::2] = values
+            points = storage[:, ::2]
+            assert not points.is_contiguous()
+        else:
+            points = values
+        points.requires_grad_()
+        original = points.detach().clone()
+        filename = tmp_path / "buffer.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, points)
+        payload = filename.read_bytes().split(b"end_header\n", 1)[1]
+        assert payload == struct.pack("<6d", 1.25, -2.5, 3.75, 4.5, -0.0, -6.25)
+        self.assert_close(points, original)
+        assert points.grad is None
+
+    def test_binary_writer_accepts_negative_view(self, tmp_path):
+        # Taking the imaginary part of a conjugated tensor creates a negative view.
+        source = torch.tensor([[complex(0, -1.25), complex(0, 2.5), complex(0, -3.75)]], dtype=torch.complex128)
+        points = source.conj().imag
+        assert points.is_neg()
+        filename = tmp_path / "negative_view.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, points)
+        payload = filename.read_bytes().split(b"end_header\n", 1)[1]
+        assert payload == struct.pack("<3d", 1.25, -2.5, 3.75)

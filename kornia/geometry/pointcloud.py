@@ -177,18 +177,12 @@ def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: tor
         f.writelines(s.encode("utf-8") for s in header)
 
         if num_points > 0:
-            # Move to CPU, convert to float64 for matching 'double' in header
-            arr = xyz.detach().cpu().to(torch.float64).reshape(-1)
-
-            # Convert to array.array for efficient byte-level handling
-            data_array = array.array("d", arr.tolist())
-
-            # Ensure little-endian
-            if sys.byteorder == "big":
-                data_array.byteswap()
-
-            # Write binary data in a single operation for I/O efficiency
-            f.write(data_array.tobytes())
+            # Write the contiguous float64 storage directly, without materializing a
+            # Python float for every coordinate or another full payload bytes object.
+            # The dtype conversion also fixes byte order on big-endian hosts.
+            arr = xyz.detach().cpu().to(torch.float64).contiguous()
+            payload = arr.numpy(force=True).astype("<f8", copy=False)
+            f.write(memoryview(payload).cast("B"))
 
 
 class _PlyElement(NamedTuple):
