@@ -54,8 +54,11 @@ class TestHausdorffLoss(BaseTester):
         # A single workspace allocation must stay below three class-map volumes, independent of
         # whether the structuring element has five (2D) or seven (3D) neighbours.
         class_bytes = pred[:, :1].numel() * pred.element_size()
+        # The public loss also builds an int64 label map, which is larger than this
+        # floating-point workspace bound when predictions use a two-byte dtype.
+        label_bytes = target.numel() * target.element_size()
         largest_allocation = max(event.cpu_memory_usage for event in profile.events())
-        assert largest_allocation <= 3 * class_bytes
+        assert largest_allocation <= max(3 * class_bytes, label_bytes)
 
     @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
     def test_input_type_validation(self, loss_cls):
