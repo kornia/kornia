@@ -26,7 +26,7 @@ import pytest
 import torch
 
 from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer
-from kornia.models.qwen25.vision import scaled_dot_product_attention
+from kornia.models.qwen25.vision import Qwen25VisionAttention, scaled_dot_product_attention
 
 from testing.base import BaseTester
 
@@ -74,6 +74,18 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
+    def test_scripted_window_attention(self, device, dtype):
+        attention = Qwen25VisionAttention(16, 4).to(device, dtype).eval()
+        image_tokens = torch.rand(2, 12, 16, device=device, dtype=dtype)
+        cos = torch.ones(12, 4, device=device, dtype=dtype)
+        sin = torch.zeros_like(cos)
+        indices = torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, -1, -1, -1, -1]], device=device)
+        layout = (indices, torch.arange(12, device=device))
+        with torch.no_grad():
+            actual = torch.jit.script(attention)(image_tokens, cos, sin, None, layout)
+            expected = attention(image_tokens, cos, sin, None, layout)
+        self.assert_close(actual, expected)
+
     def test_local_attention_work_is_bounded_by_window(self, device, dtype):
         config = _tiny_config(patch_size=2, window_size=8)
         model = Qwen25VisionTransformer(config).to(device, dtype).eval()

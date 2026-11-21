@@ -62,6 +62,17 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat((-x2, x1), dim=-1)
 
 
+def _pack_windows(value: torch.Tensor, gather: torch.Tensor, windows: int, tokens: int) -> torch.Tensor:
+    """Gather local windows with the batch and head axes kept in the same order."""
+    batch, heads, _, dim = value.shape
+    return (
+        value.index_select(2, gather)
+        .reshape(batch, heads, windows, tokens, dim)
+        .transpose(1, 2)
+        .reshape(batch * windows, heads, tokens, dim)
+    )
+
+
 def _window_attention(
     q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, layout: Tuple[torch.Tensor, torch.Tensor]
 ) -> torch.Tensor:
@@ -71,17 +82,14 @@ def _window_attention(
     windows, tokens = indices.shape
     gather = indices.clamp_min(0).flatten()
 
-    def pack(value: torch.Tensor) -> torch.Tensor:
-        return (
-            value.index_select(2, gather)
-            .reshape(batch, heads, windows, tokens, dim)
-            .transpose(1, 2)
-            .reshape(batch * windows, heads, tokens, dim)
-        )
-
     # Boundary windows have fewer keys. Padded query outputs are discarded by restore.
     key_mask = (indices >= 0).repeat(batch, 1).unsqueeze(1).unsqueeze(1)
-    out = scaled_dot_product_attention(pack(q), pack(k), pack(v), attn_mask=key_mask)
+    out = scaled_dot_product_attention(
+        _pack_windows(q, gather, windows, tokens),
+        _pack_windows(k, gather, windows, tokens),
+        _pack_windows(v, gather, windows, tokens),
+        attn_mask=key_mask,
+    )
     out = out.reshape(batch, windows, heads, tokens, dim).transpose(1, 2).reshape(batch, heads, windows * tokens, dim)
     return out.index_select(2, restore)
 
