@@ -72,6 +72,98 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
+    def test_repeated_frame_projection_workspace(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("The repeated-frame optimization is CPU-only.")
+        config = _tiny_config(
+            depth=0,
+            hidden_size=4,
+            num_heads=1,
+            intermediate_size=4,
+            out_hidden_size=4,
+            in_channels=1,
+            patch_size=2,
+            temporal_patch_size=2,
+            spatial_merge_size=1,
+            window_size=2,
+        )
+        model = Qwen25VisionTransformer(config).to(device, dtype).eval()
+        images = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            model(images)
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True
+            ) as profile:
+                model(images)
+        copy_bytes = sum(e.cpu_memory_usage for e in profile.events() if e.name == "aten::contiguous")
+        assert copy_bytes < images.numel() * images.element_size()
+
+    def test_repeated_frame_projection_keeps_autocast_rounding(self):
+        model = Qwen25VisionTransformer(_tiny_config(depth=0, temporal_patch_size=2))
+        projection = model.patch_embed.proj
+        with torch.no_grad():
+            projection.weight[:, :, 0].fill_(1.0)
+            projection.weight[:, :, 1].fill_(-0.9999)
+        images = torch.ones(1, 3, 56, 56)
+        captured = []
+        hook = projection.register_forward_hook(lambda module, args, output: captured.append(output))
+        try:
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                model(images)
+        finally:
+            hook.remove()
+        # Autocast rounds both temporal taps to +/-1 before their products, so they cancel exactly.
+        self.assert_close(captured[0], torch.zeros_like(captured[0]), atol=0.0, rtol=0.0)
+
+    def test_repeated_frame_projection_values_gradients_and_hook(self, device, dtype):
+        config = _tiny_config(
+            depth=0,
+            hidden_size=4,
+            num_heads=1,
+            intermediate_size=4,
+            out_hidden_size=4,
+            in_channels=1,
+            patch_size=2,
+            temporal_patch_size=3,
+            spatial_merge_size=1,
+            window_size=2,
+        )
+        model = Qwen25VisionTransformer(config).to(device, dtype)
+        projection = model.patch_embed.proj
+        with torch.no_grad():
+            projection.weight.copy_(torch.arange(48, device=device, dtype=dtype).reshape_as(projection.weight) / 16)
+        images = (torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4) / 16).requires_grad_()
+        projected = []
+        hook = projection.register_forward_hook(lambda module, args, output: projected.append(output))
+        try:
+            model(images)
+        finally:
+            hook.remove()
+        assert len(projected) == 1
+
+        # Independent sums over each 2x2 patch: the three temporal taps at channel c and offset j
+        # sum to (36*c + 12 + 3*j)/16; pixels are integer multiples of 1/16.
+        expected = torch.tensor(
+            [
+                [[0.75, 1.265625], [2.8125, 3.328125]],
+                [[2.15625, 3.796875], [8.71875, 10.359375]],
+                [[3.5625, 6.328125], [14.625, 17.390625]],
+                [[4.96875, 8.859375], [20.53125, 24.421875]],
+            ],
+            device=device,
+            dtype=dtype,
+        ).reshape(1, 4, 1, 2, 2)
+        self.assert_close(projected[0], expected)
+        image_grad, weight_grad = torch.autograd.grad(projected[0].sum(), (images, projection.weight))
+        expected_image_grad = (
+            torch.tensor([[16.5, 17.25], [18.0, 18.75]], device=device, dtype=dtype).repeat(2, 2).reshape_as(images)
+        )
+        expected_weight_grad = torch.tensor([[1.25, 1.5], [2.25, 2.5]], device=device, dtype=dtype).expand_as(
+            projection.weight
+        )
+        self.assert_close(image_grad, expected_image_grad)
+        self.assert_close(weight_grad, expected_weight_grad)
+
     @pytest.mark.parametrize("batch_size", [0, 2])
     def test_smoke(self, batch_size, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()
