@@ -26,6 +26,18 @@ from kornia.geometry.camera.distortion_kannala_brandt import (
 from kornia.geometry.vector import Vector2
 
 
+def _per_camera(params: torch.Tensor, points: Vector2) -> torch.Tensor:
+    """Insert point axes after the camera axes of batched ``params``, so camera ``b`` applies to ``points[b]``.
+
+    ``(P,)`` params apply to every point and ``(B, P)`` params with ``(B, 2)`` points are already aligned; ``(B, P)``
+    params with ``(B, N, 2)`` points become ``(B, 1, P)``.
+    """
+    extra = (points.data.ndim - 1) - (params.ndim - 1)
+    if params.ndim > 1 and extra > 0:
+        return params.reshape(*params.shape[:-1], *([1] * extra), params.shape[-1])
+    return params
+
+
 class AffineTransform:
     """Map image-plane ``Vector2`` points to pixels with ``[fx, fy, cx, cy]`` alone, with no lens distortion.
 
@@ -69,6 +81,7 @@ class AffineTransform:
             y: 8.0
 
         """
+        params = _per_camera(params, points)
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         u = points.x * fx + cx
         v = points.y * fy + cy
@@ -97,6 +110,7 @@ class AffineTransform:
             y: -1.0
 
         """
+        params = _per_camera(params, points)
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         x = (points.x - cx) / fx
         y = (points.y - cy) / fy
@@ -255,7 +269,7 @@ class KannalaBrandtK3Transform:
             ``Vector2`` of the distorted pixels.
 
         """
-        return Vector2(distort_points_kannala_brandt(points.data, params))
+        return Vector2(distort_points_kannala_brandt(points.data, _per_camera(params, points)))
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Undistort fisheye pixels to normalized points with the Kannala-Brandt K3 model.
@@ -268,4 +282,4 @@ class KannalaBrandtK3Transform:
             ``Vector2`` of points on the normalized :math:`z = 1` plane.
 
         """
-        return Vector2(undistort_points_kannala_brandt(points.data, params))
+        return Vector2(undistort_points_kannala_brandt(points.data, _per_camera(params, points)))

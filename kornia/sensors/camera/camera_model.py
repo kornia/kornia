@@ -127,15 +127,12 @@ class CameraModelBase:
           (`#4274 <https://github.com/kornia/kornia/issues/4274>`_).
         - :meth:`matrix` and its alias :meth:`K` return the ``(*, 3, 3)`` ``K``, not the ``(B, 4, 4)``
           ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
+        - Batched ``(B, P)`` parameters apply per camera: camera ``b`` maps ``points[b]``, which may be ``(B, 3)`` or
+          ``(B, N, 3)``, as in the geometry functions. ``(P,)`` parameters apply to every point.
 
     .. warning::
-        Batched ``(B, 4)`` and ``(B, 8)`` parameters apply along the **last point axis**, not the camera axis: with
-        ``(B, N, 3)`` points and ``B > 1`` they silently pair with the wrong points when ``B == N``,
-        :meth:`project` broadcasts to a ``(B, B, 2)`` result when ``N == 1``, and other ``N`` raise, whereas the
-        geometry functions apply them per camera:
-        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. Batched ``(B, 12)`` Brown-Conrady parameters pair
-        camera ``b`` with ``points[b]``. :meth:`project` divides by ``z`` with no guard, so ``z = 0`` gives
-        infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns finite pixels:
+        :meth:`project` divides by ``z`` with no guard, so ``z = 0`` gives infinities where
+        :func:`~kornia.geometry.camera.perspective.project_points` returns finite pixels:
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
@@ -152,8 +149,8 @@ class CameraModelBase:
 
     See Also:
         - :class:`CameraModel`: a built-in model chosen by a :class:`CameraModelType`.
-        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: plain tensors, ``(B, 4, 4)`` intrinsics next to
-          world-to-camera extrinsics, and batched cameras applied per camera.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: plain tensors, with ``(B, 4, 4)`` intrinsics next
+          to world-to-camera extrinsics.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
