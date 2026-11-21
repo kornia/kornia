@@ -54,9 +54,8 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``eye(3)``.
         - scalar angles return ``(3, 3)``; otherwise a trailing singleton angle axis, if present, is
           consumed and the remaining dimensions are the batch shape.
-        - a caller's autocast region does not change the products of float32 angles, outside TorchScript, where a
-          scripted call keeps the caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores
-          the nested guard there).
+        - The entries are evaluated directly from the angles, without matrix products. A caller's autocast
+          region therefore leaves float32 angles and the returned matrix in float32.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -88,49 +87,27 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     cTy = torch.cos(tauy)
     sTy = torch.sin(tauy)
     zero = torch.zeros_like(cTx)
-    one = torch.ones_like(cTx)
-
-    Rx = torch.stack(
-        [
-            torch.stack([one, zero, zero], -1),
-            torch.stack([zero, cTx, sTx], -1),
-            torch.stack([zero, -sTx, cTx], -1),
-        ],
-        -2,
-    )
-    Ry = torch.stack(
-        [
-            torch.stack([cTy, zero, -sTy], -1),
-            torch.stack([zero, one, zero], -1),
-            torch.stack([sTy, zero, cTy], -1),
-        ],
-        -2,
-    )
-    R = _tilt_matmul(Ry, Rx)
-
+    # Multiplying Pz @ Ry @ Rx cancels the upper off-diagonal entries exactly.
     if return_inverse:
-        invR22 = 1 / R[..., 2, 2]
-        invPz = torch.stack(
+        inv_cTx = 1 / cTx
+        inv_cTy = 1 / cTy
+        return torch.stack(
             [
-                torch.stack([invR22, zero, R[..., 0, 2] * invR22], -1),
-                torch.stack([zero, invR22, R[..., 1, 2] * invR22], -1),
-                torch.stack([zero, zero, one], -1),
+                torch.stack([inv_cTx, zero, zero], -1),
+                torch.stack([sTx * sTy * inv_cTx * inv_cTy, inv_cTy, zero], -1),
+                torch.stack([-sTy * inv_cTy, sTx * inv_cTx * inv_cTy, inv_cTx * inv_cTy], -1),
             ],
             -2,
         )
 
-        return _tilt_matmul(R.transpose(-1, -2), invPz)
-
-    Pz = torch.stack(
+    return torch.stack(
         [
-            torch.stack([R[..., 2, 2], zero, -R[..., 0, 2]], -1),
-            torch.stack([zero, R[..., 2, 2], -R[..., 1, 2]], -1),
-            torch.stack([zero, zero, one], -1),
+            torch.stack([cTx, zero, zero], -1),
+            torch.stack([-sTx * sTy, cTy, zero], -1),
+            torch.stack([sTy, -cTy * sTx, cTy * cTx], -1),
         ],
         -2,
     )
-
-    return _tilt_matmul(Pz, R)
 
 
 def distort_points(
