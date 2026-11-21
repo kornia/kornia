@@ -44,7 +44,10 @@ class TestGaussianErfPrecision(BaseTester):
             dtype=dtype,
         )
         actual = get_gaussian_erf_kernel1d(9, 1.0, device=device, dtype=dtype)
-        self.assert_close(actual, expected, atol=3e-8, rtol=2 * torch.finfo(dtype).eps + 1e-7)
+        # Near-unit erf values lose absolute precision when subtracted. Allow one working-dtype epsilon
+        # for backend rounding while still rejecting the half-precision loss of representable tail mass.
+        compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(actual, expected, atol=torch.finfo(compute_dtype).eps, rtol=2 * torch.finfo(dtype).eps + 1e-7)
 
     def test_convention_nonzero_sigma_gradient(self, device, dtype):
         # Differentiate the normalized, integrated mass of nine bins at x=-4,...,4,
