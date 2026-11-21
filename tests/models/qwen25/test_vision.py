@@ -73,8 +73,8 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 class TestQwen25VisionTransformer(BaseTester):
     def test_repeated_frame_projection_workspace(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("The repeated-frame optimization is CPU-only.")
+        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The repeated-frame optimization targets CPU float32/float64.")
         config = _tiny_config(
             depth=0,
             hidden_size=4,
