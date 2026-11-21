@@ -40,7 +40,7 @@ from __future__ import annotations
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _autocast_disabled
+from kornia.core.utils import _at_least_float32, _autocast_disabled
 from kornia.geometry.conversions import convert_points_to_homogeneous
 
 __all__ = [
@@ -465,6 +465,8 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
         - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|` at every scale of the
           coefficients. A line with :math:`a = b = 0`, the line at infinity or no line at all, is at distance ``inf``
           from every point, as a point at infinity is from every line.
+        - Float16 and bfloat16 operands are evaluated in float32, then rounded to their promoted input dtype.
+          Pixel-scale products can overflow float16 even when the distance is representable.
 
     Args:
        point: points ``(*, N, 2)``, or homogeneous points ``(*, N, 3)`` whose last coordinate is the
@@ -496,6 +498,8 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     if line.shape[-1] != 3:
         raise ValueError(f"lines must be a (*, 3) tensor. Got {line.shape}")
 
+    out_dtype = torch.promote_types(point.dtype, line.dtype)
+    point, line = _at_least_float32(point), _at_least_float32(line)
     # Using in-place operations to improve performance
     numerator = line[..., 0] * point[..., 0]
     numerator += line[..., 1] * point[..., 1]
@@ -516,7 +520,8 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
         w = point[..., 2].abs()
         distance = distance / _nonzero(w)
         singular = singular | (w == 0)
-    return _inf_where(distance, singular)
+    distance = _inf_where(distance, singular)
+    return distance.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else distance
 
 
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
