@@ -97,7 +97,11 @@ class TestTinyViTCheckpoint(BaseTester):
             data = torch.rand(2, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(layer, (data,))
 
-    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="Compiled gradient comparison uses full precision")
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        when=lambda p: p.get("optimizer_backend") != "jit",
+        reason="Compare full-precision Dynamo gradients; checkpoint does not support TorchScript",
+    )
     @pytest.mark.parametrize("stage", ["convolution", "attention"])
     def test_dynamo(self, device, dtype, torch_optimizer, stage):
         if stage == "convolution":
