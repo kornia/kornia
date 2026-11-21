@@ -176,9 +176,13 @@ class AIFI(nn.Module):
 
         # SDPA avoids unused weights in inference. The original math path retains forward AD and
         # higher derivatives, and avoids the Windows torch 2.5 float64 kernel fault (#6614).
+        projection_weight = self.self_attn.in_proj_weight
+        projection_bias = self.self_attn.in_proj_bias
         need_weights = (
             torch.is_grad_enabled()
             or _needs_derivatives(x)
+            or (projection_weight is not None and _needs_derivatives(projection_weight))
+            or (projection_bias is not None and _needs_derivatives(projection_bias))
             or (self._keep_attention_weights and x.dtype == torch.float64 and x.device.type == "cpu")
         )
         attn, _ = self.self_attn(q, k, x, need_weights=need_weights)

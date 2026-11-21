@@ -130,6 +130,40 @@ class TestAIFI(BaseTester):
             _, tangent = torch.func.jvp(model, (image,), (torch.ones_like(image),))
         assert torch.isfinite(tangent).all()
 
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU forward-AD regression")
+    @pytest.mark.parametrize("decoder", [False, True])
+    @pytest.mark.parametrize("parameter_name", ["in_proj_weight", "in_proj_bias"])
+    def test_parameter_only_forward_ad_without_grad(self, device, dtype, decoder, parameter_name):
+        if decoder:
+            model = TransformerDecoderLayer(8, 2, 0.0, 1, 2).to(device, dtype).eval()
+
+            class NoCrossAttention(torch.nn.Module):
+                def forward(self, query, *args):
+                    return torch.zeros_like(query)
+
+            # Isolate self-attention: the unchanged grid_sample cross-attention has no forward-AD formula.
+            model.cross_attn = NoCrossAttention()
+            query = torch.rand(1, 3, 8, device=device, dtype=dtype)
+            args = (query, torch.rand(1, 3, 1, 2, device=device, dtype=dtype), query, [(1, 3)])
+            kwargs = {"query_pos_embed": torch.zeros_like(query)}
+        else:
+            model = AIFI(8, 2, 16).to(device, dtype).eval()
+            args = (torch.rand(1, 8, 2, 2, device=device, dtype=dtype),)
+            kwargs = {}
+        name = "self_attn." + parameter_name
+        parameter = dict(model.named_parameters())[name]
+        direction = torch.linspace(-0.2, 0.3, parameter.numel(), device=device, dtype=dtype).reshape_as(parameter)
+
+        def forward(value):
+            return torch.func.functional_call(model, {name: value}, args, kwargs)
+
+        expected, expected_tangent = torch.func.jvp(forward, (parameter,), (direction,))
+        with torch.no_grad():
+            actual, tangent = torch.func.jvp(forward, (parameter,), (direction,))
+        self.assert_close(actual, expected)
+        self.assert_close(tangent, expected_tangent)
+        assert torch.isfinite(tangent).all()
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = AIFI(8, 2, 16).to(device, dtype).eval()
         image = torch.rand(2, 8, 4, 3, device=device, dtype=dtype)

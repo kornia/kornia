@@ -224,10 +224,14 @@ class TransformerDecoderLayer(nn.Module):
         # self attention
         q = k = tgt + query_pos_embed
         # Keep derivative support and the known Windows torch 2.5 float64 fallback (#6614).
+        projection_weight = self.self_attn.in_proj_weight
+        projection_bias = self.self_attn.in_proj_bias
         need_weights = (
             torch.is_grad_enabled()
             or _needs_derivatives(q)
             or _needs_derivatives(tgt)
+            or (projection_weight is not None and _needs_derivatives(projection_weight))
+            or (projection_bias is not None and _needs_derivatives(projection_bias))
             or (self._keep_attention_weights and tgt.dtype == torch.float64 and tgt.device.type == "cpu")
         )
         out, _ = self.self_attn(q, k, value=tgt, need_weights=need_weights)
