@@ -202,8 +202,12 @@ class TestKMeans(BaseTester):
         assert any(torch.allclose(centers[1], row) for row in x)
 
     @pytest.mark.parametrize("noncontiguous", [False, True])
-    @pytest.mark.parametrize("center_dtype", [torch.float32, torch.float64])
-    def test_unequal_cluster_counts_and_input_gradients(self, device, dtype, noncontiguous, center_dtype):
+    @pytest.mark.parametrize("alternate_center_dtype", [False, True])
+    def test_unequal_cluster_counts_and_input_gradients(self, device, dtype, noncontiguous, alternate_center_dtype):
+        center_dtype = torch.float32
+        if alternate_center_dtype:
+            # MPS has no float64; float16 starting centers still exercise mixed precision with float32 inputs.
+            center_dtype = torch.float16 if device.type == "mps" else torch.float64
         # Three clusters contain 3, 2 and 4 points. Their independent arithmetic means are (0, 3), (10, 2),
         # and (20, 3). For a fixed assignment, each point's derivative is its centroid's upstream / count.
         x = torch.tensor(
