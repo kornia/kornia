@@ -262,6 +262,21 @@ def test_luv_converters_float16_black_are_finite(function):
     assert torch.isfinite(x.grad).all()
 
 
+def test_rgb_to_luv_black_under_float16_autocast(device):
+    """Black has zero lightness and chroma even if autocast lowers the XYZ matrix product."""
+    device_type = torch.device(device).type
+    if device_type not in ("cpu", "cuda"):
+        pytest.skip("Test covers the CPU and CUDA float16 autocast paths.")
+    rgb = torch.zeros(1, 3, 2, 2, device=device, dtype=torch.float32, requires_grad=True)
+
+    with torch.autocast(device_type, dtype=torch.float16):
+        luv = kornia.color.rgb_to_luv(rgb)
+    luv.sum().backward()
+
+    torch.testing.assert_close(luv, torch.zeros_like(luv))
+    assert torch.isfinite(rgb.grad).all()
+
+
 @pytest.mark.parametrize(
     "half_dtype, scale, luv_atol, rgb_atol",
     [
