@@ -367,6 +367,73 @@ class TestSigLip2Builder:
 
 
 class TestSigLip2Model(BaseTester):
+    def test_pair_loss_functional_derivatives(self, device, dtype, model, monkeypatch):
+        # Isolate the pairwise objective from the attention kernels' separate forward-AD support.
+        monkeypatch.setattr(model, "get_image_features", lambda image, **kwargs: image)
+        monkeypatch.setattr(model, "get_text_features", lambda text, **kwargs: text)
+        images = torch.rand(3, 2, device=device, dtype=dtype)
+        texts = torch.rand(3, 2, device=device, dtype=dtype)
+        direction = torch.rand_like(images)
+
+        def loss(image, text):
+            return model(pixel_values=image, input_ids=text, return_loss=True).loss
+
+        primal, tangent = torch.func.jvp(lambda image: loss(image, texts), (images,), (direction,))
+        gradient = torch.func.grad(lambda image: loss(image, texts))(images)
+        self.assert_close(primal, loss(images, texts))
+        self.assert_close(tangent, (gradient * direction).sum())
+        batched_images = torch.stack((images, images * 0.5))
+        batched_texts = torch.stack((texts, texts * 0.75))
+        self.assert_close(
+            torch.vmap(loss)(batched_images, batched_texts),
+            torch.stack([loss(image, text) for image, text in zip(batched_images, batched_texts)]),
+        )
+
+    def test_pair_loss_saved_storage_and_gradients(self, device, dtype, model, monkeypatch):
+        images = torch.tensor([[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]], device=device, dtype=dtype, requires_grad=True)
+        texts = torch.tensor([[0.0, 1.0], [1.0, 0.0], [-0.8, 0.6]], device=device, dtype=dtype, requires_grad=True)
+        monkeypatch.setattr(model, "get_image_features", lambda *args, **kwargs: images)
+        monkeypatch.setattr(model, "get_text_features", lambda *args, **kwargs: texts)
+        with torch.no_grad():
+            model.logit_scale.zero_()
+            model.logit_bias.zero_()
+        pair_storage = set()
+
+        def pack(tensor):
+            if tensor.shape == (3, 3):
+                pair_storage.add(tensor.untyped_storage().data_ptr())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            output = model(pixel_values=images, input_ids=texts, return_loss=True)
+        output.loss.backward()
+        # NumPy float64 reference: x = texts @ images.T; y = eye(3).
+        # loss = logaddexp(0, (1-2*y)*x).sum()/3; g = (1/(1+exp(-x))-y)/3.
+        # d_images = g.T @ texts; d_texts = g @ images.
+        self.assert_close(output.loss, torch.tensor(2.7743807165278693, device=device, dtype=dtype))
+        expected_logits = torch.tensor([[0, 1, 0.8], [1, 0, 0.6], [-0.8, 0.6, 0]], device=device, dtype=dtype)
+        self.assert_close(output.logits_per_text, expected_logits)
+        self.assert_close(output.logits_per_image, expected_logits.T)
+        self.assert_close(
+            images.grad,
+            torch.tensor(
+                [[0.1610127212, -0.1046615629], [-0.3388416817, 0.3728174541], [0.3485521021, 0.1299914937]],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        self.assert_close(
+            texts.grad,
+            torch.tensor(
+                [[-0.0286717704, 0.4276793878], [0.3728174541, 0.0055083483], [0.0033418396, 0.0818854354]],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        # Scale backward keeps unscaled similarities; log-sigmoid keeps its input and buffer.
+        # A fourth dense matrix containing pair labels is unnecessary.
+        assert len(pair_storage) <= 3
+
     """Test suite for SigLip2 model."""
 
     def test_identity_projections(self, device, dtype, config):
