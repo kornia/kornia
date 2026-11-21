@@ -23,6 +23,59 @@ import torch
 
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
+from kornia.models.efficient_vit.nn.norm import LayerNorm2d, build_norm
+from kornia.models.efficient_vit.nn.ops import ConvLayer
+
+from testing.base import BaseTester
+
+
+class TestEfficientViTLayerNorm2d(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision channel cancellation")
+    def test_convolution_norm_keeps_close_channels(self, device, dtype):
+        layer = ConvLayer(2, 2, kernel_size=1, use_bias=False, norm="ln2d", act_func=None).to(device, dtype)
+        with torch.no_grad():
+            layer.conv.weight.copy_(torch.eye(2, device=device, dtype=dtype).reshape(2, 2, 1, 1))
+        delta = torch.finfo(dtype).eps / 2
+        image = torch.tensor([0.5, 0.5 + delta], device=device, dtype=dtype).reshape(1, 2, 1, 1)
+        # NumPy float64: d = 2**-11 for float16, 2**-8 for bfloat16;
+        # expected = array([-d/2, d/2]) / sqrt(d*d/4 + 1e-5).
+        magnitude = 0.0769749805426409 if dtype == torch.float16 else 0.525483824574412
+        expected = torch.tensor([-magnitude, magnitude], device=device, dtype=dtype).reshape_as(image)
+        actual = layer(image)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected)
+
+    def test_bias_disabled(self, device, dtype):
+        norm = build_norm("ln2d", num_features=2, bias=False).to(device, dtype)
+        with torch.no_grad():
+            norm.weight.copy_(torch.tensor([2.0, 0.5], device=device, dtype=dtype))
+        image = torch.tensor([1.0, 3.0], device=device, dtype=dtype).reshape(1, 2, 1, 1)
+        # NumPy float64: array([-1., 1.]) / sqrt(1. + 1e-5) * array([2., .5]).
+        expected = torch.tensor([-1.999990000075, 0.499997500019], device=device, dtype=dtype).reshape_as(image)
+        self.assert_close(norm(image), expected)
+
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="mixed affine/input dtype contract")
+    def test_float32_affine_retains_output_dtype(self, device, dtype):
+        norm = LayerNorm2d(2).to(device)
+        image = torch.tensor([-1.0, 1.0], device=device, dtype=dtype).reshape(1, 2, 1, 1)
+        assert norm(image).dtype == torch.float32
+        assert LayerNorm2d(2, elementwise_affine=False).to(device)(image).dtype == dtype
+
+    @pytest.mark.parametrize("affine", [True, False])
+    def test_gradcheck(self, device, affine):
+        norm = LayerNorm2d(4, elementwise_affine=affine, bias=False).to(device, torch.float64)
+        image = torch.rand(1, 4, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(norm, (image,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        norm = LayerNorm2d(4, bias=False).to(device, dtype)
+        image = torch.rand(2, 4, 3, 2, device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(norm)(image), norm(image))
+
+    def test_jit(self, device, dtype):
+        norm = LayerNorm2d(4, bias=False).to(device, dtype)
+        image = torch.rand(2, 4, 3, 2, device=device, dtype=dtype)
+        self.assert_close(torch.jit.script(norm)(image), norm(image))
 
 
 class _NotAWeight:
