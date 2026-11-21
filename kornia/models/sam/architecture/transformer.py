@@ -28,7 +28,9 @@ import math
 import torch
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _needs_derivatives
 from kornia.models.sam.architecture.common import MLPBlock
 
 
@@ -279,13 +281,14 @@ class Attention(nn.Module):
         k = self._separate_heads(k, self.num_heads)
         v = self._separate_heads(v, self.num_heads)
 
-        # Attention
-        _, _, _, c_per_head = q.shape
-        attn = q @ k.permute(0, 1, 3, 2)  # B x N_heads x N_tokens x N_tokens
-        attn = attn / math.sqrt(c_per_head)
-        attn = attn.softmax(dim=-1)
-
-        # Get output
-        out = attn @ v
+        # Keep the original math path for derivatives, including forward AD inside no_grad.
+        # Ordinary inference can avoid storing the prompt-by-image attention matrices.
+        if torch.is_grad_enabled() or _needs_derivatives(q) or _needs_derivatives(k) or _needs_derivatives(v):
+            _, _, _, c_per_head = q.shape
+            attn = q @ k.permute(0, 1, 3, 2)
+            attn = (attn / math.sqrt(c_per_head)).softmax(dim=-1)
+            out = attn @ v
+        else:
+            out = scaled_dot_product_attention(q, k, v)
         out = self._recombine_heads(out)
         return self.out_proj(out)
