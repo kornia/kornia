@@ -1,0 +1,1 @@
+`HausdorffERLoss` and `HausdorffERLoss3D` reduce CPU erosion workspace by processing neighbourhood views without stacking complete images or volumes. Loss values and prediction gradients are preserved.
