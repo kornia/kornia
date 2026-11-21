@@ -23,12 +23,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
 from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom, PromptEncoder
-from kornia.models.sam.architecture.transformer import TwoWayAttentionBlock, TwoWayTransformer
+from kornia.models.sam.architecture.transformer import Attention, TwoWayAttentionBlock, TwoWayTransformer
 
 from testing.base import BaseTester
 
@@ -41,6 +42,52 @@ def _pad_rb(x, size):
 
 
 class TestSam(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU decoder allocation probe")
+    def test_prompt_batch_decoder_workspace(self, device, dtype):
+        if _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY and dtype == torch.float64:
+            pytest.skip("Windows torch 2.5 float64 retains math attention (#6614).")
+        from torch.utils._python_dispatch import TorchDispatchMode
+
+        model = (
+            Sam(
+                ImageEncoderViT(
+                    img_size=32, patch_size=4, embed_dim=32, depth=1, num_heads=2, out_chans=32, window_size=4
+                ),
+                PromptEncoder(32, (8, 8), (32, 32), mask_in_chans=8),
+                MaskDecoder(
+                    transformer_dim=32,
+                    transformer=TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2),
+                    iou_head_hidden_dim=32,
+                ),
+            )
+            .to(device, dtype)
+            .eval()
+        )
+        scores = []
+        pe_storage = []
+
+        class ScoreProbe(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                if func == torch.ops.aten.bmm.default and output.shape[-2:] in ((30, 64), (64, 30), (30, 30)):
+                    scores.append(output.untyped_storage().nbytes())
+                return output
+
+        def observe_position_storage(module, args):
+            pe_storage.append(args[1].untyped_storage().nbytes())
+
+        handle = model.mask_decoder.transformer.register_forward_pre_hook(observe_position_storage)
+        image = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+        points = torch.rand(4, 24, 2, device=device, dtype=dtype) * 32
+        labels = torch.ones(4, 24, device=device, dtype=torch.long)
+        with ScoreProbe():
+            result = model(image, [{"points": (points, labels)}], True)[0]
+        handle.remove()
+        assert result.logits.shape == (4, 3, 32, 32)
+        assert torch.isfinite(result.logits).all()
+        assert scores == []
+        assert pe_storage == [32 * 8 * 8 * image.element_size()]
+
     @pytest.mark.slow
     def test_smoke(self, device):
         model = Sam.from_config(SamConfig("mobile_sam")).to(device)
@@ -299,6 +346,59 @@ class TestSam(BaseTester):
         self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
         after = [m.running_mean for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
         assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
+
+class TestSamDecoderAttention(BaseTester):
+    def test_reference_values(self, device, dtype):
+        model = Attention(4, 1).to(device, dtype)
+        with torch.no_grad():
+            for layer in (model.q_proj, model.k_proj, model.v_proj, model.out_proj):
+                layer.weight.copy_(torch.eye(4, device=device, dtype=dtype))
+                layer.bias.zero_()
+        q = torch.tensor([[[1.0, 0, 0, 0], [0, 1.0, 0, 0]]], device=device, dtype=dtype)
+        k = torch.cat((torch.eye(4, device=device, dtype=dtype), torch.zeros(1, 4, device=device, dtype=dtype)))[None]
+        v = torch.tensor(
+            [[[1.0, 2, 3, 4], [4, 3, 2, 1], [1, 0, -1, 0], [0, 1, 0, -1], [2, 2, 2, 2]]], device=device, dtype=dtype
+        )
+        # NumPy float64: w = q @ k.T / 2; w = exp(w-w.max(-1, keepdims=True));
+        # expected = (w / w.sum(-1, keepdims=True)) @ v, using the literals above.
+        expected = torch.tensor(
+            [
+                [
+                    [1.531093650445, 1.645937566370, 1.406719048666, 1.521562964592],
+                    [1.875625398222, 1.760781482296, 1.291875132741, 1.177031216815],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        with torch.no_grad():
+            self.assert_close(model(q, k, v), expected)
+
+    def test_gradcheck(self, device):
+        model = Attention(4, 1).to(device, torch.float64)
+        q = torch.rand(1, 2, 4, device=device, dtype=torch.float64, requires_grad=True)
+        k, v = (torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(2))
+        self.gradcheck(model, (q, k, v))
+        gradient = torch.autograd.grad(model(q, k, v).square().sum(), q, create_graph=True)[0]
+        assert torch.isfinite(torch.autograd.grad(gradient.square().sum(), q)[0]).all()
+        with torch.no_grad():
+            _, tangent = torch.func.jvp(model, (q, k, v), tuple(torch.ones_like(t) for t in (q, k, v)))
+        assert torch.isfinite(tangent).all()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        model = Attention(8, 2).to(device, dtype).eval()
+        q = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        k, v = (torch.rand(2, 5, 8, device=device, dtype=dtype) for _ in range(2))
+        with torch.no_grad():
+            self.assert_close(torch_optimizer(model)(q, k, v), model(q, k, v))
+
+    def test_jit(self, device, dtype):
+        model = Attention(8, 2).to(device, dtype).eval()
+        q = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        k, v = (torch.rand(2, 5, 8, device=device, dtype=dtype) for _ in range(2))
+        with torch.no_grad():
+            self.assert_close(torch.jit.script(model)(q, k, v), model(q, k, v))
 
 
 @pytest.mark.parametrize("cls", [TwoWayTransformer, TwoWayAttentionBlock])
