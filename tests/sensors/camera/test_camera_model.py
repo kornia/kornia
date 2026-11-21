@@ -191,12 +191,12 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(unprojected, unproject_points(pixels, depth[..., None], cam.matrix()), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("num_points", [1, 2, 3])
-    def test_wart_batched_intrinsics_differ_from_geometry_4274(self, device, dtype, num_points):
-        # Wart pin for #4274: sensors aligns (B,) intrinsics with the trailing axis of (B, N) points while geometry
-        # inserts a point axis, so with B == N the cameras are silently reassociated, N == 1 projects to a (B, B, 2)
-        # outer broadcast (unproject raises) and other N raise.
+    def test_batched_intrinsics_apply_per_camera_4274(self, device, dtype, num_points):
+        # Camera b maps points[b] for (B, N, 3) points, as the geometry functions do. Before #4274 was repaired, the
+        # (B,) intrinsics aligned with the trailing point axis: B == N silently swapped the cameras, N == 1 broadcast
+        # to (B, B, 2) and other N raised.
         # Hand-computed: camera 0 projects [1, 2, 4] to [3, 4], camera 1 to [4, 8]; at unit depth [9, 10]
-        # unprojects to [1, 2, 1] / [1.5, .75, 1]. Delete or update when #4274 is repaired.
+        # unprojects to [1, 2, 1] / [1.5, .75, 1].
         params = torch.tensor([[8.0, 4.0, 1.0, 2.0], [4.0, 8.0, 3.0, 4.0]], device=device, dtype=dtype)
         cam = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, params)
         points = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype).expand(2, num_points, 3)
@@ -204,31 +204,41 @@ class TestPinholeCamera(BaseTester):
         depth = torch.ones(2, num_points, device=device, dtype=dtype)
         per_camera_projected = torch.tensor([[3.0, 4.0], [4.0, 8.0]], device=device, dtype=dtype)
         per_camera_unprojected = torch.tensor([[1.0, 2.0, 1.0], [1.5, 0.75, 1.0]], device=device, dtype=dtype)
-        geometry_projected = project_points(points, cam.matrix())
-        geometry_unprojected = unproject_points(pixels, depth[..., None], cam.matrix())
-        self.assert_close(
-            geometry_projected, per_camera_projected[:, None].expand(2, num_points, 2), atol=0.0, rtol=0.0
+        projected = cam.project(Vector3(points)).data
+        unprojected = cam.unproject(Vector2(pixels), depth).data
+        self.assert_close(projected, per_camera_projected[:, None].expand(2, num_points, 2), atol=0.0, rtol=0.0)
+        self.assert_close(unprojected, per_camera_unprojected[:, None].expand(2, num_points, 3), atol=0.0, rtol=0.0)
+        self.assert_close(projected, project_points(points, cam.matrix()), atol=0.0, rtol=0.0)
+        self.assert_close(unprojected, unproject_points(pixels, depth[..., None], cam.matrix()), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("num_points", [1, 2, 3])
+    @pytest.mark.parametrize(
+        ("model_type", "distortion"),
+        [
+            (CameraModelType.KANNALA_BRANDT_K3, [0.01, -0.02, 0.005, -0.001]),
+            (CameraModelType.ORTHOGRAPHIC, []),
+            (CameraModelType.BROWN_CONRADY, [0.02, -0.01, 0.001, -0.002, 0.003, 0.0, 0.0, 0.0]),
+        ],
+    )
+    def test_batched_params_apply_per_camera_for_every_model_4274(
+        self, device, dtype, num_points, model_type, distortion
+    ):
+        # Every model maps points[b] with camera b, the same as projecting each camera's points on their own.
+        params = torch.tensor(
+            [[300.0, 310.0, 160.0, 120.0, *distortion], [200.0, 220.0, 150.0, 100.0, *distortion]],
+            device=device,
+            dtype=dtype,
         )
-        self.assert_close(
-            geometry_unprojected, per_camera_unprojected[:, None].expand(2, num_points, 3), atol=0.0, rtol=0.0
-        )
-        if num_points == 2:
-            projected = cam.project(Vector3(points)).data
-            unprojected = cam.unproject(Vector2(pixels), depth).data
-            self.assert_close(projected, per_camera_projected[None].expand(2, 2, 2), atol=0.0, rtol=0.0)
-            self.assert_close(unprojected, per_camera_unprojected[None].expand(2, 2, 3), atol=0.0, rtol=0.0)
-            assert not torch.equal(projected, geometry_projected)
-            assert not torch.equal(unprojected, geometry_unprojected)
-        elif num_points == 1:
-            projected = cam.project(Vector3(points)).data
-            self.assert_close(projected, per_camera_projected[None].expand(2, 2, 2), atol=0.0, rtol=0.0)
-            with pytest.raises(RuntimeError):
-                cam.unproject(Vector2(pixels), depth)
-        else:
-            with pytest.raises(RuntimeError):
-                cam.project(Vector3(points))
-            with pytest.raises(RuntimeError):
-                cam.unproject(Vector2(pixels), depth)
+        cam = CameraModel(ImageSize(240, 320), model_type, params)
+        points = torch.tensor([[0.1, -0.2, 2.0], [0.3, 0.1, 1.5], [-0.2, 0.25, 3.0]], device=device, dtype=dtype)[
+            :num_points
+        ].expand(2, num_points, 3)
+        projected = cam.project(Vector3(points)).data
+        unprojected = cam.unproject(Vector2(projected), points[..., 2]).data
+        for b in range(2):
+            single = CameraModel(ImageSize(240, 320), model_type, params[b])
+            self.assert_close(projected[b], single.project(Vector3(points[b])).data)
+            self.assert_close(unprojected[b], single.unproject(Vector2(projected[b]), points[b, :, 2]).data)
 
     def test_convention_matrix_is_the_three_by_three_intrinsics(self, device, dtype):
         # matrix() (alias K()) is the 3x3 K that kornia.geometry.camera takes, not PinholeCamera's 4x4; the
