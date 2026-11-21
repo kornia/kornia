@@ -36,18 +36,19 @@ def test_get_hanning_kernel2d_3x4(device, dtype):
 
 @pytest.mark.parametrize("default_dtype", [torch.float64, torch.float16, torch.bfloat16])
 def test_get_hanning_kernel1d_without_dtype_follows_the_default_dtype(default_dtype):
-    # dtype=None: the default dtype, with the values of the int64 ramp promoted by the multiplication (#6123). CPU
-    # only: MPS computes that promotion without rounding the ramp to a half default dtype. 4097 taps put ramp values
-    # above what float16 and bfloat16 hold exactly, where building the ramp in the default dtype rounds differently.
+    # dtype=None keeps the default output dtype (#6123). A float64 analytic reference also covers the 4097-tap
+    # integer ramp beyond half precision's exact range, without requiring low-precision intermediate arithmetic.
     previous = torch.get_default_dtype()
     torch.set_default_dtype(default_dtype)
     try:
         kernel = get_hanning_kernel1d(4097)
-        expected = 0.5 - 0.5 * torch.cos(2.0 * math.pi * torch.arange(4097) / 4096.0)
+        expected = (0.5 - 0.5 * torch.cos(2.0 * math.pi * torch.arange(4097, dtype=torch.float64) / 4096.0)).to(
+            default_dtype
+        )
     finally:
         torch.set_default_dtype(previous)
     assert kernel.dtype == default_dtype
-    assert torch.equal(kernel, expected)
+    assert_close(kernel, expected, atol=1e-7, rtol=2 * torch.finfo(default_dtype).eps + 1e-6)
 
 
 class TestConventionsHanningKernels(BaseTester):
@@ -57,7 +58,7 @@ class TestConventionsHanningKernels(BaseTester):
         # numpy.hanning, torch.hann_window(periodic=False): 0.5 - 0.5 cos(2 pi n / (k - 1)), zero at both ends
         n = torch.arange(window_size, dtype=torch.float64)
         expected = (0.5 - 0.5 * torch.cos(2 * math.pi * n / (window_size - 1))).to(device=device, dtype=dtype)
-        half = dtype in (torch.float16, torch.bfloat16)  # the cosine is evaluated in the kernel's dtype
+        half = dtype in (torch.float16, torch.bfloat16)
         self.assert_close(kernel, expected, low_tolerance=half)
         # not normalised: the taps sum to (k - 1) / 2
         total = torch.tensor((window_size - 1) / 2, device=device, dtype=dtype)

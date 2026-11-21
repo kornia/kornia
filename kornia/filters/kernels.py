@@ -1486,6 +1486,7 @@ def get_hanning_kernel1d(
         Both end taps are 0, so only :math:`M - 2` samples carry weight, and the window is not normalized, its taps
         summing to :math:`(M - 1) / 2`. An even size is accepted and is symmetric about :math:`(M - 1) / 2`.
         :ref:`Filtering <filtering-conventions>` names the matching numpy and torch windows.
+        Float16 and bfloat16 windows are evaluated in float32 and rounded once, preserving small edge weights.
 
     Args:
         kernel_size: number of taps, an integer greater than 2.
@@ -1505,13 +1506,15 @@ def get_hanning_kernel1d(
     """
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
-    x = torch.arange(kernel_size, device=device, dtype=dtype)
+    output_dtype = torch.get_default_dtype() if dtype is None else dtype
+    compute_dtype = torch.float32 if output_dtype in (torch.float16, torch.bfloat16) else dtype
+    x = torch.arange(kernel_size, device=device, dtype=compute_dtype)
     if dtype is None:
-        # The int64 ramp is converted to the default dtype explicitly, as the multiplication below promoted it on the
-        # CPU, without the int64-tensor-times-float ``aten.mul.Scalar`` that the torch 2.14 dynamo ONNX exporter cannot
-        # translate with onnxscript 0.7.1.
-        x = x.to(torch.get_default_dtype())
-    return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+        # Convert the default integer ramp before multiplying by a float: the torch 2.14 dynamo ONNX exporter with
+        # onnxscript 0.7.1 cannot translate that int64 ``aten.mul.Scalar``. Half defaults keep float32 arithmetic.
+        x = x.to(compute_dtype if compute_dtype is not None else output_dtype)
+    window = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+    return window.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else window
 
 
 def get_hanning_kernel2d(
