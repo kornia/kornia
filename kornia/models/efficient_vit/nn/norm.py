@@ -41,10 +41,16 @@ class LayerNorm2d(nn.LayerNorm):
             Tensor with the same shape as ``x`` after channel-wise layer
             normalization and optional affine scaling.
         """
-        out = x - torch.mean(x, dim=1, keepdim=True)
+        # Keep the mean and variance in float32 for half inputs: rounding the mean back to half
+        # before centering can erase one side of an ordinary near-constant channel pair.
+        compute = x.float() if x.dtype in (torch.float16, torch.bfloat16) else x
+        out = compute - torch.mean(compute, dim=1, keepdim=True)
         out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
-        if self.elementwise_affine:
-            out = out * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
+        out = out.to(x.dtype)
+        if self.weight is not None:
+            out = out * self.weight.view(1, -1, 1, 1)
+        if self.bias is not None:
+            out = out + self.bias.view(1, -1, 1, 1)
         return out
 
 
