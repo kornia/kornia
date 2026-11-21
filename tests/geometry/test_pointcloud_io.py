@@ -537,3 +537,39 @@ class TestConventionsPointCloudPly(BaseTester):
             self.assert_close(getattr(kornia.geometry, function)(str(path)), points)
             with pytest.raises(TypeError):
                 getattr(kornia.geometry, function)(str(wrong_suffix))
+
+
+class TestPointCloudCPUOutput(BaseTester):
+    @pytest.mark.parametrize("binary", [False, True])
+    @pytest.mark.parametrize("count", [0, 2])
+    def test_loaders_keep_cpu_contract_with_default_device(self, tmp_path, binary, count):
+        # The loaders promise host tensors for both empty and populated files.
+        # A meta default exercises allocation dispatch without requiring a GPU.
+        filename = tmp_path / "default_device.ply"
+        if binary:
+            header = (
+                "ply\nformat binary_little_endian 1.0\n"
+                f"element vertex {count}\n"
+                "property float x\nproperty uchar red\n"
+                "property double y\nproperty short z\nend_header\n"
+            )
+            payload = b"".join(
+                struct.pack("<fBdh", x, 128, y, z) for x, y, z in [(1.5, -2.25, 3), (4.5, 6.25, -7)][:count]
+            )
+            filename.write_bytes(header.encode("ascii") + payload)
+            loader = kornia.geometry.load_pointcloud_ply_binary
+        else:
+            filename.write_text(
+                "ply\nformat ascii 1.0\n"
+                f"element vertex {count}\n"
+                "property float x\nproperty float y\nproperty float z\nend_header\n"
+                + "1.5 -2.25 3\n4.5 6.25 -7\n"
+                * bool(count),
+                encoding="ascii",
+            )
+            loader = kornia.geometry.load_pointcloud_ply
+        with torch.device("meta"):
+            actual = loader(filename)
+        assert actual.device.type == "cpu"
+        expected = torch.tensor([[1.5, -2.25, 3.0], [4.5, 6.25, -7.0]], dtype=torch.float32)[:count]
+        self.assert_close(actual, expected)
