@@ -257,6 +257,8 @@ def gaussian_discrete_erf(
     ``kernel = gaussian_discrete_erf(window_size, sigma)`` returns the Gaussian of standard deviation ``sigma``
     integrated over the unit-wide interval of each tap, as a ``(B, window_size)`` tensor.
 
+    Half-precision kernels are evaluated in float32 and rounded once so small tail weights survive the subtraction.
+
     Args:
         window_size: number of taps, even or odd.
         sigma: non-negative standard deviation in taps, a float or a ``(B, 1)`` tensor. Zero is not defined for an
@@ -272,11 +274,16 @@ def gaussian_discrete_erf(
 
     """
     # Adapted from https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    output_dtype = sigma.dtype if isinstance(sigma, torch.Tensor) else dtype or torch.get_default_dtype()
     if isinstance(sigma, (int, float)):
         _check_kernel_dtype(dtype, "A Gaussian kernel")
-        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
+        compute_dtype = torch.float32 if output_dtype in (torch.float16, torch.bfloat16) else output_dtype
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=compute_dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    if output_dtype in (torch.float16, torch.bfloat16):
+        # Subtracting two half-precision erf values discards representable weights in ordinary Gaussian tails.
+        sigma = sigma.float()
     batch_size = sigma.shape[0]
 
     # Centre the window at (window_size - 1) / 2: the middle tap of an odd window, and halfway between the two
@@ -290,7 +297,8 @@ def gaussian_discrete_erf(
     gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
     gauss = gauss.clamp(min=0)
 
-    return gauss / gauss.sum(-1, keepdim=True)
+    kernel = gauss / gauss.sum(-1, keepdim=True)
+    return kernel.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else kernel
 
 
 def _modified_bessel_0(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
