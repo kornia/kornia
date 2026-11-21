@@ -1075,22 +1075,10 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     X1Y2, X2Y2, X3Y2 = vstack(X1, Y2), vstack(X2, Y2), vstack(X3, Y2)
     X1Y3, X2Y3, X3Y3 = vstack(X1, Y3), vstack(X2, Y3), vstack(X3, Y3)
 
-    F_vec = torch.cat(
-        [
-            X1Y1.det().reshape(-1, 1),
-            X2Y1.det().reshape(-1, 1),
-            X3Y1.det().reshape(-1, 1),
-            X1Y2.det().reshape(-1, 1),
-            X2Y2.det().reshape(-1, 1),
-            X3Y2.det().reshape(-1, 1),
-            X1Y3.det().reshape(-1, 1),
-            X2Y3.det().reshape(-1, 1),
-            X3Y3.det().reshape(-1, 1),
-        ],
-        dim=1,
-    )
-
-    F = F_vec.view(*P1.shape[:-2], 3, 3)
+    # All nine minors have the same shape. One batched factorization avoids nine separate determinant launches;
+    # the last batch axis visits columns of F inside rows, preserving the two-camera convention.
+    minors = torch.stack((X1Y1, X2Y1, X3Y1, X1Y2, X2Y2, X3Y2, X1Y3, X2Y3, X3Y3), dim=-3)
+    F = minors.det().reshape(*P1.shape[:-2], 3, 3)
 
     if input_dtype == torch.float16:
         # F is defined up to scale: divide by the largest absolute entry so it fits float16; F = 0 stays 0.
