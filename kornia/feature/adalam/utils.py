@@ -20,6 +20,8 @@ from typing import Tuple
 
 import torch
 
+from kornia.core.utils import _autocast_disabled
+
 
 def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
     """Return a sequence of the ranges specified by the argument.
@@ -37,13 +39,15 @@ def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
 
 def dist_matrix(d1: torch.Tensor, d2: torch.Tensor, is_normalized: bool = False) -> torch.Tensor:
     """Distance between two tensors."""
-    if is_normalized:
-        return 2 - 2.0 * d1 @ d2.t()
-    x_norm = (d1**2).sum(1).view(-1, 1)
-    y_norm = (d2**2).sum(1).view(1, -1)
-    # print(x_norm, y_norm)
-    return x_norm + y_norm - 2.0 * d1 @ d2.t()
-    # distmat[torch.isnan(distmat)] = np.inf
+    # AdaLAM converts descriptors and coordinates to float32 before matching. An outer autocast region would
+    # still round only the dot product, breaking cancellation with the full-precision norms. Keep the
+    # distance arithmetic in its input dtype.
+    with _autocast_disabled(d1.device.type):
+        if is_normalized:
+            return 2 - 2.0 * d1 @ d2.t()
+        x_norm = (d1**2).sum(1).view(-1, 1)
+        y_norm = (d2**2).sum(1).view(1, -1)
+        return x_norm + y_norm - 2.0 * d1 @ d2.t()
 
 
 def orientation_diff(o1: torch.Tensor, o2: torch.Tensor) -> torch.Tensor:
