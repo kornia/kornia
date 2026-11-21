@@ -50,7 +50,9 @@ def build_ops(batch, device, dtype, do_compile):
     P1 = K @ torch.cat((eye, torch.zeros_like(t)), -1)
     P2 = K @ torch.cat((R, t), -1)
     rows = KorniaRows(device, do_compile)
-    return {"fundamental_from_projections": rows("fundamental_from_projections", fundamental_from_projections, P1, P2)}, rows.compile_failures
+    return {
+        "fundamental_from_projections": rows("fundamental_from_projections", fundamental_from_projections, P1, P2)
+    }, rows.compile_failures
 
 
 def main():
@@ -58,7 +60,9 @@ def main():
     add_flagship_args(parser, ops=("fundamental_from_projections",), batches="1,32,256,1024")
     args = parser.parse_args()
     device, dtype, sync = setup_run(args, opencv=False)
-    meta = start_run("fundamental_from_projections", args, device, units="camera pairs/s", regimes=("public eager camera API",))
+    meta = start_run(
+        "fundamental_from_projections", args, device, units="camera pairs/s", regimes=("public eager camera API",)
+    )
     backends = ["kornia (eager)"] + (["kornia (compiled)"] if args.compile else [])
     results = run_batch_sweep(
         batch_list(args),
