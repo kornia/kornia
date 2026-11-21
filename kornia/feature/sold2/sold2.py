@@ -53,9 +53,10 @@ class SOLD2(nn.Module):
           returns an int64 tensor ``(N_1,)``: for each segment of ``line_seg1``, the index of its match in
           ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
           ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
-        - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
-          without an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has
-          none the call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+        - Known defects: ``match`` samples float16 and bfloat16 descriptor maps in float32 and returns them in their
+          own dtype, since torch's CPU half-precision ``grid_sample`` can return wrong values
+          (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). Only that sampling is covered: SOLD2 as a whole
+          is not supported in half precision (see `#6799 <https://github.com/kornia/kornia/issues/6799>`_).
 
     Args:
         pretrained: If True, download and set pretrained weights to the model, and return it in eval mode; otherwise
