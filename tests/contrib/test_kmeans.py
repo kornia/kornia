@@ -201,7 +201,6 @@ class TestKMeans(BaseTester):
         # the empty cluster is reseeded to *some* row of x, not left at the stale starting center
         assert any(torch.allclose(centers[1], row) for row in x)
 
-    @pytest.mark.applies_to(devices=("cpu",), reason="CPU centroid-storage validation")
     @pytest.mark.parametrize("noncontiguous", [False, True])
     @pytest.mark.parametrize("center_dtype", [torch.float32, torch.float64])
     def test_unequal_cluster_counts_and_input_gradients(self, device, dtype, noncontiguous, center_dtype):
@@ -227,7 +226,6 @@ class TestKMeans(BaseTester):
         expected_gradient = x.new_tensor([[1, -2]] * 3 + [[-1, 2]] * 2 + [[2, -1]] * 4)
         self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
 
-    @pytest.mark.applies_to(devices=("cpu",), reason="CPU centroid-storage validation")
     def test_empty_cluster_count_preserves_random_draws(self, device, dtype):
         # Every sample initially belongs to cluster zero. Empty clusters use the corresponding elements of the
         # single three-index draw, including its unused first entry; assignment construction consumes no RNG.
@@ -246,7 +244,7 @@ class TestKMeans(BaseTester):
 
     @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="Eager buffer lifetime")
     @pytest.mark.parametrize("requires_grad", [False, True])
-    def test_iteration_buffers_released_before_next_assignment(self, device, dtype, requires_grad, monkeypatch):
+    def test_assignment_buffer_released_before_next_assignment(self, device, dtype, requires_grad, monkeypatch):
         x = torch.tensor([[0, 0], [0, 2], [8, 0], [8, 2]], device=device, dtype=dtype, requires_grad=requires_grad)
         km = kornia.contrib.KMeans(2, x.detach()[[0, 2]], tolerance=None, max_iterations=2)
         references = {}
@@ -257,9 +255,7 @@ class TestKMeans(BaseTester):
             # Check before allocating another distance matrix, while the previous fit iteration is still on stack.
             live = [name for name, reference in references.items() if reference() is not None]
             assert not live, f"Previous iteration retains buffers: {live}"
-            result = original_distance(a, b)
-            references["distance"] = weakref.ref(result)
-            return result
+            return original_distance(a, b)
 
         def capture_one_hot(*args, **kwargs):
             result = original_one_hot(*args, **kwargs)

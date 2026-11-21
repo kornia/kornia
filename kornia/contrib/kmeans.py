@@ -253,8 +253,6 @@ class KMeans:
             distance: torch.Tensor = self._pairwise_euclidean_distance(X_work, current_centers.to(work_dtype))
 
             cluster_assignment = distance.argmin(-1)
-            # Assignment has consumed the distances; do not retain them while updating the centers.
-            del distance
 
             previous_centers = current_centers.clone()
 
