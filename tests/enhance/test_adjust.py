@@ -1460,8 +1460,16 @@ class TestEqualize(BaseTester):
         torch._dynamo.reset()
         gradient = torch.func.grad(lambda image: kornia.enhance.equalize(image).sum())
         compiled = torch.compile(gradient, fullgraph=True, backend="eager")
-        with raises_value_check(device, r"expects input values in \[0, 1\]", capfd):
+        # An exception inside compiled torch.func.grad can leave saved-tensor hooks disabled. Keep the expected
+        # failure in an outer context that restores the caller's hook state, including on that error path.
+        with (
+            torch.autograd.graph.disable_saved_tensors_hooks("compiled torch.func.grad value-check test"),
+            raises_value_check(device, r"expects input values in \[0, 1\]", capfd),
+        ):
             _sync(compiled(x).device)
+        # A later checkpoint or saved-tensor-hook test must still be able to install its hooks.
+        with torch.autograd.graph.saved_tensors_hooks(lambda tensor: tensor, lambda tensor: tensor):
+            pass
 
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
