@@ -378,6 +378,29 @@ class TestWunschLineMatcher(BaseTester):
         out = WunschLineMatcher().needleman_wunsch(scores)
         self.assert_close(out, torch.tensor([2.8], device=device, dtype=dtype), low_tolerance=True)
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_half_descriptors_sampled_in_float32(self, dtype, monkeypatch):
+        torch.manual_seed(0)
+        matcher = WunschLineMatcher()
+        segs = torch.tensor([[[100.0, 100.0], [300.0, 400.0]], [[400.0, 500.0], [700.0, 800.0]]])
+        desc = torch.rand(1, 8, 256, 320).to(dtype)
+
+        # reference: the same half-rounded values through the float32 path (computed before the spy is installed)
+        expected = matcher(segs, segs.clone(), desc.float(), desc.float().clone())
+
+        seen = []
+        real = F.grid_sample
+
+        def spy(inp, grid, *a, **k):
+            seen.append((inp.dtype, grid.dtype))
+            return real(inp, grid, *a, **k)
+
+        monkeypatch.setattr(F, "grid_sample", spy)
+        out = matcher(segs, segs.clone(), desc, desc.clone())
+
+        assert seen == [(torch.float32, torch.float32)] * 2
+        assert torch.equal(out, expected)
+
 
 class TestKeypointsToGrid(BaseTester):
     # keypoints_to_grid feeds F.grid_sample(..., align_corners=False) in WunschLineMatcher, so its
