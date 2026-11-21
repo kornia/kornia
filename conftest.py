@@ -989,6 +989,12 @@ def pytest_runtest_protocol(item, nextitem):
         cmd.append(f"--optimizer={optimizer_backend}")
 
     env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
+    if item.get_closest_marker(CUDA_DEVICE_ASSERT_MARKER) is not None:
+        # The kernel's assert message reaches stderr when the failure surfaces at a synchronization. When a later
+        # kernel launch in the block reports the failed context first, as on an RTX 4050 with torch 2.6, the message
+        # is printed only at process exit, after capfd has been read. Blocking launches make the assert surface at
+        # its own launch, so raises_cuda_device_assert always sees the message.
+        env["CUDA_LAUNCH_BLOCKING"] = "1"
     # `-o addopts=` above only clears the ini value; the environment form is inherited and would
     # push the child to -qq, where the summary line the parser relies on is no longer printed.
     env.pop("PYTEST_ADDOPTS", None)
