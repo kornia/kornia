@@ -969,8 +969,8 @@ class TestLinalgConventions(BaseTester):
         point = torch.tensor([[1.5, -0.7]], device=device, dtype=dtype)
         line = torch.tensor([[3.0, 4.0, 10.0]], device=device, dtype=dtype)
         exact = torch.tensor([2.34], device=device, dtype=dtype)
-        # A 1e-9-scaled line flushes to zero in float16, and the squared norm of a 1e3-scaled one overflows it.
-        scales = (1.0, 1e-3, 10.0) if dtype == torch.float16 else (1.0, 1e-9, 1e3)
+        # A 1e-9-scaled line flushes to zero in float16 before it reaches point_line_distance.
+        scales = (1.0, 1e-3, 1e3) if dtype == torch.float16 else (1.0, 1e-9, 1e3)
         for scale in scales:
             self.assert_close(kgl.point_line_distance(point, scale * line), exact)
         singular = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
