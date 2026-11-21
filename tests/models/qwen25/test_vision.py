@@ -20,11 +20,13 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import torch
 
 from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer
+from kornia.models.qwen25.vision import scaled_dot_product_attention
 
 from testing.base import BaseTester
 
@@ -72,6 +74,24 @@ def _save_safetensors(tensors: dict[str, torch.Tensor], path: Path) -> None:
 
 
 class TestQwen25VisionTransformer(BaseTester):
+    def test_local_attention_work_is_bounded_by_window(self, device, dtype):
+        config = _tiny_config(patch_size=2, window_size=8)
+        model = Qwen25VisionTransformer(config).to(device, dtype).eval()
+        # Both image dimensions end in partial windows, and the batch must remain isolated.
+        images = torch.rand(2, 3, 60, 44, device=device, dtype=dtype)
+        with (
+            torch.no_grad(),
+            patch(
+                "kornia.models.qwen25.vision.scaled_dot_product_attention", wraps=scaled_dot_product_attention
+            ) as attention,
+        ):
+            output = model(images)
+        local, full = attention.call_args_list
+        assert local.args[0].shape[-2] <= (config.window_size // config.patch_size) ** 2
+        assert local.args[1].shape[-2] <= (config.window_size // config.patch_size) ** 2
+        assert full.args[0].shape[-2] == 30 * 22
+        assert output.shape == (2, 15 * 11, config.out_hidden_size)
+
     @pytest.mark.parametrize("batch_size", [0, 2])
     def test_smoke(self, batch_size, device, dtype):
         model = Qwen25VisionTransformer(_tiny_config()).to(device, dtype).eval()

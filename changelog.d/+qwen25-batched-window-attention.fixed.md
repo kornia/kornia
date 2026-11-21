@@ -1,0 +1,1 @@
+`Qwen25VisionTransformer` computes local attention in bounded windows, avoiding the image-wide quadratic mask and cross-window attention work while retaining full-attention blocks and output token order.

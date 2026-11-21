@@ -62,6 +62,30 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat((-x2, x1), dim=-1)
 
 
+def _window_attention(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, layout: Tuple[torch.Tensor, torch.Tensor]
+) -> torch.Tensor:
+    """Attend within padded windows, then restore each image's original token order."""
+    indices, restore = layout
+    batch, heads, _, dim = q.shape
+    windows, tokens = indices.shape
+    gather = indices.clamp_min(0).flatten()
+
+    def pack(value: torch.Tensor) -> torch.Tensor:
+        return (
+            value.index_select(2, gather)
+            .reshape(batch, heads, windows, tokens, dim)
+            .transpose(1, 2)
+            .reshape(batch * windows, heads, tokens, dim)
+        )
+
+    # Boundary windows have fewer keys. Padded query outputs are discarded by restore.
+    key_mask = (indices >= 0).repeat(batch, 1).unsqueeze(1).unsqueeze(1)
+    out = scaled_dot_product_attention(pack(q), pack(k), pack(v), attn_mask=key_mask)
+    out = out.reshape(batch, windows, heads, tokens, dim).transpose(1, 2).reshape(batch, heads, windows * tokens, dim)
+    return out.index_select(2, restore)
+
+
 class Qwen25RMSNorm(nn.Module):
     """Root mean square normalization, computed in at least float32.
 
@@ -136,7 +160,12 @@ class Qwen25VisionAttention(nn.Module):
         self.proj = nn.Linear(dim, dim, bias=True)
 
     def forward(
-        self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        window_layout: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         """Attend over the tokens of each image.
 
@@ -145,6 +174,7 @@ class Qwen25VisionAttention(nn.Module):
             cos: Rotary cosine table with shape ``(N, D / H)``.
             sin: Rotary sine table with shape ``(N, D / H)``.
             attn_mask: Optional boolean mask with shape ``(N, N)``, ``True`` where attention is allowed.
+            window_layout: Optional padded window indices and positions restoring the original token order.
 
         Returns:
             Tokens with shape ``(B, N, D)``.
@@ -155,7 +185,11 @@ class Qwen25VisionAttention(nn.Module):
         qf, kf = q.to(compute_dtype), k.to(compute_dtype)
         q = (qf * cos + _rotate_half(qf) * sin).to(x.dtype)
         k = (kf * cos + _rotate_half(kf) * sin).to(x.dtype)
-        out = scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+        out = (
+            scaled_dot_product_attention(q, k, v, attn_mask=attn_mask)
+            if window_layout is None
+            else _window_attention(q, k, v, window_layout)
+        )
         return self.proj(out.transpose(1, 2).reshape(b, n, d))
 
 
@@ -200,7 +234,12 @@ class Qwen25VisionBlock(nn.Module):
         self.mlp = Qwen25VisionMLP(config.hidden_size, config.intermediate_size)
 
     def forward(
-        self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        window_layout: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         """Run one block.
 
@@ -209,11 +248,12 @@ class Qwen25VisionBlock(nn.Module):
             cos: Rotary cosine table with shape ``(N, D / H)``.
             sin: Rotary sine table with shape ``(N, D / H)``.
             attn_mask: Optional boolean attention mask with shape ``(N, N)``.
+            window_layout: Optional padded window indices and positions restoring the original token order.
 
         Returns:
             Tokens with shape ``(B, N, D)``.
         """
-        x = x + self.attn(self.norm1(x), cos, sin, attn_mask)
+        x = x + self.attn(self.norm1(x), cos, sin, attn_mask, window_layout)
         return x + self.mlp(self.norm2(x))
 
 
@@ -257,8 +297,8 @@ class Qwen25VisionTransformer(nn.Module):
 
     - It takes images rather than flattened patches. Each image is repeated over ``temporal_patch_size`` frames,
       which is what the reference image processor does for a still image.
-    - Windowed attention uses a mask over tokens kept in place, instead of reordering the tokens into windows and
-      back. Attention with a rotary embedding is unchanged by permuting the tokens, so the output matches.
+    - Windowed attention batches padded windows and masks only their boundary padding. Tokens are restored to
+      merge order after attention. Attention with a rotary embedding is unchanged by permuting the tokens.
 
     The input must already be resized and normalized as the checkpoint's ``preprocessor_config.json`` describes:
     for the released checkpoints, values in :math:`[0, 1]` normalized with mean ``(0.48145466, 0.4578275,
@@ -296,14 +336,21 @@ class Qwen25VisionTransformer(nn.Module):
         emb = torch.cat((angles, angles), dim=-1)
         return emb.cos(), emb.sin()
 
-    def _window_mask(self, gh: int, gw: int, device: torch.device) -> torch.Tensor:
+    def _window_layout(self, gh: int, gw: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Map merge-ordered tokens into local windows without a quadratic image-wide mask."""
         cfg = self.config
-        patches_per_window = cfg.window_size // cfg.patch_size
-        windows_w = -(-gw // patches_per_window)
-        row_window = torch.arange(gh, device=device) // patches_per_window
-        col_window = torch.arange(gw, device=device) // patches_per_window
-        window = _merge_order(row_window.unsqueeze(1) * windows_w + col_window.unsqueeze(0), cfg.spatial_merge_size)
-        return window.unsqueeze(1) == window.unsqueeze(0)
+        side = cfg.window_size // cfg.patch_size
+        wh, ww = min(side, gh), min(side, gw)
+        nh, nw = -(-gh // wh), -(-gw // ww)
+        merge = cfg.spatial_merge_size
+        raster = torch.arange(gh * gw, device=device)
+        grid = raster.reshape(gh // merge, gw // merge, merge, merge).permute(0, 2, 1, 3).reshape(gh, gw)
+        padded = F.pad(grid, (0, nw * ww - gw, 0, nh * wh - gh), value=-1)
+        indices = padded.reshape(nh, wh, nw, ww).permute(0, 2, 1, 3).reshape(nh * nw, wh * ww)
+        patches = _merge_order(raster.reshape(gh, gw), merge)
+        rows, cols = patches // gw, patches % gw
+        restore = ((rows // wh) * nw + cols // ww) * (wh * ww) + (rows % wh) * ww + cols % ww
+        return indices, restore
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Encode a batch of images into vision tokens.
@@ -327,9 +374,10 @@ class Qwen25VisionTransformer(nn.Module):
         gh, gw = h // cfg.patch_size, w // cfg.patch_size
         x = self.patch_embed(images)
         cos, sin = self._rotary_tables(gh, gw, images.device, _compute_dtype(images.dtype))
-        window_mask = self._window_mask(gh, gw, images.device)
+        needs_windows = any(i not in cfg.fullatt_block_indexes for i in range(cfg.depth))
+        window_layout = self._window_layout(gh, gw, images.device) if needs_windows and gh and gw else None
         for i, block in enumerate(self.blocks):
-            x = block(x, cos, sin, None if i in cfg.fullatt_block_indexes else window_mask)
+            x = block(x, cos, sin, window_layout=None if i in cfg.fullatt_block_indexes else window_layout)
         return self.merger(x)
 
     @classmethod
