@@ -34,6 +34,7 @@ from torch import nn
 
 from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.safetensors import load_safetensors
+from kornia.core.utils import is_autocast_enabled
 
 from .config import Qwen25VisionConfig
 
@@ -89,6 +90,36 @@ class Qwen25RMSNorm(nn.Module):
         return self.weight * h.to(x.dtype)
 
 
+class _StillImageConv3d(nn.Conv3d):
+    """Project a repeated still image without materializing its temporal copies on the CPU."""
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        if (
+            input.device.type == "cpu"
+            and input.dtype in (torch.float32, torch.float64)
+            and not is_autocast_enabled()
+            and input.stride(2) == 0
+            and input.shape[2] == self.kernel_size[0]
+            and input.numel() >= self.weight.numel() // self.kernel_size[0]
+            and self.padding[0] == 0
+            and self.dilation[0] == 1
+            and self.padding_mode == "zeros"
+        ):
+            # Every temporal plane is the same image, so sum the temporal taps before the spatial convolution.
+            # Only fold when the kernel workspace is no larger than the repeated-image copy it replaces.
+            # Keep this inside the projection module so hooks and its checkpoint parameter names are preserved.
+            return F.conv2d(
+                input[:, :, 0],
+                self.weight.sum(2),
+                self.bias,
+                self.stride[1:],
+                self.padding[1:],
+                self.dilation[1:],
+                self.groups,
+            ).unsqueeze(2)
+        return self._conv_forward(input, self.weight, self.bias)
+
+
 class Qwen25VisionPatchEmbed(nn.Module):
     """Patch embedding with a temporal kernel, applied to a still image repeated over time.
 
@@ -101,7 +132,9 @@ class Qwen25VisionPatchEmbed(nn.Module):
         self.temporal_patch_size = config.temporal_patch_size
         self.merge_size = config.spatial_merge_size
         kernel = (config.temporal_patch_size, config.patch_size, config.patch_size)
-        self.proj = nn.Conv3d(config.in_channels, config.hidden_size, kernel_size=kernel, stride=kernel, bias=False)
+        self.proj = _StillImageConv3d(
+            config.in_channels, config.hidden_size, kernel_size=kernel, stride=kernel, bias=False
+        )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Embed every patch of ``images``.
