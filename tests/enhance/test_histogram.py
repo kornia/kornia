@@ -285,6 +285,16 @@ class TestImageHistogram2d(BaseTester):
         self.assert_close(hist, expected_hist)
         self.assert_close(pdf, expected_hist / expected_hist.sum())
 
+    def test_default_bandwidth_of_float16_centers_does_not_overflow(self, device):
+        # The center range, 80000, exceeds the float16 maximum of 65504, so subtracting in the centers' own dtype gave
+        # an infinite spacing and the finite, distinct centers were rejected.
+        centers = torch.tensor([-40000.0, 0.0, 40000.0], device=device, dtype=torch.float16)
+        image = torch.tensor([[-40000.0, -20000.0, 0.0, 40000.0]], device=device, dtype=torch.float32)
+        hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
+        expected, _ = TestImageHistogram2d.fcn(image, bandwidth=40000.0, centers=centers.float(), return_pdf=True)
+        assert torch.isfinite(hist).all()
+        self.assert_close(hist, expected)
+
     def test_rejects_zero_bins_for_automatic_values(self):
         with pytest.raises(ValueError, match="n_bins must be greater than zero"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), 0.0, 1.0, 0)

@@ -257,7 +257,9 @@ def _resolve_bandwidth(
     explicit center has no spacing and keeps the range-based default.
     """
     if centers is not None and centers.numel() > 1 and (bandwidth is None or bandwidth == -1.0):
-        spacing = (centers.max() - centers.min()) / (centers.numel() - 1)
+        # Half-precision centers are promoted first: their range can exceed the float16 maximum.
+        wide = centers.to(torch.promote_types(centers.dtype, torch.float32))
+        spacing = (wide.max() - wide.min()) / (centers.numel() - 1)
         _check_async(
             torch.isfinite(spacing) & (spacing > 0),
             "The bandwidth derived from the bin centers must be finite and greater than zero: pass distinct finite "
