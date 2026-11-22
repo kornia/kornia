@@ -115,6 +115,20 @@ class TestRgbToLuv(BaseTester):
         else:
             self.assert_close(data_out, data)
 
+    def test_black_under_float16_autocast(self, device, dtype):
+        """Black has zero lightness and chroma even if autocast lowers the XYZ matrix product."""
+        if device.type not in ("cpu", "cuda") or dtype != torch.float32:
+            pytest.skip("Test covers float32 inputs under CPU and CUDA float16 autocast.")
+        rgb = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype, requires_grad=True)
+
+        with torch.autocast(device.type, dtype=torch.float16):
+            luv = kornia.color.rgb_to_luv(rgb)
+        luv.sum().backward()
+
+        self.assert_close(luv, torch.zeros_like(luv))
+        assert rgb.grad is not None
+        assert torch.isfinite(rgb.grad).all()
+
     def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -260,21 +274,6 @@ def test_luv_converters_float16_black_are_finite(function):
 
     assert torch.isfinite(output).all()
     assert torch.isfinite(x.grad).all()
-
-
-def test_rgb_to_luv_black_under_float16_autocast(device):
-    """Black has zero lightness and chroma even if autocast lowers the XYZ matrix product."""
-    device_type = torch.device(device).type
-    if device_type not in ("cpu", "cuda"):
-        pytest.skip("Test covers the CPU and CUDA float16 autocast paths.")
-    rgb = torch.zeros(1, 3, 2, 2, device=device, dtype=torch.float32, requires_grad=True)
-
-    with torch.autocast(device_type, dtype=torch.float16):
-        luv = kornia.color.rgb_to_luv(rgb)
-    luv.sum().backward()
-
-    torch.testing.assert_close(luv, torch.zeros_like(luv))
-    assert torch.isfinite(rgb.grad).all()
 
 
 @pytest.mark.parametrize(
