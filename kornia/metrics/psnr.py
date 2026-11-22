@@ -45,7 +45,8 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
           a half-precision image gives a float32 result. Uint8, int8, int16 and int32 tensor data ranges are widened
           to int64 before squaring to avoid overflow, except when the promoted image dtype is float16 or bfloat16,
           which uses float32 range arithmetic.
-        - Float16 and bfloat16 inputs are evaluated in float32 and the result keeps their promoted dtype, also
+        - A float16 or bfloat16 tensor data range is squared in float32 or wider to avoid intermediate overflow.
+        - Float16 and bfloat16 images are evaluated in float32 and the result keeps their promoted dtype, also
           promoted with ``max_val.dtype`` for a tensor range: a float32 tensor range gives a float32 result for
           half-precision images.
 
@@ -87,10 +88,11 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
         target = target.to(torch.float32)
     # Give mse_loss one dtype: on two dtypes it aborts the process on MPS, and its backward raises on torch 2.5.1.
     dtype = torch.promote_types(image.dtype, target.dtype)
-    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    cast_result = dtype in (torch.float16, torch.bfloat16)
+    compute_dtype = torch.float32 if cast_result else dtype
     image, target = image.to(compute_dtype), target.to(compute_dtype)
     result_dtype = dtype
-    if dtype in (torch.float16, torch.bfloat16) and isinstance(max_val, torch.Tensor):
+    if cast_result and isinstance(max_val, torch.Tensor):
         result_dtype = torch.promote_types(dtype, max_val.dtype)
         # Keep the tensor data range's square and division out of half precision too, without narrowing float64.
         max_val = max_val.to(torch.promote_types(compute_dtype, max_val.dtype))
@@ -103,12 +105,17 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
     if isinstance(max_val, torch.Tensor):
         if max_val.dtype in (torch.uint8, torch.int8, torch.int16, torch.int32):
             max_val = max_val.to(torch.int64)
+        elif max_val.dtype in (torch.float16, torch.bfloat16):
+            # The MSE is scalar, so a non-scalar floating range supplies the result dtype.
+            result_dtype = max_val.dtype if max_val.ndim > 0 else dtype
+            cast_result = True
+            max_val = max_val.to(compute_dtype)
         ratio = torch.pow(max_val, 2) / mse_value
     elif isinstance(max_val, int):
         ratio = max_val**2 / mse_value
     else:
         ratio = max_val**2 / mse_value
     result = 10.0 * torch.log10(ratio)
-    if dtype in (torch.float16, torch.bfloat16):
+    if cast_result:
         result = result.to(result_dtype)
     return result.reshape(ratio.shape)

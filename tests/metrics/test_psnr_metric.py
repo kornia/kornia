@@ -244,6 +244,43 @@ class TestPSNRHalfPrecision(BaseTester):
         self.assert_close(max_val.grad, expected_range_grad)
         self.assert_close(image.grad, image.new_tensor([-20 * max_val.numel() / (math.log(10) * 32)]))
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="Covers wider image dtypes with half tensor ranges.")
+    @pytest.mark.parametrize("range_dtype, peak", [(torch.float16, 1023.0), (torch.bfloat16, 1000.0)])
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_convention_psnr_wide_images_with_half_tensor_range(self, device, dtype, range_dtype, peak, scalar_range):
+        image = torch.tensor([0.0, peak], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([1.0, peak - 1.0], device=device, dtype=dtype)
+        values = peak if scalar_range else [peak, 16.0]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)
+        # Each pixel is off by one, so MSE = 1 and PSNR = 20 * log10(max_val).
+        peak64 = max_val.detach().cpu().double()
+        expected = (20 * peak64.log10()).to(device=device, dtype=dtype if scalar_range else range_dtype)
+        actual = kornia.metrics.psnr(image, target, max_val)
+
+        assert actual.shape == max_val.shape
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+        grad_image, grad_range = torch.autograd.grad(actual.sum(), (image, max_val))
+        expected_range_grad = (20 / (math.log(10) * peak64)).to(device=device, dtype=range_dtype)
+        self.assert_close(grad_range, expected_range_grad)
+        scale = 10 * max_val.numel() / math.log(10)
+        self.assert_close(grad_image, image.new_tensor([scale, -scale]), atol=1e-5, rtol=1e-5)
+
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_dynamo_half_tensor_range(self, device, torch_optimizer, scalar_range):
+        image = torch.tensor([0.0, 1023.0], device=device, dtype=torch.float32)
+        target = torch.tensor([1.0, 1022.0], device=device, dtype=torch.float32)
+        peak = torch.full(() if scalar_range else (1,), 1023.0, device=device, dtype=torch.float16)
+        expected = torch.full(
+            peak.shape, 60.1975126742432, device=device, dtype=image.dtype if scalar_range else peak.dtype
+        )
+
+        actual = torch_optimizer(kornia.metrics.psnr)(image, target, peak)
+
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (1.0 / 512, 1.0), (300.0, 512.0)])
     def test_representable_psnr(self, device, dtype, residual, max_val):
         """Finite half-precision PSNR and its loss wrappers match the scalar reference."""
