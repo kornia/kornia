@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.core.exceptions import AsyncCheckError, ShapeError
 
 from testing.base import BaseTester, raises_value_check
@@ -243,8 +243,15 @@ class TestImageHistogram2d(BaseTester):
     @pytest.mark.cuda_device_assert
     def test_explicit_centers_without_spacing_need_a_bandwidth(self, device, dtype, capfd):
         centers = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
-        with raises_value_check(device, "bandwidth derived from the bin centers", capfd, AsyncCheckError):
+        # From torch 2.13 the check on MPS is torch._assert_async: it raises RuntimeError at the next synchronization,
+        # so the block synchronizes itself or the error would surface inside an unrelated later test.
+        async_mps = device.type == "mps" and torch_version_ge(2, 13, 0)
+        with raises_value_check(
+            device, "bandwidth derived from the bin centers", capfd, RuntimeError if async_mps else AsyncCheckError
+        ):
             TestImageHistogram2d.fcn(torch.ones(4, 4, device=device, dtype=dtype), centers=centers)
+            if async_mps:
+                torch.mps.synchronize()
 
     def test_negative_one_bandwidth_with_explicit_centers_does_not_need_a_range(self, device, dtype):
         # With explicit centers the automatic bandwidth is their spacing, so the sentinel does not use min and max.
