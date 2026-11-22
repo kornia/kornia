@@ -295,6 +295,16 @@ class TestImageHistogram2d(BaseTester):
         assert torch.isfinite(hist).all()
         self.assert_close(hist, expected)
 
+    def test_default_bandwidth_of_integer_centers_keeps_float64_precision(self, device):
+        # Rounding these int64 centers to float32 makes them equal, which gave a zero spacing and rejected distinct
+        # centers although a float64 image can represent them.
+        centers = torch.tensor([16777216, 16777217], device=device, dtype=torch.int64)
+        image = torch.tensor([[16777216.0, 16777216.5, 16777217.0]], device=device, dtype=torch.float64)
+        hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
+        expected, _ = TestImageHistogram2d.fcn(image, bandwidth=1.0, centers=centers.double(), return_pdf=True)
+        assert torch.isfinite(hist).all()
+        self.assert_close(hist, expected)
+
     def test_rejects_zero_bins_for_automatic_values(self):
         with pytest.raises(ValueError, match="n_bins must be greater than zero"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), 0.0, 1.0, 0)

@@ -257,8 +257,9 @@ def _resolve_bandwidth(
     explicit center has no spacing and keeps the range-based default.
     """
     if centers is not None and centers.numel() > 1 and (bandwidth is None or bandwidth == -1.0):
-        # Half-precision centers are promoted first: their range can exceed the float16 maximum.
-        wide = centers.to(torch.promote_types(centers.dtype, torch.float32))
+        # Half-precision centers are promoted first: their range can exceed the float16 maximum. Other dtypes keep
+        # their precision, so distinct float64 or integer centers are not rounded together.
+        wide = centers.float() if centers.dtype in (torch.float16, torch.bfloat16) else centers
         spacing = (wide.max() - wide.min()) / (centers.numel() - 1)
         _check_async(
             torch.isfinite(spacing) & (spacing > 0),
