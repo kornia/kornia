@@ -1,0 +1,1 @@
+`enhance.adjust_log` and `AdjustLog` with `inv=False` preserve dark image values with a stable logarithmic formula in native PyTorch. Float16 and bfloat16 forward curves are evaluated in float32 and rounded back before the existing gain and clipping steps, preserving black and white endpoints at unit gain.
