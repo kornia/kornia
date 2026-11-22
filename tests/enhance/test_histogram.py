@@ -297,6 +297,7 @@ class TestImageHistogram2d(BaseTester):
         assert torch.isfinite(hist).all()
         self.assert_close(hist, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_default_bandwidth_of_integer_centers_keeps_float64_precision(self, device):
         # Rounding these int64 centers to float32 makes them equal, which gave a zero spacing and rejected distinct
         # centers although a float64 image can represent them.
