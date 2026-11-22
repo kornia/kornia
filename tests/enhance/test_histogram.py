@@ -291,7 +291,9 @@ class TestImageHistogram2d(BaseTester):
         centers = torch.tensor([-40000.0, 0.0, 40000.0], device=device, dtype=torch.float16)
         image = torch.tensor([[-40000.0, -20000.0, 0.0, 40000.0]], device=device, dtype=torch.float32)
         hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
-        expected, _ = TestImageHistogram2d.fcn(image, bandwidth=40000.0, centers=centers.float(), return_pdf=True)
+        # The spacing is 40000 and the kernel is triangular: the weights are 1 - |x - c| / 40000, so center -40000 gets
+        # 1.0 + 0.5, center 0 gets 0.5 + 1.0 and center 40000 gets 1.0.
+        expected = torch.tensor([1.5, 1.5, 1.0], device=device, dtype=hist.dtype)
         assert torch.isfinite(hist).all()
         self.assert_close(hist, expected)
 
