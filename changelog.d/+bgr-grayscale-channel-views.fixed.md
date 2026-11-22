@@ -1,0 +1,1 @@
+`bgr_to_grayscale` and `BgrToGrayscale` share the RGB grayscale arithmetic through channel views, avoiding a full RGB image copy while preserving floating-point operation order and exact uint8 rounding.

@@ -22,7 +22,6 @@ from typing import ClassVar, Optional
 import torch
 from torch import nn
 
-from kornia.color.rgb import bgr_to_rgb
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _to_device_nonblocking
@@ -113,31 +112,36 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    r, g, b = image.unbind(dim=-3)
+    return _weighted_grayscale(r, g, b, rgb_weights)
+
+
+def _weighted_grayscale(
+    r: torch.Tensor, g: torch.Tensor, b: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    """Weight channel views in RGB order without materializing an RGB image for a BGR input."""
     if rgb_weights is None:
         # 8 bit images: OpenCV's fixed-point COLOR_RGB2GRAY weights, 0.299, 0.587 and 0.114 scaled by 2**15 and
         # summing to 2**15, so a flat grey maps to itself and the result matches cv2.cvtColor bit for bit. A uint8
         # multiply wraps (white came back as 1, pure red as 180), so accumulate in int32 and round back.
-        if image.dtype == torch.uint8:
-            r, g, b = image.unbind(dim=-3)
+        if r.dtype == torch.uint8:
             acc = r.to(torch.int32) * 9798 + g.to(torch.int32) * 19235 + b.to(torch.int32) * 3735
             return ((acc + 16384) // 32768).to(dtype=torch.uint8).unsqueeze(-3)
         # floating point images
-        if image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
+        if r.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
             # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits
             # for every queued kernel. The weights round from the same doubles either way. TorchScript, which cannot
             # compile ``_constant_tensor``, keeps the host literal.
             if torch.jit.is_scripting():
-                rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+                rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=r.device, dtype=r.dtype)
             else:
-                rgb_weights = _device_literal([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+                rgb_weights = _device_literal([0.299, 0.587, 0.114], device=r.device, dtype=r.dtype)
         else:
-            raise TypeError(f"Unknown data type: {image.dtype}")
+            raise TypeError(f"Unknown data type: {r.dtype}")
     else:
         # is torch.Tensor that we make sure is in the same device/dtype
-        rgb_weights = _to_device_nonblocking(rgb_weights, image.device, image.dtype)
+        rgb_weights = _to_device_nonblocking(rgb_weights, r.device, r.dtype)
 
-    # Unpack channels (View, don't copy)
-    r, g, b = image.unbind(dim=-3)
     w_r, w_g, w_b = rgb_weights.unbind()
 
     # Accumulate results
@@ -178,8 +182,8 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    image_rgb: torch.Tensor = bgr_to_rgb(image)
-    return rgb_to_grayscale(image_rgb)
+    b, g, r = image.unbind(dim=-3)
+    return _weighted_grayscale(r, g, b)
 
 
 class GrayscaleToRgb(nn.Module):
