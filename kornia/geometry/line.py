@@ -87,9 +87,9 @@ class ParametrizedLine(nn.Module):
           ``N`` points per line. ``(B, N, D)`` is not ``N`` points per line: it raises unless ``N`` is ``B`` or 1.
           With ``N = B``, line ``j`` meets ``point[:, j]``; with ``N = 1``, every line meets every point and the
           result is ``(B, B)``.
-        - :meth:`intersect` returns ``(lambda, point)`` with ``point = origin + lambda * direction``, where each
-          step scales the full direction vector. For steps with multiple batch axes, use the returned points or
-          reconstruct them with ``origin + lambda[..., None] * direction``. The plane's normal need not be unit.
+        - :meth:`intersect` returns ``(lambda, point)``, where each step scales the full direction vector. For a
+          scalar step, reconstruct the point with ``origin + lambda * direction``. For any batched step, append
+          a coordinate axis with ``origin + lambda[..., None] * direction``. The plane's normal need not be unit.
           It takes a 3D line. A batch of ``B`` lines meets one plane, a batch of ``B`` planes or a batch of one,
           and one unbatched line or a batch of one meets a batch of planes of any size.
         - ``origin`` and ``direction`` are registered module state, so ``state_dict()`` and ``.to()`` include them.
