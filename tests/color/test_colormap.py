@@ -166,21 +166,43 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(dtypes=("float64",), reason="the value sits inside a bin edge that float32 cannot separate")
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_convention_apply_colormap_6894_float64_bins(self, device, dtype, as_module):
+        """Look a double pixel up in double, so a value just below a boundary keeps its bin."""
+        # floor(x * N) with x = 0.5 - 2**-40: the neighbours of 0.5 are one float32 apart, so a float32 lookup
+        # cannot tell 0.5 - 2**-40 from 0.5 and puts both on palette entry 1 instead of 0.
+        image = torch.tensor([[[0.5 - 2**-40, 0.5, 0.5 + 2**-40]]], device=device, dtype=dtype)
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=2, device=device, dtype=dtype)
+        op = ApplyColorMap(cm) if as_module else apply_colormap
+        args = (image,) if as_module else (image, cm)
+        expected = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+
+        actual = op(*args)
+
+        self.assert_close(actual[0, 0, 0], expected, rtol=0.0, atol=0.0)
+
     @pytest.mark.parametrize("as_module", [False, True])
     @pytest.mark.parametrize(
-        "num_colors, edges, expected",
+        "num_colors, edges, expected, expected_float64",
         [
-            (1, [85.0, 170.0], [0, 0, 0, 0, 0, 0]),
-            (3, [85.0, 170.0], [0, 1, 1, 1, 2, 2]),
-            (7, [182.14285278320312], [4, 4, 5]),
-            (64, [63.75, 127.5], [15, 16, 16, 31, 32, 32]),
-            (256, [63.75, 127.5], [63, 64, 64, 127, 128, 128]),
+            (1, [85.0, 170.0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]),
+            (3, [85.0, 170.0], [0, 1, 1, 1, 2, 2], [0, 1, 1, 1, 2, 2]),
+            (7, [182.14285278320312], [4, 4, 5], [4, 4, 4]),
+            (64, [63.75, 127.5], [15, 16, 16, 31, 32, 32], [15, 16, 16, 31, 32, 32]),
+            (256, [63.75, 127.5], [63, 64, 64, 127, 128, 128], [63, 64, 64, 127, 128, 128]),
         ],
     )
-    def test_dynamo_bin_edges_6656(self, device, dtype, torch_optimizer, num_colors, edges, expected, as_module):
+    def test_dynamo_bin_edges_6656(
+        self, device, dtype, torch_optimizer, num_colors, edges, expected, expected_float64, as_module
+    ):
         """Preserve eager bin selection at edges, neighboring values, and nonfinite inputs."""
-        # Expected indices follow float32 divide-then-multiply rounding.
-        # Derived using np.searchsorted(np.arange(1, N), np.float32(v / 255) * N, side="right").
+        # Expected indices follow the dtype's own divide-then-multiply rounding: a float32 input is looked
+        # up in float32, and a float64 input in float64 (#6894), so only that dtype reaches the bin below.
+        # Derived using np.searchsorted(np.arange(1, N), np.float64(v / 255) * N, side="right") for the
+        # float64 column and its np.float32 counterpart for the others.
+        if dtype == torch.float64:
+            expected = expected_float64
         edges = torch.tensor(edges, dtype=dtype)
         values = torch.stack(
             (
@@ -190,8 +212,6 @@ class TestApplyColorMap(BaseTester):
             ),
             dim=-1,
         ).flatten()
-        if dtype == torch.float64:
-            expected = [index for index in expected[1::3] for _ in range(3)]
         values = torch.cat(
             (values, values.new_tensor([-torch.inf, -1.0, -0.0, 0.0, 255.0, 300.0, torch.inf, torch.nan]))
         )
