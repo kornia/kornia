@@ -879,6 +879,39 @@ class TestCropByIndices(BaseTester):
         expected_gradient[..., 1:4, 2:6] = weights
         self.assert_close(gradient, expected_gradient, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic", "nearest"])
+    def test_export_matches_eager(self, interpolation, device, dtype):
+        # Export captures the same gather as torch.compile, so a box that is not exactly ``size`` pixels is resized as
+        # in eager mode; the warp it used before resampled the box with align_corners=True.
+        crop_by_indices = kornia.geometry.transform.crop_by_indices
+
+        class Crop(torch.nn.Module):
+            def forward(self, image, box):
+                return crop_by_indices(image, box, size=(5, 6), interpolation=interpolation)
+
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        traced = torch.tensor([[[2, 3], [11, 3], [11, 10], [2, 10]]] * 2, device=device, dtype=dtype)
+        other = torch.tensor(
+            [[[0, 0], [13, 0], [13, 8], [0, 8]], [[5, 2], [19, 2], [19, 15], [5, 15]]], device=device, dtype=dtype
+        )
+        exported = torch.export.export(Crop(), (image, traced)).module()
+        self.assert_close(
+            exported(image, other), crop_by_indices(image, other, size=(5, 6), interpolation=interpolation)
+        )
+
+    def test_export_flag_during_graph_capture_keeps_eager_values(self, monkeypatch, device, dtype):
+        # Some torch releases report is_exporting() as true during a torch.compile capture; the crop must match eager.
+        from kornia.geometry.transform import crop2d
+
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        box = torch.tensor(
+            [[[0, 0], [13, 0], [13, 8], [0, 8]], [[5, 2], [19, 2], [19, 15], [5, 15]]], device=device, dtype=dtype
+        )
+        expected = crop2d.crop_by_indices(image, box, size=(5, 6))
+        monkeypatch.setattr(crop2d, "is_compiling", lambda: True)
+        monkeypatch.setattr(crop2d, "is_exporting", lambda: True)
+        self.assert_close(crop2d.crop_by_indices(image, box, size=(5, 6)), expected)
+
     def test_uniform_exact_size_avoids_per_row_slices_4531(self, device, dtype):
         inp = torch.rand(4, 2, 8, 9, device=device, dtype=dtype)
         box = torch.tensor([[[2, 1], [5, 1], [5, 3], [2, 3]]], device=device, dtype=dtype).expand(4, -1, -1)
