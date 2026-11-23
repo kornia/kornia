@@ -1,0 +1,1 @@
+`apply_colormap` and `ApplyColorMap` no longer round float64 inputs to float32 before the palette lookup, so a value just below a bin edge now selects the lower bin.

@@ -252,6 +252,14 @@ class TestApplyColorMap(BaseTester):
         expected = [0, 0, 1, 1, 2, 7, 8, 14, 15, 15]
         self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
 
+    def test_float64_bin_edge_not_rounded_up(self, device):
+        # A float64 value just below a bin edge must not be rounded onto the edge by a float32 cast.
+        image = torch.tensor([[[0.5 - 2**-40, 0.5, 0.5 + 2**-40]]], device=device, dtype=torch.float64)
+        cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=2, device=device, dtype=torch.float64)
+        actual = apply_colormap(image, cm)
+        expected = [0, 1, 1]
+        self.assert_close(actual[0, 0, 0], cm.colors[0, expected], rtol=0.0, atol=0.0)
+
     def test_outside_the_range_selects_the_ends_6622(self, device, dtype):
         # The rule stops at the ends, and a NaN stays on the last entry, as it did before the equal bins.
         cm = ColorMap(base=[[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]], num_colors=4, device=device, dtype=dtype)

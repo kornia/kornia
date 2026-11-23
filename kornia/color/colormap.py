@@ -272,12 +272,14 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
         # The tensor-valued condition keeps range selection compile-safe and independent
         # of other samples and channels. `all` rather than `amax`, which refuses a channel without pixels;
         # a NaN selects 255 either way.
+        # float64 keeps its precision, so a value just below a bin edge is not rounded onto the edge.
+        compute_dtype = torch.float64 if input_tensor.dtype == torch.float64 else torch.float32
         max_value = torch.where(
             (input_tensor <= 1.0).all(dim=-1, keepdim=True),
-            torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
-            torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
+            torch.tensor(1.0, device=input_tensor.device, dtype=compute_dtype),
+            torch.tensor(255.0, device=input_tensor.device, dtype=compute_dtype),
         )
-        input_tensor = input_tensor.float()
+        input_tensor = input_tensor.to(compute_dtype)
         # Compiled CUDA division can misclassify colormap bin edges (#6656).
         # Use addcdiv for precise division while preserving eager and ONNX behavior.
         if torch.compiler.is_compiling():
