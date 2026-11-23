@@ -190,11 +190,32 @@ def test_committed_digest_is_fresh(tmp_path: Path) -> None:
     results_root = generate_benchmarks.RESULTS
     if not any(results_root.rglob("*.json")):
         pytest.skip("no committed benchmark results")
-    committed = generate_benchmarks.LLMS_FULL
+    committed = generate_benchmarks.LLMS_FULL.read_bytes()
     copy = tmp_path / "llms-full.txt"
-    copy.write_text(committed.read_text())
+    copy.write_bytes(committed)
     generate_benchmarks.refresh_llms(copy, results_root)
-    assert copy.read_bytes() == committed.read_bytes()
+    # Git may check the file out with CRLF (core.autocrlf on Windows); the repository and the generator use LF.
+    assert copy.read_bytes() == committed.replace(b"\r\n", b"\n")
+
+
+def test_refresh_llms_keeps_utf8_and_lf(tmp_path: Path) -> None:
+    # Not ASCII and not cp1252: on Windows the default read and write encoding is the locale code page.
+    llms = tmp_path / "llms-full.txt"
+    llms.write_bytes("Łódź → x\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n".encode())
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    raw = llms.read_bytes()
+    assert raw.startswith("Łódź → x\n".encode())
+    assert b"\r" not in raw
+
+
+def test_main_writes_utf8_with_lf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The docs build runs main() on every platform; the committed results render "±" and "·".
+    monkeypatch.setattr(generate_benchmarks, "OUT", tmp_path / "performance.rst")
+    monkeypatch.setattr(generate_benchmarks, "HERO_OUT", tmp_path / "_generated" / "hero-benchmark.html")
+    generate_benchmarks.main()
+    results = generate_benchmarks.RESULTS
+    assert generate_benchmarks.OUT.read_bytes() == generate_benchmarks.render_page(results).encode()
+    assert generate_benchmarks.HERO_OUT.read_bytes() == generate_benchmarks.render_hero_svg(results).encode()
 
 
 def test_latest_version_tolerates_digitless_dirs() -> None:
