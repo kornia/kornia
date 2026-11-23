@@ -654,11 +654,11 @@ def crop_by_indices(
         coordinates cannot be read back to Python. This needs ``size``. The calls that
         :func:`torch.compile` crops by a gather (see the note above) are captured as the same
         gather, which keeps the box coordinates dynamic and matches the eager result up to float
-        rounding. Any other call is captured as the same warp as :func:`crop_and_resize`
-        (``align_corners=True``): a box that is exactly ``size`` pixels (what
-        :class:`~kornia.augmentation.RandomCrop` and :class:`CenterCrop2D` produce) is reproduced
-        exactly, any other box is resampled to ``size`` with ``align_corners=True`` regardless of
-        ``shape_compensation`` and ``align_corners``. Without ``size`` the eager path is kept: it
+        rounding; :class:`CenterCrop2D` in its default mode is one of them. Any other call is
+        captured as the same warp as :func:`crop_and_resize` (``align_corners=True``): a box that
+        is exactly ``size`` pixels is reproduced up to float rounding, any other box is resampled
+        to ``size`` with ``align_corners=True`` regardless of ``shape_compensation`` and
+        ``align_corners``. Without ``size`` the eager path is kept: it
         reads the box coordinates back to Python, which breaks the graph under
         :func:`torch.compile` and is rejected by ``torch.export`` as data-dependent.
 
