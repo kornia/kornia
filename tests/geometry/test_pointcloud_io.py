@@ -19,6 +19,7 @@ import os
 import struct
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
@@ -540,6 +541,18 @@ class TestConventionsPointCloudPly(BaseTester):
 
 
 class TestMixedBinaryPointCloudBuffer(BaseTester):
+    @pytest.mark.parametrize("endian, fmt", [("<", "binary_little_endian"), (">", "binary_big_endian")])
+    def test_mixed_float64_underflow_ignores_caller_numpy_policy(self, tmp_path, endian, fmt):
+        filename = tmp_path / "mixed_underflow.ply"
+        props = "property double x\nproperty uchar red\nproperty double y\nproperty double z\n"
+        filename.write_bytes(_ply_header(fmt, 1, props) + struct.pack(endian + "dBdd", 1e-300, 128, -1e-300, 1.0))
+        # Float64 values below float32's range round to zero, as in the torch conversion path.
+        expected = torch.tensor([[0.0, -0.0, 1.0]], dtype=torch.float32)
+        with np.errstate(under="raise"):
+            actual = kornia.geometry.load_pointcloud_ply_binary(filename)
+            assert np.geterr()["under"] == "raise"
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("endian, fmt", [("<", "binary_little_endian"), (">", "binary_big_endian")])
     @pytest.mark.parametrize(
         "scalar, code, first, second",

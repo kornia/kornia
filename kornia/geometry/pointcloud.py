@@ -496,7 +496,7 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
     table = np.frombuffer(data, dtype=layout, count=vertex.count)
     points = np.empty((vertex.count, 3), dtype=np.float32)
     # Match torch's conversion to float32 for double values outside its range.
-    with np.errstate(over="ignore", invalid="ignore"):
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
         for column, index in enumerate(xyz):
             points[:, column] = table[f"p{index}"]
     return torch.from_numpy(points)
