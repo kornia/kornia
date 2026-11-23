@@ -118,19 +118,25 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     return transformed_boxes.view_as(boxes)
 
 
-def _pixel_centre_matrix_to_edge_frame(M: torch.Tensor) -> torch.Tensor:
+def _pixel_centre_matrix_to_edge_frame(M: torch.Tensor, boxes_dtype: torch.dtype) -> torch.Tensor:
     r"""Express a matrix of the pixel-centre frame in the edge frame of exclusive box vertices.
 
     kornia's image matrices map pixel centres, with pixel ``i`` centred at ``i``. Exclusive box vertices are edges,
     with pixel ``i`` spanning ``[i, i + 1)``, so a vertex ``e`` is the point ``e - 1/2`` of the pixel-centre frame. The
     same image transform on the vertices is :math:`T(+\tfrac{1}{2})\, M\, T(-\tfrac{1}{2})`. It works for any
-    ``(..., D + 1, D + 1)`` homogeneous matrix: 2D boxes, 3D boxes, affine and perspective alike. It is exact for flips,
-    quarter turns and integer translations, which keep the same numbers in both frames.
+    ``(..., D + 1, D + 1)`` homogeneous matrix: affine and perspective alike. It is exact for flips, quarter turns and
+    integer translations, which keep the same numbers in both frames.
+
+    The result is float64 when ``M`` or ``boxes_dtype`` is, and float32 otherwise: in half precision the half-pixel
+    terms round, and the translation ``257`` of a bfloat16 flip of a 257-pixel image becomes ``256``.
+    :func:`~kornia.geometry.linalg.transform_points` then applies it in that dtype and returns ``boxes_dtype``.
     """
     M = _cast_to_floating_point(M)
+    M = M.to(torch.promote_types(torch.promote_types(M.dtype, boxes_dtype), torch.float32))
     # The product in closed form, with elementwise operations only: autocast would run a matmul in reduced precision
     # and round the matrix itself. With M = [[A, b], [c, s]] and h = (1/2, ..., 1/2), the conjugate is
-    # [[A + h c, b - A h + h (s - c h)], [c, s - c h]].
+    # [[A + h c, b - A h + h (s - c h)], [c, s - c h]]. Its operands are float32 or float64, which the ``torch.cat``
+    # below accepts in every autocast region.
     linear, translation = M[..., :-1, :-1], M[..., :-1, -1:]
     projective, scale = M[..., -1:, :-1], M[..., -1:, -1:]
     scale_out = scale - 0.5 * projective.sum(dim=-1, keepdim=True)
@@ -142,14 +148,19 @@ def _pixel_centre_matrix_to_edge_frame(M: torch.Tensor) -> torch.Tensor:
 def _corners_to_polygons(
     xmin: torch.Tensor, ymin: torch.Tensor, xmax: torch.Tensor, ymax: torch.Tensor
 ) -> torch.Tensor:
-    """Build ``(B, N, 4, 2)`` clockwise quadrilaterals from the corner coordinates of axis-aligned boxes."""
+    """Build ``(B, N, 4, 2)`` clockwise quadrilaterals from the corner coordinates of axis-aligned boxes.
+
+    The vertices are written into slots of one allocation in the dtype of ``xmin``, as :func:`_boxes_to_polygons`
+    does: ``torch.stack`` is on autocast's promote list, which raises for a float16 input inside a bfloat16 region.
+    """
     if not xmin.ndim == ymin.ndim == xmax.ndim == ymax.ndim == 2:
         raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
-    top_left = torch.stack((xmin, ymin), dim=-1)
-    top_right = torch.stack((xmax, ymin), dim=-1)
-    bottom_right = torch.stack((xmax, ymax), dim=-1)
-    bottom_left = torch.stack((xmin, ymax), dim=-1)
-    return torch.stack((top_left, top_right, bottom_right, bottom_left), dim=-2)
+    polygons = xmin.new_empty((xmin.shape[0], xmin.shape[1], 4, 2))
+    polygons[..., 0::3, 0] = xmin.unsqueeze(-1)  # top-left, bottom-left
+    polygons[..., 1:3, 0] = xmax.unsqueeze(-1)  # top-right, bottom-right
+    polygons[..., :2, 1] = ymin.unsqueeze(-1)  # top-left, top-right
+    polygons[..., 2:, 1] = ymax.unsqueeze(-1)  # bottom-right, bottom-left
+    return polygons
 
 
 def _shift_far_vertices(quadrilaterals: torch.Tensor, shift: float) -> torch.Tensor:
@@ -184,30 +195,73 @@ def _boxes_to_polygons(
     return polygons
 
 
-def _validate_box_values(boxes: torch.Tensor, width: torch.Tensor, height: torch.Tensor) -> None:
-    """Raise the first of the non-finite, width and height errors, reading all three checks in one host transfer.
+def _validate_box_values(
+    boxes: torch.Tensor,
+    width: torch.Tensor,
+    height: torch.Tensor,
+    stored: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+    allow_empty: bool = False,
+) -> None:
+    """Raise the first of the non-finite, extent and stored-extent errors, reading every check in one host transfer.
 
-    The three reductions run on the device of ``boxes`` and come back together, so a CUDA box costs one device
-    synchronization instead of three. The errors, their messages and their order are those of the separate checks.
+    The reductions run on the device of ``boxes`` and come back together, so a CUDA box costs one device
+    synchronization instead of several. ``width`` and ``height`` are the extents the input gives; ``allow_empty``
+    accepts zero ones, and negative ones always raise. ``stored`` holds the width and height of the corners built from
+    them in the dtype of ``boxes``: a positive extent that rounds to zero there, such as width 1 at ``x = 256`` in
+    bfloat16, raises instead of storing an empty box.
     """
-    non_finite, bad_width, bad_height = torch.stack(
-        ((~torch.isfinite(boxes)).any(), (width <= 0).any(), (height <= 0).any())
-    ).tolist()
+    if allow_empty:
+        bad_width, bad_height = width < 0, height < 0
+    else:
+        bad_width, bad_height = width <= 0, height <= 0
+    checks = [(~torch.isfinite(boxes)).any(), bad_width.any(), bad_height.any()]
+    if stored is not None:
+        checks.append((((stored[0] <= 0) & (width > 0)) | ((stored[1] <= 0) & (height > 0))).any())
+    non_finite, bad_width_any, bad_height_any, *collapsed = torch.stack(checks).tolist()
     if non_finite:
         raise ValueError("Some boxes have non-finite coordinates.")
-    if bad_width:
-        raise ValueError("Some boxes have negative widths or 0.")
-    if bad_height:
-        raise ValueError("Some boxes have negative heights or 0.")
+    if bad_width_any:
+        raise ValueError("Some boxes have negative widths." if allow_empty else "Some boxes have negative widths or 0.")
+    if bad_height_any:
+        raise ValueError(
+            "Some boxes have negative heights." if allow_empty else "Some boxes have negative heights or 0."
+        )
+    if collapsed and collapsed[0]:
+        raise ValueError(
+            f"Some boxes have a positive extent that rounds to 0 in {boxes.dtype} at their position; import them in"
+            " float32."
+        )
+
+
+def _exclusive_far_corner(
+    boxes: torch.Tensor, mode: str, width: torch.Tensor, height: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the exclusive far corner ``(xmax, ymax)`` of ``'xy*'`` boxes, in their dtype.
+
+    ``x + 1`` and ``x + w`` round there as torch rounds them; :func:`_validate_box_values` rejects an extent that
+    rounds to zero.
+    """
+    if mode == "xyxy":
+        # Taken as given, not rebuilt from the extent, so fractional boxes round-trip exactly.
+        return boxes[..., 2], boxes[..., 3]
+    if mode == "xyxy_plus":
+        return boxes[..., 2] + 1, boxes[..., 3] + 1
+    return boxes[..., 0] + width, boxes[..., 1] + height
 
 
 def _boxes_to_quadrilaterals(
-    boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True, inclusive: bool = False
+    boxes: torch.Tensor,
+    mode: str = "xyxy",
+    validate_boxes: bool = True,
+    inclusive: bool = False,
+    allow_empty: bool = False,
 ) -> torch.Tensor:
     """Convert boxes in ``mode`` to stored quadrilaterals: exclusive vertices, or inclusive ones with ``inclusive``.
 
     ``inclusive=True`` builds the legacy inclusive storage that the bare ``"bbox"`` and ``"bbox_xyxy"`` tensor keys of
     :class:`~kornia.augmentation.container.AugmentationSequential` still use, with the arithmetic it always had.
+    ``allow_empty=True`` accepts zero extents in the ``'xy*'`` modes, as the container does for the boxes that
+    clipping emptied; see :func:`_validate_box_values`.
     """
     mode = mode.lower()
 
@@ -251,21 +305,20 @@ def _boxes_to_quadrilaterals(
         else:
             raise ValueError(f"Unknown mode {mode}")
 
+        xmin, ymin = boxes[..., 0], boxes[..., 1]
+        # The legacy inclusive storage builds its corners from the extents instead.
+        far = None if inclusive else _exclusive_far_corner(boxes, mode, width, height)
+
         # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
         # torch.export).
         if validate_boxes and not is_compiling():
-            _validate_box_values(boxes, width, height)
+            stored = None if far is None else (far[0] - xmin, far[1] - ymin)
+            _validate_box_values(boxes, width, height, stored, allow_empty=allow_empty)
 
-        xmin, ymin = boxes[..., 0], boxes[..., 1]
-        if inclusive:
+        if far is None:
             quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
-        elif mode == "xyxy":
-            # The far corner is taken as given, not rebuilt from the extent, so fractional boxes round-trip exactly.
-            quadrilaterals = _corners_to_polygons(xmin, ymin, boxes[..., 2], boxes[..., 3])
-        elif mode == "xyxy_plus":
-            quadrilaterals = _corners_to_polygons(xmin, ymin, boxes[..., 2] + 1, boxes[..., 3] + 1)
         else:
-            quadrilaterals = _corners_to_polygons(xmin, ymin, xmin + width, ymin + height)
+            quadrilaterals = _corners_to_polygons(xmin, ymin, far[0], far[1])
     else:
         raise ValueError(f"Unknown mode {mode}")
 
@@ -340,12 +393,19 @@ def _boxes3d_to_polygons3d(
 
 
 def _corners3d_to_hexahedrons(lower: torch.Tensor, upper: torch.Tensor) -> torch.Tensor:
-    """Build ``(B, N, 8, 3)`` hexahedrons, in the :class:`Boxes3D` vertex order, from ``(B, N, 3)`` corner pairs."""
-    x0, y0, z0 = lower.unbind(-1)
-    x1, y1, z1 = upper.unbind(-1)
-    front = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)]
-    back = [(x, y, z1) for x, y, _ in front]
-    return torch.stack([torch.stack(vertex, dim=-1) for vertex in front + back], dim=-2)
+    """Build ``(B, N, 8, 3)`` hexahedrons, in the :class:`Boxes3D` vertex order, from ``(B, N, 3)`` corner pairs.
+
+    The front face (at ``lower`` z) and the back face each take the clockwise order of :func:`_corners_to_polygons`,
+    written into slots of one allocation for the same autocast reason.
+    """
+    faces = lower.new_empty((lower.shape[0], lower.shape[1], 2, 4, 3))
+    faces[..., 0::3, 0] = lower[..., None, None, 0]  # left
+    faces[..., 1:3, 0] = upper[..., None, None, 0]  # right
+    faces[..., :2, 1] = lower[..., None, None, 1]  # top
+    faces[..., 2:, 1] = upper[..., None, None, 1]  # bottom
+    faces[..., 0, :, 2] = lower[..., None, 2]  # front
+    faces[..., 1, :, 2] = upper[..., None, 2]  # back
+    return faces.flatten(-3, -2)
 
 
 class Boxes:
@@ -405,6 +465,12 @@ class Boxes:
           ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
           ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
           :meth:`transform_boxes` import unchanged.
+        - ``'xyxy_plus'`` and ``'xywh'`` build the exclusive far corner, ``x + 1`` or ``x + w``, in the box dtype, so
+          it rounds as torch rounds that sum. bfloat16 has no odd integers above 256 and float16 none above 2048:
+          bfloat16 ``xyxy_plus=[256, 0, 258, 2]`` stores the edge 260. float32 holds every integer edge below
+          ``2**24``. With ``validate_boxes=True`` a positive extent that rounds to zero, such as bfloat16
+          ``xywh=[256, 0, 1, 1]``, raises ``ValueError`` instead of storing an empty box; without validation the
+          rounded corner is stored.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (for list inputs,
           every element is checked); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
@@ -468,26 +534,6 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices",
     ) -> None:
-        self._setup(boxes, raise_if_not_floating_point, mode)
-
-    @classmethod
-    def _wrap(cls, boxes: torch.Tensor | list[torch.Tensor], mode: str, inclusive: bool = False) -> Boxes:
-        """Wrap stored quadrilaterals as they are, exclusive or, with ``inclusive``, in the legacy inclusive form.
-
-        An integer tensor is cast to floating point, as the constructor does with ``raise_if_not_floating_point=False``.
-        """
-        obj = cls.__new__(cls)
-        obj._setup(boxes, False, mode, inclusive=inclusive)
-        return obj
-
-    def _setup(
-        self,
-        boxes: torch.Tensor | list[torch.Tensor],
-        raise_if_not_floating_point: bool,
-        mode: str,
-        inclusive: bool = False,
-    ) -> None:
-        """Validate and store ``boxes``, already in the stored convention that ``inclusive`` names."""
         padding_counts: Optional[list[int]] = None
 
         if isinstance(boxes, list):
@@ -531,7 +577,7 @@ class Boxes:
         # matrices applied as they are, remains for the bare ``"bbox"`` and ``"bbox_xyxy"`` tensor keys of
         # :class:`~kornia.augmentation.container.AugmentationSequential`, whose outputs keep their numbers
         # (`#6710 <https://github.com/kornia/kornia/issues/6710>`_), and for objects pickled before the change.
-        self._inclusive = inclusive
+        self._inclusive = False
         # ``_valid`` marks rows that stay in every export as exact zeros, such as the holes filtering leaves.
         # ``_padding`` marks the rows a list input added, which the trimmed export drops and the padded export keeps as
         # stored; it is ``None`` unless the object comes from a list. Every indexed read and write carries it with the
@@ -544,6 +590,18 @@ class Boxes:
         self._padding: Optional[torch.Tensor] = None
         if padding_counts is not None:
             self._set_padding(_padding_mask(padding_counts, boxes.shape[1]))
+
+    @classmethod
+    def _wrap(cls, boxes: torch.Tensor | list[torch.Tensor], mode: str, inclusive: bool = False) -> Boxes:
+        """Wrap stored quadrilaterals as they are, exclusive or, with ``inclusive``, in the legacy inclusive form.
+
+        An integer tensor is cast to floating point, as the constructor does with ``raise_if_not_floating_point=False``.
+        The constructor builds the object and the tag is set after it: ``cls.__new__`` breaks the graph of
+        ``torch.compile`` on torch 2.5.1.
+        """
+        obj = cls(boxes, False, mode)
+        obj._inclusive = inclusive
+        return obj
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update({name: value for name, value in state.items() if name != "_N"})
@@ -994,8 +1052,9 @@ class Boxes:
                   ``(N, 4, 2)``, ``(B, N, 4, 2)``.
 
             validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
-                which also reject non-positive extents in each mode's convention, and ``RuntimeError`` from
-                ``torch._assert_async`` for the vertex modes, which take no extent or shape check.
+                which also reject non-positive extents in each mode's convention and positive ones that round to
+                zero in the box dtype, and ``RuntimeError`` from ``torch._assert_async`` for the vertex modes, which
+                take no extent or shape check.
                 The ``'xy*'`` checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
                 them.
 
@@ -1021,24 +1080,33 @@ class Boxes:
 
     @classmethod
     def _from_tensor(
-        cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True, inclusive: bool = False
+        cls,
+        boxes: torch.Tensor | list,
+        mode: str = "xyxy",
+        validate_boxes: bool = True,
+        inclusive: bool = False,
+        allow_empty: bool = False,
     ) -> Boxes:
-        """:meth:`from_tensor`, into the legacy inclusive storage with ``inclusive``.
+        """:meth:`from_tensor`, with the legacy ``inclusive`` storage and the zero extents of ``allow_empty``.
 
         See :func:`_boxes_to_quadrilaterals`.
         """
         quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, torch.Tensor):
-            quadrilaterals = _boxes_to_quadrilaterals(boxes, mode, validate_boxes, inclusive)
+            quadrilaterals = _boxes_to_quadrilaterals(boxes, mode, validate_boxes, inclusive, allow_empty)
         elif len(boxes) == 0:
             # An empty list holds no boxes, like an empty (0, 4) or (0, 4, 2) tensor; converting one checks ``mode``.
             empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
-            quadrilaterals = _boxes_to_quadrilaterals(empty, mode, validate_boxes, inclusive)
+            quadrilaterals = _boxes_to_quadrilaterals(empty, mode, validate_boxes, inclusive, allow_empty)
         elif isinstance(boxes[0], torch.Tensor):
-            quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes, inclusive) for box in boxes]
+            quadrilaterals = [
+                _boxes_to_quadrilaterals(box, mode, validate_boxes, inclusive, allow_empty) for box in boxes
+            ]
         else:
             # A nested numeric list converts as the tensor it spells.
-            quadrilaterals = _boxes_to_quadrilaterals(torch.as_tensor(boxes), mode, validate_boxes, inclusive)
+            quadrilaterals = _boxes_to_quadrilaterals(
+                torch.as_tensor(boxes), mode, validate_boxes, inclusive, allow_empty
+            )
 
         return cls._wrap(quadrilaterals, mode, inclusive)
 
@@ -1257,7 +1325,7 @@ class Boxes:
         The legacy inclusive storage applies every matrix as it is, as it always did.
         """
         if pixel_centre and not self._inclusive:
-            M = _pixel_centre_matrix_to_edge_frame(M)
+            M = _pixel_centre_matrix_to_edge_frame(M, self._data.dtype)
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
             self._rebind_data(transformed_boxes)
@@ -1628,11 +1696,13 @@ class Boxes3D:
         - :meth:`get_boxes_shape` returns ``(depths, heights, widths)``, exclusive.
         - :func:`~kornia.geometry.bbox.infer_bbox_shape3d` and :func:`~kornia.geometry.bbox.bbox_to_mask3d` read
           their input as inclusive pixel-index windows: pass them the ``'vertices_plus'`` export, unbatched.
-        - :meth:`transform_boxes` reads its ``4 x 4`` matrix in the pixel-centre frame, as
-          :meth:`Boxes.transform_boxes` does: ``e' = M (e - 1/2) + 1/2``. An object pickled before
-          `#6710 <https://github.com/kornia/kornia/issues/6710>`_ keeps its inclusive storage and arithmetic.
+        - :meth:`transform_boxes` applies its ``4 x 4`` matrix to the stored vertices as they are: a ``2x`` scale
+          maps ``[0, 0, 0, 2, 2, 2]`` to ``[0, 0, 0, 4, 4, 4]``. Unlike :meth:`Boxes.transform_boxes`, it does not
+          read the matrix in the pixel-centre frame; `#6710 <https://github.com/kornia/kornia/issues/6710>`_ changes
+          only the 3D storage. An object pickled before that change keeps its inclusive storage.
         - With ``validate_boxes=True``, :meth:`from_tensor` rejects a non-finite coordinate and extents that are
-          not positive in the given mode (``xmax == xmin`` fails in ``'xyzxyz'``, passes in ``'xyzxyz_plus'``).
+          not positive in the given mode (``xmax == xmin`` fails in ``'xyzxyz'``, passes in ``'xyzxyz_plus'``),
+          and positive ones that round to zero in the box dtype, as :class:`Boxes` does.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
           :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
@@ -1819,6 +1889,14 @@ class Boxes3D:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
+        # The exclusive far corner, in the box dtype, as for :class:`Boxes`.
+        if mode == "xyzxyz":
+            upper = boxes[..., 3:]
+        elif mode == "xyzxyz_plus":
+            upper = boxes[..., 3:] + 1
+        else:
+            upper = boxes[..., :3] + boxes[..., 3:]
+
         # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
         # torch.export).
         if validate_boxes and not is_compiling():
@@ -1830,13 +1908,13 @@ class Boxes3D:
                 raise ValueError("Some boxes have negative heights or 0.")
             if (depth <= 0).any():
                 raise ValueError("Some boxes have negative depths or 0.")
+            stored = upper - boxes[..., :3]
+            if ((stored[..., 0] <= 0) | (stored[..., 1] <= 0) | (stored[..., 2] <= 0)).any():
+                raise ValueError(
+                    f"Some boxes have a positive extent that rounds to 0 in {boxes.dtype} at their position; import"
+                    " them in float32."
+                )
 
-        if mode == "xyzxyz":
-            upper = boxes[..., 3:]
-        elif mode == "xyzxyz_plus":
-            upper = boxes[..., 3:] + 1
-        else:
-            upper = boxes[..., :3] + boxes[..., 3:]
         hexahedrons = _corners3d_to_hexahedrons(boxes[..., :3], upper)
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
         return cls._wrap(hexahedrons, mode)
@@ -2061,12 +2139,15 @@ class Boxes3D:
             The transformed boxes: a new :class:`Boxes3D` labelled ``'xyzxyz_plus'`` when ``inplace`` is false,
             otherwise ``self``.
 
+        Example:
+            >>> boxes = Boxes3D.from_tensor(torch.tensor([[0., 0., 0., 2., 2., 2.]]))
+            >>> boxes.transform_boxes(torch.diag(torch.tensor([2., 2., 2., 1.]))).to_tensor('xyzxyz')
+            tensor([[0., 0., 0., 4., 4., 4.]])
+
         """
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (4, 4):
             raise ValueError(f"The transformation matrix shape must be (4, 4) or (B, 4, 4). Got {M.shape}.")
 
-        if not self._inclusive:
-            M = _pixel_centre_matrix_to_edge_frame(M)
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
             self._data = transformed_boxes

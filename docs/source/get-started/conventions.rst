@@ -430,6 +430,12 @@ Bounding boxes
   centres, as kornia's image matrices are, and applies it to the exclusive corners
   as ``e' = M (e - 1/2) + 1/2``: a flip of a ``W``-wide image maps ``x' = W - x``
   and a 2x resize with ``align_corners=False`` maps ``x' = 2 x``.
+  :class:`kornia.geometry.boxes.Boxes3D` stores exclusive corners too, but its
+  ``transform_boxes`` applies the matrix to them as given.
+- ``Boxes`` coordinates keep their dtype. The far corner of ``'xyxy_plus'`` and
+  ``'xywh'`` input is computed in it and rounds there: bfloat16 has no odd
+  integers above 256 and float16 none above 2048. ``from_tensor`` raises when a
+  positive width or height rounds to zero; import such boxes in float32.
 - :class:`kornia.augmentation.container.AugmentationSequential` accepts three box
   formats via ``data_keys``: ``"bbox"`` (4-corner), ``"bbox_xyxy"``, and
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
@@ -581,7 +587,8 @@ Augmentations
   ``x' = W - 1 - x`` and a 2x resize ``x' = 2 x + 1/2``. A
   :class:`kornia.geometry.boxes.Boxes` object under any key, and a tensor under
   ``"bbox_xywh"``, holds exclusive boxes, transformed as in *Bounding boxes*
-  above: ``x' = W - x`` and ``x' = 2 x``.
+  above: ``x' = W - x`` and ``x' = 2 x``. A ``"bbox_xywh"`` tensor may carry the
+  zero-size boxes that ``RandomMosaic`` clipping leaves.
 - Nested ``AugmentationSequential`` children contribute matrices from the
   current call under their own matrix mode. Plain ``ImageSequential`` children
   contribute their geometric operations in ``silent`` mode, including repeated

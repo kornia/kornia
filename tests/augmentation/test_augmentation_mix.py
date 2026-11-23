@@ -985,6 +985,36 @@ class TestRandomMosaic(BaseTester):
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
 
+    def test_bbox_xywh_output_with_clipped_boxes_is_accepted_as_input_6710(self, device, dtype):
+        # The 20-pixel window starts 6 to 14 pixels into the 40-pixel canvas (start_ratio_range (0.3, 0.7)), so the
+        # tile box at [0, 2) always lies outside it and is clipped to zero size. A second container accepts that
+        # output and keeps those rows at zero size: the flip maps x to 20 - x - w. A negative extent still raises.
+        images = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        mosaic = AugmentationSequential(RandomMosaic((20, 20), p=1.0), data_keys=["input", "bbox_xywh"])
+        out_images, out_boxes = mosaic(images, boxes)
+        assert bool((out_boxes[..., 2] == 0).any())
+        assert bool((out_boxes[..., 3] == 0).any())
+        flip = AugmentationSequential(RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox_xywh"])
+        _, flipped = flip(out_images, out_boxes)
+        expected = out_boxes.clone()
+        expected[..., 0] = 20 - out_boxes[..., 0] - out_boxes[..., 2]
+        self.assert_close(flipped, expected, atol=0.0, rtol=0.0)
+        negative = out_boxes.clone()
+        negative[0, 0, 2] = -1.0
+        with pytest.raises(ValueError, match="negative widths"):
+            flip(out_images, negative)
+
+    def test_far_edge_is_formed_before_the_box_dtype_6710(self, device):
+        # A 258-pixel output has the far edge 258, which bfloat16 holds, and the last pixel centre 257, which it
+        # rounds to 256. The clip bound adds the pixel to the centre before the cast, so boxes over the far edge
+        # stop at 258, not 256.
+        images = torch.rand(2, 3, 258, 258, device=device)
+        corners = torch.tensor([[[0.0, 0.0, 258.0, 258.0]]] * 2, device=device, dtype=torch.bfloat16)
+        mosaic = AugmentationSequential(RandomMosaic((258, 258), p=1.0), data_keys=["input", "bbox"])
+        _, out = mosaic(images, Boxes.from_tensor(corners))
+        assert out.to_tensor("xyxy").amax().item() == 258.0
+
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
         f = RandomMosaic(output_size=(300, 300), p=p, data_keys=["input", "bbox_xyxy"])

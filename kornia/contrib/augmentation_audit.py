@@ -290,16 +290,26 @@ def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
         if value._N is not None:
             raise ValueError("audit does not support ragged Boxes or Keypoints constructed from lists.")
         if isinstance(value, Boxes) and not value._inclusive:
-            return value.data - 0.5, 0.5
+            return _promote(value.data) - 0.5, 0.5
         return value.data, 0.0
     if not isinstance(value, Tensor):
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
-        legacy = key in _LEGACY_BOX_KEYS
-        stored = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=legacy).data
-        return (stored, 0.0) if legacy else (stored - 0.5, 0.5)
+        if key in _LEGACY_BOX_KEYS:
+            return Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True).data, 0.0
+        stored = Boxes._from_tensor(_promote(value), mode=_BOX_MODES[key], validate_boxes=False).data
+        return stored - 0.5, 0.5
     return value, 0.0
+
+
+def _promote(coordinates: Tensor) -> Tensor:
+    """Return ``coordinates`` in at least float32, keeping float64, for the arithmetic of the diagnostics.
+
+    The half-pixel shift and the ``bbox_xywh`` corners round in half precision: the bfloat16 edge ``256`` shifts to
+    ``256``, not ``255.5``. The pipeline's own labels keep their dtype.
+    """
+    return coordinates.to(torch.promote_types(coordinates.dtype, torch.float32))
 
 
 def _spatial_audits(

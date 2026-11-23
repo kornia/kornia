@@ -178,7 +178,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           numbers are those of the releases before `#6710 <https://github.com/kornia/kornia/issues/6710>`_. A
           :class:`~kornia.geometry.boxes.Boxes` object under any key, and a tensor under ``bbox_xywh``, holds
           exclusive boxes, transformed in the edge frame: ``e' = M (e - 1/2) + 1/2``, so a flip maps
-          ``x' = W - x`` and a 2x resize ``x' = 2 x``. Labels pass through geometric steps untouched.
+          ``x' = W - x`` and a 2x resize ``x' = 2 x``. A ``bbox_xywh`` tensor may hold zero widths or heights, such
+          as the boxes ``RandomMosaic`` clips away, so one container's output is another's input; they keep zero
+          size, and negative extents still raise. Labels pass through geometric steps untouched.
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
@@ -1275,7 +1277,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         arg = cast(torch.Tensor, arg)
-        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy)
+        # A zero extent under ``"bbox_xywh"`` is a box that clipping emptied, such as the ``RandomMosaic`` output of a
+        # box outside its window; it passes on with zero size, so one container's output is another's input.
+        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy, allow_empty=not legacy)
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey

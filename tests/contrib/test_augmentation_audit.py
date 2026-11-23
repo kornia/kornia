@@ -190,6 +190,20 @@ class TestAugmentationAudit(BaseTester):
         assert report.spatial[0].metric == "corner_hausdorff"
         assert report.spatial[0].roundtrip_max.item() < 1e-4
 
+    @pytest.mark.parametrize("key", ["bbox", "bbox_xywh"])
+    def test_half_precision_exclusive_boxes_shift_after_promotion_6710(self, key, device):
+        # The diagnostics move exclusive vertices half a pixel into the pixel-centre frame. bfloat16 has no 139.5 or
+        # 129.5, so the shift runs in float32: the exact flip of x = 130..140 to 20..30 in a 160-pixel image reports
+        # no round-trip error, where shifting in bfloat16 reported 0.5.
+        image = torch.rand(1, 3, 32, 160, device=device)
+        xywh = torch.tensor([[[130.0, 4.0, 10.0, 6.0]]], device=device, dtype=torch.bfloat16)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", key])
+        (_, out), report = audit(aug, image, Boxes.from_tensor(xywh, mode="xywh") if key == "bbox" else xywh)
+        exported = out.to_tensor("xywh") if key == "bbox" else out
+        self.assert_close(exported, xywh.new_tensor([[[20.0, 4.0, 10.0, 6.0]]]), atol=0.0, rtol=0.0)
+        assert report.spatial[0].roundtrip_max.item() < 1e-4
+        assert report.spatial[0].out_of_frame.item() == 0
+
     def test_box_tensor_envelope_loss(self, device, dtype):
         image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
         boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))

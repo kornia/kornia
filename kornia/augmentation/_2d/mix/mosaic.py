@@ -76,7 +76,8 @@ class RandomMosaic(MixAugmentationBaseV2):
           without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
           unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
           selected sample are translated with its tiles, not rescaled, and clipped to the output window
-          ``[0, W_out] x [0, H_out]``, so a box wholly outside it collapses onto its border with zero size. A tensor
+          ``[0, W_out] x [0, H_out]``, so a box wholly outside it collapses onto its border with zero size; a
+          ``"bbox_xywh"`` tensor with such rows is accepted again as input. A tensor
           under the bare ``"bbox"`` or ``"bbox_xyxy"`` key of
           :class:`~kornia.augmentation.container.AugmentationSequential` holds pixel-centre corners and is clipped
           to ``[0, W_out - 1] x [0, H_out - 1]``, as before `#6710 <https://github.com/kornia/kornia/issues/6710>`_.
@@ -150,16 +151,17 @@ class RandomMosaic(MixAugmentationBaseV2):
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         to_apply = params["batch_prob"] > 0.5
         src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
-        dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
         batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
         offset = torch.zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
-        # ``dst_box`` holds inclusive crop-window corners, so its far corner is the last pixel of the output. Exclusive
-        # boxes extend to the far edge of that pixel; the legacy inclusive storage of the bare tensor keys stops at its
-        # centre, as it always did (#6710).
-        offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
+        # ``params["dst"]`` holds inclusive crop-window corners, so its far corner is the last pixel of the output.
+        # Exclusive boxes extend to the far edge of that pixel; the legacy inclusive storage of the bare tensor keys
+        # stops at its centre, as it always did (#6710). The edge is derived before the cast to the box dtype: a
+        # 258-pixel bfloat16 output has the edge 258 but not the centre 257.
+        offset_end = torch.as_tensor(params["dst"], device=input.device)[0, 2]
         if not input._inclusive:
             offset_end = offset_end + 1
+        offset_end = offset_end.to(input.dtype).repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
         num_boxes = input.data.shape[1]

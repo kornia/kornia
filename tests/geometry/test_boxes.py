@@ -2275,16 +2275,19 @@ class TestExclusiveStorage6710(BaseTester):
         self.assert_close(boxes.transform_boxes(matrix).to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
 
     def test_convention_frame_conversion_is_the_half_pixel_conjugate(self, device, dtype):
-        # The closed form equals T(+1/2) @ M @ T(-1/2) for projective 2D and 3D matrices, batched or not.
+        # The closed form equals T(+1/2) @ M @ T(-1/2) for projective 2D and 3D matrices, batched or not, in float32
+        # or wider: the half-pixel terms of a half-precision matrix would round.
+        working = torch.promote_types(dtype, torch.float32)
         for size in (3, 4):
             matrix = torch.randn(5, size, size, device=device, dtype=dtype)
-            to_edges = torch.eye(size, device=device, dtype=dtype)
-            to_centres = torch.eye(size, device=device, dtype=dtype)
+            to_edges = torch.eye(size, device=device, dtype=working)
+            to_centres = torch.eye(size, device=device, dtype=working)
             to_edges[:-1, -1] = 0.5
             to_centres[:-1, -1] = -0.5
-            converted = boxes_module._pixel_centre_matrix_to_edge_frame(matrix)
-            self.assert_close(converted, to_edges @ matrix @ to_centres)
-            self.assert_close(boxes_module._pixel_centre_matrix_to_edge_frame(matrix[0]), converted[0])
+            converted = boxes_module._pixel_centre_matrix_to_edge_frame(matrix, dtype)
+            assert converted.dtype == working
+            self.assert_close(converted, to_edges @ matrix.to(working) @ to_centres)
+            self.assert_close(boxes_module._pixel_centre_matrix_to_edge_frame(matrix[0], dtype), converted[0])
 
     def test_convention_perspective_moves_the_vertices_as_their_centre_frame_points(self, device, dtype):
         # A vertex e is the point e - 1/2 of the pixel-centre frame: transforming that point and shifting it back
@@ -2349,6 +2352,95 @@ class TestExclusiveStorage6710(BaseTester):
         }[operation]
         with pytest.raises(ValueError, match="inclusive corners"):
             combine()
+
+    def test_convention_boxes3d_applies_matrices_to_the_stored_vertices(self, device, dtype):
+        # 3D takes the exclusive storage only (kornia#6710 revision 4): the matrix moves the stored vertices as
+        # given, so a 2x scale of the cube [0, 2) gives [0, 4), where reading it on pixel centres gave [-0.5, 3.5).
+        boxes = Boxes3D.from_tensor(torch.tensor([[0.0, 0.0, 0.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype))
+        scale = torch.diag(torch.tensor([2.0, 2.0, 2.0, 1.0], device=device, dtype=dtype))
+        expected = torch.tensor([[0.0, 0.0, 0.0, 4.0, 4.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(boxes.transform_boxes(scale).to_tensor("xyzxyz"), expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize(
+        ("mode", "source", "representable"),
+        [
+            ("xyxy_plus", [256.0, 0.0, 256.0, 0.0], [254.0, 0.0, 255.0, 0.0]),
+            ("xywh", [256.0, 0.0, 1.0, 1.0], [256.0, 0.0, 2.0, 1.0]),
+        ],
+    )
+    def test_convention_low_precision_extent_that_rounds_to_zero_raises(self, mode, source, representable, device):
+        # bfloat16 has no 257, so the far edge of one pixel at x = 256 rounds onto the near edge. Validation raises
+        # instead of storing an empty box; without it the rounded corner is stored, as torch rounds 256 + 1. A width
+        # that survives the rounding imports as before.
+        def boxes(values):
+            return torch.tensor([values], device=device, dtype=torch.bfloat16)
+
+        with pytest.raises(ValueError, match=r"rounds to 0 in torch\.bfloat16"):
+            Boxes.from_tensor(boxes(source), mode=mode)
+        stored = Boxes.from_tensor(boxes(source), mode=mode, validate_boxes=False)
+        self.assert_close(stored.to_tensor("xyxy"), boxes([256.0, 0.0, 256.0, 1.0]), atol=0.0, rtol=0.0)
+        kept = Boxes.from_tensor(boxes(representable), mode=mode)
+        self.assert_close(kept.to_tensor(mode), boxes(representable), atol=0.0, rtol=0.0)
+
+    def test_convention_low_precision_far_edge_rounds_as_torch_rounds_it(self, device):
+        # A nonzero extent keeps the rounding of the box dtype: bfloat16 rounds 258 + 1 to 260, as torch does.
+        source = torch.tensor([[256.0, 0.0, 258.0, 2.0]], device=device, dtype=torch.bfloat16)
+        assert (source[0, 2] + 1).item() == 260.0
+        stored = Boxes.from_tensor(source, mode="xyxy_plus")
+        expected = source.new_tensor([[256.0, 0.0, 260.0, 3.0]])
+        self.assert_close(stored.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize(
+        ("mode", "source"),
+        [("xyzxyz_plus", [256.0, 0.0, 0.0, 256.0, 0.0, 0.0]), ("xyzwhd", [256.0, 0.0, 0.0, 1.0, 1.0, 1.0])],
+    )
+    def test_convention_low_precision_extent_that_rounds_to_zero_raises_3d(self, mode, source, device):
+        source = torch.tensor([source], device=device, dtype=torch.bfloat16)
+        with pytest.raises(ValueError, match=r"rounds to 0 in torch\.bfloat16"):
+            Boxes3D.from_tensor(source, mode=mode)
+        stored = Boxes3D.from_tensor(source, mode=mode, validate_boxes=False)
+        expected = source.new_tensor([[256.0, 0.0, 0.0, 256.0, 1.0, 1.0]])
+        self.assert_close(stored.to_tensor("xyzxyz"), expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    def test_import_keeps_float16_boxes_in_a_bfloat16_autocast_region(self, mode, device):
+        # The corners are written into one float16 allocation: torch.stack is on autocast's promote list, which
+        # raises for float16 input in a bfloat16 region (``Unexpected floating ScalarType``).
+        skip_unsupported_autocast(device, "bfloat16")
+        source_by_mode = {
+            "xyxy": [0.0, 0.0, 1.0, 1.0],
+            "xyxy_plus": [0.0, 0.0, 0.0, 0.0],
+            "xywh": [0.0, 0.0, 1.0, 1.0],
+            "xyzxyz": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            "xyzxyz_plus": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "xyzwhd": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        }
+        source = torch.tensor([source_by_mode[mode]], device=device, dtype=torch.float16)
+        is_3d = mode.startswith("xyz")
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            boxes = (Boxes3D if is_3d else Boxes).from_tensor(source, mode=mode)
+        assert boxes.data.dtype == torch.float16
+        expected = source.new_tensor([[0.0, 0.0, 0.0, 1.0, 1.0, 1.0] if is_3d else [0.0, 0.0, 1.0, 1.0]])
+        self.assert_close(boxes.to_tensor("xyzxyz" if is_3d else "xyxy"), expected, atol=0.0, rtol=0.0)
+
+    def test_half_precision_matrix_is_converted_in_float32(self, device):
+        # A bfloat16 flip of a 257-pixel image has the pixel-centre translation 256 and the edge-frame translation
+        # 257, which bfloat16 rounds to 256. The conversion runs in float32, so the edges [254, 256) map to [1, 3).
+        boxes = Boxes.from_tensor(torch.tensor([[254.0, 0.0, 256.0, 2.0]], device=device))
+        flip = torch.tensor([[-1.0, 0.0, 256.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.bfloat16)
+        expected = torch.tensor([[1.0, 0.0, 3.0, 2.0]], device=device)
+        self.assert_close(boxes.transform_boxes(flip).to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+
+    def test_float16_matrix_in_a_bfloat16_autocast_region(self, device):
+        # The converted matrix is float32 before its torch.cat, which a bfloat16 region accepts; a float16 one raised.
+        skip_unsupported_autocast(device, "bfloat16")
+        boxes = Boxes.from_tensor(torch.tensor([[2.0, 3.0, 10.0, 13.0]], device=device))
+        flip = torch.tensor([[-1.0, 0.0, 19.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float16)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            moved = boxes.transform_boxes(flip)
+        assert moved.data.dtype == torch.float32
+        expected = torch.tensor([[10.0, 3.0, 18.0, 13.0]], device=device)
+        self.assert_close(moved.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
 
 
 class TestTransformBoxes2D(BaseTester):
@@ -3187,12 +3279,12 @@ class TestBbox3D(BaseTester):
         # is stale. A (3, 3) matrix is rejected and a (1, 4, 4) matrix applies to unbatched boxes.
         source = Boxes3D.from_tensor(self._asymmetric_xyzxyz(device, dtype), mode="xyzxyz")
         original = source.data
-        # The pixel-centre scale s moves an exclusive vertex as e' = s (e - 1/2) + 1/2.
+        # The scale is applied to the stored exclusive vertices as given: [1, 5) * 2 = [2, 10), last pixel 9.
         scale = torch.diag(torch.tensor([2.0, 3.0, 4.0, 1.0], device=device, dtype=dtype))
         copied = source.transform_boxes(scale)
         assert copied is not source
         assert source.data is original
-        expected = torch.tensor([[1.5, 5.0, 10.5, 8.5, 13.0, 29.5]], device=device, dtype=dtype)
+        expected = torch.tensor([[2.0, 6.0, 12.0, 9.0, 14.0, 31.0]], device=device, dtype=dtype)
         self.assert_close(copied.to_tensor("xyzxyz_plus"), expected, atol=0.0, rtol=0.0)
         self.assert_close(source.transform_boxes(scale[None]).data, copied.data, atol=0.0, rtol=0.0)
 
@@ -3209,10 +3301,9 @@ class TestBbox3D(BaseTester):
 class TestTransformBoxes3D(BaseTester):
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
-        # The matrix maps pixel centres x' = 512 - x, z' = 2 z + 1, so exclusive vertices map as e_x' = 513 - e_x and
-        # e_z' = 2 e_z + 0.5.
+        # The matrix is applied to the stored exclusive vertices as given: x' = 512 - x, z' = 2 z + 1.
         boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
-        expected_boxes_xyzxyz = torch.tensor([[373, 104, 568.5, 115, 412, 908.5]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 114, 412, 909]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
@@ -3230,10 +3321,9 @@ class TestTransformBoxes3D(BaseTester):
 
     def test_transform_boxes_(self, device, dtype):
         # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
-        # The matrix maps pixel centres x' = 512 - x, z' = 2 z + 1, so exclusive vertices map as e_x' = 513 - e_x and
-        # e_z' = 2 e_z + 0.5.
+        # The matrix is applied to the stored exclusive vertices as given: x' = 512 - x, z' = 2 z + 1.
         boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
-        expected_boxes_xyzxyz = torch.tensor([[373, 104, 568.5, 115, 412, 908.5]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 114, 412, 909]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
@@ -3262,14 +3352,14 @@ class TestTransformBoxes3D(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1)  # 2 x 4 x 4 two images 4 boxes each
 
-        # The first matrix maps exclusive vertices as e_x' = 513 - e_x and e_z' = 2 e_z + 0.5.
+        # The first matrix is applied to the stored exclusive vertices as given: x' = 512 - x, z' = 2 z + 1.
         expected_boxes_xyzxyz = torch.tensor(
             [
                 [
-                    [373, 104, 568.5, 115, 412, 908.5],
-                    [511, 81, 940.5, 1, 513, 1026.5],
-                    [347, 263, 86.5, 1, 510, 1572.5],
-                    [393, 145, 470.5, 255, 412, 774.5],
+                    [372, 104, 569, 114, 412, 909],
+                    [510, 81, 941, 0, 513, 1027],
+                    [346, 263, 87, 0, 510, 1573],
+                    [392, 145, 471, 254, 412, 775],
                 ],
                 [
                     [140, 104, 284, 398, 412, 454],
