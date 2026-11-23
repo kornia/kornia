@@ -328,10 +328,9 @@ class Attention(nn.Module):
         dr = (rr[:, None] - rr[None, :]).abs()
         dc = (cc[:, None] - cc[None, :]).abs()
         keys = dr * W + dc
-        unique_keys, inverse = torch.unique(keys, return_inverse=True)
-        indices = inverse.view(H * W, H * W)
-        attn_offset_size = unique_keys.numel()
-        return indices, attn_offset_size
+        # Each absolute displacement (dr, dc) appears, and dr * W + dc already enumerates the sorted,
+        # contiguous range [0, H * W). A unique/sort pass and its inverse would return the same indices.
+        return keys, H * W
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply relative-position self-attention to token features.
