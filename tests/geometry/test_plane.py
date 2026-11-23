@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import BaseError, ValueCheckError
+from kornia.core.exceptions import BaseError, ShapeError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -318,6 +318,17 @@ class TestHyperplane(BaseTester):
         )
         with pytest.raises(BaseError, match="p must be a Vector3 or a Tensor, got list"):
             plane.signed_distance([0.0, 0.0, 1.0])
+
+    @pytest.mark.parametrize("method", ["signed_distance", "abs_distance", "projection"])
+    @pytest.mark.parametrize("shape", [(1,), (2,), (4, 1), (2, 4)])
+    def test_rejects_point_without_three_coordinates_6902(self, device, dtype, method, shape):
+        # A plain tensor ending in 1 used to broadcast against the normal and pass for (p, p, p),
+        # where the same tensor wrapped in a Vector3 raises.
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(0.0)))
+        p = torch.full(shape, 7.0, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"p must be points of shape \(\.\.\., 3\)"):
+            getattr(plane, method)(p)
 
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
