@@ -60,8 +60,8 @@ def mean_average_precision(
           ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
-        - Detection counts, precision and recall use at least float32 before each class's AP is rounded to the
-          output dtype. A half-precision recall rounded up to a threshold would otherwise score an unreached level.
+        - Matching IoUs, detection counts, precision and recall use at least float32 before each class's AP is rounded
+          to the output dtype. Rounding before the threshold comparisons can change the match or recall decision.
 
     Args:
         pred_boxes: per-image predicted boxes, each with shape ``(N, 4)``.
@@ -131,6 +131,11 @@ def mean_average_precision(
     # Recall comparisons are discrete decisions: bfloat16 rounds 512/513 to 1 and incorrectly gives a missed
     # object full recall. Keep counts and their ratios in at least float32, rounding only the final class AP.
     statistics_dtype = torch.promote_types(ap_dtype, torch.float32)
+    # mean_iou_bbox returns the promoted box dtype. Widen half-precision boxes once so a true overlap just above
+    # the matching threshold cannot round down to it before the strict comparison.
+    if ap_dtype in (torch.float16, torch.bfloat16):
+        _pred_boxes = _pred_boxes.float()
+        _gt_boxes = _gt_boxes.float()
 
     # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
     for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
