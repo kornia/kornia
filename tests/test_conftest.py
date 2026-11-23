@@ -318,6 +318,46 @@ class TestIntegrationLocalHalfPrecision:
             ]
         )
 
+    def test_only_cuda_device_assert_children_block_launches_6891(self, pytester, monkeypatch):
+        """A cuda_device_assert child runs with CUDA_LAUNCH_BLOCKING=1; a half-precision child keeps the parent's value.
+
+        Checks the environment rather than a device-side assert, so it does not depend on a GPU where the assert
+        surfaces at a later launch (#6891).
+        """
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        monkeypatch.setenv("CUDA_LAUNCH_BLOCKING", "0")
+        pytester.makepyfile(
+            test_launch_blocking="""
+            import os
+            import pytest
+
+            def child():
+                return os.environ.get("KORNIA_TEST_IN_SUBPROCESS") == "1"
+
+            @pytest.mark.cuda_device_assert
+            def test_marked(device_name, dtype_name):
+                assert child()
+                assert os.environ["CUDA_LAUNCH_BLOCKING"] == "1"
+
+            def test_unmarked(device_name, dtype_name):
+                assert child() is (dtype_name == "float16")
+                assert os.environ["CUDA_LAUNCH_BLOCKING"] == "0"
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            "--device=cuda", "--dtype=float32,float16", "--isolate-half-precision", "-v"
+        )
+        # The marked float16 case is deselected: on CUDA a marked test runs for float32 only.
+        result.assert_outcomes(passed=3, deselected=1)
+        result.stdout.fnmatch_lines(
+            [
+                "*test_marked?cuda-float32? PASSED*",
+                "*test_unmarked?cuda-float32? PASSED*",
+                "*test_unmarked?cuda-float16? PASSED*",
+            ],
+            consecutive=False,
+        )
+
     @pytest.mark.uses_accelerator
     def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
         """Integration test: verify real pytest execution with local half_dtype."""

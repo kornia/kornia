@@ -457,7 +457,9 @@ Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** 
 then always run through the same per-test subprocess runner, with or without `--isolate-half-precision`, on the one
 dtype it is collected for (below), under xdist too; CPU, MPS and other items run in place, so the CPU-half
 known-failure profiles see them as before. Do not set `KORNIA_TEST_IN_SUBPROCESS` yourself on a selection that holds such a test: the marked test then
-runs in place and `cuda_device_assert_guard` skips every later CUDA test of the process.
+runs in place and `cuda_device_assert_guard` skips every later CUDA test of the process. The runner sets
+`CUDA_LAUNCH_BLOCKING=1` for these children: when a later kernel launch, not a synchronization, reports the failed
+context, the kernel prints the check's message only at process exit, too late for `capfd`.
 
 On CUDA the failure surfaces at the next synchronization as a `RuntimeError` (`torch.AcceleratorError` where torch
 has it) naming a device-side assert, not the check's message, and the kernel prints the message to stderr. Expect it
