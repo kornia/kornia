@@ -130,6 +130,24 @@ class TestAdalamExact(BaseTester):
         assert (quality >= 0).all()
         assert quality.dtype == torch.float32
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), dtypes=("float32",), reason="float32 keypoint distances inside an autocast region"
+    )
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_autocast_keeps_pixel_keypoint_distances(self, device, dtype, autocast_dtype):
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("bfloat16 autocast requires a supported CUDA device")
+        # Seeds and neighbourhoods compare squared keypoint distances in pixels. With the coordinate products in
+        # float16, 400 * 403 + 300 * 304 overflows and the distances near the first two keypoints become -inf; in
+        # bfloat16 the distance 25 between them comes out as -1031. The expected values are exact in float32.
+        k = torch.tensor([[400.0, 300.0], [403.0, 304.0], [10.0, 20.0]], device=device, dtype=dtype)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            dist = dist_matrix(k, k)
+        expected = torch.tensor(
+            [[0.0, 25.0, 230500.0], [25.0, 0.0, 235105.0], [230500.0, 235105.0, 0.0]], device=device, dtype=dtype
+        )
+        self.assert_close(dist, expected)
+
     @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="local RANSAC uses full-precision coordinates")
     @pytest.mark.parametrize("refit", [False, True])
     @pytest.mark.parametrize("n_inliers,n_outliers,seed", [(40, 8, 9), (9, 0, 0)])
