@@ -34,12 +34,11 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), reason="measures CPU allocations with the profiler")
     @pytest.mark.parametrize(
         "hd,shape", [(kornia.losses.HausdorffERLoss, (32, 32)), (kornia.losses.HausdorffERLoss3D, (16, 16, 16))]
     )
     def test_cpu_temporary_allocation_bound(self, hd, shape, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("The bounded-workspace erosion is a CPU optimization.")
         target = torch.zeros(2, 1, *shape, device=device, dtype=torch.long)
         pred = torch.full((2, 2, *shape), 0.8, device=device, dtype=dtype)
         loss = hd(k=3, reduction="none")
