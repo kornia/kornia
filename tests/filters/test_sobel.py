@@ -332,6 +332,36 @@ class TestSpatialGradient(BaseTester):
 
 
 class TestSpatialGradient3d(BaseTester):
+    def test_input_and_gradient_with_shared_volume(self, device, dtype):
+        if not supports_replicate_padding_3d(device, dtype):
+            pytest.skip("spatial_gradient3d pads with mode='replicate', which this device lacks for this dtype")
+
+        # A linear volume gives the slope inside and half the slope on the replicated border.
+        x = torch.tensor([0.0, 0.125, 0.25, 0.375], device=device, dtype=dtype)
+        y = torch.tensor([0.0, 0.0625, 0.125], device=device, dtype=dtype)
+        z = torch.tensor([0.0, 0.03125], device=device, dtype=dtype)
+        volume = (x[None, None, :] + y[None, :, None] + z[:, None, None]).requires_grad_()
+        before = volume.detach().clone()
+        version = volume._version
+        # Expanded batches and channels share storage with the leaf volume.
+        image = volume[None, None].expand(2, 3, -1, -1, -1)
+        actual = spatial_gradient3d(image)
+        expected_x = torch.tensor([0.0625, 0.125, 0.125, 0.0625], device=device, dtype=dtype)
+        expected_y = torch.tensor([0.03125, 0.0625, 0.03125], device=device, dtype=dtype)
+        self.assert_close(actual[:, :, 0], expected_x.expand(2, 3, 2, 3, 4))
+        self.assert_close(actual[:, :, 1], expected_y[None, :, None].expand(2, 3, 2, 3, 4))
+        self.assert_close(actual[:, :, 2], torch.full_like(actual[:, :, 2], 0.015625))
+        weights = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype).view(1, 1, 3, 1, 1, 1)
+        (actual * weights).sum().backward()
+        # Summing each centered difference cancels interior coefficients; only the two borders remain.
+        gx = torch.tensor([-1.0, 0.0, 0.0, 1.0], device=device, dtype=dtype)
+        gy = torch.tensor([-2.0, 0.0, 2.0], device=device, dtype=dtype)
+        gz = torch.tensor([-3.0, 3.0], device=device, dtype=dtype)
+        expected_grad = 6 * (gx[None, None, :] + gy[None, :, None] + gz[:, None, None])
+        self.assert_close(volume.grad, expected_grad)
+        self.assert_close(volume, before, rtol=0, atol=0)
+        assert volume._version == version
+
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError
 
