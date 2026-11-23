@@ -24,7 +24,13 @@ from torch.utils._python_dispatch import TorchDispatchMode
 import kornia
 from kornia.core.exceptions import BaseError
 
-from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    deterministic_algorithms_on_cuda,
+    dynamo_is_available,
+    supports_bilinear_2d_grid_sample,
+)
 
 
 class TestCropAndResize(BaseTester):
@@ -879,6 +885,7 @@ class TestCropByIndices(BaseTester):
         expected_gradient[..., 1:4, 2:6] = weights
         self.assert_close(gradient, expected_gradient, atol=0, rtol=0)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic", "nearest"])
     def test_export_matches_eager(self, interpolation, device, dtype):
         # Export captures the same gather as torch.compile, so a box that is not exactly ``size`` pixels is resized as

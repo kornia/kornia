@@ -606,13 +606,15 @@ def crop_by_indices(
           where the box overflowed, so every kept pixel stays at its position in the box.
 
     .. note::
-        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
-        ``'bicubic'`` or ``'nearest'`` interpolation, ``antialias=False`` and
-        ``shape_compensation='resize'`` is cropped by a gather that keeps the box coordinates
-        on the device, so it traces with ``fullgraph=True`` and matches the eager result up to
-        float rounding, on every supported torch release. Every other call keeps the eager path,
-        which reads the box coordinates back to Python and breaks the graph. Graph export is
-        described in the note below.
+        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'`` or
+        ``'bicubic'`` interpolation (or ``'nearest'`` with ``align_corners=None``),
+        ``antialias=False`` and ``shape_compensation='resize'`` is cropped by a gather that keeps
+        the box coordinates on the device, so it traces with ``fullgraph=True`` and matches the
+        eager result up to float rounding, on every supported torch release. From torch 2.12
+        every other call keeps the eager path, which reads the box coordinates back to Python
+        and breaks the graph. Before torch 2.12 ``torch.compile`` also reports graph export, so
+        every other call with ``size`` given takes the export path of the note below: the warp,
+        or a ``ValueError`` for ``'nearest-exact'`` and ``'area'``.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
