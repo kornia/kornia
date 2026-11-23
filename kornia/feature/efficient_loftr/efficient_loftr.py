@@ -112,7 +112,7 @@ class EfficientLoFTR(nn.Module):
         self.fine_preprocess = FinePreprocess(config)
         self.fine_matching = FineMatching(config)
         if pretrained is not None:
-            if pretrained not in urls.keys():
+            if pretrained not in urls:
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 urls[pretrained], map_location=torch.device("cpu"), weights_only=True

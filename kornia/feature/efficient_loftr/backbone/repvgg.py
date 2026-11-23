@@ -85,8 +85,7 @@ class RepVGGBlock(nn.Module):
             #   Note that RepVGG-D2se uses SE before nonlinearity. But RepVGGplus models uses SE after nonlinearity.
             # self.se = SEBlock(out_channels, internal_neurons=out_channels // 16)
             raise ValueError("SEBlock not supported")
-        else:
-            self.se = nn.Identity()
+        self.se = nn.Identity()
 
         if deploy:
             self.rbr_reparam = nn.Conv2d(
@@ -180,8 +179,7 @@ class RepVGGBlock(nn.Module):
     def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Tensor]) -> Tensor:
         if kernel1x1 is None:
             return torch.Tensor([0])
-        else:
-            return torch.nn.functional.pad(kernel1x1, [1, 1, 1, 1])
+        return torch.nn.functional.pad(kernel1x1, [1, 1, 1, 1])
 
     def _fuse_bn_tensor(self, branch: Optional[nn.Module]) -> Tuple[Tensor, Tensor]:
         if branch is None:
