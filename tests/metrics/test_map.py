@@ -235,6 +235,33 @@ class TestMeanAveragePrecision(BaseTester):
         self.assert_close(mean_ap, boxes.new_tensor(0.5))
         self.assert_close(ap[1], 0.5)
 
+    @pytest.mark.parametrize("order", [(0, 1, 2), (2, 0, 1), (1, 2, 0)])
+    def test_interleaved_images_keep_independent_match_flags(self, device, dtype, order):
+        a = [0.0, 0.0, 10.0, 10.0]
+        b = [20.0, 0.0, 30.0, 10.0]
+        c = [40.0, 0.0, 50.0, 10.0]
+        pred_boxes = [torch.tensor(boxes, device=device, dtype=dtype) for boxes in ([a, a, b, c], [a, a], [a, a, a])]
+        pred_labels = [torch.tensor(labels, device=device) for labels in ([1, 1, 1, 2], [1, 2], [1, 1, 2])]
+        pred_scores = [
+            torch.tensor(scores, device=device, dtype=dtype)
+            for scores in ([0.95, 0.7, 0.55, 0.5], [0.9, 0.85], [0.8, 0.6, 0.4])
+        ]
+        gt_boxes = [torch.tensor(boxes, device=device, dtype=dtype) for boxes in ([a, b, c], [a], [a])]
+        gt_labels = [torch.tensor(labels, device=device) for labels in ([1, 1, 2], [2], [1])]
+        args = [[values[i] for i in order] for values in (pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels)]
+
+        mean_ap, ap = kornia.metrics.mean_average_precision(*args, n_classes=3)
+
+        # Class 1's globally ranked outcomes are TP, FP, TP, FP, FP, TP over three objects. The eleven recall
+        # thresholds take four precisions of 1, three of 2/3 and four of 1/2: AP = 8/11. Class 2 gets both objects
+        # before its false positive, hence AP = 1. Identical boxes in different images must have separate flags;
+        # an image without this class's objects remains a false positive, even when it has another class.
+        self.assert_close(mean_ap, torch.tensor(19.0 / 22.0, device=device, dtype=dtype))
+        self.assert_close(
+            torch.tensor(ap[1], device=device, dtype=dtype), torch.tensor(8.0 / 11.0, device=device, dtype=dtype)
+        )
+        self.assert_close(ap[2], 1.0)
+
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
         labels = torch.tensor([1], device=device, dtype=torch.long)
