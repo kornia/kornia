@@ -467,6 +467,96 @@ class TestDepthTo3d(BaseTester):
 
 
 class TestUnprojectMeshgrid(BaseTester):
+    @pytest.mark.parametrize("entry_point", ["unproject_meshgrid", "depth_to_3d", "depth_to_3d_v2"])
+    @pytest.mark.parametrize("coordinate", [0, 1])
+    @pytest.mark.parametrize("traced", [False, True])
+    def test_scaled_intrinsics_gradients_remain_finite(self, entry_point, coordinate, traced, device, dtype):
+        camera_matrix = torch.tensor(
+            [[[4.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+
+        def project(matrix):
+            if entry_point == "unproject_meshgrid":
+                return unproject_meshgrid(2, 3, matrix, device=device, dtype=dtype)
+            if entry_point == "depth_to_3d":
+                depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
+                return depth_to_3d(depth, matrix).permute(0, 2, 3, 1)
+            depth = torch.ones(1, 2, 3, device=device, dtype=dtype)
+            return depth_to_3d_v2(depth, matrix)
+
+        # Capture with no gradient-requiring input, then differentiate the captured graph.
+        operation = torch.jit.trace(project, (camera_matrix.detach(),)) if traced else project
+        points = operation(camera_matrix)
+
+        values = points[..., coordinate]
+        (gradient,) = torch.autograd.grad(values, camera_matrix, torch.full_like(values, 40000.0))
+        # For six unit-depth pixels and incoming gradient 40000, d/dc = -6*40000/4 = -60000.
+        # The column sum is 6 and the row sum is 3, so d/df is -15000 or -7500. These derivatives
+        # fit in float16, but summing a broadcast ramp's gradients before dividing by f overflows.
+        expected = torch.zeros_like(camera_matrix)
+        expected[0, coordinate, coordinate] = -15000.0 if coordinate == 0 else -7500.0
+        expected[0, coordinate, 2] = -60000.0
+        assert torch.isfinite(gradient).all()
+        self.assert_close(gradient, expected)
+
+    def test_independent_camera_rays_and_intrinsics_gradients(self, device, dtype):
+        camera_matrix = torch.tensor(
+            [
+                [[2.0, 0.0, 1.0], [0.0, 4.0, 2.0], [0.0, 0.0, 1.0]],
+                [[4.0, 0.0, 2.0], [0.0, 2.0, 1.0], [0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        rays = unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [[-0.5, -0.5, 1.0], [0.0, -0.5, 1.0], [0.5, -0.5, 1.0]],
+                    [[-0.5, -0.25, 1.0], [0.0, -0.25, 1.0], [0.5, -0.25, 1.0]],
+                ],
+                [
+                    [[-0.5, -0.5, 1.0], [-0.25, -0.5, 1.0], [0.0, -0.5, 1.0]],
+                    [[-0.5, 0.0, 1.0], [-0.25, 0.0, 1.0], [0.0, 0.0, 1.0]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(rays, expected, rtol=0, atol=0)
+
+        # For sum(x + y + z), d/dcx = -H*W/fx and d/dfx = -H*sum(u-cx)/fx**2;
+        # the analogous row sums give d/dcy and d/dfy. Broadcasting must accumulate every pixel.
+        (gradient,) = torch.autograd.grad(rays.sum(), camera_matrix)
+        expected_gradient = torch.tensor(
+            [
+                [[0.0, 0.0, -3.0], [0.0, 0.5625, -1.5], [0.0, 0.0, 0.0]],
+                [[0.375, 0.0, -1.5], [0.0, 0.75, -3.0], [0.0, 0.0, 0.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_gradcheck(self, normalize_points, device):
+        camera_matrix = torch.tensor(
+            [
+                [[2.0, 0.0, 1.0], [0.0, 4.0, 2.0], [0.0, 0.0, 1.0]],
+                [[4.0, 0.0, 2.0], [0.0, 2.0, 1.0], [0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(
+            lambda matrix: unproject_meshgrid(2, 3, matrix, normalize_points, device=device, dtype=torch.float64),
+            (camera_matrix,),
+        )
+
     def test_convention_returns_b_h_w_3_and_equals_depth_to_3d_v2_at_depth_one(self, device, dtype):
         # unproject_meshgrid is depth_to_3d_v2's cache: the per-pixel ray at depth 1 in (*, H, W, 3), so multiplying
         # it by a depth map reproduces depth_to_3d_v2. The fy = 50 arm moves only the y component of the pixel-(1, 0)
