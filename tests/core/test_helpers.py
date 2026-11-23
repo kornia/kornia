@@ -868,6 +868,96 @@ class TestBatchedForwardOutputType:
             batched_forward(model, torch.rand(300, 3), torch.device("cpu"), batch_size=128)
 
 
+class TestBatchedForwardOutputOwnership(BaseTester):
+    class _ReusedOutput(torch.nn.Module):
+        def __init__(self, capacity, device, dtype):
+            super().__init__()
+            self.register_buffer("output", torch.empty(capacity, 2, device=device, dtype=dtype))
+
+        def forward(self, x, scale=2.0):
+            # Inference wrappers can return a view of a reusable output binding.
+            result = self.output[: len(x)]
+            torch.mul(x, scale, out=result)
+            return result
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 3, 5, 8])
+    def test_reused_output_keeps_each_micro_batch(self, device, dtype, batch_size):
+        data = torch.arange(10, device=device, dtype=dtype).reshape(5, 2)
+        model = self._ReusedOutput(8, device, dtype)
+        with torch.inference_mode():
+            actual = batched_forward(model, data, device, batch_size, scale=2.0)
+        # The five input rows doubled, independently of how many model calls are made.
+        expected = torch.tensor([[0, 2], [4, 6], [8, 10], [12, 14], [16, 18]], device=device, dtype=dtype)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        assert actual.dtype == dtype
+        assert actual.device == data.device
+
+    def test_reused_tensor_without_a_view(self, device, dtype):
+        class ReusedTensor(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer("output", torch.empty(2, 2, device=device, dtype=dtype))
+
+            def forward(self, x):
+                return torch.mul(x, 2.0, out=self.output)
+
+        data = torch.arange(12, device=device, dtype=dtype).reshape(6, 2)
+        with torch.inference_mode():
+            actual = batched_forward(ReusedTensor(), data, device, batch_size=2)
+        expected = torch.tensor([[0, 2], [4, 6], [8, 10], [12, 14], [16, 18], [20, 22]], device=device, dtype=dtype)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("batch_size", [2, 5])
+    def test_gradients_and_higher_derivatives(self, device, dtype, batch_size):
+        data = torch.tensor([[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]], device=device, dtype=dtype).requires_grad_()
+        model = torch.nn.Linear(2, 2, device=device, dtype=dtype)
+        with torch.no_grad():
+            model.weight.copy_(torch.tensor([[1, 0.5], [-0.5, 1]], device=device, dtype=dtype))
+            model.bias.zero_()
+        actual = batched_forward(model, data, device, batch_size)
+        expected = model(data)
+        self.assert_close(actual, expected)
+        parameters = (data, model.weight, model.bias)
+        actual_grad = torch.autograd.grad(actual.square().sum(), parameters, create_graph=True)
+        expected_grad = torch.autograd.grad(expected.square().sum(), parameters, create_graph=True)
+        for actual_value, expected_value in zip(actual_grad, expected_grad):
+            self.assert_close(actual_value, expected_value)
+        actual_second = torch.autograd.grad(actual_grad[0].sum(), parameters)
+        expected_second = torch.autograd.grad(expected_grad[0].sum(), parameters)
+        for actual_value, expected_value in zip(actual_second, expected_second):
+            self.assert_close(actual_value, expected_value)
+
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32",))
+    def test_concatenation_still_promotes_output_dtypes(self, device, dtype):
+        class MixedDtypes(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def forward(self, x):
+                self.calls += 1
+                return x.to(torch.float64 if self.calls == 2 else torch.float32)
+
+        data = torch.arange(10, device=device, dtype=dtype).reshape(5, 2)
+        actual = batched_forward(MixedDtypes(), data, device, batch_size=2)
+        self.assert_close(actual, data.to(torch.float64), rtol=0, atol=0)
+        assert actual.dtype == torch.float64
+
+    def test_gradcheck(self, device):
+        model = torch.nn.Linear(2, 2).to(device=device, dtype=torch.float64)
+        data = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(lambda x: batched_forward(model, x, device, batch_size=2), (data,))
+
+    def test_dynamo_reused_output(self, device, dtype, torch_optimizer):
+        data = torch.arange(10, device=device, dtype=dtype).reshape(5, 2)
+        model = self._ReusedOutput(8, device, dtype)
+        function = torch_optimizer(batched_forward)
+        with torch.inference_mode():
+            actual = function(model, data, device, batch_size=2)
+        expected = torch.tensor([[0, 2], [4, 6], [8, 10], [12, 14], [16, 18]], device=device, dtype=dtype)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+
 class TestGetCudaDeviceIfAvailable:
     def test_in_range_index_resolves_when_cuda_is_available(self, monkeypatch):
         monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
