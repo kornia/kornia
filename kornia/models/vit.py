@@ -26,6 +26,7 @@ Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from typing import Any, Callable
 
 import torch
@@ -178,7 +179,19 @@ class PatchEmbedding(nn.Module):
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
     def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, tuple[int, int]]:
-        out = self.backbone(torch.zeros(1, *image_size)).detach()
+        # The shape probe is a synthetic batch. Use stored statistics only in layers that track them,
+        # keeping the rest of the backbone in its original mode when computing the grid.
+        with ExitStack() as restore:
+            if isinstance(self.backbone, nn.Module):
+                for layer in self.backbone.modules():
+                    if (
+                        layer.training
+                        and getattr(layer, "track_running_stats", False)
+                        and getattr(layer, "running_mean", None) is not None
+                    ):
+                        restore.callback(setattr, layer, "training", True)
+                        layer.training = False
+            out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], (out.shape[-2], out.shape[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -155,3 +155,35 @@ class TestVisionTransformer(BaseTester):
         assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=True).modules()} == {False}
         assert {m.training for m in VisionTransformer.from_config("vit_ti/16").modules()} == {True}
         assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=False).modules()} == {True}
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("grid", [1, 2])
+    def test_backbone_probe_preserves_batchnorm(self, grid):
+        bn = nn.BatchNorm2d(3)
+        bn.running_mean.fill_(2)
+        bn.running_var.fill_(3)
+        frozen = nn.BatchNorm2d(3).eval()
+        backbone = nn.Sequential(nn.AdaptiveAvgPool2d(grid), bn, frozen)
+
+        vit = VisionTransformer(image_size=8, depth=1, num_heads=1, backbone=backbone)
+
+        self.assert_close(bn.running_mean, torch.full((3,), 2.0))
+        self.assert_close(bn.running_var, torch.full((3,), 3.0))
+        assert bn.num_batches_tracked.item() == 0
+        assert backbone.training
+        assert bn.training
+        assert not frozen.training
+        assert vit(torch.ones(2, 3, 8, 8)).shape == (2, grid**2 + 1, 3)
+        assert bn.num_batches_tracked.item() == 1
+        assert frozen.num_batches_tracked.item() == 0
+
+    @pytest.mark.device_agnostic
+    def test_failed_backbone_probe_preserves_batchnorm(self):
+        bn = nn.BatchNorm2d(3)
+        backbone = nn.Sequential(bn, nn.Conv2d(4, 3, 1))
+
+        with pytest.raises(RuntimeError, match="channels"):
+            VisionTransformer(image_size=8, depth=1, num_heads=1, backbone=backbone)
+
+        assert bn.training
+        assert bn.num_batches_tracked.item() == 0
