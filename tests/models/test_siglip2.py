@@ -367,6 +367,8 @@ class TestSigLip2Builder:
 
 
 class TestSigLip2Model(BaseTester):
+    """Test suite for SigLip2 model."""
+
     def test_pair_loss_functional_derivatives(self, device, dtype, model, monkeypatch):
         # Isolate the pairwise objective from the attention kernels' separate forward-AD support.
         monkeypatch.setattr(model, "get_image_features", lambda image, **kwargs: image)
@@ -433,8 +435,6 @@ class TestSigLip2Model(BaseTester):
         # Scale backward keeps unscaled similarities; log-sigmoid keeps its input and buffer.
         # A fourth dense matrix containing pair labels is unnecessary.
         assert len(pair_storage) <= 3
-
-    """Test suite for SigLip2 model."""
 
     def test_identity_projections(self, device, dtype, config):
         """Test the default identity projection path with a lightweight model."""
