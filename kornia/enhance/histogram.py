@@ -22,7 +22,7 @@ import torch
 
 from kornia.core.check import _check_async
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _autocast_disabled
+from kornia.core.utils import _autocast_disabled, _reconcile_under_autocast
 
 
 def marginal_pdf(
@@ -206,6 +206,7 @@ def histogram2d(
     # A 256 x 256 image can contribute 65536 votes to one bin. Autocast would narrow the matmul back to float16.
     if torch.jit.is_scripting():
         return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
+    kernel_values1, kernel_values2 = _reconcile_under_autocast(kernel_values1, kernel_values2)
     with _autocast_disabled(x1.device.type):
         return joint_pdf(kernel_values1, kernel_values2, epsilon).to(kernel_dtype)
 
