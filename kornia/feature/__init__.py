@@ -103,6 +103,7 @@ from .clidd import CLIDD, CLIDDModel
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
+from .efficient_loftr import EfficientLoFTR
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
@@ -201,6 +202,7 @@ __all__ = [
     "DescriptorMatcher",
     "DoGAffNetHardNet",
     "DoGHardNet",
+    "EfficientLoFTR",
     "FilterResponseNorm2d",
     "GFTTAffNetHardNet",
     "GeometryAwareDescriptorMatcher",

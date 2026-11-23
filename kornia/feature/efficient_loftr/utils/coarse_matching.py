@@ -19,14 +19,17 @@ from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
+from torch import Tensor, nn
 
-from kornia.feature.loftr.utils.coarse_matching import BaseCoarseMatching
+from kornia.feature.loftr.utils.coarse_matching import CoarseMatching as _LoFTRCoarseMatching
 
 INF = 1e9
 
 
-class CoarseMatching(BaseCoarseMatching):
+class CoarseMatching(nn.Module):
+    # LoFTR's thresholding, border, mutual-nearest and keypoint rules, shared as they are.
+    get_coarse_match = _LoFTRCoarseMatching.get_coarse_match
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config

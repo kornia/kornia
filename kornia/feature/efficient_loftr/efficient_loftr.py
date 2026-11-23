@@ -171,6 +171,7 @@ class EfficientLoFTR(nn.Module):
         mul = self.config["resolution"][0] // self.config["resolution"][1]
         _data.update(
             {
+                "stride_c": self.config["resolution"][0],
                 "hw0_c": feat_c0.shape[2:],
                 "hw1_c": feat_c1.shape[2:],
                 "hw0_f": [feat_c0.shape[2] * mul, feat_c0.shape[3] * mul],
