@@ -31,6 +31,7 @@ from kornia.augmentation.utils.helpers import (
     _video_boxes,
     _video_keypoints,
 )
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -594,4 +595,7 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
-        return self.transform_inputs(input, params, extra_args=extra_args)
+        output = self.transform_inputs(input, params, extra_args=extra_args)
+        if not is_exporting():
+            self._params = params
+        return output

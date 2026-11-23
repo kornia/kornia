@@ -622,3 +622,21 @@ class TestVideoSequential:
 
         with pytest.raises(TypeError, match="VideoKeypoints or a"):
             aug(video, Keypoints(points.flatten(0, 1)))
+
+    def test_inverse_follows_replayed_params_6909(self, device, dtype):
+        # inverse() without params undoes the most recent forward, including a replay with explicit params. It used to
+        # undo the last forward that sampled a draw, and raised a RuntimeError when the first forward was a replay.
+        video = torch.arange(48, device=device, dtype=dtype).reshape(3, 2, 1, 2, 4)
+        seq = K.VideoSequential(K.RandomHorizontalFlip(p=0.5))
+        torch.manual_seed(0)
+        original = seq(video)
+        saved = seq._params
+        torch.manual_seed(1)
+        newer = seq(video)
+        assert not torch.equal(newer, original)  # the two draws flip different videos
+        replayed = seq(video, params=saved)
+        assert_close(replayed, original)
+        assert_close(seq.inverse(replayed), video)
+
+        fresh = K.VideoSequential(K.RandomHorizontalFlip(p=0.5))
+        assert_close(fresh.inverse(fresh(video, params=saved)), video)
