@@ -587,8 +587,9 @@ Augmentations
   ``x' = W - 1 - x`` and a 2x resize ``x' = 2 x + 1/2``. A
   :class:`kornia.geometry.boxes.Boxes` object under any key, and a tensor under
   ``"bbox_xywh"``, holds exclusive boxes, transformed as in *Bounding boxes*
-  above: ``x' = W - x`` and ``x' = 2 x``. A ``"bbox_xywh"`` tensor may carry the
-  zero-size boxes that ``RandomMosaic`` clipping leaves.
+  above: ``x' = W - x`` and ``x' = 2 x``. A ``"bbox_xywh"`` row with zero width
+  or height is no box: it is accepted and every output gives an all-zero row for
+  it, as for a box that ``RandomMosaic`` clips away.
 - Nested ``AugmentationSequential`` children contribute matrices from the
   current call under their own matrix mode. Plain ``ImageSequential`` children
   contribute their geometric operations in ``silent`` mode, including repeated

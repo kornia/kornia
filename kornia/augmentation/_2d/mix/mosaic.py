@@ -76,8 +76,9 @@ class RandomMosaic(MixAugmentationBaseV2):
           without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
           unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
           selected sample are translated with its tiles, not rescaled, and clipped to the output window
-          ``[0, W_out] x [0, H_out]``, so a box wholly outside it collapses onto its border with zero size; a
-          ``"bbox_xywh"`` tensor with such rows is accepted again as input. A tensor
+          ``[0, W_out] x [0, H_out]``. A box the window clips to zero width or height is removed, as
+          ``min_bbox_size`` removes boxes: every export gives an all-zero row for it, also after a later transform.
+          A tensor
           under the bare ``"bbox"`` or ``"bbox_xyxy"`` key of
           :class:`~kornia.augmentation.container.AugmentationSequential` holds pixel-centre corners and is clipped
           to ``[0, W_out - 1] x [0, H_out - 1]``, as before `#6710 <https://github.com/kornia/kornia/issues/6710>`_.
@@ -188,6 +189,10 @@ class RandomMosaic(MixAugmentationBaseV2):
                     KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
+        if not out_boxes._inclusive:
+            # A box the window clips away has zero width or height: it is removed, as ``min_bbox_size`` removes
+            # boxes, so a later rotation cannot give its line segment an area (#6710).
+            out_boxes._drop_empty()
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
 
         if not bool(to_apply.all()):

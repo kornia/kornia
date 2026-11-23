@@ -277,10 +277,11 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
 
 
 def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
-    """Return the stored coordinates in the pixel-centre frame of the image matrices, and the frame margin.
+    """Return the stored coordinates and their offset from the pixel-centre frame of the image matrices.
 
-    Exclusive box vertices are edges, half a pixel from the pixel-centre frame, and may reach half a pixel beyond
-    the first and last pixel centres; the legacy inclusive storage holds pixel-centre corners, as keypoints do.
+    Exclusive box vertices are edges, half a pixel from that frame: the offset is ``0.5``, and they lie in
+    ``[0, W] x [0, H]``. The legacy inclusive storage holds pixel-centre corners, as keypoints do: offset ``0``, in
+    ``[0, W - 1] x [0, H - 1]``.
     """
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
@@ -289,27 +290,18 @@ def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
     if isinstance(value, (Boxes, Keypoints)):
         if value._N is not None:
             raise ValueError("audit does not support ragged Boxes or Keypoints constructed from lists.")
-        if isinstance(value, Boxes) and not value._inclusive:
-            return _promote(value.data) - 0.5, 0.5
-        return value.data, 0.0
+        return value.data, 0.0 if isinstance(value, Keypoints) or value._inclusive else 0.5
     if not isinstance(value, Tensor):
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
         if key in _LEGACY_BOX_KEYS:
             return Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True).data, 0.0
-        stored = Boxes._from_tensor(_promote(value), mode=_BOX_MODES[key], validate_boxes=False).data
-        return stored - 0.5, 0.5
+        # The corners are built in at least float32, as ``x + w`` rounds in half precision; the pipeline's own labels
+        # keep their dtype.
+        value = value.to(torch.promote_types(value.dtype, torch.float32))
+        return Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False).data, 0.5
     return value, 0.0
-
-
-def _promote(coordinates: Tensor) -> Tensor:
-    """Return ``coordinates`` in at least float32, keeping float64, for the arithmetic of the diagnostics.
-
-    The half-pixel shift and the ``bbox_xywh`` corners round in half precision: the bfloat16 edge ``256`` shifts to
-    ``256``, not ``255.5``. The pipeline's own labels keep their dtype.
-    """
-    return coordinates.to(torch.promote_types(coordinates.dtype, torch.float32))
 
 
 def _spatial_audits(
@@ -322,8 +314,8 @@ def _spatial_audits(
 ) -> list[SpatialAudit]:
     audits = []
     for index, source in sources.items():
-        result, margin = _coordinates(values[index], keys[index])
-        audits.append(_spatial_audit(source, result, keys[index], index, shape, inverse, dtype, margin=margin))
+        result, offset = _coordinates(values[index], keys[index])
+        audits.append(_spatial_audit(source, result, keys[index], index, shape, inverse, dtype, offset=offset))
     return audits
 
 
@@ -403,19 +395,23 @@ def _spatial_audit(
     shape: tuple[int, ...],
     inverse: Tensor | None,
     dtype: torch.dtype,
-    margin: float = 0.0,
+    offset: float = 0.0,
 ) -> SpatialAudit:
     if source.shape != result.shape:
         raise ValueError("audit requires spatial outputs to preserve the source shape and label cardinality.")
     source, result = source.to(dtype=dtype), result.detach().to(dtype=dtype)
     batch, count = result.shape[:2]
     finite = result.isfinite().flatten(2).all(-1)
+    # The frame is checked on the coordinates as stored, edges for exclusive boxes: shifting by ``offset`` first would
+    # round an edge just below 0 onto -0.5, inside the frame.
     outside = (
-        (result[..., 0] < -margin)
-        | (result[..., 0] > shape[-1] - 1 + margin)
-        | (result[..., 1] < -margin)
-        | (result[..., 1] > shape[-2] - 1 + margin)
+        (result[..., 0] < 0)
+        | (result[..., 0] > shape[-1] - 1 + 2 * offset)
+        | (result[..., 1] < 0)
+        | (result[..., 1] > shape[-2] - 1 + 2 * offset)
     )
+    # The inverse matrix maps pixel centres, so the round trip runs in that frame, in the diagnostic dtype.
+    source, result = source - offset, result - offset
     if key in _BOX_MODES:
         outside = outside.any(-1)
     counts = torch.full((batch,), count, device=result.device, dtype=torch.long)

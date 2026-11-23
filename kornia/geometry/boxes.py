@@ -459,7 +459,9 @@ class Boxes:
           ``xmax`` and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the corners on the last pixel.
           ``from_tensor(torch.tensor([[[0., 0., 10., 20.]]]))`` stores ``[[0, 0], [10, 0], [10, 20], [0, 20]]``,
           which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'`` and ``[0, 0, 9, 19]`` in
-          ``'xyxy_plus'``. Fractional and normalized ``[0, 1]`` boxes round-trip in every mode.
+          ``'xyxy_plus'``. Fractional and normalized ``[0, 1]`` boxes round-trip in the exclusive modes. The
+          ``_plus`` modes add and subtract 1 in the box dtype, which can round a normalized edge: ``2**-10`` does not
+          survive them in bfloat16.
         - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
           ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
           ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
@@ -994,6 +996,19 @@ class Boxes:
             obj._data.masked_fill_(~keep[..., None, None], 0.0)
         return obj
 
+    def _drop_empty(self) -> None:
+        """Zero and invalidate, in place, the boxes whose axis-aligned bounds have zero width or height.
+
+        They are removed as :meth:`filter_boxes_by_area` removes boxes, so every export gives an all-zero row for them,
+        also after a later transform: a rotation or shear would turn the line segment of an empty box into a box with
+        area. :class:`~kornia.augmentation.RandomMosaic` calls this for the boxes its window clips away, and
+        :class:`~kornia.augmentation.container.AugmentationSequential` for zero extents under ``"bbox_xywh"``.
+        """
+        extent = self._data.amax(dim=-2) - self._data.amin(dim=-2)
+        empty = (extent <= 0).any(dim=-1)
+        self._valid &= ~empty
+        self._data.masked_fill_(empty[..., None, None], 0.0)
+
     def compute_area(self) -> torch.Tensor:
         """Compute polygon area with the shoelace formula.
 
@@ -1087,7 +1102,7 @@ class Boxes:
         inclusive: bool = False,
         allow_empty: bool = False,
     ) -> Boxes:
-        """:meth:`from_tensor`, with the legacy ``inclusive`` storage and the zero extents of ``allow_empty``.
+        """:meth:`from_tensor`, with the legacy ``inclusive`` storage; ``allow_empty`` accepts and removes empty boxes.
 
         See :func:`_boxes_to_quadrilaterals`.
         """
@@ -1108,7 +1123,11 @@ class Boxes:
                 torch.as_tensor(boxes), mode, validate_boxes, inclusive, allow_empty
             )
 
-        return cls._wrap(quadrilaterals, mode, inclusive)
+        out = cls._wrap(quadrilaterals, mode, inclusive)
+        if allow_empty:
+            # A zero extent is no box: it exports as an all-zero row, whatever transform follows.
+            out._drop_empty()
+        return out
 
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False

@@ -204,6 +204,19 @@ class TestAugmentationAudit(BaseTester):
         assert report.spatial[0].roundtrip_max.item() < 1e-4
         assert report.spatial[0].out_of_frame.item() == 0
 
+    @pytest.mark.parametrize("key", ["bbox", "bbox_xywh"])
+    def test_exclusive_edge_just_below_zero_is_out_of_frame_6710(self, key, device):
+        # Exclusive edges lie in [0, W]. The frame is checked on the edges themselves: shifting -1e-8 by -1/2 into the
+        # pixel-centre frame first rounds it onto the bound -0.5 in float32, so the box would count as inside.
+        image = torch.rand(1, 3, 4, 4, device=device)
+        xywh = torch.tensor([[[-1e-8, 1.0, 1.0, 1.0]]], device=device)
+        aug = K.AugmentationSequential(data_keys=["input", key])
+        _, report = audit(aug, image, Boxes.from_tensor(xywh, mode="xywh") if key == "bbox" else xywh)
+        assert report.spatial[0].out_of_frame.item() == 1
+        inside = xywh.new_tensor([[[0.0, 1.0, 4.0, 3.0]]])
+        _, report = audit(aug, image, Boxes.from_tensor(inside, mode="xywh") if key == "bbox" else inside)
+        assert report.spatial[0].out_of_frame.item() == 0
+
     def test_box_tensor_envelope_loss(self, device, dtype):
         image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
         boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))

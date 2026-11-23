@@ -84,9 +84,9 @@ Interpreting the report
 * Out-of-frame counts use inclusive pixel centers from zero to ``width - 1`` and
   ``height - 1`` for keypoints and for tensor boxes under the bare ``"bbox"`` and
   ``"bbox_xyxy"`` keys. Exclusive boxes, ``Boxes`` objects and ``"bbox_xywh"``
-  tensors, are measured on pixel centres too and may reach half a pixel beyond
-  them, to the image edges. A box is outside when any corner is outside. Nonfinite
-  labels are counted separately.
+  tensors, are checked on their edges, from zero to ``width`` and ``height``, and
+  mapped back on pixel centres for the round trip. A box is outside when any
+  corner is outside. Nonfinite labels are counted separately.
 * Crop matrices can invert coordinates even after image content has been discarded.
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.
