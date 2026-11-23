@@ -38,7 +38,7 @@ from kornia.geometry.calibration import distort_points, undistort_points
 from kornia.geometry.calibration.distort import tilt_projection
 
 
-def build_ops(batch, device, dtype, do_compile):
+def build_ops(batch, device, dtype, do_compile, skip_compile=frozenset(), selected_ops=None):
     taux = torch.full((batch, 1), 0.05, device=device, dtype=dtype)
     tauy = torch.full((batch, 1), -0.08, device=device, dtype=dtype)
     K = torch.tensor([[800.0, 0.0, 320.0], [0.0, 760.0, 240.0], [0.0, 0.0, 1.0]])
@@ -47,12 +47,17 @@ def build_ops(batch, device, dtype, do_compile):
     dist = torch.zeros(batch, 14, device=device, dtype=dtype)
     dist[:, 12] = 0.05
     dist[:, 13] = -0.08
-    rows = KorniaRows(device, do_compile)
+    rows = KorniaRows(device, do_compile, skip_compile=skip_compile)
+    operations = {
+        "tilt_projection": (tilt_projection, (taux, tauy)),
+        "tilt_projection_inverse": (tilt_projection, (taux, tauy, True)),
+        "distort_points_14": (distort_points, (points, K, dist)),
+        "undistort_points_14": (undistort_points, (points, K, dist)),
+    }
     return {
-        "tilt_projection": rows("tilt_projection", tilt_projection, taux, tauy),
-        "tilt_projection_inverse": rows("tilt_projection_inverse", tilt_projection, taux, tauy, True),
-        "distort_points_14": rows("distort_points_14", distort_points, points, K, dist),
-        "undistort_points_14": rows("undistort_points_14", undistort_points, points, K, dist),
+        name: rows(name, target, *inputs)
+        for name, (target, inputs) in operations.items()
+        if selected_ops is None or name in selected_ops
     }, rows.compile_failures
 
 
@@ -69,7 +74,7 @@ def main():
     backends = ["kornia (eager)"] + (["kornia (compiled)"] if args.compile else [])
     results = run_batch_sweep(
         batch_list(args),
-        lambda batch: build_ops(batch, device, dtype, args.compile),
+        lambda batch: build_ops(batch, device, dtype, args.compile, args.skip_compile_ops, args.ops),
         backends,
         row_fields=lambda batch: {"batch": batch, "dtype": args.dtype},
         sync=sync,
