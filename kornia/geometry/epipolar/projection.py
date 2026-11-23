@@ -190,12 +190,6 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
         )
 
     Rt = torch.cat([R, t], dim=-1)  # 3x4
-    Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
-    Rt_h[..., -1, -1] += 1.0
-
-    K_h = torch.nn.functional.pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
-    K_h[..., -1, -1] += 1.0
-
     return K @ Rt
 
 

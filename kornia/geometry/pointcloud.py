@@ -40,6 +40,7 @@ import sys
 import warnings
 from typing import BinaryIO, Dict, List, NamedTuple, Optional, Tuple
 
+import numpy as np
 import torch
 
 __all__ = [
@@ -393,7 +394,7 @@ def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[
             except ValueError as exc:
                 raise ValueError(f"PLY file {filename!r} has a non-numeric coordinate on vertex {row}: {exc}.") from exc
 
-    return torch.tensor(points, dtype=torch.float32).reshape(-1, 3)
+    return torch.tensor(points, dtype=torch.float32, device="cpu").reshape(-1, 3)
 
 
 def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
@@ -469,7 +470,7 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
             )
 
     if vertex.count == 0:
-        return torch.empty((0, 3), dtype=torch.float32)
+        return torch.empty((0, 3), dtype=torch.float32, device="cpu")
 
     scalar_types = {scalar_type for _, scalar_type in vertex.properties}
     if len(scalar_types) == 1:
@@ -483,6 +484,13 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
             # Advanced indexing already copies out of the buffer, so the result never aliases ``values``.
             return table[:, list(xyz)].to(torch.float32)
 
-    # Mixed layout (or an unsigned type torch cannot hold): unpack row by row.
-    rows = struct.iter_unpack(vertex_format, data)
-    return torch.tensor([[row[i] for i in xyz] for row in rows], dtype=torch.float32)
+    # Read mixed layouts in bulk, including interleaved colours and unsigned
+    # coordinates, instead of building Python objects for every property/row.
+    layout = np.dtype([(f"p{i}", endian + code) for i, code in enumerate(vertex_format[1:])])
+    table = np.frombuffer(data, dtype=layout, count=vertex.count)
+    points = np.empty((vertex.count, 3), dtype=np.float32)
+    # Match torch's conversion to float32 for double values outside its range.
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+        for column, index in enumerate(xyz):
+            points[:, column] = table[f"p{index}"]
+    return torch.from_numpy(points)

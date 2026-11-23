@@ -313,6 +313,27 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float16", "float32"), reason="float16 autocast")
+    def test_autocast_preserves_joint_probability_mass(self, device, dtype):
+        # Each pair votes only for (0, 0). Its count of 65536 overflows float16, but its probability is exactly 1.
+        samples = torch.zeros(1, 256 * 256, device=device, dtype=dtype)
+        bins = samples.new_tensor([0.0, 1.0])
+        with torch.autocast(device.type, dtype=torch.float16):
+            hist = TestHistogram2d.fcn(samples, samples, bins, samples.new_tensor(0.01))
+        assert hist.dtype == dtype
+        self.assert_close(hist, samples.new_tensor([[[1.0, 0.0], [0.0, 0.0]]]))
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float32",), reason="mixed kernels under float16 autocast")
+    def test_autocast_mixed_kernel_dtypes(self, device, dtype):
+        x1 = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        x2 = x1.new_tensor([[0.0, 1.0, 1.0, 1.0]], dtype=torch.float16)
+        bins = x2.new_tensor([0.0, 1.0])
+        # Off-center kernel weights underflow to zero. The four pairs give bin counts [[1, 2], [0, 1]].
+        with torch.autocast(device.type, dtype=torch.float16):
+            hist = TestHistogram2d.fcn(x1, x2, bins, x1.new_tensor(0.01))
+        assert hist.dtype == dtype
+        self.assert_close(hist, x1.new_tensor([[[0.25, 0.5], [0.0, 0.25]]]))
+
     def test_convention_first_bin_axis_belongs_to_x1(self, device, dtype):
         x1 = torch.tensor([[0.0, 0.0, 1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
         x2 = torch.tensor([[1.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)

@@ -34,6 +34,31 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), reason="measures CPU allocations with the profiler")
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (32, 32)), (kornia.losses.HausdorffERLoss3D, (16, 16, 16))]
+    )
+    def test_cpu_temporary_allocation_bound(self, hd, shape, device, dtype):
+        target = torch.zeros(2, 1, *shape, device=device, dtype=torch.long)
+        pred = torch.full((2, 2, *shape), 0.8, device=device, dtype=dtype)
+        loss = hd(k=3, reduction="none")
+
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
+            actual = loss(pred, target)
+
+        # Uniform wrong-class predictions survive all three erosions, with weight 1 + 4 + 9.
+        expected = torch.zeros_like(actual)
+        expected[1] = ((pred[:, :1] ** 2 - 0.25) / 0.75) * 14
+        self.assert_close(actual, expected)
+        # A single workspace allocation must stay below three class-map volumes, independent of
+        # whether the structuring element has five (2D) or seven (3D) neighbours.
+        class_bytes = pred[:, :1].numel() * pred.element_size()
+        # The public loss also builds an int64 label map, which is larger than this
+        # floating-point workspace bound when predictions use a two-byte dtype.
+        label_bytes = target.numel() * target.element_size()
+        largest_allocation = max(event.cpu_memory_usage for event in profile.events())
+        assert largest_allocation <= max(3 * class_bytes, label_bytes)
+
     @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
     def test_input_type_validation(self, loss_cls):
         with pytest.raises(TypeError) as errinf:

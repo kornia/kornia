@@ -269,15 +269,20 @@ def _apply_colormap(input_tensor: torch.Tensor, colors: torch.Tensor) -> torch.T
     # Name the pixel count: `-1` cannot be inferred when the tensor has no elements.
     input_tensor = input_tensor.reshape(B, C, H * W)
     if input_tensor.is_floating_point():
+        # Double images keep double for the range, the division and the multiplication: widening them to
+        # float32 first rounded values away from an exact palette boundary before the documented
+        # floor(x * N) lookup selected a colour (#6894). Half and bfloat16 still widen to float32, which
+        # holds 255 exactly and whose quotient keeps the bin edges exact.
+        compute_dtype = torch.float64 if input_tensor.dtype == torch.float64 else torch.float
         # The tensor-valued condition keeps range selection compile-safe and independent
         # of other samples and channels. `all` rather than `amax`, which refuses a channel without pixels;
         # a NaN selects 255 either way.
         max_value = torch.where(
             (input_tensor <= 1.0).all(dim=-1, keepdim=True),
-            torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
-            torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
+            torch.tensor(1.0, device=input_tensor.device, dtype=compute_dtype),
+            torch.tensor(255.0, device=input_tensor.device, dtype=compute_dtype),
         )
-        input_tensor = input_tensor.float()
+        input_tensor = input_tensor.to(compute_dtype)
         # Compiled CUDA division can misclassify colormap bin edges (#6656).
         # Use addcdiv for precise division while preserving eager and ONNX behavior.
         if torch.compiler.is_compiling():

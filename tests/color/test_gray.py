@@ -277,6 +277,48 @@ class TestRgbToGrayscale(BaseTester):
 
 
 class TestBgrToGrayscale(BaseTester):
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "strided", "unbatched", "extra_batch", "empty"])
+    def test_channel_views_and_gradients(self, device, dtype, layout):
+        # BT.601 applied to B, G, R primaries and a neutral pixel gives these independently known values.
+        image = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.25]], [[0.0, 1.0, 0.0, 0.25]], [[0.0, 0.0, 1.0, 0.25]]],
+            device=device,
+            dtype=dtype,
+        ).repeat(2, 1, 2, 1)
+        if layout == "channels_last":
+            image = image.contiguous(memory_format=torch.channels_last)
+        elif layout == "strided":
+            image = image.repeat_interleave(2, dim=-1)[..., ::2]
+        elif layout == "unbatched":
+            image = image[0]
+        elif layout == "extra_batch":
+            image = image.unsqueeze(0).expand(2, -1, -1, -1, -1)
+        elif layout == "empty":
+            image = image[:0]
+        image = image.detach().requires_grad_()
+
+        output = kornia.color.bgr_to_grayscale(image)
+        expected = image.new_tensor([0.114, 0.587, 0.299, 0.25]).expand(*image.shape[:-3], 1, 2, 4)
+        self.assert_close(output, expected)
+        gradient = torch.autograd.grad(output.sum(), image)[0]
+        expected_gradient = image.new_tensor([0.114, 0.587, 0.299]).view(3, 1, 1).expand_as(image)
+        self.assert_close(gradient, expected_gradient)
+
+    def test_uint8_rounding(self, device):
+        # OpenCV's COLOR_BGR2GRAY fixed-point result, including a bin that floating weights round differently:
+        # cv2.cvtColor(np.array([bgr], dtype=np.uint8), cv2.COLOR_BGR2GRAY).
+        bgr = [[255, 255, 255], [0, 0, 255], [0, 255, 0], [255, 0, 0], [9, 250, 12], [1, 1, 0], [50, 150, 100]]
+        image = torch.tensor(bgr, device=device, dtype=torch.uint8).T.unsqueeze(1)
+        expected = torch.tensor([[[255, 76, 150, 29, 151, 1, 124]]], device=device, dtype=torch.uint8)
+        self.assert_close(kornia.color.bgr_to_grayscale(image), expected)
+
+    def test_jit_script(self, device, dtype):
+        image = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op = torch.jit.script(kornia.color.bgr_to_grayscale)
+        module = torch.jit.script(kornia.color.BgrToGrayscale())
+        self.assert_close(op(image), kornia.color.bgr_to_grayscale(image))
+        self.assert_close(module(image), kornia.color.bgr_to_grayscale(image))
+
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)

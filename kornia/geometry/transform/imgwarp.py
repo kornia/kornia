@@ -738,7 +738,9 @@ def _fill_and_warp(
         # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
         # from broadcasting the 1x1 stand-ins up to its own size.
         fill_value = fill_value.sum().reshape(1)
-    ones_mask = torch.ones_like(src)
+    # The sampling coverage is identical for every channel. Warp one channel and broadcast it over the fill,
+    # keeping the mask and its sampled result independent of the image's channel count.
+    ones_mask = torch.ones_like(src[:, :1])
     fill_value = fill_value.to(ones_mask)
     if align_corners and not stand_in:
         # The grid addresses src with its one-pixel axes padded, and the padded pixel is out of bounds for the fill too.
