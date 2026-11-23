@@ -39,14 +39,14 @@ from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.epipolar import projection_from_KRt
 
 
-def build_ops(batch, device, dtype, do_compile):
+def build_ops(batch, device, dtype, do_compile, skip_compile=frozenset()):
     K = torch.tensor([[800.0, 0.0, 320.0], [0.0, 760.0, 240.0], [0.0, 0.0, 1.0]])
     K = K.expand(batch, 3, 3).to(device=device, dtype=dtype)
     R = axis_angle_to_rotation_matrix(torch.tensor([[0.1, -0.2, 0.05]]))
     R = R.expand(batch, 3, 3).to(device=device, dtype=dtype)
     t = torch.stack((torch.linspace(0.2, 1.2, batch), torch.full((batch,), 0.1), torch.full((batch,), 0.02)), -1)
     t = t[..., None].to(device=device, dtype=dtype)
-    rows = KorniaRows(device, do_compile)
+    rows = KorniaRows(device, do_compile, skip_compile=skip_compile)
     return {"projection_from_KRt": rows("projection_from_KRt", projection_from_KRt, K, R, t)}, rows.compile_failures
 
 
@@ -59,7 +59,7 @@ def main():
     backends = ["kornia (eager)"] + (["kornia (compiled)"] if args.compile else [])
     results = run_batch_sweep(
         batch_list(args),
-        lambda batch: build_ops(batch, device, dtype, args.compile),
+        lambda batch: build_ops(batch, device, dtype, args.compile, args.skip_compile_ops),
         backends,
         row_fields=lambda batch: {"batch": batch, "dtype": args.dtype},
         sync=sync,
