@@ -82,7 +82,7 @@ class TestStableDiffusionDissolvingPrecision(BaseTester):
         class VAE(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.config = SimpleNamespace(force_upcast=force_upcast)
+                self.config = SimpleNamespace(force_upcast=force_upcast, scaling_factor=0.18215)
                 self.encoder = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
                 self.post_quant_conv = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
                 self.decoder = torch.nn.Conv2d(3, 3, 1, bias=False, device=device, dtype=model_dtype)
