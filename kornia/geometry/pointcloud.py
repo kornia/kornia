@@ -400,7 +400,7 @@ def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[
             except ValueError as exc:
                 raise ValueError(f"PLY file {filename!r} has a non-numeric coordinate on vertex {row}: {exc}.") from exc
 
-    return torch.tensor(points, dtype=torch.float32).reshape(-1, 3)
+    return torch.tensor(points, dtype=torch.float32, device="cpu").reshape(-1, 3)
 
 
 def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
@@ -476,7 +476,7 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
             )
 
     if vertex.count == 0:
-        return torch.empty((0, 3), dtype=torch.float32)
+        return torch.empty((0, 3), dtype=torch.float32, device="cpu")
 
     scalar_types = {scalar_type for _, scalar_type in vertex.properties}
     if len(scalar_types) == 1:

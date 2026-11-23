@@ -839,7 +839,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         if bool(w_sum == 0):
             raise ValueError("weights must not all be zero")
         w = w / w_sum
-        A = data.T @ torch.diag(w) @ data
+        # Scale the four rows directly: materializing diag(w) would need M x M storage.
+        A = (data.T * w) @ data
 
     orig_dtype = A.dtype
     if A.dtype in (torch.float16, torch.bfloat16):

@@ -1,0 +1,1 @@
+Keep each micro-batch result in `batched_forward` when an inference module reuses its output buffer, so later calls do not overwrite earlier predictions. Outputs retained across another model call are copied; the single-call path is unchanged.

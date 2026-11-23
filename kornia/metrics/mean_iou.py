@@ -202,8 +202,10 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     areas_set_1 = (boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) * (boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1])  # (n1)
     areas_set_2 = (boxes_2_xyxy[:, 2] - boxes_2_xyxy[:, 0]) * (boxes_2_xyxy[:, 3] - boxes_2_xyxy[:, 1])  # (n2)
 
-    # Find the union
-    union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
+    # Add only the smaller box's uncovered area. Adding both full areas first can round away bits before
+    # subtracting the intersection, even when the union is exactly the larger box.
+    area1, area2 = areas_set_1.unsqueeze(1), areas_set_2.unsqueeze(0)
+    union = torch.maximum(area1, area2) + (torch.minimum(area1, area2) - intersection)  # (n1, n2)
 
     iou = intersection / union  # (n1, n2)
     return iou.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else iou

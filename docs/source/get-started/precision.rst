@@ -338,7 +338,6 @@ SmallSR's batched outputs changed by at most 0.002 (float16) and 0.008 (bfloat16
 
 **Open CUDA-only issues that the test suite does not exercise:**
 
-- `#6427 <https://github.com/kornia/kornia/issues/6427>`_: ``OnnxLightGlue`` binds GPU 0 for any CUDA device.
 - `#6559 <https://github.com/kornia/kornia/issues/6559>`_: batched SVD of matrices with more than 32 rows makes
   ``solve_pnp_dlt``, ``fit_plane`` and ``find_essential`` up to 200× slower on CUDA than on CPU.
 

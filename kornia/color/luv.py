@@ -100,8 +100,13 @@ def _rgb_to_luv(image: torch.Tensor, eps: float) -> torch.Tensor:
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
 
-    u_p: torch.Tensor = (4 * x) / (x + 15 * y + 3 * z + eps)
-    v_p: torch.Tensor = (9 * y) / (x + 15 * y + 3 * z + eps)
+    denominator = x + 15 * y + 3 * z
+    # Autocast can produce float16 XYZ values even with float32 inputs, where eps would round to zero.
+    if denominator.dtype == torch.float16:
+        denominator = denominator.float()
+    denominator = denominator + eps
+    u_p: torch.Tensor = ((4 * x) / denominator).to(x.dtype)
+    v_p: torch.Tensor = ((9 * y) / denominator).to(y.dtype)
 
     u: torch.Tensor = 13 * L * (u_p - u_w)
     v: torch.Tensor = 13 * L * (v_p - v_w)

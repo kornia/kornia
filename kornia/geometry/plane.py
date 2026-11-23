@@ -202,16 +202,25 @@ class Hyperplane(nn.Module):
 
         Args:
             p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
-                or :class:`torch.Tensor`. Gradients with respect to the points are preserved for both.
+                or :class:`torch.Tensor` of shape ``(..., 3)``. Gradients with respect to the points are preserved
+                for both.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
+
+        Raises:
+            ShapeError: if a tensor ``p`` does not end in 3 coordinates. Like every kornia shape check, it is
+                skipped by ``disable_checks()``.
         """
         KORNIA_CHECK(
             isinstance(p, (Vector3, torch.Tensor)), lambda: f"p must be a Vector3 or a Tensor, got {type(p).__name__}."
         )
-        return Scalar(batched_dot_product(self.normal.data, _unwrap(p)) + self.offset.data)
+        p_data = _unwrap(p)
+        # A Vector3 already ends in 3 coordinates; a plain tensor ending in 1 would otherwise broadcast
+        # against the normal and pass for the point (p, p, p) (#6902).
+        KORNIA_CHECK_SHAPE(p_data, ["*", "3"], "p must be points of shape (..., 3).")
+        return Scalar(batched_dot_product(self.normal.data, p_data) + self.offset.data)
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     def projection(self, p: Vector3 | torch.Tensor) -> Vector3:
