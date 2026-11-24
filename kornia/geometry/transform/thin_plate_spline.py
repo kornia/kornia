@@ -120,7 +120,6 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
               warped = warp_image_tps(image, kernel_centers=points_dst,
                                       kernel_weights=kernel_weights, affine_weights=affine_weights)
 
-
     Args:
         points_src: batch of source points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
         points_dst: batch of target points ``(B, N, 2)`` as :math:`(x, y)` coordinate vectors.
