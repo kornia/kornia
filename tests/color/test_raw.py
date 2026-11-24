@@ -49,15 +49,10 @@ class TestRawToRgb(BaseTester):
         with pytest.raises(ValueError):
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
-        # dimensionality test
-        img = torch.ones(3, 2, 1, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
-            assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
-
-        # dimensionality test
-        img = torch.ones(3, 1, 2, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
-            assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
+        for shape in ((1, 3, 2), (1, 2, 3)):
+            img = torch.ones(shape, device=device, dtype=dtype)
+            with pytest.raises(ValueError, match="Input H&W must be evenly divisible by 2"):
+                kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
     @pytest.mark.parametrize("cfa", list(kornia.color.CFA))
     def test_transposed_batch(self, device, dtype, cfa):

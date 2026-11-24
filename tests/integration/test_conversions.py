@@ -264,7 +264,6 @@ class TestAngleOfRotations(BaseTester):
     def test_log_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).repeat(2, 1)
-        pi = torch.ones_like(angle) * kornia.pi
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
@@ -272,14 +271,16 @@ class TestAngleOfRotations(BaseTester):
         log_q = kornia.geometry.conversions.quaternion_exp_to_log(quaternion, eps=eps)
         # compute axis_angle rotation angle
         angle_hat = 2.0 * log_q.norm(p=2, dim=-1, keepdim=True)
-        # make sure it lands between [-pi..pi)
-        mask = pi < angle_hat
-        while torch.any(mask):
-            angle_hat = torch.where(mask, angle_hat - 2.0 * kornia.pi, angle_hat)
-            mask = pi < angle_hat
         # invert angle, if axis_angle axis points in the opposite direction of the original axis
         dots = (log_q * axis).sum(dim=-1, keepdim=True)
         angle_hat = torch.where(dots < 0.0, angle_hat * -1.0, angle_hat)
+        # Angles that differ by 2 pi are the same rotation: compare the representative of angle_hat nearest the input
+        # angle, in float64 on the CPU (MPS has no float64). In bfloat16, -179.9 degrees rounds to -3.140625, whose
+        # log quaternion, 1.5703125 about +x, is a turn of +3.140625: the same rotation to 1.9e-3, but a wrap at the
+        # bfloat16 pi (3.140625) left it at +3.140625, 2 pi from the input.
+        angle64, angle_hat64 = angle.cpu().double(), angle_hat.cpu().double()
+        angle_hat64 = angle64 + torch.remainder(angle_hat64 - angle64 + math.pi, 2.0 * math.pi) - math.pi
+        angle_hat = angle_hat64.to(device=device, dtype=dtype)
         # axis_angle angle should match input angle
         self.assert_close(angle_hat, angle, atol=atol, rtol=rtol)
         # magnitude of angle should match matrix rotation angle

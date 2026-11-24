@@ -60,10 +60,13 @@ class TestCoordinateDtypes(BaseTester):
                 partial(Keypoints3D, raise_if_not_floating_point=False), [[2049, 2051, 257]], id="keypoints3d"
             ),
             pytest.param(partial(Boxes, raise_if_not_floating_point=False), _BOX, id="boxes"),
-            pytest.param(partial(Boxes.from_tensor, mode="vertices_plus"), _BOX, id="boxes-from-tensor"),
+            pytest.param(partial(Boxes.from_tensor, mode="vertices"), _BOX, id="boxes-from-tensor"),
             pytest.param(partial(Boxes3D, raise_if_not_floating_point=False), _CUBE, id="boxes3d"),
+            # In half precision the cube has a one-pixel extent at 2052 whose exclusive far edge rounds onto it, which
+            # validation rejects (test_convention_low_precision_extent_that_rounds_to_zero_raises_3d); this dtype
+            # check imports it without validation.
             pytest.param(
-                partial(Boxes3D.from_tensor, mode="xyzxyz_plus"),
+                partial(Boxes3D.from_tensor, mode="xyzxyz_plus", validate_boxes=False),
                 [[2049, 2051, 257, 2051, 2053, 259]],
                 id="boxes3d-from-tensor",
             ),

@@ -187,7 +187,11 @@ def filename_type(request, pathlike_type):
 )
 class TestPointCloudFilenames(BaseTester):
     @pytest.mark.parametrize("extension", [".ply", ".PLY"])
-    @pytest.mark.parametrize("operation", ["save", "load"])
+    @pytest.mark.parametrize(
+        ("filename_type", "operation"),
+        [("str", "save"), ("pathlib", "save"), ("pathlib", "load"), ("pathlike", "save"), ("pathlike", "load")],
+        indirect=["filename_type"],
+    )
     @pytest.mark.parametrize("shape", [(2, 3), (1, 2, 3), (2, 1, 3)])
     def test_pathlike_filename_5072(
         self, tmp_path, device, dtype, saver, loader, filename_type, extension, operation, shape

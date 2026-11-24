@@ -30,6 +30,7 @@ from kornia.core.utils import (
     _right_singular_vector,
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
+    _torch_svd_right,
 )
 from kornia.geometry.solvers.homogeneous import _null_space_householder
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
@@ -251,7 +252,7 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
         return _NullSpaceBasis.apply(design)[0]
     # every right singular vector has a gradient in torch.linalg.svd itself
     # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
-    _, _, V = _torch_svd_cast(design, full_matrices=False)
+    _, V = _torch_svd_right(design)
     return V[:, :, -4:]
 
 

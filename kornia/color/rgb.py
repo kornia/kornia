@@ -28,7 +28,7 @@ from kornia.core.utils import _clamp_range, _clamp_unit_range
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to BGR.
+    r"""Alias of :func:`bgr_to_rgb`.
 
     ``bgr = rgb_to_bgr(image)`` reorders the channels of a ``(*, 3, H, W)`` RGB image to BGR, the order OpenCV uses.
 
@@ -44,7 +44,6 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
         BGR image with shape ``(*, 3, H, W)``.
 
     See Also:
-        - :func:`bgr_to_rgb`: the same operation under the other name.
         - :class:`RgbToBgr`: the module form.
 
     Example:
@@ -52,12 +51,6 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_bgr(input) # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
-
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
-
     return bgr_to_rgb(image)
 
 

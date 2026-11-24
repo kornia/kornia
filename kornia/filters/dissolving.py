@@ -36,10 +36,7 @@ class _DissolvingWraper_HF:
         # pipeline.upcast_vae() can leave decoder entry blocks in half precision.
         if self.is_sdxl and self.model.vae.dtype == torch.float16 and self.model.vae.config.force_upcast:
             self.model.vae.to(dtype=torch.float32)
-        self.tokenizer = self.model.tokenizer
         self.model.scheduler.set_timesteps(self.num_ddim_steps)
-        self.total_steps = len(self.model.scheduler.timesteps)  # Total number of sampling steps.
-        self.prompt: str
         self.context: torch.Tensor
         self.pooled_embeddings: torch.Tensor | None = None
         self.add_time_ids: torch.Tensor | None = None
@@ -140,26 +137,19 @@ class _DissolvingWraper_HF:
             text_embeddings = self.model.text_encoder(text_input.input_ids.to(self.model.device))[0]
             self.context = torch.cat([uncond_embeddings, text_embeddings])
 
-        self.prompt = prompt
-
-    # Encode the image to latent using the VAE.
     @torch.no_grad()
     def encode_tensor_to_latent(self, image: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            # The VAE weights stay in the pipeline dtype (e.g. float32), so inputs of any
-            # user dtype (e.g. float64) must be cast to it, not only moved to the device.
-            image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
-            latents = self.model.vae.encode(image)["latent_dist"].sample()
-            return latents * self.model.vae.config.scaling_factor
+        # Match both the VAE device and its compute dtype.
+        image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
+        latents = self.model.vae.encode(image)["latent_dist"].sample()
+        return latents * self.model.vae.config.scaling_factor
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
         # Detach from autograd, then match the VAE device/dtype (allocates only on mismatch).
         latents = latents.detach().to(device=self.model.device, dtype=self.model.vae.dtype)
         latents = latents * (1.0 / self.model.vae.config.scaling_factor)
-        # Reduce attribute lookups by localizing frequently used attributes
-        vae_decode = self.model.vae.decode
-        image = vae_decode(latents)["sample"]
+        image = self.model.vae.decode(latents)["sample"]
         # Use in-place arithmetic/clamp for throughput
         image = image.div_(2).add_(0.5)
         image.clamp_(0, 1)

@@ -332,9 +332,16 @@ class TestHyperplane(BaseTester):
 
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
-        v0 = Vector3.random(shape, device, dtype)
-        v1 = Vector3.random(shape, device, dtype)
-        v2 = Vector3.random(shape, device, dtype)
+        # Fixed, well-separated points: random ones made the test flaky, since about 2% of random bfloat16 triples
+        # fall within Hyperplane.through's collinearity check (8 eps) and are rightly rejected.
+        lead = shape if shape is not None else ()
+
+        def point(xyz):
+            return Vector3(torch.tensor(xyz, device=device, dtype=dtype).expand(*lead, 3).clone())
+
+        v0 = point([0.25, 0.5, 0.0])
+        v1 = point([1.0, 0.0, 0.5])
+        v2 = point([0.0, 1.0, 0.75])
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
         assert p0.normal.shape == ((*shape, 3) if shape is not None else (3,))

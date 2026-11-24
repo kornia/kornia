@@ -860,7 +860,7 @@ def test_recorded_baseline_manifest(dtype: str) -> None:
             enforce_compatibility=False,
         )
 
-    assert entries
+    # Both manifests are empty since #6927 and #6928; an entry recorded later must still be well formed.
     assert all(entry.phase in {"setup", "call"} for entry in entries.values())
     assert all("." in entry.exception for entry in entries.values())
 
