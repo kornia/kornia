@@ -307,7 +307,7 @@ class TestRgbToYuv(BaseTester):
         self.assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         module = kornia.color.RgbToYuv().to(device, dtype)
         self.assert_close(module(img), kornia.color.rgb_to_yuv(img))
 
@@ -425,7 +425,7 @@ class TestRgbToYuv420(BaseTester):
         self.assert_close(op(img)[1], op_optimized(img)[1])
 
     def test_module(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         module = kornia.color.RgbToYuv420().to(device, dtype)
         expected = kornia.color.rgb_to_yuv420(img)
         self.assert_close(module(img)[0], expected[0])
@@ -542,7 +542,7 @@ class TestRgbToYuv422(BaseTester):
         self.assert_close(op(img)[1], op_optimized(img)[1])
 
     def test_module(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         module = kornia.color.RgbToYuv422().to(device, dtype)
         expected = kornia.color.rgb_to_yuv422(img)
         self.assert_close(module(img)[0], expected[0])
@@ -648,7 +648,7 @@ class TestYuvToRgb(BaseTester):
         self.assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
-        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
         module = kornia.color.YuvToRgb().to(device, dtype)
         self.assert_close(module(img), kornia.color.yuv_to_rgb(img))
 
@@ -789,8 +789,8 @@ class TestYuv420ToRgb(BaseTester):
         self.assert_close(op(imgy, imguv), op_optimized(imgy, imguv))
 
     def test_module(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 2, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 2, 2, device=device, dtype=dtype)
         module = kornia.color.Yuv420ToRgb().to(device, dtype)
         self.assert_close(module(imgy, imguv), kornia.color.yuv420_to_rgb(imgy, imguv))
 
@@ -927,7 +927,7 @@ class TestYuv422ToRgb(BaseTester):
         self.assert_close(op(imgy, imguv), op_optimized(imgy, imguv))
 
     def test_module(self, device, dtype):
-        imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
-        imguv = torch.ones(2, 2, 4, 2, device=device, dtype=dtype)
+        imgy = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        imguv = torch.rand(2, 2, 4, 2, device=device, dtype=dtype)
         module = kornia.color.Yuv422ToRgb().to(device, dtype)
         self.assert_close(module(imgy, imguv), kornia.color.yuv422_to_rgb(imgy, imguv))

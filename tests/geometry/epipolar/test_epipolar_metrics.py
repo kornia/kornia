@@ -251,9 +251,13 @@ class TestRightToLeftEpipolarDistance(BaseTester):
         self.assert_close(epi.right_to_left_epipolar_distance(pts1_weighted, pts2, Fm), expected)
 
 
-_HALF_PIXEL_F = (
-    "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
-    "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
+_HALF_CONTROL = (
+    "float16 flushes the small entries of this pixel-unit F (F[0, 1] becomes 0), so the swapped-argument control "
+    "does not separate; TestEpipolarDistancesHalfPrecision checks half-precision inputs against float64"
+)
+_HALF_F_SCALES = (
+    "1e-6 and 1e3 times a pixel-unit F leave the half-precision range (float16 flushes or overflows entries), and the "
+    "internal implementations this calls directly compute in the input dtype"
 )
 # Fixed pixel offsets added to x2 so that the distances are non-zero.
 _NOISE = [
@@ -279,48 +283,55 @@ def _cpu64(x: torch.Tensor) -> torch.Tensor:
     return x.detach().cpu().double()
 
 
+def _float64_distance(metric: str, x1: torch.Tensor, x2: torch.Tensor, F: torch.Tensor) -> torch.Tensor:
+    """Reference distance in float64 from the point-to-epiline geometry, in pixels.
+
+    ``x1`` are first-image points, ``x2`` second-image points, and ``F`` follows x2^T F x1 = 0.
+    """
+    F64, p1, p2 = _cpu64(F), _cpu64(x1), _cpu64(x2)
+    lines_in_2 = _hom(p1) @ F64.transpose(-2, -1)  # epilines of pts1, in the second image
+    lines_in_1 = _hom(p2) @ F64  # epilines of pts2, in the first image
+    algebraic = (_hom(p2) * lines_in_2).sum(-1)
+    d2 = algebraic.abs() / lines_in_2[..., :2].norm(dim=-1)  # pts2 to the epiline of pts1
+    d1 = algebraic.abs() / lines_in_1[..., :2].norm(dim=-1)  # pts1 to the epiline of pts2
+    return {
+        "sampson": algebraic**2 / (lines_in_2[..., :2].pow(2).sum(-1) + lines_in_1[..., :2].pow(2).sum(-1)),
+        "symmetrical": d1**2 + d2**2,  # the sum of the two squared distances, not their mean
+        "left_to_right": d2,
+        "right_to_left": d1,
+    }[metric]
+
+
 class TestConventionEpipolarMetrics(BaseTester):
-    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_CONTROL)
     @pytest.mark.parametrize("metric", ["sampson", "symmetrical", "left_to_right", "right_to_left"])
     def test_convention_metrics_argument_order_and_squared(self, metric, device, dtype):
         two_view = two_view_scene(device, dtype)
         x1 = two_view["x1"]
         x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
         F = _pixel_F_unit_norm(two_view)
-        # Reference in float64 from the point-to-epiline geometry, in pixels: pts1 are first-image points, pts2
-        # second-image points, and Fm follows x2^T F x1 = 0.
-        F64, p1, p2 = _cpu64(F), _cpu64(x1), _cpu64(x2)
-        lines_in_2 = _hom(p1) @ F64.transpose(-2, -1)  # epilines of pts1, in the second image
-        lines_in_1 = _hom(p2) @ F64  # epilines of pts2, in the first image
-        algebraic = (_hom(p2) * lines_in_2).sum(-1)
-        d2 = algebraic.abs() / lines_in_2[..., :2].norm(dim=-1)  # pts2 to the epiline of pts1
-        d1 = algebraic.abs() / lines_in_1[..., :2].norm(dim=-1)  # pts1 to the epiline of pts2
-        expected = {
-            "sampson": algebraic**2 / (lines_in_2[..., :2].pow(2).sum(-1) + lines_in_1[..., :2].pow(2).sum(-1)),
-            "symmetrical": d1**2 + d2**2,  # the sum of the two squared distances, not their mean
-            "left_to_right": d2,
-            "right_to_left": d1,
-        }[metric]
+        rtol = 1e-3  # float32 roundoff of the cancelling residual
+        expected = _float64_distance(metric, x1, x2, F)
         fn = getattr(epi, f"{metric}_epipolar_distance")
-        self.assert_close(_cpu64(fn(x1, x2, F)), expected, rtol=1e-3, atol=0.0)
+        self.assert_close(_cpu64(fn(x1, x2, F)), expected, rtol=rtol, atol=0.0)
         # Control: the points swapped against the same F give a different value on every correspondence.
         assert ((_cpu64(fn(x2, x1, F)) - expected).abs() / expected).min() > 0.5
         # Relabelling the images (swap the points, transpose F) keeps Sampson and the symmetric distance and swaps
         # the two one-way distances.
         relabelled = {"left_to_right": "right_to_left", "right_to_left": "left_to_right"}.get(metric, metric)
         relabelled_fn = getattr(epi, f"{relabelled}_epipolar_distance")
-        self.assert_close(_cpu64(relabelled_fn(x2, x1, F.transpose(-2, -1))), expected, rtol=1e-3, atol=0.0)
+        self.assert_close(_cpu64(relabelled_fn(x2, x1, F.transpose(-2, -1))), expected, rtol=rtol, atol=0.0)
         if metric in ("sampson", "symmetrical"):
             # squared=True is the default; squared=False returns the root, in pixels. The one-way distances are
             # unsquared and have no squared argument.
-            self.assert_close(_cpu64(fn(x1, x2, F, squared=False)), expected.sqrt(), rtol=1e-3, atol=0.0)
+            self.assert_close(_cpu64(fn(x1, x2, F, squared=False)), expected.sqrt(), rtol=rtol, atol=0.0)
         if metric == "sampson":
             # A 3-vector point is used as given: w = 1 matches the 2-vector input, w = 2 is not dehomogenised and
             # changes every value.
             self.assert_close(fn(_hom(x1), _hom(x2), F), fn(x1, x2, F))
             assert ((fn(2.0 * _hom(x1), _hom(x2), F) - fn(x1, x2, F)).abs() / fn(x1, x2, F)).min() > 0.25
 
-    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_PIXEL_F)
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_HALF_F_SCALES)
     def test_metrics_do_not_depend_on_the_scale_of_F_4881(self, device, dtype):
         two_view = two_view_scene(device, dtype)
         x1 = two_view["x1"]
@@ -659,3 +670,92 @@ class TestUnbatchedFundamentalMatrix(BaseTester):
         pts2 = torch.rand(5, 2, generator=generator, dtype=torch.float64).to(device)
         Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)[0]
         self.gradcheck(metric, (pts1, pts2, Fm))
+
+
+class TestEpipolarDistancesAutocast(BaseTester):
+    """A caller's autocast region does not reach the epipolar distances, as for the homography transfer errors."""
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float32",), reason="CPU and CUDA autocast of float32")
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("metric", ["sampson", "sampson_shared", "symmetrical", "left_to_right", "right_to_left"])
+    def test_autocast_does_not_change_the_result(self, metric, autocast_dtype, device, dtype):
+        # Under autocast the matrix products ran in half precision, where a pixel-unit F underflows: the CUDA paths
+        # of the Sampson and symmetric distances, the shared-point Sampson path and the one-way distances on every
+        # device. On this scene that put float32 distances up to 85% off in float16 and up to 2.9 times off in
+        # bfloat16. The CPU per-matrix Sampson and symmetric paths are elementwise, so autocast never reached them.
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        two_view = two_view_scene(device, dtype)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        F = _pixel_F_unit_norm(two_view)
+        if metric == "sampson_shared":
+            # 6000 models x 12 points: one point set against many matrices reaches the shared path on every device.
+            F = F.expand(6000, 3, 3)
+            metric = "sampson"
+        fn = getattr(epi, f"{metric}_epipolar_distance")
+        expected = fn(x1, x2, F)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = fn(x1, x2, F)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), dtypes=("float16", "bfloat16"), reason="CPU and CUDA autocast of half points"
+    )
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("fm_dtype", ["points", "float32"])
+    @pytest.mark.parametrize("metric", ["sampson", "symmetrical", "left_to_right", "right_to_left"])
+    def test_autocast_does_not_change_the_output_dtype(self, metric, fm_dtype, autocast_dtype, device, dtype):
+        # The output dtype is the one the same call has without autocast: the points' dtype when every input is half,
+        # float32 when Fm is float32. Before, autocast's per-op casts picked it: float32 for every call on CUDA, and
+        # the autocast dtype of the epiline product in the one-way distances on the CPU, so bfloat16 points with a
+        # float32 Fm returned bfloat16 in a bfloat16 region.
+        if device.type == "cuda" and torch.bfloat16 in (dtype, autocast_dtype) and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        two_view = two_view_scene(device, torch.float32)
+        x1 = two_view["x1"].to(dtype)
+        x2 = (two_view["x2"] + torch.tensor([_NOISE], device=device)).to(dtype)
+        F = _pixel_F_unit_norm(two_view)
+        F = F.to(dtype) if fm_dtype == "points" else F
+        fn = getattr(epi, f"{metric}_epipolar_distance")
+        expected = fn(x1, x2, F)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = fn(x1, x2, F)
+        assert expected.dtype == (dtype if fm_dtype == "points" else torch.float32)
+        assert actual.dtype == expected.dtype
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+
+class TestEpipolarDistancesHalfPrecision(BaseTester):
+    """float16 and bfloat16 inputs are computed in float32 and the distance is rounded once."""
+
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="the half-precision path")
+    @pytest.mark.parametrize(
+        "metric, squared",
+        [
+            ("sampson", True),
+            ("sampson", False),
+            ("symmetrical", True),
+            ("symmetrical", False),
+            ("left_to_right", None),  # the one-way distances have no squared argument
+            ("right_to_left", None),
+        ],
+    )
+    def test_matches_float64_of_the_rounded_inputs(self, metric, squared, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        x1 = two_view["x1"]
+        x2 = two_view["x2"] + torch.tensor([_NOISE], device=device, dtype=dtype)
+        F = _pixel_F_unit_norm(two_view)
+        expected = _float64_distance(metric, x1, x2, F)  # from the same rounded points and F
+        fn = getattr(epi, f"{metric}_epipolar_distance")
+        if squared is None:
+            actual = fn(x1, x2, F)
+        else:
+            actual = fn(x1, x2, F, squared=squared)
+            expected = expected if squared else expected.sqrt()
+        assert actual.dtype == dtype
+        # 1e-3 covers float32 roundoff of the cancelling residual, and the single rounding to the dtype adds at most
+        # half an ulp: measured at 0.31-0.45 eps on CPU and CUDA. Computed in half precision, as before, the
+        # distances were up to 5.6% off in float16 and 27 times too large in bfloat16.
+        self.assert_close(_cpu64(actual), expected, rtol=1e-3 + torch.finfo(dtype).eps / 2, atol=0.0)

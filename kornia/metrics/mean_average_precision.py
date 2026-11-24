@@ -60,8 +60,8 @@ def mean_average_precision(
           ground-truth boxes of different dtypes give the promotion of those two floating dtypes (float32 when one
           set is integer and the other float16). :ref:`Losses and metrics <losses-metrics-conventions>` compares the
           match rule with the VOC devkit and COCO.
-        - Detection counts, precision and recall use at least float32 before each class's AP is rounded to the
-          output dtype. A half-precision recall rounded up to a threshold would otherwise score an unreached level.
+        - Matching IoUs, detection counts, precision and recall use at least float32 before each class's AP is rounded
+          to the output dtype. Rounding before the threshold comparisons can change the match or recall decision.
 
     Args:
         pred_boxes: per-image predicted boxes, each with shape ``(N, 4)``.
@@ -131,6 +131,11 @@ def mean_average_precision(
     # Recall comparisons are discrete decisions: bfloat16 rounds 512/513 to 1 and incorrectly gives a missed
     # object full recall. Keep counts and their ratios in at least float32, rounding only the final class AP.
     statistics_dtype = torch.promote_types(ap_dtype, torch.float32)
+    # mean_iou_bbox returns the promoted box dtype. Widen half-precision boxes once so a true overlap just above
+    # the matching threshold cannot round down to it before the strict comparison.
+    if ap_dtype in (torch.float16, torch.bfloat16):
+        _pred_boxes = _pred_boxes.float()
+        _gt_boxes = _gt_boxes.float()
 
     # These data-dependent checks break the compiled graph; in a helper function they would also break it at each call.
     for name, labels in (("pred_labels", _pred_labels), ("gt_labels", _gt_labels)):
@@ -171,30 +176,38 @@ def mean_average_precision(
         pred_class_images = pred_class_images[sort_ind]  # (n_class_detections)
         pred_class_boxes = pred_class_boxes[sort_ind]  # (n_class_detections, 4)
 
+        # Ground truth was concatenated image by image, and the class mask preserves that order. Its image groups
+        # are therefore contiguous slices. Record their bounds once instead of scanning every class object and
+        # allocating a full class-sized index tensor for every detection, including detections in other images.
+        gt_image_ids: List[int] = gt_class_images.tolist()
+        image_ranges: Dict[int, Tuple[int, int]] = {}
+        start = 0
+        for end in range(1, len(gt_image_ids) + 1):
+            if end == len(gt_image_ids) or gt_image_ids[end] != gt_image_ids[start]:
+                image_ranges[gt_image_ids[start]] = (start, end)
+                start = end
+        pred_image_ids: List[int] = pred_class_images.tolist()
+
         # In the order of decreasing scores, check if true or false positive
         gt_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
         false_positives = torch.zeros((n_class_detections,), dtype=statistics_dtype, device=pred_class_boxes.device)
-        for d in range(n_class_detections):
+        for d, this_image in enumerate(pred_image_ids):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
-            this_image = pred_class_images[d]  # (), scalar
 
-            # Find objects in the image with this class, their difficulties, and whether they have been detected before
-            object_boxes = gt_class_boxes[gt_class_images == this_image]  # (n_class_objects_in_img)
             # If no such object in this image, then the detection is a false positive
-            if object_boxes.size(0) == 0:
+            bounds = image_ranges.get(this_image)
+            if bounds is None:
                 false_positives[d] = 1
                 continue
+            start, end = bounds
+            object_boxes = gt_class_boxes[start:end]  # (n_class_objects_in_img), a view
 
             # Find maximum overlap of this detection with objects in this image of this class
             overlaps = mean_iou_bbox(this_detection_box, object_boxes)  # (1, n_class_objects_in_img)
             max_overlap, ind = torch.max(overlaps.squeeze(0), dim=0)  # (), () - scalars
 
-            # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
-            # In the original class-level tensors 'gt_class_boxes', etc., 'ind' corresponds to object with index...
-            original_ind = torch.tensor(
-                range(gt_class_boxes.size(0)), device=gt_class_boxes_detected.device, dtype=torch.long
-            )[gt_class_images == this_image][ind]
-            # We need 'original_ind' to update 'gt_class_boxes_detected'
+            # Convert the image-local index back to the class-level detected-object flags.
+            original_ind = ind + start
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match
             if max_overlap.item() > threshold:

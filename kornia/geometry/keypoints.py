@@ -183,18 +183,11 @@ class Keypoints:
         Returns:
             :class:`Keypoints` object containing the updated coordinates.
         """
-        _data = self._data if inplace else self._data.clone()
-
+        obj = self if inplace else self.clone()
         if isinstance(values, Keypoints):
-            _data.index_put_(indices, values.data)
+            obj._data.index_put_(indices, values.data)
         else:
-            _data.index_put_(indices, values)
-
-        if inplace:
-            return self
-
-        obj = self.clone()
-        obj._data = _data
+            obj._data.index_put_(indices, values)
         return obj
 
     def _broadcast_over_points(self, values: torch.torch.Tensor) -> torch.torch.Tensor:

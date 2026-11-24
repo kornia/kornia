@@ -738,7 +738,9 @@ def _fill_and_warp(
         # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
         # from broadcasting the 1x1 stand-ins up to its own size.
         fill_value = fill_value.sum().reshape(1)
-    ones_mask = torch.ones_like(src)
+    # The sampling coverage is identical for every channel. Warp one channel and broadcast it over the fill,
+    # keeping the mask and its sampled result independent of the image's channel count.
+    ones_mask = torch.ones_like(src[:, :1])
     fill_value = fill_value.to(ones_mask)
     if align_corners and not stand_in:
         # The grid addresses src with its one-pixel axes padded, and the padded pixel is out of bounds for the fill too.
@@ -1010,13 +1012,6 @@ def _normalize_warped_pixel_grid3d(
     y = (2.0 * grid[..., 1:2] + 1.0) / height - 1.0
     z = (2.0 * grid[..., 2:3] + 1.0) / depth - 1.0
     return torch.cat((x, y, z), -1)
-
-
-# TODO: move to kornia.geometry.projective
-# TODO: create the nn.Module -- TBD what inputs/outputs etc
-# class PerspectiveTransform(nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
 
 
 def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
@@ -2199,9 +2194,6 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
 
     if not src.shape == dst.shape:
         raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
-
-    if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
         raise AssertionError(

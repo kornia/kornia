@@ -96,7 +96,9 @@ def raises_cuda_device_assert(match: str, capfd: pytest.CaptureFixture[str]) -> 
     condition: the MSVC branch of ``CUDA_KERNEL_ASSERT_MSG`` drops the message, so there only the assert is checked.
 
     The assert leaves the CUDA context unusable for the rest of the process, so a test that uses this must be marked
-    ``@pytest.mark.cuda_device_assert``, which runs it in a fresh subprocess on CUDA (see TESTING.md).
+    ``@pytest.mark.cuda_device_assert``, which runs it in a fresh subprocess on CUDA (see TESTING.md). That subprocess
+    blocks on every kernel launch: otherwise a later launch in the block can report the failure first, and the message
+    is printed only at process exit.
     """
     try:
         yield

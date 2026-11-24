@@ -556,11 +556,6 @@ class TestNMS3dMinMax(BaseTester):
         max_mask, min_mask = kornia.geometry.subpix.nms3d_minmax(inp)
         assert not (max_mask & min_mask).any()
 
-    def test_gradcheck(self, device):
-        # nms3d_minmax is not differentiable (bool masks), so we just check it runs.
-        inp = torch.randn(1, 1, 5, 7, 7, device=device)
-        kornia.geometry.subpix.nms3d_minmax(inp)
-
 
 class TestConventionsNMS2d(BaseTester):
     def test_convention_nms2d_value_output_zeroes_suppressed(self, device, dtype):

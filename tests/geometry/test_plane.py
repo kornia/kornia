@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import BaseError, ValueCheckError
+from kornia.core.exceptions import BaseError, ShapeError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -319,11 +319,29 @@ class TestHyperplane(BaseTester):
         with pytest.raises(BaseError, match="p must be a Vector3 or a Tensor, got list"):
             plane.signed_distance([0.0, 0.0, 1.0])
 
+    @pytest.mark.parametrize("method", ["signed_distance", "abs_distance", "projection"])
+    @pytest.mark.parametrize("shape", [(1,), (2,), (4, 1), (2, 4)])
+    def test_rejects_point_without_three_coordinates_6902(self, device, dtype, method, shape):
+        # A plain tensor ending in 1 used to broadcast against the normal and pass for (p, p, p),
+        # where the same tensor wrapped in a Vector3 raises.
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(0.0)))
+        p = torch.full(shape, 7.0, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"p must be points of shape \(\.\.\., 3\)"):
+            getattr(plane, method)(p)
+
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_through_three(self, device, dtype, shape):
-        v0 = Vector3.random(shape, device, dtype)
-        v1 = Vector3.random(shape, device, dtype)
-        v2 = Vector3.random(shape, device, dtype)
+        # Fixed, well-separated points: random ones made the test flaky, since about 2% of random bfloat16 triples
+        # fall within Hyperplane.through's collinearity check (8 eps) and are rightly rejected.
+        lead = shape if shape is not None else ()
+
+        def point(xyz):
+            return Vector3(torch.tensor(xyz, device=device, dtype=dtype).expand(*lead, 3).clone())
+
+        v0 = point([0.25, 0.5, 0.0])
+        v1 = point([1.0, 0.0, 0.5])
+        v2 = point([0.0, 1.0, 0.75])
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
         assert p0.normal.shape == ((*shape, 3) if shape is not None else (3,))

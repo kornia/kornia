@@ -177,7 +177,7 @@ class NamedPose:
         translation: torch.Tensor,
         frame_src: str | None = None,
         frame_dst: str | None = None,
-    ) -> NamedPose | None:
+    ) -> NamedPose:
         """Construct NamedPose from rotation and translation.
 
         Args:
@@ -219,16 +219,11 @@ class NamedPose:
             RT[..., :dim, dim] = translation
             if dim == 2:
                 return cls(Se2.from_matrix(RT), frame_src, frame_dst)
-            if dim == 3:
-                return cls(Se3.from_matrix(RT), frame_src, frame_dst)
-        else:
-            raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(rotation)}")
-        return None
+            return cls(Se3.from_matrix(RT), frame_src, frame_dst)
+        raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(rotation)}")
 
     @classmethod
-    def from_matrix(
-        cls, matrix: torch.Tensor, frame_src: str | None = None, frame_dst: str | None = None
-    ) -> NamedPose | None:
+    def from_matrix(cls, matrix: torch.Tensor, frame_src: str | None = None, frame_dst: str | None = None) -> NamedPose:
         """Construct NamedPose from a matrix.
 
         Args:
@@ -253,9 +248,7 @@ class NamedPose:
         dim = matrix.shape[-1]
         if dim == 3:
             return cls(Se2.from_matrix(matrix), frame_src, frame_dst)
-        if dim == 4:
-            return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
-        return None
+        return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
 
     def inverse(self) -> NamedPose:
         """Inverse of the NamedPose.

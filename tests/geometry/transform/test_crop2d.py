@@ -24,7 +24,13 @@ from torch.utils._python_dispatch import TorchDispatchMode
 import kornia
 from kornia.core.exceptions import BaseError
 
-from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    deterministic_algorithms_on_cuda,
+    dynamo_is_available,
+    supports_bilinear_2d_grid_sample,
+)
 
 
 class TestCropAndResize(BaseTester):
@@ -424,6 +430,48 @@ class TestCenterCrop(BaseTester):
         self.assert_close(reflected, mirrored)
         reflected = kornia.geometry.transform.center_crop(small, (4, 4), padding_mode="reflection", align_corners=False)
         self.assert_close(reflected, replicated)
+
+    @staticmethod
+    def _wide_image_and_its_center(device, dtype):
+        # A 3x3 window of a 517 x 517 image starts at pixel 257 (2049 of 4101 x 4101 for float16), the first integer
+        # that bfloat16 (float16) cannot hold: in the image dtype it rounded to 256 (2048). Each pixel holds
+        # 8 * (row % 7) + col % 7, which the half types hold exactly, so a window one pixel off has other values.
+        n, start = (4101, 2049) if dtype == torch.float16 else (517, 257)
+        index = (torch.arange(n, device=device) % 7).to(dtype)
+        image = (8 * index[:, None] + index).view(1, 1, n, n)
+        return image, image[..., start : start + 3, start : start + 3]
+
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    def test_center_crop_of_a_wide_half_image_starts_at_its_offset(self, mode, device, dtype):
+        image, expected = self._wide_image_and_its_center(device, dtype)
+        out = kornia.geometry.transform.center_crop(image, (3, 3), mode=mode)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_center_crop2d_of_a_wide_half_image_starts_at_its_offset(self, cropping_mode, device, dtype):
+        # The slice mode got the box 256..260 (2048..2052), five pixels wide, and resized it to 3x3.
+        image, expected = self._wide_image_and_its_center(device, dtype)
+        out = kornia.geometry.transform.CenterCrop2D((3, 3), resample="nearest", cropping_mode=cropping_mode)(image)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.skipif(not hasattr(torch.compiler, "is_exporting"), reason="needs torch.compiler.is_exporting")
+    @pytest.mark.parametrize("window", ["3x3", "one row"])
+    def test_exported_center_crop2d_of_a_wide_half_image_starts_at_its_offset(self, window, device, dtype):
+        # Under torch.export the slice mode resamples the box through crop_by_indices' export path, which cast the
+        # box and the destination corners to the image dtype too: the start 257 (2049) moved the 3x3 window, and the
+        # far destination corner 257 (2049) of a row 258 (2050) pixels wide stretched it.
+        image, expected = self._wide_image_and_its_center(device, dtype)
+        size = (3, 3)
+        if window == "one row":
+            # starts at row 258 and column 129 (2050 and 1025 for float16), which the half types hold
+            size, top, left = ((1, 2050), 2050, 1025) if dtype == torch.float16 else ((1, 258), 258, 129)
+            expected = image[..., top : top + 1, left : left + size[1]]
+        out = torch.export.export(kornia.geometry.transform.CenterCrop2D(size), (image,)).module()(image)
+        assert out.dtype == dtype
+        self.assert_close(out, expected)
 
     # A 4x5 input: overflow on the right only, on every side, with odd margins, and on one axis while the other crops.
     _larger_sizes_6312 = [(4, 6), (6, 6), (5, 7), (2, 7), (7, 3)]
@@ -878,6 +926,40 @@ class TestCropByIndices(BaseTester):
         expected_gradient = torch.zeros_like(inp)
         expected_gradient[..., 1:4, 2:6] = weights
         self.assert_close(gradient, expected_gradient, atol=0, rtol=0)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic", "nearest"])
+    def test_export_matches_eager(self, interpolation, device, dtype):
+        # Export captures the same gather as torch.compile, so a box that is not exactly ``size`` pixels is resized as
+        # in eager mode; the warp it used before resampled the box with align_corners=True.
+        crop_by_indices = kornia.geometry.transform.crop_by_indices
+
+        class Crop(torch.nn.Module):
+            def forward(self, image, box):
+                return crop_by_indices(image, box, size=(5, 6), interpolation=interpolation)
+
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        traced = torch.tensor([[[2, 3], [11, 3], [11, 10], [2, 10]]] * 2, device=device, dtype=dtype)
+        other = torch.tensor(
+            [[[0, 0], [13, 0], [13, 8], [0, 8]], [[5, 2], [19, 2], [19, 15], [5, 15]]], device=device, dtype=dtype
+        )
+        exported = torch.export.export(Crop(), (image, traced)).module()
+        self.assert_close(
+            exported(image, other), crop_by_indices(image, other, size=(5, 6), interpolation=interpolation)
+        )
+
+    def test_export_flag_during_graph_capture_keeps_eager_values(self, monkeypatch, device, dtype):
+        # Some torch releases report is_exporting() as true during a torch.compile capture; the crop must match eager.
+        from kornia.geometry.transform import crop2d
+
+        image = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        box = torch.tensor(
+            [[[0, 0], [13, 0], [13, 8], [0, 8]], [[5, 2], [19, 2], [19, 15], [5, 15]]], device=device, dtype=dtype
+        )
+        expected = crop2d.crop_by_indices(image, box, size=(5, 6))
+        monkeypatch.setattr(crop2d, "is_compiling", lambda: True)
+        monkeypatch.setattr(crop2d, "is_exporting", lambda: True)
+        self.assert_close(crop2d.crop_by_indices(image, box, size=(5, 6)), expected)
 
     def test_uniform_exact_size_avoids_per_row_slices_4531(self, device, dtype):
         inp = torch.rand(4, 2, 8, 9, device=device, dtype=dtype)

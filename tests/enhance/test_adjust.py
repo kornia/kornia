@@ -1244,6 +1244,125 @@ class TestAdjustSigmoid(BaseTester):
 
 
 class TestAdjustLog(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="expected values of the float32/float64 inputs")
+    def test_first_quantization_levels(self, device, dtype):
+        # Non-dyadic quantization levels exercise rounding in 1 + image even at full precision.
+        # Expected values use log1p(x) / log(2) at the stored value in each input dtype.
+        levels = [1 / 255, 1 / 4095, 1 / 65535]
+        if dtype == torch.float32:
+            expected = [0.00564656347442143, 0.0003522634926127464, 2.2013947258830017e-05]
+        else:
+            expected = [0.005646563141142062, 0.00035226347162902144, 2.2013947263955502e-05]
+        # Round on CPU before moving to the selected device (MPS has no float64).
+        image = torch.tensor(levels, dtype=torch.float64).to(dtype).to(device)
+        result = enhance.adjust_log(image)
+        self.assert_close(
+            result, torch.tensor(expected, device=device, dtype=dtype), atol=0, rtol=4 * torch.finfo(dtype).eps
+        )
+
+    @pytest.mark.parametrize("module", [False, True])
+    def test_dark_pixels(self, device, dtype, module):
+        # All pixels are exactly representable in every floating dtype. The expected values were generated with:
+        # [math.log1p(x) / math.log(2) for x in pixels]
+        pixels = [0.0, 2**-16, 2**-12, 2**-8, 1 / 16, 0.25, 0.5, 1.0]
+        expected = [
+            0.0,
+            2.2013611360340496e-05,
+            0.00035217748030102726,
+            0.005624549193878107,
+            0.0874628412503394,
+            0.32192809488736235,
+            0.5849625007211562,
+            1.0,
+        ]
+        image = torch.tensor(pixels, device=device, dtype=dtype).reshape(1, 1, 2, 4).transpose(-1, -2)
+        result = enhance.AdjustLog()(image) if module else enhance.adjust_log(image)
+        reference = torch.tensor(expected, device=device, dtype=dtype).reshape(1, 1, 2, 4).transpose(-1, -2)
+        assert result.dtype == dtype
+        assert result.device == image.device
+        self.assert_close(result, reference, atol=0, rtol=4 * torch.finfo(dtype).eps)
+        self.assert_close(result[..., 0, 0], image[..., 0, 0], atol=0, rtol=0)
+        self.assert_close(result[..., -1, -1], image[..., -1, -1], atol=0, rtol=0)
+
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("gain,clip_output", [(0.0, True), (0.5, True), (2.0, True), (2.0, False), (-1.0, False)])
+    def test_gain_and_clipping(self, device, dtype, inv, gain, clip_output):
+        image = torch.tensor([[0.0, 0.25], [0.5, 1.0]], device=device, dtype=dtype)
+        # math.expm1(x * math.log(2)) and math.log1p(x) / math.log(2), respectively.
+        values = (
+            [0.0, 0.18920711500272105, 0.41421356237309503, 1.0]
+            if inv
+            else [0.0, 0.32192809488736235, 0.5849625007211562, 1.0]
+        )
+        expected = [max(0.0, min(1.0, value * gain)) if clip_output else value * gain for value in values]
+        result = enhance.adjust_log(image, gain=gain, inv=inv, clip_output=clip_output)
+        self.assert_close(result, image.new_tensor(expected).reshape_as(image), atol=0, rtol=4 * torch.finfo(dtype).eps)
+        self.assert_close(enhance.AdjustLog(gain, inv, clip_output)(image), result, atol=0, rtol=0)
+
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["gain_dtype"] == torch.float64 and p["device_name"] == "mps"),
+        reason="MPS has no float64",
+    )
+    @pytest.mark.parametrize("gain_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("broadcast", [False, True])
+    def test_tensor_gain_promotion(self, device, dtype, gain_dtype, broadcast):
+        image = torch.tensor([[2**-12, 2**-8]], device=device, dtype=dtype, requires_grad=True)
+        gain = torch.tensor([[0.5, 2.0]] if broadcast else 0.5, device=device, dtype=gain_dtype, requires_grad=True)
+        result = enhance.adjust_log(image, gain=gain, clip_output=False)
+        expected_dtype = torch.promote_types(dtype, gain_dtype) if broadcast else dtype
+        assert result.dtype == expected_dtype
+        assert result.device == image.device
+        values = [0.00035217748030102726, 0.005624549193878107]
+        factors = [0.5, 2.0] if broadcast else [0.5, 0.5]
+        expected = torch.tensor([[x * scale for x, scale in zip(values, factors)]], device=device, dtype=expected_dtype)
+        self.assert_close(result, expected, atol=0, rtol=4 * torch.finfo(dtype).eps)
+        image_grad, gain_grad = torch.autograd.grad(result.sum(), (image, gain))
+        slopes = [1 / ((1 + x) * log(2.0)) for x in (2**-12, 2**-8)]
+        expected_image_grad = image.new_tensor([[slope * scale for slope, scale in zip(slopes, factors)]])
+        expected_gain_grad = gain.new_tensor([values] if broadcast else sum(values))
+        self.assert_close(image_grad, expected_image_grad, atol=0, rtol=4 * torch.finfo(dtype).eps)
+        self.assert_close(gain_grad, expected_gain_grad, atol=0, rtol=4 * torch.finfo(dtype).eps)
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_dark_pixel_gradients(self, device, dtype, inv):
+        pixels = [0.0, 2**-16, 2**-12, 2**-8, 0.5, 1.0]
+        image = torch.tensor(pixels, device=device, dtype=dtype, requires_grad=True).reshape(2, 3)
+        result = enhance.adjust_log(image, inv=inv)
+        (gradient,) = torch.autograd.grad(result.sum(), image)
+        expected = [log(2.0) * 2**x if inv else 1 / ((1 + x) * log(2.0)) for x in pixels]
+        self.assert_close(
+            gradient, image.new_tensor(expected).reshape_as(image), atol=0, rtol=4 * torch.finfo(dtype).eps
+        )
+
+    @pytest.mark.slow
+    def test_dynamo_dark_pixels(self, device, dtype, torch_optimizer):
+        image = torch.tensor([[0.0, 2**-12], [2**-8, 1.0]], device=device, dtype=dtype)
+        op = enhance.AdjustLog()
+        self.assert_close(
+            torch_optimizer(op, fullgraph=True)(image), op(image), atol=0, rtol=4 * torch.finfo(dtype).eps
+        )
+
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("method", ["script", "trace"])
+    def test_jit_dark_pixels(self, device, dtype, inv, method):
+        image = torch.tensor([[0.0, 2**-12], [2**-8, 1.0]], device=device, dtype=dtype)
+        op = enhance.AdjustLog(gain=1.0, inv=inv)
+        captured = torch.jit.script(op) if method == "script" else torch.jit.trace(op, image)
+        self.assert_close(captured(image), op(image), atol=0, rtol=4 * torch.finfo(dtype).eps)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_onnx_exports(self, tmp_path, inv, scripted):
+        onnx = pytest.importorskip("onnx")
+        image = torch.tensor([[[[0.0, 1 / 255, 1 / 4095, 1 / 65535, 1.0]]]], dtype=torch.float32)
+        # clip_output=False is the existing supported scripted-to-legacy-ONNX path.
+        op = enhance.AdjustLog(gain=1.0, inv=inv, clip_output=False)
+        model = torch.jit.script(op) if scripted else op
+        path = tmp_path / "adjust-log.onnx"
+        torch.onnx.export(model, (image,), path, dynamo=False, opset_version=17, input_names=["image"])
+        onnx.checker.check_model(str(path))
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)

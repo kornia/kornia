@@ -23,11 +23,13 @@ import torch
 from kornia.augmentation import (
     AugmentationSequential,
     PatchMix,
+    RandomAffine,
     RandomCutMixV2,
     RandomHorizontalFlip,
     RandomJigsaw,
     RandomMixUpV2,
     RandomMosaic,
+    RandomRotation,
     RandomTransplantation,
     RandomTransplantation3D,
 )
@@ -948,28 +950,31 @@ class TestRandomMosaic(BaseTester):
         )
 
         # The start corner is floored to the integer the slice crop uses (issue #5464), so boxes are
-        # translated by whole pixels and land on integer coordinates.
+        # translated by whole pixels and land on integer coordinates. The boxes are exclusive and clamped to
+        # [0, 8]. A box the window clips to zero width or height, such as [1, 2, 3, 4] moved by (-3, -4), is removed
+        # and exports as zeros, as min_bbox_size removes boxes (kornia#6710); the inclusive storage left a one-pixel
+        # sliver such as [0, 0, 1, 1].
         expected_box = torch.tensor(
             [
                 [
-                    [1.0000, 1.0000, 3.0000, 3.0000],
-                    [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 6.0000, 3.0000, 8.0000],
-                    [0.0000, 3.0000, 1.0000, 5.0000],
-                    [7.0000, 1.0000, 8.0000, 3.0000],
-                    [6.0000, 0.0000, 8.0000, 1.0000],
-                    [7.0000, 7.0000, 8.0000, 8.0000],
-                    [6.0000, 6.0000, 8.0000, 8.0000],
+                    [1.0, 1.0, 3.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 6.0, 3.0, 8.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [6.0, 6.0, 8.0, 8.0],
                 ],
                 [
-                    [0.0000, 0.0000, 1.0000, 3.0000],
-                    [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 7.0000, 1.0000, 8.0000],
-                    [0.0000, 7.0000, 1.0000, 8.0000],
-                    [5.0000, 0.0000, 8.0000, 3.0000],
-                    [2.0000, 0.0000, 4.0000, 1.0000],
-                    [5.0000, 7.0000, 8.0000, 8.0000],
-                    [2.0000, 4.0000, 4.0000, 6.0000],
+                    [0.0, 0.0, 1.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [5.0, 0.0, 8.0, 3.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                    [5.0, 7.0, 8.0, 8.0],
+                    [0.0, 0.0, 0.0, 0.0],
                 ],
             ],
             device=device,
@@ -982,6 +987,53 @@ class TestRandomMosaic(BaseTester):
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
+
+    @pytest.mark.parametrize("follow", ["flip", "rotation", "shear"])
+    @pytest.mark.parametrize("chained", [False, True])
+    def test_clipped_away_boxes_stay_removed_6710(self, follow, chained, device, dtype):
+        # The 20-pixel window starts 6 to 14 pixels into the 40-pixel canvas (start_ratio_range (0.3, 0.7)), so of
+        # the four tile boxes at [0, 2) and [20, 22) only the one at [20, 22) x [20, 22) stays in it, 2 x 2; the other
+        # three are clipped to zero width, height or both. They are removed and stay all-zero rows after a later
+        # flip, rotation or shear, which would give the line segment of an empty box an area: in the same sequence,
+        # and when a second container takes the "bbox_xywh" output as input.
+        images = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        later = {
+            "flip": RandomHorizontalFlip(p=1.0),
+            "rotation": RandomRotation((45.0, 45.0), p=1.0),
+            "shear": RandomAffine(0.0, shear=(30.0, 30.0), p=1.0),
+        }[follow]
+        keys = ["input", "bbox_xywh"]
+        if chained:
+            images, boxes = AugmentationSequential(RandomMosaic((20, 20), p=1.0), data_keys=keys)(images, boxes)
+            out = AugmentationSequential(later, data_keys=keys)(images, boxes)[1]
+        else:
+            out = AugmentationSequential(RandomMosaic((20, 20), p=1.0), later, data_keys=keys)(images, boxes)[1]
+        self.assert_close(out[:, :3], torch.zeros_like(out[:, :3]), atol=0.0, rtol=0.0)
+        assert bool((out[:, 3, 2:] > 0).all())
+
+    def test_bbox_xywh_zero_extent_rows_are_no_box_6710(self, device, dtype):
+        # A zero-width row is accepted and removed: a shear would turn its vertical segment into a 2 x 2 box. The
+        # 2 x 2 box next to it is sheared as usual. A negative width still raises.
+        images = torch.rand(1, 3, 20, 20, device=device, dtype=dtype)
+        boxes = torch.tensor([[[4.0, 3.0, 0.0, 2.0], [4.0, 3.0, 2.0, 2.0]]], device=device, dtype=dtype)
+        shear = AugmentationSequential(RandomAffine(0.0, shear=(45.0, 45.0), p=1.0), data_keys=["input", "bbox_xywh"])
+        out = shear(images, boxes)[1]
+        self.assert_close(out[0, 0], torch.zeros_like(out[0, 0]), atol=0.0, rtol=0.0)
+        assert bool((out[0, 1, 2:] >= 2).all())
+        boxes[0, 0, 2] = -1.0
+        with pytest.raises(ValueError, match="negative widths"):
+            shear(images, boxes)
+
+    def test_far_edge_is_formed_before_the_box_dtype_6710(self, device):
+        # A 258-pixel output has the far edge 258, which bfloat16 holds, and the last pixel centre 257, which it
+        # rounds to 256. The clip bound adds the pixel to the centre before the cast, so boxes over the far edge
+        # stop at 258, not 256.
+        images = torch.rand(2, 3, 258, 258, device=device)
+        corners = torch.tensor([[[0.0, 0.0, 258.0, 258.0]]] * 2, device=device, dtype=torch.bfloat16)
+        mosaic = AugmentationSequential(RandomMosaic((258, 258), p=1.0), data_keys=["input", "bbox"])
+        _, out = mosaic(images, Boxes.from_tensor(corners))
+        assert out.to_tensor("xyxy").amax().item() == 258.0
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):

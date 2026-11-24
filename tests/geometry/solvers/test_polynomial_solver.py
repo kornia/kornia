@@ -2095,36 +2095,37 @@ class TestQuarticSolver(BaseTester):
         reason="This case pins behaviour in another dtype.",
     )
     @pytest.mark.parametrize(
-        "coeffs, true_roots, dtypes",
+        "coeffs, expected, dtypes",
         [
-            # (x + 8.75)(x + 8.74)(x^2 - 2x + 17), and the same with roots -8.75 and -8.748. Polishing a
-            # complex-pair placeholder from zero stopped a tenth away from the close pair, inside the
-            # residual tolerance: -8.8777 twice, or -8.8840 four times.
+            # Polishing a complex-pair placeholder from zero stopped a tenth away from the close real pair.
             ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
             ([1.0, 15.498, 58.549, 144.376, 1301.265], [-8.75, -8.748], (torch.float32, torch.float64)),
-            # A recovered placeholder must have converged: accepting it at any simple root returns -1.10588
-            # for the near-double root at -1.1189.
+            # The pair near -1.1189 is complex in both dtypes. A recovered placeholder gave a spurious -1.10588.
             (
                 [1.0, -2.4284734, -3.84090791, 6.128004724, 6.696065824],
-                [-1.11887, -1.11886, 2.02579, 2.64041],
+                [2.02578976, 2.64041001],
                 (torch.float32, torch.float64),
             ),
-            # ...relative to |x| itself: a bound of sqrt(eps) * max(1, |x|) is absolute below 1, and
-            # returns 0.0008457 for the root at 0.00112, 25% off.
+            # A tolerance with an absolute floor hid an inaccurate small root at 0.0008457.
             (
                 [1.0, -6.807518769, -104.0549685, 0.2346873751, -0.0001323169874],
-                [-7.351354433, 0.001122449359, 0.001132718443, 14.15661803],
+                [-7.35135443, 0.00112245120, 0.00113271655, 14.15661822],
                 (torch.float32,),
             ),
         ],
     )
-    def test_returned_values_are_roots_4474(self, coeffs, true_roots, dtypes, device, dtype):
+    def test_root_set_relative_accuracy_4474(self, coeffs, expected, dtypes, device, dtype):
+        # Isolate roots of the represented coefficients with SymPy. The rows shared by both dtypes give the
+        # float64 reference rounded for the comparison; float32 coefficient rounding moves the first two pairs
+        # within the relative tolerance. The last row uses the float32 reference.
+        # values = torch.tensor(coeffs, dtype=dtype).tolist()
+        # poly = sympy.Poly.from_list([sympy.Rational(v) for v in values], sympy.Symbol("x"))
+        # roots = [float((a + b) / 2) for (a, b), m in poly.intervals(eps=sympy.Rational(1, 10**16)) for _ in range(m)]
         roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=dtype))[0]
-        want = torch.tensor(true_roots, device=device, dtype=dtype)
-        # Relative to the root itself, with no floor at 1, so a value near zero is held to the same standard.
+        found = torch.sort(roots[roots != 0]).values
+        assert found.numel() == len(expected), f"expected {expected}, got {roots.tolist()}"
         rtol = 1e-2 if dtype == torch.float32 else 1e-6
-        for value in roots[roots != 0]:
-            assert bool(((want - value).abs() <= rtol * want.abs()).any()), f"{value} is not a root: {roots.tolist()}"
+        self.assert_close(found, torch.tensor(expected, device=device, dtype=dtype), atol=0.0, rtol=rtol)
 
     @pytest.mark.applies_to(
         when=lambda p: getattr(torch, p["dtype_name"]) in p["dtypes"],
@@ -2135,7 +2136,6 @@ class TestQuarticSolver(BaseTester):
         [
             # Historical regression root sets. Test the input polynomial and its multiplicities,
             # independently of the solver's candidate construction and acceptance implementation.
-            ([1.0, 15.49, 58.495, 144.38, 1300.075], [-8.75, -8.74], (torch.float32, torch.float64)),
             # A small root survives next to roots of 1e2 to 1e3.
             (
                 [1.0, -1088.503, -128841.7345, 329286.535, -986.7],
