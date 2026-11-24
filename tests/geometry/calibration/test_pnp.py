@@ -393,16 +393,70 @@ class TestSolvePnpDlt(BaseTester):
             kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
 
 
+class TestPnpWorldOrigin(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="test the pose before half-output rounding")
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_convention_noisy_correspondences_are_invariant_to_world_translation(self, device, dtype, weighted):
+        world = torch.tensor(
+            [[-2, -1, 1], [2, -1, 1], [-2, 2, 1], [2, 2, 2], [-2, -1, 4], [2, -1, 3], [-2, 2, 4], [2, 2, 4]],
+            device=device,
+            dtype=dtype,
+        )
+        intrinsics = torch.tensor([[[400, 0, 160], [0, 410, 120], [0, 0, 1]]], device=device, dtype=dtype)
+        # Project (X + [.25, -.5, 8]) through K and perturb the result by up to two pixels per axis.
+        pixels = torch.tensor(
+            [
+                [83.2222222222, 51.6666666667],
+                [258, 53.6666666667],
+                [82.2222222222, 187.3333333333],
+                [251, 179.5],
+                [101.6666666667, 70.75],
+                [240.8181818182, 64.0909090909],
+                [102.6666666667, 172.25],
+                [235, 169.25],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        weights = None
+        # Reference: use numpy.average with squared weights for Hartley normalization. Assemble the two DLT
+        # rows per point, scale them by the weights, and take np.linalg.svd(A)[2][-1]. Undo image normalization,
+        # fix the sign and scale using the linear part, and use np.linalg.qr in the centered world frame.
+        if weighted:
+            weights = torch.tensor([[0, 1, 2, 1, 2, 1, 2, 1]], device=device, dtype=dtype).expand(3, -1)
+            expected = [
+                [0.9991849550, 0.0107374341, -0.0389118640, 0.3701063215],
+                [-0.0101207471, 0.9998205965, 0.0160107858, -0.5490438039],
+                [0.0390767979, -0.0156039192, 0.9991143686, 8.0260162444],
+            ]
+        else:
+            expected = [
+                [0.9985661765, 0.0105625235, -0.0524787988, 0.3979626358],
+                [-0.0082789462, 0.9990172640, 0.0435426823, -0.6177789614],
+                [0.0528871466, -0.0430457806, 0.9976722961, 8.0629967050],
+            ]
+        origins = world.new_tensor([[0, 0, 0], [32, -16, 8], [-128, 64, 16]]).unsqueeze(1)
+        world_shifted = world + origins
+        pose = kornia.geometry.solve_pnp_dlt(world_shifted, pixels.expand(3, -1, -1), intrinsics, weights)
+        local_translation = pose[:, :, 3:] + pose[:, :, :3] @ origins.mT
+        pose_local = torch.cat((pose[:, :, :3], local_translation), dim=-1)
+
+        # Undoing the shift in the final pose incurs rounding proportional to the size of the translation.
+        atol = 3e-5 if dtype == torch.float32 else 2e-9
+        self.assert_close(pose_local, world.new_tensor(expected).expand_as(pose_local), atol=atol, rtol=0.0)
+
+
 class TestNormalization(BaseTester):
     @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_smoke(self, dimension, device, dtype):
         batch_size = 10
         num_points = 100
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
-        points_norm, transform = _mean_isotropic_scale_normalize(points)
+        points_norm, centroid, scale = _mean_isotropic_scale_normalize(points)
 
         assert points_norm.shape == (batch_size, num_points, dimension)
-        assert transform.shape == (batch_size, dimension + 1, dimension + 1)
+        assert centroid.shape == (batch_size, 1, dimension)
+        assert scale.shape == (batch_size,)
 
     @pytest.mark.parametrize("dimension", [2, 3, 5])
     def test_gradcheck(self, dimension, device):

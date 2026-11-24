@@ -23,7 +23,6 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.ops import eye_like
 from kornia.core.utils import (
     _at_least_float32,
     _autocast_disabled,
@@ -33,45 +32,32 @@ from kornia.core.utils import (
     _torch_svd_cast,
 )
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
-from kornia.geometry.linalg import transform_points
 
 
 def _mean_isotropic_scale_normalize(
     points: torch.Tensor, eps: float = 1e-8, weights: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Normalize points.
-
-    Args:
-       points : torch.Tensor containing the points to be normalized with shape ``(B, N, D)``.
-       eps : Small value to avoid division by zero error.
-       weights : Optional non-negative per-point weights with shape ``(B, N)`` for the mean and the scale.
-          A point with weight zero does not affect the normalization.
-
-    Returns:
-       Tuple containing the normalized points in the shape ``(B, N, D)`` and the transformation matrix
-       in the shape ``(B, D+1, D+1)``.
-
-    """
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return normalized points, their centroid and their isotropic scale."""
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
+    # Center in a local frame before reducing, so the centroid's rounding at a
+    # distant origin does not enter the fit or move an otherwise planar cloud.
     if weights is None:
-        x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
-        scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
+        anchor = points[:, :1]
+        local_points = points - anchor
+        local_center = local_points.mean(dim=1, keepdim=True)
+        centered = local_points - local_center
+        mean_distance = centered.norm(dim=-1).mean(dim=1)
     else:
-        w = weights / weights.sum(dim=1, keepdim=True)  # BxN
-        x_mean = (w[..., None] * points).sum(dim=1, keepdim=True)  # Bx1xD
-        scale = (w * (points - x_mean).norm(dim=-1, p=2)).sum(dim=-1)  # B
+        anchor_idx = weights.argmax(dim=1)[:, None, None].expand(-1, 1, points.shape[-1])
+        anchor = points.gather(dim=1, index=anchor_idx)
+        local_points = points - anchor
+        w = weights / weights.sum(dim=1, keepdim=True)
+        local_center = (w[..., None] * local_points).sum(dim=1, keepdim=True)
+        centered = local_points - local_center
+        mean_distance = (w * centered.norm(dim=-1)).sum(dim=1)
 
-    D_int = points.shape[-1]
-    scale = (D_int**0.5) / (scale + eps)  # B
-    transform = eye_like(D_int + 1, points)  # (B, D+1, D+1)
-
-    idxs = torch.arange(D_int, dtype=torch.int64, device=points.device)
-    transform[:, idxs, idxs] = transform[:, idxs, idxs] * scale[:, None]
-    transform[:, idxs, D_int] = transform[:, idxs, D_int] + (-scale[:, None] * x_mean[:, 0, idxs])
-
-    points_norm = transform_points(transform, points)  # BxNxD
-
-    return (points_norm, transform)
+    scale = points.shape[-1] ** 0.5 / (mean_distance + eps)
+    return centered * scale[:, None, None], anchor + local_center, scale
 
 
 def solve_pnp_dlt(
@@ -87,7 +73,9 @@ def solve_pnp_dlt(
     ``(B, N, 3)``, their pixels ``(B, N, 2)`` and the intrinsics ``(B, 3, 3)``, and returns the world-to-camera
     extrinsics ``[R | t]`` of each set, ``(B, 3, 4)``: the Hartley-normalized, optionally weighted, linear
     (Direct Linear Transform) solution of the Perspective-n-Point problem, with ``R`` made orthonormal by a QR step.
-    It is not robust to outliers and does not refine the pose nonlinearly. For 2D-2D correspondences of a plane,
+    Orthonormalization is performed about the centroid of the world points so that re-expressing them in a
+    translated world frame does not change their camera-space coordinates, up to rounding. It is not robust to
+    outliers and does not refine the pose nonlinearly. For 2D-2D correspondences of a plane,
     use :func:`~kornia.geometry.homography.find_homography_dlt`; for two views with no known 3D points,
     :func:`~kornia.geometry.epipolar.find_essential`.
 
@@ -235,7 +223,9 @@ def solve_pnp_dlt(
     # CPU kernel, then raised, and float32 inputs would no longer be solved in float32.
     with _autocast_disabled(world_points.device.type):
         # Getting normalized world points.
-        world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points, weights=point_weights)
+        world_points_norm, world_center, world_scale = _mean_isotropic_scale_normalize(
+            world_points, weights=point_weights
+        )
 
         # Checking if world_points_norm (of any element of the batch) has rank = 3. This
         # function cannot be used if all world points (of any element of the batch) lie
@@ -252,8 +242,7 @@ def solve_pnp_dlt(
 
         # Normalizing img_points_inv
         img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
-        img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv, weights=point_weights)
-        inv_img_transform_norm = torch.inverse(img_transform_norm)
+        img_points_norm, img_center, img_scale = _mean_isotropic_scale_normalize(img_points_inv, weights=point_weights)
 
         # Setting up the system (the matrix A in Ax=0)
         system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
@@ -276,51 +265,22 @@ def solve_pnp_dlt(
         _, s, v = _torch_svd_cast(work, full_matrices=False)
         solution = _right_singular_vector(system, s, v, -1).to(system.dtype)
 
-        # Reshaping the solution vectors to the correct shape.
+        # Undo image normalization. Keep the 3D origin at the centroid until
+        # the rotation is orthonormal: applying the world shift with the raw
+        # DLT matrix would amplify its non-rigid component as the origin moves.
         solution = solution.reshape(B, 3, 4)
+        homogeneous_row = solution[:, 2:3]
+        solution = torch.cat(
+            (solution[:, :2] / img_scale[:, None, None] + img_center.mT * homogeneous_row, homogeneous_row), dim=1
+        )
+        linear = solution[:, :, :3] * world_scale[:, None, None]
 
-        # Creating solution_4x4
-        solution_4x4 = eye_like(4, solution)
-        solution_4x4[:, :3, :] = solution
+        # Choose the sign and scale of the homogeneous solution using the rotation.
+        det = torch.det(linear)
+        sign = torch.where(det < 0, -torch.ones_like(det), torch.ones_like(det))
+        factor = (sign / linear[:, :, 0].norm(dim=1))[:, None, None]
 
-        # De-normalizing the solution
-        intermediate = torch.bmm(solution_4x4, world_transform_norm)
-        solution = torch.bmm(inv_img_transform_norm, intermediate[:, :3, :])
-
-        # We obtained one solution for each element of the batch. We may
-        # need to multiply each solution with a scalar. This is because
-        # if x is a solution to Ax=0, then cx is also a solution. We can
-        # find the required scalars by using the properties of
-        # rotation matrices. We do this in two parts:
-
-        # First, we fix the sign by making sure that the determinant of
-        # the all the rotation matrices are non-negative (since determinant
-        # of a rotation matrix should be 1).
-        det = torch.det(solution[:, :3, :3])
-        ones_tensor = torch.ones_like(det)
-        sign_fix = torch.where(det < 0, ones_tensor * -1, ones_tensor)
-        solution = solution * sign_fix[:, None, None]
-
-        # Then, we make sure that norm of the 0th columns of the rotation
-        # matrices are 1. Do note that the norm of any column of a rotation
-        # matrix should be 1. Here we use the 0th column to calculate norm_col.
-        # We then multiply solution with mul_factor.
-        norm_col = torch.norm(input=solution[:, :3, 0], p=2, dim=1)
-        mul_factor = (1 / norm_col)[:, None, None]
-        temp = solution * mul_factor
-
-        # To make sure that the rotation matrix would be orthogonal, we apply
-        # QR decomposition.
-        ortho, right = linalg_qr(temp[:, :3, :3])
-
-        # We may need to fix the signs of the columns of the ortho matrix.
-        # If right[i, j, j] is negative, then we need to flip the signs of
-        # the column ortho[i, :, j]. The below code performs the necessary
-        # operations in a better way.
-        mask = eye_like(3, ortho)
-        col_sign_fix = torch.sign(mask * right)
-        rot_mat = torch.bmm(ortho, col_sign_fix)
-
-        # Preparing the final output.
-        # TODO: Implement algorithm to refine the solution.
-        return torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1).to(dtype)
+        rotation, triangular = linalg_qr(linear * factor)
+        rotation = rotation * triangular.diagonal(dim1=-2, dim2=-1).sign()[:, None, :]
+        translation = solution[:, :, 3:] * factor - rotation @ world_center.mT
+        return torch.cat((rotation, translation), dim=-1).to(dtype)
