@@ -788,6 +788,8 @@ class Boxes:
 
         Convention:
             Vertices are sorted by angle about their centroid, so a convex quadrilateral is assumed.
+            Area is evaluated on coordinates relative to that centroid, so a small box far from the origin keeps
+            its area. Half-precision coordinates use float32 for the calculation; the result keeps the input dtype.
 
         .. warning::
             On the stored inclusive vertices an axis-aligned box gives ``(width - 1) * (height - 1)``, not the
@@ -797,17 +799,20 @@ class Boxes:
             Area for each box, shaped ``(N,)`` or ``(B, N)``.
         """
         coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
-        # calculate centroid of the box
+        # float16 overflows the doubled shoelace sum before the area itself; bfloat16 rounds the products.
+        if coords.dtype in (torch.float16, torch.bfloat16):
+            coords = coords.float()
+        # Centroid-relative coordinates serve both the angle sort and the shoelace sum: small products do not cancel
+        # a small box's area at large coordinates, and the sort needed these differences anyway.
         centroid = coords.mean(dim=1, keepdim=True)
-        # calculate the angle from centroid to each corner
-        angles = torch.atan2(coords[..., 1] - centroid[..., 1], coords[..., 0] - centroid[..., 0])
-        # sort the corners by angle to get an order for shoelace formula
-        _, clockwise_indices = torch.sort(angles, dim=1, descending=True)
-        # gather the corners in the new order
-        ordered_corners = torch.gather(coords, 1, clockwise_indices.unsqueeze(-1).expand(-1, -1, 2))
-        x, y = ordered_corners[..., 0], ordered_corners[..., 1]
+        dx = coords[..., 0] - centroid[..., 0]
+        dy = coords[..., 1] - centroid[..., 1]
+        # sort the corners by angle about the centroid to get an order for the shoelace formula
+        _, clockwise_indices = torch.sort(torch.atan2(dy, dx), dim=1, descending=True)
+        x, y = dx.gather(1, clockwise_indices), dy.gather(1, clockwise_indices)
         # Gaussian/Shoelace formula https://en.wikipedia.org/wiki/Shoelace_formula
         area = 0.5 * torch.abs(torch.sum((x * torch.roll(y, 1, 1)) - (y * torch.roll(x, 1, 1)), dim=1))
+        area = area.to(self._data.dtype)
         return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
