@@ -50,8 +50,10 @@ class AffineTransform:
     See Also:
         - :class:`BrownConradyTransform`: adds OpenCV's radial and tangential lens distortion before the intrinsics.
         - :class:`KannalaBrandtK3Transform`: adds a fisheye distortion of the ray angle before the intrinsics.
-        - :func:`~kornia.geometry.camera.distort_points_affine`: the same map on plain tensors.
-        - :func:`~kornia.geometry.camera.undistort_points_affine`: the same inverse on plain tensors.
+        - :func:`~kornia.geometry.camera.distort_points_affine`: the same map on plain tensors; per-camera
+          ``params`` for ``(B, N, 2)`` points are ``(B, 1, 4)`` there.
+        - :func:`~kornia.geometry.camera.undistort_points_affine`: the same inverse on plain tensors, with the same
+          ``(B, 1, 4)`` per-camera ``params``.
 
     """
 
@@ -252,8 +254,10 @@ class KannalaBrandtK3Transform:
     See Also:
         - :class:`BrownConradyTransform`: OpenCV's distortion of the normalized radius, with tangential terms.
         - :class:`AffineTransform`: the intrinsics alone, with no distortion.
-        - :func:`~kornia.geometry.camera.distort_points_kannala_brandt`: the same map on plain tensors.
-        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: its inverse on plain tensors.
+        - :func:`~kornia.geometry.camera.distort_points_kannala_brandt`: the same map on plain tensors; per-camera
+          ``params`` for ``(B, N, 2)`` points are ``(B, 1, 8)`` there.
+        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: its inverse on plain tensors, with the
+          same ``(B, 1, 8)`` per-camera ``params``.
 
     """
 

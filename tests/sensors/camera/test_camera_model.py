@@ -192,9 +192,9 @@ class TestPinholeCamera(BaseTester):
 
     @pytest.mark.parametrize("num_points", [1, 2, 3])
     def test_batched_intrinsics_apply_per_camera_4274(self, device, dtype, num_points):
-        # Camera b maps points[b] for (B, N, 3) points, as the geometry functions do. Before #4274 was repaired, the
-        # (B,) intrinsics aligned with the trailing point axis: B == N silently swapped the cameras, N == 1 broadcast
-        # to (B, B, 2) and other N raised.
+        # Camera b maps points[b] for (B, N, 3) points, as project_points and unproject_points do. Before #4274 was
+        # repaired, the (B,) intrinsics aligned with the trailing point axis: B == N silently swapped the cameras,
+        # N == 1 broadcast to (B, B, 2) and other N raised.
         # Hand-computed: camera 0 projects [1, 2, 4] to [3, 4], camera 1 to [4, 8]; at unit depth [9, 10]
         # unprojects to [1, 2, 1] / [1.5, .75, 1].
         params = torch.tensor([[8.0, 4.0, 1.0, 2.0], [4.0, 8.0, 3.0, 4.0]], device=device, dtype=dtype)

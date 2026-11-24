@@ -128,7 +128,8 @@ class CameraModelBase:
         - :meth:`matrix` and its alias :meth:`K` return the ``(*, 3, 3)`` ``K``, not the ``(B, 4, 4)``
           ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
         - Batched ``(B, P)`` parameters apply per camera: camera ``b`` maps ``points[b]``, which may be ``(B, 3)`` or
-          ``(B, N, 3)``, as in the geometry functions. ``(P,)`` parameters apply to every point.
+          ``(B, N, 3)``, as in :func:`~kornia.geometry.camera.perspective.project_points` and
+          :func:`~kornia.geometry.camera.perspective.unproject_points`. ``(P,)`` parameters apply to every point.
 
     .. warning::
         :meth:`project` divides by ``z`` with no guard, so ``z = 0`` gives infinities where
