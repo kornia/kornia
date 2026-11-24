@@ -46,6 +46,7 @@ Which function to use:
   :class:`ScalePyramid` for scale-space detection.
 - Thin-plate splines (``thin_plate_spline``): :func:`get_tps_transform`, :func:`warp_points_tps`,
   :func:`warp_image_tps`.
+- Fit a rigid or similarity transform to paired 3D points (point_alignment): :func:`find_similarity_transform3d`.
 - Elastic deformation by a smoothed displacement field (``elastic_transform``): :func:`elastic_transform2d`.
 - Register two images by optimizing a homography or a similarity (``image_registrator``):
   :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`.
@@ -59,5 +60,6 @@ from .flips import *
 from .homography_warper import *
 from .image_registrator import *
 from .imgwarp import *
+from .point_alignment import *
 from .pyramid import *
 from .thin_plate_spline import *

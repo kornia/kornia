@@ -490,6 +490,7 @@
     "Se3",
     "Shear",
     "Similarity",
+    "SimilarityTransform3d",
     "So2",
     "So3",
     "SpatialSoftArgmax2d",
@@ -586,6 +587,7 @@
     "find_homography_lines_dlt",
     "find_homography_lines_dlt_iterated",
     "find_next_powerof_two",
+    "find_similarity_transform3d",
     "fit_line",
     "fit_plane",
     "flips",
@@ -650,6 +652,7 @@
     "oneway_transfer_error",
     "pixel2cam",
     "plane",
+    "point_alignment",
     "point_line_distance",
     "pointcloud",
     "pol2cart",
@@ -1060,6 +1063,10 @@
     "warp_grid3d",
     "warp_perspective",
     "warp_perspective3d"
+  ],
+  "kornia.geometry.transform.point_alignment": [
+    "SimilarityTransform3d",
+    "find_similarity_transform3d"
   ],
   "kornia.geometry.transform.pyramid": [
     "PyrDown",

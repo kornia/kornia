@@ -98,6 +98,18 @@ all of them (:func:`get_rotation_matrix2d`, :func:`get_translation_matrix2d`, :f
 .. autofunction:: projection_from_Rt
 .. autofunction:: get_tps_transform
 
+3D point alignment
+------------------
+
+Fit a rigid or similarity transform to paired 3D points with :func:`find_similarity_transform3d`.
+Pass nonnegative weights to express correspondence confidence or exclude padding in a batch. The result
+includes a validity mask for clouds with an ambiguous rotation. For an odometry experiment, align the
+estimated camera centres to the reference frame before computing a position error.
+
+.. autoclass:: SimilarityTransform3d
+
+.. autofunction:: find_similarity_transform3d
+
 Crop operators
 --------------
 
