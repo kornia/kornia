@@ -122,18 +122,16 @@ class TestConventionFrameNamedKeys(BaseTester):
         ],
     )
     def test_convention_bare_key_is_an_alias_of_the_index_key_6710(self, aug, device, dtype):
-        # The bare keys are aliases of the pixel-centre keys: the same matrices on the same corners. They differ by float
-        # rounding only: the bare "bbox_xyxy" builds its far corners as x1 + (x2 - x1 + 1) - 1, as before #6710, so
-        # that its own outputs keep their bits, and "bbox_xyxy_index" stores x2 as given.
+        # The bare keys are aliases of the pixel-centre keys: the same matrices on the same corners. They differ by
+        # float rounding only: the bare "bbox_xyxy" builds its far corners as x1 + (x2 - x1 + 1) - 1, as before
+        # #6710, so that its own outputs keep their bits, and "bbox_xyxy_index" stores x2 as given.
         image = torch.rand(2, 3, 48, 64, device=device, dtype=dtype)
         boxes = torch.tensor(
             [[[3.3, 4.7, 20.9, 30.1], [40.0, 2.0, 64.0, 48.0]], [[0.0, 0.0, 1.0, 1.0], [11.5, 17.25, 12.75, 30.0]]],
             device=device,
             dtype=dtype,
         )
-        corners = torch.stack(
-            [boxes[..., [0, 1]], boxes[..., [2, 1]], boxes[..., [2, 3]], boxes[..., [0, 3]]], dim=-2
-        )
+        corners = torch.stack([boxes[..., [0, 1]], boxes[..., [2, 1]], boxes[..., [2, 3]], boxes[..., [0, 3]]], dim=-2)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", BoxFrameWarning)
             bare = K.AugmentationSequential(aug, data_keys=["input", "bbox_xyxy", "bbox"])

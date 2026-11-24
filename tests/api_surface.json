@@ -3,6 +3,7 @@
     "AugmentationBase2D",
     "AugmentationBase3D",
     "AugmentationSequential",
+    "BoxFrameWarning",
     "CenterCrop",
     "CenterCrop3D",
     "ColorJiggle",

@@ -2357,8 +2357,8 @@ class TestConventionAugmentationSequential(BaseTester):
 
     @pytest.mark.parametrize("box_dtype", [torch.float16, torch.bfloat16])
     def test_convention_mosaic_area_threshold_meets_the_float32_area_6710(self, box_dtype, device):
-        # kornia#6710: min_bbox_size meets the float32 area of half-precision boxes, 49 * 51 = 2499 here, and removes the
-        # box, under every key. The bare key compared the area in its own dtype until the frame-named keys: float16
+        # kornia#6710: min_bbox_size meets the float32 area of half-precision boxes, 49 * 51 = 2499 here, and removes
+        # the box, under every key. The bare key compared the area in its own dtype until the frame-named keys: float16
         # rounded it to 2500, and bfloat16 rounded the area and the threshold to 2496, so the box survived.
         image = torch.rand(1, 3, 64, 64, device=device)
         box = torch.tensor([[[0.0, 0.0, 49.0, 51.0]]], device=device, dtype=box_dtype)

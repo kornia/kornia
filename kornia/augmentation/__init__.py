@@ -180,7 +180,6 @@ from kornia.augmentation._2d.base import AugmentationBase2D, RigidAffineAugmenta
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
-from kornia.augmentation.utils.box_frames import BoxFrameWarning
 from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
@@ -205,6 +204,7 @@ from kornia.augmentation.container import (
     PatchSequential,
     VideoSequential,
 )
+from kornia.augmentation.utils.box_frames import BoxFrameWarning
 
 __all__ = [
     "AugmentationBase2D",

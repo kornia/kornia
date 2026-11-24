@@ -531,16 +531,16 @@ class Boxes:
           :meth:`unpad`, :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`index_put` reach the caller's tensor.
         - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 4, 2)`` for
           unbatched input. Scalar integer tensors follow the same rule.
+        - :class:`~kornia.augmentation.container.AugmentationSequential` takes a :class:`Boxes` object under any box
+          key in the edge frame, as it takes tensors under ``"bbox_xyxy_edge"``, ``"bbox_edge"`` and
+          ``"bbox_xywh"``. Its pixel-centre keys, ``"bbox_xyxy_index"``, ``"bbox_index"`` and the bare
+          ``"bbox_xyxy"`` and ``"bbox"``, read tensors half a pixel apart: see :class:`~kornia.constants.DataKey`.
         - An object pickled before `#6710 <https://github.com/kornia/kornia/issues/6710>`_ holds inclusive corners.
           It is read back as such and gives the numbers it gave then; combining it with a new object raises
           ``ValueError``, and ``Boxes.from_tensor(old.to_tensor('xyxy'))`` converts it.
 
     .. warning::
-        :class:`~kornia.augmentation.container.AugmentationSequential` reads a tensor under the bare ``"bbox"`` or
-        ``"bbox_xyxy"`` key as corners in the pixel-centre frame and keeps the numbers it gave before
-        `#6710 <https://github.com/kornia/kornia/issues/6710>`_, while a :class:`Boxes` object under any key, and a
-        tensor under ``"bbox_xywh"``, takes the conversion above: the same boxes give different numbers on the two
-        paths under scaling. Passing the ``'vertices'`` export to the bbox helpers reads one pixel larger:
+        Passing the ``'vertices'`` export to the bbox helpers reads one pixel larger:
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. :meth:`to_mask` and
         :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
         ``size``; its deprecated ``width, height`` form takes the opposite order:

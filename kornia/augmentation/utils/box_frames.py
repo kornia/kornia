@@ -47,9 +47,9 @@ class _BoxKey(NamedTuple):
 
     ``pixel_centre`` selects the pixel-centre storage (``Boxes._inclusive``), which applies image matrices to the
     corners as they are, over the exclusive storage, which applies them in the edge frame. A ``bare`` key imports a
-    tensor as it did before #6710, in ``mode_out`` with the legacy validation, and reads an all-zero row as a real box at
-    the origin. Every other key imports in the exclusive ``mode_in``, rejects negative extents and reads a zero width or
-    height as a missing annotation. Both write their result in ``mode_out``.
+    tensor as it did before #6710, in ``mode_out`` with the legacy validation, and reads an all-zero row as a real box
+    at the origin. Every other key imports in the exclusive ``mode_in``, rejects negative extents and reads a zero
+    width or height as a missing annotation. Both write their result in ``mode_out``.
     """
 
     mode_in: str

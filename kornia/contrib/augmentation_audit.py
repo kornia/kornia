@@ -48,10 +48,10 @@ from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.video import VideoSequential
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS
 
 if TYPE_CHECKING:
     from kornia.augmentation.container.augment import AugmentationSequential

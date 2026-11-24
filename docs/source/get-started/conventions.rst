@@ -444,9 +444,11 @@ Bounding boxes
   positive half-precision width or height rounds to zero. Import such boxes in
   float32. This also applies to inclusive corners under video ``"bbox_xywh"``.
 - :class:`kornia.augmentation.container.AugmentationSequential` accepts three box
-  formats via ``data_keys``: ``"bbox"`` (4-corner), ``"bbox_xyxy"``, and
-  ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
-  ``(x, y)``.
+  formats via ``data_keys``: 4-corner ``(B, N, 4, 2)`` (``"bbox_edge"``,
+  ``"bbox_index"``), ``xyxy`` (``"bbox_xyxy_edge"``, ``"bbox_xyxy_index"``) and
+  ``"bbox_xywh"``. Keypoints are ``"keypoints"`` or ``"keypoints_edge"``,
+  ``(B, N, 2)`` in ``(x, y)``. The ``_edge`` and ``_index`` suffixes name the
+  frame; see *Augmentation containers* below.
 
 .. _color-conventions:
 
@@ -588,15 +590,34 @@ Augmentations
   Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
   spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
   ``mask`` keys for multiple full-batch masks.
-- A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key holds corners on
-  pixel centres, as keypoints do, and keeps the numbers of the releases before
-  `#6710 <https://github.com/kornia/kornia/issues/6710>`_: flips map
-  ``x' = W - 1 - x`` and a 2x resize ``x' = 2 x + 1/2``. A
-  :class:`kornia.geometry.boxes.Boxes` object under any key, and a tensor under
-  ``"bbox_xywh"``, holds exclusive boxes, transformed as in *Bounding boxes*
-  above: ``x' = W - x`` and ``x' = 2 x``. A ``"bbox_xywh"`` row with zero width
-  or height is no box: it is accepted and every output gives an all-zero row for
-  it, as for a box that ``RandomMosaic`` clips away.
+- Box and keypoint keys name their frame
+  (`#6710 <https://github.com/kornia/kornia/issues/6710>`_). The edge-frame keys
+  ``"bbox_xyxy_edge"``, ``"bbox_edge"``, ``"bbox_xywh"`` and ``"keypoints_edge"``
+  read COCO and torchvision coordinates, pixel ``i`` spanning ``[i, i + 1)``,
+  transformed as in *Bounding boxes* above: a flip maps ``x' = W - x`` and a 2x
+  resize ``x' = 2 x``. The pixel-centre keys ``"bbox_xyxy_index"``,
+  ``"bbox_index"`` and ``"keypoints"`` read coordinates on pixel centres, as the
+  image matrices are: ``x' = W - 1 - x`` and ``x' = 2 x + 1/2``. A
+  :class:`kornia.geometry.boxes.Boxes` object under any key is in the edge frame.
+
+  ==========================  =======================  ====================
+  Box ``[10, 30)``, 64 px     ``"bbox_xyxy_edge"``     ``"bbox_xyxy_index"``
+  ==========================  =======================  ====================
+  ``RandomHorizontalFlip``    ``[34, 54)``             ``[33, 53)``
+  ``Resize`` 2x               ``[20, 60)``             ``[20.5, 60.5)``
+  ``RandomMosaic`` window     ``[0, W]``               ``[-0.5, W - 0.5]``
+  ==========================  =======================  ====================
+
+  Under the frame-named box keys a row with zero width or height is no box: it
+  is accepted and every output gives an all-zero row for it, as for a box that
+  ``RandomMosaic`` clips away.
+- The bare ``"bbox_xyxy"`` and ``"bbox"`` keys are aliases of
+  ``"bbox_xyxy_index"`` and ``"bbox_index"``, with the transformed coordinates of
+  the releases before #6710; an all-zero row stays a box at the origin. They warn
+  once with :class:`~kornia.augmentation.BoxFrameWarning`. Code that converts
+  COCO boxes with ``- 0.5`` before the container and ``+ 0.5`` after keeps its
+  numbers under ``"bbox_xyxy_index"``; without the conversion, use
+  ``"bbox_xyxy_edge"``.
 - Nested ``AugmentationSequential`` children contribute matrices from the
   current call under their own matrix mode. Plain ``ImageSequential`` children
   contribute their geometric operations in ``silent`` mode, including repeated
@@ -1453,8 +1474,9 @@ Quick self-review for generated code, most common first:
 12. Quaternions constructed in XYZW order — Kornia uses WXYZ.
 13. Expecting hue in ``[0, 360]`` or ``[0, 1]`` — ``rgb_to_hsv`` returns
     radians ``[0, 2π)``.
-14. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, N, 4, 2)``;
-    use ``"bbox_xyxy"``/``"bbox_xywh"`` for coordinate formats.
+14. Wrong ``data_keys`` box format or frame — the ``"bbox"`` keys mean 4-corner
+    ``(B, N, 4, 2)``; COCO and torchvision boxes go under ``"bbox_xyxy_edge"`` or
+    ``"bbox_xywh"``, and keypoints of the same file under ``"keypoints_edge"``.
 15. Assuming one rotation direction across the augmentations — a positive
     ``degrees`` on ``RandomAffine`` turns the image clockwise, on
     ``RandomRotation`` counter-clockwise.
