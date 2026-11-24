@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
-from kornia.core.utils import _deepcopy_module_state, register_module_state
+from kornia.core.utils import _autocast_disabled, _deepcopy_module_state, register_module_state
 from kornia.geometry.liegroup.so3 import So3, _check_points_layout, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -303,7 +303,9 @@ class Se3(nn.Module):
         upsilon = v[..., :3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
-        omega_hat_sq = omega_hat @ omega_hat
+        # Keep the translation Jacobian in the input precision under autocast.
+        with _autocast_disabled(omega.device.type):
+            omega_hat_sq = omega_hat @ omega_hat
         theta_sq = batched_dot_product(omega, omega)
         nonzero = theta_sq > 0
         # sqrt has an unbounded derivative at 0, so it is taken on a substituted 1 at omega = 0 and
@@ -343,7 +345,8 @@ class Se3(nn.Module):
         theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
         t = self.t
         omega_hat = So3.hat(omega)
-        omega_hat_sq = omega_hat @ omega_hat
+        with _autocast_disabled(omega.device.type):
+            omega_hat_sq = omega_hat @ omega_hat
         # c is finite at theta = 0 (1/12), so V^-1 @ t is taken for every element, which keeps
         # d upsilon / d q_vec = [t]_x at the identity (kornia#4953).
         _, _, c = _so3_small_angle_coefficients(theta)

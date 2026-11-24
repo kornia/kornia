@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
-from kornia.core.utils import _deepcopy_module_state, register_module_state
+from kornia.core.utils import _autocast_disabled, _deepcopy_module_state, register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.vector import Vector2
@@ -335,7 +335,9 @@ class Se2(nn.Module):
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
         # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
-        upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
+        # Keep the translation in the same precision as the angle.
+        with _autocast_disabled(theta.device.type):
+            upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
         if theta.shape != upsilon.shape[:-2]:
             theta = theta.expand(upsilon.shape[:-2])
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)

@@ -32,6 +32,7 @@ from testing.base import (
     BaseTester,
     assert_deepcopy_copies_state_as_leaves,
     dynamo_is_available,
+    skip_unsupported_autocast,
 )
 
 NO_COMPLEX_BFLOAT16 = pytest.mark.applies_to(
@@ -250,6 +251,17 @@ class TestSe2(BaseTester):
         a = self._make_rand_data(device, dtype, (batch_size, 3))
         b = Se2.exp(a).log()
         self.assert_close(b, a, low_tolerance=True)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support the complex rotation state")
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_log_retains_float32_translation_precision_under_autocast(self, device, autocast_dtype):
+        skip_unsupported_autocast(device, autocast_dtype)
+        tangent = torch.tensor([[1.7, -3.2, 0.89], [4.1, 1.6, -1.3]], dtype=torch.float32)
+        matrix = torch.linalg.matrix_exp(Se2.hat(tangent.double())).float().to(device)
+        pose = Se2.from_matrix(matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = pose.log()
+        self.assert_close(actual, tangent.to(device), atol=2e-6, rtol=0)
 
     @NO_COMPLEX_BFLOAT16_OVERLOAD
     def test_exp_log_keep_small_rotations_4924(self, device, dtype):

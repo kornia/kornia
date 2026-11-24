@@ -34,6 +34,7 @@ from testing.base import (
     BaseTester,
     assert_deepcopy_copies_state_as_leaves,
     dynamo_is_available,
+    skip_unsupported_autocast,
 )
 
 
@@ -326,6 +327,24 @@ class TestSe3(BaseTester):
         if batch_size is not None:
             zero_vec = zero_vec.repeat(batch_size, 1)
         self.assert_close(s.log(), torch.cat((t, zero_vec), -1))
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="Tests autocast on supported devices")
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    @pytest.mark.parametrize("entry", ["exp", "log"])
+    def test_translation_retains_float32_precision_under_autocast(self, device, autocast_dtype, entry):
+        skip_unsupported_autocast(device, autocast_dtype)
+        tangent = torch.tensor(
+            [[1.7, -3.2, 0.9, 0.89, -1.51, 0.73], [4.1, 1.6, -2.9, -1.3, 0.9, 0.7]], dtype=torch.float32
+        )
+        matrix = torch.linalg.matrix_exp(Se3.hat(tangent.double())).float().to(device)
+        tangent = tangent.to(device)
+        pose = Se3.from_matrix(matrix)
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            if entry == "exp":
+                actual, expected = Se3.exp(tangent).t, matrix[..., :3, 3]
+            else:
+                actual, expected = pose.log(), tangent
+        self.assert_close(actual, expected, atol=2e-6, rtol=0)
 
     def test_log_is_principal_4925(self, device, dtype):
         # Se3.log inherits So3.log: a small rotation stored with real < 0 got |omega| close to 2 pi and, through
