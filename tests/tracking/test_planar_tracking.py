@@ -516,13 +516,13 @@ class _ExactMatcher(torch.nn.Module):
         }
 
 
-class TestHomographyTrackerConventions:
+class TestHomographyTrackerPriorScale(BaseTester):
     @pytest.mark.parametrize("scale", [-2.0, 0.0625])
     @pytest.mark.parametrize("h22", [0.0, 1.0])
-    def test_convention_search_window_is_independent_of_prior_scale(self, device, scale, h22):
+    def test_convention_search_window_is_independent_of_prior_scale(self, device, dtype, scale, h22):
         # Even with h22=0 the prior is invertible and maps points away from x=0 to finite frame pixels.
-        prior = torch.tensor([[1.1, 0.0, 7.0], [0.0, 0.95, 4.0], [0.025, 0.0, h22]], device=device)
-        frame = torch.linspace(0.0, 1.0, 60 * 70, device=device).view(1, 1, 60, 70)
+        prior = torch.tensor([[1.1, 0.0, 7.0], [0.0, 0.95, 4.0], [0.025, 0.0, h22]], device=device, dtype=dtype)
+        frame = torch.linspace(0.0, 1.0, 60 * 70, device=device, dtype=dtype).view(1, 1, 60, 70)
         fast = _ExactMatcher()
         tracker = HomographyTracker(_ExactMatcher(), fast, minimum_inliers_num=10)
         tracker.set_target(frame[..., :44, :54])
@@ -534,8 +534,11 @@ class TestHomographyTrackerConventions:
             windows.append(match.call_args.args[0]["image1"])
         assert (windows[0].isfinite() & (windows[0] != 0)).any()
         # When h22=0 the target origin maps to infinity.
-        torch.testing.assert_close(windows[0], windows[1], rtol=0.0, atol=1e-5, equal_nan=True)
+        self.assert_close(windows[0].isnan(), windows[1].isnan())
+        self.assert_close(windows[0].nan_to_num(), windows[1].nan_to_num())
 
+
+class TestHomographyTrackerConventions:
     def test_convention_homography_maps_target_pixels_to_frame_pixels(self):
         tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
         tracker.set_target(torch.rand(1, 1, 44, 54))
