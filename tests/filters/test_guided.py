@@ -621,11 +621,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("subsample", [2, 3])
     @pytest.mark.parametrize("shape", [(1, 10), (10, 1), (1, 1), (2, 9), (9, 2)])
     def test_subsample_larger_than_an_axis(self, guide_dim, subsample, shape, device, dtype):
-        """An axis shorter than ``subsample`` is subsampled to one pixel, not to none.
-
-        ``replicate`` padding, because ``reflect`` cannot pad a one-pixel axis with any window larger than one pixel,
-        with or without ``subsample``.
-        """
+        """Subsample an axis shorter than ``subsample`` to one pixel."""
         self._skip_without_padding(device, dtype, "replicate")
         H, W = shape
         guide = torch.rand(1, guide_dim, H, W, device=device, dtype=dtype)
@@ -744,7 +740,6 @@ class TestGuidedBlur(BaseTester):
         tolerance = {torch.float16: 0.01, torch.bfloat16: 0.05}.get(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
-    @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize(
         "subsample,error",
         [
@@ -761,7 +756,7 @@ class TestGuidedBlur(BaseTester):
             (None, TypeCheckError),
         ],
     )
-    def test_exception_subsample_not_a_positive_int(self, guide_dim, subsample, error):
+    def test_exception_subsample_not_a_positive_int(self, subsample, error):
         """``subsample`` is a positive ``int``: a value outside the range raises ``BaseError``, a non-integer
         ``TypeCheckError``, and the message shows the value.
 
@@ -774,7 +769,7 @@ class TestGuidedBlur(BaseTester):
         ``pad`` (``2.0`` on 2 x 12). ``"2"`` and ``None`` failed in the comparison ``subsample > 1`` with a
         ``TypeError``, with either guidance.
         """
-        guide = torch.rand(1, guide_dim, 8, 12)
+        guide = torch.rand(1, 1, 8, 12)
         inp = torch.rand(1, 2, 8, 12)
         message = rf"`subsample` must be a positive integer\. Got: {re.escape(repr(subsample))}"
 

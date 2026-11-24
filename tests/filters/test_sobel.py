@@ -322,9 +322,6 @@ class TestSpatialGradient(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, order, mode, device, dtype, torch_optimizer):
         data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        if order == 1 and dtype == torch.float64:
-            # TODO: FIX order 1 spatial gradient with fp64 on dynamo
-            pytest.xfail(reason="Order 1 on spatial gradient may be wrong computed for float64 on dynamo")
         op = SpatialGradient(mode, order)
         op_optimized = torch_optimizer(op)
 
@@ -604,9 +601,6 @@ class TestSobel(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        if dtype == torch.float64:
-            # TODO: investigate sobel for float64 with dynamo
-            pytest.xfail(reason="The sobel results can be different after dynamo on fp64")
         data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Sobel()
         op_optimized = torch_optimizer(op)
