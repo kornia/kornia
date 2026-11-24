@@ -589,6 +589,7 @@
     "fit_line",
     "fit_plane",
     "flips",
+    "flow",
     "fundamental_from_essential",
     "fundamental_from_projections",
     "generate_scene",
@@ -736,6 +737,7 @@
     "warp_grid",
     "warp_grid3d",
     "warp_image_tps",
+    "warp_optical_flow",
     "warp_perspective",
     "warp_perspective3d",
     "warp_points_tps",
@@ -1028,6 +1030,9 @@
     "hflip",
     "rot180",
     "vflip"
+  ],
+  "kornia.geometry.transform.flow": [
+    "warp_optical_flow"
   ],
   "kornia.geometry.transform.homography_warper": [
     "BaseWarper",

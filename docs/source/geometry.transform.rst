@@ -36,6 +36,30 @@ thin-plate-spline control points with :func:`warp_image_tps` (and points with :f
 .. autofunction:: homography_warp
 .. autofunction:: homography_warp3d
 
+Use :func:`warp_optical_flow` for the dense displacement field associated with two images warped by
+the same homography. It resamples the source field and transforms both correspondence endpoints.
+For example, replay a sampled horizontal flip on both frames and their flow labels:
+
+.. code-block:: python
+
+   from kornia.augmentation import AugmentationSequential, RandomHorizontalFlip
+   from kornia.geometry.transform import warp_optical_flow
+
+   pair = AugmentationSequential(
+       RandomHorizontalFlip(),
+       data_keys=["input", "input"],
+       transformation_matrix_mode="rigid",
+   )
+   first_warped, second_warped = pair(first, second)
+   flow_warped, valid_warped = warp_optical_flow(
+       flow, pair.transform_matrix, first_warped.shape[-2:], valid
+   )
+
+Here ``first``, ``second``, and ``flow`` describe the same batch and ``valid`` flags known source flow vectors.
+Use the returned mask when computing a loss. A valid vector can point outside the warped second frame.
+
+.. autofunction:: warp_optical_flow
+
 Image 2D transforms
 -------------------
 

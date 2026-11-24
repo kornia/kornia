@@ -32,6 +32,7 @@ Which function to use:
   :func:`warp_perspective3d` and :func:`warp_affine3d`; by a normalized destination→source homography,
   :func:`homography_warp` (``imgwarp``) and its module form :class:`HomographyWarper` (``homography_warper``); at
   per-pixel coordinates, :func:`remap` (``imgwarp``).
+- Warp dense optical-flow labels for a pair with the same homography: :func:`warp_optical_flow`.
 - Build the matrices (``imgwarp``): :func:`get_perspective_transform` from four point pairs,
   :func:`get_rotation_matrix2d`, :func:`get_affine_matrix2d` and their 3D counterparts,
   :func:`get_projective_transform` and :func:`get_affine_matrix3d`, :func:`invert_affine_transform`.
@@ -56,6 +57,7 @@ from .crop2d import *
 from .crop3d import *
 from .elastic_transform import *
 from .flips import *
+from .flow import *
 from .homography_warper import *
 from .image_registrator import *
 from .imgwarp import *
