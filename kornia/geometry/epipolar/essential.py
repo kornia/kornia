@@ -26,7 +26,9 @@ from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import (
     _at_least_float32,
     _autocast_disabled,
+    _caller_autocast_on,
     _needs_derivatives,
+    _reconcile_under_autocast,
     _right_singular_vector,
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
@@ -860,6 +862,10 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     :func:`find_essential`. For the fundamental matrix of two projection matrices, use
     :func:`fundamental_from_projections`.
 
+    Convention:
+        - Outside TorchScript, a caller's autocast region does not narrow the pose products or the resulting matrix.
+          See :func:`relative_camera_motion` for mixed inputs.
+
     Args:
         R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
         t1: The first camera translation vector with shape ``(*, 3, 1)``.
@@ -886,7 +892,10 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     # get the cross product from relative translation vector
     Tx = cross_product_matrix(t[..., 0])
 
-    return Tx @ R
+    if torch.jit.is_scripting():
+        return Tx @ R
+    with _autocast_disabled(R.device.type):
+        return Tx @ R
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -1104,6 +1113,8 @@ def relative_camera_motion(
           :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2. As 4x4 matrices this is
           :math:`E_2 E_1^{-1}`, whereas :func:`~kornia.geometry.linalg.relative_transformation` of :math:`E_1` and
           :math:`E_2` returns :math:`E_1^{-1} E_2`.
+        - Outside TorchScript, a caller's autocast region does not narrow the products. Mixed float16, bfloat16 and
+          float32 inputs that autocast would reconcile meet in float32 inside a region.
 
     Args:
         R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
@@ -1127,13 +1138,22 @@ def relative_camera_motion(
     KORNIA_CHECK_SHAPE(t1, ["*", "3", "1"])
     KORNIA_CHECK_SHAPE(t2, ["*", "3", "1"])
 
-    # compute first the relative rotation
+    if torch.jit.is_scripting():
+        return _relative_camera_motion(R1, t1, R2, t2)
+    # The baseline can be much smaller than the absolute translations: rounding R @ t1 before the
+    # subtraction can change the translation direction by tens of degrees, even for float32 inputs.
+    if _caller_autocast_on(R1.device.type):
+        args = _reconcile_under_autocast(R1, t1, R2, t2)
+        with _autocast_disabled(R1.device.type):
+            return _relative_camera_motion(*args)
+    return _relative_camera_motion(R1, t1, R2, t2)
+
+
+def _relative_camera_motion(
+    R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
     R = R2 @ R1.transpose(-2, -1)
-
-    # compute the relative translation vector
-    t = t2 - R @ t1
-
-    return R, t
+    return R, t2 - R @ t1
 
 
 def find_essential(
