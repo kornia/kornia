@@ -565,6 +565,13 @@ class TestKittiD1Error(BaseTester):
         actual = kornia.metrics.kitti_d1_error(input, target, abs_threshold=5.0, rel_threshold=0.01)
         self.assert_close(actual, torch.tensor(0.0, device=device, dtype=dtype))
 
+    def test_convention_relative_error_just_above_threshold(self, device, dtype):
+        # 5 / 40 is 0.125, above 0.12499. Comparing in half precision rounds the cutoff to 0.125.
+        pred = torch.tensor([45.0, 44.0, 46.0], device=device, dtype=dtype)
+        target = torch.full_like(pred, 40.0)
+        actual = kornia.metrics.kitti_d1_error(pred, target, rel_threshold=0.12499, reduction="none")
+        self.assert_close(actual, pred.new_tensor([1.0, 0.0, 1.0]), rtol=0, atol=0)
+
     def test_valid_mask(self, device, dtype):
         input, target = self._sample(device, dtype)
         mask = torch.tensor([True, True, True, False], device=device)
@@ -648,6 +655,18 @@ class TestConventionsDisparity(BaseTester):
         mask = torch.ones(2, 3, 4, device=device, dtype=torch.bool)
         mask[1, 1:] = False
         return input, target, mask
+
+    @pytest.mark.parametrize(
+        "metric", [kornia.metrics.mean_bad_pixel_error, kornia.metrics.kitti_d1_error], ids=lambda m: m.__name__
+    )
+    def test_convention_outlier_absolute_threshold(self, metric, device, dtype):
+        # All inputs are exactly representable. Their errors lie above, at and below 3 px.
+        # The last pixel also exceeds the cutoff but is masked out.
+        pred = torch.tensor([0.12451171875, 0.125, 0.1259765625, 0.12451171875], device=device, dtype=dtype)
+        target = torch.full_like(pred, 3.125)
+        mask = torch.tensor([True, True, True, False], device=device)
+        actual = metric(pred, target, valid_mask=mask, reduction="none")
+        self.assert_close(actual, pred.new_tensor([1.0, 0.0, 0.0, 0.0]), rtol=0, atol=0)
 
     def test_convention_disparity_metrics_pool_every_valid_pixel_of_the_batch(self, device, dtype):
         """The four metrics pool the valid pixels of all images into one value; bad-pixel and D1 are fractions."""

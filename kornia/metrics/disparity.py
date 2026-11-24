@@ -259,6 +259,7 @@ def mean_bad_pixel_error(
     Convention:
         - See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error` for the pooling, the
           mask, the empty-mask result and half-precision sums. ``'sum'`` gives the number of bad pixels.
+        - Half-precision differences and threshold comparisons use float32. The output keeps the promoted input dtype.
         - The output is built from comparisons, so it does not require grad and cannot be used as a loss.
 
     Args:
@@ -289,7 +290,10 @@ def mean_bad_pixel_error(
 
     """
     mask = _check_disparity_inputs(input, target, valid_mask)
-    bad = ((input - target).abs() > threshold).to(torch.promote_types(input.dtype, target.dtype))
+    out_dtype = torch.promote_types(input.dtype, target.dtype)
+    if out_dtype in (torch.float16, torch.bfloat16):
+        input, target = input.float(), target.float()
+    bad = ((input - target).abs() > threshold).to(out_dtype)
     return _reduce_disparity_error(bad, mask, reduction)
 
 
@@ -318,6 +322,7 @@ def kitti_d1_error(
         - See the Convention block of :func:`~kornia.metrics.mean_absolute_disparity_error` for the pooling, the
           mask, the empty-mask result and half-precision sums. ``'sum'`` gives the number of outliers.
           :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the KITTI devkit.
+        - Half-precision errors and threshold comparisons use float32. The output keeps the promoted input dtype.
         - The relative error divides by ``target``, so the two maps are not interchangeable: swapping them can
           change the result.
         - A zero ground-truth disparity gives a non-finite relative error, so that pixel is classified by
@@ -355,8 +360,9 @@ def kitti_d1_error(
 
     """
     mask = _check_disparity_inputs(input, target, valid_mask)
+    out_dtype = torch.promote_types(input.dtype, target.dtype)
+    if out_dtype in (torch.float16, torch.bfloat16):
+        input, target = input.float(), target.float()
     error = (input - target).abs()
-    outlier = ((error > abs_threshold) & (error / target.abs() > rel_threshold)).to(
-        torch.promote_types(input.dtype, target.dtype)
-    )
+    outlier = ((error > abs_threshold) & (error / target.abs() > rel_threshold)).to(out_dtype)
     return _reduce_disparity_error(outlier, mask, reduction)
