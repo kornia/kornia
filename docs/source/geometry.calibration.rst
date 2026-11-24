@@ -138,6 +138,27 @@ Stereo rectification
 Use :func:`stereo_rectify` to build backward sampling maps for two calibrated cameras and their
 rectified projection matrices for :class:`~kornia.geometry.camera.StereoCamera`.
 
+Given calibrated left and right images and the pose that maps left-camera points to the
+right-camera frame, pass common output intrinsics and reuse the returned maps for every image
+pair from that rig. Use each validity mask after sampling to clear unavailable pixels.
+
+.. code-block:: python
+
+    from kornia.geometry.calibration import stereo_rectify
+    from kornia.geometry.camera import StereoCamera
+    from kornia.geometry.transform import remap
+
+    rect = stereo_rectify(K_left, K_right, dist_left, dist_right, R, t, K_rectified, left.shape[-2:])
+
+    def sample(image, pixel_map, valid):
+        u, v = pixel_map.unbind(-1)
+        warped = remap(image.to(pixel_map.dtype), u, v, align_corners=True)
+        return warped.masked_fill(~valid[:, None], 0)
+
+    left_rectified = sample(left, rect.map_left, rect.valid_left)
+    right_rectified = sample(right, rect.map_right, rect.valid_right)
+    camera = StereoCamera(rect.projection_left, rect.projection_right)
+
 .. autofunction:: stereo_rectify
 
 .. autoclass:: StereoRectification

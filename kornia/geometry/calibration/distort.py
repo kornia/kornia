@@ -110,6 +110,63 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     )
 
 
+def _distort_normalized(
+    x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor, valid: Optional[torch.Tensor] = None
+) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Distort normalized coordinates and optionally exclude singular rays before division."""
+    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
+        raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
+
+    has_tilt = dist.shape[-1] == 14
+    # Adding torch.zeros to obtain vector with 14 coeffs.
+    if dist.shape[-1] < 14:
+        dist = F.pad(dist, [0, 14 - dist.shape[-1]])
+
+    # Distort points
+    r2 = x * x + y * y
+    r4 = r2 * r2
+    r6 = r4 * r2
+
+    numerator = 1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r4 + dist[..., 4:5] * r6
+    denominator = 1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r4 + dist[..., 7:8] * r6
+    if valid is not None:
+        valid = valid & (denominator != 0)
+        # Exclude rational poles before dividing. Masking only the final pixels leaves NaN gradients.
+        numerator = torch.where(valid, numerator, 0)
+        denominator = torch.where(valid, denominator, 1)
+    rad_poly = numerator / denominator
+    xd = (
+        x * rad_poly
+        + 2 * dist[..., 2:3] * x * y
+        + dist[..., 3:4] * (r2 + 2 * x * x)
+        + dist[..., 8:9] * r2
+        + dist[..., 9:10] * r4
+    )
+    yd = (
+        y * rad_poly
+        + dist[..., 2:3] * (r2 + 2 * y * y)
+        + 2 * dist[..., 3:4] * x * y
+        + dist[..., 10:11] * r2
+        + dist[..., 11:12] * r4
+    )
+
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
+        tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
+
+        # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
+        points_untilt = _tilt_matmul(torch.stack([xd, yd, torch.ones_like(xd)], -1), tilt.transpose(-2, -1))
+        w = points_untilt[..., 2]
+        if valid is not None:
+            valid = valid & (w != 0)
+            w = torch.where(valid, w, 1)
+        xd = points_untilt[..., 0] / w
+        yd = points_untilt[..., 1] / w
+
+    return xd, yd, valid
+
+
 def distort_points(
     points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
@@ -194,19 +251,11 @@ def distort_points(
     elif new_K.shape[-2:] != (3, 3):
         raise ValueError(f"new_K matrix shape is invalid. Got {new_K.shape}.")
 
-    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
-
     # Half-precision inputs are distorted in float32, so that the pixel result is rounded once, at the end.
     out_dtype = torch.promote_types(
         torch.promote_types(points.dtype, K.dtype), torch.promote_types(dist.dtype, new_K.dtype)
     )
     points, K, new_K, dist = (_at_least_float32(t) for t in (points, K, new_K, dist))
-
-    has_tilt = dist.shape[-1] == 14
-    # Adding torch.zeros to obtain vector with 14 coeffs.
-    if dist.shape[-1] < 14:
-        dist = F.pad(dist, [0, 14 - dist.shape[-1]])
 
     # Convert 2D points from pixels to normalized camera coordinates
     new_cx: torch.Tensor = new_K[..., 0:1, 2]  # princial point in x (Bx1)
@@ -218,38 +267,7 @@ def distort_points(
     x: torch.Tensor = (points[..., 0] - new_cx) / new_fx  # (BxN - Bx1)/Bx1 -> BxN or (N,)
     y: torch.Tensor = (points[..., 1] - new_cy) / new_fy  # (BxN - Bx1)/Bx1 -> BxN or (N,)
 
-    # Distort points
-    r2 = x * x + y * y
-    r4 = r2 * r2
-    r6 = r4 * r2
-
-    rad_poly = (1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r4 + dist[..., 4:5] * r6) / (
-        1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r4 + dist[..., 7:8] * r6
-    )
-    xd = (
-        x * rad_poly
-        + 2 * dist[..., 2:3] * x * y
-        + dist[..., 3:4] * (r2 + 2 * x * x)
-        + dist[..., 8:9] * r2
-        + dist[..., 9:10] * r4
-    )
-    yd = (
-        y * rad_poly
-        + dist[..., 2:3] * (r2 + 2 * y * y)
-        + 2 * dist[..., 3:4] * x * y
-        + dist[..., 10:11] * r2
-        + dist[..., 11:12] * r4
-    )
-
-    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
-    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
-    if has_tilt:
-        tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
-
-        # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        points_untilt = _tilt_matmul(torch.stack([xd, yd, torch.ones_like(xd)], -1), tilt.transpose(-2, -1))
-        xd = points_untilt[..., 0] / points_untilt[..., 2]
-        yd = points_untilt[..., 1] / points_untilt[..., 2]
+    xd, yd, _ = _distort_normalized(x, y, dist)
 
     # Convert points from normalized camera coordinates to pixel coordinates
     cx: torch.Tensor = K[..., 0:1, 2]  # princial point in x (Bx1)

@@ -42,7 +42,9 @@ class TestStereoRectify(BaseTester):
             sampled = remap(image, pixmap[..., 0], pixmap[..., 1], align_corners=True)
             self.assert_close(sampled, image)
         self.assert_close(out.projection_left[:, :, :3], args[0].to(out.map_left))
-        self.assert_close(out.projection_right[:, 0, 3], (args[0][:, 0, 0] * args[5][:, 0]).to(out.map_left))
+        focal = args[0][:, 0, 0].to(out.map_left)
+        shift = args[5][:, 0].to(out.map_left)
+        self.assert_close(out.projection_right[:, 0, 3], focal * shift)
 
     def test_convention_epipolar_and_disparity(self, device, dtype):
         K, Kr, d, dr, _, _, K_out = self.calibration(device, dtype)
@@ -86,6 +88,37 @@ class TestStereoRectify(BaseTester):
         self.assert_close(out.map_right[0, 5, 7], centre - delta)
         assert out.valid_left.all()
         assert out.valid_right.all()
+
+    def test_gradient_through_masked_distortion_pole(self, device, dtype):
+        K = torch.eye(3, device=device, dtype=dtype)[None]
+        d = K.new_tensor([[0, 0, 0, 0, 0, -1, 0, 0]]).requires_grad_()
+        R = K.clone()
+        t = K.new_tensor([[-0.125, 0, 0]])
+        target = K.clone()
+        target[:, 0, 0] = 2
+        out = stereo_rectify(K, K, d, torch.zeros_like(d), R, t, target, (1, 3))
+        # At output u=2, normalized x=1, so 1+k4*x^2=0. At u=1, x=1/2 with a valid denominator of 3/4.
+        assert out.valid_left.tolist() == [[[True, True, False]]]
+        assert not out.map_left[0, 0, 2].any()
+        (grad,) = torch.autograd.grad(out.map_left.sum(), d)
+        assert grad.isfinite().all()
+        # d(u)/d(k1) = x^3 / (1+k4*x^2) = (1/8) / (3/4) for the single nonzero valid ray.
+        self.assert_close(grad[0, 0], d.new_tensor(1 / 6))
+
+    def test_gradient_through_masked_tilt_pole(self, device):
+        K = torch.eye(3, device=device, dtype=torch.float32)[None]
+        d = K.new_zeros(1, 14)
+        d[0, 13] = -torch.pi / 4
+        d.requires_grad_()
+        t = K.new_tensor([[-0.125, 0, 0]])
+        target = K.clone()
+        target[:, 0, 0] = 2
+        out = stereo_rectify(K, K, d, torch.zeros_like(d), K.clone(), t, target, (1, 3))
+        # At tau_y = -pi/4, w = (1 - x)/sqrt(2) vanishes at x=1.
+        assert out.valid_left.tolist() == [[[True, True, False]]]
+        (grad,) = torch.autograd.grad(out.map_left.sum(), d)
+        assert grad.isfinite().all()
+        self.assert_close(grad[0, 13], d.new_tensor(-3 * 2**0.5))
 
     def test_geometry_uses_float32_for_half(self, device):
         args = self.calibration(device, torch.bfloat16)

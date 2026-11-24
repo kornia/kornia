@@ -17,7 +17,7 @@
 
 """Rectify calibrated stereo pairs onto a shared horizontal pixel grid."""
 
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import torch
 
@@ -25,7 +25,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _autocast_disabled
 from kornia.geometry.grid import create_meshgrid
 
-from .distort import distort_points
+from .distort import _distort_normalized
 
 __all__ = ["StereoRectification", "stereo_rectify"]
 
@@ -58,12 +58,13 @@ def _rectification_map(
     z = original[..., 2:3]
     front = (z > 1e-8) & rig_valid[:, None, None]
     normalized = torch.where(front, original[..., :2], 0) / torch.where(front, z, 1)
-    identity = torch.eye(3, dtype=rays.dtype, device=rays.device)
-    coords = distort_points(normalized, intrinsics, distortion, identity)
-    u, v = coords.unbind(-1)
+    x, y = normalized.unbind(-1)
+    xd, yd, valid = _distort_normalized(x, y, distortion, front.squeeze(-1))
+    u = xd * intrinsics[:, 0:1, 0] + intrinsics[:, 0:1, 2]
+    v = yd * intrinsics[:, 1:2, 1] + intrinsics[:, 1:2, 2]
     # Integer-centre pixels cover a half-pixel on either side of their centre.
-    visible = front.squeeze(-1) & (u >= -0.5) & (u < width - 0.5) & (v >= -0.5) & (v < height - 0.5)
-    coords = torch.where(visible[..., None], coords, 0)
+    visible = cast(torch.Tensor, valid) & (u >= -0.5) & (u < width - 0.5) & (v >= -0.5) & (v < height - 0.5)
+    coords = torch.where(visible[..., None], torch.stack((u, v), dim=-1), 0)
     return coords.reshape(rotation.shape[0], height, width, 2), visible.reshape(rotation.shape[0], height, width)
 
 
@@ -88,7 +89,7 @@ def stereo_rectify(
         - The pose maps left-camera coordinates to right-camera coordinates, X_right = R X_left + t.
         - Maps have shape (B, H, W, 2) in integer-centre pixel coordinates (column, row). Split the last
           dimension to pass them to remap with align_corners=True.
-        - Boolean masks of shape (B, H, W) identify front-facing rays inside the source pixel area.
+        - Boolean masks of shape (B, H, W) identify nonsingular front-facing rays inside the source pixel area.
           Invalid locations contain zero coordinates. Use the mask to suppress their sampled values.
         - Projection matrices of shape (B, 3, 4) use the rectified left-camera frame, as StereoCamera expects.
           The rotations map vectors from the respective original camera frames to their rectified frames.
