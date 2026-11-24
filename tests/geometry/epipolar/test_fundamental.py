@@ -911,6 +911,8 @@ class TestFundamentalFromProjections(BaseTester):
         self.gradcheck(epi.fundamental_from_projections, (P1, P2), requires_grad=(True, False))
 
     def test_batch_support_check(self, device, dtype):
+        # Pixel-unit projection matrices: their translations reach 6.5e5, past float16's 65504. A projection matrix
+        # is defined up to scale, so they are scaled by 1e-3 before the cast to the test dtype.
         P1_batch = torch.tensor(
             [
                 [
@@ -924,8 +926,7 @@ class TestFundamentalFromProjections(BaseTester):
                     [-6.0675e-01, -6.9807e-01, 3.8021e-01, 3.8896e02],
                 ],
             ],
-            device=device,
-            dtype=dtype,
+            dtype=torch.float64,
         )
         P1 = torch.tensor(
             [
@@ -935,8 +936,7 @@ class TestFundamentalFromProjections(BaseTester):
                     [-6.0675e-01, -6.9807e-01, 3.8021e-01, 3.8896e02],
                 ]
             ],
-            device=device,
-            dtype=dtype,
+            dtype=torch.float64,
         )
         P2_batch = torch.tensor(
             [
@@ -951,8 +951,7 @@ class TestFundamentalFromProjections(BaseTester):
                     [-5.7090e-01, -6.0416e-01, 5.5594e-01, 2.8111e02],
                 ],
             ],
-            device=device,
-            dtype=dtype,
+            dtype=torch.float64,
         )
         P2 = torch.tensor(
             [
@@ -962,10 +961,11 @@ class TestFundamentalFromProjections(BaseTester):
                     [-4.3727e-01, -7.8632e-01, 4.3646e-01, 3.4515e02],
                 ]
             ],
-            device=device,
-            dtype=dtype,
+            dtype=torch.float64,
         )
 
+        # Built in float64 on the CPU, since MPS has no float64.
+        P1_batch, P1, P2_batch, P2 = ((1e-3 * P).to(device=device, dtype=dtype) for P in (P1_batch, P1, P2_batch, P2))
         F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
         F = epi.fundamental_from_projections(P1, P2)
         self.assert_close(F_batch[0], F[0])

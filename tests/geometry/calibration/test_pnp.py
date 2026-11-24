@@ -24,6 +24,13 @@ from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
 
+# The _get_test_data scene puts points as close as z = 0.5 with x and y up to 100, so its pixel coordinates reach
+# about 1e5; it is built in the test dtype and its pose is pinned at 1e-4. Half precision cannot represent it.
+_HALF_SCENE = (
+    "the scene's pixel coordinates reach 1e5, past float16's 65504 and many pixels apart in bfloat16, and the pose "
+    "is pinned at 1e-4; test_half_precision_pose_is_the_float64_solve_rounded_once covers half precision"
+)
+
 
 class TestSolvePnpDlt(BaseTester):
     @staticmethod
@@ -142,12 +149,20 @@ class TestSolvePnpDlt(BaseTester):
         weights = torch.rand(*world_points.shape[:2], device=device, dtype=torch.float64).abs()
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics, weights))
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [6, 20])
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [16, 20])
     def test_pred_world_to_cam_weighted(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
@@ -155,6 +170,10 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [25])
     def test_pred_world_to_cam_weighted_rand(self, num_points, device, dtype):
         torch.manual_seed(0)
@@ -166,6 +185,10 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-3)
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"),
+        reason=_HALF_SCENE,
+    )
     @pytest.mark.parametrize("num_points", [6, 20])
     def test_project(self, num_points, device, dtype):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
@@ -179,6 +202,53 @@ class TestSolvePnpDlt(BaseTester):
         pred_img_points = self._project_to_image(world_points, pred_world_to_cam_4x4, repeated_intrinsics)
 
         self.assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
+
+    @staticmethod
+    def _representable_scene(device, dtype):
+        """A seeded scene that half precision can hold: a 640 by 480 image, depths of 4 to 20 and a pose near [I | 0].
+
+        Built in float64 on the CPU and cast once to ``dtype``; returns the world points, image points, intrinsics
+        and the ground-truth pose.
+        """
+        g = torch.Generator().manual_seed(6738)
+        batch_size, num_points = 2, 20
+        K = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=torch.float64)
+        K = K.expand(batch_size, 3, 3)
+        uv = torch.rand(batch_size, num_points, 2, generator=g, dtype=torch.float64)
+        uv = uv * torch.tensor([640.0, 480.0], dtype=torch.float64)
+        depth = 4.0 + 16.0 * torch.rand(batch_size, num_points, 1, generator=g, dtype=torch.float64)
+        cam_points = kornia.geometry.convert_points_to_homogeneous(uv) @ torch.linalg.inv(K).mT * depth
+        R = kornia.geometry.axis_angle_to_rotation_matrix(
+            torch.rand(batch_size, 3, generator=g, dtype=torch.float64) - 0.5
+        )
+        t = 2.0 * torch.rand(batch_size, 3, 1, generator=g, dtype=torch.float64) - 1.0
+        world_points = (cam_points - t.mT) @ R  # R^T (cam - t)
+        inputs = (v.to(device=device, dtype=dtype) for v in (world_points, uv, K))
+        return (*inputs, torch.cat([R, t], -1))
+
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"),
+        reason="float32 and float64 poses are pinned against the ground truth by the tests above",
+    )
+    def test_half_precision_pose_is_the_float64_solve_rounded_once(self, device, dtype):
+        # Half-precision inputs are solved in float32 and the pose is rounded once to the input dtype. The reference
+        # is the float64 solve of the same rounded inputs, on the CPU (MPS has no float64), so the input rounding
+        # cancels. Rounding once moves each entry by at most half a unit in the last place, 0.5 eps of its
+        # magnitude. The float32 solve differs from the float64 one by much less; eps / 64 of the largest entry
+        # covers it when it carries an entry across a rounding boundary. Over 200 seeds on CPU and CUDA the
+        # largest error was 0.92 of this bound in both half dtypes. Rounding the normalized points or the
+        # denormalized solution to half on the way breaks the bound.
+        world_points, img_points, K, gt_pose = self._representable_scene(device, dtype)
+        pose = kornia.geometry.solve_pnp_dlt(world_points, img_points, K)
+        assert pose.dtype == dtype
+        expected = kornia.geometry.solve_pnp_dlt(*(v.detach().cpu().double() for v in (world_points, img_points, K)))
+        eps = torch.finfo(dtype).eps
+        bound = 0.5 * eps * expected.abs() + eps / 64 * expected.abs().amax(dim=(-2, -1), keepdim=True)
+        error = (pose.detach().cpu().double() - expected).abs()
+        assert (error <= bound).all(), f"largest error / bound: {(error / bound).max().item():.3f}"
+        # Control: the reference is the scene's pose to within the input rounding (up to 10 eps here), not a
+        # degenerate solve.
+        assert (expected - gt_pose).abs().max() < 16 * eps
 
     @staticmethod
     def _convention_world_points(device, dtype):
