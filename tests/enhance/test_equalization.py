@@ -28,6 +28,7 @@ from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
 from testing.base import BaseTester, raises_value_check
+from testing.default_device import default_device
 
 
 def _clahe_interpolation_reference(img, luts, tile_size):
@@ -740,3 +741,36 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(x, slow_and_differentiable=False)
         assert out.shape == x.shape
         assert out.dtype == x.dtype
+
+    @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_clahe_under_default_device(self, grid_size, slow_and_differentiable, device, dtype):
+        # Neither the fast path's CPU index tables nor the slow path's Gaussian bandwidth may allocate
+        # on PyTorch's ambient default device: a meta default exposes both without accelerator hardware.
+        torch.manual_seed(0)
+        img = torch.rand(1, 2, 16, 16, device=device, dtype=dtype)
+        expected = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
+        with torch.device("meta"):
+            actual = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
+        assert actual.device == img.device
+        assert actual.dtype == img.dtype
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("size", [(12, 12), (15, 15)])
+    def test_clahe_slow_path_grad_under_set_default_device(self, size, device, dtype):
+        # Odd and even tile layouts must also preserve gradients when torch.set_default_device is non-CPU.
+        torch.manual_seed(0)
+        base = torch.rand(1, 2, *size, device=device, dtype=dtype)
+        img_ref = base.clone().requires_grad_(True)
+        expected = enhance.equalize_clahe(img_ref, 40.0, (3, 3), slow_and_differentiable=True)
+        expected_grad = torch.autograd.grad(expected.sum(), img_ref)[0]
+
+        img = base.clone().requires_grad_(True)
+        with default_device("meta"):
+            actual = enhance.equalize_clahe(img, 40.0, (3, 3), slow_and_differentiable=True)
+            actual_grad = torch.autograd.grad(actual.sum(), img)[0]
+
+        assert actual.device == base.device
+        assert actual_grad.device == base.device
+        self.assert_close(actual, expected)
+        self.assert_close(actual_grad, expected_grad)
