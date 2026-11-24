@@ -271,8 +271,9 @@ def sampson_epipolar_distance(
           gradient, for an exact match. A correspondence whose two epilines both have :math:`a = b = 0`, as under a
           degenerate ``Fm``, is at distance ``inf``.
         - float16 and bfloat16 inputs are computed in float32 and the distance is rounded once to their dtype. A
-          caller's autocast region does not change the result: float32 inputs are computed in float32 on every
-          device.
+          caller's autocast region changes neither the value nor the dtype of the result: float32 inputs are
+          computed in float32 on every device, except in Inductor-compiled code on MPS, which ignores the nested
+          autocast region (pytorch/pytorch#201630).
 
     Args:
         pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -417,7 +418,8 @@ def symmetrical_epipolar_distance(
           match, as in :func:`sampson_epipolar_distance`. A correspondence with an epiline of :math:`a = b = 0` in
           either image is at distance ``inf``.
         - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
-          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32.
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -477,7 +479,8 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
         - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
-          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32.
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -533,7 +536,8 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
         - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
-          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32.
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -575,7 +579,8 @@ def _epilines_outside_autocast(points: Tensor, matrix: Tensor) -> Tensor:
 
     Under autocast the product ran in half precision on every device, CPU included, where a pixel-unit ``Fm``
     underflows: median relative errors of 0.35 (float16) and 0.83 (bfloat16) on a 1920x1080 scene. TorchScript has
-    no context managers; a scripted call keeps the caller's precision.
+    no context managers; a scripted call keeps the caller's precision, as does Inductor-compiled code on MPS, which
+    ignores the nested region (pytorch/pytorch#201630).
     """
     if torch.jit.is_scripting():
         return points @ matrix

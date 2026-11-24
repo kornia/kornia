@@ -700,6 +700,32 @@ class TestEpipolarDistancesAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), dtypes=("float16", "bfloat16"), reason="CPU and CUDA autocast of half points"
+    )
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("fm_dtype", ["points", "float32"])
+    @pytest.mark.parametrize("metric", ["sampson", "symmetrical", "left_to_right", "right_to_left"])
+    def test_autocast_does_not_change_the_output_dtype(self, metric, fm_dtype, autocast_dtype, device, dtype):
+        # The output dtype is the one the same call has without autocast: the points' dtype when every input is half,
+        # float32 when Fm is float32. Before, autocast's per-op casts picked it: float32 for every call on CUDA, and
+        # the autocast dtype of the epiline product in the one-way distances on the CPU, so bfloat16 points with a
+        # float32 Fm returned bfloat16 in a bfloat16 region.
+        if device.type == "cuda" and torch.bfloat16 in (dtype, autocast_dtype) and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        two_view = two_view_scene(device, torch.float32)
+        x1 = two_view["x1"].to(dtype)
+        x2 = (two_view["x2"] + torch.tensor([_NOISE], device=device)).to(dtype)
+        F = _pixel_F_unit_norm(two_view)
+        F = F.to(dtype) if fm_dtype == "points" else F
+        fn = getattr(epi, f"{metric}_epipolar_distance")
+        expected = fn(x1, x2, F)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = fn(x1, x2, F)
+        assert expected.dtype == (dtype if fm_dtype == "points" else torch.float32)
+        assert actual.dtype == expected.dtype
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
 
 class TestEpipolarDistancesHalfPrecision(BaseTester):
     """float16 and bfloat16 inputs are computed in float32 and the distance is rounded once."""
