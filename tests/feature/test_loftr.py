@@ -869,6 +869,93 @@ class TestCoarseMatchingSelection(BaseTester):
             self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
 
 
+class TestLoFTRChunkedInference(BaseTester):
+    @pytest.mark.parametrize("mask_case", ["none", "left", "right", "both"])
+    @pytest.mark.parametrize("chunk_size", [1, 7])
+    def test_tiled_matches_dense(self, device, mask_case, chunk_size):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("chunked matching supports CPU and CUDA")
+        config = {**TestCoarseMatching.CFG, "border_rm": 1}
+        dense = CoarseMatching(config).eval()
+        tiled = CoarseMatching({**config, "inference_chunk_size": chunk_size}).eval()
+        gen = torch.Generator().manual_seed(71)
+        left = torch.randn(2, 30, 16, generator=gen).to(device)
+        right = torch.randn(2, 24, 16, generator=gen).to(device)
+        # Put one strong correspondence in the interior of every valid mask.
+        left[:, 14] = right[:, 14] = 6
+        left_mask = torch.ones(2, 5, 6, device=device, dtype=torch.bool)
+        right_mask = torch.ones(2, 4, 6, device=device, dtype=torch.bool)
+        left_mask[0, -1] = False
+        right_mask[1, :, -1] = False
+        data = {"hw0_c": (5, 6), "hw1_c": (4, 6), "stride_c": 8}
+        if mask_case == "both":
+            data.update(mask0=left_mask, mask1=right_mask)
+        mask0 = left_mask.flatten(1) if mask_case in ("left", "both") else None
+        mask1 = right_mask.flatten(1) if mask_case in ("right", "both") else None
+        reference, result = data.copy(), data.copy()
+        with torch.no_grad():
+            dense(left, right, reference, mask0, mask1)
+            tiled(left, right, result, mask0, mask1)
+
+        assert "conf_matrix" in reference
+        assert "conf_matrix" not in result
+        assert reference["i_ids"].numel()
+        for key in ("b_ids", "i_ids", "j_ids", "m_bids", "mkpts0_c", "mkpts1_c"):
+            assert torch.equal(result[key], reference[key])
+        self.assert_close(result["mconf"], reference["mconf"])
+
+    @pytest.mark.parametrize("fully_masked", [False, True])
+    def test_ties_and_empty_matches(self, device, fully_masked):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("chunked matching supports CPU and CUDA")
+        config = {**TestCoarseMatching.CFG, "thr": 0.0, "inference_chunk_size": 4}
+        matcher = CoarseMatching(config).eval()
+        left = torch.ones(1, 13, 8, device=device)
+        right = torch.ones(1, 5, 8, device=device)
+        data = {"hw0_c": (1, 13), "hw1_c": (1, 5), "stride_c": 8}
+        mask = torch.zeros(1, 5, device=device, dtype=torch.bool) if fully_masked else None
+        with torch.no_grad():
+            matcher(left, right, data, mask_c1=mask)
+        if fully_masked:
+            assert data["mconf"].shape == (0,)
+        else:
+            assert torch.equal(data["i_ids"], torch.arange(13, device=device))
+            assert torch.equal(data["j_ids"], torch.zeros_like(data["i_ids"]))
+            self.assert_close(data["mconf"], torch.full_like(data["mconf"], 1 / 65))
+
+    def test_loftr_config_uses_chunked_matching(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("chunked matching supports CPU and CUDA")
+        dense = _loftr_matching_every_cell(device, torch.float32)
+        cfg = copy.deepcopy(default_cfg)
+        cfg["match_coarse"].update(thr=0.0, border_rm=0, inference_chunk_size=7)
+        tiled = LoFTR(pretrained=None, config=cfg).to(device).eval()
+        tiled.load_state_dict(dense.state_dict())
+        gen = torch.Generator().manual_seed(9)
+        inputs = {
+            "image0": torch.rand(1, 1, 48, 56, generator=gen).to(device),
+            "image1": torch.rand(1, 1, 56, 48, generator=gen).to(device),
+        }
+        with torch.inference_mode():
+            expected = dense(inputs)
+            result = tiled(inputs)
+        assert result["batch_indexes"].numel()
+        for name in ("batch_indexes", "keypoints0"):
+            assert torch.equal(result[name], expected[name])
+        for name in ("keypoints1", "confidence"):
+            self.assert_close(result[name], expected[name])
+
+    def test_gradients_use_dense_matching(self, device):
+        cfg = {**TestCoarseMatching.CFG, "inference_chunk_size": 3}
+        matcher = CoarseMatching(cfg).eval()
+        left = torch.randn(1, 8, 4, device=device, requires_grad=True)
+        right = torch.randn(1, 12, 4, device=device)
+        data = {"hw0_c": (2, 4), "hw1_c": (3, 4), "stride_c": 8}
+        matcher(left, right, data)
+        (gradient,) = torch.autograd.grad(data["conf_matrix"].square().sum(), left)
+        assert torch.isfinite(gradient).all()
+
+
 class TestFineMatching(BaseTester):
     @staticmethod
     def _run(device, dtype, peaked):

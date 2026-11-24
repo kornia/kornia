@@ -21,6 +21,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import is_compiling
+
 INF = 1e9
 
 
@@ -103,6 +105,66 @@ def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tens
     return torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
 
 
+def _invalid_pairs(mask0: Optional[torch.Tensor], mask1: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    """Build the broadcast mask for invalid source-target pairs."""
+    left = ~mask0.bool()[..., None] if mask0 is not None else None
+    if mask1 is None:
+        return left
+    right = ~mask1.bool()[:, None]
+    return right if left is None else left | right
+
+
+def _similarity_block(
+    left: torch.Tensor, right: torch.Tensor, temperature: float, invalid: Optional[torch.Tensor]
+) -> torch.Tensor:
+    """Compute one similarity block with the dense matcher's masking convention."""
+    similarity = torch.einsum("nlc,nsc->nls", left, right).div_(temperature)
+    if invalid is not None:
+        similarity.masked_fill_(invalid, _masked_similarity(similarity.dtype))
+    return similarity
+
+
+def _tiled_dual_softmax(
+    left: torch.Tensor,
+    right: torch.Tensor,
+    mask0: Optional[torch.Tensor],
+    mask1: Optional[torch.Tensor],
+    temperature: float,
+    chunk_size: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return row winners and column maxima without retaining the pairwise matrices."""
+    n, length = left.shape[:2]
+    columns = right.shape[1]
+    column_max = left.new_full((n, columns), -float("inf"))
+    column_sum = torch.zeros_like(column_max)
+    for start in range(0, length, chunk_size):
+        stop = min(start + chunk_size, length)
+        invalid = _invalid_pairs(None if mask0 is None else mask0[:, start:stop], mask1)
+        similarity = _similarity_block(left[:, start:stop], right, temperature, invalid)
+        block_max = similarity.amax(dim=1)
+        block_sum = similarity.sub_(block_max[:, None]).exp_().sum(dim=1)
+        next_max = torch.maximum(column_max, block_max)
+        # Merge the shifted sums without adding a small logarithm to a large masked logit.
+        column_sum = column_sum * (column_max - next_max).exp() + block_sum * (block_max - next_max).exp()
+        column_max = next_max
+
+    row_conf = left.new_empty(n, length)
+    row_index = torch.empty((n, length), dtype=torch.long, device=left.device)
+    confidence_col_max = torch.zeros_like(column_max)
+    for start in range(0, length, chunk_size):
+        stop = min(start + chunk_size, length)
+        invalid = _invalid_pairs(None if mask0 is None else mask0[:, start:stop], mask1)
+        similarity = _similarity_block(left[:, start:stop], right, temperature, invalid)
+        confidence = F.softmax(similarity, dim=2)
+        similarity.sub_(column_max[:, None]).exp_().div_(column_sum[:, None])
+        confidence.mul_(similarity)
+        if invalid is not None:
+            confidence.masked_fill_(invalid, 0.0)
+        row_conf[:, start:stop], row_index[:, start:stop] = confidence.max(dim=2)
+        confidence_col_max = torch.maximum(confidence_col_max, confidence.amax(dim=1))
+    return row_conf, row_index, confidence_col_max
+
+
 class CoarseMatching(nn.Module):
     """Perform coarse-level matching between two sets of feature maps.
 
@@ -125,6 +187,12 @@ class CoarseMatching(nn.Module):
 
         # we provide 2 options for differentiable matching
         self.match_type = config["match_type"]
+        chunk_size = config.get("inference_chunk_size")
+        if chunk_size is not None and (
+            isinstance(chunk_size, bool) or not isinstance(chunk_size, int) or chunk_size <= 0
+        ):
+            raise ValueError("inference_chunk_size must be None or a positive integer")
+        self.inference_chunk_size: Optional[int] = chunk_size
         if self.match_type == "dual_softmax":
             self.temperature = config["dsmax_temperature"]
         elif self.match_type == "sinkhorn":
@@ -172,20 +240,33 @@ class CoarseMatching(nn.Module):
         # F.normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
-        # Each coarse mask is independently optional; an absent mask means all cells are valid.
-        invalid = None
-        if mask_c0 is not None:
-            invalid = ~mask_c0.bool()[..., None]
-        if mask_c1 is not None:
-            invalid_c1 = ~mask_c1.bool()[:, None]
-            invalid = invalid_c1 if invalid is None else invalid | invalid_c1
+        chunk_size = self.inference_chunk_size
+        if (
+            chunk_size is not None
+            and L > chunk_size
+            and S > 0
+            and not self.training
+            and not torch.is_grad_enabled()
+            and not torch.jit.is_scripting()
+            and not torch.jit.is_tracing()
+            and not is_compiling()
+            and feat_c0.dtype == feat_c1.dtype == torch.float32
+            and feat_c0.device.type in ("cpu", "cuda")
+            and not torch.is_autocast_enabled(feat_c0.device.type)
+            and self.match_type == "dual_softmax"
+        ):
+            row_conf, row_index, col_max = _tiled_dual_softmax(
+                feat_c0, feat_c1, mask_c0, mask_c1, self.temperature, chunk_size
+            )
+            data.update(self._select_coarse_matches(row_conf, row_index, col_max, data))
+            return
+
+        invalid = _invalid_pairs(mask_c0, mask_c1)
 
         if self.match_type == "dual_softmax":
             # Scale after contraction: scaling an operand can overflow float16, including when autocast converts
             # float32 features for the einsum. In-place division avoids another similarity-sized allocation.
-            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1).div_(self.temperature)
-            if invalid is not None:
-                sim_matrix.masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
+            sim_matrix = _similarity_block(feat_c0, feat_c1, self.temperature, invalid)
             if sim_matrix.dtype == torch.float16:
                 # Native softmax normalizes without returning the column sum in float16, where long columns can
                 # overflow. Check the similarity dtype as autocast can produce float16 from float32 features.
@@ -258,22 +339,30 @@ class CoarseMatching(nn.Module):
                 'mconf' (torch.Tensor): [M]}
 
         """
+        mconf_rows, all_j_ids = conf_matrix.max(dim=2)
+        return self._select_coarse_matches(mconf_rows, all_j_ids, conf_matrix.amax(dim=1), data)
+
+    def _select_coarse_matches(
+        self,
+        mconf_rows: torch.Tensor,
+        all_j_ids: torch.Tensor,
+        col_max: torch.Tensor,
+        data: Dict[str, torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
         axes_lengths = {
             "h0c": data["hw0_c"][0],
             "w0c": data["hw0_c"][1],
             "h1c": data["hw1_c"][0],
             "w1c": data["hw1_c"][1],
         }
-        _device = conf_matrix.device
+        _device = mconf_rows.device
         # A cell i of image 0 and the first column j of its row maximum are a match when the confidence exceeds the
         # threshold (a zero confidence never does, even for a negative `thr`: `mconf == 0` marks the training
         # ground-truth pads below and is dropped from the keypoints, but not from `b_ids`), both cells are off the
         # border, and the confidence is also the maximum of column j (mutual nearest neighbour). This is the first
         # column satisfying all four conditions unless the row maximum is tied exactly, without materialising
         # (N, L, S) boolean masks.
-        N = conf_matrix.shape[0]
-        mconf_rows, all_j_ids = conf_matrix.max(dim=2)
-        col_max = conf_matrix.amax(dim=1)
+        N, L = mconf_rows.shape
         # mask_border_with_padding (both padding masks) when the data carries mask0, mask_border otherwise
         pad0, pad1 = (data["mask0"], data["mask1"]) if "mask0" in data else (None, None)
         border0 = _off_border(N, axes_lengths["h0c"], axes_lengths["w0c"], self.border_rm, _device, pad0)
@@ -295,7 +384,7 @@ class CoarseMatching(nn.Module):
             # The sampling is performed across all pairs in a batch without manually balancing
             # #samples for fine-level increases w.r.t. batch_size
             if "mask0" not in data:
-                num_candidates_max = conf_matrix.size(0) * max(conf_matrix.size(1), conf_matrix.size(2))
+                num_candidates_max = N * max(L, col_max.size(1))
             else:
                 num_candidates_max = compute_max_candidates(data["mask0"], data["mask1"])
             num_matches_train = num_candidates_max * self.train_coarse_percent
@@ -338,7 +427,7 @@ class CoarseMatching(nn.Module):
         # 4. Update with matches in original image resolution: coarse cell (x, y) of either image sits on pixel
         # (stride_c * x, stride_c * y) for any image size. The keypoints are built in at least float32 before any
         # scaling: bfloat16 holds no odd integer above 256 and float16 none above 2048.
-        coord_dtype = torch.promote_types(conf_matrix.dtype, torch.float32)
+        coord_dtype = torch.promote_types(mconf_rows.dtype, torch.float32)
         scale = data["stride_c"]
         scale0 = scale * data["scale0"][b_ids].to(coord_dtype) if "scale0" in data else scale
         scale1 = scale * data["scale1"][b_ids].to(coord_dtype) if "scale1" in data else scale

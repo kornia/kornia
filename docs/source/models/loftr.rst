@@ -67,3 +67,23 @@ Paper
 
 .. image:: https://raw.githubusercontent.com/zju3dv/LoFTR/master/assets/loftr-github-demo.gif
    :align: center
+
+Memory-bounded coarse matching
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For large images, set ``config["match_coarse"]["inference_chunk_size"]`` to
+a positive number of coarse rows per block. This trades a second pass over
+the feature similarities for lower peak memory during float32 dual-softmax
+inference on CPU or CUDA. Use evaluation mode and ``torch.no_grad()`` or
+``torch.inference_mode()``. Training, autograd, autocast and export use the
+dense matcher.
+
+.. code-block:: python
+
+    from copy import deepcopy
+    from kornia.feature import LoFTR
+    from kornia.feature.loftr.loftr import default_cfg
+
+    config = deepcopy(default_cfg)
+    config["match_coarse"]["inference_chunk_size"] = 192
+    matcher = LoFTR(pretrained="outdoor", config=config).eval()
