@@ -98,7 +98,7 @@ class TestSepia(BaseTester):
         op = kornia.color.sepia
         op_module = kornia.color.Sepia()
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img), op_module(img))
 
     def test_black_image_stays_black(self, device, dtype):

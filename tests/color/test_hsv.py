@@ -356,7 +356,7 @@ class TestHsvToRgb(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.HsvToRgb().to(device, dtype)
         fcn = kornia.color.hsv_to_rgb
         self.assert_close(ops(img), fcn(img))

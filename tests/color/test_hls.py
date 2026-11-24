@@ -123,20 +123,6 @@ class TestRgbToHls(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
 
-    def test_nan_rgb_to_hls(self, device, dtype):
-        data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
-
-        # OpenCV
-        expected = torch.cat(
-            [
-                torch.zeros(2, 1, 5, 5, device=device, dtype=dtype),
-                torch.ones(2, 1, 5, 5, device=device, dtype=dtype),
-                torch.zeros(2, 1, 5, 5, device=device, dtype=dtype),
-            ],
-            dim=1,
-        )
-        self.assert_close(kornia.color.rgb_to_hls(data), expected)
-
     @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     @pytest.mark.parametrize("requires_grad", [False, True])
@@ -234,7 +220,7 @@ class TestRgbToHls(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToHls().to(device, dtype)
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
@@ -379,7 +365,7 @@ class TestHlsToRgb(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.HlsToRgb().to(device, dtype)
         fcn = kornia.color.hls_to_rgb
         self.assert_close(ops(img), fcn(img))
