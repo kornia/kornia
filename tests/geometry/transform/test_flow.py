@@ -103,6 +103,22 @@ class TestWarpOpticalFlow(BaseTester):
         self.assert_close(result, 2 * flow)
         assert bool(valid.all())
 
+    def test_singleton_flow_preserves_footprint_and_accumulates_gradients(self, device, dtype):
+        flow = torch.tensor([[5, -13], [-8, 9]], device=device, dtype=dtype).reshape(2, 2, 1, 1).requires_grad_()
+        known = torch.tensor([True, False], device=device).reshape(2, 1, 1, 1)
+        H = flow.new_tensor([[[2, 0, 1], [0, 2, 1], [0, 0, 1]]]).expand(2, -1, -1)
+        result, valid = warp_optical_flow(flow, H, (3, 3), known)
+        # The source domain [-0.5, 0.5) maps onto [0, 2), so only
+        # the four integer centres in the top-left quadrant are in bounds.
+        expected_valid = torch.zeros_like(valid)
+        expected_valid[0, :, :2, :2] = True
+        expected = torch.zeros_like(result)
+        expected[0, :, :2, :2] = flow.new_tensor([10, -26]).view(2, 1, 1)
+        self.assert_close(valid, expected_valid)
+        self.assert_close(result, expected)
+        (gradient,) = torch.autograd.grad(result.sum(), flow)
+        self.assert_close(gradient, flow.new_tensor([8, 8, 0, 0]).reshape_as(flow))
+
     def test_projective_horizons_and_singular_batch_have_finite_backward(self, device, dtype):
         flow = torch.zeros((3, 2, 2, 4), device=device, dtype=dtype)
         flow[0, 0, :, 0] = 2  # p + u = (2, y) maps to the horizon under H[0].

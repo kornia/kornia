@@ -36,6 +36,12 @@ __all__ = ["warp_optical_flow"]
 def _sample_flow(flow: torch.Tensor, valid: torch.Tensor, xy: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample in pixels, with border replication and exact validity at integer positions."""
     _, _, height, width = flow.shape
+    if height == 1 and width == 1:
+        # Every bilinear tap is the same pixel on a singleton image.
+        count = xy.shape[1]
+        sample = flow[:, :, 0, 0].unsqueeze(1).expand(-1, count, -1)
+        sample_valid = valid[:, :, 0, 0].unsqueeze(1).expand(-1, count, -1)
+        return torch.where(sample_valid, sample, 0), sample_valid
     x = xy[..., 0].clamp(0, width - 1)
     y = xy[..., 1].clamp(0, height - 1)
     x0, y0 = x.floor().long(), y.floor().long()
