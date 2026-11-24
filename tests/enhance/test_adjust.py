@@ -1244,6 +1244,22 @@ class TestAdjustSigmoid(BaseTester):
 
 
 class TestAdjustLog(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="expected values of the float32/float64 inputs")
+    def test_first_quantization_levels(self, device, dtype):
+        # Non-dyadic quantization levels exercise rounding in 1 + image even at full precision.
+        # Expected values use log1p(x) / log(2) at the stored value in each input dtype.
+        levels = [1 / 255, 1 / 4095, 1 / 65535]
+        if dtype == torch.float32:
+            expected = [0.00564656347442143, 0.0003522634926127464, 2.2013947258830017e-05]
+        else:
+            expected = [0.005646563141142062, 0.00035226347162902144, 2.2013947263955502e-05]
+        # Round on CPU before moving to the selected device (MPS has no float64).
+        image = torch.tensor(levels, dtype=torch.float64).to(dtype).to(device)
+        result = enhance.adjust_log(image)
+        self.assert_close(
+            result, torch.tensor(expected, device=device, dtype=dtype), atol=0, rtol=4 * torch.finfo(dtype).eps
+        )
+
     @pytest.mark.parametrize("module", [False, True])
     def test_dark_pixels(self, device, dtype, module):
         # All pixels are exactly representable in every floating dtype. The expected values were generated with:

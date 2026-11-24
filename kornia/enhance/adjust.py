@@ -866,9 +866,9 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     ``out = adjust_log(image, gain, inv, clip_output)`` returns ``gain * log2(1 + image)`` for an image in
     :math:`[0, 1]`, or ``gain * (2 ** image - 1)`` with ``inv=True``.
 
-    Logarithmic correction uses ``log1p`` so adding 1 does not erase dark pixels. Float16 and bfloat16 forward
-    curves are evaluated in float32 before being cast back, so the base conversion does not round the white
-    point away from 1. ONNX lowering can retain the original cancellation in exported graphs.
+    The logarithmic curve is evaluated as ``log1p(image) / log(2)``, in float32 for float16 and bfloat16 images,
+    so dark pixels are not rounded away and, at unit gain, white stays exactly 1. Exported ONNX graphs compute
+    ``log(1 + image)``, as ONNX has no ``log1p`` operator: a float32 export maps values up to ``2**-24`` to zero.
 
     Reference:
         [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
