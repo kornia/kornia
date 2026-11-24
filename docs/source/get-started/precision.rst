@@ -283,11 +283,11 @@ inductor rounds one pixel below its bound.
 **CUDA float16 and bfloat16.** Of the 33 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
 manifest entries pass on CUDA). One failure and the 3 errors are in ``tests/test_conftest.py``, the harness's own tests,
 which assumed they did not already run inside a half-precision subprocess; they passed in a normal ``--device=cuda``
-run, and `#PRNUM <https://github.com/kornia/kornia/pull/PRNUM>`_ fixed them since.
+run, and `#6928 <https://github.com/kornia/kornia/pull/6928>`_ fixed them since.
 One is a flaky test rather than a CUDA failure: ``TestHyperplane::test_through_three`` in bfloat16 draws unseeded random
 points, and about 2 % of random bfloat16 triples, on CPU and CUDA alike, fall within the collinearity check (a
 singular-value ratio of 8 bfloat16 epsilons, 0.0625), so ``Hyperplane.through`` rightly rejects them; it passed in all
-three isolated re-runs, and `#PRNUM <https://github.com/kornia/kornia/pull/PRNUM>`_ has since given it fixed points.
+three isolated re-runs, and `#6928 <https://github.com/kornia/kornia/pull/6928>`_ has since given it fixed points.
 The last 4 fail on CUDA only, in every isolated re-run:
 ``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU
 manifest entries are its ``(10, 20)`` range parameter). This is a bfloat16 limit rather than a CUDA one. The test takes
