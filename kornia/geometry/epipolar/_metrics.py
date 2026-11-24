@@ -18,14 +18,37 @@
 """Distances of correspondences to a fundamental matrix: Sampson, symmetric and one-sided."""
 
 import math
+from typing import Optional
 
 import torch
 from torch import Tensor, ones_like
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.utils import _at_least_float32, _autocast_disabled
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar.fundamental import _epipolar_design_rows
 from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, point_line_distance
+
+
+def _is_half(dtype: torch.dtype) -> bool:
+    return dtype in (torch.float16, torch.bfloat16)
+
+
+def _half_result_dtype(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Optional[torch.dtype]:
+    """Return the float16 or bfloat16 dtype that the distances of these inputs are rounded to, or ``None``.
+
+    Every public distance computes float16 and bfloat16 inputs in float32 and rounds the result once, on return. A
+    pixel-unit ``Fm`` spans eight decades: computed in half precision, the epilines' :math:`a^2 + b^2` fell to about
+    1e-6, where its float16 reciprocal overflows to ``inf``, and the residual rounded away (up to 5.6% off in
+    float16, 27 times too large in bfloat16, on the convention scene of the tests). ``None`` keeps the dtype the
+    computation gives, as for float32, float64 and mixed inputs that promote to them.
+    """
+    if not (_is_half(pts1.dtype) or _is_half(pts2.dtype) or _is_half(Fm.dtype)):
+        return None
+    dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), Fm.dtype)
+    if _is_half(dtype):
+        return dtype
+    return None
 
 
 def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True) -> Tensor:
@@ -242,12 +265,15 @@ def sampson_epipolar_distance(
           (see :ref:`two-view geometry <two-view-conventions>`). A 3-vector point is used as given, so it must have
           :math:`w = 1`.
         - One set of correspondences scored against several matrices (points with leading dimensions of size 1)
-          is computed from two matrix products for all of them, in at least float32: on the CPU always, and on
-          other devices from ``2**16`` matrix-point pairs. The result matches the per-matrix computation to
-          roundoff.
+          is computed from two matrix products for all of them: on the CPU always, and on other devices from
+          ``2**16`` matrix-point pairs. The result matches the per-matrix computation to roundoff.
         - The value does not depend on the scale of ``Fm``, and ``squared=False`` returns exactly 0, with a zero
           gradient, for an exact match. A correspondence whose two epilines both have :math:`a = b = 0`, as under a
           degenerate ``Fm``, is at distance ``inf``.
+        - float16 and bfloat16 inputs are computed in float32 and the distance is rounded once to their dtype. A
+          caller's autocast region changes neither the value nor the dtype of the result: float32 inputs are
+          computed in float32 on every device, except in Inductor-compiled code on MPS, which ignores the nested
+          autocast region (pytorch/pytorch#201630).
 
     Args:
         pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -276,6 +302,22 @@ def sampson_epipolar_distance(
     # never counts as several models.
     if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    half = _half_result_dtype(pts1, pts2, Fm)
+    pts1, pts2, Fm = _at_least_float32(pts1), _at_least_float32(pts2), _at_least_float32(Fm)
+    # A caller's autocast region would run the matrix products of the CUDA and shared-point paths in half
+    # precision, where a pixel-unit Fm underflows: median relative errors of 0.7 (float16) and 1.7 (bfloat16) on a
+    # 1920x1080 scene.
+    with _autocast_disabled(Fm.device.type):
+        out = _sampson_epipolar_distance_dispatch(pts1, pts2, Fm, squared, use_matmul_at_less_than_points)
+    if half is None:
+        return out
+    return out.to(half)
+
+
+def _sampson_epipolar_distance_dispatch(
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool, use_matmul_at_less_than_points: int
+) -> Tensor:
+    """Pick the implementation of :func:`sampson_epipolar_distance` by device, model count and point count."""
     num_points = pts1.shape[-2]
     matmul = Fm.device.type == "cuda" and num_points < use_matmul_at_less_than_points
     num_models = math.prod(Fm.shape[:-2])
@@ -375,6 +417,9 @@ def symmetrical_epipolar_distance(
         - The value does not depend on the scale of ``Fm``, and ``squared=False`` returns exactly 0 for an exact
           match, as in :func:`sampson_epipolar_distance`. A correspondence with an epiline of :math:`a = b = 0` in
           either image is at distance ``inf``.
+        - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -396,6 +441,22 @@ def symmetrical_epipolar_distance(
     # Checked here because the CUDA matmul implementation does not check Fm.
     if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    half = _half_result_dtype(pts1, pts2, Fm)
+    pts1, pts2, Fm = _at_least_float32(pts1), _at_least_float32(pts2), _at_least_float32(Fm)
+    # A caller's autocast region would run the CUDA path's matrix products in half precision, as in
+    # sampson_epipolar_distance. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        out = _symmetrical_epipolar_distance_dispatch(pts1, pts2, Fm, squared)
+    else:
+        with _autocast_disabled(Fm.device.type):
+            out = _symmetrical_epipolar_distance_dispatch(pts1, pts2, Fm, squared)
+    if half is None:
+        return out
+    return out.to(half)
+
+
+def _symmetrical_epipolar_distance_dispatch(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool) -> Tensor:
+    """Pick the implementation of :func:`symmetrical_epipolar_distance` by device and point count."""
     if Fm.device.type == "cuda":
         num_points = pts1.shape[-2]
         if num_points < 10000:
@@ -417,6 +478,9 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
         - Argument order as :func:`sampson_epipolar_distance`.
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
+        - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -443,13 +507,18 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
+    half = _half_result_dtype(pts1, pts2, Fm)
+    pts1, pts2, Fm = _at_least_float32(pts1), _at_least_float32(pts2), _at_least_float32(Fm)
     if pts1.shape[-1] == 2:
         pts1 = convert_points_to_homogeneous(pts1)
 
     F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
-    line1_in_2: Tensor = pts1 @ F_t
+    line1_in_2 = _epilines_outside_autocast(pts1, F_t)
 
-    return point_line_distance(pts2, line1_in_2)
+    out = point_line_distance(pts2, line1_in_2)
+    if half is None:
+        return out
+    return out.to(half)
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
@@ -466,6 +535,9 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
         - Argument order as :func:`sampson_epipolar_distance`.
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
+        - float16 and bfloat16 inputs and a caller's autocast region as in :func:`sampson_epipolar_distance`:
+          half-precision inputs are computed in float32 and rounded once, and float32 inputs stay float32. Under
+          TorchScript, autocast still lowers the matrix products.
 
     Args:
        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
@@ -489,9 +561,28 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
+    half = _half_result_dtype(pts1, pts2, Fm)
+    pts1, pts2, Fm = _at_least_float32(pts1), _at_least_float32(pts2), _at_least_float32(Fm)
     if pts2.shape[-1] == 2:
         pts2 = convert_points_to_homogeneous(pts2)
 
-    line2_in_1: Tensor = pts2 @ Fm
+    line2_in_1 = _epilines_outside_autocast(pts2, Fm)
 
-    return point_line_distance(pts1, line2_in_1)
+    out = point_line_distance(pts1, line2_in_1)
+    if half is None:
+        return out
+    return out.to(half)
+
+
+def _epilines_outside_autocast(points: Tensor, matrix: Tensor) -> Tensor:
+    """Return ``points @ matrix``, the epilines of homogeneous ``points``, outside a caller's autocast region.
+
+    Under autocast the product ran in half precision on every device, CPU included, where a pixel-unit ``Fm``
+    underflows: median relative errors of 0.35 (float16) and 0.83 (bfloat16) on a 1920x1080 scene. TorchScript has
+    no context managers; a scripted call keeps the caller's precision, as does Inductor-compiled code on MPS, which
+    ignores the nested region (pytorch/pytorch#201630).
+    """
+    if torch.jit.is_scripting():
+        return points @ matrix
+    with _autocast_disabled(matrix.device.type):
+        return points @ matrix

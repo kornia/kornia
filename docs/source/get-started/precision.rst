@@ -7,9 +7,9 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **3 float16 and 3 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **0 float16 and 0 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
-2026-10-18; no single issue tracks the remaining entries.
+2026-10-18.
 
 CUDA is tested on maintainer hardware rather than in hosted CI, whose runners have no GPU. The whole test suite runs
 on an NVIDIA GPU in float32, float64, float16 and bfloat16 and under ``torch.compile`` (totals in
@@ -72,12 +72,11 @@ in CI; MPS half precision is not part of CI, and CPU results alone do not establ
        half-precision pose is checked on a scene that half precision can hold, and its pixel-scale pose checks
        apply to float32 and float64 only
    * - ``kornia.geometry.epipolar``
-     - ⚠️
-     - ⚠️
-     - 3 / 3
-     - Essential-matrix decomposition/motion, KRt_from_projection and the fundamental-matrix estimators compute half
-       inputs in float32; the remaining entries are Sampson residuals of a pixel-unit F, whose entries span eight
-       decades
+     - ✅
+     - ✅
+     - 0 / 0
+     - Essential-matrix decomposition/motion, KRt_from_projection, the fundamental-matrix estimators and the epipolar
+       distances compute half inputs in float32
    * - ``kornia.geometry.homography``
      - ✅
      - ✅
