@@ -179,7 +179,6 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     if (
         (input.device.type == "cpu" or on_cuda)
         and not is_autocast_enabled()
-        and input.shape[1] != 0
         and input.is_floating_point()
         and not input.requires_grad
         and torch.autograd.forward_ad.unpack_dual(input).tangent is None
