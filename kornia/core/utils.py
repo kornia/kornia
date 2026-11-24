@@ -532,15 +532,16 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
 
 
 def _torch_svd_in_work_dtype(
-    input: torch.Tensor, full_matrices: bool = True
+    input: torch.Tensor, full_matrices: bool = True, work_dtype: Optional[torch.dtype] = None
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Decompose ``input`` as :func:`_torch_svd_cast` does, returning ``U, S, V`` in :func:`_svd_work_dtype`.
 
     A caller that needs the factors at the precision they were computed in, such as for a derivative, uses this
     instead of casting ``input`` to the work dtype first: :func:`_torch_svd_cast` would promote a float32 input
     to float64 again, so a float16 or bfloat16 input would be decomposed in float64 instead of float32.
+    Pass ``work_dtype`` when the matrix was already formed in the intended precision.
     """
-    x = input.to(_svd_work_dtype(input))
+    x = input.to(_svd_work_dtype(input) if work_dtype is None else work_dtype)
     # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
     # shader compilation failure, not memory pressure -- once an input holds 8192 elements
     # or more, whatever the per-matrix shape. The bound is inclusive: 8192 is the first failing
