@@ -87,6 +87,11 @@ Interpreting the report
   tensors, are checked on their edges, from zero to ``width`` and ``height``, and
   mapped back on pixel centres for the round trip. A box is outside when any
   corner is outside. Nonfinite labels are counted separately.
+* Box rows that the pipeline returns without a box are left out of every count
+  and statistic: rows a ``Boxes`` object marks invalid, and the all-zero rows
+  that replace zero-extent rows under ``"bbox_xywh"``. Input rows that hold no box
+  come back that way. Zero rows under the bare ``"bbox"`` and ``"bbox_xyxy"``
+  keys are coordinates and are counted.
 * Crop matrices can invert coordinates even after image content has been discarded.
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.

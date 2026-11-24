@@ -217,6 +217,61 @@ class TestAugmentationAudit(BaseTester):
         _, report = audit(aug, image, Boxes.from_tensor(inside, mode="xywh") if key == "bbox" else inside)
         assert report.spatial[0].out_of_frame.item() == 0
 
+    def test_rows_without_a_box_are_left_out_6710(self, device):
+        # Zero-extent "bbox_xywh" rows hold no box: the container removes them and returns all-zero rows. The audit
+        # leaves them out of the counts and statistics. Inverse-mapping their zeros as a point reported a 20-pixel
+        # error for this exact flip, and for the all-empty second sample.
+        image = torch.rand(2, 3, 10, 20, device=device)
+        xywh = torch.zeros(2, 3, 4, device=device)
+        xywh[0, 1] = xywh.new_tensor([4.0, 3.0, 2.0, 2.0])
+        xywh[0, 2] = xywh.new_tensor([4.0, 3.0, 0.0, 2.0])
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox_xywh"])
+        (_, out), report = audit(aug, image, xywh)
+        expected = torch.zeros_like(xywh)
+        expected[0, 1] = xywh.new_tensor([14.0, 3.0, 2.0, 2.0])
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1, 0]
+        assert spatial.roundtrip_valid_count.tolist() == [1, 0]
+        assert spatial.roundtrip_max[0].item() < 1e-4
+        assert spatial.roundtrip_max[1].isnan()
+        assert spatial.out_of_frame.tolist() == [0, 0]
+        assert spatial.out_of_frame_fraction[1].isnan()
+        assert report.warnings == []
+
+    def test_invalid_rows_of_boxes_objects_are_left_out_6710(self, device):
+        # A row that filtering removed holds no box either. The crop moves its stored zeros to (-5, -2), outside the
+        # frame, and it is not counted there. The zero rows of a bare-key tensor are coordinates and keep their round
+        # trip.
+        image = torch.rand(1, 3, 10, 20, device=device)
+        xyxy = torch.tensor([[[6.0, 3.0, 8.0, 5.0], [1.0, 1.0, 9.0, 9.0]]], device=device)
+        boxes = Boxes.from_tensor(xyxy).filter_boxes_by_area(max_area=10.0)
+        aug = K.AugmentationSequential(K.CenterCrop((6, 10)), data_keys=["input", "bbox"])
+        (_, out), report = audit(aug, image, boxes)
+        expected = xyxy.new_tensor([[[1.0, 1.0, 3.0, 3.0], [0.0, 0.0, 0.0, 0.0]]])
+        self.assert_close(out.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1]
+        assert spatial.roundtrip_valid_count.tolist() == [1]
+        assert spatial.roundtrip_max.item() < 1e-4
+        assert spatial.out_of_frame.tolist() == [0]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox_xyxy"])
+        _, report = audit(aug, image, torch.zeros_like(xyxy))
+        assert report.spatial[0].count.tolist() == [2]
+        assert report.spatial[0].roundtrip_valid_count.tolist() == [2]
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64 boxes")
+    def test_bounds_read_the_returned_precision_6710(self, device):
+        # A float64 right edge at 4 + 1e-7 lies outside a 4-pixel frame. The check reads it as returned; the float32
+        # diagnostic dtype of the image rounded it onto 4.
+        image = torch.rand(1, 3, 4, 4, device=device)
+        aug = K.AugmentationSequential(data_keys=["input", "bbox"])
+        for right, outside in ((4.0000001, 1), (4.0, 0)):
+            xyxy = torch.tensor([[[1.0, 1.0, right, 2.0]]], device=device, dtype=torch.float64)
+            (_, out), report = audit(aug, image, Boxes.from_tensor(xyxy))
+            self.assert_close(out.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
+            assert report.spatial[0].out_of_frame.item() == outside
+
     def test_box_tensor_envelope_loss(self, device, dtype):
         image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
         boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))

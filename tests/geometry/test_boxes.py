@@ -664,11 +664,11 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes_float_first.data[0, 0], floating[0])
         self.assert_close(boxes_int_first.data[1, 0], floating[0])
 
-        # from_tensor converts each list element independently before the same
-        # first-element dtype merge, so reversing mixed float16/integer inputs
-        # changes the output dtype.
+        # from_tensor casts an integer list element to the default dtype and builds the list in the promoted dtype,
+        # so mixed float16/integer inputs give the same dtype in either order. Until #6824 the batch took the dtype
+        # of the first element.
         half = vertices.to(torch.float16)
-        assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
+        assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.get_default_dtype()
         assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.get_default_dtype()
 
     @pytest.mark.applies_to(
@@ -2289,6 +2289,14 @@ class TestExclusiveStorage6710(BaseTester):
             self.assert_close(converted, to_edges @ matrix.to(working) @ to_centres)
             self.assert_close(boxes_module._pixel_centre_matrix_to_edge_frame(matrix[0], dtype), converted[0])
 
+    def test_frame_conversion_keeps_a_translation_far_below_one_half(self, device):
+        # The frame correction of an identity is zero, and it is formed before it meets the translation: subtracting
+        # one half from 2**-27 first, then adding it back, rounded the translation away in float32.
+        matrix = torch.eye(3, device=device)
+        matrix[0, 2] = 2.0**-27
+        converted = boxes_module._pixel_centre_matrix_to_edge_frame(matrix, torch.float32)
+        self.assert_close(converted, matrix, atol=0.0, rtol=0.0)
+
     def test_convention_perspective_moves_the_vertices_as_their_centre_frame_points(self, device, dtype):
         # A vertex e is the point e - 1/2 of the pixel-centre frame: transforming that point and shifting it back
         # gives the transformed vertex, under perspective too.
@@ -2401,6 +2409,43 @@ class TestExclusiveStorage6710(BaseTester):
         stored = Boxes3D.from_tensor(source, mode=mode, validate_boxes=False)
         expected = source.new_tensor([[256.0, 0.0, 0.0, 256.0, 1.0, 1.0]])
         self.assert_close(stored.to_tensor("xyzxyz"), expected, atol=0.0, rtol=0.0)
+
+    def test_list_of_mixed_dtypes_is_built_in_the_promoted_dtype(self, device):
+        # The padded batch takes the promoted dtype, as torch.cat would, and each sample is built in it. Built in
+        # float32 and padded into the first sample's float16, the far edge 2048 + 1 of the second box rounded onto
+        # 2048 after the extent check, and the box exported with width 0.
+        first = torch.tensor([[0.0, 0.0, 1.0, 1.0]], device=device, dtype=torch.float16)
+        second = torch.tensor([[2048.0, 0.0, 1.0, 2.0]], device=device)
+        boxes = Boxes.from_tensor([first, second], mode="xywh")
+        assert boxes.dtype == torch.float32
+        exported = boxes.to_tensor("xywh")
+        self.assert_close(exported[0], first.float(), atol=0.0, rtol=0.0)
+        self.assert_close(exported[1], second, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("box_dtype", [torch.float16, torch.bfloat16])
+    def test_convention_half_precision_area_thresholds_read_the_float32_area(self, box_dtype, device):
+        # The exclusive 6 x 6 box at 250 has the area 36 in both half dtypes (#6853), so min_area=40 removes it. The
+        # thresholds meet the float32 area: float16 rounds the area 65536 of a 256 x 256 box to inf, and both dtypes
+        # round 49 * 49 = 2401 to 2400, so min_area=70000 and max_area=2400 kept those boxes. compute_area keeps
+        # the box dtype.
+        def boxes(xyxy):
+            return Boxes.from_tensor(torch.tensor([xyxy], device=device, dtype=box_dtype))
+
+        def kept(box, **thresholds):
+            return bool(box.filter_boxes_by_area(**thresholds).to_tensor("xyxy").any())
+
+        small = boxes([250.0, 250.0, 256.0, 256.0])
+        expected = torch.tensor([36.0], device=device, dtype=box_dtype)
+        self.assert_close(small.compute_area(), expected, atol=0.0, rtol=0.0)
+        assert not kept(small, min_area=40.0)
+        assert kept(small, min_area=36.0)
+        large = boxes([0.0, 0.0, 256.0, 256.0])
+        assert large.compute_area().dtype == box_dtype
+        assert not kept(large, min_area=70000.0)
+        assert kept(large, max_area=70000.0)
+        square = boxes([0.0, 0.0, 49.0, 49.0])
+        assert not kept(square, max_area=2400.0)
+        assert kept(square, max_area=2401.0)
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "xyzxyz", "xyzxyz_plus", "xyzwhd"])
     def test_import_keeps_float16_boxes_in_a_bfloat16_autocast_region(self, mode, device):

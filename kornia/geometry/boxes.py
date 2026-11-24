@@ -140,7 +140,9 @@ def _pixel_centre_matrix_to_edge_frame(M: torch.Tensor, boxes_dtype: torch.dtype
     linear, translation = M[..., :-1, :-1], M[..., :-1, -1:]
     projective, scale = M[..., -1:, :-1], M[..., -1:, -1:]
     scale_out = scale - 0.5 * projective.sum(dim=-1, keepdim=True)
-    translation_out = translation - 0.5 * linear.sum(dim=-1, keepdim=True) + 0.5 * scale_out
+    # The frame correction is formed before it meets the translation: it is zero for an identity, and adding it last
+    # keeps a translation far below one half intact.
+    translation_out = translation + (0.5 * scale_out - 0.5 * linear.sum(dim=-1, keepdim=True))
     top = torch.cat([linear + 0.5 * projective, translation_out], dim=-1)
     return torch.cat([top, torch.cat([projective, scale_out], dim=-1)], dim=-2)
 
@@ -968,7 +970,8 @@ class Boxes:
         ``min_area`` or larger than ``max_area`` are not dropped from the
         tensor; their coordinates are replaced with zeros so the original batch
         and box dimensions stay unchanged. See :meth:`compute_area` for the
-        area convention used by the thresholds. Filtered boxes export as exact zeros in every
+        area convention used by the thresholds; half-precision boxes meet them with the float32 area, before
+        :meth:`compute_area` rounds it to their dtype. Filtered boxes export as exact zeros in every
         mode and draw no mask pixels, including after subsequent coordinate transforms.
 
         Args:
@@ -983,8 +986,9 @@ class Boxes:
             :class:`Boxes` with the same shape as the input container and
             out-of-range boxes replaced by zero coordinates.
         """
-        area = self.compute_area()
-        area_flat = area.reshape(self._valid.shape)
+        # The thresholds meet the area before it is rounded to a half-precision box dtype: in float16 the area 65536 of
+        # a 256 x 256 box becomes ``inf``, and 2401 becomes 2400.
+        area_flat = self._shoelace_area().reshape(self._valid.shape)
         keep = torch.ones_like(area_flat, dtype=torch.bool)
         if min_area is not None:
             keep &= ~(area_flat < min_area)
@@ -1024,6 +1028,11 @@ class Boxes:
         Returns:
             Area for each box, shaped ``(N,)`` or ``(B, N)``.
         """
+        area = self._shoelace_area().to(self._data.dtype)
+        return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
+
+    def _shoelace_area(self) -> torch.Tensor:
+        """Return the flat area of every box in its working precision: float32 for half-precision boxes."""
         coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # float16 overflows the doubled shoelace sum before the area itself; bfloat16 rounds the products.
         if coords.dtype in (torch.float16, torch.bfloat16):
@@ -1037,9 +1046,7 @@ class Boxes:
         _, clockwise_indices = torch.sort(torch.atan2(dy, dx), dim=1, descending=True)
         x, y = dx.gather(1, clockwise_indices), dy.gather(1, clockwise_indices)
         # Gaussian/Shoelace formula https://en.wikipedia.org/wiki/Shoelace_formula
-        area = 0.5 * torch.abs(torch.sum((x * torch.roll(y, 1, 1)) - (y * torch.roll(x, 1, 1)), dim=1))
-        area = area.to(self._data.dtype)
-        return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
+        return 0.5 * torch.abs(torch.sum((x * torch.roll(y, 1, 1)) - (y * torch.roll(x, 1, 1)), dim=1))
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True) -> Boxes:
@@ -1114,8 +1121,14 @@ class Boxes:
             empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
             quadrilaterals = _boxes_to_quadrilaterals(empty, mode, validate_boxes, inclusive, allow_empty)
         elif isinstance(boxes[0], torch.Tensor):
+            # Every sample is built in the promoted dtype of the padded batch, so that the extent check sees the corners
+            # as stored: built in float32 and padded into float16, ``2048 + 1`` would round back to ``2048``.
+            samples = [_cast_to_floating_point(box) for box in boxes]
+            dtype = samples[0].dtype
+            for box in samples[1:]:
+                dtype = torch.promote_types(dtype, box.dtype)
             quadrilaterals = [
-                _boxes_to_quadrilaterals(box, mode, validate_boxes, inclusive, allow_empty) for box in boxes
+                _boxes_to_quadrilaterals(box.to(dtype), mode, validate_boxes, inclusive, allow_empty) for box in samples
             ]
         else:
             # A nested numeric list converts as the tensor it spells.

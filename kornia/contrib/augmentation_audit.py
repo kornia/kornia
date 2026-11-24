@@ -139,9 +139,11 @@ class SpatialAudit:
     """Hold the per-sample out-of-frame counts and round-trip errors of one keypoint or box input.
 
     ``report.spatial`` of an :class:`AugmentationAuditReport` has one entry per keypoint or box input, and each of its
-    tensor fields is ``(B,)``, one value per sample. ``out_of_frame_fraction`` divides by the total item count, so an
-    empty input has a NaN fraction. The round-trip statistics cover only finite errors, in pixels; a sample with no
-    finite error has NaN statistics and a zero ``roundtrip_valid_count``.
+    tensor fields is ``(B,)``, one value per sample. ``count`` holds the items present, and ``out_of_frame_fraction``
+    divides by it, so an empty input has a NaN fraction. A returned box row that holds no box is not present: a row the
+    returned ``Boxes`` object marks invalid, or a zero-extent row under ``"bbox_xywh"``. The container returns the
+    rows that hold no box in its input that way. The round-trip statistics cover only finite errors of present items,
+    in pixels; a sample with no such error has NaN statistics and a zero ``roundtrip_valid_count``.
 
     Convention:
         See :ref:`augmentation-audit`.
@@ -276,12 +278,16 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
     return []
 
 
-def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
-    """Return the stored coordinates and their offset from the pixel-centre frame of the image matrices.
+def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float, Tensor | None]:
+    """Return the stored coordinates, their offset from the pixel-centre frame of the image matrices, and box presence.
 
     Exclusive box vertices are edges, half a pixel from that frame: the offset is ``0.5``, and they lie in
     ``[0, W] x [0, H]``. The legacy inclusive storage holds pixel-centre corners, as keypoints do: offset ``0``, in
     ``[0, W - 1] x [0, H - 1]``.
+
+    The ``(B, N)`` presence mask is ``False`` for rows that hold no box: the rows a ``Boxes`` object marks invalid, and
+    the zero-extent rows of a ``"bbox_xywh"`` tensor, which the container removes and exports as all-zero rows. It is
+    ``None`` for keypoints and the bare box keys, whose zero rows the container transforms as coordinates.
     """
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
@@ -290,18 +296,22 @@ def _coordinates(value: DataType, key: DataKey) -> tuple[Tensor, float]:
     if isinstance(value, (Boxes, Keypoints)):
         if value._N is not None:
             raise ValueError("audit does not support ragged Boxes or Keypoints constructed from lists.")
-        return value.data, 0.0 if isinstance(value, Keypoints) or value._inclusive else 0.5
+        if isinstance(value, Keypoints):
+            return value.data, 0.0, None
+        return value.data, 0.0 if value._inclusive else 0.5, value._valid
     if not isinstance(value, Tensor):
         raise ValueError("audit requires batched tensors, Boxes or Keypoints; ragged inputs are unsupported.")
     if key in _BOX_MODES:
         # Match the container's public representation, including axis-aligned tensor exports.
         if key in _LEGACY_BOX_KEYS:
-            return Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True).data, 0.0
+            legacy = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, inclusive=True)
+            return legacy.data, 0.0, None
         # The corners are built in at least float32, as ``x + w`` rounds in half precision; the pipeline's own labels
-        # keep their dtype.
+        # keep their dtype. Zero extents are removed as the container removes them.
         value = value.to(torch.promote_types(value.dtype, torch.float32))
-        return Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False).data, 0.5
-    return value, 0.0
+        boxes = Boxes._from_tensor(value, mode=_BOX_MODES[key], validate_boxes=False, allow_empty=True)
+        return boxes.data, 0.5, boxes._valid
+    return value, 0.0, None
 
 
 def _spatial_audits(
@@ -314,8 +324,12 @@ def _spatial_audits(
 ) -> list[SpatialAudit]:
     audits = []
     for index, source in sources.items():
-        result, offset = _coordinates(values[index], keys[index])
-        audits.append(_spatial_audit(source, result, keys[index], index, shape, inverse, dtype, offset=offset))
+        # A row the pipeline returns without a box has no round trip to measure; the pipeline removes the rows that
+        # hold no box in its input as well.
+        result, offset, present = _coordinates(values[index], keys[index])
+        audits.append(
+            _spatial_audit(source, result, keys[index], index, shape, inverse, dtype, offset=offset, present=present)
+        )
     return audits
 
 
@@ -396,25 +410,29 @@ def _spatial_audit(
     inverse: Tensor | None,
     dtype: torch.dtype,
     offset: float = 0.0,
+    present: Tensor | None = None,
 ) -> SpatialAudit:
     if source.shape != result.shape:
         raise ValueError("audit requires spatial outputs to preserve the source shape and label cardinality.")
-    source, result = source.to(dtype=dtype), result.detach().to(dtype=dtype)
+    result = result.detach()
     batch, count = result.shape[:2]
-    finite = result.isfinite().flatten(2).all(-1)
-    # The frame is checked on the coordinates as stored, edges for exclusive boxes: shifting by ``offset`` first would
-    # round an edge just below 0 onto -0.5, inside the frame.
+    # The frame is checked on the coordinates as returned, in float32 or wider: the float32 diagnostic dtype would
+    # round a float64 edge at ``4 + 1e-7`` onto 4. Edges of exclusive boxes are checked unshifted, since shifting by
+    # ``offset`` would round an edge just below 0 onto -0.5.
+    returned = result.to(torch.promote_types(result.dtype, torch.float32))
+    finite = returned.isfinite().flatten(2).all(-1)
     outside = (
-        (result[..., 0] < 0)
-        | (result[..., 0] > shape[-1] - 1 + 2 * offset)
-        | (result[..., 1] < 0)
-        | (result[..., 1] > shape[-2] - 1 + 2 * offset)
+        (returned[..., 0] < 0)
+        | (returned[..., 0] > shape[-1] - 1 + 2 * offset)
+        | (returned[..., 1] < 0)
+        | (returned[..., 1] > shape[-2] - 1 + 2 * offset)
     )
-    # The inverse matrix maps pixel centres, so the round trip runs in that frame, in the diagnostic dtype.
-    source, result = source - offset, result - offset
     if key in _BOX_MODES:
         outside = outside.any(-1)
-    counts = torch.full((batch,), count, device=result.device, dtype=torch.long)
+    present = torch.ones_like(finite) if present is None else present.to(finite.device)
+    # The inverse matrix maps pixel centres, so the round trip runs in that frame, in the diagnostic dtype.
+    source, result = source.to(dtype=dtype) - offset, result.to(dtype=dtype) - offset
+    counts = present.sum(-1)
     errors = torch.full((batch, count), float("nan"), device=result.device, dtype=dtype)
     if inverse is not None and count:
         flat = result.reshape(batch, -1, 2)
@@ -426,7 +444,7 @@ def _spatial_audit(
             errors = torch.maximum(distances.amin(-1).amax(-1), distances.amin(-2).amax(-1))
         else:
             errors = torch.linalg.vector_norm(restored - source, dim=-1)
-    valid = errors.isfinite()
+    valid = errors.isfinite() & present
     errors = torch.where(valid, errors, torch.full_like(errors, float("nan")))
     valid_count = valid.sum(-1)
     mean = errors.nansum(-1) / valid_count
@@ -436,7 +454,7 @@ def _spatial_audit(
         maximum = torch.where(valid_count > 0, maximum, torch.full_like(maximum, float("nan")))
     else:
         median, maximum = mean.clone(), mean.clone()
-    out_of_frame = (outside & finite).sum(-1)
+    out_of_frame = (outside & finite & present).sum(-1)
     return SpatialAudit(
         index,
         key.name,
@@ -521,7 +539,7 @@ def audit(
     for index, (value, key) in enumerate(zip(args, keys)):
         if key not in (DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS, *_BOX_MODES):
             raise ValueError(f"audit does not support the data key {key.name}.")
-        tensor, _ = _coordinates(value, key)
+        tensor, _, _ = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
         expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
         if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
