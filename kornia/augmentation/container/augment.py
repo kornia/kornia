@@ -29,6 +29,7 @@ from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateS
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor, _raise_input_rank_error
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS, _box_key, _warn_about_frames
 from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
@@ -51,8 +52,8 @@ __all__ = ["AugmentationSequential"]
 
 # Dynamo cannot trace membership checks against a Python set; tuples keep these constants
 # capture-friendly while preserving the membership-only behavior used below.
-_BOXES_OPTIONS = (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH)
-_KEYPOINTS_OPTIONS = (DataKey.KEYPOINTS,)
+_BOXES_OPTIONS = tuple(_BOX_KEYS)
+_KEYPOINTS_OPTIONS = _KEYPOINT_KEYS
 _IMG_OPTIONS = (DataKey.INPUT, DataKey.IMAGE)
 _MSK_OPTIONS = (DataKey.MASK,)
 _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
@@ -60,6 +61,16 @@ _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
 _NON_RIGID_WARPS = (RandomElasticTransform, RandomFisheye, RandomThinPlateSpline)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
+
+
+def _shift_points(
+    points: Union[torch.Tensor, List[torch.Tensor]], shift: float
+) -> Union[torch.Tensor, List[torch.Tensor]]:
+    """Add ``shift`` to every coordinate, in float32 or wider: the edge-frame keypoint ``x`` is ``x - 1/2`` on pixel centres."""
+    if isinstance(points, list):
+        return [cast(torch.Tensor, _shift_points(p, shift)) for p in points]
+    working = torch.promote_types(points.dtype, torch.float32) if points.is_floating_point() else torch.float32
+    return points.to(working) + shift
 
 
 def _is_numpy_array(arg: Any) -> bool:
@@ -412,6 +423,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             if self.data_keys[0] != DataKey.INPUT:
                 raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+
+            _warn_about_frames(self.data_keys)
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
 
@@ -844,6 +857,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         original_data_keys = self.transform_op.preproc_datakeys(data_keys)
         self.transform_op.data_keys = original_data_keys
+        _warn_about_frames(original_data_keys)
 
         try:
             self._validate_args_datakeys(*args, data_keys=original_data_keys, params=params)
@@ -1257,42 +1271,40 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return arg.to(ref.dtype)
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
-        if DataKey.get(dcate) in [DataKey.BBOX]:
-            mode = "vertices_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-            mode = "xywh"
-        else:
-            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        spec = _box_key(DataKey.get(dcate))
         if isinstance(arg, Boxes):
             return arg
-        # A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key keeps the legacy inclusive storage, in which image
-        # matrices move its corners as they are: its outputs keep their numbers until frame-named keys exist. Every
-        # other input is stored exclusive and transformed in the edge frame (#6710).
-        legacy = DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]
+        # A tensor under a pixel-centre key (``"bbox_xyxy_index"``, ``"bbox_index"`` and the bare ``"bbox_xyxy"`` and
+        # ``"bbox"``) is held in the pixel-centre storage, to whose corners image matrices apply as they are. A tensor
+        # under an edge-frame key is stored exclusive and transformed in the edge frame, as a ``Boxes`` object is
+        # (#6710). The bare keys import as they did before; the other keys read a zero extent as no box, such as the
+        # all-zero row ``RandomMosaic`` gives for a box outside its window, so one container's output is another's
+        # input.
         if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
-            # Video boxes are (B, T, N, 4, 2) inclusive corners under every key.
-            return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=legacy)
+            # Video boxes are (B, T, N, 4, 2) corners under every key: inclusive under the bare keys and
+            # ``"bbox_xywh"``, and in the frame the key names under the other keys.
+            if spec.bare:
+                return VideoBoxes._from_corners(arg, mode="vertices_plus", inclusive=True)
+            # ``"bbox_xywh"`` reads inclusive corners, as before #6710; the frame-named keys read corners in their frame.
+            corner_mode = "vertices_plus" if DataKey.get(dcate) == DataKey.BBOX_XYWH else "vertices"
+            video = VideoBoxes._from_corners(arg, mode=corner_mode)
+            video._drop_empty()
+            video._inclusive = spec.pixel_centre
+            return video
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         arg = cast(torch.Tensor, arg)
-        # A zero extent under ``"bbox_xywh"`` is no box, such as the all-zero row ``RandomMosaic`` gives for a box
-        # outside its window: it is accepted and removed, so one container's output is another's input.
-        return Boxes._from_tensor(arg, mode=mode, inclusive=legacy, allow_empty=not legacy)
+        if spec.bare:
+            return Boxes._from_tensor(arg, mode=spec.mode_out, inclusive=True)
+        boxes = Boxes._from_tensor(arg, mode=spec.mode_in, allow_empty=True)
+        boxes._inclusive = spec.pixel_centre
+        return boxes
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey
     ) -> Union[torch.Tensor, List[torch.Tensor], Boxes]:
-        if DataKey.get(dcate) in [DataKey.BBOX]:
-            mode = "vertices_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy_plus"
-        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-            mode = "xywh"
-        else:
-            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        mode = _box_key(DataKey.get(dcate)).mode_out
 
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
@@ -1305,6 +1317,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         dtype = None
+        if DataKey.get(dcate) == DataKey.KEYPOINTS_EDGE and not isinstance(arg, Keypoints):
+            # Edge-frame points move to the pixel-centre frame of the image matrices and back in
+            # ``_postproc_keypoint``. The shift runs in float32 or wider, so a half-precision point rounds once, on the
+            # way out. A ``Keypoints`` object is in the pixel-centre frame under every key.
+            arg = _shift_points(cast(Union[torch.Tensor, List[torch.Tensor]], arg), -0.5)
 
         if self.contains_video_sequential:
             if isinstance(arg, VideoKeypoints):
@@ -1342,4 +1359,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(in_arg, Keypoints):
             return out_arg
 
-        return out_arg.to_tensor()
+        out = out_arg.to_tensor()
+        if DataKey.get(dcate) == DataKey.KEYPOINTS_EDGE:
+            like = in_arg[0] if isinstance(in_arg, list) else cast(torch.Tensor, in_arg)
+            return cast(torch.Tensor, _shift_points(cast(torch.Tensor, out), 0.5)).to(like.dtype)
+        return out

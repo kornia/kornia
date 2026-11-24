@@ -70,18 +70,17 @@ class RandomMosaic(MixAugmentationBaseV2):
           the repaired axis conventions from `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
         - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
-          ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
-          masks, keypoints, or class labels.
+          every box key in addition to image inputs; it does not support masks, keypoints, or class labels.
         - Both ``cropping_mode`` values take an ``output_size`` window of the composed canvas at the drawn corner,
           without rescaling; where the window passes the canvas edge it is zero. With an explicit ``output_size`` an
           unselected sample is zero-padded or cropped to that size rather than returned unchanged. The boxes of a
           selected sample are translated with its tiles, not rescaled, and clipped to the output window
           ``[0, W_out] x [0, H_out]``. A box the window clips to zero width or height is removed, as
           ``min_bbox_size`` removes boxes: every export gives an all-zero row for it, also after a later transform.
-          A tensor
-          under the bare ``"bbox"`` or ``"bbox_xyxy"`` key of
-          :class:`~kornia.augmentation.container.AugmentationSequential` holds pixel-centre corners and is clipped
-          to ``[0, W_out - 1] x [0, H_out - 1]``, as before `#6710 <https://github.com/kornia/kornia/issues/6710>`_.
+          That window is in the frame of the key (`#6710 <https://github.com/kornia/kornia/issues/6710>`_): a
+          tensor under a pixel-centre key of :class:`~kornia.augmentation.container.AugmentationSequential`
+          (``"bbox_xyxy_index"``, ``"bbox_index"`` and the bare ``"bbox_xyxy"`` and ``"bbox"``) is clipped to
+          ``[-1/2, W_out - 1/2] x [-1/2, H_out - 1/2]``.
         - A tensor box input comes back as one dense tensor. When the gate selects any sample, every row holds
           ``N * mosaic_grid[0] * mosaic_grid[1]`` boxes for ``N`` input boxes per sample: a selected row holds its
           mosaic boxes, and an unselected row holds its own ``N`` boxes unchanged followed by all-zero padding rows
@@ -156,13 +155,14 @@ class RandomMosaic(MixAugmentationBaseV2):
         batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
         offset = torch.zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
         # ``params["dst"]`` holds inclusive crop-window corners, so its far corner is the last pixel of the output.
-        # Exclusive boxes extend to the far edge of that pixel; the legacy inclusive storage of the bare tensor keys
-        # stops at its centre, as it always did (#6710). The edge is derived before the cast to the box dtype: a
-        # 258-pixel bfloat16 output has the edge 258 but not the centre 257.
+        # The window is that region in the frame of the boxes (#6710): ``[0, last + 1]`` for exclusive boxes, in the
+        # edge frame, and ``[-1/2, last + 1/2]`` for the pixel-centre storage of the bare and ``_index`` tensor keys.
+        # The bounds are derived before the cast to the box dtype: a 258-pixel bfloat16 output has the edge 258 but not
+        # the centre 257.
         offset_end = torch.as_tensor(params["dst"], device=input.device)[0, 2]
-        if not input._inclusive:
-            offset_end = offset_end + 1
+        offset_end = offset_end + (0.5 if input._inclusive else 1.0)
         offset_end = offset_end.to(input.dtype).repeat(input.data.shape[0], 1)
+        window_start = -0.5 if input._inclusive else 0.0
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
         num_boxes = input.data.shape[1]
@@ -188,11 +188,10 @@ class RandomMosaic(MixAugmentationBaseV2):
                 else:
                     KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
         out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
-        out_boxes.clamp(offset, offset_end, inplace=True)
-        if not out_boxes._inclusive:
-            # A box the window clips away has zero width or height: it is removed, as ``min_bbox_size`` removes
-            # boxes, so a later rotation cannot give its line segment an area (#6710).
-            out_boxes._drop_empty()
+        out_boxes.clamp(offset + window_start, offset_end, inplace=True)
+        # A box the window clips away has zero width or height: it is removed, as ``min_bbox_size`` removes boxes, so
+        # a later rotation cannot give its line segment an area (#6710).
+        out_boxes._drop_empty()
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
 
         if not bool(to_apply.all()):

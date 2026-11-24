@@ -259,8 +259,27 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
     """Name the kind of each input of an augmentation container: image, mask, boxes, keypoints or labels.
 
     ``AugmentationSequential(..., data_keys=[DataKey.INPUT, "mask"])`` takes one member, or its name in any case, per
-    input. ``INPUT`` is an alias of ``IMAGE`` and ``CLASS`` of ``LABEL``. ``BBOX`` holds ``(B, N, 4, 2)`` box corners,
-    ``BBOX_XYXY`` and ``BBOX_XYWH`` ``(B, N, 4)`` boxes, and ``KEYPOINTS`` ``(B, N, 2)`` points.
+    input. ``INPUT`` is an alias of ``IMAGE`` and ``CLASS`` of ``LABEL``. The ``BBOX`` keys hold ``(B, N, 4, 2)`` box
+    corners, the ``BBOX_XYXY`` keys and ``BBOX_XYWH`` ``(B, N, 4)`` boxes, and the ``KEYPOINTS`` keys ``(B, N, 2)``
+    points.
+
+    Convention:
+        Box and keypoint keys name a coordinate frame (`#6710 <https://github.com/kornia/kornia/issues/6710>`_):
+
+        - **Edge frame**, the frame of COCO and torchvision: pixel ``i`` spans ``[i, i + 1)``. ``BBOX_XYXY_EDGE``,
+          ``BBOX_EDGE``, ``BBOX_XYWH`` and ``KEYPOINTS_EDGE``.
+        - **Pixel-centre frame**, the frame of kornia's image matrices: pixel ``i`` is centred at ``i`` and spans
+          ``[i - 1/2, i + 1/2)``. ``BBOX_XYXY_INDEX``, ``BBOX_INDEX`` and ``KEYPOINTS``.
+
+        A coordinate ``x`` of the pixel-centre frame is ``x + 1/2`` in the edge frame; a flip of a 64-pixel image maps
+        the edge-frame box ``[10, 30)`` to ``[34, 54)`` and the pixel-centre box ``[10, 30)`` to ``[33, 53)``. Boxes
+        are regions with ``width = xmax - xmin`` in both frames. Under the frame-named box keys an all-zero row, and any
+        zero width or height, is a missing annotation, which every output writes as zeros.
+
+        The bare ``BBOX_XYXY`` and ``BBOX`` keys are aliases of the pixel-centre keys, with two differences that keep
+        their earlier inputs working: an all-zero row is a box at the origin, and an extent above ``-1`` passes. They
+        warn once per process with :class:`~kornia.augmentation.BoxFrameWarning`. Bare ``KEYPOINTS`` is in the
+        pixel-centre frame and does not warn.
 
     See Also:
         - :class:`~kornia.augmentation.container.AugmentationSequential`: the container whose ``data_keys`` these name.
@@ -276,6 +295,11 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
     KEYPOINTS = 5
     LABEL = 6
     CLASS = 6
+    BBOX_XYXY_EDGE = 7
+    BBOX_XYXY_INDEX = 8
+    BBOX_EDGE = 9
+    BBOX_INDEX = 10
+    KEYPOINTS_EDGE = 11
 
     @classmethod
     def get(cls, value: TKEnum["DataKey"]) -> "DataKey":

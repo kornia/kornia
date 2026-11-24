@@ -34,6 +34,7 @@ Pipelines and policies:
     - ``ManyToOneAugmentationDispather``: produce several augmented views of one input bundle.
     - ``auto``: AutoAugment, RandAugment, TrivialAugment and their policy operations.
     - ``container``: pipeline classes and their parameter records.
+    - ``BoxFrameWarning``: the warning category of a box or keypoint key that does not name its frame.
 
 Image size and geometry:
     - ``Resize``: resize to a target size; ``LongestMaxSize`` and ``SmallestMaxSize`` select the controlling side.
@@ -179,6 +180,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D, RigidAffineAugmenta
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.augmentation.utils.box_frames import BoxFrameWarning
 from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
@@ -208,6 +210,7 @@ __all__ = [
     "AugmentationBase2D",
     "AugmentationBase3D",
     "AugmentationSequential",
+    "BoxFrameWarning",
     "CenterCrop",
     "CenterCrop3D",
     "ColorJiggle",

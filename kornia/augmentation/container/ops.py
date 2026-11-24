@@ -29,6 +29,7 @@ from kornia.constants import DataKey
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+from kornia.augmentation.utils.box_frames import _BOX_KEYS, _KEYPOINT_KEYS
 
 from .params import ParamItem, PatchParamItem
 
@@ -259,9 +260,9 @@ class AugmentationSequentialOps:
             return InputSequentialOps
         if data_key == DataKey.MASK:
             return MaskSequentialOps
-        if data_key in {DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY}:
+        if data_key in _BOX_KEYS:
             return BoxSequentialOps
-        if data_key == DataKey.KEYPOINTS:
+        if data_key in _KEYPOINT_KEYS:
             return KeypointSequentialOps
         if data_key == DataKey.CLASS:
             return ClassSequentialOps

@@ -65,7 +65,7 @@ class TestAugmentationSequential:
             ("image", KeyError, "'i' is not a valid DataKey"),
             (["mask", "input"], NotImplementedError, "first input must be DataKey.IMAGE"),
             (["input", "bbox_yxyx"], KeyError, "'bbox_yxyx' is not a valid DataKey"),
-            ([0, 10], ValueError, "10 is not a valid DataKey"),
+            ([0, 99], ValueError, "99 is not a valid DataKey"),
             ([BorderType.REFLECT], TypeError, "DataKey"),
         ],
     )
@@ -2336,32 +2336,36 @@ class TestConventionAugmentationSequential(BaseTester):
         legacy = seq(video, corners, data_keys=["input", "bbox_xyxy"], params=seq._params)[1]
         self.assert_close(legacy, expected_legacy, atol=0.0, rtol=0.0)
 
-    def test_convention_mosaic_clamp_follows_the_box_storage_6710(self, device, dtype):
-        # kornia#6710: Mosaic clamps exclusive boxes to the far edge of the output, 20 for a 20-pixel output, so a
-        # box that fills its tile reaches it. A tensor under the bare key keeps the legacy clamp at 19, the centre of
-        # the last pixel, until the frame-named keys exist; "bbox_xywh" was already exclusive.
+    def test_convention_mosaic_clamp_follows_the_key_frame_6710(self, device, dtype):
+        # kornia#6710: Mosaic clamps boxes to its output window in the frame of the key. For a 20-pixel output that is
+        # [0, 20] in the edge frame of a Boxes object, "bbox_xyxy_edge" and "bbox_xywh", and [-0.5, 19.5] in the
+        # pixel-centre frame of "bbox_xyxy_index" and its alias, the bare "bbox_xyxy".
         image = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
         full = torch.tensor([[[0.0, 0.0, 20.0, 20.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
         seq = K.AugmentationSequential(K.RandomMosaic((20, 20), p=1.0), data_keys=["input", "bbox_xyxy"])
         torch.manual_seed(0)
         bare = seq(image, full)[1]
-        assert bare.amax().item() == 19.0
+        assert bare.amax().item() == 19.5
         box_object = seq(image, Boxes.from_tensor(full), params=seq._params)[1].to_tensor("xyxy")
         assert box_object.amax().item() == 20.0
+        for key, far in (("bbox_xyxy_index", 19.5), ("bbox_xyxy_edge", 20.0)):
+            key_seq = K.AugmentationSequential(K.RandomMosaic((20, 20), p=1.0), data_keys=["input", key])
+            assert key_seq(image, full, params=seq._params)[1].amax().item() == far
         xywh_seq = K.AugmentationSequential(K.RandomMosaic((20, 20), p=1.0), data_keys=["input", "bbox_xywh"])
         xywh = xywh_seq(image, full, params=seq._params)[1]
         assert (xywh[..., :2] + xywh[..., 2:]).amax().item() == 20.0
 
     @pytest.mark.parametrize("box_dtype", [torch.float16, torch.bfloat16])
-    def test_convention_mosaic_area_threshold_follows_the_box_storage_6710(self, box_dtype, device):
-        # kornia#6710: min_bbox_size meets the float32 area of a half-precision Boxes object, 49 * 51 = 2499 here, and
-        # removes it. A tensor under the bare key keeps the legacy comparison in its own dtype, and its numbers: float16
-        # rounds the area to 2500, and bfloat16 rounds the area and the threshold to 2496.
+    def test_convention_mosaic_area_threshold_meets_the_float32_area_6710(self, box_dtype, device):
+        # kornia#6710: min_bbox_size meets the float32 area of half-precision boxes, 49 * 51 = 2499 here, and removes the
+        # box, under every key. The bare key compared the area in its own dtype until the frame-named keys: float16
+        # rounded it to 2500, and bfloat16 rounded the area and the threshold to 2496, so the box survived.
         image = torch.rand(1, 3, 64, 64, device=device)
         box = torch.tensor([[[0.0, 0.0, 49.0, 51.0]]], device=device, dtype=box_dtype)
         mosaic = K.RandomMosaic((64, 64), mosaic_grid=(1, 1), start_ratio_range=(0.0, 0.0), min_bbox_size=2500, p=1.0)
-        seq = K.AugmentationSequential(mosaic, data_keys=["input", "bbox_xyxy"])
-        self.assert_close(seq(image, box)[1], box, atol=0.0, rtol=0.0)
+        for key in ("bbox_xyxy", "bbox_xyxy_index", "bbox_xyxy_edge"):
+            seq = K.AugmentationSequential(mosaic, data_keys=["input", key])
+            assert not seq(image, box)[1].any()
         box_object = seq(image, Boxes.from_tensor(box), params=seq._params)[1]
         assert not box_object.to_tensor("xyxy").any()
 
