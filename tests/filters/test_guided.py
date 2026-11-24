@@ -621,7 +621,11 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("subsample", [2, 3])
     @pytest.mark.parametrize("shape", [(1, 10), (10, 1), (1, 1), (2, 9), (9, 2)])
     def test_subsample_larger_than_an_axis(self, guide_dim, subsample, shape, device, dtype):
-        """Subsample an axis shorter than ``subsample`` to one pixel."""
+        """Subsample an axis shorter than ``subsample`` to one pixel.
+
+        ``replicate`` padding, because ``reflect`` cannot pad a one-pixel axis with any window larger than one pixel,
+        with or without ``subsample``.
+        """
         self._skip_without_padding(device, dtype, "replicate")
         H, W = shape
         guide = torch.rand(1, guide_dim, H, W, device=device, dtype=dtype)
