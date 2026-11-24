@@ -108,9 +108,10 @@ class DETRPostProcessor(nn.Module):
         """
         # Box format is normalized cxcywh; convert to exclusive xywh:
         # (x, y, w, h) = (cx - 0.5 * w, cy - 0.5 * h, w, h).
-        # Note: BoundingBox / Boxes uses an inclusive pixel-center convention (width = xmax - xmin + 1)
-        # with integer offsets (-1 / +1), which corrupts sub-pixel extents (w < 1px) and breaks dynamic
-        # batching under TorchScript ONNX export. We therefore use continuous exclusive arithmetic here.
+        # Note: Materializing Boxes corners in float16 quantizes odd extents above 2048
+        # (where [2048, 4096] represents only even integers), and Boxes vertex construction
+        # freezes batch dimensions under TorchScript ONNX export (dynamo=False). Keep
+        # continuous arithmetic here to preserve exact extents and dynamic batching.
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes
         cxcy, wh = boxes[..., :2], boxes[..., 2:]
         boxes_xy = torch.cat([cxcy - wh * 0.5, wh], dim=-1)

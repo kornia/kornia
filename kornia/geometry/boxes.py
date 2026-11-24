@@ -303,8 +303,8 @@ def _boxes_to_quadrilaterals(
 
     ``inclusive=True`` builds the legacy inclusive storage that the bare ``"bbox"`` and ``"bbox_xyxy"`` tensor keys of
     :class:`~kornia.augmentation.container.AugmentationSequential` still use, with the arithmetic it always had.
-    ``allow_empty=True`` accepts zero extents in the ``'xy*'`` modes, as the container does for the boxes that
-    clipping emptied; see :func:`_validate_box_values`.
+    ``allow_empty=True`` accepts zero extents in coordinate modes (``'xy*'``, ``'cxcy*'``), as the container does
+    for the boxes that clipping emptied; see :func:`_validate_box_values`.
     """
     mode = mode.lower()
 
@@ -1214,8 +1214,8 @@ class Boxes:
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
-        ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, and ``'vertices'`` are exclusive
-        exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
+        ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, ``'cxcywh'``, and ``'vertices'`` are
+        exclusive exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
         stored vertices, reduced with ``amin``/``amax``, so the export is lossy for rotated boxes:
         ``to_tensor('vertices')`` does not return :attr:`data` unchanged after a :meth:`transform_boxes`
         call that rotates, shears, or otherwise reorders the vertices. A quarter turn keeps the box
@@ -1492,8 +1492,8 @@ class Boxes:
 
         Returns:
             Mode string used as the default by :meth:`to_tensor`, such as
-            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"cxcywh"``, ``"vertices"`` or
-            ``"vertices_plus"``.
+            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"cxcywh"``, ``"cxcywh_plus"``,
+            ``"vertices"`` or ``"vertices_plus"``.
         """
         return self._mode
 

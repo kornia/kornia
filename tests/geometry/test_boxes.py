@@ -600,7 +600,9 @@ class TestBoxes2D(BaseTester):
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "vertices", "vertices_plus"]
+    )
     def test_convention_sub_unit_extent_round_trips_4061(self, mode, device, dtype):
         # kornia#4061: the inclusive storage placed the top-right vertex at ``xmin + width - 1``, left of the
         # top-left vertex for a sub-unit extent, so to_tensor recovered a larger box. The exclusive storage keeps
@@ -609,6 +611,8 @@ class TestBoxes2D(BaseTester):
             "xyxy": [0.1, 0.1, 0.6, 0.9],
             "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
             "xywh": [0.1, 0.1, 0.5, 0.8],
+            "cxcywh": [0.35, 0.5, 0.5, 0.8],
+            "cxcywh_plus": [-0.15, 0.0, 0.5, 0.8],
             "vertices": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
             "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
         }
@@ -2509,6 +2513,26 @@ class TestExclusiveStorage6710(BaseTester):
         with pytest.raises(ValueError, match="inclusive corners"):
             combine()
 
+    @pytest.mark.parametrize(
+        ("mode", "values"),
+        [
+            ("cxcywh", [3.0, 3.0, 4.0, 2.0]),
+            ("cxcywh_plus", [2.5, 2.5, 4.0, 2.0]),
+        ],
+    )
+    def test_convention_legacy_inclusive_storage_round_trips_cxcywh(self, mode, values, device, dtype):
+        # Legacy inclusive Boxes containers support importing and exporting both exclusive "cxcywh" and
+        # inclusive "cxcywh_plus" representations while storing inclusive vertices.
+        expected_corners = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        legacy = Boxes._from_tensor(torch.tensor([values], device=device, dtype=dtype), mode=mode, inclusive=True)
+        assert legacy._inclusive
+        self.assert_close(legacy.data, expected_corners, atol=0.0, rtol=0.0)
+        self.assert_close(legacy.to_tensor("cxcywh"), torch.tensor([[3.0, 3.0, 4.0, 2.0]], device=device, dtype=dtype))
+        self.assert_close(
+            legacy.to_tensor("cxcywh_plus"), torch.tensor([[2.5, 2.5, 4.0, 2.0]], device=device, dtype=dtype)
+        )
+        self.assert_close(legacy.to_tensor("xyxy"), torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype))
+
     def test_convention_boxes3d_applies_matrices_to_the_stored_vertices(self, device, dtype):
         # 3D takes the exclusive storage only (kornia#6710 revision 4): the matrix moves the stored vertices as
         # given, so a 2x scale of the cube [0, 2) gives [0, 4), where reading it on pixel centres gave [-0.5, 3.5).
@@ -2522,6 +2546,8 @@ class TestExclusiveStorage6710(BaseTester):
         [
             ("xyxy_plus", [256.0, 0.0, 256.0, 0.0], [254.0, 0.0, 255.0, 0.0]),
             ("xywh", [256.0, 0.0, 1.0, 1.0], [256.0, 0.0, 2.0, 1.0]),
+            ("cxcywh", [256.0, 0.5, 1.0, 1.0], [258.0, 0.5, 4.0, 1.0]),
+            ("cxcywh_plus", [256.0, 0.0, 1.0, 1.0], [258.0, 0.0, 4.0, 1.0]),
         ],
     )
     def test_convention_low_precision_extent_that_rounds_to_zero_raises(self, mode, source, representable, device):
@@ -2595,7 +2621,9 @@ class TestExclusiveStorage6710(BaseTester):
         assert not kept(square, max_area=2400.0)
         assert kept(square, max_area=2401.0)
 
-    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    @pytest.mark.parametrize(
+        "mode", ["xyxy", "xyxy_plus", "xywh", "cxcywh", "cxcywh_plus", "xyzxyz", "xyzxyz_plus", "xyzwhd"]
+    )
     def test_import_keeps_float16_boxes_in_a_bfloat16_autocast_region(self, mode, device):
         # The corners are written into one float16 allocation: torch.stack is on autocast's promote list, which
         # raises for float16 input in a bfloat16 region (``Unexpected floating ScalarType``).
@@ -2604,6 +2632,8 @@ class TestExclusiveStorage6710(BaseTester):
             "xyxy": [0.0, 0.0, 1.0, 1.0],
             "xyxy_plus": [0.0, 0.0, 0.0, 0.0],
             "xywh": [0.0, 0.0, 1.0, 1.0],
+            "cxcywh": [0.5, 0.5, 1.0, 1.0],
+            "cxcywh_plus": [0.0, 0.0, 1.0, 1.0],
             "xyzxyz": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
             "xyzxyz_plus": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "xyzwhd": [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
