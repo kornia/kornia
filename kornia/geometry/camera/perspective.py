@@ -79,7 +79,6 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         tensor([[5.6088, 8.6827]])
 
     """
-    # projection eq. [u, v, w]' = K * [x y z 1]'
     # u = fx * X / Z + cx
     # v = fy * Y / Z + cy
     # project back using depth dividing in a safe way
