@@ -106,6 +106,23 @@ class TestBooksteinSpline(BaseTester):
         warped = kornia.geometry.transform.warp_points_tps(query, src, kernel, affine)
         self.assert_close(warped, torch.tensor([_SCIPY_BETWEEN], device=device, dtype=dtype))
 
+    @pytest.mark.applies_to(dtypes=("float32",), reason="Regression for cancellation in float32 pixel coordinates")
+    def test_warp_is_equivariant_to_a_pixel_origin_shift(self, device, dtype):
+        src = torch.tensor([[[0, 0], [2, 0], [0, 2], [2, 2], [1, 1], [0.875, 1.625]]], device=device, dtype=dtype)
+        dst = src.clone()
+        dst[0, 4:] += dst.new_tensor([[0.25, -0.625], [-0.375, 0.5]])
+        query = src.new_tensor([[[0.25, 1.25], [1.5, 1.625], [2, 1.25]]])
+        origin = src.new_tensor([2000, 1500])
+
+        transform = kornia.geometry.transform
+        local_weights = transform.get_tps_transform(src, dst)
+        pixel_weights = transform.get_tps_transform(src + origin, dst + origin)
+        local = transform.warp_points_tps(query, src, *local_weights)
+        pixel = transform.warp_points_tps(query + origin, src + origin, *pixel_weights)
+
+        # Moving the coordinate origin leaves every radial distance and displacement the same.
+        self.assert_close(pixel - origin, local, atol=1e-3, rtol=0)
+
     def test_convention_interpolates_landmarks(self, device, dtype):
         src = torch.tensor([_SRC], device=device, dtype=dtype)
         dst = torch.tensor([_DST], device=device, dtype=dtype)
