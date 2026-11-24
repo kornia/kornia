@@ -1,0 +1,1 @@
+`VideoSequential.inverse()` without `params` now undoes the most recent forward, including a replay with explicit `params`, instead of the last forward that sampled a draw; a replay as the first forward no longer leaves it without parameters to invert.

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import weakref
+
 import pytest
 import torch
 
@@ -110,7 +112,7 @@ class TestKMeans(BaseTester):
         assert out2.shape == (num_clusters, D)
 
     @pytest.mark.parametrize("num_clusters", [-1, -2])
-    def test_negative_num_clusters_is_rejected_6442(self, num_clusters, device, dtype):
+    def test_negative_num_clusters_is_rejected_6442(self, num_clusters):
         # A negative count used to pass __init__ and fail in fit inside one_hot ("Class values must be smaller than
         # num_classes"), without naming num_clusters.
         with pytest.raises(BaseError, match=f"num_clusters must be a positive int, got {num_clusters}"):
@@ -199,6 +201,80 @@ class TestKMeans(BaseTester):
         # the empty cluster is reseeded to *some* row of x, not left at the stale starting center
         assert any(torch.allclose(centers[1], row) for row in x)
 
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    @pytest.mark.parametrize("alternate_center_dtype", [False, True])
+    def test_unequal_cluster_counts_and_input_gradients(self, device, dtype, noncontiguous, alternate_center_dtype):
+        center_dtype = torch.float32
+        if alternate_center_dtype:
+            # MPS has no float64; float16 starting centers still exercise mixed precision with float32 inputs.
+            center_dtype = torch.float16 if device.type == "mps" else torch.float64
+        # Three clusters contain 3, 2 and 4 points. Their independent arithmetic means are (0, 3), (10, 2),
+        # and (20, 3). For a fixed assignment, each point's derivative is its centroid's upstream / count.
+        x = torch.tensor(
+            [[0, 0], [0, 3], [0, 6], [10, 0], [10, 4], [20, 0], [20, 2], [20, 4], [20, 6]],
+            device=device,
+            dtype=dtype,
+        )
+        if noncontiguous:
+            x = x.t().contiguous().t()
+            assert not x.is_contiguous()
+        x.requires_grad_()
+        centers = torch.tensor([[0, 0], [10, 0], [20, 0]], device=device, dtype=center_dtype)
+        km = kornia.contrib.KMeans(3, centers, tolerance=None, max_iterations=1)
+        km.fit(x)
+
+        self.assert_close(km.cluster_centers, x.new_tensor([[0, 3], [10, 2], [20, 3]]), rtol=0, atol=0)
+        self.assert_close(km.cluster_assignments, x.new_tensor([0, 0, 0, 1, 1, 2, 2, 2, 2], dtype=torch.int64))
+        upstream = x.new_tensor([[3, -6], [-2, 4], [8, -4]])
+        (gradient,) = torch.autograd.grad(km.cluster_centers, x, upstream)
+        expected_gradient = x.new_tensor([[1, -2]] * 3 + [[-1, 2]] * 2 + [[2, -1]] * 4)
+        self.assert_close(gradient, expected_gradient, rtol=0, atol=0)
+
+    def test_empty_cluster_count_preserves_random_draws(self, device, dtype):
+        # Every sample initially belongs to cluster zero. Empty clusters use the corresponding elements of the
+        # single three-index draw, including its unused first entry; assignment construction consumes no RNG.
+        x = torch.tensor([[0, 0], [0, 2], [0, 4], [0, 6]], device=device, dtype=dtype)
+        centers = x.new_zeros(3, 2)
+        torch.manual_seed(817)
+        selected = torch.randint(len(x), (3,), device=device)
+        expected_next = torch.rand(4, device=device)
+        torch.manual_seed(817)
+        km = kornia.contrib.KMeans(3, centers, tolerance=None, max_iterations=1)
+        km.fit(x)
+
+        expected = torch.cat([x.new_tensor([[0, 3]]), x[selected[1:]]])
+        self.assert_close(km.cluster_centers, expected, rtol=0, atol=0)
+        self.assert_close(torch.rand(4, device=device), expected_next, rtol=0, atol=0)
+
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="Eager buffer lifetime")
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_assignment_buffer_released_before_next_assignment(self, device, dtype, requires_grad, monkeypatch):
+        x = torch.tensor([[0, 0], [0, 2], [8, 0], [8, 2]], device=device, dtype=dtype, requires_grad=requires_grad)
+        km = kornia.contrib.KMeans(2, x.detach()[[0, 2]], tolerance=None, max_iterations=2)
+        references = {}
+        original_distance = km._pairwise_euclidean_distance
+        original_one_hot = torch.nn.functional.one_hot
+
+        def checked_distance(a, b):
+            # Check before allocating another distance matrix, while the previous fit iteration is still on stack.
+            live = [name for name, reference in references.items() if reference() is not None]
+            assert not live, f"Previous iteration retains buffers: {live}"
+            return original_distance(a, b)
+
+        def capture_one_hot(*args, **kwargs):
+            result = original_one_hot(*args, **kwargs)
+            references["one_hot"] = weakref.ref(result)
+            return result
+
+        monkeypatch.setattr(km, "_pairwise_euclidean_distance", checked_distance)
+        monkeypatch.setattr(torch.nn.functional, "one_hot", capture_one_hot)
+        km.fit(x)
+        self.assert_close(km.cluster_centers, x.new_tensor([[0, 1], [8, 1]]), rtol=0, atol=0)
+        if requires_grad:
+            # Autograd retains what its own nodes need after the unnecessary local references are released.
+            (gradient,) = torch.autograd.grad(km.cluster_centers.sum(), x)
+            self.assert_close(gradient, torch.full_like(x, 0.5), rtol=0, atol=0)
+
     @pytest.mark.parametrize(
         ("x", "starting_centers", "expected"),
         [
@@ -230,6 +306,22 @@ class TestKMeans(BaseTester):
         # exact in every dtype on the fixed implementation - a nonzero tolerance would let the
         # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
         self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(
+        devices=("cpu", "cuda"), reason="autocast precision regression is exercised on CPU and CUDA"
+    )
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_autocast_preserves_cluster_sum_precision(self, device, dtype, autocast_dtype):
+        """Keep centroid accumulation in the work dtype under autocast."""
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA device does not support bfloat16 autocast")
+        x = torch.full((100000, 3), 0.75, device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(1, torch.zeros_like(x[:1]), tolerance=None, max_iterations=1)
+
+        with torch.autocast(device_type=device.type, dtype=autocast_dtype):
+            kmeans.fit(x)
+
+        self.assert_close(kmeans.cluster_centers, x[:1], rtol=0.0, atol=0.0)
 
     @staticmethod
     def _create_data(device, dtype):

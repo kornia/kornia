@@ -208,11 +208,10 @@ class TestProjectionZ1(BaseTester):
         )
         assert not bool(torch.isfinite(project_points_z1(points)).any())
 
+    @pytest.mark.applies_to(dtypes=("bfloat16", "float32", "float64"), reason="1e-9 underflows to zero in float16")
     def test_wart_project_points_z1_differs_below_perspective_epsilon_4267(self, device, dtype):
         # kornia#4267: project_points_z1 divides plainly ([[1e9, 2e9]]) while project_points skips the divide when
         # abs(z) <= 1e-8 ([[1., 2.]]); the decided rule makes both skip it.
-        if dtype == torch.float16:
-            pytest.skip("1e-9 underflows to zero in float16")
         points = torch.tensor([[1.0, 2.0, 1e-9]], device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
         expected_z1 = torch.tensor([[1e9, 2e9]], device=device, dtype=dtype)

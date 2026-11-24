@@ -27,10 +27,18 @@ from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
-    """Project 3D points from the camera frame into the canonical $z=1$ plane.
+    """Project ``Vector3`` camera-frame points onto the normalized ``z = 1`` plane by dividing by ``z``, and back.
 
-    This performs perspective division by dividing the $x$ and $y$ coordinates
-    by the depth $z$.
+    ``xy = Z1Projection().project(points)`` takes a :class:`~kornia.geometry.vector.Vector3` of camera-frame points and
+    returns the :class:`~kornia.geometry.vector.Vector2` ``(x / z, y / z)``, not pixels; ``unproject(xy, depth)``
+    returns ``(x * depth, y * depth, depth)``. It is the projection of the pinhole, Brown-Conrady and Kannala-Brandt
+    models.
+
+    See Also:
+        - :class:`OrthographicProjection`: drops ``z`` instead of dividing by it.
+        - :func:`~kornia.geometry.camera.project_points_z1`: the same projection on plain tensors.
+        - :func:`~kornia.geometry.camera.unproject_points_z1`: the same unprojection on plain tensors.
+
     """
 
     def project(self, points: Vector3) -> Vector2:
@@ -93,44 +101,40 @@ class Z1Projection:
 
 
 class OrthographicProjection:
-    """Project 3D points using an orthographic projection model.
+    """Project ``Vector3`` camera-frame points orthographically by dropping ``z``, and back by appending a depth.
 
-    This model assumes parallel projection where the $z$ coordinate is
-    discarded and no perspective scaling is applied.
+    ``xy = OrthographicProjection().project(points)`` takes a :class:`~kornia.geometry.vector.Vector3` of camera-frame
+    points and returns the :class:`~kornia.geometry.vector.Vector2` ``(x, y)``; ``unproject(xy, depth)`` returns
+    ``(x, y, depth)``. It is the projection of :class:`~kornia.sensors.camera.Orthographic`.
+
+    See Also:
+        - :class:`Z1Projection`: divides by ``z`` instead of dropping it, so distant points move to the center.
+        - :func:`~kornia.geometry.camera.project_points_orthographic`: the same projection on plain tensors.
+        - :func:`~kornia.geometry.camera.unproject_points_orthographic`: the same unprojection on plain tensors.
 
     """
 
     def project(self, points: Vector3) -> Vector2:
-        """Project 3D camera-frame points with an orthographic camera model.
-
-        Orthographic projection keeps the horizontal and vertical coordinates
-        unchanged and discards depth. Unlike perspective projection, objects do
-        not shrink as their ``z`` value increases.
+        """Project camera-frame points orthographically, keeping ``x`` and ``y`` and dropping ``z``.
 
         Args:
-            points: Three-dimensional point container with coordinates
-                ``x``, ``y``, and ``z``. Leading dimensions may represent a
-                batch of points.
+            points: ``Vector3`` of camera-frame points, with any leading dimensions.
 
         Returns:
-            Two-dimensional point container containing the projected ``x`` and
-            ``y`` coordinates.
+            ``Vector2`` of the ``x`` and ``y`` coordinates.
 
         """
         return Vector2(project_points_orthographic(points.data))
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
-        """Lift orthographic image-plane points back into 3D using depth.
+        """Unproject orthographic image-plane points to camera-frame points at the given depths.
 
         Args:
-            points: Two-dimensional point container with image-plane
-                coordinates ``x`` and ``y``.
-            depth: Tensor containing the target ``z`` coordinate for each
-                unprojected point.
+            points: ``Vector2`` of image-plane points ``(x, y)``.
+            depth: tensor of the ``z`` coordinate of each point, ``(*,)`` or ``(*, 1)``.
 
         Returns:
-            Three-dimensional point container with ``x`` and ``y`` copied from
-            ``points`` and ``z`` supplied by ``depth``.
+            ``Vector3`` with ``x`` and ``y`` copied from ``points`` and ``z`` from ``depth``.
 
         """
         return Vector3(unproject_points_orthographic(points.data, depth))

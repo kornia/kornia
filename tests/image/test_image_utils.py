@@ -52,64 +52,112 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
     assert tensor.shape == (num_of_images, image_shape[-1], image_shape[-3], image_shape[-2])
 
 
+class TestImageListViews(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 4, 3), (1, 4, 1)])
+    @pytest.mark.parametrize("axis", [0, 1, 2, None])
+    @pytest.mark.parametrize("input_dtype", [np.uint8, np.float32, np.float64])
+    def test_flipped_numpy_images(self, shape, axis, input_dtype):
+        """Convert flipped views accurately and keep the batch independent of input storage."""
+        image = np.arange(np.prod(shape), dtype=input_dtype).reshape(shape)
+        flipped = np.flip(image, axis=axis)
+        assert any(stride < 0 for stride in flipped.strides)
+
+        actual = kornia.image.image_list_to_tensor([flipped, image])
+        expected = torch.from_numpy(np.stack([flipped, image])).permute(0, 3, 1, 2)
+        self.assert_close(actual, expected)
+        image[...] = 0
+        self.assert_close(actual, expected)
+
+    def test_flipped_numpy_view_with_tensor_keeps_tensor_gradients(self):
+        """Copy reversed NumPy views while preserving gradients for tensor entries."""
+        array = np.arange(18, dtype=np.float32).reshape(2, 3, 3)[..., ::-1]
+        tensor = torch.ones(2, 3, 3, requires_grad=True)
+
+        actual = kornia.image.image_list_to_tensor([tensor, array])
+
+        self.assert_close(actual[1], torch.from_numpy(array.copy()).permute(2, 0, 1))
+        actual.sum().backward()
+        self.assert_close(tensor.grad, torch.ones_like(tensor))
+
+    def test_other_conversion_errors_stay_value_errors(self):
+        with pytest.raises(ValueError):
+            kornia.image.image_list_to_tensor([memoryview(np.zeros((2, 4, 3), dtype=np.float32))])
+
+    def test_dynamo_fullgraph_accepts_numpy_images(self):
+        # Dynamo's NumPy wrapper cannot evaluate a check on img.strides, which would fail the graph for every array.
+        torch._dynamo.reset()
+        image = np.arange(24, dtype=np.float32).reshape(2, 4, 3)
+        compiled = torch.compile(lambda a: kornia.image.image_list_to_tensor([a, a]), fullgraph=True, backend="eager")
+        self.assert_close(compiled(image), torch.from_numpy(np.stack([image, image])).permute(0, 3, 1, 2))
+
+
+# H = 4 != W = 5 and distinct values, so a transposed or reordered result does not pass. The expected values move
+# the channel axis last with movedim and drop the unit axes the expected shape omits.
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
-        ((4, 4), (4, 4)),
-        ((1, 4, 4), (4, 4)),
+        ((4, 5), (4, 5)),
+        ((1, 4, 5), (4, 5)),
         ((1, 1, 5), (1, 5)),
         ((1, 5, 1), (5, 1)),
-        ((1, 1, 4, 4), (4, 4)),
+        ((1, 1, 4, 5), (4, 5)),
         ((1, 1, 1, 5), (1, 5)),
-        ((3, 4, 4), (4, 4, 3)),
-        ((2, 3, 4, 4), (2, 4, 4, 3)),
-        ((1, 3, 4, 4), (4, 4, 3)),
+        ((3, 4, 5), (4, 5, 3)),
+        ((2, 3, 4, 5), (2, 4, 5, 3)),
+        ((1, 3, 4, 5), (4, 5, 3)),
     ],
 )
 def test_tensor_to_image(device, input_shape, expected):
-    tensor = torch.ones(input_shape).to(device)
+    tensor = torch.arange(int(np.prod(input_shape)), dtype=torch.float32).reshape(input_shape).to(device)
     image = kornia.image.tensor_to_image(tensor)
     assert image.shape == expected
     assert isinstance(image, np.ndarray)
+    channels_last = tensor.cpu() if tensor.ndim == 2 else tensor.cpu().movedim(-3, -1)
+    np.testing.assert_array_equal(image, channels_last.reshape(expected).numpy())
 
 
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
-        ((4, 4), (4, 4)),
-        ((1, 4, 4), (4, 4)),
+        ((4, 5), (4, 5)),
+        ((1, 4, 5), (4, 5)),
         ((1, 1, 5), (1, 5)),
         ((1, 5, 1), (5, 1)),
-        ((1, 1, 4, 4), (1, 4, 4)),
+        ((1, 1, 4, 5), (1, 4, 5)),
         ((1, 1, 1, 5), (1, 1, 5)),
-        ((3, 4, 4), (4, 4, 3)),
-        ((2, 3, 4, 4), (2, 4, 4, 3)),
-        ((1, 3, 4, 4), (1, 4, 4, 3)),
+        ((3, 4, 5), (4, 5, 3)),
+        ((2, 3, 4, 5), (2, 4, 5, 3)),
+        ((1, 3, 4, 5), (1, 4, 5, 3)),
     ],
 )
 def test_tensor_to_image_keepdim(device, input_shape, expected):
-    tensor = torch.ones(input_shape).to(device)
+    tensor = torch.arange(int(np.prod(input_shape)), dtype=torch.float32).reshape(input_shape).to(device)
     image = kornia.image.tensor_to_image(tensor, keepdim=True)
     assert image.shape == expected
     assert isinstance(image, np.ndarray)
+    channels_last = tensor.cpu() if tensor.ndim == 2 else tensor.cpu().movedim(-3, -1)
+    np.testing.assert_array_equal(image, channels_last.reshape(expected).numpy())
 
 
+# Distinct values with H != W; the expected values move the channel axis first with movedim.
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
-        ((4, 4), (1, 1, 4, 4)),
+        ((4, 5), (1, 1, 4, 5)),
         ((1, 4, 4), (1, 4, 1, 4)),
         ((2, 3, 4), (1, 4, 2, 3)),
-        ((4, 4, 3), (1, 3, 4, 4)),
-        ((2, 4, 4, 3), (2, 3, 4, 4)),
-        ((1, 4, 4, 3), (1, 3, 4, 4)),
+        ((4, 5, 3), (1, 3, 4, 5)),
+        ((2, 4, 5, 3), (2, 3, 4, 5)),
+        ((1, 4, 5, 3), (1, 3, 4, 5)),
     ],
 )
 def test_image_to_tensor(input_shape, expected):
-    image = np.ones(input_shape)
+    image = np.arange(np.prod(input_shape), dtype=np.float64).reshape(input_shape)
     tensor = kornia.image.image_to_tensor(image, keepdim=False)
     assert tensor.shape == expected
     assert isinstance(tensor, torch.Tensor)
+    channels_first = torch.from_numpy(image) if image.ndim == 2 else torch.from_numpy(image).movedim(-1, -3)
+    assert_close(tensor, channels_first.reshape(expected))
 
     to_tensor = kornia.image.ImageToTensor(keepdim=False)
     assert_close(tensor, to_tensor(image))
@@ -118,19 +166,21 @@ def test_image_to_tensor(input_shape, expected):
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
-        ((4, 4), (1, 4, 4)),
+        ((4, 5), (1, 4, 5)),
         ((1, 4, 4), (4, 1, 4)),
         ((2, 3, 4), (4, 2, 3)),
-        ((4, 4, 3), (3, 4, 4)),
-        ((2, 4, 4, 3), (2, 3, 4, 4)),
-        ((1, 4, 4, 3), (1, 3, 4, 4)),
+        ((4, 5, 3), (3, 4, 5)),
+        ((2, 4, 5, 3), (2, 3, 4, 5)),
+        ((1, 4, 5, 3), (1, 3, 4, 5)),
     ],
 )
 def test_image_to_tensor_keepdim(input_shape, expected):
-    image = np.ones(input_shape)
+    image = np.arange(np.prod(input_shape), dtype=np.float64).reshape(input_shape)
     tensor = kornia.image.image_to_tensor(image, keepdim=True)
     assert tensor.shape == expected
     assert isinstance(tensor, torch.Tensor)
+    channels_first = torch.from_numpy(image) if image.ndim == 2 else torch.from_numpy(image).movedim(-1, -3)
+    assert_close(tensor, channels_first.reshape(expected))
 
 
 def test_tensor_to_image_contiguous(device, dtype):

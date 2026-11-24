@@ -45,7 +45,12 @@ def _fill_missing_augmentation_state(
 
 
 class ManyToManyAugmentationDispather(nn.Module):
-    r"""Dispatches different augmentations to different inputs element-wisely.
+    r"""Run one augmentation container for each matching input bundle.
+
+    ``outputs = ManyToManyAugmentationDispather(*augmentations)(*bundles)`` pairs each
+    :class:`~kornia.augmentation.container.AugmentationSequential` with the bundle at the same position and returns
+    its result. Use :class:`~kornia.augmentation.container.ManyToOneAugmentationDispather` to run several containers
+    over one shared bundle.
 
     See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
 
@@ -58,6 +63,10 @@ class ManyToManyAugmentationDispather(nn.Module):
         - the call takes one input bundle per augmentation and returns a list in that order; a different number
           of bundles raises ``ValueError`` before any augmentation runs. Each augmentation draws its own
           parameters, so the members are independent of one another.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ManyToOneAugmentationDispather`: gives every container one bundle.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: augments an aligned data bundle.
 
     Examples:
         >>> import torch
@@ -113,7 +122,11 @@ class ManyToManyAugmentationDispather(nn.Module):
 
 
 class ManyToOneAugmentationDispather(nn.Module):
-    r"""Dispatches different augmentations to a single input and returns a list.
+    r"""Run several augmentation containers independently over one input bundle.
+
+    ``outputs = ManyToOneAugmentationDispather(*augmentations)(*inputs)`` gives the same inputs to every
+    :class:`~kornia.augmentation.container.AugmentationSequential` and returns one result per container. Use
+    :class:`~kornia.augmentation.container.ManyToManyAugmentationDispather` to pair containers and bundles.
 
     See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
 
@@ -129,6 +142,10 @@ class ManyToOneAugmentationDispather(nn.Module):
           as the list of augmentations and no input can be dropped.
         - with ``strict=True``, the default, the members must all declare the same ``data_keys``; a mismatch
           raises ``RuntimeError`` at construction.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ManyToManyAugmentationDispather`: pairs containers with bundles.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: augments an aligned data bundle.
 
     Examples:
         >>> import torch

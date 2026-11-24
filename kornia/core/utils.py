@@ -16,6 +16,7 @@
 #
 
 
+import copy
 import importlib.util
 import platform
 import sys
@@ -44,6 +45,19 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.exceptions import DeviceError, TypeCheckError
 
 
+def _samples_half_in_float32(input: torch.Tensor) -> bool:
+    """Return whether ``input`` is resampled in float32 and returned in its own dtype: true for float16/bfloat16.
+
+    The policy holds on every device. The CPU half ``grid_sample`` kernels are corrupt or missing (#5751). The CUDA
+    bicubic one is off by more than 1 on a ``[0, 1]`` image, the CUDA and MPS half gradients differ from the float32
+    ones, and under an autocast of the other half dtype a half ``grid_sample`` raises (#5814). Bilinear and nearest
+    sampling of a given grid is as accurate in half precision as in float32 on CUDA and MPS, so most of the error of
+    a half warp came from a sampling grid built in the half dtype, up to 0.98 in bfloat16 on both; the warps that
+    build their own grid therefore build it in float32 too (``kornia.geometry.transform.imgwarp._runs_in_float32``).
+    """
+    return input.dtype in (torch.float16, torch.bfloat16)
+
+
 def _torch_grid_sample(
     input: torch.Tensor,
     grid: torch.Tensor,
@@ -51,12 +65,16 @@ def _torch_grid_sample(
     padding_mode: str = "zeros",
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, CPU float16/bfloat16 in float32.
+    """Run :func:`torch.nn.functional.grid_sample` on 4-D or 5-D input, float16/bfloat16 in float32.
 
     torch's CPU half ``grid_sample`` returns corrupt values on sources of about 128 px and more, and
-    torch 2.5.1 has no such kernel (#5751). Other devices and dtypes call ``grid_sample`` unchanged.
+    torch 2.5.1 has no such kernel (#5751). On CUDA the half bicubic kernel is off by more than 1 on a ``[0, 1]``
+    image, the CUDA and MPS half gradients differ from the float32 ones, and under a float16 ``torch.autocast`` a
+    bfloat16 input raises (#5814). A half input with a grid of its own dtype is therefore sampled in float32 on every
+    device and returned in its dtype. A grid of another dtype, and every other input dtype, reach ``grid_sample``
+    unchanged, which rejects a mismatch as before.
     """
-    if input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16) and grid.dtype == input.dtype:
+    if _samples_half_in_float32(input) and grid.dtype == input.dtype:
         return F.grid_sample(
             input.float(), grid.float(), mode=mode, padding_mode=padding_mode, align_corners=align_corners
         ).to(input.dtype)
@@ -84,6 +102,12 @@ def _to_device_nonblocking(
     - A copy to the CPU stays blocking, because the host could otherwise read it before it arrives, and MPS and
       other targets keep the blocking copy, since they may read the source after the call returns.
 
+    A blocking copy that changes both the device and the dtype also casts on the CPU side: a copy to the CPU moves
+    and then casts, and a copy from the CPU casts and then moves. MPS has no float64. On torch 2.14 a single copy
+    from MPS to a float64 CPU tensor leaves the destination unwritten (pytorch/pytorch#197715), and so does the
+    backward of a single copy from a float64 CPU tensor to MPS. On torch 2.15 both raise, as does the backward of a
+    single copy from MPS to a float64 CPU tensor.
+
     Args:
         tensor: The tensor to move.
         device: The target device.
@@ -102,6 +126,12 @@ def _to_device_nonblocking(
         if dtype is not None and dtype != tensor.dtype:
             tensor = tensor.to(dtype=dtype)
         return tensor.to(device=device, non_blocking=True)
+    if dtype is not None and dtype != tensor.dtype and tensor.device != device:
+        # Cast on the CPU side, as the non-blocking copy does (see the docstring): MPS has no float64.
+        if device.type == "cpu":
+            return tensor.to(device=device).to(dtype=dtype)
+        if tensor.device.type == "cpu":
+            tensor = tensor.to(dtype=dtype)
     return tensor.to(device=device, dtype=dtype)
 
 
@@ -128,26 +158,43 @@ def is_mps_tensor_safe(x: torch.Tensor) -> bool:
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
-    """Try to get cuda device, if fail, return cpu.
+    """Return the CUDA device of a given index when CUDA is available, else the CPU.
+
+    ``device = get_cuda_device_if_available(index)`` returns ``torch.device(f"cuda:{index}")`` when
+    ``torch.cuda.is_available()`` is true and ``index`` is inside ``[0, torch.cuda.device_count())``;
+    ``torch.device("cpu")`` otherwise, so an out-of-range ``index`` on a machine with one GPU never hands
+    out a ``cuda:3`` device that only fails when a tensor is placed on it.
 
     Args:
-        index: cuda device index
+        index: the CUDA device index. Falls back to the CPU device when CUDA is unavailable or
+            ``index`` is outside ``[0, torch.cuda.device_count())``.
 
     Returns:
-        torch.device
+        ``cuda:<index>`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS instead on Apple silicon.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device, else the CPU.
 
     """
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and 0 <= index < torch.cuda.device_count():
         return torch.device(f"cuda:{index}")
 
     return torch.device("cpu")
 
 
 def get_mps_device_if_available() -> torch.device:
-    """Try to get mps device, if fail, return cpu.
+    """Return the Apple MPS device when it is available, else the CPU.
+
+    ``device = get_mps_device_if_available()`` returns ``torch.device("mps")`` when
+    ``torch.backends.mps.is_available()`` is true and ``torch.device("cpu")`` otherwise.
 
     Returns:
-        torch.device
+        ``mps`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device, else the CPU.
+        - :func:`~kornia.core.utils.get_cuda_or_mps_device_if_available`: picks MPS or CUDA by platform.
 
     """
     dev = "cpu"
@@ -157,10 +204,17 @@ def get_mps_device_if_available() -> torch.device:
 
 
 def get_cuda_or_mps_device_if_available() -> torch.device:
-    """Check OS and platform and run get_cuda_device_if_available or get_mps_device_if_available.
+    """Return the platform's accelerator, MPS on Apple silicon and CUDA elsewhere, else the CPU.
+
+    ``device = get_cuda_or_mps_device_if_available()`` returns :func:`~kornia.core.utils.get_mps_device_if_available` on
+    macOS on ``arm64`` and :func:`~kornia.core.utils.get_cuda_device_if_available` with index 0 on every other platform.
 
     Returns:
-        torch.device
+        ``mps``, ``cuda:0`` or ``cpu``.
+
+    See Also:
+        - :func:`~kornia.core.utils.get_cuda_device_if_available`: the CUDA device of a chosen index.
+        - :func:`~kornia.core.utils.get_mps_device_if_available`: the MPS device on any platform.
 
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
@@ -216,6 +270,18 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
         torch.float32 if dtype is not float32 or float64, otherwise returns the original dtype.
     """
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
+
+
+def _at_least_float32(input: torch.Tensor) -> torch.Tensor:
+    """Return a float16 or bfloat16 ``input`` in float32, and a float32 or float64 one as it is.
+
+    For an estimator that fits half-precision data in float32 and rounds its result once, on return: no backend
+    factorizes half precision, and the steps around the solve would each round to the input dtype. A float32 or
+    float64 input is the same tensor, so its result keeps its bits and its autograd graph.
+    """
+    if input.dtype in (torch.float16, torch.bfloat16):
+        return input.float()
+    return input
 
 
 def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
@@ -534,11 +600,60 @@ def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 
     Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
-    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode.
+    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode. TorchScript has no forward
+    mode and cannot compile the query.
+
+    Under ``torch.vmap`` the query reads through the batching wrappers: a wrapper hides both ``requires_grad`` and the
+    tangent of the tensor it batches, and the tangent query has no batching rule. Dynamo cannot unwrap, so a compiled
+    call under any function transform reports a derivative.
     """
     if torch.is_grad_enabled() and input.requires_grad:
         return True
+    if torch.jit.is_scripting():
+        return False
+    if torch._C._are_functorch_transforms_active():
+        # Dynamo marks ``get_unwrapped`` as skipped: unwrapping would break the graph. Each caller's derivative path
+        # computes the same function as its plain path, at a higher cost; for the clamps Inductor fuses the selection.
+        if is_compiling():
+            return True
+        while torch._C._functorch.is_batchedtensor(input):
+            input = torch._C._functorch.get_unwrapped(input)
+            if torch.is_grad_enabled() and input.requires_grad:
+                return True
     return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
+
+
+def _clamp_range(input: torch.Tensor, lower: float, upper: Optional[float] = None) -> torch.Tensor:
+    """Clamp ``input`` into ``[lower, upper]`` with an identity gradient on the closed range.
+
+    A clamp has no derivative at a bound: its one-sided derivatives are 0 and 1. torch returned 1 up to 2.13 and returns
+    0 from 2.14, its documented minimum-norm rule (pytorch/pytorch#191142). Kornia uses the derivative from inside the
+    range on every version: at an identity factor it is the only one on the documented input domain, and it lets a pixel
+    on a bound move back. Values outside the range get the bound and a zero gradient. ``upper=None`` has no upper bound.
+
+    The values always equal ``input.clamp(lower, upper)``, ``NaN`` included, so a call that records no gradient and
+    carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
+    unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
+    Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
+    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS, under Inductor (CPU and CUDA) and in the
+    SIMD lanes of eager arm64 CPU, while eager x86 CPU and CUDA keep ``-0.0``.
+    """
+    # A captured graph keeps the plain clamp: ``torch.jit.trace``'s check reruns under ``no_grad``, and an inference
+    # graph has no use for the selection. The gradient through a traced module then follows ``torch.clamp``.
+    # Selecting without a derivative costs 5 times a plain clamp or more on the CPU and about 3 to 4 times on CUDA
+    # (i7-14700K, RTX 4090).
+    if _is_tracing_or_exporting() or not _needs_derivatives(input):
+        return input.clamp(lower, upper)
+    # The clamp records nothing: ``where`` takes it only outside the range, where the gradient is zero anyway, and the
+    # backward of a recorded clamp made a forward and backward pass 1.7 to 2.5 times as slow on the CPU and 1.2 to 1.7
+    # times on CUDA.
+    clamped = input.detach().clamp(lower, upper)
+    return torch.where(clamped == input, input, clamped)
+
+
+def _clamp_unit_range(input: torch.Tensor) -> torch.Tensor:
+    """Clamp ``input`` into ``[0, 1]`` with :func:`_clamp_range`."""
+    return _clamp_range(input, 0.0, 1.0)
 
 
 def _symmetric_eigenvector(
@@ -720,6 +835,10 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     therefore never sees a singular matrix, and the gradient with respect to the valid systems (and to
     any parameter they share with an invalid one) stays finite.
 
+    .. note::
+        On MPS this needs torch 2.10 or later, or ``PYTORCH_ENABLE_MPS_FALLBACK=1`` on an older torch; see
+        :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         B: right-hand side of shape ``(*, N, K)`` or ``(*, N)``.
         A: square matrices of shape ``(*, N, N)``.
@@ -812,22 +931,38 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
 
 def is_autocast_enabled(both: bool = True) -> bool:
-    """Check if torch autocast is enabled.
+    """Report whether a ``torch.autocast`` region is active, for any device type or for torch's default one.
+
+    ``on = is_autocast_enabled()`` returns whether autocast is enabled for any of the CPU, CUDA, MPS and XPU device
+    types, so a ``torch.autocast("cpu")`` region counts. ``is_autocast_enabled(both=False)`` returns
+    ``torch.is_autocast_enabled()`` without a device type instead, which never reports CPU autocast, and on torch 2.5.1
+    does not report MPS autocast either. A region entered with ``enabled=False`` counts as off.
 
     Args:
-        both: if True, consider the autocast regions of the CPU, CUDA, MPS and XPU device types.
+        both: whether to consider the CPU, CUDA, MPS and XPU device types (``True``) or only the one
+            ``torch.is_autocast_enabled()`` reports (``False``).
 
     Returns:
-        If ``both`` is True, whether autocast is enabled for any of the CPU, CUDA, MPS or XPU device types, on every
-        supported torch version. If ``both`` is False, ``torch.is_autocast_enabled()`` without a device type, whose
-        device type depends on the torch version: it never reports CPU autocast, and on torch 2.5.1 it does not
-        report MPS autocast either.
+        Whether autocast is enabled.
 
     """
     if both:
         return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
 
     return torch.is_autocast_enabled()
+
+
+def _caller_autocast_on(device_type: str) -> bool:
+    """Return whether a caller's autocast region is on for ``device_type``; a device type without autocast has none."""
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
+    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
+    # instead of passing it to the ``except``.
+    if device_type == "meta":
+        return False
+    try:
+        return torch.is_autocast_enabled(device_type)
+    except RuntimeError:  # a device type without autocast, such as ``meta``
+        return False
 
 
 def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
@@ -838,18 +973,57 @@ def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
     too.
     """
-    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
-    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
-    # instead of passing it to the ``except``.
-    if device_type == "meta":
-        return nullcontext()
-    try:
-        enabled = torch.is_autocast_enabled(device_type)
-    except RuntimeError:  # a device type without autocast, such as ``meta``
-        enabled = False
-    if enabled:
+    if _caller_autocast_on(device_type):
         return torch.autocast(device_type=device_type, enabled=False)
     return nullcontext()
+
+
+def _convolution_outside_autocast(device_type: str) -> AbstractContextManager[Any]:
+    """Return :func:`_autocast_disabled` for a convolution, except under ``torch.compile`` on MPS.
+
+    A deliberate, scoped exception to running compiled and eager code alike (#6601). Compiled in an MPS autocast
+    region, a convolution under a nested ``torch.autocast(enabled=False)`` raises ``expected dtype torch.float32 but
+    got torch.bfloat16`` (or ``torch.float16``) on torch 2.14, 2.15 and the 2.16.0.dev20261106 nightly, with no kornia
+    code involved: compiled code on MPS drops the nested region (pytorch/pytorch#201630), and Inductor's check of the
+    convolution's output dtype then raises. The same convolution without the nested region runs. Skipping
+    the guard there returns those compiled calls to their earlier behaviour: they run, with the convolution in the
+    autocast dtype, as before the guard. Every other device, and every eager call on MPS, keeps the guard.
+
+    Scope: only the convolutions that build sampling positions or pyramid levels, in ``elastic_transform2d`` and
+    the two ``pyrdown`` calls of ``extract_patches_from_pyramid``. Cost, measured on an M1 with torch 2.15: those
+    compiled calls stay off the eager result by what the region rounds, 0.017 (bfloat16) and 0.0018 (float16) for
+    ``elastic_transform2d`` and 0.0027 and 0.00032 for ``extract_patches_from_pyramid`` on a ``[0, 1]`` image.
+    Retire this, and use :func:`_autocast_disabled` directly, once the oldest supported torch has the fix of
+    pytorch/pytorch#201630 (pytorch/pytorch#202422, which makes compiled code honour MPS autocast regions).
+    """
+    if device_type == "mps" and is_compiling():
+        return nullcontext()
+    return _autocast_disabled(device_type)
+
+
+def _reconcile_under_autocast(*tensors: Optional[torch.Tensor]) -> Tuple[Any, ...]:
+    """Return ``tensors`` in float32 if a caller's autocast region would have cast them to one dtype, else unchanged.
+
+    A matrix product in an autocast region casts its float16, bfloat16 and float32 operands to the autocast dtype, so a
+    half-precision matrix from a model under AMP multiplies with a float32 one there, and raises under
+    :func:`_autocast_disabled`. Call this before leaving the region: such operands then meet in float32, which also
+    keeps the arithmetic accurate. Autocast does not cast float64 or integer operands, so a mismatch with those, a
+    mismatch outside autocast, and operands of one dtype all return unchanged and behave as they did. ``None`` entries
+    pass through. TorchScript cannot compile this; a scripted call stays in the caller's region.
+    """
+    first = None
+    mismatched = False
+    for tensor in tensors:
+        if tensor is None:
+            continue
+        if tensor.dtype not in (torch.float32, torch.float16, torch.bfloat16):
+            return tensors
+        if first is None:
+            first = tensor
+        mismatched = mismatched or tensor.dtype != first.dtype
+    if first is None or not (mismatched and _caller_autocast_on(first.device.type)):
+        return tensors
+    return tuple(None if tensor is None else tensor.float() for tensor in tensors)
 
 
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.
@@ -935,7 +1109,8 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
     ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
     (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
     buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
-    built.
+    built. torch cannot deep-copy such a buffer, so a module using it takes ``_deepcopy_module_state`` as its
+    ``__deepcopy__``.
 
     Raises:
         TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
@@ -954,6 +1129,27 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
             module.register_buffer(name, x)
             return
     setattr(module, name, x)
+
+
+def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> torch.nn.Module:
+    """``copy.deepcopy`` for a module whose state ``register_module_state`` registered.
+
+    torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
+    raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
+    like a ``torch.save`` / ``torch.load`` round trip; the copy has no history, so no gradient flows
+    back through it. The same applies to a plain tensor attribute, which is where ``register_module_state``
+    stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
+    ``__deepcopy__``.
+    """
+    attributes = [value for value in module.__dict__.values() if isinstance(value, torch.Tensor)]
+    for tensor in [*module.buffers(recurse=False), *attributes]:
+        if tensor.grad_fn is not None and id(tensor) not in memo:
+            memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
+    copied = module.__class__.__new__(module.__class__)
+    memo[id(module)] = copied
+    # __setstate__, as the default deepcopy path calls it, so a class that normalizes its state there stays correct.
+    copied.__setstate__(copy.deepcopy(module.__dict__, memo))
+    return copied
 
 
 def dataclass_to_dict(obj: Any) -> Any:
@@ -1066,23 +1262,28 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
 def batched_forward(
     model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs: Any
 ) -> torch.Tensor:
-    r"""Run the forward in micro-batches.
+    """Run a model in micro-batches on a chosen device and return the output on the input's device.
 
-    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
-    In the end, it transfers the output to the device of the input data tensor.
-    E.g. running HardNet on 8000x1x32x32 tensor.
-
-    Removed from ``kornia.utils.memory`` in 0.8.3 and restored here as public API.
+    ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
+    slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
+    the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference. When another
+    micro-batch follows, its preceding output is copied before the next call, so a model may reuse its output buffer
+    without overwriting earlier results. The single-call path returns the model output without that extra copy.
 
     Args:
-        model: Any torch model, which outputs a single tensor as an output.
-        data: Input data of Bx(Any) shape.
-        device: which device should we run on.
-        batch_size: "micro-batch" size.
-        **kwargs: any other arguments, which accepts model.
+        model: a module that returns one tensor whose first dimension follows its input's.
+        data: the input tensor, ``(B, *)``.
+        device: the device to run the model on.
+        batch_size: the number of samples per call, a positive integer.
+        **kwargs: keyword arguments passed to every call of ``model``.
 
     Returns:
-        output of the model.
+        The concatenated model output, on ``data.device``.
+
+    Raises:
+        BaseError: if ``batch_size`` is not positive, or the model returns anything but a
+            single tensor (e.g. a tuple of tensors).
 
     Example:
         >>> import torch
@@ -1106,7 +1307,20 @@ def batched_forward(
             end = min((batch_idx + 1) * bs, B)
             if st >= end:
                 continue
-            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+            out = model_dev(data[st:end].to(device), **kwargs)
+            _check_batched_forward_output(out)
+            # A later model call may overwrite this output binding. The final batch is copied by cat itself;
+            # earlier batches need their own storage, at the cost of one copy per retained micro-batch output.
+            out_list.append(out.clone() if end < B else out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
-    return model_dev(data.to(device), **kwargs).to(data.device)
+    out = model_dev(data.to(device), **kwargs)
+    _check_batched_forward_output(out)
+    return out.to(data.device)
+
+
+def _check_batched_forward_output(output: Any) -> None:
+    KORNIA_CHECK(
+        isinstance(output, torch.Tensor),
+        lambda: f"batched_forward expects a model that returns a single tensor, got {type(output).__name__}",
+    )

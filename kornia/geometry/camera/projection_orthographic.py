@@ -46,6 +46,8 @@ def project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
         - :func:`unproject_points_orthographic`: the reverse, appending a ``z``.
         - :func:`dx_project_points_orthographic`: its derivative ``du/dx``.
         - :func:`project_points_z1`: the perspective counterpart, dividing by ``z``.
+        - :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`: the same projection on
+          ``Vector3`` points.
         - :func:`~kornia.geometry.camera.perspective.project_points`: perspective pixels from a ``3x3`` ``K``.
 
     Example:
@@ -88,6 +90,8 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
     See Also:
         - :func:`project_points_orthographic`: the reverse, dropping ``z``.
         - :func:`unproject_points_z1`: the perspective counterpart, scaling ``x`` and ``y`` by the depth.
+        - :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`: the same unprojection on
+          ``Vector2`` points.
 
     Example:
         >>> points = torch.tensor([1., 2.])

@@ -35,8 +35,8 @@ mask is thresholded Gaussian-blurred noise (about 30% foreground, blobs of varyi
 shape), the same for every backend. Connected components are exact 8-connected labelings in all
 labeling columns; kornia's default ``connected_components`` is left out because its fixed pooling
 budget does not guarantee a correct partition (see ``connected_components.md``). The distance
-transforms differ in accuracy: kornia's is a cascaded-convolution approximation
-(``kernel_size=3``), OpenCV's a 5x5 chamfer approximation, and SciPy's exact. kornia measures the
+transforms differ in accuracy: kornia and SciPy compute Euclidean distances for binary masks,
+while OpenCV uses a 5x5 chamfer approximation. kornia measures the
 distance to the nearest foreground pixel, OpenCV and SciPy to the nearest zero, so the latter two
 receive the inverted mask and all three answer the same question. The labelers get the mask in
 their fastest input type, converted outside the timed call: ``uint8`` for OpenCV and ``bool`` for

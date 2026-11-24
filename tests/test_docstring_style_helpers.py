@@ -33,12 +33,15 @@ from testing import docstring_style
 from testing.docstring_style import (
     _Attribute,
     catalog_missing,
+    catalog_namespaces,
     catalog_required,
     catalog_unimportable,
+    checked_objects,
     covered,
     docstring_roles,
     documented_members,
     forwards_to,
+    has_catalog,
     intersphinx_names,
     is_deprecated_wrapper,
     is_documented,
@@ -49,7 +52,6 @@ from testing.docstring_style import (
     public_objects,
     reference_resolves,
     resolve_reference,
-    rollout_objects,
     see_also_entries,
     sphinx_registry,
     status_target,
@@ -213,7 +215,8 @@ def test_only_func_and_meth_drop_parentheses():
 
 
 def test_short_names_need_a_documented_object():
-    reg = _registry()
+    # Keep this object deliberately unregistered even as the real documentation grows.
+    reg = {name: obj for name, obj in _registry().items() if obj is not AutoContrast}
     assert is_documented(depth_to_3d, reg)
     assert not is_documented(AutoContrast, reg)
     # With no page, and so no scope, only a full name resolves from its docstring.
@@ -484,6 +487,28 @@ def test_catalog_required():
     # kornia.enhance re-exports everything kornia.enhance.normalize declares, as the same objects.
     assert not catalog_required("kornia.enhance.normalize", ["kornia.enhance"])
     assert catalog_required("kornia.enhance.normalize", [])
+
+
+def test_has_catalog():
+    assert has_catalog("Title.\n\nWhich function to use:\n\n- :func:`a`.")
+    assert has_catalog("Title.\n\nWhich class to use, by the failure to catch:\n")
+    assert has_catalog("Title.\n\nWhich function or class to use, with the module form after the function:\n")
+    assert not has_catalog("Title.\n\nThe functions here share one convention.")
+    # only at the start of a line, so a sentence that asks the question in prose opens no catalog
+    assert not has_catalog("Title. Ask which function to use first.")
+
+
+def test_catalog_namespaces():
+    listed = catalog_namespaces(["kornia.enhance", "kornia.filters"])
+    # kornia.enhance re-exports kornia.enhance.normalize, so only the package needs a catalog
+    assert "kornia.enhance" in listed
+    assert "kornia.enhance.normalize" not in listed
+    # kornia.filters re-exports kornia.filters.blur_pool too, but its module docstring keeps a catalog of its own
+    assert "kornia.filters.blur_pool" in listed
+    assert all(covered(name, ["kornia.enhance", "kornia.filters"]) for name in listed)
+    # an excepted namespace is not listed and does not count as a catalog above its children, so they need their own
+    assert "kornia.enhance" not in catalog_namespaces(["kornia.enhance"], ["kornia.enhance"])
+    assert "kornia.enhance.normalize" in catalog_namespaces(["kornia.enhance"], ["kornia.enhance"])
 
 
 def test_own_docstring_and_public_objects():
@@ -963,7 +988,7 @@ def _undocumented_only():
     pass
 
 
-def test_rollout_objects_union_exported_and_documented_objects(monkeypatch):
+def test_checked_objects_union_exported_and_documented_objects(monkeypatch):
     # Only kornia-defined classes count, so give the synthetic class a kornia ``__module__``.
     monkeypatch.setattr(_OnlyDocumented, "__module__", "kornia.synthetic", raising=False)
     monkeypatch.setattr(_OnlyDocumented.method, "__module__", "kornia.synthetic")
@@ -979,11 +1004,11 @@ def test_rollout_objects_union_exported_and_documented_objects(monkeypatch):
         "kornia.synthetic.not_kornia": inspect.getdoc,
         "kornia.synthetic._undocumented_only": _undocumented_only,
     }
-    selected = rollout_objects(registry)
+    selected = checked_objects(registry)
     names = sorted(qualified for _, qualified in selected.values())
     assert names == ["kornia.geometry.depth.depth_to_3d", "kornia.synthetic._OnlyDocumented"]
     assert id(_OnlyDocumented.method) not in selected
-    assert [q for _, q in rollout_objects(registry, with_docstring=False).values()] == [
+    assert [q for _, q in checked_objects(registry, with_docstring=False).values()] == [
         "kornia.synthetic._undocumented_only"
     ]
     # One object registered under two names is one entry of the documented walk.

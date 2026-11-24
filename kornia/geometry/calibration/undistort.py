@@ -25,6 +25,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _at_least_float32
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -66,6 +67,9 @@ def undistort_points(
           coefficients included.
         - the skew entries ``K[0, 1]`` and ``new_K[0, 1]`` are ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
+        - float16 and bfloat16 inputs are iterated in float32 and the result is returned in their dtype.
+        - a caller's autocast region does not change the result, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
@@ -100,6 +104,8 @@ def undistort_points(
           normalized points.
         - :func:`~kornia.geometry.camera.undistort_points_affine`: the intrinsics alone, from pixels to normalized
           points, in closed form.
+        - :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`: the same inverse on ``Vector2``
+          pixels, to normalized points.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -126,6 +132,13 @@ def undistort_points(
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
+
+    # Half-precision inputs are iterated in float32: each step would otherwise round the normalized coordinates and
+    # the polynomials to the input dtype, and the pixel result is rounded once at the end.
+    out_dtype = torch.promote_types(
+        torch.promote_types(points.dtype, K.dtype), torch.promote_types(dist.dtype, new_K.dtype)
+    )
+    points, K, new_K, dist = (_at_least_float32(t) for t in (points, K, new_K, dist))
 
     has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
@@ -188,7 +201,9 @@ def undistort_points(
     new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
-    return torch.stack([x, y], -1)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
@@ -215,6 +230,9 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
+        - a float16 or bfloat16 image builds the map, distorts it and samples in float32, with ``K`` and ``dist``
+          cast to float32, and returns the image dtype; in half precision the pixel coordinates themselves round to
+          half pixels (float16, from 512) or whole pixels (bfloat16, from 128).
 
     Args:
         image: Input image with shape ``(*, C, H, W)``.
@@ -266,8 +284,14 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)
 
+    # Pixel coordinates reach the image size, where float16 rounds them to half pixels from 512 and bfloat16 to whole
+    # pixels from 128, so a half image builds and distorts its map and samples in float32, as the warps do.
+    work_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    if work_dtype != image.dtype:
+        K, dist = K.to(work_dtype), dist.to(work_dtype)
+
     # Create point coordinates for each pixel of the image
-    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
+    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, work_dtype)
     pts = xy_grid.reshape(-1, 2)  # (rows*cols)x2 matrix of pixel coordinates
 
     # Distort points and define maps
@@ -276,6 +300,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image.reshape(B, channels, rows, cols), mapx, mapy, align_corners=True)
+    out = remap(image.reshape(B, channels, rows, cols).to(work_dtype), mapx, mapy, align_corners=True)
 
-    return out.view_as(image)
+    return out.to(image.dtype).view_as(image)

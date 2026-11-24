@@ -23,6 +23,17 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _at_least_float32, _autocast_disabled
+
+
+def _tilt_matmul(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    """Keep float32 tilt products in float32 inside a caller's autocast region."""
+    if torch.jit.is_scripting():
+        return left @ right
+    if left.dtype == torch.float32 and right.dtype == torch.float32:
+        with _autocast_disabled(left.device.type):
+            return left @ right
+    return left @ right
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
@@ -43,6 +54,8 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``eye(3)``.
         - scalar angles return ``(3, 3)``; otherwise a trailing singleton angle axis, if present, is
           consumed and the remaining dimensions are the batch shape.
+        - The entries are evaluated directly from the angles, without matrix products. A caller's autocast
+          region therefore leaves float32 angles and the returned matrix in float32.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -74,49 +87,27 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     cTy = torch.cos(tauy)
     sTy = torch.sin(tauy)
     zero = torch.zeros_like(cTx)
-    one = torch.ones_like(cTx)
-
-    Rx = torch.stack(
-        [
-            torch.stack([one, zero, zero], -1),
-            torch.stack([zero, cTx, sTx], -1),
-            torch.stack([zero, -sTx, cTx], -1),
-        ],
-        -2,
-    )
-    Ry = torch.stack(
-        [
-            torch.stack([cTy, zero, -sTy], -1),
-            torch.stack([zero, one, zero], -1),
-            torch.stack([sTy, zero, cTy], -1),
-        ],
-        -2,
-    )
-    R = Ry @ Rx
-
+    # Multiplying Pz @ Ry @ Rx cancels the upper off-diagonal entries exactly.
     if return_inverse:
-        invR22 = 1 / R[..., 2, 2]
-        invPz = torch.stack(
+        inv_cTx = 1 / cTx
+        inv_cTy = 1 / cTy
+        return torch.stack(
             [
-                torch.stack([invR22, zero, R[..., 0, 2] * invR22], -1),
-                torch.stack([zero, invR22, R[..., 1, 2] * invR22], -1),
-                torch.stack([zero, zero, one], -1),
+                torch.stack([inv_cTx, zero, zero], -1),
+                torch.stack([sTx * sTy * inv_cTx * inv_cTy, inv_cTy, zero], -1),
+                torch.stack([-sTy * inv_cTy, sTx * inv_cTx * inv_cTy, inv_cTx * inv_cTy], -1),
             ],
             -2,
         )
 
-        return R.transpose(-1, -2) @ invPz
-
-    Pz = torch.stack(
+    return torch.stack(
         [
-            torch.stack([R[..., 2, 2], zero, -R[..., 0, 2]], -1),
-            torch.stack([zero, R[..., 2, 2], -R[..., 1, 2]], -1),
-            torch.stack([zero, zero, one], -1),
+            torch.stack([cTx, zero, zero], -1),
+            torch.stack([-sTx * sTy, cTy, zero], -1),
+            torch.stack([sTy, -cTy * sTx, cTy * cTx], -1),
         ],
         -2,
     )
-
-    return Pz @ R
 
 
 def distort_points(
@@ -153,6 +144,9 @@ def distort_points(
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
         - ``points`` must be ``(*, N, 2)``: a trailing size other than 2, or a single ``(2,)`` point, raises
           :class:`~kornia.core.exceptions.ShapeError`.
+        - float16 and bfloat16 inputs are distorted in float32 and the result is returned in their dtype.
+        - a caller's autocast region does not change the result, outside TorchScript, where a scripted call keeps the
+          caller's precision. Under ``torch.compile`` on MPS it still does (torch ignores the nested guard there).
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
@@ -180,6 +174,8 @@ def distort_points(
           and a flat 8-vector.
         - :func:`~kornia.geometry.camera.distort_points_affine`: the intrinsics alone, from normalized points and a
           flat ``[fx, fy, cx, cy]``.
+        - :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`: the same distortion from
+          normalized ``Vector2`` points, with the coefficients in a 12-value parameter vector.
 
     Example:
         >>> points = torch.rand(1, 1, 2)
@@ -200,6 +196,12 @@ def distort_points(
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
+
+    # Half-precision inputs are distorted in float32, so that the pixel result is rounded once, at the end.
+    out_dtype = torch.promote_types(
+        torch.promote_types(points.dtype, K.dtype), torch.promote_types(dist.dtype, new_K.dtype)
+    )
+    points, K, new_K, dist = (_at_least_float32(t) for t in (points, K, new_K, dist))
 
     has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
@@ -245,7 +247,7 @@ def distort_points(
         tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        points_untilt = torch.stack([xd, yd, torch.ones_like(xd)], -1) @ tilt.transpose(-2, -1)
+        points_untilt = _tilt_matmul(torch.stack([xd, yd, torch.ones_like(xd)], -1), tilt.transpose(-2, -1))
         xd = points_untilt[..., 0] / points_untilt[..., 2]
         yd = points_untilt[..., 1] / points_untilt[..., 2]
 
@@ -258,4 +260,6 @@ def distort_points(
     x = fx * xd + cx
     y = fy * yd + cy
 
-    return torch.stack([x, y], -1)
+    out = torch.stack([x, y], -1)
+    # Only a half-precision result is cast back: integer inputs return the float32 result of the arithmetic.
+    return out.to(out_dtype) if out_dtype in (torch.float16, torch.bfloat16) else out

@@ -34,10 +34,6 @@ class TestFaceDetection(BaseTester):
         return kornia.contrib.FaceDetector().to(device, dtype)
 
     @pytest.mark.slow
-    def test_smoke(self, device, dtype):
-        assert kornia.contrib.FaceDetector().to(device, dtype) is not None
-
-    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
@@ -47,7 +43,6 @@ class TestFaceDetection(BaseTester):
         assert isinstance(dets, list)
         assert len(dets) == batch_size  # same as the number of images
         assert isinstance(dets[0], torch.Tensor)
-        assert dets[0].shape[0] >= 0  # number of detections
         assert dets[0].shape[1] == 15  # dims of each detection
 
     @pytest.mark.slow
@@ -147,18 +142,22 @@ class TestFaceDetection(BaseTester):
         monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
         assert {m.training for m in YuNet("test", pretrained=True).modules()} == {False}
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("phase", ["test", "train"])
     def test_yunet_empty_batch_6266(self, device, dtype, phase):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         model = YuNet(phase, pretrained=False).to(device, dtype).eval()
         out = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
         assert {k: v.shape for k, v in out.items()} == {"loc": (0, 235, 14), "conf": (0, 235, 2), "iou": (0, 235, 1)}
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_empty_batch_6266(self, device, dtype, monkeypatch):
         """An empty batch gives one detection tensor per image: none."""
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         state_dict = YuNet("test", pretrained=False).state_dict()
         monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
         face_detector = kornia.contrib.FaceDetector().to(device, dtype)

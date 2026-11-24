@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import (
@@ -32,7 +31,7 @@ from kornia.core.exceptions import AsyncCheckError
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
-from .filter import _to_floating, filter2d, filter2d_separable
+from .filter import _pad, _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 # This build capability is immutable; querying it inside forward breaks Dynamo
@@ -76,8 +75,8 @@ def _gaussian_blur2d_cpu(
     for axis, kernel in ((-1, kernel_x), (-2, kernel_y)):
         size = input.shape[axis]
         radius = kernel.shape[-1] // 2
-        padding = (radius, radius, 0, 0) if axis == -1 else (0, 0, radius, radius)
-        padded = F.pad(input, padding, mode=border_type)
+        padding = [radius, radius, 0, 0] if axis == -1 else [0, 0, radius, radius]
+        padded = _pad(input, padding, border_type)
         output = padded.narrow(axis, 0, size) * kernel[:, 0, None, None, None]
         for tap in range(1, kernel.shape[-1]):
             values = padded.narrow(axis, tap, size)
@@ -97,12 +96,12 @@ def gaussian_blur2d(
     border_type: str = "reflect",
     separable: bool = True,
 ) -> torch.Tensor:
-    r"""Create an operator that blurs a torch.Tensor using a Gaussian filter.
+    r"""Blur an image with a Gaussian kernel of size ``kernel_size`` and standard deviation ``sigma``.
+
+    ``out = gaussian_blur2d(input, kernel_size, sigma)`` smooths each channel of a ``(B, C, H, W)`` image with a
+    Gaussian and returns an image of the same shape. For a kernel of your own, use :func:`filter2d`.
 
     .. image:: _static/img/gaussian_blur2d.png
-
-    The operator smooths the given torch.Tensor with a gaussian kernel by convolving
-    it to each channel. It supports batched operation.
 
     Convention:
         - ``kernel_size`` is ``(kH, kW)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)`: both give the rows (y)
@@ -114,19 +113,16 @@ def gaussian_blur2d(
         - An integer or bool input is blurred in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`; ``sigma`` is cast to float32 as well.
 
-    Arguments:
-        input: the input torch.Tensor with shape ``(B,C,H,W)``.
-        kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
-        sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.Tensor
-            with shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
-            Values must be positive; the note below says when that is checked.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``, case-insensitive. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions. Default: ``True``.
+    Args:
+        input: image with shape ``(B, C, H, W)``.
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both; each a positive odd integer.
+        sigma: standard deviation ``(sigma_y, sigma_x)`` in pixels, positive. A tuple of floats, or a tensor with
+          shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
+        border_type: padding mode, ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``, case-insensitive.
+        separable: ``True`` applies two 1D passes, ``False`` one 2D kernel. The results agree to rounding.
 
     Returns:
-        the blurred torch.Tensor with shape ``(B, C, H, W)``.
+        the blurred image with shape ``(B, C, H, W)``.
 
     Raises:
         ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
@@ -139,17 +135,19 @@ def gaussian_blur2d(
         ~kornia.core.exceptions.BaseError: if kernel_size is not a positive odd integer.
 
     .. note::
-       A tuple or a CPU tensor ``sigma`` is checked on the host during the call. A ``sigma`` tensor on an
-       accelerator is checked there with ``torch._assert_async``, so the call does not wait for the device to read it
-       back: a value that is not positive raises ``RuntimeError`` by the next synchronization. On CUDA that error is
-       a device-side assert, after which the CUDA context cannot be used. MPS has the assert from torch 2.13; on an
-       older release ``sigma`` is read on the host instead. The check is skipped under ``torch.compile`` and when
-       checks are disabled with :func:`~kornia.core.check.disable_checks`.
+       On CUDA a failed check of a device ``sigma`` is a device-side assert, after which the CUDA context cannot be
+       used. The positivity check is skipped under ``torch.compile`` and after ``kornia.core.check.disable_checks()``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
 
-    Examples:
+    See Also:
+        - :class:`GaussianBlur2d`: the module form.
+        - :func:`filter2d`: filters with a kernel you pass in.
+        - :func:`bilateral_blur`: also weights neighbours by value difference, so edges survive.
+        - :func:`get_gaussian_kernel2d`: the 2D kernel this blur applies.
+
+    Example:
         >>> import torch
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = gaussian_blur2d(input, (3, 3), (1.5, 1.5))
@@ -252,31 +250,29 @@ def _gaussian_blur2d(
 
 
 class GaussianBlur2d(nn.Module):
-    r"""Create an operator that blurs a torch.Tensor using a Gaussian filter.
+    r"""Blur an image with a stored Gaussian kernel size and ``sigma`` (module form).
 
-    The operator smooths the given torch.Tensor with a gaussian kernel by convolving
-    it to each channel. It supports batched operation.
+    ``blur = GaussianBlur2d(kernel_size, sigma)`` stores its arguments, and ``out = blur(input)`` is
+    :func:`gaussian_blur2d` on a ``(B, C, H, W)`` image.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.gaussian_blur2d`.
 
-    Arguments:
-        kernel_size: the size of the kernel.
-        sigma: the standard deviation of the kernel.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions.
-
-    Returns:
-        the blurred torch.Tensor.
+    Args:
+        kernel_size: window ``(kH, kW)`` in pixels, or one integer for both.
+        sigma: standard deviation ``(sigma_y, sigma_x)`` in pixels, as a tuple or a tensor.
+        border_type: padding mode, as in :func:`gaussian_blur2d`.
+        separable: ``True`` applies two 1D passes, ``False`` one 2D kernel.
 
     Shape:
         - Input: ``(B, C, H, W)``
         - Output: ``(B, C, H, W)``
 
-    Examples::
+    See Also:
+        - :func:`gaussian_blur2d`: the one-call form.
+        - :class:`BoxBlur`: a uniform average, with no ``sigma``.
 
+    Example:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> gauss = GaussianBlur2d((3, 3), (1.5, 1.5))
         >>> output = gauss(input)  # 2x4x5x5

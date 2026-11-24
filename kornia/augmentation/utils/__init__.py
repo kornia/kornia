@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 
-"""Kornia Augmentation Utils — Helper functions and utilities for augmentations.
+"""Provide internal helpers for augmentation validation, sampling and tensor layouts.
 
-This subpackage provides internal helpers and utility functions for augmentation modules.
+These implementation utilities are not a stable public API.
 """
 
 from kornia.augmentation.utils.helpers import (

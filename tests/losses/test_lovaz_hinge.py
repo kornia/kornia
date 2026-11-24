@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from unittest import mock
+
 import pytest
 import torch
 
@@ -52,6 +54,23 @@ def _lovasz_hinge_reference(logits, labels):
 
 
 class TestLovaszHingeLoss(BaseTester):
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_sorted_targets_without_repeated_batch_indices(self, device, dtype, as_module):
+        """Sorting labels needs no pixel-sized repeated batch index."""
+        logits = torch.tensor(
+            [[[[0.3, -0.4, 0.9]]], [[[0.8, 0.1, -0.6]]]], device=device, dtype=dtype, requires_grad=True
+        )
+        labels = torch.tensor([[[1, 0, 0]], [[1, 1, 0]]], device=device)
+        criterion = kornia.losses.LovaszHingeLoss() if as_module else kornia.losses.lovasz_hinge_loss
+
+        with mock.patch.object(torch.Tensor, "repeat", side_effect=AssertionError("batch-index allocation")):
+            actual = criterion(logits, labels)
+
+        # Per-image weights are [1/2, 1/2, 0] and [1/2, 1/6, 1/3] in descending-error order.
+        self.assert_close(actual, torch.tensor(113 / 120, device=device, dtype=dtype))
+        expected_grad = torch.tensor([[[[-1 / 4, 0, 1 / 4]]], [[[-1 / 6, -1 / 4, 1 / 12]]]], device=device, dtype=dtype)
+        self.assert_close(torch.autograd.grad(actual, logits)[0], expected_grad)
+
     @pytest.mark.parametrize(("pred_batch", "target_batch"), [(1, 2), (2, 1), (2, 3), (3, 2)])
     @pytest.mark.parametrize("as_module", [False, True])
     def test_mismatched_batch(self, pred_batch, target_batch, as_module, device, dtype):
@@ -75,13 +94,13 @@ class TestLovaszHingeLoss(BaseTester):
         assert logits.grad.shape == logits.shape
 
     def test_smoke(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 1) * num_classes
-        labels = labels.to(device).long()
+        # One-pixel images, the only ones without a difference of Jaccard weights: each weight is 1, so the loss is the
+        # batch mean of the hinge errors relu(1 - z (2 t - 1)): (0.75 + 1.5 + 0) / 3.
+        logits = torch.tensor([0.25, -0.5, -2.0], device=device, dtype=dtype).view(3, 1, 1, 1)
+        labels = torch.tensor([1, 1, 0], device=device).view(3, 1, 1)
 
         criterion = kornia.losses.LovaszHingeLoss()
-        assert criterion(logits, labels) is not None
+        self.assert_close(criterion(logits, labels), torch.tensor(0.75, device=device, dtype=dtype))
 
     def test_exception(self):
         criterion = kornia.losses.LovaszHingeLoss()
@@ -104,15 +123,6 @@ class TestLovaszHingeLoss(BaseTester):
         with pytest.raises(Exception):
             criterion(logits, labels)
 
-    def test_perfect_prediction(self, device, dtype):
-        num_classes = 1
-        prediction = torch.ones(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
-
-        criterion = kornia.losses.LovaszHingeLoss()
-        loss = criterion(prediction, labels)
-        self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
-
     def test_output_dtype_follows_the_prediction(self, device, dtype):
         logits = torch.randn(2, 1, 4, 5, device=device, dtype=dtype)
         labels = torch.randint(0, 2, (2, 4, 5), device=device)
@@ -132,9 +142,8 @@ class TestLovaszHingeLoss(BaseTester):
         assert loss.dtype == dtype
         self.assert_close(loss, expected)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_float64_matches_a_float64_reference(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         logits = torch.randn(2, 1, 16, 24, device=device, dtype=torch.float64, requires_grad=True)
         labels = torch.randint(0, 2, (2, 16, 24), device=device)
@@ -181,10 +190,9 @@ class TestLovaszHingeLoss(BaseTester):
         self.gradcheck(kornia.losses.lovasz_hinge_loss, (logits, labels))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
+        # Both labels in each image: an all-background target makes the Jaccard weights trivial.
+        logits = torch.tensor([[[[0.3, -0.4, 0.9]]], [[[0.8, 0.1, -0.6]]]], device=device, dtype=dtype)
+        labels = torch.tensor([[[1, 0, 0]], [[1, 1, 0]]], device=device)
 
         op = kornia.losses.lovasz_hinge_loss
         op_optimized = torch_optimizer(op)

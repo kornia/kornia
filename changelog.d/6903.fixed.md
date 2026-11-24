@@ -1,0 +1,1 @@
+`Hyperplane.signed_distance`, `abs_distance` and `projection` now raise `ShapeError` for a tensor point that does not end in 3 coordinates, instead of broadcasting a one-coordinate tensor such as `[7.]` as the point `(7, 7, 7)`.

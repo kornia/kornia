@@ -42,6 +42,16 @@ _CUBE = [
 
 @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64, torch.float16, torch.bfloat16])
 class TestCoordinateDtypes(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            p["device_name"] != "mps"
+            or not (
+                p["input_dtype"] == torch.float64
+                or (p["input_dtype"] == torch.int64 and p["default_dtype"] == torch.float64)
+            )
+        ),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize(
         "constructor, coordinates",
         [
@@ -68,8 +78,6 @@ class TestCoordinateDtypes(BaseTester):
             if input_dtype == torch.int64
             else input_dtype
         )
-        if device.type == "mps" and torch.float64 in (input_dtype, expected_dtype):
-            pytest.skip("MPS does not support float64")
         source = torch.tensor(coordinates, device=device, dtype=input_dtype)
         original_default = torch.get_default_dtype()
         try:
@@ -86,11 +94,13 @@ class TestCoordinateDtypes(BaseTester):
         finally:
             torch.set_default_dtype(original_default)
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["device_name"] != "mps" or p["default_dtype"] != torch.float64,
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("box_class, dimensions", [(Boxes, 2), (Boxes3D, 3)])
     def test_integer_transform_dtype(self, device, default_dtype, box_class, dimensions):
         expected_dtype = torch.float64 if default_dtype == torch.float64 else torch.float32
-        if device.type == "mps" and expected_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         vertices = torch.zeros((1, 2**dimensions, dimensions), device=device, dtype=expected_dtype)
         transform = torch.eye(dimensions + 1, device=device, dtype=torch.int64)
         translation = torch.tensor([2049, 2051, 257][:dimensions], device=device, dtype=torch.int64)

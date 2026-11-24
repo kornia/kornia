@@ -47,67 +47,7 @@ from testing.base import BaseTester
 
 
 class TestDeprecatedWrappers:
-    """Verify that every re-exported function in kornia.utils emits a DeprecationWarning."""
-
-    def test_create_meshgrid_warns(self):
-        with pytest.warns(DeprecationWarning, match="kornia.geometry.create_meshgrid"):
-            out = utils.create_meshgrid(4, 4)
-        assert out.shape == (1, 4, 4, 2)
-
-    def test_create_meshgrid3d_warns(self):
-        with pytest.warns(DeprecationWarning, match="kornia.geometry.create_meshgrid3d"):
-            out = utils.create_meshgrid3d(2, 3, 4)
-        assert out.shape == (1, 2, 3, 4, 3)
-
-    def test_draw_line_warns(self):
-        img = torch.zeros(3, 16, 16)
-        p1 = torch.tensor([0, 0])
-        p2 = torch.tensor([7, 7])
-        color = torch.tensor([1.0, 0.0, 0.0])
-        with pytest.warns(DeprecationWarning, match="kornia.image.draw_line"):
-            out = utils.draw_line(img, p1, p2, color)
-        assert out.shape == img.shape
-
-    def test_draw_rectangle_warns(self):
-        img = torch.zeros(1, 3, 16, 16)
-        rect = torch.tensor([[[2, 2, 10, 10]]], dtype=torch.float32)
-        with pytest.warns(DeprecationWarning, match="kornia.image.draw_rectangle"):
-            out = utils.draw_rectangle(img, rect)
-        assert out.shape == img.shape
-
-    def test_draw_point2d_warns(self):
-        img = torch.zeros(1, 3, 16, 16)
-        points = torch.tensor([[4, 4]], dtype=torch.long)
-        color = torch.tensor([0.0, 1.0, 0.0])
-        with pytest.warns(DeprecationWarning, match="kornia.image.draw_point2d"):
-            out = utils.draw_point2d(img[0], points, color)
-        assert out.shape == img[0].shape
-
-    def test_draw_convex_polygon_warns(self):
-        img = torch.zeros(1, 3, 16, 16)
-        polygon = torch.tensor([[[2.0, 2.0], [14.0, 2.0], [14.0, 14.0], [2.0, 14.0]]])
-        color = torch.tensor([[1.0, 0.0, 0.0]])
-        with pytest.warns(DeprecationWarning, match="kornia.image.draw_convex_polygon"):
-            out = utils.draw_convex_polygon(img, polygon, color)
-        assert out.shape == img.shape
-
-    def test_image_to_tensor_warns(self):
-        arr = np.zeros((8, 8, 3), dtype=np.uint8)
-        with pytest.warns(DeprecationWarning, match="kornia.image.image_to_tensor"):
-            t = utils.image_to_tensor(arr)
-        assert isinstance(t, torch.Tensor)
-
-    def test_tensor_to_image_warns(self):
-        t = torch.zeros(3, 8, 8)
-        with pytest.warns(DeprecationWarning, match="kornia.image.tensor_to_image"):
-            arr = utils.tensor_to_image(t)
-        assert arr is not None
-
-    def test_one_hot_warns(self):
-        labels = torch.tensor([0, 1, 2])
-        with pytest.warns(DeprecationWarning, match="kornia.losses.one_hot"):
-            out = utils.one_hot(labels, num_classes=3, device=torch.device("cpu"), dtype=torch.float32)
-        assert out.shape == (3, 3)
+    """How the kornia.utils re-exports warn; each shim's own warning and result: TestShimsForwardEveryParameter."""
 
     def test_all_wrappers_in_all(self):
         expected = {
@@ -169,55 +109,6 @@ class TestRestoredWrappers:
     whose implementations still exist elsewhere in the library.
     """
 
-    def test_eye_like_warns(self):
-        with pytest.warns(DeprecationWarning, match="kornia.core.ops.eye_like"):
-            out = utils.eye_like(3, torch.rand(2, 4, 4))
-        assert out.shape == (2, 3, 3)
-
-    def test_vec_like_warns(self):
-        with pytest.warns(DeprecationWarning, match="kornia.core.ops.vec_like"):
-            out = utils.vec_like(3, torch.rand(2, 4, 4))
-        assert out.shape == (2, 3, 1)
-
-    def test_safe_solve_with_mask_warns(self):
-        A = torch.eye(3)[None]
-        b = torch.rand(1, 3, 3)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.safe_solve_with_mask"):
-            sol, _, mask = utils.safe_solve_with_mask(b, A)
-        assert sol.shape == b.shape
-        assert bool(mask.all())
-
-    def test_safe_inverse_with_mask_warns(self):
-        A = torch.eye(3)[None]
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.safe_inverse_with_mask"):
-            inv, mask = utils.safe_inverse_with_mask(A)
-        assert inv.shape == A.shape
-        assert bool(mask.all())
-
-    def test_is_mps_tensor_safe_warns(self):
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.is_mps_tensor_safe"):
-            out = utils.is_mps_tensor_safe(torch.rand(1))
-        assert out is False
-
-    def test_dataclass_roundtrip_warns(self):
-        from dataclasses import dataclass
-
-        @dataclass
-        class _Cfg:
-            a: int
-
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.dataclass_to_dict"):
-            d = utils.dataclass_to_dict(_Cfg(a=1))
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.dict_to_dataclass"):
-            cfg = utils.dict_to_dataclass(d, _Cfg)
-        assert cfg == _Cfg(a=1)
-
-    def test_image_list_to_tensor_warns(self):
-        arrs = [np.zeros((8, 8, 3), dtype=np.uint8)] * 2
-        with pytest.warns(DeprecationWarning, match="kornia.image.image_list_to_tensor"):
-            t = utils.image_list_to_tensor(arrs)
-        assert t.shape == (2, 3, 8, 8)
-
     def test_image_to_tensor_module_warns(self):
         with pytest.warns(DeprecationWarning, match="kornia.image.ImageToTensor"):
             mod = utils.ImageToTensor()
@@ -241,45 +132,11 @@ class TestRestoredWrappers:
 
         assert cls is CachedDownloader
 
-    def test_batched_forward_warns(self):
-        x = torch.rand(300, 2)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.batched_forward"):
-            out = utils.batched_forward(torch.nn.Identity(), x, torch.device("cpu"), batch_size=128)
-        assert torch.allclose(out, x)
-
-    def test_get_sample_images_no_download_warns(self, tmp_path):
-        # empty path list: warns and returns an empty list without touching the network
-        with pytest.warns(DeprecationWarning, match="kornia.io.get_sample_images"):
-            out = utils.get_sample_images(paths=[], download=False, cache_dir=str(tmp_path))
-        assert out == []
-
-    def test_torch_meshgrid_warns(self):
-        with pytest.warns(DeprecationWarning, match="torch.meshgrid"):
-            xs, _ys = utils.torch_meshgrid([torch.arange(2), torch.arange(3)], indexing="ij")
-        assert xs.shape == (2, 3)
-
     def test_map_location_to_cpu_warns(self):
         t = torch.rand(2)
         with pytest.warns(DeprecationWarning, match="map_location"):
             out = utils.map_location_to_cpu(t, "cuda:0")
         assert out is t
-
-    def test_device_and_env_helpers_warn(self):
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_cuda_device_if_available"):
-            dev = utils.get_cuda_device_if_available()
-        assert isinstance(dev, torch.device)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_mps_device_if_available"):
-            dev = utils.get_mps_device_if_available()
-        assert isinstance(dev, torch.device)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_cuda_or_mps_device_if_available"):
-            dev = utils.get_cuda_or_mps_device_if_available()
-        assert isinstance(dev, torch.device)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.is_autocast_enabled"):
-            out = utils.is_autocast_enabled()
-        assert isinstance(out, bool)
-        with pytest.warns(DeprecationWarning, match="kornia.core.utils.xla_is_available"):
-            out = utils.xla_is_available()
-        assert isinstance(out, bool)
 
     def test_v082_public_surface_fully_restored(self):
         """Every public name from v0.8.2's kornia.utils.__all__ must still resolve.

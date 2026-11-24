@@ -25,7 +25,7 @@ import torch
 
 from kornia.config import LazyLoaderConfig, kornia_config
 from kornia.core import external
-from kornia.core._compat import torch_version_le
+from kornia.core.exceptions import BaseError, DeviceError
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
 
@@ -103,7 +103,6 @@ def _write_local_model(tmp_path):
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
-@pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
     @pytest.mark.device_agnostic
     def test_local_model_inference(self, tmp_path):
@@ -147,8 +146,9 @@ class TestOnnxLightGlue:
         assert result["matches"].device.type == "cpu"
         torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
 
+    @pytest.mark.uses_accelerator
     @pytest.mark.slow
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.applies_to(devices=("cuda",), reason="Test requires CUDA")
     @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])
     def test_pretrained_weights_cuda(self, weights):
         model = OnnxLightGlue(weights, "cuda")
@@ -193,6 +193,107 @@ class TestOnnxLightGlue:
             assert outputs["matches"].shape[-1] == 2
             assert outputs["scores"].ndim == 1
             assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("device", "index"), [("cuda", 0), ("cuda:0", 0), ("cuda:1", 1)])
+    def test_cuda_provider_gets_the_device_index_6427(self, monkeypatch, tmp_path, device, index):
+        # #6427: the CUDA provider was created without a device_id, so onnxruntime ran every session on GPU 0.
+        # The session is replaced, so this needs neither a GPU nor onnxruntime-gpu.
+        created = []
+
+        class RecordingSession:
+            def __init__(self, path, providers):
+                created.append(providers)
+
+        monkeypatch.setattr(ort, "InferenceSession", RecordingSession)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device=device)
+
+        assert matcher.device == torch.device("cuda", index)
+        assert created == [[("CUDAExecutionProvider", {"device_id": index}), "CPUExecutionProvider"]]
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.parametrize("checks", [True, False])
+    def test_inputs_on_another_gpu_raise_6427(self, monkeypatch, tmp_path, checks):
+        # Only the device type was compared, so inputs on cuda:0 passed a cuda:1 matcher and were bound to the
+        # wrong GPU. The session and the GPU count are replaced, so one GPU is enough. Binding them is an illegal
+        # memory access, so the check also runs with kornia's checks disabled.
+        monkeypatch.setattr(ort, "InferenceSession", lambda path, providers: None)
+        monkeypatch.setattr("kornia.core.check._KORNIA_CHECKS_ENABLED", checks)
+        # Only around the constructor: torch's lazy CUDA initialization also reads the GPU count.
+        with monkeypatch.context() as gpus:
+            gpus.setattr(torch.cuda, "device_count", lambda: 2)
+            matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]], device="cuda:0"),
+            "descriptors": torch.ones(1, 2, 4, device="cuda:0"),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        with pytest.raises(BaseError, match=r"Wrong device: the inputs are on cuda:0, the matcher on cuda:1"):
+            matcher({"image0": features, "image1": features})
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("device", ["cpu:0", torch.device("cpu", 0)])
+    def test_cpu_index_accepts_cpu_inputs(self, tmp_path, device):
+        # CPU tensors report ``cpu`` without an index, so ``cpu:0`` must not make forward reject them.
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device=device)
+        assert matcher.device == torch.device("cpu")
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+            "descriptors": torch.ones(1, 2, 4),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        torch.testing.assert_close(result["matches"], torch.tensor([[0, 1]]))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.parametrize("checks", [True, False])
+    @pytest.mark.parametrize(
+        ("image", "key"), [(i, k) for i in ("image0", "image1") for k in ("keypoints", "descriptors")]
+    )
+    def test_each_input_on_another_device_raises(self, monkeypatch, tmp_path, checks, image, key):
+        # Every input is bound by pointer, so each of the four must be on the matcher's device, with checks off too.
+        monkeypatch.setattr("kornia.core.check._KORNIA_CHECKS_ENABLED", checks)
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cpu")
+        data = {
+            name: {
+                "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]]),
+                "descriptors": torch.ones(1, 2, 4),
+                "image_size": torch.tensor([[10, 10]]),
+            }
+            for name in ("image0", "image1")
+        }
+        data[image][key] = data[image][key].to("cuda:0")
+        with pytest.raises(DeviceError, match=r"Wrong device: the inputs are on cuda:0, the matcher on cpu"):
+            matcher(data)
+
+    @pytest.mark.device_agnostic
+    def test_unavailable_gpu_raises(self, monkeypatch, tmp_path):
+        # onnxruntime only logs an error for a GPU that does not exist and builds a CPU session, which would leave
+        # a matcher that reports that GPU but runs on the CPU.
+        monkeypatch.setattr(ort, "InferenceSession", lambda path, providers: pytest.fail("session created"))
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        with pytest.raises(ValueError, match=r"Unsupported device cuda:1: 1 CUDA device\(s\) available"):
+            OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+
+    @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Test requires two CUDA GPUs")
+    def test_runs_on_the_requested_gpu_6427(self, tmp_path):
+        if "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("OnnxLightGlue on CUDA requires onnxruntime-gpu with CUDAExecutionProvider")
+        matcher = OnnxLightGlue(str(_write_local_model(tmp_path)), device="cuda:1")
+        assert matcher.session.get_provider_options()["CUDAExecutionProvider"]["device_id"] == "1"
+
+        features = {
+            "keypoints": torch.tensor([[[0.0, 0.0], [5.0, 5.0]]], device="cuda:1"),
+            "descriptors": torch.ones(1, 2, 4, device="cuda:1"),
+            "image_size": torch.tensor([[10, 10]]),
+        }
+        result = matcher({"image0": features, "image1": features})
+        # The outputs are bound on the matcher's GPU; before the fix they came back on cuda:0.
+        assert result["matches"].device == torch.device("cuda:1")
+        assert result["scores"].device == torch.device("cuda:1")
+        torch.testing.assert_close(result["matches"].cpu(), torch.tensor([[0, 1]]))
+        torch.testing.assert_close(result["scores"].cpu(), torch.tensor([0.75]))
 
     @pytest.mark.device_agnostic
     def test_normalize_keypoints(self):
@@ -281,6 +382,44 @@ def test_onnx_lightglue_keypoint_range_message_5724():
     side = {"keypoints": kpts, "descriptors": desc, "image_size": torch.tensor([[50, 50]])}
     with pytest.raises(Exception, match=r"\[-1, 1\].*\(width, height\)"):
         model({"image0": side, "image1": side})
+
+
+def test_onnx_lightglue_range_check_reads_one_scalar(device):
+    # Stop before inference: this tests validation on CUDA even with CPU-only onnxruntime.
+    model = object.__new__(OnnxLightGlue)
+    model.device = device
+    side = {
+        "keypoints": torch.tensor([[[0.0, 0.0], [10.0, 10.0]]], device=device),
+        "descriptors": torch.zeros(1, 2, 4, device=device),
+        "image_size": torch.tensor([[10, 10]], device=device),
+    }
+    with (
+        torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile,
+        pytest.raises(AttributeError, match="session"),
+    ):
+        model({"image0": side, "image1": side})
+    reads = sum(e.count for e in profile.key_averages() if e.key == "aten::_local_scalar_dense")
+    assert reads == 1
+
+
+@pytest.mark.parametrize("side_index", [0, 1])
+@pytest.mark.parametrize("invalid", [-1.0, 11.0, float("nan"), float("inf")])
+def test_onnx_lightglue_rejects_invalid_keypoints_on_either_side(device, side_index, invalid):
+    from kornia.core.exceptions import BaseError
+
+    model = object.__new__(OnnxLightGlue)
+    model.device = device
+    sides = [
+        {
+            "keypoints": torch.tensor([[[0.0, 0.0], [10.0, 10.0]]], device=device),
+            "descriptors": torch.zeros(1, 2, 4, device=device),
+            "image_size": torch.tensor([[10, 10]], device=device),
+        }
+        for _ in range(2)
+    ]
+    sides[side_index]["keypoints"][0, 0, 0] = invalid
+    with pytest.raises(BaseError, match=r"\[-1, 1\].*\(width, height\)"):
+        model({"image0": sides[0], "image1": sides[1]})
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime")

@@ -25,7 +25,10 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
-    r"""Add Gaussian noise to images, applied per sample with probability ``p`` (default 0.5).
+    r"""Add sampled Gaussian noise without clipping the result, per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomGaussianNoise(mean, std)(input)`` adds a sampled noise field to each selected image; with
+    ``same_on_batch=True``, the field is shared across the batch.
 
     .. image:: _static/img/RandomGaussianNoise.png
 
@@ -49,6 +52,10 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         - the noise is additive and recorded in full: the output is the input plus ``_params["gaussian_noise"]``,
           so ``mean`` offsets the image rather than naming the mean the output should have.
         - nothing is clamped, so an input already inside ``[0, 1]`` can leave it in either direction.
+
+    See Also:
+        - :class:`RandomSaltAndPepperNoise`: replaces a sparse set of pixels with salt or pepper values.
+        - :class:`RandomGaussianIllumination`: adds a smooth spatial illumination field instead of noise.
 
     Examples:
         >>> rng = torch.manual_seed(0)

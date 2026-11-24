@@ -22,12 +22,17 @@ from typing import Any, Optional
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
     r"""Equalize local contrast with CLAHE, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomClahe(clip_limit, grid_size, ...)(input)`` equalizes each selected image through local tiles.
+    It accepts ``(B, C, H, W)`` images and clamps the selected inputs and outputs to ``[0, 1]``. Use
+    :class:`RandomEqualize` for one global histogram per channel.
 
     .. image:: _static/img/equalize_clahe.png
 
@@ -59,6 +64,9 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
+
+    See Also:
+        - :class:`RandomEqualize`: equalizes each whole channel rather than local tiles.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)

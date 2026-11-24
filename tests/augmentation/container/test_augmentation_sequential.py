@@ -33,7 +33,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import resize
 
 from testing.augmentation.utils import oversized_random_crop_params, reproducibility_test
-from testing.base import BaseTester, assert_close, supports_bilinear_2d_grid_sample
+from testing.base import BaseTester, assert_close, autocast_for, supports_bilinear_2d_grid_sample
 
 
 class TestAugmentationSequential:
@@ -70,7 +70,7 @@ class TestAugmentationSequential:
         ],
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
-    def test_exception(self, augmentation_list, data_keys, error_type, match, device, dtype):
+    def test_exception(self, augmentation_list, data_keys, error_type, match):
         with pytest.raises(error_type, match=match):
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
@@ -688,12 +688,14 @@ class TestAugmentationSequential:
         expected = torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1)
         assert_close(matrix, expected)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["image_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.float32, torch.float64, torch.bfloat16])
     def test_mixed_image_bbox_dtypes(self, device, image_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:
         # bbox stays in fp32 while the image uses a half/double compute dtype.
-        if device.type == "mps" and image_dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         if device.type == "cpu" and image_dtype in (torch.float16, torch.bfloat16) and torch_version_lt(2, 6, 0):
             pytest.skip("PyTorch <2.6 has no CPU Half/BFloat16 grid_sample kernel")
         torch.manual_seed(0)
@@ -859,7 +861,10 @@ class TestAugmentationSequential:
 
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
-        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        # Values below the fill value, so that ``out[0] == fill_value`` marks only erased pixels: a half-precision
+        # ``randn`` holds 0.5 itself in a few of these 90000 pixels. The bound is 0.25, not 0.5, because
+        # half-precision torch.rand on MPS can return exactly 1.0 (#4553).
+        input = 0.25 * torch.rand(3, 3, 100, 100, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["image", "mask"])
 
         reproducibility_test((input, input), aug)
@@ -921,21 +926,34 @@ class TestAugmentationSequential:
             [[[0.0, -1.0], [1.0, 0.0]], [[0.0, 0.0], [1.0, 1.0]], [[-1.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype
         )
 
+        # The 360 degree rotation is the identity only up to rounding. That moves the bilinear image samples off the
+        # nearest mask samples, and the boxes and points off their expected positions, by a few eps in every dtype:
+        # over 50 seeds, up to 8 eps (float32) and 9.8 eps (float16) of the largest input for the image after the
+        # inverse, and 5 eps (float32) and 4 eps (float16) of a pixel for the coordinates. The fixed tolerances leave
+        # float32 room to spare; a half dtype needs the eps-scaled ones.
+        if dtype in (torch.float16, torch.bfloat16):
+            eps = torch.finfo(dtype).eps
+            image_tol = {"atol": 16 * eps * float(input.abs().max()), "rtol": 0.0}
+            box_tol = point_tol = {"atol": 8 * eps, "rtol": 0.0}
+        else:
+            image_tol = point_tol = {"atol": 1e-4, "rtol": 1e-4}
+            box_tol = {"atol": 1e-3, "rtol": 1e-3}
+
         out = aug(input, input, bbox, points, params=_params)
         assert out[0].shape == (3, 3, 3, 3)
-        assert_close(out[0], out[1], atol=1e-4, rtol=1e-4)
+        assert_close(out[0], out[1], **image_tol)
         assert out[2].shape == bbox.shape
-        assert_close(out[2], expected_out_bbox, atol=1e-3, rtol=1e-3)
+        assert_close(out[2], expected_out_bbox, **box_tol)
         assert out[3].shape == points.shape
-        assert_close(out[3], expected_out_points, atol=1e-4, rtol=1e-4)
+        assert_close(out[3], expected_out_points, **point_tol)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == input.shape
-        assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
+        assert_close(out_inv[0], out_inv[1], **image_tol)
         assert out_inv[2].shape == bbox.shape
-        assert_close(out_inv[2], bbox, atol=1e-3, rtol=1e-3)
+        assert_close(out_inv[2], bbox, **box_tol)
         assert out_inv[3].shape == points.shape
-        assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
+        assert_close(out_inv[3], points, **point_tol)
 
     def test_random_resized_crop(self, device, dtype):
         size = 50
@@ -986,7 +1004,7 @@ class TestAugmentationSequential:
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
-    def test_class(self, device, dtype):
+    def test_class(self):
         img = torch.zeros((5, 1, 5, 5))
         labels = torch.randint(0, 10, size=(5, 1))
         aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=["input", "class"])
@@ -1151,21 +1169,9 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    @pytest.mark.skip(reason="turn off due to Union Type")
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = K.AugmentationSequential(
-            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
-        )
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
-
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     @pytest.mark.parametrize("box", ["bbox", "bbox_xyxy", "bbox_xywh"])
     def test_autocast(self, batch_prob, box, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
 
         def mock_forward_parameters_sequential(batch_shape, cls, batch_prob):
             named_modules = cls.get_forward_sequence()
@@ -1204,7 +1210,7 @@ class TestAugmentationSequential:
         with patch.object(aug, "forward_parameters", fwd_params):
             params = aug.forward_parameters(imgs.shape)
 
-        with torch.autocast(device.type):
+        with autocast_for(device, dtype):
             outputs = aug(imgs, msk, bb, points, params=params)
 
         assert outputs[0].dtype == dtype, "Output image dtype should match the input dtype"

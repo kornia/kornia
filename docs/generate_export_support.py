@@ -183,7 +183,7 @@ def _applicable(case: dict) -> bool:
 
 
 def load_data() -> dict:
-    data = json.loads(DATA.read_text())
+    data = json.loads(DATA.read_text(encoding="utf-8"))
     data["cases"] = [c for c in data["cases"] if _applicable(c)]
     return data
 
@@ -686,7 +686,7 @@ Summary by package
 
 def main() -> dict[str, int | str]:
     data = load_data()
-    OUT.write_text(render_page(data))
+    OUT.write_text(render_page(data), encoding="utf-8", newline="\n")
     cases = data["cases"]
     n = _counts(cases)
     return {

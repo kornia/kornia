@@ -119,21 +119,6 @@ class TestCombineTensorPatches(BaseTester):
         with pytest.raises(AssertionError):
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
-    def test_expl_autopadding(self, device, dtype):
-        img_shape = (8, 13)
-        img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(
-            1, 1, img_shape[0], img_shape[1]
-        )
-        window_size = (3, 3)
-        padding = kornia.contrib.compute_padding(img_shape, window_size)
-        patches = kornia.contrib.extract_tensor_patches(
-            img, window_size=window_size, stride=window_size, padding=padding
-        )
-        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
-        assert m(patches).shape == (1, 1, *img_shape)
-
-        self.assert_close(img, m(patches))
-
     def test_impl_autopadding(self, device, dtype):
         img_shape = (11, 16)
         img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(1, 1, *img_shape)
@@ -279,11 +264,10 @@ class TestCombineTensorPatches(BaseTester):
         out = kornia.contrib.combine_tensor_patches(patches, (5, 7), 2, 2, allow_auto_unpadding=True, unpadding=(0, 0))
         self.assert_close(out, img)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("stride", [2, 1])
     def test_float64_round_trip_is_exact(self, stride, device):
         # An eps added to every divisor returned 999.99999 for 1000.0.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         g = torch.Generator().manual_seed(0)
         img = (torch.rand(1, 2, 4, 6, generator=g, dtype=torch.float64) * 1000).to(device)
         out = kornia.contrib.combine_tensor_patches(
@@ -503,3 +487,32 @@ class TestCombineTensorPatches(BaseTester):
         assert list(function)[4:6] == ["allow_auto_unpadding", "unpadding"]
         module = inspect.signature(kornia.contrib.CombineTensorPatches).parameters
         assert list(module)[3:5] == ["unpadding", "allow_auto_unpadding"]
+
+    def test_overlapping_patch_values_and_gradients_across_batches_and_channels(self, device, dtype):
+        patches = torch.arange(144, device=device, dtype=dtype).reshape(2, 6, 3, 2, 2).requires_grad_()
+        actual = kornia.contrib.combine_tensor_patches(patches, (3, 4), 2, 1)
+        # Independently average the covering patch entries: the first channel's top overlap is (1 + 12) / 2,
+        # and its central overlap is (3 + 14 + 37 + 48) / 4. Channels add 4; the second batch adds 72.
+        expected = torch.tensor(
+            [[0.0, 6.5, 18.5, 25.0], [19.0, 25.5, 37.5, 44.0], [38.0, 44.5, 56.5, 63.0]],
+            device=device,
+            dtype=dtype,
+        )
+        offsets = torch.tensor([[0.0, 4.0, 8.0], [72.0, 76.0, 80.0]], device=device, dtype=dtype)
+        self.assert_close(actual, expected + offsets[..., None, None])
+        weights = torch.arange(1, 7, device=device, dtype=dtype).reshape(2, 3)
+        gradient = torch.autograd.grad((actual * weights[..., None, None]).sum(), patches)[0]
+        # Each covering patch receives 1 / coverage: the image's counts are [[1,2,2,1],[2,4,4,2],[1,2,2,1]].
+        expected_gradient = torch.tensor(
+            [
+                [[1.0, 0.5], [0.5, 0.25]],
+                [[0.5, 0.5], [0.25, 0.25]],
+                [[0.5, 1.0], [0.25, 0.5]],
+                [[0.5, 0.25], [1.0, 0.5]],
+                [[0.25, 0.25], [0.5, 0.5]],
+                [[0.25, 0.5], [0.5, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(gradient, expected_gradient[None, :, None] * weights[:, None, :, None, None])

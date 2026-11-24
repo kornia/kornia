@@ -6,9 +6,6 @@ YUV
 .. tip::
     Learn more: https://en.wikipedia.org/wiki/YUV
 
-.. note::
-    Includes the chroma-subsampled 4:2:0 and 4:2:2 layouts.
-
 Functions
 ---------
 

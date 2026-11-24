@@ -134,7 +134,7 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    hash1 = "fbd2207fe384be85897e105346ae3b85649adec2"
     BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
         f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
     )
@@ -593,7 +593,7 @@ def main():
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]]).repeat(2, 1, 1)  # Bx5x2
         dst = src + torch.distributions.Uniform(-0.2, 0.2).rsample((2, 5, 2))
         kernel, affine = K.geometry.transform.get_tps_transform(dst, src)
-        return src, kernel, affine
+        return dst, kernel, affine
 
     transforms: dict = {
         "warp_affine": (
@@ -640,7 +640,8 @@ def main():
         args_in = (img_in, *args)
         # import function and apply
         fn = getattr(mod, fn_name)
-        out = fn(*args_in)
+        # The image is 1000x667: the default of build_laplacian_pyramid would warn (#6319) and pad it to 1024x1024.
+        out = fn(*args_in, minimal_padding=True) if fn_name == "build_laplacian_pyramid" else fn(*args_in)
         if fn_name in ("resize", "rescale", "pyrdown", "pyrup"):
             h_new, w_new = out.shape[-2:]
             out = torch.nn.functional.pad(out, (0, (w - w_new), 0, (h - h_new)))
@@ -722,6 +723,7 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
+        "CLIDD",
         "SIFTDescriptorFromPyramid",
         "SIFTFeatureScaleSpace",
     ]
@@ -755,6 +757,18 @@ def main():
             # upsample heatmap from preprocessed size back to original image size
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
             out = K.color.grayscale_to_rgb(out)
+            img_in = img_outdoor
+        elif fn_name == "CLIDD":
+            fn = K.feature.CLIDD.from_pretrained()
+            with torch.no_grad():
+                kpts = fn(img_outdoor)[0]["keypoints"]
+            # One mark per keypoint, at its nearest input pixel.
+            h, w = img_outdoor.shape[-2:]
+            xy = kpts.round().long()
+            heatmap = img_outdoor.new_zeros(1, 1, h * w)
+            index = xy[:, 1].clamp(0, h - 1) * w + xy[:, 0].clamp(0, w - 1)
+            heatmap[0, 0].scatter_(0, index, 1.0)
+            out = K.color.grayscale_to_rgb(F.max_pool2d(heatmap.view(1, 1, h, w), 5, stride=1, padding=2))
             img_in = img_outdoor
         elif fn_name == "SIFTFeatureScaleSpace":
             fn = K.feature.SIFTFeatureScaleSpace(num_features=2048, descriptor_backend="pyramid").eval()

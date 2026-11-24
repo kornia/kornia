@@ -24,10 +24,10 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation.random_generator import PosterizeGenerator, RectangleEraseGenerator
 from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import AsyncCheckError, BaseError, ShapeError
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -41,7 +41,13 @@ from kornia.enhance import (
 )
 from kornia.geometry.transform import resize
 
-from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+from testing.base import (
+    BaseTester,
+    raises_cuda_device_assert,
+    raises_value_check,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -367,8 +373,7 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert torch.equal(out[1], image[1])
         out.sum().backward()
         assert torch.isfinite(image.grad).all()
-        # Exclude x=1, where adjust_gamma's clamp derivative differs across torch releases.
-        self.assert_close(image.grad[0, ..., :2], 0.5 / image[0, ..., :2].detach().sqrt())
+        self.assert_close(image.grad[0], 0.5 / image[0].detach().sqrt())
         self.assert_close(image.grad[1], torch.ones_like(image.grad[1]))
 
     @pytest.mark.parametrize(
@@ -408,14 +413,17 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, raw.clamp(0.0, 1.0))
         assert float((out - raw).abs().max()) > unclamped_gap / 2
 
-    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
+    @pytest.mark.cuda_device_assert
+    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype, capfd):
         # The non-negativity check of adjust_gamma runs on every device. It reads a CPU value during the call, and so
-        # on MPS before torch 2.13, which has no assert kernel; from 2.13 the MPS assert raises at the next sync.
+        # on MPS before torch 2.13, which has no assert kernel; on CUDA, and from 2.13 on MPS, the assert raises at
+        # the next sync.
         image = torch.tensor([0.2, 0.5, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
         augmentation = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)
-        if device.type == "mps" and torch_version_ge(2, 13):
+        if device.type == "cuda":
+            with raises_cuda_device_assert("Gamma must be non-negative", capfd):
+                augmentation(image)
+        elif device.type == "mps" and torch_version_ge(2, 13):
             augmentation(image)
             with pytest.raises(RuntimeError, match="Gamma must be non-negative"):
                 torch.mps.synchronize()
@@ -455,8 +463,6 @@ class TestIntensityColourConventions(BaseTester):
     # Each class's identity factor is 1.0, checked on two distinct samples.
     @pytest.mark.parametrize("cls", [K.RandomBrightness, K.RandomContrast, K.RandomSaturation])
     def test_convention_point_range_factor_one_is_identity(self, device, dtype, cls):
-        if dtype in _HALF and cls is K.RandomSaturation:
-            pytest.skip("adjust_saturation's HSV round trip is lossier than the half-precision tolerance")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
@@ -858,10 +864,10 @@ class TestIntensityColourConventions(BaseTester):
         assert int(drawn.min()) >= 1
         assert int(drawn.max()) <= 5
 
+    @pytest.mark.applies_to(devices=("mps",), reason="MPS device not available")
+    @pytest.mark.uses_accelerator
     def test_convention_random_posterize_generator_supports_mps_device_6334(self):
         """Check that PosterizeGenerator avoids float64 conversion on MPS device."""
-        if not torch.backends.mps.is_available():
-            pytest.skip("MPS device not available")
         generator = PosterizeGenerator(torch.tensor([0, 8], device="mps"))
         params = generator(torch.Size([4]))
         assert params["bits_factor"].device.type == "mps"
@@ -1007,10 +1013,8 @@ class TestIntensityColourConventions(BaseTester):
             assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == dtype
 
     # Issue #4574, the wider direction: a module cast wider than the input does not widen the output.
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_convention_random_planckian_jitter_wider_module_dtype_4574(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
-
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float32)
         torch.manual_seed(_FORWARD_SEED)
@@ -1090,6 +1094,10 @@ class TestIntensityColourConventions(BaseTester):
     # forward pass for the checks that need the image.  `match` pins kornia's message, so a case cannot be
     # satisfied by a different error of the same class; `bits=9` is the example -- a scalar becomes [9, 8]
     # and trips the "lo > hi" arm, so the (0, 8] bound needs the explicit range row.
+    @pytest.mark.applies_to(
+        when=lambda p: p["case"] not in ("gamma_negative", "gain_negative") or p["device_name"] in ("cpu", "cuda"),
+        reason="CPU and CUDA only: raised at the next sync on MPS from torch 2.13",
+    )
     @pytest.mark.parametrize(
         ("case", "stage", "error", "match"),
         [
@@ -1107,8 +1115,20 @@ class TestIntensityColourConventions(BaseTester):
                 r"bits out of bounds\. Expected inside \(0, 8\)",
             ),
             ("posterize_bits_negative", "construction", ValueError, r"bits out of bounds\. Expected inside \(0, 8\)"),
-            ("gamma_negative", "forward", RuntimeError, r"Gamma must be non-negative"),
-            ("gain_negative", "forward", RuntimeError, r"Gain must be non-negative"),
+            pytest.param(
+                "gamma_negative",
+                "forward",
+                RuntimeError,
+                r"Gamma must be non-negative",
+                marks=pytest.mark.cuda_device_assert,
+            ),
+            pytest.param(
+                "gain_negative",
+                "forward",
+                RuntimeError,
+                r"Gain must be non-negative",
+                marks=pytest.mark.cuda_device_assert,
+            ),
             (
                 "brightness_above_two",
                 "construction",
@@ -1175,9 +1195,10 @@ class TestIntensityColourConventions(BaseTester):
             ),
         ],
     )
-    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
-        if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
-            pytest.skip("CPU only: a device-side assert on CUDA, and raised at the next sync on MPS from torch 2.13")
+    def test_convention_intensity_constructors_reject_out_of_bounds(
+        self, device, dtype, case, stage, error, match, capfd
+    ):
+        device_assert = case in ("gamma_negative", "gain_negative")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1223,14 +1244,12 @@ class TestIntensityColourConventions(BaseTester):
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = factories[case]()
-        with pytest.raises(error, match=match):
+        with raises_value_check(device, match, capfd, error) if device_assert else pytest.raises(error, match=match):
             _sync(aug(image).device)
 
     # Issue #4605: RandomSolarize admits the closed [-0.5, 0.5] for `additions`, and an endpoint is applied.
     @pytest.mark.parametrize("addition", [0.5, -0.5])
     def test_convention_random_solarize_applies_an_additions_endpoint_4605(self, device, dtype, addition):
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: value asserts are kept out of the shared CUDA process")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         aug = K.RandomSolarize((0.5, 0.5), (addition, addition), p=1.0)
@@ -1624,6 +1643,87 @@ class TestIntensityInputClamping(BaseTester):
         self.assert_close(out, image.detach())
         out.sum().backward()
         self.assert_close(image.grad, torch.ones_like(image))
+
+    # The kernels of these classes clamp their result with the same helper as the input clamp (#6296), so a neutral
+    # factor leaves the identity gradient at exact 0 and 1 on every torch version.
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            lambda: K.RandomBrightness((1.0, 1.0), p=1.0),
+            lambda: K.RandomContrast((1.0, 1.0), p=1.0),
+            lambda: K.RandomGamma((1.0, 1.0), (1.0, 1.0), p=1.0),
+            lambda: K.RandomSharpness((1.0, 1.0), p=1.0),
+            lambda: K.RandomRGBShift(0.0, 0.0, 0.0, p=1.0),
+            lambda: K.RandomLinearIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomLinearCornerIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomGaussianIllumination(gain=(0.0, 0.0), sign=(1.0, 1.0), p=1.0),
+            lambda: K.RandomPlasmaBrightness(intensity=(0.0, 0.0), p=1.0),
+            lambda: K.RandomPlasmaShadow(shade_intensity=(0.0, 0.0), p=1.0),
+        ],
+        ids=[
+            "RandomBrightness",
+            "RandomContrast",
+            "RandomGamma",
+            "RandomSharpness",
+            "RandomRGBShift",
+            "RandomLinearIllumination",
+            "RandomLinearCornerIllumination",
+            "RandomGaussianIllumination",
+            "RandomPlasmaBrightness",
+            "RandomPlasmaShadow",
+        ],
+    )
+    def test_convention_kernel_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype, factory):
+        row = torch.tensor([0.0, 0.25, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        out = factory()(image)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    # RandomPlasmaContrast has no neutral factor, but a replayed flat map of 0.25 gives a contrast of 1, which returns
+    # the input with its exact 0 and 1 pixels on the bounds of the clamp.
+    def test_plasma_contrast_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        aug = K.RandomPlasmaContrast(p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["plasma"] = torch.full_like(params["plasma"], 0.25)
+        out = aug(image, params=params)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image))
+
+    # RandomSnow at brightness 1 returns its input, and a black pixel's lightness stays on the bound of the clamp. At a
+    # grey pixel the max/min tie of the HLS round trip sends the gradient to one channel, so compare the sum.
+    def test_snow_clamp_keeps_gradient_at_unit_range_bounds_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        out = K.RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(1.0, 1.0), p=1.0)(image)
+        self.assert_close(out, image.detach())
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad.sum(1), torch.full_like(grad[:, 0], 3.0))
+
+    # At (0, 0, 0.25) the hue is 4 pi / 3, so min(k - 3, 9 - k) of hls_to_rgb lands on its bound 1 for red and green. In
+    # float64, rounding leaves green on the bound and red just outside it: the gradient per input channel of a neutral
+    # RandomSnow is (1, 1, 1), the identity, on every torch version (#6600). On torch 2.15 a plain clamp gave (2, 0, 1).
+    # Other dtypes round to another side of the kink, so this is a float64 pin.
+    @pytest.mark.applies_to(
+        dtypes=("float64",), reason="the hue of this pixel rounds onto another side of the kink in other dtypes"
+    )
+    def test_snow_keeps_the_gradient_of_a_coloured_pixel_on_the_hls_clamp_6600(self, device, dtype):
+        image = torch.tensor([0.0, 0.0, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).requires_grad_()
+        out = K.RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(1.0, 1.0), p=1.0)(image)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        self.assert_close(grad, torch.ones_like(image), rtol=1e-6, atol=1e-6)
+
+    # ColorJitter's brightness multiplies: black stays on its bound and keeps the factor, white leaves the range.
+    def test_color_jitter_keeps_the_factor_at_a_black_pixel_6296(self, device, dtype):
+        row = torch.tensor([0.0, 0.25, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 4)
+        image = row.expand(1, 3, 4, 4).contiguous().requires_grad_()
+        (grad,) = torch.autograd.grad(K.ColorJitter(brightness=(1.5, 1.5), p=1.0)(image).sum(), image)
+        expected = image.new_tensor([1.5, 1.5, 1.5, 0.0]).view(1, 1, 1, 4).expand_as(image)
+        self.assert_close(grad, expected)
 
     # Without a recorded gradient the input clamp is a single torch.clamp; with one it selects the input where the
     # clamp left it unchanged. Both must return the same values, and the recorded gradient is 1 inside [0, 1]

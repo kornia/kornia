@@ -100,7 +100,7 @@ misleading. What each one operates on:
 | Library | Data | Batch | Device | Differentiable |
 | --- | --- | --- | --- | --- |
 | **kornia** | `float` `BCHW` tensor | ✅ batched | CPU **or GPU** | ✅ yes |
-| **torchvision v2** | `float` `BCHW` tensor | ✅ batched | CPU or GPU | ❌ no |
+| **torchvision v2** | `float` `BCHW` tensor | ✅ batched | CPU or GPU | ⚠️ 5 of the 8 benchmark transforms |
 | **albumentations** | `uint8` `HWC` numpy | ❌ per-image loop | CPU only | ❌ no |
 | **OpenCV** (`cv2`) | `uint8` `HWC` numpy | ❌ per-image loop | CPU only | ❌ no |
 | **PIL** (Pillow) | `uint8` `HWC` image | ❌ per-image loop | CPU only | ❌ no |
@@ -112,8 +112,9 @@ Two distinct races follow:
   the classic data-loader regime, and the SIMD/native backends win it. kornia's `float` path is
   *not* built for this and should not be expected to lead.
 - **GPU / `float` / batched / differentiable** — kornia's home turf. torchvision v2 competes on
-  raw speed but is not differentiable; nothing else runs here at all. This is the regime kornia
-  is designed to lead, and where `torch.compile` fusion pays off.
+  raw speed, but its backward pass raises for `RandomAffine`, `RandomPerspective` and `ColorJitter`
+  with hue; nothing else runs here at all. This is the regime kornia is designed to lead, and where
+  `torch.compile` fusion pays off.
 
 ## Historical sample results (all_libraries.py, superseded 2026-08-08)
 

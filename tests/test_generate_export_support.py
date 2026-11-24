@@ -128,6 +128,14 @@ def test_ci_facts_match_the_conformance_jobs(workflow: str, torch_versions: tupl
         assert len(daily) == CI_RUNS_PER_DAY, daily
 
 
+def test_main_writes_utf8_with_lf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The page contains U+200B, which the Windows default encoding (cp1252) cannot write at all.
+    monkeypatch.setattr(generate_export_support, "OUT", tmp_path / "export-support.rst")
+    generate_export_support.main()
+    expected = generate_export_support.render_page(generate_export_support.load_data())
+    assert generate_export_support.OUT.read_bytes() == expected.encode()
+
+
 def test_onnx_opset_is_the_one_ci_and_to_onnx_use() -> None:
     from kornia.core.mixin.onnx import _ONNX_EXPORT_OPSET
 

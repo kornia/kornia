@@ -161,17 +161,19 @@ def diamond_square(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Generate Plasma Fractal Images using a variant of the diamond square algorithm.
+    r"""Generate plasma-fractal noise maps by the diamond-square algorithm.
 
-    It ports `tormentor <https://github.com/anguelos/tormentor>`_'s variant of the
+    ``noise = diamond_square((B, C, H, W))`` returns a ``(B, C, H, W)`` map of spatially correlated noise, an
+    independent fractal in each ``(b, c)`` plane. ``roughness`` and ``random_scale`` set how much of each finer level is
+    random rather than interpolated, and ``normalize_range`` rescales each plane to a given range. It ports
+    `tormentor <https://github.com/anguelos/tormentor>`_'s variant of the
     `diamond-square algorithm <https://en.wikipedia.org/wiki/Diamond-square_algorithm>`_.
 
     Convention:
-        - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner, so it can
-          be a non-contiguous view. The seed is a :math:`3 \times K` grid, transposed to :math:`K \times 3` for a map
-          taller than wide, whose cell corners, the even nodes of its first and last rows (columns when transposed),
-          are ``random_fn`` draws, and whose other nodes are the means of their neighbours.
-          Each level sets a new node to
+        - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner. The seed
+          is a :math:`3 \times K` grid, transposed to :math:`K \times 3` for a map taller than wide, whose cell
+          corners, the even nodes of its first and last rows (columns when transposed), are ``random_fn`` draws, and
+          whose other nodes are the means of their neighbours. Each level sets a new node to
           :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
           ``random_fn`` draw :math:`u` by the weight :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k`
           at level :math:`k \geq 1`. ``random_scale`` and ``roughness`` act only through :math:`s_k`, a mixing
@@ -179,30 +181,40 @@ def diamond_square(
           step's nodes are all interior, so its ``reflect`` padding never reaches them.
         - ``random_fn`` is called as ``random_fn(shape, device=device, dtype=dtype)`` and is the only source of
           randomness, so ``functools.partial(torch.rand, generator=g)`` leaves the global generator alone. With
-          ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
-          [0, 1], and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its variance varies
-          across the map.
+          ``torch.rand`` the map stays in :math:`[0, 1]` without normalization while ``random_scale`` and ``roughness``
+          are in :math:`[0, 1]`, and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its
+          variance varies across the map.
         - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a ``(B,)`` tensor with one value per
           sample, and follow ``device`` and ``dtype``; with ``dtype=None`` a tensor keeps its dtype and a float takes
           the default dtype. When ``random_fn`` returns the dtype it is asked for, the map has the dtype that
           ``dtype`` (the default dtype for ``None``), ``roughness`` and ``random_scale`` promote to, at every map
           size. A ``random_fn`` that returns another dtype also promotes the levels' arithmetic to its dtype, but not
           a map with a side of 3 px or less, which is the seed alone and stores the draws in the requested dtype.
+        - Without ``normalize_range`` the result can be a non-contiguous view, which ``.view(B, -1)`` cannot
+          flatten; use ``.reshape``, or call ``.contiguous()`` first.
         - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
-          :func:`~kornia.enhance.normalize_min_max`.
+          :func:`~kornia.enhance.normalize_min_max`, whose ``eps`` keeps the maximum just below ``max``.
 
     Args:
-        output_size: a tuple of integers with the BxCxHxW of the image to be generated.
+        output_size: the ``(B, C, H, W)`` size of the map to generate.
         roughness: the factor that scales the mixing weight at each recursion step.
         random_scale: scales the per-level mixing weight
             :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k`, :math:`k \geq 1`.
-        random_fn: the callable function to use to sample a random torch.Tensor.
+        random_fn: the callable function to use to sample a random tensor.
         normalize_range: if given, the ``(min, max)`` range each plane is min-max normalized to.
         device: the torch device to place the output map.
         dtype: the torch dtype to place the output map.
 
     Returns:
-        A torch.Tensor with shape ``(B,C,H,W)`` containing the fractal image.
+        The fractal map, ``(B, C, H, W)``.
+
+    Raises:
+        BaseError: if ``output_size`` does not have four entries.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomPlasmaShadow`: darkens image regions with these maps.
+        - :class:`~kornia.augmentation.RandomPlasmaBrightness`: shifts image brightness by these maps.
+        - :class:`~kornia.augmentation.RandomPlasmaContrast`: scales image contrast by these maps.
 
     """
     KORNIA_CHECK(len(output_size) == 4, "output_size must be (B,C,H,W)")

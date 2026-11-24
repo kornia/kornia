@@ -149,8 +149,8 @@ def documented_objects(registry: Mapping[str, object]) -> tuple[tuple[object, st
 
     These are the registry entries that are kornia functions or classes and are not members of a registered class
     (the methods and nested classes autodoc renders inside a class page are the member check's business). Together
-    with ``_exported_objects()`` they make up what the rollout checks; an object that is both exported and documented
-    is the same object in both and counted once by ``rollout_objects``.
+    with ``_exported_objects()`` they make up what the docstring checks select; an object that is both exported and
+    documented is the same object in both and counted once by ``checked_objects``.
     """
     collected: dict[int, tuple[object, str]] = {}
     for name, obj in registry.items():
@@ -160,7 +160,7 @@ def documented_objects(registry: Mapping[str, object]) -> tuple[tuple[object, st
     return tuple(collected.values())
 
 
-def rollout_objects(registry: Mapping[str, object], with_docstring: bool = True) -> dict[int, tuple[object, str]]:
+def checked_objects(registry: Mapping[str, object], with_docstring: bool = True) -> dict[int, tuple[object, str]]:
     """Map ``id(obj)`` to ``(obj, "module.qualname")`` for the objects the docstring checks select.
 
     The union of the exported kornia functions and classes (``public_objects()``'s walk) and the ones a docs page
@@ -1117,3 +1117,27 @@ def catalog_required(namespace: str, catalogued: Iterable[str]) -> bool:
             ):
                 return True
     return False
+
+
+_CATALOG_HEADING = re.compile(r"^Which (?:function|class|object|function or class) to use\b", re.MULTILINE)
+
+
+def has_catalog(doc: str) -> bool:
+    """Whether ``doc``, a module docstring, opens a catalog: a line starting ``Which function to use`` or the like."""
+    return bool(_CATALOG_HEADING.search(doc))
+
+
+def catalog_namespaces(packages: Iterable[str], exceptions: Iterable[str] = ()) -> list[str]:
+    """List the namespaces under ``packages`` whose module docstring must name every export of their ``__all__``.
+
+    A namespace is listed when it needs a catalog of its own (``catalog_required`` against the namespaces already
+    listed, walked from the shallowest down) or when its module docstring has one anyway (``has_catalog``), so a
+    catalog a module chose to keep stays complete. ``exceptions`` are left out and do not count as catalogued.
+    """
+    exceptions = set(exceptions)
+    candidates = [name for name in modules_declaring_all() if covered(name, packages) and name not in exceptions]
+    listed: list[str] = []
+    for name in sorted(candidates, key=lambda name: (name.count("."), name)):
+        if catalog_required(name, listed) or has_catalog(inspect.getdoc(importlib.import_module(name)) or ""):
+            listed.append(name)
+    return sorted(listed)

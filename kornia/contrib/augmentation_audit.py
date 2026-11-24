@@ -15,7 +15,18 @@
 # limitations under the License.
 #
 
-"""Opt-in diagnostics for the geometry of an executed augmentation pipeline."""
+"""Audit one augmentation pipeline call: operation order, parameters, matrices and label round trips.
+
+:func:`audit` runs a 2D :class:`~kornia.augmentation.container.AugmentationSequential` once and returns its ordinary
+outputs with a report; the ordinary forward call is unchanged and records nothing. :ref:`augmentation-audit` explains
+how to read the report and lists the pipelines it supports.
+
+Which function or class to use:
+
+- Run a pipeline once and get its outputs plus a report: :func:`audit`.
+- Read the report: :class:`AugmentationAuditReport`; one executed operation in it: :class:`AugmentationAuditStep`;
+  the out-of-frame and round-trip statistics of one keypoint or box input: :class:`SpatialAudit`.
+"""
 
 from __future__ import annotations
 
@@ -91,18 +102,23 @@ def _json_value(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class AugmentationAuditStep:
-    """Snapshot of one captured leaf operation, including repeated occurrences.
+    """Record one executed operation of an audit: its parameters, shapes and matrix.
 
-    ``matrix`` maps this occurrence's local input pixel coordinates to its output
-    coordinates, including RandomCrop prepadding. The full pipeline mapping is
-    stored separately on the report. ``None`` means that the
-    operation has no supported 2D matrix, not that it is an identity transform.
-    Parameters and flags are detached copies; ``occurrence`` is zero-based for
-    each qualified module name. Shapes describe the image path. Flags include
-    keyword overrides observed on that image call.
+    ``report.steps`` of an :class:`AugmentationAuditReport` lists one step per executed leaf operation, in execution
+    order. ``name`` is the qualified module name in the pipeline, ``module`` the class name, and ``occurrence`` counts
+    repeated runs of one ``name`` from 0. ``params`` and ``flags`` are detached copies; ``flags`` include the keyword
+    overrides of that image call. ``input_shape`` and ``output_shape`` are those of the image.
+
+    ``matrix`` is the ``(B, 3, 3)`` map from this operation's input pixel coordinates to its output coordinates,
+    including ``RandomCrop`` prepadding. ``None`` means the operation has no supported 2D matrix, not that it is an
+    identity, and ``unsupported_reason`` then says why.
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :class:`AugmentationAuditReport`: holds the steps and the matrix composed over all of them.
+        - :class:`SpatialAudit`: the label statistics, measured with the composed matrix.
     """
 
     name: str
@@ -118,24 +134,20 @@ class AugmentationAuditStep:
 
 @dataclass(frozen=True)
 class SpatialAudit:
-    """Per-batch diagnostics for one returned box or keypoint input.
+    """Hold the per-sample out-of-frame counts and round-trip errors of one keypoint or box input.
 
-    Each point or box is one item. A box is outside if any corner is outside
-    the inclusive pixel-center rectangle ``[0, width-1] x [0, height-1]``.
-    Nonfinite items are counted separately, not counted as outside. Fractions
-    use the total item count; empty inputs have a NaN fraction.
-
-    Round trips inverse-map the *actual returned coordinates* with the recorded
-    composed matrix. Errors are Euclidean point distances or symmetric Hausdorff
-    distances between the four box corners (independent of corner ordering).
-    Tensor box exports can lose orientation by taking an axis-aligned envelope;
-    this loss is included in the measurement. ``Boxes`` objects retain corners.
-    Statistics cover only finite errors, in pixels; a batch with no valid errors
-    has NaN statistics and zero ``roundtrip_valid_count``. Diagnostics use float32
-    for half inputs, otherwise the image dtype.
+    ``report.spatial`` of an :class:`AugmentationAuditReport` has one entry per keypoint or box input, and each of its
+    tensor fields is ``(B,)``, one value per sample. ``out_of_frame_fraction`` divides by the total item count, so an
+    empty input has a NaN fraction. The round-trip statistics cover only finite errors, in pixels; a sample with no
+    finite error has NaN statistics and a zero ``roundtrip_valid_count``.
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :class:`AugmentationAuditReport`: holds these entries with the composed matrix they invert.
+        - :class:`AugmentationAuditStep`: the per-operation record, without label statistics.
+
     """
 
     input_index: int
@@ -153,10 +165,15 @@ class SpatialAudit:
 
 @dataclass(frozen=True)
 class AugmentationAuditReport:
-    """Geometry provenance and spatial diagnostics from one augmentation call.
+    """Hold the executed operations, composed matrix and label diagnostics of one audit call.
 
-    ``params`` is a detached snapshot of native ``ParamItem`` values for replay
-    with the same pipeline configuration. JSON is a diagnostic export, not a
+    ``outputs, report = audit(sequence, image, ...)`` returns it. ``report.summary()`` describes it in text,
+    ``report.to_dict()`` and ``report.to_json()`` export it, and ``sequence(image, ..., params=report.params)``
+    replays the call. ``matrix`` is the ``(B, 3, 3)`` map from input to output pixel coordinates composed over
+    ``steps``, or ``None`` when ``geometry_status`` is ``"unsupported"``, and ``spatial`` holds one
+    :class:`SpatialAudit` per keypoint or box input.
+
+    ``params`` is a detached snapshot of native ``ParamItem`` values. JSON is a diagnostic export, not a
     parameter deserializer. Reports retain neither image pixels nor autograd
     graphs. Tensor fields are independent snapshots, not read-only tensors.
 
@@ -170,6 +187,11 @@ class AugmentationAuditReport:
 
     Convention:
         See :ref:`augmentation-audit`.
+
+    See Also:
+        - :func:`audit`: runs a pipeline and builds this report.
+        - :class:`AugmentationAuditStep`: one entry of ``steps``.
+        - :class:`SpatialAudit`: one entry of ``spatial``.
     """
 
     inputs: list[dict[str, Any]]
@@ -405,19 +427,19 @@ def audit(
     roundtrip_tolerance: float = 1e-3,
     out_of_frame_tolerance: float = 0.0,
 ) -> tuple[DataType | list[DataType] | dict[str, DataType], AugmentationAuditReport]:
-    """Run an augmentation sequence once and return its outputs plus a geometry audit report.
+    """Run an augmentation pipeline once and return its outputs with a geometry audit report.
 
-    The sequence must use one BCHW image first, followed by batched masks (``(B, C, H, W)`` or ``(B, H, W)``), boxes or
-    keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
-    have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
-    Unknown or non-rigid operations run normally and make composed geometry unavailable. Keypoints and boxes through
+    ``outputs, report = audit(sequence, image, *labels)`` runs ``sequence`` once on a nonempty ``(B, C, H, W)`` image
+    followed by optional batched masks (``(B, C, H, W)`` or ``(B, H, W)``), keypoints or boxes, in the order of
+    ``data_keys``. ``outputs`` has the structure, values and gradients of an ordinary forward call, and ``report`` is
+    an :class:`AugmentationAuditReport` of the executed operations, their composed matrix and the round-trip errors
+    of every keypoint and box input. ``params`` and ``data_keys`` have the meaning they have in
+    :meth:`~kornia.augmentation.container.AugmentationSequential.forward`.
+
+    Unknown or non-rigid operations run normally and make the composed geometry unsupported. Keypoints and boxes through
     ``RandomElasticTransform``, ``RandomThinPlateSpline`` or ``RandomFisheye`` raise ``NotImplementedError``, as in
-    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-
-    Reporting is an eager diagnostic operation. It snapshots executed operations and
-    parameters, checks spatial round trips, and never evaluates image reconstruction.
-    The returned outputs retain the ordinary forward structure, values and gradients.
-    Do not audit the same stateful sequence concurrently.
+    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). The audit runs eagerly; do not audit the
+    same stateful sequence concurrently.
 
     Convention:
         :ref:`augmentation-audit` states the direction of ``report.matrix``, the pixel-centre rectangle of the
@@ -432,7 +454,18 @@ def audit(
         out_of_frame_tolerance: Fraction in ``[0, 1]`` above which an input gets a warning.
 
     Returns:
-        A pair ``(outputs, report)``. ``outputs`` matches an ordinary forward call.
+        A pair ``(outputs, report)``.
+
+    Raises:
+        ValueError: if a tolerance is out of range, ``data_keys`` do not start with the only image or do not match
+            the inputs, a data key is unsupported, the image is not a nonempty ``(B, C, H, W)`` tensor, or a label
+            input is unbatched, ragged or on another device; if the pipeline holds a video, patch or 3D
+            augmentation or a module registered under two names, or an operation changes the batch, the layout or
+            the label cardinality.
+
+    See Also:
+        - :meth:`~kornia.augmentation.container.AugmentationSequential.forward`: the same call without a report.
+        - :class:`AugmentationAuditReport`: the report this returns.
     """
     if not math.isfinite(roundtrip_tolerance) or roundtrip_tolerance < 0:
         raise ValueError("roundtrip_tolerance must be finite and nonnegative.")

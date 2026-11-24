@@ -29,6 +29,8 @@ from kornia.enhance import invert
 class RandomInvert(IntensityAugmentationBase2D):
     r"""Invert image values as ``max_val - x``, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomInvert(max_val, ...)(input)`` subtracts selected image values from a chosen maximum.
+
     .. image:: _static/img/RandomInvert.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -49,6 +51,9 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
+
+    See Also:
+        - :class:`RandomSolarize`: inverts only values above a sampled threshold.
 
     Examples:
         >>> rng = torch.manual_seed(0)

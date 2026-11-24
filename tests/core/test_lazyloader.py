@@ -37,15 +37,10 @@ MISSING = "kornia_test_no_such_module_xyz"
 
 
 class TestLazyLoader:
-    def test_lazy_loader_initialization(self):
-        # Test that the LazyLoader initializes with the correct module name and None module
-        loader = LazyLoader("math")
-        assert loader.module_name == "math"
-        assert loader.module is None
-
     def test_lazy_loader_loading_module(self):
         # Test that the LazyLoader correctly loads the module upon attribute access
         loader = LazyLoader("math")
+        assert loader.module_name == "math"
         assert loader.module is None  # Should be None before any attribute access
 
         # Access an attribute to trigger module loading
@@ -59,12 +54,6 @@ class TestLazyLoader:
             _ = loader.non_existent_attribute  # Accessing any attribute should raise the error
 
         assert "Optional dependency 'non_existent_module' is not installed" in str(excinfo.value)
-
-    def test_lazy_loader_getattr(self):
-        # Test that __getattr__ works correctly for a valid module
-        loader = LazyLoader("math")
-        assert loader.sqrt(16) == 4.0
-        assert loader.pi == 3.141592653589793
 
     def test_lazy_loader_dir(self):
         # Test that dir() returns the correct list of attributes for the module

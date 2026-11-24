@@ -27,11 +27,6 @@ from testing.base import BaseTester
 
 
 class TestRgbToHsv(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_hsv(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -162,14 +157,14 @@ class TestRgbToHsv(BaseTester):
         expected = torch.tensor([[[0.0]], [[value / (value + eps)]], [[value]]], device=device, dtype=dtype)
         self.assert_close(kornia.color.rgb_to_hsv(data, eps=eps), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hsv, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_hsv
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
@@ -189,11 +184,6 @@ class TestRgbToHsv(BaseTester):
 
 
 class TestHsvToRgb(BaseTester):
-    def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.hsv_to_rgb(img), torch.Tensor)
-
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
@@ -352,14 +342,14 @@ class TestHsvToRgb(BaseTester):
         expected_black = torch.zeros(5, 3, 1, 1, device=device, dtype=dtype)
         self.assert_close(kornia.color.hsv_to_rgb(data_black), expected_black)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hsv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.hsv_to_rgb
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))

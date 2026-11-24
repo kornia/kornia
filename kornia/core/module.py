@@ -26,16 +26,22 @@ from .mixin.onnx import ONNXExportMixin
 
 
 class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
-    """Handles image-based operations.
+    """Subclass for an image ``nn.Module`` whose call also takes NumPy arrays, PIL images and image paths.
 
-    This modules accepts multiple input and output data types, provides end-to-end
-    visualization, file saving features. Note that this module fits the classes that
-    return one image tensor only.
+    A subclass defines ``forward`` on tensors. ``out = module(image, output_type="pt")`` converts ``image`` to a tensor
+    when it is a NumPy array, a PIL image or, as the first positional argument, the path of an image file, runs
+    ``forward`` and returns the output as a tensor (``"pt"``), a channels-last NumPy array (``"numpy"``) or a PIL image,
+    a list of them for a batch (``"pil"``). The last output is kept for :meth:`ImageModuleMixIn.show` and
+    :meth:`ImageModuleMixIn.save`.
 
     Note:
         The output cache retains a detached reference to the last tensor output, so it can keep that storage alive and
         reflects later in-place edits. Setting ``disable_features = True`` clears the cache and bypasses the extra
         behavior. The cache is omitted when the module is pickled.
+
+    See Also:
+        - :class:`ImageSequential`: the same conversions around an ``nn.Sequential`` chain of modules.
+        - :class:`ImageModuleMixIn`: the conversion methods alone, as a decorator for any function.
 
     """
 
@@ -84,7 +90,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
-        """Overwrite the __call__ function to handle various inputs.
+        """Run the module on converted inputs and return its output as ``output_type``.
 
         Args:
             inputs: Inputs to operate on.
@@ -96,7 +102,8 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
             kwargs: Additional arguments.
 
         Returns:
-            Callable: Decorated function with converted input and output types.
+            The output of ``forward``, converted to ``output_type``; a tuple or list output is converted element by
+            element.
 
         """
         # Convert inputs and outputs around the forward call
@@ -113,16 +120,23 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
 
 class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
-    """Handles image-based operations as a sequential module.
+    """Chain modules in an ``nn.Sequential`` whose call also takes NumPy arrays, PIL images and image paths.
 
-    This modules accepts multiple input and output data types, provides end-to-end
-    visualization, file saving features. Note that this module fits the classes that
-    return one image tensor only.
+    ``seq = ImageSequential(first, second)`` builds an ``nn.Sequential`` of the given modules.
+    ``out = seq(image, output_type="numpy")`` converts the input and the output of the whole chain as
+    :class:`ImageModule` converts those of its ``forward``, keeps the last output for :meth:`ImageModuleMixIn.show` and
+    :meth:`ImageModuleMixIn.save`, and :meth:`ONNXExportMixin.to_onnx` exports the chain. For random augmentations whose
+    parameters are recorded and replayed, use the container of the same name,
+    :class:`~kornia.augmentation.container.ImageSequential`.
 
     Note:
         The output cache retains a detached reference to the last tensor output, so it can keep that storage alive and
         reflects later in-place edits. Setting ``disable_features = True`` clears the cache and bypasses the extra
         behavior. The cache is omitted when the module is pickled.
+
+    See Also:
+        - :class:`ImageModule`: the same conversions around one module with its own ``forward``.
+        - :class:`~kornia.augmentation.container.ImageSequential`: records and replays its random parameters.
 
     """
 
@@ -171,7 +185,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
-        """Overwrite the __call__ function to handle various inputs.
+        """Run the module on converted inputs and return its output as ``output_type``.
 
         Args:
             inputs: Inputs to operate on.
@@ -183,7 +197,8 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
             kwargs: Additional arguments.
 
         Returns:
-            Callable: Decorated function with converted input and output types.
+            The output of ``forward``, converted to ``output_type``; a tuple or list output is converted element by
+            element.
 
         """
         # Convert inputs and outputs around the forward call

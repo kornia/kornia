@@ -27,7 +27,8 @@ motion. :ref:`Two-view geometry <two-view-conventions>` compares these conventio
 
 Which function to use:
 
-- A model from correspondences known to be inliers: :func:`find_fundamental` from pixels (8 or 7 points),
+- A model from correspondences known to be inliers: :func:`find_fundamental` from pixels (8 or 7 points, or the
+  affine fundamental matrix of two affine cameras from 4 or more),
   :func:`find_essential` from normalized camera coordinates (Nister's 5 points, up to ten candidates). For a plane
   or a pure rotation, :func:`~kornia.geometry.homography.find_homography_dlt`; with outliers,
   :class:`~kornia.geometry.ransac.RANSAC`.

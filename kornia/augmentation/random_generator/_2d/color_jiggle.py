@@ -22,7 +22,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 __all__ = ["ColorJiggleGenerator"]
 
@@ -97,9 +97,9 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
         return {
-            "brightness_factor": brightness_factor.to(device=_device, dtype=_dtype),
-            "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
-            "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
-            "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
+            "brightness_factor": _to_device_nonblocking(brightness_factor, _device, _dtype),
+            "contrast_factor": _to_device_nonblocking(contrast_factor, _device, _dtype),
+            "hue_factor": _to_device_nonblocking(hue_factor, _device, _dtype),
+            "saturation_factor": _to_device_nonblocking(saturation_factor, _device, _dtype),
             "order": self.randperm(4).to(device=_device),
         }

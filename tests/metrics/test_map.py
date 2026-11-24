@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import platform
+
 import pytest
 import torch
 
@@ -232,6 +234,33 @@ class TestMeanAveragePrecision(BaseTester):
         )
         self.assert_close(mean_ap, boxes.new_tensor(0.5))
         self.assert_close(ap[1], 0.5)
+
+    @pytest.mark.parametrize("order", [(0, 1, 2), (2, 0, 1), (1, 2, 0)])
+    def test_interleaved_images_keep_independent_match_flags(self, device, dtype, order):
+        a = [0.0, 0.0, 10.0, 10.0]
+        b = [20.0, 0.0, 30.0, 10.0]
+        c = [40.0, 0.0, 50.0, 10.0]
+        pred_boxes = [torch.tensor(boxes, device=device, dtype=dtype) for boxes in ([a, a, b, c], [a, a], [a, a, a])]
+        pred_labels = [torch.tensor(labels, device=device) for labels in ([1, 1, 1, 2], [1, 2], [1, 1, 2])]
+        pred_scores = [
+            torch.tensor(scores, device=device, dtype=dtype)
+            for scores in ([0.95, 0.7, 0.55, 0.5], [0.9, 0.85], [0.8, 0.6, 0.4])
+        ]
+        gt_boxes = [torch.tensor(boxes, device=device, dtype=dtype) for boxes in ([a, b, c], [a], [a])]
+        gt_labels = [torch.tensor(labels, device=device) for labels in ([1, 1, 2], [2], [1])]
+        args = [[values[i] for i in order] for values in (pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels)]
+
+        mean_ap, ap = kornia.metrics.mean_average_precision(*args, n_classes=3)
+
+        # Class 1's globally ranked outcomes are TP, FP, TP, FP, FP, TP over three objects. The eleven recall
+        # thresholds take four precisions of 1, three of 2/3 and four of 1/2: AP = 8/11. Class 2 gets both objects
+        # before its false positive, hence AP = 1. Identical boxes in different images must have separate flags;
+        # an image without this class's objects remains a false positive, even when it has another class.
+        self.assert_close(mean_ap, torch.tensor(19.0 / 22.0, device=device, dtype=dtype))
+        self.assert_close(
+            torch.tensor(ap[1], device=device, dtype=dtype), torch.tensor(8.0 / 11.0, device=device, dtype=dtype)
+        )
+        self.assert_close(ap[2], 1.0)
 
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
@@ -474,6 +503,24 @@ class TestConventionsMeanAveragePrecision(BaseTester):
             self.assert_close(mean_ap, torch.tensor(expected, device=device, dtype=dtype))
             self._assert_aps(ap, {1: expected}, device, dtype)
 
+    def test_convention_mean_average_precision_matches_iou_just_above_threshold(self, device, dtype):
+        # All coordinates are exact in float16 and bfloat16. The contained box has IoU
+        # 616 * 812 / (1000 * 1000) = 0.500192, which rounds to 0.5 in both dtypes.
+        prediction = [[[0.0, 0.0, 616.0, 812.0]]]
+        target = [[[0.0, 0.0, 1000.0, 1000.0]]]
+        mean_ap, ap = self._map(device, dtype, prediction, [[1]], [[0.9]], target, [[1]], 2)
+        self.assert_close(mean_ap, torch.tensor(1.0, device=device, dtype=dtype))
+        self._assert_aps(ap, {1: 1.0}, device, dtype)
+
+    def test_convention_mean_average_precision_keeps_exact_iou_threshold(self, device, dtype):
+        # The contained box is exactly half as wide as the target and has the same height.
+        # Its IoU is exactly 0.5, even if adding both areas first would round the union down.
+        prediction = [[[-0.5, 1.0, 2048.0, 4096.0]]]
+        target = [[[-1.0, 1.0, 4096.0, 4096.0]]]
+        mean_ap, ap = self._map(device, dtype, prediction, [[1]], [[0.9]], target, [[1]], 2)
+        self.assert_close(mean_ap, torch.tensor(0.0, device=device, dtype=dtype))
+        self._assert_aps(ap, {1: 0.0}, device, dtype)
+
     def test_convention_mean_average_precision_greedy_voc_matching(self, device, dtype):
         """A detection takes its highest-IoU object; if that one is already matched, it is a false positive."""
         objects = [[[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 16.0]]]
@@ -518,3 +565,51 @@ class TestConventionsMeanAveragePrecision(BaseTester):
             kornia.metrics.mean_average_precision(boxes, fractional, scores, boxes, float_labels, 3)
         with pytest.raises(BaseError, match="gt_labels must contain integer-valued labels"):
             kornia.metrics.mean_average_precision(boxes, float_labels, scores, boxes, fractional, 3)
+
+
+class TestMAPAccumulationPrecision(BaseTester):
+    @pytest.mark.applies_to(
+        when=lambda p: (
+            not (
+                p["device_name"] == "mps"
+                and p["box_dtype"] == torch.bfloat16
+                and int(platform.mac_ver()[0].split(".")[0] or 0) < 14
+            )
+        ),
+        reason="MPS bfloat16 requires macOS 14 or newer",
+    )
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["box_dtype"] == torch.float64),
+        reason="MPS does not support float64",
+    )
+    @pytest.mark.parametrize(
+        "box_dtype,detected,objects,expected_ap",
+        [
+            (torch.bfloat16, 512, 513, 10.0 / 11.0),
+            (torch.bfloat16, 256, 513, 5.0 / 11.0),
+            (torch.float16, 4096, 4097, 10.0 / 11.0),
+            (torch.float16, 2048, 4097, 5.0 / 11.0),
+            (torch.float32, 512, 513, 10.0 / 11.0),
+            (torch.float64, 512, 513, 10.0 / 11.0),
+        ],
+    )
+    def test_recall_below_a_threshold_does_not_round_up(self, device, box_dtype, detected, objects, expected_ap):
+        # Every prediction is a true positive, so all attainable recall levels have precision 1. A recall just
+        # below 1 reaches ten VOC2007 thresholds; a recall just below 0.5 reaches five. Their exact APs are 10/11
+        # and 5/11. Up to 128 disjoint boxes per image keep all coordinates in [0, 124], exactly representable.
+        cells = torch.arange(128, device=device)
+        x, y = cells.remainder(16) * 8, cells.div(16, rounding_mode="floor") * 8
+        grid = torch.stack((x, y, x + 4, y + 4), dim=-1).to(box_dtype)
+        gt_boxes = [grid[: min(128, objects - start)] for start in range(0, objects, 128)]
+        pred_boxes = [grid[: max(0, min(128, detected - start))] for start in range(0, objects, 128)]
+        gt_labels = [torch.ones(len(boxes), device=device, dtype=torch.long) for boxes in gt_boxes]
+        pred_labels = [torch.ones(len(boxes), device=device, dtype=torch.long) for boxes in pred_boxes]
+        scores = [torch.ones(len(boxes), device=device, dtype=box_dtype) for boxes in pred_boxes]
+
+        mean_ap, per_class = kornia.metrics.mean_average_precision(
+            pred_boxes, pred_labels, scores, gt_boxes, gt_labels, n_classes=2
+        )
+        expected = torch.tensor(expected_ap, device=device, dtype=box_dtype)
+        assert mean_ap.dtype == box_dtype
+        self.assert_close(mean_ap, expected)
+        self.assert_close(torch.tensor(per_class[1], device=device, dtype=box_dtype), expected)

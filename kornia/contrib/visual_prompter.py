@@ -38,6 +38,12 @@ def _resize_like_sam(image: torch.Tensor, size: tuple[int, int]) -> torch.Tensor
 
     This is ``ResizeLongestSide.apply_image_torch`` of ``segment-anything@3518c86``. It runs in at least float32, as
     torch has no half-precision antialiased kernel on the CPU, and the result is cast back to the dtype of ``image``.
+
+    The image does not go through kornia's own antialiased ``kornia.geometry.transform.resize``, which blurs with a
+    Gaussian of standard deviation ``(f - 1) / 2`` before downscaling by ``f``, a weaker low-pass than the antialiased
+    bilinear filter of SAM's preprocessing. On a 1380 x 2076 image, against a transcription of Meta's ``SamPredictor``
+    driving the same MobileSAM weights, the three masks of a point prompt reached IoU 0.962, 0.967 and 0.956 with
+    kornia's filter and 0.969, 0.969 and 0.968 with SAM's.
     """
     x = image.to(torch.promote_types(image.dtype, torch.float32))
     try:
@@ -51,58 +57,54 @@ def _resize_like_sam(image: torch.Tensor, size: tuple[int, int]) -> torch.Tensor
 
 
 class VisualPrompter:
-    r"""Allow the user to run multiple queries with multiple prompts on one image.
+    r"""Segment one image from point, box and mask prompts with SAM, encoding the image once.
 
-    At the moment, we just support the SAM model. The model is loaded based on the given config.
+    ``prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True))`` builds the SAM model.
+    ``prompter.set_image(image)`` encodes one RGB image ``(3, H, W)`` or ``(1, 3, H, W)``, floating point in
+    :math:`[0, 1]`. Each ``result = prompter.predict(keypoints, keypoints_labels)`` or
+    ``prompter.predict(boxes=boxes)`` then answers ``K`` prompts given in that image's pixels. It returns a
+    :class:`~kornia.models.structures.SegmentationResults` with ``(K, M, 256, 256)`` low-resolution ``logits``,
+    ``(K, M)`` ``scores`` and ``(K, M, H, W)`` ``binary_masks``, with ``M = 3`` masks per prompt, or 1 for
+    ``multimask_output=False``.
 
-    The prompter holds one image at a time: :meth:`set_image` takes a ``(3, H, W)`` or ``(1, 3, H, W)`` image,
-    and :meth:`predict` then answers prompts on it. To segment a batch of images, each with its own prompts, use
-    :meth:`kornia.models.sam.Sam.forward`.
-
-    The image is resized so that its long side equals ``image_encoder.img_size``. The output size :math:`(h, w)` comes
-    from ``transforms``, an :class:`~kornia.augmentation.AugmentationSequential` that must hold exactly one stage,
-    ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``. The image itself is
-    resized as SAM's reference resizes it (``ResizeLongestSide.apply_image_torch``), with
-    ``torch.nn.functional.interpolate(image, size, mode="bilinear", align_corners=False, antialias=True)``, computed in
-    float32 (float64 for a float64 image) and cast back. The image is then passed to the method `preprocess_image`,
-    which normalizes it and pads it to the size the SAM model takes,
-    :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For default the image is normalized by the
-    mean and standard deviation of the SAM dataset values.
-
-    The prompts follow the per-axis scales :math:`s_x = w / W` and :math:`s_y = h / H` of an :math:`H \times W` image,
-    computed in float32 (float64 for a float64 model), and come out in that dtype. A keypoint marks a pixel centre and
-    follows the half-pixel map :math:`x \mapsto (x + 0.5)\,s_x - 0.5` (likewise for :math:`y`), the map this resize
-    samples on. A box marks pixel edges, kornia's ``xyxy`` convention (``width = x2 - x1``), and both its corners follow
-    :math:`x \mapsto x\,s_x`, as in the reference's ``apply_boxes``: at :math:`s = 8` the box (10, 20, 60, 50) goes to
-    (80, 160, 480, 400), and :math:`(0, 0, W, H)` to the whole resized image :math:`(0, 0, w, h)`.
-
-    The image does not go through kornia's own antialiased :func:`~kornia.geometry.transform.resize`, which blurs with a
-    Gaussian of standard deviation :math:`(f - 1) / 2` before downscaling by :math:`f`, a weaker low-pass than the
-    antialiased bilinear filter of SAM's preprocessing. On a 1380 x 2076 image, against a transcription of Meta's
-    ``SamPredictor`` driving the same MobileSAM weights, the three masks of a point prompt reach IoU 0.962, 0.967 and
-    0.956 with kornia's filter and 0.969, 0.969 and 0.968 with SAM's.
-
-    Two details depart on purpose from Meta's ``SamPredictor`` (``segment-anything@3518c86``):
-
-    - The resized short side is truncated, where the reference rounds it (a 1380 x 2076 image becomes 680 x 1024
-      here and 681 x 1024 there). Truncation is the rule of :class:`kornia.augmentation.Resize`, and the masks are
-      resized back through the same recorded input size.
-    - Keypoints follow the half-pixel map :math:`x \mapsto (x + 0.5)\,s - 0.5`, kornia's pixel-centre convention and
-      the map the image resize samples on, where the reference's ``apply_coords`` uses :math:`x \mapsto x\,s` for
-      points too. With the scale :math:`s = 8`, the keypoint (40, 30) goes to (323.5, 243.5) here and to (320, 240) in
-      the reference.
-
-    The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights gives a
-    model in evaluation mode, and a randomly initialised one stays in training mode, where MobileSAM's BatchNorm
-    normalises with the statistics of the batch. Call ``prompter.model.eval()`` before inference on random weights.
+    Convention:
+        - :meth:`set_image` resizes the image so that its long side equals ``image_encoder.img_size``, with the
+          antialiased bilinear filter of SAM's reference (``ResizeLongestSide.apply_image_torch``), computed in float32
+          (float64 for a float64 image) and cast back. It then normalizes it with SAM's mean and standard deviation,
+          or the ``mean`` and ``std`` it is given, and zero-pads it at the bottom and right to the square encoder
+          input (:meth:`preprocess_image`). The resized size comes from ``transforms``, an
+          :class:`~kornia.augmentation.container.AugmentationSequential` that must hold exactly one stage,
+          ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``.
+        - The prompts follow the per-axis scales :math:`s_x = w / W` and :math:`s_y = h / H` from the
+          :math:`H \times W` image to the resized :math:`h \times w` one, computed in float32 (float64 for a float64
+          model), and come out in that dtype. A keypoint marks a pixel centre and follows the half-pixel map
+          :math:`x \mapsto (x + 0.5)\,s_x - 0.5` (likewise for :math:`y`), the map the resize samples on. A box marks
+          pixel edges, kornia's ``xyxy`` convention (``width = x2 - x1``), and both its corners follow
+          :math:`x \mapsto x\,s_x`, as in the reference's ``apply_boxes``: at :math:`s = 8` the box (10, 20, 60, 50)
+          goes to (80, 160, 480, 400), and :math:`(0, 0, W, H)` to the whole resized image :math:`(0, 0, w, h)`.
+        - Two details depart on purpose from Meta's ``SamPredictor`` (``segment-anything@3518c86``). The resized short
+          side is truncated, where the reference rounds it (a 1380 x 2076 image becomes 680 x 1024 here and 681 x 1024
+          there): truncation is the rule of :class:`kornia.augmentation.Resize`, and the masks are resized back
+          through the same recorded size. Keypoints follow the half-pixel map above, where the reference's
+          ``apply_coords`` uses :math:`x \mapsto x\,s` for points too: at :math:`s = 8`, the keypoint (40, 30) goes
+          to (323.5, 243.5) here and to (320, 240) in the reference.
+        - The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights
+          gives a model in evaluation mode, and a randomly initialized one stays in training mode, where MobileSAM's
+          BatchNorm normalizes with the statistics of the batch. Call ``prompter.model.eval()`` before inference on
+          random weights.
 
     Args:
-        config: A model config to generate the model. Now just the SAM model is supported.
+        config: A model config to generate the model. Now just the SAM model is supported. If None, SAM ViT-H,
+            whose weights are downloaded on first use.
         device: The desired device to use the model.
         dtype: The desired dtype to use the model.
 
     Raises:
         NotImplementedError: If ``config`` is neither a :class:`~kornia.models.sam.SamConfig` nor ``None``.
+
+    See Also:
+        - :class:`~kornia.models.sam.Sam`: the model itself, for a batch of images each with its own prompts.
+        - :class:`~kornia.models.structures.SegmentationResults`: the masks and scores :meth:`predict` returns.
 
     Example:
         >>> # prompter = VisualPrompter() # Will load the vit h for default
@@ -161,14 +163,10 @@ class VisualPrompter:
     def preprocess_image(
         self, x: torch.Tensor, mean: Optional[torch.Tensor] = None, std: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Normalize and F.pad a torch.Tensor.
+        """Normalize an image by a mean and standard deviation, and zero-pad it to the encoder's square input.
 
-        For F.normalize the tensor: will prioritize the `mean` and `std` passed as argument,
-        if None will use the default
-        Sam Dataset values.
-
-        For F.pad the tensor: Will F.pad the torch.Tensor into the right and bottom to match with the size of
-        `self.model.image_encoder.img_size`
+        The image is normalized with ``mean`` and ``std`` when both are given, else with SAM's dataset values set at
+        construction, and zero-padded at the right and bottom to ``self.model.image_encoder.img_size``.
 
         Args:
             x: The image to be preprocessed
@@ -176,7 +174,7 @@ class VisualPrompter:
             std: Standard deviations for each channel.
 
         Returns:
-            The image preprocessed (normalized if has mean and str available and padded to encoder size)
+            The normalized image, padded to the encoder's size.
 
         """
         if isinstance(mean, torch.Tensor) and isinstance(std, torch.Tensor):
@@ -194,15 +192,15 @@ class VisualPrompter:
     def set_image(
         self, image: torch.Tensor, mean: Optional[torch.Tensor] = None, std: Optional[torch.Tensor] = None
     ) -> None:
-        """Set the embeddings from the given image with `image_decoder` of the model.
+        """Encode one image with the model's image encoder and keep its embeddings for :meth:`predict`.
 
         Resize the image to the size given by ``transforms``, with SAM's filter (see the class docstring), and prepare
-        it with the preprocess method.
+        it with :meth:`preprocess_image`.
 
         Args:
-            image: One RGB image, shape ``(3, H, W)`` or ``(1, 3, H, W)``, in the dtype of the model. Normally
-                   images with range of [0-1], the model preprocess F.normalize the pixel values with the mean and std
-                   defined in its initialization. A batch of more than one image raises; use
+            image: One RGB image, shape ``(3, H, W)`` or ``(1, 3, H, W)``, in the dtype of the model, floating point
+                   with values in :math:`[0, 1]`; it is normalized with the mean and std set at construction unless
+                   ``mean`` and ``std`` are given. A batch of more than one image raises; use
                    :meth:`kornia.models.sam.Sam.forward` for batches.
             mean: mean value of dataset for normalization.
             std: standard deviation of dataset for normalization.
@@ -383,26 +381,26 @@ class VisualPrompter:
 
         Args:
             keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape ``(K, N, 2)``. Where
-                       `N` is the number of points and `K` the number of prompts.
+                       ``N`` is the number of points and ``K`` the number of prompts.
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
-                             point. Shape ``(K, N)``. Where `N` is the number of points, and `K` the number of
-                             prompts. Required with `keypoints`.
+                             point. Shape ``(K, N)``. Where ``N`` is the number of points, and ``K`` the number of
+                             prompts. Required with ``keypoints``.
             boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape ``(K, 4)`` or
                    ``(1, K, 4)``, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
-                   shape ``(K, 4, 2)`` or ``(1, K, 4, 2)``, read through ``to_tensor(mode="xyxy")``. `K` is
+                   shape ``(K, 4, 2)`` or ``(1, K, 4, 2)``, read through ``to_tensor(mode="xyxy")``. ``K`` is
                    the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
                    iteration. Has shape ``(K, 1, H, W)``, where for SAM, H=W=256.
-            multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
-                              single click), this will often produce better masks than a single prediction. If only
-                              a single mask is needed, the model's predicted quality score can be used to select the
-                              best mask. For non-ambiguous prompts, such as multiple input prompts,
-                              multimask_output=False can give better results.
-            output_original_size: If true, the logits of `SegmentationResults` will be post-process to match the
-                                  original input image size.
+            multimask_output: If True, three masks per prompt, each with its score in ``scores``; if False, one.
+            output_original_size: If True, ``binary_masks`` is resized to the size of the image set.
 
         Returns:
-            A prediction with the logits and scores (IoU of each predicted mask)
+            The ``(K, M, 256, 256)`` low-resolution ``logits`` and the ``(K, M)`` ``scores`` (the predicted IoU of
+            each mask), with ``M`` 3 or 1 by ``multimask_output``. With ``output_original_size``, ``binary_masks``
+            is ``(K, M, H, W)``, at the size of the image set; otherwise it is at the logits' size.
+
+        Raises:
+            BaseError: If no image is set, or if ``keypoints`` come without ``keypoints_labels``.
 
         """
         KORNIA_CHECK(self.is_image_set, "An image must be set with `self.set_image(...)` before `predict` be called!")

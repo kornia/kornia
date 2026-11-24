@@ -68,12 +68,12 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
 - **Compiles and exports.** Nearly all probed operator configurations run under `torch.compile` and match eager,
   and over 1,000 export to ONNX; the result for every operator is on the
   [export support page](https://kornia.readthedocs.io/en/latest/get-started/export-support.html).
-- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.0 flagship benchmarks (RTX 4090,
-  batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in eager mode
-  than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×. On the small
-  overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue, color jitter
-  and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU work.
-  Results vary with hardware and workload; every number, win and loss is published on the
+- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.1 and 0.9.2 flagship benchmarks
+  (RTX 4090, batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in
+  eager mode than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×.
+  On the small overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue,
+  color jitter and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU
+  work. Results vary with hardware and workload; every number, win and loss is published on the
   [performance page](https://kornia.readthedocs.io/en/latest/get-started/performance.html).
 
 These operators run on the input's device with no NumPy round trip, and most are differentiable; robust estimation
@@ -129,94 +129,25 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 ## CUDA and Half-Precision Support
 
-The module table below counts entries in the Linux CPU known-failure manifests
-([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
-[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
-unsupported functions. The remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153).
-No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.
+Kornia operators accept CPU, CUDA and MPS tensors. float16 and bfloat16 inputs are supported subject to each
+operator's limits; some operators compute half inputs in float32 and return the input dtype.
 
-| Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
-|--------|:-------:|:--------:|:----------------------------:|-------|
-| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv conversions and `rgb255_to_normals` compute half inputs in float32 and return the input dtype |
-| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype |
-| `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
-| `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 48 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
-| `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
-| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
-| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT solver accuracy, including iterated and line-based variants |
-| `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
-| `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py |
-| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | Essential-model fitting raises in epipolar solvers |
-| `kornia.geometry (other)` | ⚠️ | ⚠️ | 6 / 13 | Box-transform and depth accuracy |
-| `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision |
-| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16: total-variation accuracy |
-| `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped |
-| `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
-| `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16: RT-DETR RepVGG fusion accuracy |
-| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16: histogram matching and _torch_svd_cast accuracy |
+- **CPU float16 and bfloat16** run in CI against strict known-failure manifests
+  ([`testing/half_precision_xfails/`](testing/half_precision_xfails/)): a new failure, or a recorded failure that
+  starts passing, fails the job.
+- **CUDA** is tested on maintainer hardware rather than in hosted CI, whose runners have no GPU: the whole suite runs
+  on an NVIDIA GPU in float32, float64, float16 and bfloat16 and under `torch.compile`, before releases and in the
+  review of pull requests that touch device-dependent code. CUDA-only failures are fixed or listed in the guide below.
+- **MPS** runs float32 in CI; MPS half precision is not part of CI, and CPU results alone do not establish it.
 
-✅ No entries in the CPU known-failure manifest &nbsp; ⚠️ Has recorded CPU failures.
-Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside
-these counts. Some operators compute internally in float32 or float64 and return the input dtype.
-
-**Observed CPU CI outcomes:**
-
-The [scheduled run at `93f1376e`, 2026-10-21](https://github.com/kornia/kornia/actions/runs/39524889979)
-used Linux x86_64, Python 3.11 and PyTorch 2.14.0, without slow or compile tests:
-
-| Run | Passed | Failed | Skipped | XFAIL (all) | XPASS | Strict manifest entries |
-|-----|-------:|-------:|--------:|------------:|------:|------------------------:|
-| [CPU float16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300500) | 23905 | 0 | 5132 | 284 | 4 | 250 |
-| [CPU bfloat16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300410) | 23726 | 0 | 5286 | 309 | 4 | 274 |
-
-Each job also deselected 3 ONNX conformance tests. XFAIL totals include both the strict manifest entries and
-source-level expected failures. The 4 XPASSes in each successful job are non-strict expected failures that passed;
-a passing **manifest** entry makes verification fail, as do a changed exception, a skipped entry or a stale node ID.
-A green job therefore means the recorded baseline reproduced, even though known failures and skips remain.
-These totals describe the linked revision; the module table describes the checked-in manifests.
-
-Verify the complete CPU profiles in the pinned environment with:
-
-```bash
-KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16
-KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-bfloat16
-```
-
-`pixi run test-half` is an unseeded CPU sweep, without the strict profile baseline. See
-[TESTING.md](TESTING.md#7-half-precision-dtypes-float16--bfloat16) for focused checks and baseline maintenance.
-
-**CUDA support and measurement limits:**
-
-Kornia accepts CUDA tensors for GPU acceleration, subject to each operator's dtype and backend limitations.
-There is no blocking CUDA CI job or checked-in CUDA known-failure manifest, so the CPU xfail counts above do not
-provide a current CUDA pass rate. The previous local measurements are retained here as historical evidence only:
-
-| Historical run (`f8449854`, 2026-09-23) | Passed | Failed | Skipped |
-|------------------------------------------------|-------:|-------:|--------:|
-| CUDA float32 | 12193 | 22 | 3957 |
-| CUDA float16 | 11738 | 451 | 3983 |
-| CUDA bfloat16 | 11736 | 500 | 3936 |
-
-These used an RTX 4090, Python 3.11 and PyTorch 2.14.0+cu130. Source-marked xfails were excluded. Half tests ran
-in-process with `KORNIA_TEST_IN_SUBPROCESS=1`, followed by isolated retries of failures; two homography tests were
-deselected. They are not a measurement of the current branch. Those two tests (`TestFindHomographyDLT::test_nocrash`
-and `test_nocrash_lu`) now pass locally in all three CUDA dtypes at `649b3f86d`; a fresh full CUDA sweep is needed
-before quoting new totals.
-
-For CUDA half tests, use `--isolate-half-precision` so each test gets a fresh process. They are skipped by default
-without it; selecting a half dtype alone does not exercise CUDA half support:
+The [precision guide](https://kornia.readthedocs.io/en/latest/get-started/precision.html) has the numbers: known
+failures by module, CPU and CUDA test-suite totals measured together on one revision, the CUDA-only failures, and the
+commands that reproduce them. CUDA half-precision tests are skipped unless each runs in a fresh
+process:
 
 ```bash
 pixi run test-module tests/color/ --device=cuda --dtype=float16,bfloat16 --isolate-half-precision
 ```
-
-See the [full precision guide](https://kornia.readthedocs.io/en/latest/get-started/precision.html) for details.
 
 ## Sponsorship
 
@@ -268,7 +199,7 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   pixi run -e cuda test-cuda
   ```
 
-These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
+These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [TESTING.md](TESTING.md#environment-and-validation-tasks).
 
 #### From Github url (latest version)
 
@@ -351,9 +282,15 @@ Kornia's differentiated value is its geometry core: warping and sampling, homogr
 - **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially useful.
 - **Convention pinning tests and conformance vectors** for core geometry operations.
 - **Corrective error messages**: upgrade bare shape assertions into errors that state what was wrong, what was expected, and which convention applies.
-- **Classical vision in the core domain**: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, and Hough transforms. An early design discussion can be useful for work of this size.
+- **Documented CUDA and half-precision failures**: fix existing CUDA reports, open half-precision issues, and entries in the [`float16`](testing/half_precision_xfails/cpu_float16.txt)/[`bfloat16`](testing/half_precision_xfails/cpu_bfloat16.txt) known-failure manifests under the [correctness policy](ROADMAP.md#correctness-and-backend-support). Take CUDA work only with a CUDA device available for reproduction and validation; remove the corresponding xfail or manifest entry after verifying the fix.
 
 See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
+
+### Make Existing Operators Faster
+
+We take speed-ups of existing operators when they hold up under measurement: at least 20% on a common workload, in the general code path, with outputs, gradients, dtype/device handling and compile/ONNX support unchanged. Time base and branch on the same hardware following the [benchmark methodology](benchmarks/README.md#methodology-contract); the [Roadmap](ROADMAP.md#areas-seeking-contributors) has the full rules.
+
+- **Fewer host synchronizations on CUDA and MPS.** `.item()`, `if tensor:`, `nonzero` and boolean-mask indexing make the host wait for the GPU. Removing them made `match_smnn` 1.4–1.9× faster on CUDA ([#6501](https://github.com/kornia/kornia/pull/6501)). Sync removals can qualify below the 20% bar; the Roadmap has the conditions. [SOLD2's heatmap refinement](https://github.com/kornia/kornia/issues/6792) is open to contributors with a CUDA device.
 
 ### AI Models
 

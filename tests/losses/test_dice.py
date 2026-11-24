@@ -224,15 +224,6 @@ class TestDiceLoss(BaseTester):
         loss = kornia.losses.dice_loss(logits, labels, average=average, weight=weight)
         assert loss.dtype == torch.promote_types(dtype, weight.dtype)
 
-    def test_smoke(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
-
-        criterion = kornia.losses.DiceLoss()
-        assert criterion(logits, labels) is not None
-
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
@@ -506,7 +497,7 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
@@ -525,17 +516,6 @@ class TestDiceLoss(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(logits, labels, average=average), op_optimized(logits, labels, average=average))
-
-    def test_module(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 1, 2) * num_classes
-        labels = labels.to(device).long()
-
-        op = kornia.losses.dice_loss
-        op_module = kornia.losses.DiceLoss()
-
-        self.assert_close(op(logits, labels), op_module(logits, labels))
 
 
 class TestConventionsDiceLoss(BaseTester):

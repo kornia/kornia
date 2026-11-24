@@ -4,17 +4,18 @@ kornia.augmentation
 .. meta::
    :description: The Augmentation module in Kornia provides high-level data augmentation functionalities for computer vision tasks, including random rotations, affine transformations, color intensities, image noise distortion, and more. It supports batch processing, device compatibility, and backpropagation. Additionally, users can retrieve transformation details for more flexibility in complex pipelines.
 
-This module implements data augmentation at a high level of abstraction. Like the rest of the library,
-it performs augmentation routines in batch mode, on any supported device, and every operation is
-differentiable, so it can take part in backpropagation. Among the available functionalities are random rotations;
-affine and perspective transformations; several random color and intensity transformations; image noise;
-motion blur; and many differentiable data augmentation policies such as AutoAugment and RandAugment.
+This module applies random augmentations to batches of float tensors on the CPU or the GPU: spatial transforms,
+color and intensity changes, blur and noise, image mixing, 3D volume transforms, and the AutoAugment, RandAugment
+and TrivialAugment policies. Most operators are differentiable with respect to their input.
 
-In addition, the module includes a feature that is not found in other augmentation frameworks: after each
-call, the user can retrieve the applied transformation, or the chain of transformations, e.g. the sampled
-random rotation matrix. That matrix can later be used to undo the image transformation, or to apply the same
-transformation to additional data such as segmentation masks, bounding boxes or landmark keypoints. This gives
-the user the flexibility to build complex data augmentation pipelines.
+Every call records what it sampled. In eager mode, ``aug._params`` holds the last draw, and
+``aug(image, params=aug._params)`` replays it; matrix-based geometric transforms also expose the draw as
+``aug.transform_matrix``. :class:`~kornia.augmentation.container.AugmentationSequential` uses this record to apply
+one draw to an image and its masks, boxes and keypoints, and its ``inverse()`` undoes the 2D matrix-based geometric
+steps; 3D geometric and mix children raise. Inversion cannot restore pixels lost to cropping or resampling, and it
+leaves color changes in place.
+For images alone, chain transforms with :class:`~kornia.augmentation.container.ImageSequential`; for video, apply
+them to every frame with :class:`~kornia.augmentation.container.VideoSequential`.
 
 .. code-block:: python
 
@@ -32,43 +33,45 @@ the user the flexibility to build complex data augmentation pipelines.
 
    img_out, mask_out, kpts_out = aug(image, mask, keypoints)  # same random parameters for all three
    img_back, mask_back, kpts_back = aug.inverse(img_out, mask_out, kpts_out)
-   matrix = aug.transform_matrix  # (B, 3, 3) matrix of the last geometric transform
+   matrix = aug.transform_matrix  # (B, 3, 3) composed matrix for the geometric steps
 
 .. note::
-   **Input format.** Kornia augmentations expect **float tensors with values in** ``[0, 1]`` and shape
-   ``(B, C, H, W)`` — the same format produced by ``torchvision.transforms.v2.ToDtype(torch.float32, scale=True)``
-   (or the legacy ``ToTensor``). A ``uint8`` tensor raises a clear error, but a **float tensor already in the**
-   ``[0, 255]`` **range does not raise** — it is silently treated as ``[0, 1]`` and the output clips at ``1.0``,
-   which shows up later as degraded model accuracy rather than an exception. Scale first, e.g. ``img.float() / 255``.
+   **Input format.** Pass float tensors of shape ``(B, C, H, W)`` for images and ``(B, C, D, H, W)`` for
+   volumes. Color transforms expect values in ``[0, 1]``, so convert 8-bit images with ``img.float() / 255``;
+   a cast alone does not rescale. A ``uint8`` tensor raises ``TypeError``, but a float tensor in ``[0, 255]``
+   raises nothing: most color transforms, such as :class:`~kornia.augmentation.ColorJiggle`, clamp it to
+   ``[0, 1]`` and the image comes out nearly white. For the same reason, apply color transforms before
+   :class:`~kornia.augmentation.Normalize`.
 
 Benchmark
 ---------
 
-Kornia is **GPU-batched and differentiable** — that is the regime it is built to lead, and it is
-not the regime the other libraries target. A fair comparison holds the batch size and device fixed
-across libraries; comparing kornia at a large batch against a single-image library is not meaningful.
+Kornia is built for batches of float tensors on the GPU, with gradients through most operators. albumentations,
+OpenCV, PIL and kornia-rs transform one ``uint8`` image at a time on the CPU. torchvision v2 also runs batched on the
+GPU. In the benchmark's settings, gradients reach the input through five of its eight transforms, and the backward
+pass raises for ``RandomAffine``, ``RandomPerspective`` and ``ColorJitter`` with hue. Kornia passes a gradient through
+all eight.
 
-Reproducible, honestly-framed benchmarks live under
-`benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ and
-print their git commit, platform, and device so results are auditable:
+The scripts under
+`benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ print their git
+commit, platform and device with every result:
 
-- ``vs_torchvision.py`` — per-op kornia (eager / ``torch.compile``) vs torchvision v2, with a
-  ``best/tv`` ratio and verdict per op.
-- ``flagship.py`` — the flagship suite: augmentations through each library's random-transform
-  class API (parameter sampling included) vs torchvision v2, albumentations, OpenCV, and PIL,
-  with machine-readable JSON export.
-- ``pipeline.py`` — end-to-end multi-op pipeline throughput (the shape a training loop runs),
-  including a compiled and an ``--half`` (fp16/AMP) path.
+- ``flagship.py`` — each library's random-transform classes, parameter sampling included, against torchvision v2,
+  albumentations, OpenCV and PIL, with JSON export.
+- ``vs_torchvision.py`` — each kornia op, eager and compiled, against torchvision v2.
+- ``pipeline.py`` — a multi-op training pipeline end to end, with compiled and ``--half`` (fp16/AMP) paths.
 
-Reading them honestly: on a **GPU-batched, differentiable, compiled** pipeline kornia is the fastest
-option (torchvision v2 is not differentiable; albumentations is CPU/``uint8``/single-image). On
-**CPU single-image** throughput, SIMD/NumPy libraries such as albumentations are faster — that is
-their regime, not kornia's. See ``benchmarks/augmentation/README.md`` for the per-regime breakdown.
+In the RTX 4090 snapshot in ``benchmarks/augmentation/README.md`` (256 × 256 float32 images, batch 32), compiled
+kornia on the GPU is 2.2–19.4× faster than the fastest CPU ``uint8`` library on all eight operations, and faster than
+torchvision v2 on three of them: ``ColorJiggle`` (1.20×), Gaussian blur (1.32×) and perspective (1.15×). Eager kornia
+on the GPU is 2.0–6.7× faster than the fastest CPU library on seven operations, reaches 0.52× of albumentations on
+``RandomResizedCrop``, and is slower than torchvision v2 on all eight. On the CPU at batch 1, albumentations or OpenCV
+is faster than both kornia modes on all eight.
 
 Deployment: torch.export, torch.compile, ONNX
 ---------------------------------------------
 
-Kornia augmentations are plain ``nn.Module`` s and are exportable for deployment:
+Augmentations are ``nn.Module`` subclasses, so the PyTorch capture tools apply to them, within these limits:
 
 - **torch.export.** Deterministic transforms — ``Normalize``, ``Denormalize``, ``Resize``,
   ``CenterCrop``, ``PadTo`` — and an ``AugmentationSequential`` pipeline of them capture cleanly
@@ -89,16 +92,20 @@ Kornia augmentations are plain ``nn.Module`` s and are exportable for deployment
   is skipped during an export capture; the captured output is unchanged. Random augmentations and
   bounding-box/keypoint propagation through an exported graph are not covered.
 
-- **torch.compile.** Most augmentations run fullgraph (0 graph breaks); a compiled
-  ``AugmentationSequential`` fuses the pointwise chain end to end. See the per-op ``test_dynamo``
-  tests for the compile-clean set.
+- **torch.compile.** In the :ref:`augmentation export survey <export-support-kornia-augmentation>` (torch 2.9.1,
+  CPU), 60 of the 82 augmentation classes compile into one graph in every surveyed configuration, ``VideoSequential``
+  included. The other 22 break the graph, fail to compile, or give results that differ from eager in at least one
+  configuration: the other five containers, the three policies, the six mix transforms,
+  ``RandomTransplantation3D``, ``ColorJiggle``, ``ColorJitter``, ``RandomRain``, ``RandomSnow``, ``RandomClahe``,
+  ``RandomDissolving``, and ``RandomCrop`` with ``p=0.5``. Compiling is not always faster: in the benchmark snapshot
+  it slows CPU ``RandomAffine`` to 0.45× of eager at batch 32, and speeds it up 1.55× at batch 1.
 
-- **ONNX.** :class:`~kornia.onnx.sequential.ONNXSequential` chains ONNX graphs; it does not take an augmentation
-  module. The :ref:`export survey <export-support>` records which individual augmentations exported. Without
-  ``dynamic_shapes``, a pipeline exported with ``torch.onnx.export(..., dynamo=True)`` gets a graph of the input shape
-  it was exported with, and some augmentations (``Resize``, for one) keep that shape fixed even with it, or fail to
-  export with it on torch 2.5.1. Some augmentations fail to export. The exported file can be chained with
-  ``ONNXSequential``. Pre-built ONNX models are published under the ``kornia/ONNX_models`` Hugging Face repo.
+- **ONNX.** Export with ``torch.onnx.export(..., dynamo=True)`` and chain the file with
+  :class:`~kornia.onnx.sequential.ONNXSequential`, which takes ONNX graphs, not augmentation modules. Without
+  ``dynamic_shapes`` the graph is fixed to the input shape used for export; some augmentations, such as ``Resize``,
+  stay fixed even with it, or fail to export with it on torch 2.5.1. The :ref:`export survey <export-support>`
+  records which augmentations export. Pre-built ONNX models are published under the ``kornia/ONNX_models``
+  Hugging Face repo.
 
 .. currentmodule:: kornia.augmentation
 
@@ -114,13 +121,13 @@ Where to find things
        perspective, resize), :doc:`mix <augmentation.mix>` (CutMix, MixUp, Mosaic) and
        :doc:`3D <augmentation.transforms3d>`.
    * - :doc:`Containers <augmentation.container>`
-     - :class:`AugmentationSequential` applies one sampled transform to images, masks, boxes and
-       keypoints and can invert it; plus ``ImageSequential``, ``PatchSequential``, ``VideoSequential``
-       and the dispatchers.
+     - :class:`~kornia.augmentation.container.AugmentationSequential` applies one draw to images, masks, boxes
+       and keypoints and can invert it; ``ImageSequential`` chains image-only transforms, ``VideoSequential``
+       applies them per frame, ``PatchSequential`` per grid patch, and the dispatchers run several pipelines.
    * - :doc:`Automatic augmentation <augmentation.auto>`
-     - The learned policies: :class:`~kornia.augmentation.auto.AutoAugment`,
-       :class:`~kornia.augmentation.auto.RandAugment` and
-       :class:`~kornia.augmentation.auto.TrivialAugment`.
+     - The policies :class:`~kornia.augmentation.auto.AutoAugment`,
+       :class:`~kornia.augmentation.auto.RandAugment` and :class:`~kornia.augmentation.auto.TrivialAugment`,
+       and the operations they sample.
    * - :doc:`Base classes <augmentation.base>`
      - Subclass ``IntensityAugmentationBase2D`` or ``GeometricAugmentationBase2D`` to write your own
        augmentation, with worked examples.

@@ -27,7 +27,8 @@ from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
-from testing.base import BaseTester
+from testing.base import BaseTester, raises_value_check
+from testing.default_device import default_device
 
 
 def _clahe_interpolation_reference(img, luts, tile_size):
@@ -35,8 +36,13 @@ def _clahe_interpolation_reference(img, luts, tile_size):
     # these centres pixel by pixel, independently of production's half-tile indexing.
     values = img.detach().cpu().double()
     tables = luts.detach().cpu().double()
+    scale = 255 * (1 + 2**-21) if img.dtype in (torch.float32, torch.float64) else 255
     expected = torch.zeros_like(values)
     gh, gw = tables.shape[1:3]
+    # Preserve the input dtype's lookup quantization, the 8-bit level with 255 raised by four float32 epsilons in
+    # float32 and float64; this reference tests only interpolation. Computed once on the input's device: the same
+    # elementwise product and truncation per pixel, without a device round trip for each.
+    levels = (img * scale).long().cpu()
     for y in range(values.shape[-2]):
         fy = (y + 0.5) / tile_size[0] - 0.5
         y0 = math.floor(fy)
@@ -45,8 +51,7 @@ def _clahe_interpolation_reference(img, luts, tile_size):
             fx = (x + 0.5) / tile_size[1] - 0.5
             x0 = math.floor(fx)
             ax = fx - x0
-            # Preserve the input dtype's lookup quantization; this reference tests only interpolation.
-            index = (img[..., y, x] * 255).long().cpu().unsqueeze(-1)
+            index = levels[..., y, x].unsqueeze(-1)
             for row, wy in [(y0, 1 - ay), (y0 + 1, ay)]:
                 for col, wx in [(x0, 1 - ax), (x0 + 1, ax)]:
                     lut = tables[:, min(max(row, 0), gh - 1), min(max(col, 0), gw - 1)]
@@ -248,14 +253,15 @@ class TestEqualization(BaseTester):
         assert out.shape == img.shape
         assert torch.isfinite(out).all()
 
+    @pytest.mark.applies_to(
+        dtypes=("float32", "float64"), reason="1.0000001 and -1e-7 round to 1 and 0 in half precision"
+    )
     def test_histogram_skips_out_of_range(self, device, dtype):
         # Like torch.histc on CPU, _tiles_histc counts only values inside [0, 1]. 1.0000001 and -1e-7 are inside the
         # window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's torch.histc counts them, so
         # this also pins CPU/MPS parity. With 4 bins a value is counted in (x * 3).long(): 0.5 in 1 and 0.25 in 0.
         from kornia.enhance.equalization import _tiles_histc
 
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("1.0000001 and -1e-7 round to 1 and 0 in half precision")
         tiles = torch.tensor([[0.5, 1.0000001, -1e-7, 0.25]], device=device, dtype=dtype)
         expected = torch.tensor([[1.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
         self.assert_close(_tiles_histc(tiles, 4), expected)
@@ -285,42 +291,28 @@ class TestEqualization(BaseTester):
 
         self.gradcheck(grad_rot, (inputs, 40.0, grid_size, True), nondet_tol=1e-4)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
-    def test_jit(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 10, 20
-        inp = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        op = enhance.equalize_clahe
-        op_script = torch.jit.script(op)
-        self.assert_close(op(inp), op_script(inp))
-
-    def test_module(self):
-        # equalize_clahe is only a function
-        pass
-
+    @pytest.mark.cuda_device_assert
     @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
-    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype, capfd):
         # kornia#4564: the tile-LUT gather used to fail with a raw
         # "index ... is out of bounds for dimension 5 with size 256". MPS range-checks it too
         # (kornia#4600): from torch 2.13 the assert is asynchronous there, so the message arrives at
         # the sync.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(enhance.equalize_clahe(x).device)
 
-    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype, capfd):
         # The range check keeps the gather in bounds, so it runs with checks disabled too (``python -O``,
         # ``KORNIA_CHECKS=0``): compiled on the CPU, the gather with an index out of range terminates the process.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
-            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
                 _sync(enhance.equalize_clahe(x).device)
         finally:
             if were_checks_enabled:
@@ -338,25 +330,23 @@ class TestEqualization(BaseTester):
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
         self.assert_close(compiled(x), enhance.equalize_clahe(x))
 
-    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_fullgraph_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The compiled graph has to carry the same check: on MPS kornia#4600 is only fixed while
         # compiling if the asynchronous assert is traced, because a host read cannot be.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         torch.manual_seed(0)
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         torch._dynamo.reset()
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
-    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+    @pytest.mark.cuda_device_assert
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype, capfd):
         # The range check keeps the gather in bounds, so a compiled torch.func.grad keeps it, although a compiled
         # functorch transform skips the value checks that guard no index.
-        if device.type == "cuda":
-            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
         if device.type == "mps" and not torch_version_ge(2, 13):
             pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
         if not torch_version_ge(2, 14):
@@ -365,7 +355,7 @@ class TestEqualization(BaseTester):
         torch._dynamo.reset()
         gradient = torch.func.grad(lambda image: enhance.equalize_clahe(image).sum())
         compiled = torch.compile(gradient, fullgraph=True, backend="eager")
-        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+        with raises_value_check(device, r"equalize_clahe expects input values in \[0, 1\]", capfd):
             _sync(compiled(x).device)
 
     @pytest.fixture
@@ -575,9 +565,11 @@ class TestEqualization(BaseTester):
         clip = torch.tensor([40.0], device=device) if clip_as_tensor else 40.0
         luts = enhance.equalization._compute_luts(tiles, clip=clip)
         count_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype; float16 can round 255 x to
-        # another level than float32 does, so the reference tiles hold those levels.
-        levels = (tiles * 255).long().to(count_dtype) / 255
+        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype, with the 255 raised by four
+        # float32 epsilons, relative, in float32 and float64; float16 can round 255 x to another level than float32
+        # does, so the reference tiles hold those levels.
+        scale = 255 * (1 + 2**-21) if dtype in (torch.float32, torch.float64) else 255
+        levels = (tiles * scale).long().to(count_dtype) / 255
         expected = enhance.equalization._compute_luts(levels, clip=clip)
         assert luts.dtype == dtype
         assert torch.equal(luts.to(count_dtype), expected)
@@ -587,8 +579,10 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("clip_limit", [40.0, 300.0])
     @pytest.mark.parametrize("slow_and_differentiable", [False, True])
     def test_clahe_half_precision_tile_of_65536_pixels(self, slow_and_differentiable, clip_limit, device, dtype):
-        torch.manual_seed(5374)
-        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        # Drawn on the CPU, so every device equalizes the same values. The level a pixel reads is computed in its own
+        # dtype: a float32 value just outside the 2**-21 margin below a level boundary can round into it and read the
+        # level above the one float64 reads. About 3 in 10 uniform images this size hold such a value; this one none.
+        img = torch.rand(1, 1, 256, 256, dtype=dtype, generator=torch.Generator().manual_seed(5374)).to(device)
         out = enhance.equalize_clahe(img, clip_limit, (1, 1), slow_and_differentiable)
         assert out.dtype == dtype
         assert torch.isfinite(out).all()
@@ -677,12 +671,11 @@ class TestEqualization(BaseTester):
         flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
         self.assert_close(flipped, out.flip(dim))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_clahe_slow_path_does_not_depend_on_the_default_dtype_6366(self, device, dtype):
         # Differentiable CLAHE takes its bin centres and 0.001 bandwidth from the tile dtype, so
         # torch.set_default_dtype(torch.float64) must not change the output (#6366). The image is the
         # 2x3x32x40 seed-10 case from that report, cast to the parametrized dtype.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         x = torch.rand(2, 3, 32, 40, generator=torch.Generator().manual_seed(10), dtype=torch.float64).to(device, dtype)
         out = enhance.equalize_clahe(x, slow_and_differentiable=True)
         previous = torch.get_default_dtype()
@@ -748,3 +741,36 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(x, slow_and_differentiable=False)
         assert out.shape == x.shape
         assert out.dtype == x.dtype
+
+    @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_clahe_under_default_device(self, grid_size, slow_and_differentiable, device, dtype):
+        # Neither the fast path's CPU index tables nor the slow path's Gaussian bandwidth may allocate
+        # on PyTorch's ambient default device: a meta default exposes both without accelerator hardware.
+        torch.manual_seed(0)
+        img = torch.rand(1, 2, 16, 16, device=device, dtype=dtype)
+        expected = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
+        with torch.device("meta"):
+            actual = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
+        assert actual.device == img.device
+        assert actual.dtype == img.dtype
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("size", [(12, 12), (15, 15)])
+    def test_clahe_slow_path_grad_under_set_default_device(self, size, device, dtype):
+        # Odd and even tile layouts must also preserve gradients when torch.set_default_device is non-CPU.
+        torch.manual_seed(0)
+        base = torch.rand(1, 2, *size, device=device, dtype=dtype)
+        img_ref = base.clone().requires_grad_(True)
+        expected = enhance.equalize_clahe(img_ref, 40.0, (3, 3), slow_and_differentiable=True)
+        expected_grad = torch.autograd.grad(expected.sum(), img_ref)[0]
+
+        img = base.clone().requires_grad_(True)
+        with default_device("meta"):
+            actual = enhance.equalize_clahe(img, 40.0, (3, 3), slow_and_differentiable=True)
+            actual_grad = torch.autograd.grad(actual.sum(), img)[0]
+
+        assert actual.device == base.device
+        assert actual_grad.device == base.device
+        self.assert_close(actual, expected)
+        self.assert_close(actual_grad, expected_grad)

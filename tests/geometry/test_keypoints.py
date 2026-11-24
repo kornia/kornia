@@ -15,15 +15,17 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
-from torch._dynamo.exc import BackendCompilerFailed, Unsupported, UserError
+from torch._dynamo.exc import BackendCompilerFailed, InternalTorchDynamoError, Unsupported, UserError
 
 import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
 from kornia.geometry.linalg import transform_points
 
-from testing.base import BaseTester, supports_bilinear_2d_grid_sample
+from testing.base import BaseTester, skip_unsupported_autocast, supports_bilinear_2d_grid_sample
 
 
 @pytest.mark.parametrize("container,coordinates", [(Keypoints, 2), (Keypoints3D, 3)])
@@ -103,6 +105,11 @@ class TestKeypointsIndexing(BaseTester):
                 and "Could not extract specialized integer from data-dependent expression" in str(exc)
             ):
                 pytest.xfail("Dynamo cannot specialize a CUDA scalar tensor index, including raw tensor indexing")
+            raise
+        except InternalTorchDynamoError as exc:
+            if scalar_tensor and device.type == "cuda" and "PendingUnbackedSymbolNotFound" in str(exc):
+                # torch 2.14 and 2.15 raise this for raw ``x[index]`` with a 0-d CUDA index as well.
+                pytest.xfail("Dynamo cannot trace a CUDA scalar tensor index, including raw tensor indexing")
             raise
         except Unsupported as exc:
             if torch.__version__.startswith("2.5.") and "UserDefinedClassVariable" in str(exc):
@@ -252,25 +259,57 @@ class TestKeypoints(BaseTester):
             self.assert_close(kp.data[..., 0], torch.full(data.shape[:-1], 1.0, device=device, dtype=dtype))
             self.assert_close(kp.data[..., 1], torch.full(data.shape[:-1], 2.0, device=device, dtype=dtype))
 
-    def test_index_put(self, device, dtype):
-        data = torch.zeros(10, 2, device=device, dtype=dtype)
-        kp = Keypoints(data)
-        new_vals = torch.ones(3, 2, device=device, dtype=dtype)
-        idx = (torch.tensor([0, 1, 2], device=device),)
-        kp2 = kp.index_put(idx, new_vals)
-        self.assert_close(kp2.data[:3], new_vals)
+    @pytest.mark.parametrize("layout", ["unbatched", "batched", "strided", "video"])
+    @pytest.mark.parametrize("wrapped_values", [False, True])
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_index_put(self, layout, wrapped_values, inplace, device, dtype):
+        data = torch.arange(12, device=device, dtype=dtype).reshape(6, 2)
+        expected = torch.tensor(
+            [[0.0, 1.0], [-1.0, -2.0], [4.0, 5.0], [6.0, 7.0], [-3.0, -4.0], [10.0, 11.0]],
+            device=device,
+            dtype=dtype,
+        )
+        if layout == "unbatched":
+            indices = (torch.tensor([1, 4], device=device),)
+        else:
+            data = data.reshape(2, 3, 2)
+            expected = expected.reshape(2, 3, 2)
+            indices = (torch.tensor([0, 1], device=device), torch.tensor([1, 1], device=device))
+        if layout == "strided":
+            data = data.transpose(-1, -2).contiguous().transpose(-1, -2)
+        keypoints = VideoKeypoints.from_tensor(data[None]) if layout == "video" else Keypoints(data)
+        original = data.clone()
+        replacements = torch.tensor([[-1.0, -2.0], [-3.0, -4.0]], device=device, dtype=dtype)
+        values = Keypoints(replacements) if wrapped_values else replacements
 
-    def test_index_put_inplace(self, device, dtype):
-        data = torch.zeros(10, 2, device=device, dtype=dtype)
-        kp = Keypoints(data)
-        new_vals = torch.ones(3, 2, device=device, dtype=dtype)
-        idx = (torch.tensor([0, 1, 2], device=device),)
-        kp.index_put(idx, new_vals, inplace=True)
-        self.assert_close(kp.data[:3], new_vals)
+        updated = keypoints.index_put(indices, values, inplace=inplace)
 
-    def test_type(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
+        self.assert_close(updated.data, expected)
+        self.assert_close(data, expected if inplace else original)
+        assert (updated is keypoints) is inplace
+        assert type(updated) is type(keypoints)
+        if layout == "video":
+            assert updated.temporal_channel_size == 2
+            self.assert_close(updated.to_tensor(), expected[None])
+        # Updating the result can change the caller's storage only for the in-place operation.
+        updated.data.add_(1)
+        self.assert_close(data, expected + 1 if inplace else original)
+        self.assert_close(replacements, torch.tensor([[-1.0, -2.0], [-3.0, -4.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("wrapped_values", [False, True])
+    def test_index_put_gradients(self, wrapped_values, device, dtype):
+        data = torch.tensor([[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]], device=device, dtype=dtype, requires_grad=True)
+        replacement = torch.tensor([[-1.0, -2.0]], device=device, dtype=dtype, requires_grad=True)
+        values = Keypoints(replacement) if wrapped_values else replacement
+        result = Keypoints(data).index_put((torch.tensor([1], device=device),), values)
+
+        result.data.sum().backward()
+
+        self.assert_close(data.grad, torch.tensor([[1.0, 1.0], [0.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype))
+        self.assert_close(replacement.grad, torch.ones_like(replacement))
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
+    def test_type(self, device):
         data = torch.rand(5, 2, device=device, dtype=torch.float32)
         kp = Keypoints(data)
         kp.type(torch.float64)
@@ -316,11 +355,11 @@ class TestKeypoints(BaseTester):
         with pytest.raises(RuntimeError, match="one row"):
             unbatched.pad(torch.zeros(0, 4, device=device, dtype=dtype))
 
-    def test_int_input_raises_by_default(self, device, dtype):
+    def test_int_input_raises_by_default(self, device):
         with pytest.raises(ValueError):
             Keypoints(torch.ones(5, 2, device=device, dtype=torch.int32))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 2, device=device, dtype=torch.int32)
         kp = Keypoints(data, raise_if_not_floating_point=False)
         assert kp.dtype == torch.float32
@@ -344,12 +383,6 @@ class TestKeypoints(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass  # Keypoints is not a nn.Module, jit test not applicable
-
-    def test_module(self, device, dtype):
-        pass  # Keypoints is not a nn.Module
 
 
 class TestVideoKeypoints(BaseTester):
@@ -380,6 +413,31 @@ class TestVideoKeypoints(BaseTester):
         data = torch.rand(2, 5, 10, 2, device=device, dtype=dtype)
         vkp = VideoKeypoints.from_tensor(data)
         assert isinstance(vkp, VideoKeypoints)
+
+    @pytest.mark.parametrize("validate_boxes", [True, False])
+    def test_validate_boxes_is_deprecated_and_ignored_6552(self, validate_boxes, device, dtype):
+        # `validate_boxes` is read nowhere: keypoints have no validity rule. It now warns when passed, and the result
+        # stays what the call without it returns.
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes") as record:
+            vkp = VideoKeypoints.from_tensor(data, validate_boxes=validate_boxes)
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "validate_boxes" in str(w.message)] == [__file__]
+        assert vkp.temporal_channel_size == 3
+        self.assert_close(vkp.to_tensor(), data)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6552(self, kwargs, device, dtype):
+        data = torch.rand(2, 3, 4, 2, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            VideoKeypoints.from_tensor(data, **kwargs)
+
+    def test_error_message_names_keypoints_6552(self, device, dtype):
+        with pytest.raises(ValueError, match="keypoints"):
+            VideoKeypoints.from_tensor(torch.rand(2, 3, 4, 4, device=device, dtype=dtype))
 
     def test_cardinality(self, device, dtype):
         B, T, N = 2, 5, 10
@@ -468,15 +526,6 @@ class TestVideoKeypoints(BaseTester):
             return VideoKeypoints.from_tensor(x.transpose(0, 1)).to_tensor()
 
         self.assert_close(torch_optimizer(roundtrip, fullgraph=True)(data), data.transpose(0, 1))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_exception_in_base(self, device, dtype):
-        pass
 
 
 class TestKeypoints3D(BaseTester):
@@ -600,7 +649,7 @@ class TestKeypoints3D(BaseTester):
         with pytest.raises(ValueError, match=r"must be \(4, 4\) or \(B, 4, 4\)"):
             kp.transform_keypoints(torch.eye(3, device=device, dtype=dtype))
 
-    def test_int_input_converted_when_not_raising(self, device, dtype):
+    def test_int_input_converted_when_not_raising(self, device):
         data = torch.ones(5, 3, device=device, dtype=torch.int32)
         kp = Keypoints3D(data, raise_if_not_floating_point=False)
         assert kp.data.dtype == torch.float32
@@ -624,12 +673,6 @@ class TestKeypoints3D(BaseTester):
 
         op = torch_optimizer(fn)
         self.assert_close(op(data), fn(data))
-
-    def test_smoke_jit(self, device, dtype):
-        pass
-
-    def test_module(self, device, dtype):
-        pass
 
 
 @pytest.mark.usefixtures("restore_torch_rng")
@@ -811,3 +854,17 @@ class TestConventionsKeypoints(BaseTester):
         }
         with pytest.raises(NotImplementedError):
             calls[path]()
+
+
+class TestKeypointsAutocast(BaseTester):
+    @pytest.mark.parametrize("autocast_dtype", ["bfloat16", "float16"])
+    def test_region_does_not_change_the_transform_6601(self, autocast_dtype, device):
+        # They inherit transform_points' half-precision product: up to 1.36 px off in bfloat16 at 256 px.
+        skip_unsupported_autocast(device, autocast_dtype)
+        points = torch.rand(1, 50, 2, generator=torch.Generator().manual_seed(0)).to(device) * 256
+        homography = torch.tensor([[[0.9, -0.4, 50.0], [0.4, 0.9, 20.0], [1e-3, 2e-3, 1.0]]], device=device)
+        expected = Keypoints(points).transform_keypoints(homography).data
+        with torch.autocast(device.type, dtype=getattr(torch, autocast_dtype)):
+            actual = Keypoints(points).transform_keypoints(homography).data
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)

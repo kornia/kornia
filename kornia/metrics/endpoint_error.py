@@ -22,38 +22,36 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 
 def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
-    r"""Calculate the average endpoint error (AEPE) between 2 flow maps.
+    r"""Compute the average endpoint error (AEPE) between two flow maps.
 
-    AEPE is the endpoint error between two 2D vectors (e.g., optical flow).
-    Given a h x w x 2 optical flow map, the AEPE is:
+    ``epe = aepe(input, target)`` takes two channel-last flows ``(*, 2)``, such as ``(B, H, W, 2)``, and returns the
+    mean Euclidean distance between their vectors, in the units of the flow. For an ``h x w`` flow the AEPE is:
 
     .. math::
 
         \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
     Convention:
-        - Flow is channel-last, ``(*, 2)`` such as ``(B, H, W, 2)``, in the units of the flow (pixels for
-          optical flow). Permute a channel-first ``(B, 2, H, W)`` flow to ``(B, H, W, 2)`` first: it raises
-          unless :math:`W = 2`, where it is read wrongly. :ref:`Losses and metrics <losses-metrics-conventions>` ports
+        - A channel-first ``(B, 2, H, W)`` flow must be permuted to ``(B, H, W, 2)`` first: it raises unless
+          :math:`W = 2`, where it is read wrongly. :ref:`Losses and metrics <losses-metrics-conventions>` ports
           RAFT's endpoint error.
-        - The endpoint error is the Euclidean distance between the two vectors at every position, symmetric in
-          ``input`` and ``target`` and not normalized by the image size. ``reduction='mean'`` (the default) averages
-          it over every position of every sample at once and ``'sum'`` adds it up, both into a 0-d tensor;
-          ``'none'`` returns the ``(*)`` map. There is no valid mask: mask sparse ground truth on the ``'none'``
-          map. An unknown ``reduction`` raises ``NotImplementedError``.
+        - The distance is symmetric in ``input`` and ``target`` and not normalized by the image size.
+          ``reduction='mean'`` averages it over every position of every sample at once and ``'sum'`` adds it up,
+          both into a 0-d tensor; ``'none'`` returns the ``(*)`` map. There is no valid mask: mask sparse ground
+          truth on the ``'none'`` map. An unknown ``reduction`` raises ``NotImplementedError``.
         - :func:`~kornia.metrics.aepe` and :func:`~kornia.metrics.average_endpoint_error` are the same function.
         - Float16 and bfloat16 inputs are computed in float32 and the result is returned in their promoted dtype.
 
     Args:
-        input: the input flow map with shape ``(*, 2)``.
-        target: the target flow map with shape ``(*, 2)``.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        input: the predicted flow with shape ``(*, 2)``.
+        target: the ground-truth flow with the shape of ``input``.
+        reduction: ``'mean'`` (default) averages, ``'sum'`` adds and ``'none'`` keeps the endpoint-error map.
 
-    Return:
-        the computed AEPE as a 0-d tensor, or the endpoint-error map of shape ``(*)`` for ``reduction='none'``.
+    Returns:
+        a 0-d tensor, or the map of shape ``(*)`` for ``reduction='none'``.
+
+    See Also:
+        - :class:`~kornia.metrics.AEPE`: the module form.
 
     Examples:
         >>> ones = torch.ones(4, 4, 2)
@@ -99,28 +97,24 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
 
 
 class AEPE(nn.Module):
-    r"""Computes the average endpoint error (AEPE) between 2 flow maps.
+    """Compute the average endpoint error (AEPE) between two flow maps (module form).
 
-    EPE is the endpoint error between two 2D vectors (e.g., optical flow).
-    Given a h x w x 2 optical flow map, the AEPE is:
-
-    .. math::
-
-        \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
+    ``criterion = AEPE(reduction)`` stores ``reduction``, and ``epe = criterion(input, target)`` is
+    :func:`~kornia.metrics.aepe` on two ``(*, 2)`` flows.
 
     Convention:
-        See the Convention block of :func:`~kornia.metrics.aepe`, which this module calls with its ``reduction``.
+        See the Convention block of :func:`~kornia.metrics.aepe`.
 
     Args:
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: ``'mean'`` (default), ``'sum'`` or ``'none'``, as in :func:`~kornia.metrics.aepe`.
 
     Shape:
         - input: ``(*, 2)``.
-        - target ``(*, 2)``.
-        - output: :math:`()` for ``'mean'`` and ``'sum'``, ``(*)`` for ``'none'``.
+        - target: ``(*, 2)``.
+        - output: ``()`` for ``'mean'`` and ``'sum'``, ``(*)`` for ``'none'``.
+
+    See Also:
+        - :func:`~kornia.metrics.aepe`: the one-call form.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 2)

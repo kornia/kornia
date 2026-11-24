@@ -23,12 +23,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY
 from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom, PromptEncoder
-from kornia.models.sam.architecture.transformer import TwoWayAttentionBlock, TwoWayTransformer
+from kornia.models.sam.architecture.transformer import Attention, TwoWayAttentionBlock, TwoWayTransformer
 
 from testing.base import BaseTester
 
@@ -41,10 +42,55 @@ def _pad_rb(x, size):
 
 
 class TestSam(BaseTester):
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU decoder allocation probe")
+    def test_prompt_batch_decoder_workspace(self, device, dtype):
+        if _SDPA_FLOAT64_CPU_KERNEL_IS_FAULTY and dtype == torch.float64:
+            pytest.skip("Windows torch 2.5 float64 retains math attention (#6614).")
+        from torch.utils._python_dispatch import TorchDispatchMode
+
+        model = (
+            Sam(
+                ImageEncoderViT(
+                    img_size=32, patch_size=4, embed_dim=32, depth=1, num_heads=2, out_chans=32, window_size=4
+                ),
+                PromptEncoder(32, (8, 8), (32, 32), mask_in_chans=8),
+                MaskDecoder(
+                    transformer_dim=32,
+                    transformer=TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2),
+                    iou_head_hidden_dim=32,
+                ),
+            )
+            .to(device, dtype)
+            .eval()
+        )
+        scores = []
+        pe_storage = []
+
+        class ScoreProbe(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                output = func(*args, **(kwargs or {}))
+                if func == torch.ops.aten.bmm.default and output.shape[-2:] in ((30, 64), (64, 30), (30, 30)):
+                    scores.append(output.untyped_storage().nbytes())
+                return output
+
+        def observe_position_storage(module, args):
+            pe_storage.append(args[1].untyped_storage().nbytes())
+
+        handle = model.mask_decoder.transformer.register_forward_pre_hook(observe_position_storage)
+        image = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+        points = torch.rand(4, 24, 2, device=device, dtype=dtype) * 32
+        labels = torch.ones(4, 24, device=device, dtype=torch.long)
+        with ScoreProbe():
+            result = model(image, [{"points": (points, labels)}], True)[0]
+        handle.remove()
+        assert result.logits.shape == (4, 3, 32, 32)
+        assert torch.isfinite(result.logits).all()
+        assert scores == []
+        assert pe_storage == [32 * 8 * 8 * image.element_size()]
+
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
-    def test_smoke(self, device, model_type):
-        model = Sam.from_config(SamConfig(model_type)).to(device)
+    def test_smoke(self, device):
+        model = Sam.from_config(SamConfig("mobile_sam")).to(device)
         assert isinstance(model, Sam)
 
         img_size = model.image_encoder.img_size
@@ -55,12 +101,12 @@ class TestSam(BaseTester):
         model(data, [{"points": (keypoints, labels)}], False)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("N", [2, 5])
     @pytest.mark.parametrize("multimask_output", [True, False])
-    def test_cardinality(self, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
+        # The prompt count and the points per prompt take no branch; ``multimask_output`` picks the masks.
+        batch_size, N = 3, 2
         data = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
         model = Sam.from_config(SamConfig("vit_b"))
         model = model.to(device=device, dtype=dtype)
@@ -90,7 +136,8 @@ class TestSam(BaseTester):
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("model_type", ["vit_b", "vit_l", "vit_h", "mobile_sam"])
+    # vit_b is built by test_cardinality, mobile_sam by test_smoke.
+    @pytest.mark.parametrize("model_type", ["vit_l", "vit_h"])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
         model = model.to(device=device)
@@ -98,13 +145,7 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
         assert next(model.parameters()).device == device
 
-    @pytest.mark.skip(reason="Unsupported at moment -- the code is not tested for training and had `torch.no_grad`")
-    def test_gradcheck(self, device): ...
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self): ...
-
-    @pytest.mark.skip(reason="Needs to be reviewed.")
+    @pytest.mark.slow
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         img = torch.rand(1, 3, 128, 75, device=device, dtype=dtype)
@@ -196,9 +237,11 @@ class TestSam(BaseTester):
         with pytest.raises(BaseError, match="needs a model_type"):
             Sam.from_config(config)
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_positional_encoding_keeps_float32_precision(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder: 256-dimensional embeddings, so 128 random frequencies drawn from N(0, 1).
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device)
@@ -219,9 +262,8 @@ class TestSam(BaseTester):
         self.assert_close(dense, reference((64, 64)).to(dtype))
         self.assert_close(points, reference.forward_with_coords(coords, (1024, 1024)).to(dtype))
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     def test_positional_encoding_of_a_float64_model_is_float64(self, device):
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         pe = PositionEmbeddingRandom(128).to(device=device, dtype=torch.float64)
         pe.positional_encoding_gaussian_matrix.copy_(torch.randn(2, 128, generator=generator, dtype=torch.float64))
@@ -240,9 +282,11 @@ class TestSam(BaseTester):
         # The same encoding computed in float32 is off by about 1e-6, so the comparison above can tell them apart.
         assert (closed_form(torch.float32) - dense).abs().max() > 1e-8
 
+    @pytest.mark.applies_to(
+        when=lambda p: not (p["device_name"] == "mps" and p["dtype_name"] == "float64"),
+        reason="MPS does not support float64",
+    )
     def test_prompt_encoder_shifts_to_pixel_centres_in_float32(self, device, dtype):
-        if device.type == "mps" and dtype == torch.float64:
-            pytest.skip("MPS does not support float64")
         # SAM's prompt encoder for a 1024 x 1024 input and a 64 x 64 embedding (``_build_sam``).
         encoder = PromptEncoder(256, (64, 64), (1024, 1024), mask_in_chans=16).to(device=device, dtype=dtype)
         seen = []
@@ -302,6 +346,59 @@ class TestSam(BaseTester):
         self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
         after = [m.running_mean for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
         assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
+
+class TestSamDecoderAttention(BaseTester):
+    def test_reference_values(self, device, dtype):
+        model = Attention(4, 1).to(device, dtype)
+        with torch.no_grad():
+            for layer in (model.q_proj, model.k_proj, model.v_proj, model.out_proj):
+                layer.weight.copy_(torch.eye(4, device=device, dtype=dtype))
+                layer.bias.zero_()
+        q = torch.tensor([[[1.0, 0, 0, 0], [0, 1.0, 0, 0]]], device=device, dtype=dtype)
+        k = torch.cat((torch.eye(4, device=device, dtype=dtype), torch.zeros(1, 4, device=device, dtype=dtype)))[None]
+        v = torch.tensor(
+            [[[1.0, 2, 3, 4], [4, 3, 2, 1], [1, 0, -1, 0], [0, 1, 0, -1], [2, 2, 2, 2]]], device=device, dtype=dtype
+        )
+        # NumPy float64: w = q @ k.T / 2; w = exp(w-w.max(-1, keepdims=True));
+        # expected = (w / w.sum(-1, keepdims=True)) @ v, using the literals above.
+        expected = torch.tensor(
+            [
+                [
+                    [1.531093650445, 1.645937566370, 1.406719048666, 1.521562964592],
+                    [1.875625398222, 1.760781482296, 1.291875132741, 1.177031216815],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        with torch.no_grad():
+            self.assert_close(model(q, k, v), expected)
+
+    def test_gradcheck(self, device):
+        model = Attention(4, 1).to(device, torch.float64)
+        q = torch.rand(1, 2, 4, device=device, dtype=torch.float64, requires_grad=True)
+        k, v = (torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(2))
+        self.gradcheck(model, (q, k, v))
+        gradient = torch.autograd.grad(model(q, k, v).square().sum(), q, create_graph=True)[0]
+        assert torch.isfinite(torch.autograd.grad(gradient.square().sum(), q)[0]).all()
+        with torch.no_grad():
+            _, tangent = torch.func.jvp(model, (q, k, v), tuple(torch.ones_like(t) for t in (q, k, v)))
+        assert torch.isfinite(tangent).all()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        model = Attention(8, 2).to(device, dtype).eval()
+        q = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        k, v = (torch.rand(2, 5, 8, device=device, dtype=dtype) for _ in range(2))
+        with torch.no_grad():
+            self.assert_close(torch_optimizer(model)(q, k, v), model(q, k, v))
+
+    def test_jit(self, device, dtype):
+        model = Attention(8, 2).to(device, dtype).eval()
+        q = torch.rand(2, 3, 8, device=device, dtype=dtype)
+        k, v = (torch.rand(2, 5, 8, device=device, dtype=dtype) for _ in range(2))
+        with torch.no_grad():
+            self.assert_close(torch.jit.script(model)(q, k, v), model(q, k, v))
 
 
 @pytest.mark.parametrize("cls", [TwoWayTransformer, TwoWayAttentionBlock])

@@ -25,8 +25,9 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
-import torch.nn.functional as F
 from torch import Tensor, nn
+
+from kornia.core._compat import scaled_dot_product_attention
 
 
 class Attention(nn.Module):
@@ -82,7 +83,7 @@ class Attention(nn.Module):
             x = attn @ v
         else:
             # softmax(q k^T * scale) v; the fused kernels do not materialise the N x N weights of every head.
-            x = F.scaled_dot_product_attention(q, k, v, scale=self.scale)
+            x = scaled_dot_product_attention(q, k, v, scale=self.scale)
         x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         return self.proj_drop(x)

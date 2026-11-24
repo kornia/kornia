@@ -27,6 +27,9 @@ from kornia.feature.laf import extract_patches_from_pyramid, laf_from_center_sca
 
 from testing.base import BaseTester
 
+_COMMON_SLICES = [slice(None), slice(None, -1), slice(1, None), slice(0, 0)]
+_SLICES = {SOSNet: [*_COMMON_SLICES, slice(None, 3)], HyNet: _COMMON_SLICES}
+
 
 class TestDescriptorNormalization(BaseTester):
     @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
@@ -206,8 +209,11 @@ class TestDescriptorNormalization(BaseTester):
         for name in ("running_mean", "running_var", "num_batches_tracked"):
             self.assert_close(getattr(model[-1], name), getattr(reference[-1], name), rtol=0.0, atol=0.0)
 
-    @pytest.mark.parametrize("model_cls", [SOSNet, HyNet])
-    @pytest.mark.parametrize("selection", [slice(None), slice(None, -1), slice(1, None), slice(0, 0), slice(None, 3)])
+    @pytest.mark.parametrize(
+        "model_cls, selection",
+        # HyNet's layer7 has three modules, so slice(None, 3) would repeat slice(None) there.
+        [(model_cls, selection) for model_cls in (SOSNet, HyNet) for selection in _SLICES[model_cls]],
+    )
     def test_sequential_slices(self, device, model_cls, selection, monkeypatch):
         model = model_cls(pretrained=False).to(device).eval()
         block = model.layers if model_cls is SOSNet else model.layer7

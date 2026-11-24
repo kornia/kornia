@@ -29,7 +29,8 @@ from kornia.geometry.transform import get_perspective_transform, warp_perspectiv
 class RandomPerspective(GeometricAugmentationBase2D):
     r"""Warp images with a random perspective transformation, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomPerspective.png
+    ``output = RandomPerspective(distortion_scale, ...)(input)`` applies a projective warp to selected images of
+    shape ``(B, C, H, W)``.
 
     Args:
         distortion_scale: the degree of distortion, ranged from 0 to 1.
@@ -51,7 +52,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
           The source corners are ``(0, 0)``, ``(W - 1, 0)``, ``(W - 1, H - 1)`` and ``(0, H - 1)``;
-          :attr:`transform_matrix` maps them to the sampled destination corners.
+          ``transform_matrix`` maps them to the sampled destination corners.
         - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
           samples each coordinate in both directions over the same extent.
         - with ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the warp is an identity up to numerical precision
@@ -62,6 +63,12 @@ class RandomPerspective(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_perspective`.
+
+    .. image:: _static/img/RandomPerspective.png
+
+    See Also:
+        - :class:`RandomAffine`: samples an affine rather than projective transform.
+        - :class:`RandomPerspective3D`: applies a projective warp to volumes.
 
     Examples:
         >>> rng = torch.manual_seed(0)

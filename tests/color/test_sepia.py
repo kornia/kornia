@@ -77,7 +77,7 @@ class TestSepia(BaseTester):
 
         assert inp.is_contiguous() is False
         assert actual.is_contiguous()
-        self.assert_close(actual, actual)
+        self.assert_close(actual, kornia.color.sepia(inp.contiguous()))
 
     def test_gradcheck(self, device):
         # test parameters
@@ -91,7 +91,7 @@ class TestSepia(BaseTester):
         op = kornia.color.sepia
         op_script = torch.jit.script(op)
 
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img), op_script(img))
 
     def test_module(self, device, dtype):

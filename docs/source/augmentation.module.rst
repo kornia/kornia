@@ -8,9 +8,13 @@ Image Augmentations
 
 .. currentmodule:: kornia.augmentation
 
-The augmentation operators, grouped by what they change. All of them accept ``(B, C, H, W)`` float tensors in
-``[0, 1]`` (``(B, C, D, H, W)`` for the 3D transforms), sample independent parameters per batch element, and can
-be combined with :class:`~kornia.augmentation.AugmentationSequential`.
+The augmentation operators, grouped by what they change. They take float tensors of shape ``(B, C, H, W)``, or
+``(B, C, D, H, W)`` for the 3D transforms; color transforms expect values in ``[0, 1]``. Each operator applies
+with probability ``p``, drawn per sample, except the crops, the resizes, ``RandomMixUpV2``, ``RandomCutMixV2``,
+``PatchMix``, ``Normalize``, ``Denormalize`` and ``RandomDissolving``, which transform the whole batch or none of
+it. ``same_on_batch=True`` makes any other operator use one draw for the whole batch. In the class descriptions,
+"selected" samples are the ones ``p`` picked. Combine operators with
+:class:`~kornia.augmentation.container.AugmentationSequential`.
 
 .. list-table::
    :widths: 30 70

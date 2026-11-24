@@ -24,7 +24,15 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import (
+    _at_least_float32,
+    _autocast_disabled,
+    _svd_work_dtype,
+    _symmetric_eigenvector,
+    _torch_svd_cast,
+    _torch_svd_in_work_dtype,
+    safe_inverse_with_mask,
+)
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -521,6 +529,8 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
+    dtype = torch.promote_types(points1.dtype, points2.dtype)
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
 
     # Autocast would run the matrix products in half precision and return half-precision candidates.
     with _autocast_disabled(points1.device.type):
@@ -532,7 +542,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
         candidates, valid = _seven_point_candidates(A)
         # F = T2^T F T1
         fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
-        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
+        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix)).to(dtype)
 
 
 def run_8point(
@@ -571,7 +581,9 @@ def run_8point(
             )
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
-        weights = weights.to(points1.dtype)
+        weights = _at_least_float32(weights.to(points1.dtype))
+    dtype = torch.promote_types(points1.dtype, points2.dtype)
+    points1, points2 = _at_least_float32(points1), _at_least_float32(points2)
 
     # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
     with _autocast_disabled(points1.device.type):
@@ -613,29 +625,120 @@ def run_8point(
                     # Weighted einsum
                     M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-            # No device has a half-precision eigh kernel; CPU autocast used to promote this one to float32.
-            half = M.dtype in (torch.float16, torch.bfloat16)
-            _evals, evecs = torch.linalg.eigh(M.float() if half else M)  # ascending order
-            h = evecs[..., 0].to(M.dtype)  # (B,9), eigenvector for smallest λ
+            _evals, evecs = torch.linalg.eigh(M)  # ascending order
+            h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
         F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
         F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
-        return normalize_transformation(F)
+        return normalize_transformation(F).to(dtype)
+
+
+def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Compute the affine fundamental matrix of two affine cameras by orthogonal regression.
+
+    Two affine cameras (parallel projection, such as weak perspective) have a fundamental matrix of the form
+    ``[[0, 0, a], [0, 0, b], [c, d, e]]``: the epipolar constraint :math:`a x_2 + b y_2 + c x_1 + d y_1 + e = 0` is a
+    hyperplane in the space of the stacked correspondences :math:`(x_2, y_2, x_1, y_1)`, and the distance of a
+    correspondence to it is the geometric error, the smallest total displacement of its two points that makes them
+    correspond. The hyperplane that minimizes the sum of the squared (weighted) distances passes through the
+    centroid, and its normal is the eigenvector of the smallest eigenvalue of the centred scatter matrix. This is
+    the Gold Standard (maximum-likelihood) estimate under Gaussian noise, exact for four correspondences. When the
+    points of one image lie on a line, the minimizer is that line, a rank-one matrix with ``(a, b) = 0`` or
+    ``(c, d) = 0``, which no pair of affine cameras has; ``RANSAC("fundamental_affine")`` rejects such models.
+
+    Reference: Hartley and Zisserman, Multiple View Geometry in Computer Vision, 2nd ed., section 14.2, algorithm 14.1.
+
+    Args:
+        points1: points in the first image ``(B, N, 2)``, :math:`N \ge 4`.
+        points2: points in the second image ``(B, N, 2)``.
+        weights: optional nonnegative weights ``(B, N)`` of the correspondences' squared distances.
+
+    Returns:
+        The affine fundamental matrices ``(B, 3, 3)``, scaled so that ``F[2, 2] = 1``.
+
+    """
+    KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
+    KORNIA_CHECK_SAME_SHAPE(points1, points2)
+    if points1.shape[1] < 4:
+        raise ShapeError(
+            f"points1 and points2 must have shape (B, N, 2) with N >= 4, got {list(points1.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=["B", "N >= 4", "2"],
+        )
+    if weights is not None and weights.shape != points1.shape[:2]:
+        raise ShapeError(
+            f"weights must have shape (B, N) = {list(points1.shape[:2])}, got {list(weights.shape)}.",
+            actual_shape=list(weights.shape),
+            expected_shape=["B", "N"],
+        )
+    dtype = points1.dtype
+    # Pixel coordinates in the hundreds overflow half precision, and the SVD has no half kernel. float32 points are
+    # fitted in float64 (float32 on MPS), so that far from the origin, as in a large image, the fit adds no rounding
+    # of its own to theirs.
+    work = _svd_work_dtype(points1)
+    with _autocast_disabled(points1.device.type):
+        X = torch.cat([points2, points1], dim=-1).to(work)
+        if weights is None:
+            w = torch.ones(X.shape[:2], device=X.device, dtype=work)
+        else:
+            # A negative weight counts as zero; ``where`` keeps the derivative at a zero weight one-sided (#4229).
+            w = weights.to(work)
+            w = torch.where(w < 0, 0.0, w)
+        # A batch element with a non-finite point or weight, whose sum is then not finite, has no matrix. It is fitted
+        # as zeros and its F set to NaN, so the other elements keep theirs and every gradient stays finite, as in
+        # _svd_null_vector (#4770).
+        finite = (X.sum((-2, -1)) + w.sum(-1)).isfinite()
+        X = torch.where(finite.view(-1, 1, 1), X, 0.0)
+        w = torch.where(finite.view(-1, 1), w, 1.0)
+        mean = (w[..., None] * X).sum(1) / w.sum(1, keepdim=True).clamp_min(torch.finfo(work).tiny)
+        centred = X - mean[:, None]
+        # Linear in w, so a zero weight has a finite gradient, unlike row scaling by sqrt(w) (#4912).
+        scatter = (centred * w[..., None]).transpose(-2, -1) @ centred
+        # The derivatives come from the scatter: _symmetric_eigenvector divides only by the gaps to the smallest
+        # eigenvalue, so they stay finite when two other eigenvalues are equal, as for a grid seen from the front and
+        # the side (#6214).
+        if work == torch.float64:
+            eigenvalues, eigenvectors = torch.linalg.eigh(scatter.detach())
+            normal = _symmetric_eigenvector(scatter, eigenvalues, eigenvectors, 0)
+        else:
+            # The scatter squares the condition number: in float32 (on MPS, or for a half input), its eigh mixes the two
+            # smallest directions of a sample near a line and a plane, and torch 2.5's MPS has no eigh. The right
+            # singular vectors of the weighted centred points keep them apart; their squared singular values are the
+            # scatter's eigenvalues. In float64, eigh resolves them and is several times faster than an SVD on CUDA.
+            _, S, V = _torch_svd_in_work_dtype((centred * w[..., None].sqrt()).detach(), full_matrices=False)
+            normal = _symmetric_eigenvector(scatter, S.to(work).square(), V.to(work), -1)
+        zeros = torch.zeros_like(normal[:, 0])
+        last = -(normal * mean).sum(-1)
+        F = torch.stack(
+            [zeros, zeros, normal[:, 0], zeros, zeros, normal[:, 1], normal[:, 2], normal[:, 3], last], dim=-1
+        ).view(-1, 3, 3)
+        F = normalize_transformation(F)
+        F = torch.where(finite.view(-1, 1, 1), F, float("nan"))
+        if dtype == torch.float16:
+            # Points centred on the origin put e near 0, and F[2, 2] = 1 then puts the other entries above float16's
+            # 65504: such an F is scaled to its largest entry 1 instead.
+            scale = F.abs().amax(dim=(-2, -1), keepdim=True)
+            F = torch.where(scale > torch.finfo(torch.float16).max, F / scale, F)
+        return F.to(dtype)
 
 
 def find_fundamental(
     points1: torch.Tensor,
     points2: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    method: Literal["8POINT", "7POINT"] = "8POINT",
+    method: Literal["8POINT", "7POINT", "AFFINE"] = "8POINT",
 ) -> torch.Tensor:
-    r"""Estimate the fundamental matrix from pixel correspondences with the 8- or 7-point algorithm.
+    r"""Estimate the fundamental matrix from pixel correspondences with the 8-, 7-point or affine algorithm.
 
     ``F = find_fundamental(points1, points2)`` takes correspondences ``(B, N, 2)``, ``N >= 8``, of the first and the
     second image, in pixels or any other image coordinates, and returns the rank-2 matrix ``(B, 3, 3)`` with
     :math:`x_2^\top F x_1 = 0` (the second image's point on the left) of the Hartley-normalized, optionally weighted,
     8-point least-squares fit. ``method="7POINT"`` takes exactly seven correspondences and returns the three
-    candidates ``(B, 3, 3, 3)`` of the 7-point algorithm instead. For calibrated cameras and normalized camera
+    candidates ``(B, 3, 3, 3)`` of the 7-point algorithm instead. ``method="AFFINE"`` takes ``N >= 4``
+    correspondences of two affine cameras (parallel projection, such as weak-perspective views of a distant scene)
+    and returns their affine fundamental matrix ``[[0, 0, a], [0, 0, b], [c, d, e]]``, the Gold Standard
+    (maximum-likelihood) fit of Hartley and Zisserman's algorithm 14.1. For calibrated cameras and normalized camera
     coordinates, use :func:`find_essential`; for a planar scene or a camera that only rotates, where ``F`` is not
     determined, :func:`~kornia.geometry.homography.find_homography_dlt`; with outliers,
     :class:`~kornia.geometry.ransac.RANSAC`.
@@ -645,20 +748,29 @@ def find_fundamental(
         - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
           unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
           ``method="7POINT"`` returns three candidates in no particular order.
-        - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
-          negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - ``weights`` weight each correspondence's equation in the linear system (for ``"AFFINE"``, its squared
+          distance): only their ratios matter, a negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - ``"AFFINE"`` fits and returns the affine form exactly; it computes in float64 (float32 on MPS and for
+          half-precision input). A float16 result whose entries ``F[2, 2] = 1`` would put above float16's maximum
+          (``e`` near 0, as for points centred on the origin) is scaled to its largest entry 1 instead. A batch
+          element with a non-finite point or weight gets a NaN matrix, and the others are unaffected.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
         - A caller's autocast region does not change the fit.
 
+    .. note::
+        On MPS, ``method="8POINT"`` needs torch 2.14 or later (2.7 for exactly eight correspondences without
+        weights), ``"7POINT"`` needs torch 2.7 or later, and ``"AFFINE"`` runs from torch 2.5.1; see
+        :ref:`MPS linear algebra <mps-linear-algebra>`.
+
     Args:
         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``: :math:`N \ge 8` for
-            ``"8POINT"``, exactly 7 for ``"7POINT"``.
+            ``"8POINT"``, exactly 7 for ``"7POINT"``, :math:`N \ge 4` for ``"AFFINE"``.
         points2: A set of points in the second image with the shape of ``points1``.
         weights: Tensor containing the weights per point correspondence with a shape of ``(B, N)``.
-        method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
+        method: The method to use for computing the fundamental matrix: "8POINT", "7POINT" or "AFFINE".
 
     Returns:
-        the computed fundamental matrix with shape ``(B, 3, 3)`` for ``"8POINT"`` and
+        the computed fundamental matrix with shape ``(B, 3, 3)`` for ``"8POINT"`` and ``"AFFINE"``, and
         ``(B, 3, 3, 3)`` for ``"7POINT"``.
 
     Raises:
@@ -677,8 +789,10 @@ def find_fundamental(
         result = run_7point(points1, points2)
     elif method.upper() == "8POINT":
         result = run_8point(points1, points2, weights)
+    elif method.upper() == "AFFINE":
+        result = run_affine(points1, points2, weights)
     else:
-        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT' and '8POINT'.")
+        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT', '8POINT' and 'AFFINE'.")
     return result
 
 
@@ -722,9 +836,13 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
             expected_shape=["*", "N", "2 or 3"],
         )
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
+    # Outside an autocast region, half-precision lines are computed in float32 and rounded once, after the scaling.
+    # Only a half-precision result is cast back: integer inputs return float32 lines, and a float32 input keeps the
+    # dtype that autocast gives it.
+    dtype = torch.promote_types(points_h.dtype, F_mat.dtype)
     # project points and retrieve lines components
-    points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
-    lines = F_mat @ points_h  # *x3xN
+    points_h = torch.transpose(_at_least_float32(points_h), dim0=-2, dim1=-1)
+    lines = _at_least_float32(F_mat) @ points_h  # *x3xN
     a, b, _ = torch.chunk(lines, dim=-2, chunks=3)
 
     # compute normal and compose equation line
@@ -734,7 +852,8 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     # The same values as concatenating ``a * nu``, ``b * nu`` and ``c * nu``, without the concatenation that
     # TorchScript's CUDA fuser compiles into a group returning an int32 tensor for N = 0 after non-empty calls.
     line = lines * nu  # *x3xN
-    return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
+    line = torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
+    return line.to(dtype) if dtype in (torch.float16, torch.bfloat16) else line
 
 
 def get_perpendicular(lines: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
@@ -880,13 +999,17 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
             f"got {list(E_mat.shape)}, {list(K1.shape)} and {list(K2.shape)}."
         )
 
-    K1_inv, valid1 = safe_inverse_with_mask(K1)
-    K2_inv, valid2 = safe_inverse_with_mask(K2)
-    F_mat = K2_inv.transpose(-2, -1) @ E_mat @ K1_inv
+    # Outside an autocast region, half-precision matrices are converted in float32 and the result is rounded once.
+    # Only a half-precision result is cast back, so a float32 input keeps the dtype that autocast gives it.
+    dtype = E_mat.dtype
+    K1_inv, valid1 = safe_inverse_with_mask(_at_least_float32(K1))
+    K2_inv, valid2 = safe_inverse_with_mask(_at_least_float32(K2))
+    F_mat = K2_inv.transpose(-2, -1) @ _at_least_float32(E_mat) @ K1_inv
     # A singular camera matrix has no fundamental matrix: keep it NaN rather than using the identity
     # that ``safe_inverse_with_mask`` substitutes for the inverse.
     valid = (valid1 & valid2)[..., None, None]
-    return torch.where(valid, F_mat, torch.full_like(F_mat, float("nan")))
+    F_mat = torch.where(valid, F_mat, torch.full_like(F_mat, float("nan")))
+    return F_mat.to(dtype) if dtype in (torch.float16, torch.bfloat16) else F_mat
 
 
 # adapted from:
@@ -952,22 +1075,10 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     X1Y2, X2Y2, X3Y2 = vstack(X1, Y2), vstack(X2, Y2), vstack(X3, Y2)
     X1Y3, X2Y3, X3Y3 = vstack(X1, Y3), vstack(X2, Y3), vstack(X3, Y3)
 
-    F_vec = torch.cat(
-        [
-            X1Y1.det().reshape(-1, 1),
-            X2Y1.det().reshape(-1, 1),
-            X3Y1.det().reshape(-1, 1),
-            X1Y2.det().reshape(-1, 1),
-            X2Y2.det().reshape(-1, 1),
-            X3Y2.det().reshape(-1, 1),
-            X1Y3.det().reshape(-1, 1),
-            X2Y3.det().reshape(-1, 1),
-            X3Y3.det().reshape(-1, 1),
-        ],
-        dim=1,
-    )
-
-    F = F_vec.view(*P1.shape[:-2], 3, 3)
+    # All nine minors have the same shape. One batched factorization avoids nine separate determinant launches;
+    # the last batch axis visits columns of F inside rows, preserving the two-camera convention.
+    minors = torch.stack((X1Y1, X2Y1, X3Y1, X1Y2, X2Y2, X3Y2, X1Y3, X2Y3, X3Y3), dim=-3)
+    F = minors.det().reshape(*P1.shape[:-2], 3, 3)
 
     if input_dtype == torch.float16:
         # F is defined up to scale: divide by the largest absolute entry so it fits float16; F = 0 stays 0.

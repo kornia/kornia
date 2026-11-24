@@ -159,7 +159,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/augmentation/test_param_validation.py",
-                111,
+                110,
                 "torch.rand",
                 1,
                 ("tests/augmentation/test_param_validation.py::TestParamValidation::test_tuple_range_reader_errors",),
@@ -184,11 +184,11 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                     ("tests/enhance/test_core.py::TestAddWeighted::test_shape",),
                     "value-dependent",
                 )[0]
-                for line in range(95, 98)
+                for line in range(76, 79)
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                198,
+                212,
                 "torch.randn",
                 1,
                 (
@@ -199,7 +199,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/image/test_draw.py",
-                432,
+                463,
                 "torch.rand",
                 4,
                 ("tests/image/test_draw.py::TestDrawLine::test_point_size",),

@@ -20,12 +20,16 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range
 from kornia.enhance import jpeg_codec_differentiable
 
 
 class RandomJPEG(IntensityAugmentationBase2D):
-    r"""Applies random (differentiable) JPEG coding to a torch.Tensor image.
+    r"""Simulate differentiable JPEG coding for RGB images.
+
+    ``output = RandomJPEG(jpeg_quality, ...)(input)`` simulates JPEG coding for selected RGB images of shape
+    ``(B, 3, H, W)``.
 
     .. image:: _static/img/RandomJPEG.png
 
@@ -51,6 +55,9 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.jpeg_codec_differentiable`.
+
+    See Also:
+        - :class:`RandomGaussianBlur`: smooths with a filter rather than JPEG coding artifacts.
 
     Examples:
         >>> import torch

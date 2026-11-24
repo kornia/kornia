@@ -32,9 +32,11 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 gaussian_module = importlib.import_module("kornia.filters.gaussian")
 
 
-def _require_native_cpu(device: torch.device, dtype: torch.dtype) -> None:
-    if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
-        pytest.skip("the CPU slice accumulation path supports native CPU float32 and float64 only")
+NATIVE_CPU = pytest.mark.applies_to(
+    devices=("cpu",),
+    dtypes=("float32", "float64"),
+    reason="the CPU slice accumulation path supports native CPU float32 and float64 only",
+)
 
 
 def _use_native_cpu_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -48,9 +50,9 @@ def _cpu_tolerance(dtype: torch.dtype) -> float:
 
 
 class TestGaussianBlurCpu(BaseTester):
+    @NATIVE_CPU
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     def test_helper_matches_separable_convolution_per_sample_kernels(self, border_type, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(2, 2, 257, 256, device=device, dtype=dtype)
         sigma = torch.tensor([[0.6, 1.7], [1.4, 0.8]], device=device, dtype=dtype)
         kernel_x = get_gaussian_kernel1d(7, sigma[:, 1:])
@@ -62,8 +64,8 @@ class TestGaussianBlurCpu(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @NATIVE_CPU
     def test_helper_vmap_has_no_user_warning(self, device, dtype):
-        _require_native_cpu(device, dtype)
         image = torch.rand(2, 1, 7, 9, device=device, dtype=dtype)
         kernel_x = torch.rand(2, 5, device=device, dtype=dtype)
         kernel_y = torch.rand(2, 3, device=device, dtype=dtype)
@@ -78,17 +80,16 @@ class TestGaussianBlurCpu(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the helper is CPU-only")
     def test_helper_gradcheck_small_input_and_kernels(self, device):
-        if device.type != "cpu":
-            pytest.skip("the helper is CPU-only")
         image = torch.rand(1, 1, 7, 9, device=device, dtype=torch.float64, requires_grad=True)
         kernel_x = torch.rand(1, 5, device=device, dtype=torch.float64, requires_grad=True)
         kernel_y = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
 
         self.gradcheck(_gaussian_blur2d_cpu, (image, kernel_x, kernel_y, "reflect"))
 
+    @NATIVE_CPU
     def test_public_large_path_dispatches_without_reverse_mode_gradients(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         _use_native_cpu_path(monkeypatch)
         image = torch.rand(2, 1, 256, 256, device=device, dtype=dtype)
         sigma = torch.tensor([[0.7, 1.8], [1.6, 0.9]], device=device, dtype=dtype)
@@ -110,9 +111,9 @@ class TestGaussianBlurCpu(BaseTester):
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
         assert calls == 1
 
+    @NATIVE_CPU
     def test_convention_upper_case_border_type_takes_the_slice_path_5156(self, monkeypatch, device, dtype):
         """'REFLECT', 'Replicate', 'CIRCULAR' and 'Constant' take the slice path of the lower-case spelling (#5156)."""
-        _require_native_cpu(device, dtype)
         _use_native_cpu_path(monkeypatch)
         image = torch.rand(1, 2, 256, 256, device=device, dtype=dtype)
         helper = gaussian_module._gaussian_blur2d_cpu
@@ -133,8 +134,8 @@ class TestGaussianBlurCpu(BaseTester):
             assert torch.equal(gaussian_blur2d(image, (5, 7), (0.9, 1.3), upper), expected)
         assert borders == [b for b in ("reflect", "replicate", "circular", "constant") for _ in range(2)]
 
+    @NATIVE_CPU
     def test_public_reverse_mode_gradients_match_convolution(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         _use_native_cpu_path(monkeypatch)
 
         def should_not_run(*args, **kwargs):
@@ -158,9 +159,8 @@ class TestGaussianBlurCpu(BaseTester):
             atol=4e-5,
         )
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the optimized path is CPU-only")
     def test_public_large_path_gradcheck_with_scalar_image_parameter(self, monkeypatch, device):
-        if device.type != "cpu":
-            pytest.skip("the optimized path is CPU-only")
         _use_native_cpu_path(monkeypatch)
         base = torch.rand(1, 1, 256, 512, device=device, dtype=torch.float64)
         scale = torch.tensor(0.8, device=device, dtype=torch.float64, requires_grad=True)
@@ -172,9 +172,8 @@ class TestGaussianBlurCpu(BaseTester):
         self.gradcheck(op, (scale, sigma))
         assert torch.autograd.gradgradcheck(op, (scale, sigma))
 
+    @pytest.mark.applies_to(devices=("cpu",), reason="the optimized path is CPU-only")
     def test_public_large_path_jvp_through_sigma(self, monkeypatch, device):
-        if device.type != "cpu":
-            pytest.skip("the optimized path is CPU-only")
         _use_native_cpu_path(monkeypatch)
         image = torch.rand(1, 1, 256, 512, device=device, dtype=torch.float64)
         sigma = torch.tensor([[0.9, 1.3]], device=device, dtype=torch.float64)
@@ -206,8 +205,8 @@ class TestGaussianBlurCpu(BaseTester):
         self.assert_close(actual_tangent, expected_tangent, rtol=3e-10, atol=3e-10)
         assert calls == 1
 
+    @NATIVE_CPU
     def test_noncontiguous_and_small_inputs_fall_back_to_convolution(self, monkeypatch, device, dtype):
-        _require_native_cpu(device, dtype)
         _use_native_cpu_path(monkeypatch)
 
         def should_not_run(*args, **kwargs):
@@ -226,10 +225,10 @@ class TestGaussianBlurCpu(BaseTester):
             )
             self.assert_close(actual, expected)
 
+    @NATIVE_CPU
     def test_onednn_available_uses_slices_in_eager(self, monkeypatch, device, dtype):
         # Eager slices beat oneDNN's convolution; compilation keeps convolution
         # there (see test_dynamo_large_input_dispatch).
-        _require_native_cpu(device, dtype)
         monkeypatch.setattr(gaussian_module, "_HAS_MKLDNN", True)
         helper = gaussian_module._gaussian_blur2d_cpu
         calls = 0
@@ -252,9 +251,8 @@ class TestGaussianBlurCpu(BaseTester):
         self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
         assert calls == 1
 
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32",), reason="CPU autocast is required")
     def test_autocast_falls_back_to_convolution(self, monkeypatch, device, dtype):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("CPU autocast is required")
         _use_native_cpu_path(monkeypatch)
 
         def should_not_run(*args, **kwargs):
@@ -273,10 +271,10 @@ class TestGaussianBlurCpu(BaseTester):
         assert autocast_output.dtype == autocast_reference.dtype
         self.assert_close(autocast_output, autocast_reference)
 
+    @NATIVE_CPU
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("has_mkldnn", [False, True])
     def test_dynamo_large_input_dispatch(self, monkeypatch, device, dtype, torch_optimizer, border_type, has_mkldnn):
-        _require_native_cpu(device, dtype)
         monkeypatch.setattr(gaussian_module, "_HAS_MKLDNN", has_mkldnn)
         image = torch.rand(2, 1, 256, 256, device=device, dtype=dtype)
         sigma = torch.tensor([[0.7, 1.8], [1.6, 0.9]], device=device, dtype=dtype)
@@ -296,10 +294,11 @@ class TestGaussianBlurCpu(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(compiled(image, sigma), reference, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32",), reason="strict export is checked once on CPU float32"
+    )
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export_large_input(self, monkeypatch, device, dtype):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("strict export is checked once on CPU float32")
         _use_native_cpu_path(monkeypatch)
         image = torch.rand(1, 2, 256, 256, device=device, dtype=dtype)
         module = GaussianBlur2d((5, 7), (0.9, 1.3))
@@ -307,12 +306,13 @@ class TestGaussianBlurCpu(BaseTester):
         exported = torch.export.export(module, (image,), strict=True)
         self.assert_close(exported.module()(image), expected)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32",), reason="modern ONNX runtime is checked once on CPU float32"
+    )
     @pytest.mark.skipif(
         torch_version_lt(2, 6, 0), reason="the dynamo ONNX exporter is only non-experimental from PyTorch 2.6"
     )
     def test_onnx_modern_large_input(self, monkeypatch, device, dtype, tmp_path):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("modern ONNX runtime is checked once on CPU float32")
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         ort = pytest.importorskip("onnxruntime")
@@ -331,9 +331,10 @@ class TestGaussianBlurCpu(BaseTester):
         actual = torch.from_numpy(session.run(None, {"input": image.numpy()})[0])
         self.assert_close(actual, expected, rtol=5e-7, atol=5e-7)
 
+    @pytest.mark.applies_to(
+        devices=("cpu",), dtypes=("float32",), reason="the trace fallback is checked once on CPU float32"
+    )
     def test_onnx_trace_large_input_falls_back_to_convolution(self, monkeypatch, device, dtype):
-        if device.type != "cpu" or dtype != torch.float32:
-            pytest.skip("the trace fallback is checked once on CPU float32")
         pytest.importorskip("onnx")
         _use_native_cpu_path(monkeypatch)
 

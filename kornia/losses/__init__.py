@@ -15,10 +15,39 @@
 # limitations under the License.
 #
 
-"""Losses submodule for Kornia.
+"""Score images, segmentations and distributions, or register images by mutual information.
 
-This package provides a collection of loss functions for computer vision tasks, including SSIM,
-PSNR, Dice, Focal, Lovasz, and more.
+A loss with a target takes the prediction first. Where a loss has a ``reduction``, its default and its output
+shape differ between families: :ref:`Losses and metrics <losses-metrics-conventions>` tabulates them. The segmentation
+losses take logits, the Hausdorff losses probabilities, and the mutual-information losses intensities of any range.
+
+Which function to use, with the module form after the function:
+
+- Image reconstruction: structural dissimilarity of two images, :func:`ssim_loss`, :class:`SSIMLoss`; of two volumes,
+  :func:`ssim3d_loss`, :class:`SSIM3DLoss`; over several scales plus an L1 term, :class:`MS_SSIMLoss`; the negative
+  PSNR, :func:`psnr_loss`, :class:`PSNRLoss`.
+- Smoothness of one image or depth map: :func:`total_variation`, :class:`TotalVariation`; edge-aware smoothness of an
+  inverse depth map, :func:`inverse_depth_smoothness_loss`, :class:`InverseDepthSmoothnessLoss`.
+- Robust regression on tensors of any shape: linear for large residuals, :func:`charbonnier_loss`,
+  :class:`CharbonnierLoss`; logarithmic, :func:`cauchy_loss`, :class:`CauchyLoss`; saturating at 2,
+  :func:`geman_mcclure_loss`, :class:`GemanMcclureLoss`; saturating at 1, :func:`welsch_loss`, :class:`WelschLoss`.
+- Segmentation by class overlap: the Dice overlap, :func:`dice_loss`, :class:`DiceLoss`; the Tversky index with its
+  own false-positive and false-negative weights, :func:`tversky_loss`, :class:`TverskyLoss`; the IoU of one
+  foreground, :func:`lovasz_hinge_loss`, :class:`LovaszHingeLoss`; the IoU of every class,
+  :func:`lovasz_softmax_loss`, :class:`LovaszSoftmaxLoss`.
+- Segmentation by per-pixel cross entropy that down-weights easy pixels: over exclusive classes, :func:`focal_loss`,
+  :class:`FocalLoss`; over independent binary outputs, :func:`binary_focal_loss_with_logits`,
+  :class:`BinaryFocalLossWithLogits`.
+- One-hot encoding of a class-index map: :func:`one_hot`.
+- Divergence between probability heatmaps: :func:`kl_div_loss_2d`, :func:`js_div_loss_2d`.
+- Segmentation boundary distance: :class:`HausdorffERLoss`; of volumes, :class:`HausdorffERLoss3D`.
+- Registration by mutual information: of flat signals, :func:`mutual_information_loss`, :class:`MILossFromRef`; of
+  images, :func:`mutual_information_loss_2d`, :class:`MILossFromRef2D`; of volumes,
+  :func:`mutual_information_loss_3d`, :class:`MILossFromRef3D`.
+- Registration by normalized mutual information: of flat signals, :func:`normalized_mutual_information_loss`,
+  :class:`NMILossFromRef`; of images, :func:`normalized_mutual_information_loss_2d`, :class:`NMILossFromRef2D`; of
+  volumes, :func:`normalized_mutual_information_loss_3d`, :class:`NMILossFromRef3D`.
+- The histogram kernel of the registration losses: :class:`MIKernel`.
 """
 
 from __future__ import annotations

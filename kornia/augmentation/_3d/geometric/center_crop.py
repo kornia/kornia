@@ -28,7 +28,9 @@ from kornia.geometry import crop_by_transform_mat3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
-    r"""Apply center crop on 3D volumes (5D torch.Tensor).
+    r"""Extract a centered 3D subvolume, applied to a batch with probability ``p`` (default 1.0).
+
+    ``output = CenterCrop3D(size)(input)`` extracts a centered ``(D, H, W)`` patch.
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -42,7 +44,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
 
     Shape:
         - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
-        - Output: :math:`(B, C, out_d, out_h, out_w)`
+        - Output: ``(B, C, out_d, out_h, out_w)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -59,6 +61,10 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           An integer ``size`` is supported here but not by :class:`RandomCrop3D`
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
+
+    See Also:
+        - :class:`RandomCrop3D`: samples the subvolume position.
+        - :class:`CenterCrop`: extracts a centered patch from a 2D image.
 
     Examples:
         >>> import torch

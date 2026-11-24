@@ -28,21 +28,10 @@ from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
 class RandomCutMixV2(MixAugmentationBaseV2):
-    r"""Apply CutMix augmentation to a batch of torch.Tensor images.
+    r"""Mix rectangular image regions and labels, applied to a batch with probability ``p`` (default 1.0).
 
-    .. image:: _static/img/RandomCutMixV2.png
-
-    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
-    Localizable Features` :cite:`yun2019cutmix`.
-
-    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains
-    (label_batch, label_permuted_batch, lambda) for each cutmix.
-
-    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
-    <https://github.com/clovaai/CutMix-PyTorch>`_.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``images, labels = RandomCutMixV2(data_keys=["input", "class"])(input, label)`` mixes image patches and
+    returns label pairs with their coefficients. Use :class:`RandomMixUpV2` to blend complete images instead.
 
     Args:
         p: probability for applying an augmentation to a batch. This param controls the augmentation
@@ -70,7 +59,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of ``(B, C, H, W)``.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape ``(num_mix, B, 3)``.
 
     Convention:
         - With ``data_keys=["input", "class"]``, the class output is ``(num_mix, B, 3)``. Its last axis holds
@@ -88,8 +77,18 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           pairing and geometry. At ``p=0`` the image is unchanged and each class row contains the original label twice
           with lambda zero.
 
-    Note:
-        This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
+    .. image:: _static/img/RandomCutMixV2.png
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Localizable Features` :cite:`yun2019cutmix`.
+
+    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
+    <https://github.com/clovaai/CutMix-PyTorch>`_.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    See Also:
+        - :class:`RandomMixUpV2`: blends complete paired images instead of rectangular patches.
 
     Examples:
         >>> rng = torch.manual_seed(3)

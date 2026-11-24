@@ -24,6 +24,7 @@ from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
+from kornia.core.utils import _to_device_nonblocking
 
 from . import ops
 
@@ -48,7 +49,14 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 
 
 class RandAugment(PolicyAugmentBase):
-    """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
+    """Sample a fixed number of RandAugment operations at one global magnitude.
+
+    ``output = RandAugment(n, m)(input)`` draws ``n`` operations from the supported pool and applies them in draw
+    order with magnitude ``m`` to a floating ``(B, C, H, W)`` image batch. Use
+    :class:`~kornia.augmentation.auto.AutoAugment` for a fixed searched sub-policy, or
+    :class:`~kornia.augmentation.auto.TrivialAugment` for one operation.
+
+    The policy follows :cite:`cubuk2020randaugment`.
 
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 
@@ -78,6 +86,10 @@ class RandAugment(PolicyAugmentBase):
                                     If `rigid`, the result is the same for a policy: every operation wrapper
                                     contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.AutoAugment`: chooses a searched, dataset-specific sub-policy.
+        - :class:`~kornia.augmentation.auto.TrivialAugment`: chooses a single operation.
 
     Examples:
         >>> import torch
@@ -176,12 +188,14 @@ class RandAugment(PolicyAugmentBase):
             op = cast(PolicySequential, module)[0]
             op = cast(OperationBase, op)
             mag = None
-            if op.magnitude_range is not None:
-                minval, maxval = op.magnitude_range
-                if op._factor_name == "bits_factor":
-                    mag = (1 - m) * float(maxval - minval) + minval
-                else:
-                    mag = m * float(maxval - minval) + minval
+            magnitude_range = op.magnitude_range
+            if magnitude_range is not None:
+                minval, maxval = magnitude_range
+                scale = 1 - m if op._factor_name == "bits_factor" else m
+                # A moved policy has its range on the accelerator: stay there rather than read the range on the host.
+                if isinstance(minval, torch.Tensor):
+                    scale = _to_device_nonblocking(scale, minval.device)
+                mag = scale * (maxval - minval) + minval
 
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it

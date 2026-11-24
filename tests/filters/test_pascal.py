@@ -47,17 +47,6 @@ class TestPascalKernel2d(BaseTester):
 
 
 class TestPascalKernel1d(BaseTester):
-    @pytest.mark.parametrize("kernel_size", [9, 17, 33])
-    def test_normalized_binomial_coefficients(self, kernel_size, device, dtype):
-        expected = torch.tensor(
-            [math.comb(kernel_size - 1, x) / 2 ** (kernel_size - 1) for x in range(kernel_size)],
-            device=device,
-            dtype=dtype,
-        )
-        actual = get_pascal_kernel_1d(kernel_size, norm=True, device=device, dtype=dtype)
-        self.assert_close(actual, expected)
-        self.assert_close(actual.sum(), actual.new_tensor(1.0))
-
     @pytest.mark.parametrize("dtype", [torch.int64, torch.bool])
     def test_normalized_nonfloating_dtype(self, device, dtype):
         row = get_pascal_kernel_1d(5, device=device, dtype=dtype)

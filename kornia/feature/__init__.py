@@ -31,7 +31,8 @@ Which function to use:
 - Match images: :class:`LoFTR` without a detector; :class:`LocalFeatureMatcher` with a local feature and a
   descriptor-only matcher; :meth:`~kornia.feature.XFeat.match_xfeat` or :meth:`~kornia.feature.XFeat.match_xfeat_star`.
 - Detect and describe learned keypoints: :class:`ALIKED` (subpixel), :class:`DISK` (integer pixels), :class:`XFeat`
-  (64-D descriptors) or :class:`DeDoDe` (separate detector and descriptor networks); load with ``from_pretrained``.
+  (64-D descriptors), :class:`CLIDD` (very small networks, 48- to 128-D descriptors) or :class:`DeDoDe` (separate
+  detector and descriptor networks); load with ``from_pretrained``.
 - Store per-image learned features: :class:`ALIKEDFeatures` and :class:`DISKFeatures` hold keypoints and descriptors.
 - Compose a detector and a LAF descriptor: :class:`LocalFeature`; the presets below return the same output tuple.
 - Extract SIFT features: :class:`SIFTFeatureScaleSpace` refines scale-space extrema;
@@ -72,7 +73,7 @@ Which function to use:
   directly.
 - Process line segments: :class:`SOLD2` detects, describes and matches; :class:`SOLD2_detector` detects only.
 - Reuse network components: :class:`FilterResponseNorm2d` and :class:`TLU` from HyNet; :class:`XFeatModel` and
-  :class:`InterpolateSparse2d` from XFeat.
+  :class:`InterpolateSparse2d` from XFeat; :class:`CLIDDModel` from CLIDD.
 - Deblur a fast-moving object: :class:`DeFMO` produces RGBA sub-frames.
 
 :class:`LocalFeatureMatcher` accepts descriptor-only matchers. To use :class:`LightGlueMatcher`, extract features
@@ -98,6 +99,7 @@ https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .aliked import ALIKED, ALIKEDFeatures
+from .clidd import CLIDD, CLIDDModel
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
@@ -180,6 +182,7 @@ from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
 __all__ = [
     "ALIKED",
+    "CLIDD",
     "DISK",
     "KORNIA_CHECK_LAF",
     "SOLD2",
@@ -188,6 +191,7 @@ __all__ = [
     "BlobDoG",
     "BlobDoGSingle",
     "BlobHessian",
+    "CLIDDModel",
     "CornerGFTT",
     "CornerHarris",
     "DISKFeatures",

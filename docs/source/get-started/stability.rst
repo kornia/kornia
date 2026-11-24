@@ -92,6 +92,88 @@ The promises (stable core)
 What the stable core promises for ONNX export and ``torch.compile``, and where
 CI checks it, is stated on the :ref:`support page <export-support-promise>`.
 
+.. _torchscript-support:
+
+TorchScript
+-----------
+
+PyTorch has deprecated TorchScript in its documentation since 2.5, and from 2.15
+``torch.jit.script`` and ``torch.jit.trace`` emit a ``FutureWarning``. Use
+``torch.compile`` or ``torch.export`` for new code. Kornia keeps the TorchScript
+support it has, and adds none:
+
+- A function that compiles with ``torch.jit.script`` today keeps compiling, and
+  kornia's tests script many of them.
+- A function that does not compile is not made to compile. A defect that appears
+  only in scripted calls is documented here and not fixed.
+
+**Scripted CUDA calls and traced calls skip value checks.** Some functions check
+their argument values with ``torch._assert_async`` when the checked tensor is on
+CUDA; on the CPU the same check raises
+:exc:`~kornia.core.exceptions.AsyncCheckError`. TorchScript removes that operator
+when it compiles a function (checked with torch 2.5.1, the oldest supported
+release, and 2.15), so a scripted call runs without the checks on CUDA tensors,
+whether checks are enabled or not. A check on a CPU tensor still runs in a
+scripted call, even with checks disabled, and raises ``torch.jit.Error``: :func:`~kornia.enhance.histogram` and
+:func:`~kornia.enhance.histogram2d` check a CPU ``bandwidth`` on the CPU even when
+the samples are on CUDA. Shape and type checks (``KORNIA_CHECK*``) still run in
+scripted calls on every device. With torch 2.15, these scripted calls on CUDA take
+an invalid argument without kornia's error:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Function
+     - Invalid argument
+     - Scripted call on CUDA tensors
+   * - :func:`~kornia.enhance.adjust_gamma`
+     - negative ``gamma`` tensor
+     - returns a finite result
+   * - :func:`~kornia.enhance.adjust_contrast`
+     - negative ``factor`` tensor
+     - returns a finite result
+   * - :func:`~kornia.enhance.histogram`
+     - ``bandwidth <= 0``
+     - returns a result; it is finite for a negative ``bandwidth``, and NaN where a
+       sample sits on a bin center and ``bandwidth`` is zero
+   * - :func:`~kornia.enhance.histogram2d`
+     - ``bandwidth <= 0``
+     - as :func:`~kornia.enhance.histogram`
+   * - :func:`~kornia.geometry.subpix.render_gaussian2d`
+     - zero ``std``
+     - returns non-finite values
+   * - :func:`~kornia.enhance.equalize`, :func:`~kornia.enhance.equalize3d`
+     - image values more than about 1/255 outside ``[0, 1]``, which the 256-level
+       lookup cannot index
+     - fails with PyTorch's out-of-bounds index device-side assert (raised in
+       ``ScatterGatherKernel.cu`` with torch 2.15) instead of kornia's message; the
+       CUDA context is unusable afterwards
+
+The modules that wrap these functions, :class:`~kornia.enhance.AdjustGamma` and
+:class:`~kornia.enhance.AdjustContrast`, behave the same when scripted.
+
+A graph recorded with ``torch.jit.trace`` drops the operator too, on every device:
+the checks run on the values traced, as in an eager call (so with checks disabled
+only the ``equalize`` range check runs), except on MPS before torch 2.13, where none
+runs, and not when the traced graph runs again. A
+traced call with an invalid argument then gives the results in the table on the CPU
+as well as on CUDA; on the CPU, ``equalize`` and ``equalize3d`` fail with PyTorch's
+out-of-bounds index error instead of the device-side assert.
+
+:func:`~kornia.enhance.solarize`, :func:`~kornia.enhance.posterize`,
+:func:`~kornia.enhance.equalize_clahe` and :func:`~kornia.filters.gaussian_blur2d`
+make the same kind of check but do not compile with ``torch.jit.script``.
+
+To keep the checks, call the function eagerly with checks enabled (see
+:func:`~kornia.core.check.disable_checks`), or through ``torch.compile`` with checks
+enabled: Inductor keeps the assert from torch 2.9 on, and earlier releases compile it
+to nothing. ``gaussian_blur2d`` skips its ``sigma`` check under ``torch.compile``,
+and the checks are skipped under ``torch.vmap`` and in a compiled call under any
+functorch transform, such as ``torch.func.grad`` (the ``equalize`` range check
+still runs in the compiled call).
+Otherwise, validate the arguments before a scripted, traced or compiled call.
+
 Versioning caveat
 -----------------
 

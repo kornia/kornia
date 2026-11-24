@@ -36,11 +36,12 @@ from kornia.feature.laf import (
 )
 from kornia.feature.siftdesc import (
     _dense_sift_histograms_from_gradients,
+    _exact_first_order_gradient,
     _gradient_magnitude_orientation,
     _rootsift,
     get_sift_pooling_kernel,
 )
-from kornia.filters import gaussian_blur2d, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d, spatial_gradient
+from kornia.filters import gaussian_blur2d, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry.transform import pyrdown
 
 
@@ -505,7 +506,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
                 histograms.append(None)
                 orientation_gradients.append(None)
                 continue
-            gradients = spatial_gradient(level_image, "diff")
+            gradients = _exact_first_order_gradient(level_image, "diff")
             histograms.append(
                 _dense_sift_histograms_from_gradients(
                     gradients[:, :, 0], gradients[:, :, 1], self._descriptor_bins, self.eps
@@ -515,7 +516,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
                 # Suppress pixel noise before sampling the shared gradient field.
                 # No image patches or per-LAF image gradients are constructed.
                 smoothed = gaussian_blur2d(level_image, (7, 7), (1.0, 1.0), border_type="replicate")
-                orientation_gradients.append(spatial_gradient(smoothed, "diff")[:, 0])
+                orientation_gradients.append(_exact_first_order_gradient(smoothed, "diff")[:, 0])
         if upright:
             oriented_lafs = safe_lafs
         else:

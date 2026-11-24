@@ -28,6 +28,9 @@ from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 class RandomErasing(IntensityAugmentationBase2D):
     r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomErasing(scale, ratio, value, ...)(input)`` replaces one sampled rectangle in each selected
+    image ``(B, C, H, W)``.
+
     .. image:: _static/img/RandomErasing.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -73,6 +76,10 @@ class RandomErasing(IntensityAugmentationBase2D):
     Note:
         This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    See Also:
+        - :class:`RandomChannelDropout`: fills selected complete channels instead of one rectangle.
+        - :class:`RandomDissolving`: creates semantic image-to-image occlusion with a diffusion model.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -138,8 +145,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
-        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
-        bboxes = _to_device_nonblocking(bboxes, input.device)
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device. The boxes
+        # hold whole pixels, exact in float32, and cross in at least float32: float64 boxes do not fit on MPS.
+        bboxes = _to_device_nonblocking(bboxes, input.device, torch.promote_types(input.dtype, torch.float32))
         mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
@@ -159,7 +167,8 @@ class RandomErasing(IntensityAugmentationBase2D):
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
-        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
-        bboxes = _to_device_nonblocking(bboxes, input.device)
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device. The boxes
+        # hold whole pixels, exact in float32, and cross in at least float32: float64 boxes do not fit on MPS.
+        bboxes = _to_device_nonblocking(bboxes, input.device, torch.promote_types(input.dtype, torch.float32))
         mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)

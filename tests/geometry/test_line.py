@@ -26,7 +26,7 @@ from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, assert_deepcopy_copies_state_as_leaves
 
 
 class TestParametrizedLine(BaseTester):
@@ -239,6 +239,44 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(steps, -offset.data)
         self.assert_close(points, expected_points)
 
+    @pytest.mark.parametrize("line_batch", [(), (1,)])
+    @pytest.mark.parametrize("plane_batch", [(2, 3), (3, 2), (2, 1), (1, 3), (2, 2, 2)])
+    def test_line_intersect_multi_axis_batch_of_planes_6497(self, line_batch, plane_batch, device, dtype):
+        """Each plane of a multi-axis batch gets its own point: ``point.shape == lambda.shape + (3,)``."""
+        origin = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype).expand(*line_batch, 3)
+        direction = torch.tensor([1.0, -1.0, 2.0], device=device, dtype=dtype).expand(*line_batch, 3)
+        line = ParametrizedLine(origin, direction)
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype).expand(*plane_batch, 3).clone()
+        offset = -torch.arange(1.0, torch.Size(plane_batch).numel() + 1, device=device, dtype=dtype).view(plane_batch)
+
+        steps, points = line.intersect(Hyperplane(Vector3(normal), Scalar(offset)))
+
+        assert steps.shape == plane_batch
+        assert points.shape == (*plane_batch, 3)
+        expected = [
+            line.intersect(Hyperplane(Vector3(n), Scalar(d)))[1].squeeze(0)
+            for n, d in zip(normal.view(-1, 3), offset.view(-1))
+        ]
+        self.assert_close(points.view(-1, 3), torch.stack(expected))
+        # Each point lies on its own plane, n . p + d = 0, with this normal along z: z = -d.
+        self.assert_close(points[..., 2], -offset)
+
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
+    def test_unbatched_line_keeps_its_dtype_for_one_plane_6497(self, device):
+        # A 0-d step does not promote the line's dtype; a (1,) one would.
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0, 0.0], device=device, dtype=torch.float32),
+            torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float32),
+        )
+        plane = Hyperplane(
+            Vector3(torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float64)),
+            Scalar(torch.tensor(-3.0, device=device, dtype=torch.float64)),
+        )
+        steps, point = line.intersect(plane)
+        assert steps.dtype == torch.float64
+        assert point.dtype == torch.float32
+        self.assert_close(point, torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float32))
+
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
             torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype),
@@ -343,26 +381,6 @@ class TestParametrizedLine(BaseTester):
         for actual, expected in zip(actual_gradients, expected_gradients):
             self.assert_close(actual, expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
     def test_derived_state_moves_and_serializes(self, device, dtype):
         p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
         p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
@@ -423,6 +441,16 @@ class TestParametrizedLine(BaseTester):
             ParametrizedLine(integer, floating)
         with pytest.raises(TypeCheckError, match=r"ParametrizedLine stores 'direction'.*torch.int64"):
             ParametrizedLine(floating, integer)
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # An origin with a grad_fn is held in a buffer, which torch cannot deep-copy; the copy holds it as a new
+        # leaf.
+        origin = torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine(origin * 2, torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype))
+        copied = assert_deepcopy_copies_state_as_leaves(line)
+        self.assert_close(copied.origin.detach(), line.origin.detach(), rtol=0, atol=0)
+        line.origin.sum().backward()
+        assert origin.grad is not None
 
 
 def _near_vertical_points_5040(device, dtype) -> torch.Tensor:
@@ -687,7 +715,13 @@ class TestFitLine(BaseTester):
             return line.origin, line.direction
 
         origin, direction = torch_optimizer(op)(points)
-        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype))
+        # The origin is 0 only up to the rounding of coordinates of 40000: CUDA Inductor turns the mean into a
+        # product with 1 / 3 and fuses it with the shift back by the first point, so float32 gives 0.0012, a quarter
+        # of an ulp of the coordinates, where eager and CPU Inductor round the mean to 40000 exactly. Half dtypes are
+        # centred in float32, so the bound follows float32's rounding: their own eps would allow an origin of 39 in
+        # float16 and 312 in bfloat16.
+        atol = 40000 * torch.finfo(torch.promote_types(dtype, torch.float32)).eps
+        self.assert_close(origin, torch.zeros(1, 2, device=device, dtype=dtype), rtol=0.0, atol=atol)
         expected = torch.tensor([[2.0 / math.sqrt(5), 1.0 / math.sqrt(5)]], device=device, dtype=dtype)
         self.assert_close(direction, expected)
 
@@ -1153,22 +1187,6 @@ class TestFitLine(BaseTester):
         axis = axis * torch.sign(direction.cpu().double() @ axis)
         self.assert_close(direction, axis.to(device=device, dtype=dtype))
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
 
 class TestConventionsParametrizedLine(BaseTester):
     def test_convention_parametrized_line_direction_is_not_normalized(self, device, dtype):
@@ -1255,21 +1273,19 @@ def _direction_with_fixed_sign_6213(points, reference):
 class TestFitLineGradient(BaseTester):
     """``fit_line``'s gradient is finite when the other eigenvalues of the scatter matrix are equal (#6213)."""
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     @pytest.mark.parametrize("dim", [3, 4])
     def test_points_along_a_coordinate_axis_6213(self, device, dim):
         # The scatter matrix of points along an axis is diag(s, 0, ..., 0): its other eigenvalues are all zero, and
         # torch's SVD backward divided by their zero gaps, so every entry of the gradient was NaN.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         points = torch.zeros(1, 5, dim, device=device, dtype=torch.float64)
         points[..., 0] = torch.linspace(0.0, 1.0, 5, device=device, dtype=torch.float64)
         reference = fit_line(points).direction.detach()
         self.gradcheck(lambda p: _direction_with_fixed_sign_6213(p, reference), (points,), fast_mode=False)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_equal_spread_across_the_line_6213(self, device):
         # A cloud along x with the same spread in y and z: the two smaller eigenvalues are equal.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
         x = torch.linspace(-2.0, 2.0, 5, dtype=torch.float64)
         across = torch.tensor([[0.1, 0.0], [0.0, 0.1], [-0.1, 0.0], [0.0, -0.1]], dtype=torch.float64)
         points = torch.cat([torch.cat([torch.full((4, 1), float(t), dtype=torch.float64), across], -1) for t in x])

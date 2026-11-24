@@ -105,7 +105,7 @@ def _compute_tensor_center(tensor: torch.Tensor, like: Optional[torch.Tensor] = 
     return _device_literal([center_x, center_y], device=tensor.device, dtype=dtype)
 
 
-def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
+def _compute_tensor_center3d(tensor: torch.Tensor, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
     """Compute the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     if not 3 <= len(tensor.shape) <= 5:
         raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
@@ -113,10 +113,11 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
+    dtype = tensor.dtype if dtype is None else dtype
     # Filled on the device in eager mode, as in ``_compute_tensor_center``.
     if torch.jit.is_scripting():
-        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
-    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
+        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=dtype)
+    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=dtype)
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
@@ -350,9 +351,8 @@ def rotate(
     ``out = rotate(tensor, angle)`` rotates ``(C, H, W)`` or ``(B, C, H, W)`` images by ``angle`` degrees, ``(B,)`` or
     one value for all, counter-clockwise as displayed, about ``center`` (``(B, 2)`` ``(x, y)`` pixels, by default the
     image centre ``((W - 1) / 2, (H - 1) / 2)``), and returns them at their size; the uncovered corners are padded
-    by ``padding_mode``, except along a one-pixel axis, which the default ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For a stored angle, use :class:`Rotate`; for volumes,
-    :func:`rotate3d`; for the matrix, to compose or reuse it, :func:`get_rotation_matrix2d`.
+    by ``padding_mode``. For a stored angle, use :class:`Rotate`; for volumes, :func:`rotate3d`; for the matrix, to
+    compose or reuse it, :func:`get_rotation_matrix2d`.
 
     .. image:: _static/img/rotate.png
 
@@ -411,7 +411,6 @@ def rotate(
         center = _compute_tensor_center(tensor, angle)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     # A singleton angle and center describe one transform shared by all images. Keep
     # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
     # parameters keep the original reduction order, which matters for half-precision gradients.
@@ -515,10 +514,13 @@ def rotate3d(
 
     # compute the rotation center
     if center is None:
-        center = _compute_tensor_center3d(tensor)
+        # The matrix builder combines the center with the concatenated angles, which promote their dtypes.
+        center_dtype: Optional[torch.dtype] = None
+        if yaw.is_floating_point() or pitch.is_floating_point() or roll.is_floating_point():
+            center_dtype = torch.promote_types(torch.promote_types(yaw.dtype, pitch.dtype), roll.dtype)
+        center = _compute_tensor_center3d(tensor, center_dtype)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     batch = tensor.shape[0] if tensor.dim() == 5 else 1
     yaw = yaw.expand(batch)
     pitch = pitch.expand(batch)
@@ -541,11 +543,10 @@ def translate(
 
     ``out = translate(tensor, translation)`` shifts ``(C, H, W)`` or ``(B, C, H, W)`` images by ``translation``
     ``(B, 2)``, ``(dx, dy)`` in pixels, a positive ``dx`` to the right and a positive ``dy`` down, and returns them at
-    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``, except along a
-    one-pixel axis, which the default ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). One translation, ``(1, 2)`` or ``(2,)``, serves every
-    image of a batch, and one image, unbatched or of batch 1, is shifted by every translation. For a stored translation,
-    use :class:`Translate`; for the matrix, :func:`get_translation_matrix2d`.
+    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``. One
+    translation, ``(1, 2)`` or ``(2,)``, serves every image of a batch, and one image, unbatched or of batch 1, is
+    shifted by every translation. For a stored translation, use :class:`Translate`; for the matrix,
+    :func:`get_translation_matrix2d`.
 
     .. image:: _static/img/translate.png
 
@@ -614,9 +615,8 @@ def scale(
     ``out = scale(tensor, scale_factor)`` scales the content of ``(C, H, W)`` or ``(B, C, H, W)`` images by
     ``scale_factor``, ``(B,)`` for both axes or ``(B, 2)`` as ``(sx, sy)``, about ``center`` (``(B, 2)`` ``(x, y)``
     pixels, by default the image centre), and returns them at their size: a factor above 1 zooms in and crops, one
-    below 1 shrinks the content and pads the border, except along a one-pixel axis, which the default
-    ``align_corners=True`` repeats (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). To change the image
-    size instead, use :func:`rescale` or :func:`resize`; for a stored factor, :class:`Scale`.
+    below 1 shrinks the content and pads the border. To change the image size instead, use :func:`rescale` or
+    :func:`resize`; for a stored factor, :class:`Scale`.
 
     .. image:: _static/img/scale.png
 
@@ -669,7 +669,6 @@ def scale(
         center = _compute_tensor_center(tensor, scale_factor)
 
     # compute the rotation matrix
-    # TODO: add broadcasting to get_rotation_matrix2d for center
     batch = tensor.shape[0] if tensor.dim() == 4 else 1
     center = center.expand(batch, -1)
     scale_factor = scale_factor.expand(batch, 2)
@@ -1325,6 +1324,7 @@ class Rescale(nn.Module):
         - :func:`rescale`: the one-call form, whose ``align_corners`` defaults to ``None``.
         - :class:`Resize`: the output size instead of a factor.
         - :class:`Scale`: zoom the content by a factor and keep the size.
+        - :class:`~kornia.enhance.Rescale`: multiplies the values by a factor instead of resizing.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)

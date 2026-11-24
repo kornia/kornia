@@ -20,13 +20,15 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.core.utils import _to_device_nonblocking
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _clamp_unit_range, _to_device_nonblocking
 from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
     r"""Posterize images to a random number of bits, applied per sample with probability ``p`` (default 0.5).
+
+    ``output = RandomPosterize(bits, ...)(input)`` reduces the retained bit depth of selected images.
 
     .. image:: _static/img/RandomPosterize.png
 
@@ -61,6 +63,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
+
+    See Also:
+        - :class:`RandomSolarize`: thresholds values rather than reducing their bit depth.
 
     Examples:
         >>> rng = torch.manual_seed(0)

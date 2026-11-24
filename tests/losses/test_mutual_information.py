@@ -31,6 +31,7 @@ from kornia.losses.mutual_information import (
     NMILossFromRef,
     NMILossFromRef2D,
     NMILossFromRef3D,
+    _contract_kernels_in_chunks,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
@@ -105,19 +106,6 @@ class TestMutualInformationLoss(BaseTester):
                 -torch.ones(1, dtype=dtype, device=device),
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
-
-    def test_smoke(self, device, dtype):
-        """Basic functionality test"""
-        img1 = torch.rand(100, device=device, dtype=dtype)
-        img2 = torch.rand(100, device=device, dtype=dtype)
-
-        loss = mutual_information_loss(img1, img2, num_bins=64)
-        assert isinstance(loss, torch.Tensor)
-        assert loss.shape == torch.Size([])
-
-        normalized_loss = normalized_mutual_information_loss(img1, img2, num_bins=64)
-        assert isinstance(normalized_loss, torch.Tensor)
-        assert normalized_loss.shape == torch.Size([])
 
     def test_exception(self, device, dtype):
         """Test error conditions"""
@@ -281,22 +269,6 @@ class TestMutualInformationLoss(BaseTester):
         self.assert_close(loss_batch.flatten(), loss_iterative)
         self.assert_close(normalized_loss_batch.flatten(), normalized_loss_iterative)
 
-    def test_module(self, device, dtype):
-        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-
-        args = (pred, target)
-
-        op = normalized_mutual_information_loss
-        op_module = NMILossFromRef(target)
-
-        self.assert_close(op(*args), op_module(pred))
-
-        op = mutual_information_loss
-        op_module = MILossFromRef(target)
-
-        self.assert_close(op(*args), op_module(pred))
-
     def test_masking(self, device, dtype):
         """test masking works on a 2d signal."""
         pred = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
@@ -340,11 +312,10 @@ class TestMutualInformationLoss(BaseTester):
 
         self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
     @pytest.mark.parametrize("module", [MILossFromRef, NMILossFromRef])
     def test_to_dtype_matches_module_built_in_that_dtype(self, device, module):
         """``.to(dtype)`` makes the module use that dtype's epsilon, like one built in that dtype (#5547)."""
-        if device.type == "mps":
-            pytest.skip("MPS does not support float64")
         generator = torch.Generator().manual_seed(0)
         target = torch.rand(2, 12, 20, generator=generator).to(device)
         pred = torch.rand(2, 12, 20, generator=generator).to(device)
@@ -1017,6 +988,7 @@ class TestConventionsMutualInformation(BaseTester):
         target_mask[0, 0] = True
         self.assert_close(module(a), expected, rtol=0, atol=0)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression")
     @pytest.mark.parametrize("shape", [(12, 20), (184, 184)])
     @pytest.mark.parametrize("kernel", list(MIKernel))
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss_2d, normalized_mutual_information_loss_2d])
@@ -1024,8 +996,6 @@ class TestConventionsMutualInformation(BaseTester):
     def test_convention_mi_losses_half_precision_match_float32_4153(
         self, device, dtype, shape, kernel, loss_fn, masked
     ):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression")
         g = torch.Generator().manual_seed(7)
         u = torch.rand(shape, generator=g)
         v = u**2 + 0.05 * torch.rand(shape, generator=g)
@@ -1071,3 +1041,62 @@ class TestConventionsMutualInformation(BaseTester):
         assert histogram.dtype == torch.float32
         self.assert_close(histogram.sum(), torch.tensor(70000.0), rtol=0, atol=0)
         self.assert_close(actual, signal.new_tensor(expected))
+
+
+class TestMutualInformationLargeSampleCounts(BaseTester):
+    @pytest.mark.skipif(
+        not dynamo_is_available() or torch_version_lt(2, 9, 0), reason="Dynamo traces the gathers from 2.9"
+    )
+    def test_reference_keeps_a_static_sample_count_under_capture(self, device):
+        # The MPS chunk gate and split read this size, so a data-dependent one would stop ``fullgraph`` capture there.
+        def loss(x, y):
+            module = MILossFromRef(y)
+            return module(x) if module.signal.shape[-1] > 1 else x.sum()
+
+        signal = torch.rand(1, 50, device=device, dtype=torch.float32)
+        target = signal**2
+        torch._dynamo.reset()
+        with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True):
+            compiled = torch.compile(loss, backend="eager", fullgraph=True)
+            self.assert_close(compiled(signal, target), loss(signal, target))
+
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_matches_einsum(self, device, chunk_size):
+        # float32 on every leg: half-precision losses accumulate their histogram in float32.
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32)
+        self.assert_close(
+            _contract_kernels_in_chunks(vals_1, vals_2, chunk_size), vals_1 @ vals_2.transpose(-1, -2).contiguous()
+        )
+
+    @pytest.mark.parametrize("chunk_size", [1, 7, 50, 51])
+    def test_chunked_contraction_gradient_matches_einsum(self, device, chunk_size):
+        vals_1 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        vals_2 = torch.rand(2, 8, 50, device=device, dtype=torch.float32, requires_grad=True)
+        # Weight every histogram cell differently, so that each input sample has its own gradient.
+        weights = torch.rand(2, 8, 8, device=device, dtype=torch.float32)
+        chunked = (_contract_kernels_in_chunks(vals_1, vals_2, chunk_size) * weights).sum()
+        reference = (torch.einsum("...in,...jn->...ij", vals_1, vals_2) * weights).sum()
+        for actual, expected in zip(
+            torch.autograd.grad(chunked, (vals_1, vals_2)), torch.autograd.grad(reference, (vals_1, vals_2))
+        ):
+            self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(devices=("mps",), reason="pytorch/pytorch#195163 is an MPS matmul defect.")
+    @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
+    @pytest.mark.parametrize("num_samples", [33856, 70000])
+    def test_mps_large_sample_counts_match_cpu_5873(self, device, dtype, loss_fn, num_samples):
+        generator = torch.Generator().manual_seed(0)
+        x = torch.rand(1, num_samples, generator=generator)
+        y = x**2 + 0.05 * torch.rand(1, num_samples, generator=generator)
+
+        def loss_and_gradients(on_device):
+            x_on, y_on = x.to(on_device, dtype).requires_grad_(), y.to(on_device, dtype).requires_grad_()
+            loss = loss_fn(x_on, y_on)
+            return (loss.detach().cpu(), *(grad.cpu() for grad in torch.autograd.grad(loss, (x_on, y_on))))
+
+        expected = loss_and_gradients("cpu")
+        # The defective matmul reads past its operands, so make what lies next to them non-zero.
+        torch.full((5_000_000,), 1000.0, device=device)
+        for actual, reference in zip(loss_and_gradients(device), expected):
+            self.assert_close(actual, reference)

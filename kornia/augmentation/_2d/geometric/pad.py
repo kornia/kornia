@@ -24,9 +24,11 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 
 
 class PadTo(GeometricAugmentationBase2D):
-    r"""Pad the given sample to a specific size. Always occurs (p=1.0).
+    r"""Pad or crop an image batch to a requested size. Always occurs (p=1.0).
 
-    .. image:: _static/img/PadTo.png
+    ``output = PadTo(size)(input)`` pads or crops the right and bottom edges of an image batch
+    ``(B, C, H, W)`` to ``size``. Set ``crop_if_exceeds=False`` to keep oversized axes unchanged;
+    use :class:`Resize` when the content itself should be resampled.
 
     Args:
         size: a tuple of ints in the format (height, width) that give the spatial
@@ -53,10 +55,15 @@ class PadTo(GeometricAugmentationBase2D):
         default ``crop_if_exceeds=True``, a target smaller than the input crops that axis instead, so a target can pad
         one axis while cropping the other. With ``crop_if_exceeds=False``, that axis passes through unchanged.
 
-        :meth:`inverse` restores the prior input shape on every axis. It exactly removes right/bottom padding, and it
+        ``inverse()`` restores the prior input shape on every axis. It exactly removes right/bottom padding, and it
         regrows a cropped axis at the right/bottom with zeros, as the crop augmentations' inverses do: the discarded
         pixels cannot be recovered. The transformation matrix is identity, because every kept pixel keeps its
         coordinates, so keypoints and boxes are neither moved nor clipped when cropping puts them outside the canvas.
+
+    .. image:: _static/img/PadTo.png
+
+    See Also:
+        - :class:`Resize`: resamples an image to a requested size.
 
     Examples:
         >>> import torch

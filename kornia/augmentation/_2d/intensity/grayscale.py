@@ -29,6 +29,9 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomGrayscale(IntensityAugmentationBase2D):
     r"""Convert images to grayscale (channel count kept), applied per sample with probability ``p`` (default 0.1).
 
+    ``output = RandomGrayscale(...)(input)`` turns selected images ``(B, C, H, W)`` into grayscale values while
+    retaining their channel count: RGB uses luminance weights and other channel counts default to equal weights.
+
     .. image:: _static/img/RandomGrayscale.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -64,6 +67,9 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     .. note::
         For 3-channel RGB inputs this uses :func:`kornia.color.rgb_to_grayscale`; multispectral
         inputs use a weighted channel average.
+
+    See Also:
+        - :class:`RandomChannelDropout`: removes selected channels instead of computing grayscale.
 
     Examples:
         >>> rng = torch.manual_seed(0)

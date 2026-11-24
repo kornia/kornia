@@ -121,7 +121,7 @@ class TestRandomDepthicalFlip3D(BaseTester):
         self.assert_close(f1(input_tensor), input_tensor)
         self.assert_close(f1.transform_matrix, identity)
 
-    def test_same_on_batch(self, device):
+    def test_same_on_batch(self):
         f = RandomDepthicalFlip3D(p=0.5, same_on_batch=True)
         input_tensor = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input_tensor)

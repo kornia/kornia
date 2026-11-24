@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import scaled_dot_product_attention
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
 
 from .config import MoonViTConfig
@@ -208,7 +209,7 @@ class MoonViTAttention(nn.Module):
         key = apply_rotary_pos_emb(key, cos, sin)
         if attention_mask is not None:
             attention_mask = _sdpa_attention_mask(attention_mask, batch_size, seq_len)
-        attn_output = F.scaled_dot_product_attention(
+        attn_output = scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
 

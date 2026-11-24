@@ -104,7 +104,7 @@ class TestDispatcherModuleState(BaseTester):
         for output, target in zip(actual, expected):
             self.assert_close(output, target, rtol=0, atol=0)
 
-    def test_learnable_range_is_a_parameter(self, device, dtype, dispatcher_class):
+    def test_learnable_range_is_a_parameter(self, dispatcher_class):
         # Ranges stay on CPU in the default dtype unless the augmentation's RNG is moved.
         ranges = [nn.Parameter(torch.tensor([0.8, 1.2])) for _ in range(2)]
         dispatcher = dispatcher_class(

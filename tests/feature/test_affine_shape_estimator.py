@@ -130,9 +130,8 @@ class TestPatchAffineShapeEstimator(BaseTester):
         expected = torch.tensor([[[1.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression test")
     def test_half_precision_retains_anisotropic_shape(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression test")
         patch = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         patch[:, :, 15:17, 9:23] = 1
         expected = PatchAffineShapeEstimator(32).to(device)(patch.float()).to(dtype)
@@ -146,9 +145,8 @@ class TestPatchAffineShapeEstimator(BaseTester):
         assert patch.grad is not None
         assert torch.isfinite(patch.grad).all()
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression test")
     def test_half_precision_uses_float32_weighting(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression test")
         patch = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         patch[:, :, 2:4, 14:16] = 1
         reference = PatchAffineShapeEstimator(32).to(device)
@@ -160,21 +158,14 @@ class TestPatchAffineShapeEstimator(BaseTester):
 
         assert torch.equal(out, expected)
 
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = PatchAffineShapeEstimator(32).to(device)
-        ang = ori(inp)
-        assert ang.shape == torch.Size([1, 1, 3])
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([2, 1, 3])
 
-    def test_print(self, device):
-        sift = PatchAffineShapeEstimator(32)
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(PatchAffineShapeEstimator(19, eps=1e-6)) == "PatchAffineShapeEstimator(patch_size=19, eps=1e-06)"
 
     def test_toy(self, device):
         aff = PatchAffineShapeEstimator(19).to(device)
@@ -210,6 +201,15 @@ class TestPatchAffineShapeEstimator(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,), nondet_tol=1e-4)
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS does not support float64")
+    def test_float64_matches_the_numpy_reference(self, device):
+        # The expected values come from plain NumPy with the Gaussian weighting built in float64 (snippet in the PR); a
+        # weighting rounded to float32 misses them by far more than 1e-12, which allows for the summation order.
+        patch = ((torch.arange(361, dtype=torch.float64) * 0.61 + 0.05) % 1.0).reshape(1, 1, 19, 19).to(device)
+        expected = torch.tensor([1.0, 0.6483032711577077, 0.903999437822951], device=device, dtype=torch.float64)
+        for estimator in (PatchAffineShapeEstimator(19), PatchAffineShapeEstimator(19).double()):
+            self.assert_close(estimator.to(device)(patch)[0, 0], expected, rtol=1e-12, atol=0.0)
+
 
 class TestAffineShapeKernelBuffer(BaseTester):
     """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
@@ -224,13 +224,12 @@ class TestAffineShapeKernelBuffer(BaseTester):
         assert mod.weighting.dtype == torch.float16
         assert mod.weighting.device == torch.empty(0, device=device).device
 
-    def test_kernel_stays_out_of_state_dict(self, device):
+    def test_kernel_stays_out_of_state_dict(self):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
         assert "weighting" not in PatchAffineShapeEstimator(19).state_dict()
 
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="float64 is unavailable on MPS")
     def test_forward_does_not_mutate_the_module(self, device):
-        if device.type == "mps":
-            pytest.skip("float64 is unavailable on MPS")
         mod = PatchAffineShapeEstimator(19)
         before = (mod.weighting.dtype, mod.weighting.device)
         mod(torch.rand(2, 1, 19, 19, dtype=torch.float64))
@@ -238,13 +237,6 @@ class TestAffineShapeKernelBuffer(BaseTester):
 
 
 class TestLAFAffineShapeEstimator(BaseTester):
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffineShapeEstimator().to(device)
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
@@ -252,9 +244,11 @@ class TestLAFAffineShapeEstimator(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
-        sift = LAFAffineShapeEstimator()
-        sift.__repr__()
+    def test_repr(self):
+        assert repr(LAFAffineShapeEstimator(19, preserve_orientation=False)) == (
+            "LAFAffineShapeEstimator(patch_size=19, affine_shape_detector=PatchAffineShapeEstimator(patch_size=19, "
+            "eps=1e-10), preserve_orientation=False)"
+        )
 
     def test_toy(self, device, dtype):
         aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device, dtype)
@@ -375,13 +369,11 @@ class TestLAFAffineShapeEstimator(BaseTester):
         else:
             self.assert_close(out, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.applies_to(dtypes=("float16",), reason="float16 regression test")
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast changes the effective dtype")
     def test_degenerate_ellipse_falls_back_to_input_laf_float16(self, device, dtype):
-        if dtype != torch.float16:
-            pytest.skip("float16 regression test")
         # The default patch estimator now catches this nearly one-dimensional patch at the source.
         # Keep the end-to-end assertion to pin the public finite-value and finite-gradient boundary.
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
         y = torch.linspace(0, 1, 32, device=device, dtype=dtype).view(32, 1).expand(32, 32)
         x = torch.linspace(0, 1e-4, 32, device=device, dtype=dtype).view(1, 32).expand(32, 32)
         img = (y + x).view(1, 1, 32, 32).clone().requires_grad_()
@@ -395,12 +387,10 @@ class TestLAFAffineShapeEstimator(BaseTester):
         assert laf.grad is not None
         assert torch.isfinite(laf.grad).all()
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression test")
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast changes the effective dtype")
     @pytest.mark.parametrize("preserve_orientation", [False, True])
     def test_zero_scale_input_has_finite_fallback(self, device, dtype, preserve_orientation):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression test")
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
         aff = LAFAffineShapeEstimator(32, DegenerateShape(), preserve_orientation=preserve_orientation).to(
@@ -546,12 +536,10 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         # dtype; a prediction written over the input shape is 0.76 or more away.
         self.assert_close(_unit_ellipse(out), blob_ellipse, rtol=0.0, atol=0.15)
 
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="half-precision regression test")
+    @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS autocast changes the effective dtype")
     @pytest.mark.parametrize("preserve_orientation", [False, True])
     def test_zero_scale_input_has_finite_fallback(self, device, dtype, preserve_orientation):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("half-precision regression test")
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
         aff = (
@@ -571,31 +559,12 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         assert laf.grad is not None
         assert torch.isfinite(laf.grad).all()
 
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator(False).to(device).eval()
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
-    @pytest.mark.slow
-    def test_pretrained(self, device):
-        inp = torch.rand(1, 1, 32, 32, device=device)
-        laf = torch.rand(1, 1, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator(True).to(device).eval()
-        out = ori(laf, inp)
-        assert out.shape == laf.shape
-
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 5, 2, 3, device=device)
         ori = LAFAffNetShapeEstimator(pretrained=False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
-
-    def test_print(self, device):
-        sift = LAFAffNetShapeEstimator(pretrained=False)
-        sift.__repr__()
 
     def test_toy(self, device, dtype):
         aff = LAFAffNetShapeEstimator(True).to(device, dtype).eval()

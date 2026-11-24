@@ -373,27 +373,33 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
 
 
 def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
-    """Obtain the closest xterm-256 approximation string from an image torch.Tensor.
+    """Render one image tensor as an xterm-256 ANSI text string, without printing it.
 
-    Each pixel is shown with the nearest of the 240 fixed xterm-256 colours (codes 16-255, the 6x6x6 cube and the gray
-    ramp) by RGB distance, measured from its unrounded 0-255 value; codes 0-15 are defined by the terminal and are not
-    used.
+    ``text = image_to_string(image)`` takes a ``(3, H, W)`` RGB or ``(1, H, W)`` gray image and returns the text that
+    shows it in a terminal. Each pixel is two spaces on the nearest xterm-256 background color, one line per image
+    row. An image wider than ``max_width`` pixels is first resized to that width.
 
     Convention:
-        - The image is ``(C, H, W)`` with 1 or 3 channels. A float image is read in [0, 1] and an integer one in
-          [0, 255], so integer 255 and float 1.0 print alike; a value outside the range raises.
-        - Each pixel prints as two spaces on its background colour, one text line per image row. An image wider than
-          ``max_width`` pixels is first resized to ``max_width`` pixels wide, keeping its aspect ratio, so a line is at
-          most ``2 * max_width`` terminal columns wide.
+        - A float image is read in :math:`[0, 1]` and an integer one in :math:`[0, 255]`, so integer 255 and float 1.0
+          print alike; a value outside the range raises.
+        - The color of a pixel is the nearest of the 240 fixed xterm-256 colors (codes 16-255, the 6x6x6 cube and
+          the gray ramp) by RGB distance, measured from its unrounded 0-255 value; codes 0-15 are defined by the
+          terminal and are not used.
+        - The resize keeps the aspect ratio, so a line is at most ``2 * max_width`` terminal columns wide.
 
     Args:
-        image: an RGB image with shape :math:`3HW` or a grayscale image with shape :math:`1HW`.
+        image: an RGB image with shape ``(3, H, W)`` or a grayscale image with shape ``(1, H, W)``.
         max_width: the widest image, in pixels, that is printed without resizing.
 
     Raises:
         ImageError: if the tensor is not an image with 1 or 3 channels, such as ``(H, W)`` (also a ``ValueError``).
         ShapeError: if a tensor with 1 or 3 channels is not ``(C, H, W)``, such as a batch (also a ``ValueError``).
-        ValueCheckError: if a float tensor has values outside [0, 1], or an integer one outside [0, 255].
+        ValueCheckError: if a float tensor has values outside :math:`[0, 1]`, or an integer one outside
+            :math:`[0, 255]`.
+
+    See Also:
+        - :func:`print_image`: prints the string, and also takes the path of an image file.
+        - :meth:`Image.print`: prints an :class:`Image`, converting BGR and channels-last data first.
     """
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
@@ -438,14 +444,15 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
 
 
 def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 96) -> None:
-    """Print an image to the terminal.
+    """Print an image tensor or an image file to the terminal in xterm-256 colors.
+
+    ``print_image(image)`` prints :func:`image_to_string` of a ``(3, H, W)`` or ``(1, H, W)`` tensor, or of a file
+    loaded with :func:`~kornia.io.load_image` as ``ImageLoadType.RGB8``.
 
     .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 
     Convention:
-        See the Convention block of :func:`~kornia.image.image_to_string`, which renders the image; ``max_width``
-        defaults to 96 here and to 256 there. A path is loaded with :func:`~kornia.io.load_image` as
-        ``ImageLoadType.RGB8``.
+        See the Convention block of :func:`image_to_string`, which renders the image.
 
     Args:
         image: path (``str`` or ``os.PathLike``) to a valid image file, or a torch.Tensor.
@@ -455,8 +462,13 @@ def print_image(image: Union[str, os.PathLike, torch.Tensor], max_width: int = 9
         TypeError: if ``image`` is neither a path nor a tensor.
         ImageError: if the tensor is not an image with 1 or 3 channels, such as ``(H, W)`` (also a ``ValueError``).
         ShapeError: if a tensor with 1 or 3 channels is not ``(C, H, W)``, such as a batch (also a ``ValueError``).
-        ValueCheckError: if a float tensor has values outside [0, 1], or an integer one outside [0, 255].
+        ValueCheckError: if a float tensor has values outside :math:`[0, 1]`, or an integer one outside
+            :math:`[0, 255]`.
         FileNotFoundError: if the path does not exist. Other errors of :func:`kornia.io.load_image` pass through.
+
+    See Also:
+        - :func:`image_to_string`: returns the text instead of printing it.
+        - :meth:`Image.print`: prints an :class:`Image`, converting BGR and channels-last data first.
 
     """
     if isinstance(image, (str, os.PathLike)):

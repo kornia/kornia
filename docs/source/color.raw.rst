@@ -6,8 +6,8 @@ Bayer RAW
 .. tip::
     Learn more: https://en.wikipedia.org/wiki/Bayer_filter
 
-.. note::
-    The :class:`CFA` enum selects the color filter array layout.
+Convert between a one-channel Bayer mosaic ``(*, 1, H, W)`` and an RGB image. The :class:`CFA` enum gives the
+pattern of the mosaic.
 
 Functions
 ---------
