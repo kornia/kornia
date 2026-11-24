@@ -33,7 +33,7 @@ class _NotAWeight:
 
 
 class TestLiteMLA(BaseTester):
-    @pytest.mark.applies_to(devices=("cpu", "cuda"), dtypes=("float16",), reason="float16 autocast")
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), dtypes=("float16",), reason="float16 autocast")
     def test_autocast_zero_query_and_uniform_values(self, device, dtype):
         # ReLU removes a negative query, giving 0 / eps. A positive query averages the two identical values.
         layer = LiteMLA(1, 1, dim=1)
