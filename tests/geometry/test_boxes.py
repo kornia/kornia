@@ -637,6 +637,38 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
         self.assert_close(boxes.to_tensor("vertices_plus"), vertices, atol=0.0, rtol=0.0)
 
+    def test_vertices_plus_import_gradient_at_strips_and_single_pixels_6710(self, device, dtype):
+        # The vertices_plus import divides by each axis's span, guarded where an axis has a single coordinate.
+        # On such an axis the output is the input plus a constant pixel corner, so the gradient is the identity
+        # (NaN without the guard). On a spanned axis torch's amin/amax split the gradient evenly between tied
+        # vertices, which gives w_j + (w_j - w_k) / (2 * span) for loss weights w, where k is the other vertex on
+        # vertex j's edge. Rows: a one-pixel-wide strip, a one-pixel-high strip, four coincident centres.
+        corners = torch.tensor(
+            [
+                [[2.0, 1.0], [2.0, 1.0], [2.0, 3.0], [2.0, 3.0]],
+                [[1.0, 2.0], [3.0, 2.0], [3.0, 2.0], [1.0, 2.0]],
+                [[5.0, 5.0], [5.0, 5.0], [5.0, 5.0], [5.0, 5.0]],
+            ],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        weights = torch.arange(1, 25, device=device, dtype=dtype).view(3, 4, 2)
+
+        boxes = Boxes.from_tensor(corners, mode="vertices_plus", validate_boxes=True)
+        (grad,) = torch.autograd.grad((boxes.data * weights).sum(), corners)
+
+        expected = torch.tensor(
+            [
+                [[1.0, 1.5], [3.0, 4.5], [5.0, 5.5], [7.0, 8.5]],
+                [[7.5, 10.0], [10.5, 12.0], [13.5, 14.0], [16.5, 16.0]],
+                [[17.0, 18.0], [19.0, 20.0], [21.0, 22.0], [23.0, 24.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(grad, expected, atol=0.0, rtol=0.0)
+
     @pytest.mark.applies_to(
         dtypes=("float16", "bfloat16"), reason="only half precision rounds this one-pixel extent to zero"
     )
