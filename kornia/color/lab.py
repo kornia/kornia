@@ -72,7 +72,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     if image.dtype in (torch.float16, torch.bfloat16):
         if torch.jit.is_scripting():
             return _rgb_to_lab(image.float()).to(image.dtype)
-        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        # Keep the color matrix multiplication in float32 under autocast.
         with _autocast_disabled(image.device.type):
             return _rgb_to_lab(image.float()).to(image.dtype)
     return _rgb_to_lab(image)
@@ -85,7 +85,7 @@ def _rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     xyz_im: torch.Tensor = rgb_to_xyz(lin_rgb)
 
-    # F.normalize for D65 white point
+    # Scale by the D65 reference white.
     xyz_ref_white = torch.tensor([0.95047, 1.0, 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
@@ -142,7 +142,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     if image.dtype in (torch.float16, torch.bfloat16):
         if torch.jit.is_scripting():
             return _lab_to_rgb(image.float(), clip).to(image.dtype)
-        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        # Keep the color matrix multiplication in float32 under autocast.
         with _autocast_disabled(image.device.type):
             return _lab_to_rgb(image.float(), clip).to(image.dtype)
     return _lab_to_rgb(image, clip)
@@ -173,9 +173,6 @@ def _lab_to_rgb(image: torch.Tensor, clip: bool) -> torch.Tensor:
     xyz_im = xyz * xyz_ref_white
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
-
-    # https://github.com/richzhang/colorization-pytorch/blob/66a1cb2e5258f7c8f374f582acc8b1ef99c13c27/util/util.py#L107
-    #     rgbs_im = torch.where(rgbs_im < 0, torch.zeros_like(rgbs_im), rgbs_im)
 
     # Convert from RGB Linear to sRGB
     rgb_im = linear_rgb_to_rgb(rgbs_im)

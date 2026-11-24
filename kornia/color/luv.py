@@ -71,7 +71,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if image.dtype in (torch.float16, torch.bfloat16):
         if torch.jit.is_scripting():
             return _rgb_to_luv(image.float(), eps).to(image.dtype)
-        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        # Keep the color matrix multiplication in float32 under autocast.
         with _autocast_disabled(image.device.type):
             return _rgb_to_luv(image.float(), eps).to(image.dtype)
     return _rgb_to_luv(image, eps)
@@ -150,7 +150,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if image.dtype in (torch.float16, torch.bfloat16):
         if torch.jit.is_scripting():
             return _luv_to_rgb(image.float(), eps).to(image.dtype)
-        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        # Keep the color matrix multiplication in float32 under autocast.
         with _autocast_disabled(image.device.type):
             return _luv_to_rgb(image.float(), eps).to(image.dtype)
     return _luv_to_rgb(image, eps)
