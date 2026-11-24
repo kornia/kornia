@@ -1708,9 +1708,16 @@ class TestBoxes2D(BaseTester):
         self.assert_close(torch.autograd.grad(area.sum(), corners)[0], expected_grad, atol=0, rtol=0)
 
     @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="these dtypes represent adjacent pixels at 8192")
-    def test_compute_area_small_box_at_image_edge(self, device, dtype):
+    def test_compute_area_small_box_far_from_origin(self, device, dtype):
         corners = torch.tensor([[[8192, 8192], [8193, 8192], [8193, 8193], [8192, 8193]]], device=device, dtype=dtype)
         self.assert_close(Boxes(corners).compute_area(), torch.ones(1, device=device, dtype=dtype), atol=0, rtol=0)
+
+    @pytest.mark.applies_to(dtypes=("float16",), reason="the area fits float16, the doubled shoelace sum does not")
+    def test_compute_area_float16_sum_above_range(self, device, dtype):
+        # 200 * 300 = 60000 <= 65504, while the shoelace terms sum to 2 * 60000.
+        corners = torch.tensor([[[0, 0], [200, 0], [200, 300], [0, 300]]], device=device, dtype=dtype)
+        expected = torch.tensor([60000], device=device, dtype=dtype)
+        self.assert_close(Boxes(corners).compute_area(), expected, atol=0, rtol=0)
 
     def test_filter_boxes_by_area_keeps_translated_small_boxes(self, device, dtype):
         corners = torch.tensor([[[300, 300], [310, 300], [310, 310], [300, 310]]], device=device, dtype=dtype)
@@ -1726,11 +1733,12 @@ class TestBoxes2D(BaseTester):
         )
         self.gradcheck(lambda data: Boxes(data).compute_area(), (corners,))
 
+    @pytest.mark.applies_to(
+        when=lambda p: p["optimizer_backend"] != "jit", reason="TorchScript cannot compile a Boxes method"
+    )
     def test_dynamo_compute_area_translated(self, device, dtype, torch_optimizer, optimizer_backend):
-        if optimizer_backend == "jit":
-            pytest.skip("Boxes is a Python container outside TorchScript")
         corners = torch.tensor([[[300, 300], [310, 300], [310, 310], [300, 310]]], device=device, dtype=dtype)
-        actual = torch_optimizer(lambda data: Boxes(data).compute_area())(corners)
+        actual = torch_optimizer(lambda data: Boxes(data).compute_area(), fullgraph=True)(corners)
         self.assert_close(actual, torch.tensor([100], device=device, dtype=dtype), atol=0, rtol=0)
 
     def test_compute_area_supports_non_contiguous_batched_boxes(self, device, dtype):
