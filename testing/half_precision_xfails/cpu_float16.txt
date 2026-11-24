@@ -18,7 +18,4 @@ call	torch._C._LinAlgError	tests/geometry/calibration/test_pnp.py::TestSolvePnpD
 call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-20]
 call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-6]
 call	builtins.AssertionError	tests/geometry/camera/test_distortion.py::TestDistortionAffine::test_distort_points_roundtrip[cpu-float16]
-call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_epipolar_constraint_7point[cpu-float16]
-call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_synthetic_sampson[cpu-float16]
-call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFindFundamental::test_synthetic_sampson_7point[cpu-float16]
 call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFundamentalFromProjections::test_batch_support_check[cpu-float16]

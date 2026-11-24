@@ -51,6 +51,11 @@ _HALF_PIXEL_F = (
     "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
     "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"
 )
+_SEVEN_POINT_HALF = (
+    "a 7-point candidate fits its seven points exactly, and this pins that residual at 1e-4; rounding the candidate F "
+    "to half precision alone leaves up to 0.75 px^2 (float16) and 31 px^2 (bfloat16) Sampson distance on this "
+    "pixel-unit scene. test_7point_opencv pins the half-precision candidates themselves"
+)
 
 
 class TestNormalizePoints(BaseTester):
@@ -344,6 +349,7 @@ class TestFindFundamental(BaseTester):
             rtol, atol = torch.finfo(dtype).eps, 4 * torch.finfo(dtype).eps * Fm_expected.abs().max().item()
         self.assert_close(F_mat, Fm_expected, rtol=rtol, atol=atol)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_SEVEN_POINT_HALF)
     def test_synthetic_sampson_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
@@ -355,6 +361,7 @@ class TestFindFundamental(BaseTester):
                 error = epi.sampson_epipolar_distance(x1, x2, F)
                 self.assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason=_SEVEN_POINT_HALF)
     def test_epipolar_constraint_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
@@ -377,7 +384,14 @@ class TestFindFundamental(BaseTester):
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        self.assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        atol = 1e-4
+        if dtype in (torch.float16, torch.bfloat16):
+            # The points and the estimate are rounded to the dtype, which moves each correspondence off its epiline
+            # by about one rounding step of the largest coordinate: the Sampson distance, in squared pixels, is
+            # bounded by that step squared. Measured at 0.30-0.46 of it on CPU and CUDA (0.0046-0.0070 px^2 in
+            # float16, 0.40 px^2 in bfloat16).
+            atol = (torch.finfo(dtype).eps * torch.cat([x1, x2]).abs().max().item()) ** 2
+        self.assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=atol, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
