@@ -40,8 +40,8 @@ def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
 def dist_matrix(d1: torch.Tensor, d2: torch.Tensor, is_normalized: bool = False) -> torch.Tensor:
     """Distance between two tensors."""
     # AdaLAM converts descriptors and coordinates to float32 before matching. An outer autocast region would
-    # still round only the dot product, breaking cancellation with the full-precision norms. Keep the
-    # distance arithmetic in its input dtype.
+    # still round (in float16, overflow) only the dot product, breaking cancellation with the full-precision
+    # norms. Keep the distance arithmetic in its input dtype.
     with _autocast_disabled(d1.device.type):
         if is_normalized:
             return 2 - 2.0 * d1 @ d2.t()
