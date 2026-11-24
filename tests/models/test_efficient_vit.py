@@ -33,8 +33,10 @@ class _NotAWeight:
 
 
 class TestLiteMLA(BaseTester):
-    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), dtypes=("float16",), reason="float16 autocast")
-    def test_autocast_zero_query_and_uniform_values(self, device, dtype):
+    @pytest.mark.applies_to(devices=("cpu", "cuda", "mps"), reason="float16 autocast")
+    def test_autocast_zero_query_and_uniform_values(self, device):
+        # MPS CI selects float32 fixtures. Exercise its float16 autocast explicitly.
+        dtype = torch.float16
         # ReLU removes a negative query, giving 0 / eps. A positive query averages the two identical values.
         layer = LiteMLA(1, 1, dim=1)
         qkv = torch.tensor([[[[-1, 1]], [[1, 1]], [[3, 3]]]], device=device, dtype=dtype)
