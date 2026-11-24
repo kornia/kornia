@@ -435,10 +435,14 @@ Bounding boxes
   ``to_tensor('xyxy')`` export instead.
   :class:`kornia.geometry.boxes.Boxes3D` stores exclusive corners too, but its
   ``transform_boxes`` applies the matrix to them as given.
-- ``Boxes`` coordinates keep their dtype. The far corner of ``'xyxy_plus'`` and
-  ``'xywh'`` input is computed in it and rounds there: bfloat16 has no odd
+- The ``'vertices_plus'`` import expands the far bounds by one and scales
+  intermediate vertices proportionally along each axis, keeping corner order.
+  Use ``'vertices'`` for quadrilaterals already in the edge frame.
+- ``Boxes`` coordinates keep their dtype. The far corner of ``'xyxy_plus'``,
+  ``'xywh'`` and ``'vertices_plus'`` input rounds in the box dtype: bfloat16 has no odd
   integers above 256 and float16 none above 2048. ``from_tensor`` raises when a
-  positive width or height rounds to zero; import such boxes in float32.
+  positive half-precision width or height rounds to zero. Import such boxes in
+  float32. This also applies to inclusive corners under video ``"bbox_xywh"``.
 - :class:`kornia.augmentation.container.AugmentationSequential` accepts three box
   formats via ``data_keys``: ``"bbox"`` (4-corner), ``"bbox_xyxy"``, and
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in

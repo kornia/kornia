@@ -433,13 +433,34 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
     def test_dynamo_vertex_import_is_fullgraph_4177(self, mode, device, dtype, torch_optimizer):
-        # The vertex check is asynchronous, so a validated vertex import adds no graph break.
-        vertices = torch.tensor([[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]], device=device, dtype=dtype)
+        # The finiteness check is asynchronous. Include coincident centres to exercise the one-pixel conversion.
+        vertices = torch.tensor(
+            [[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]], [[4.0, 4.0]] * 4], device=device, dtype=dtype
+        )
 
         def import_boxes(data: torch.Tensor) -> torch.Tensor:
             return Boxes.from_tensor(data, mode=mode, validate_boxes=True).data
 
         self.assert_close(torch_optimizer(import_boxes, fullgraph=True)(vertices), import_boxes(vertices))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_onnx_inclusive_vertex_import_handles_reordered_corners(self, tmp_path):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        ort = pytest.importorskip("onnxruntime")
+
+        class ImportInclusive(torch.nn.Module):
+            def forward(self, corners):
+                return Boxes.from_tensor(corners, mode="vertices_plus").data
+
+        # Inclusive x=2 and y=1..3 cover [2, 3) x [1, 4). The corner order starts with the vertical side.
+        corners = torch.tensor([[[2.0, 1.0], [2.0, 3.0], [2.0, 3.0], [2.0, 1.0]]])
+        expected = torch.tensor([[[2.0, 1.0], [2.0, 4.0], [3.0, 4.0], [3.0, 1.0]]])
+        path = tmp_path / "boxes.onnx"
+        torch.onnx.export(ImportInclusive().eval(), (corners,), path, input_names=["corners"], dynamo=True)
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        actual = torch.from_numpy(session.run(None, {"corners": corners.numpy()})[0])
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
@@ -569,32 +590,37 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
     @pytest.mark.parametrize(
-        "quadrilateral",
+        ("quadrilateral", "exclusive"),
         [
-            # Rotated quadrilateral.
-            [[[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]]],
-            # Sheared quadrilateral.
-            [[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]],
-            # Projective quadrilateral.
-            [[[0.0, 0.0], [8.0, 1.0], [7.0, 6.0], [1.0, 5.0]]],
-            # Reordered vertices.
-            [[[0.0, 0.0], [0.0, 5.0], [6.0, 5.0], [6.0, 0.0]]],
+            # Rotated about a square of bounds [1, 1, 5, 5]. Scale both coordinates by 5/4 about (1, 1).
+            ([[1.0, 2.0], [4.0, 1.0], [5.0, 4.0], [2.0, 5.0]], [[1.0, 2.25], [4.75, 1.0], [6.0, 4.75], [2.25, 6.0]]),
+            # Sheared: scale x by 5/4 about x=3 and y by 2 about y=2.
+            ([[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]], [[3.0, 2.0], [6.75, 2.0], [8.0, 4.0], [4.25, 4.0]]),
+            # Projective: scale x by 9/8 and y by 7/6 about the origin.
+            (
+                [[0.0, 0.0], [8.0, 1.0], [7.0, 6.0], [1.0, 5.0]],
+                [[0.0, 0.0], [9.0, 7 / 6], [7.875, 7.0], [1.125, 35 / 6]],
+            ),
+            # Same inclusive rectangle as [1, 1, 5, 5], starting at its bottom-right corner after a half turn.
+            ([[5.0, 5.0], [1.0, 5.0], [1.0, 1.0], [5.0, 1.0]], [[6.0, 6.0], [1.0, 6.0], [1.0, 1.0], [6.0, 1.0]]),
+            # Rotated corner order of a one-pixel-wide strip. The first two vertices still share their x edge.
+            ([[2.0, 1.0], [2.0, 3.0], [2.0, 3.0], [2.0, 1.0]], [[2.0, 1.0], [2.0, 4.0], [3.0, 4.0], [3.0, 1.0]]),
+            # Rotated corner order of a one-pixel-high strip. The first two vertices cover opposite y edges.
+            ([[1.0, 2.0], [1.0, 2.0], [3.0, 2.0], [3.0, 2.0]], [[1.0, 2.0], [1.0, 3.0], [4.0, 3.0], [4.0, 2.0]]),
         ],
     )
-    def test_convention_vertex_modes_accept_arbitrary_quadrilaterals_4177(self, mode, quadrilateral, device, dtype):
-        # kornia#4177: the vertex modes validate finiteness only, so validate_boxes=True accepts rotated, sheared,
-        # projective and reordered quadrilaterals. 'vertices' stores them unchanged; 'vertices_plus' adds the
-        # inclusive offset at fixed vertex slots, which deforms them (kornia#3934).
-        quadrilateral = torch.tensor(quadrilateral, device=device, dtype=dtype)
-
-        boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
-
-        expected = quadrilateral.clone()
+    def test_convention_vertex_modes_accept_arbitrary_quadrilaterals_4177(
+        self, mode, quadrilateral, exclusive, device, dtype
+    ):
+        # kornia#4177: both modes accept the quadrilaterals a transform produces. The inclusive-to-exclusive
+        # conversion grows the axis-aligned bounds by one at the far edges and preserves vertex order.
+        corners = torch.tensor([quadrilateral], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(corners, mode=mode, validate_boxes=True)
+        expected = corners if mode == "vertices" else torch.tensor([exclusive], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected)
         if mode == "vertices_plus":
-            expected[..., 1:3, 0] += 1
-            expected[..., 2:, 1] += 1
-
-        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+            lower, upper = corners.amin(-2), corners.amax(-2)
+            self.assert_close(boxes.to_tensor("xyxy_plus"), torch.cat((lower, upper), dim=-1), atol=0.0, rtol=0.0)
 
     def test_vertices_plus_import_accepts_one_pixel_box_4177(self, device, dtype):
         # Kornia#4177: vertices_plus may represent a one-pixel box with four
@@ -610,6 +636,18 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([[[5.0, 5.0], [6.0, 5.0], [6.0, 6.0], [5.0, 6.0]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
         self.assert_close(boxes.to_tensor("vertices_plus"), vertices, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("axis", [0, 1])
+    def test_convention_vertices_plus_rejects_rounded_zero_extent_6710(self, axis, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("tests half-precision coordinate spacing")
+        # The centre itself is representable, but the next pixel edge is not. A one-pixel box in either axis
+        # must raise in the inclusive vertex import, as it does in the equivalent xyxy_plus import.
+        centre = 2048.0 if dtype == torch.float16 else 256.0
+        corners = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        corners[..., axis] = centre
+        with pytest.raises(ValueError, match="positive extent that rounds to 0"):
+            Boxes.from_tensor(corners, mode="vertices_plus")
 
     def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
         # The constructor wraps the stored exclusive vertices; ``mode`` is only the default export, and

@@ -47,7 +47,7 @@ from torch import Size
 
 from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import _check_async
-from kornia.core.ops import eye_like
+from kornia.core.ops import _constant_tensor, eye_like
 from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.geometry._coordinate import _cast_to_floating_point
 from kornia.geometry.linalg import transform_points
@@ -166,17 +166,46 @@ def _corners_to_polygons(
 
 
 def _shift_far_vertices(quadrilaterals: torch.Tensor, shift: float) -> torch.Tensor:
-    """Add ``shift`` to the far coordinates of clockwise ``(..., 4, 2)`` quadrilaterals, into a new tensor.
-
-    The far coordinates are ``x`` of the top-right and bottom-right vertices and ``y`` of the bottom-right and
-    bottom-left vertices: the slots that differ between inclusive (``'vertices_plus'``) and exclusive (``'vertices'``)
-    corners. The slots are fixed, so a quadrilateral that is not an axis-aligned rectangle in clockwise order is
-    deformed (`#3934 <https://github.com/kornia/kornia/issues/3934>`_).
-    """
+    """Add ``shift`` at fixed far-corner slots for the legacy inclusive storage."""
     out = quadrilaterals.clone()
     out[..., 1:3, 0] = out[..., 1:3, 0] + shift
     out[..., 2:, 1] = out[..., 2:, 1] + shift
     return out
+
+
+def _inclusive_vertices_to_exclusive(quadrilaterals: torch.Tensor, validate_boxes: bool) -> torch.Tensor:
+    """Grow the far bounds by one, keeping each vertex's relative position within the bounds."""
+    dtype = quadrilaterals.dtype
+    coords = quadrilaterals.to(torch.promote_types(dtype, torch.float32))
+    lower = coords.amin(dim=-2, keepdim=True)
+    upper = coords.amax(dim=-2, keepdim=True)
+    span = upper - lower
+
+    # Only half-precision dtypes lose the next integer edge at ordinary image sizes. Read the check once in eager
+    # mode to report the same ValueError as the xyxy_plus import, without synchronizing other dtypes or graph capture.
+    if (
+        validate_boxes
+        and dtype in (torch.float16, torch.bfloat16)
+        and not is_compiling()
+        and ((upper + 1).to(dtype) <= lower).any()
+    ):
+        raise ValueError(
+            f"Some boxes have a positive extent that rounds to 0 in {dtype} at their position; import them in float32."
+        )
+
+    # An affine expansion preserves the vertex order and works for both rectangles and transformed quadrilaterals.
+    # For a one-pixel-wide or one-pixel-high box, infer the corner order from the other axis. With four coincident
+    # centres use the canonical order, so the box still describes one pixel.
+    has_span = span > 0
+    fraction = (coords - lower) / torch.where(has_span, span, 1.0)
+    pixel_corners = _constant_tensor(
+        [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], device=coords.device, dtype=coords.dtype
+    )
+    first_side_moves = coords[..., :1, :] != coords[..., 1:2, :]
+    # Use logical operators because ONNX Runtime has no boolean-valued Where kernel.
+    first_side_horizontal = first_side_moves[..., :1] | ~(has_span[..., :1] | first_side_moves[..., 1:])
+    coincident_offsets = torch.where(first_side_horizontal, pixel_corners, pixel_corners.flip(-1))
+    return (coords + torch.where(has_span, fraction, coincident_offsets)).to(dtype)
 
 
 def _boxes_to_polygons(
@@ -292,8 +321,7 @@ def _boxes_to_quadrilaterals(
             # Exclusive corners: the stored form, or one pixel more than the inclusive one at the far vertices.
             quadrilaterals = _shift_far_vertices(boxes, -1.0) if inclusive else boxes.clone()
         elif mode == "vertices_plus":
-            # Inclusive corners: the legacy stored form, or one pixel less than the exclusive one at the far vertices.
-            quadrilaterals = boxes.clone() if inclusive else _shift_far_vertices(boxes, 1.0)
+            quadrilaterals = boxes.clone() if inclusive else _inclusive_vertices_to_exclusive(boxes, validate_boxes)
         else:
             raise ValueError(f"Unknown mode {mode}")
 
@@ -464,17 +492,21 @@ class Boxes:
           ``'xyxy_plus'``. Fractional and normalized ``[0, 1]`` boxes round-trip in the exclusive modes. The
           ``_plus`` modes add and subtract 1 in the box dtype, which can round a normalized edge: ``2**-10`` does not
           survive them in bfloat16.
+        - The ``'vertices_plus'`` import expands the far bounds by one along each axis. It preserves vertex order
+          and scales intermediate coordinates proportionally. If an axis has coincident coordinates, the other
+          axis determines the corner order. Four coincident centres use canonical order and describe one pixel.
+          Use ``'vertices'`` for quadrilaterals already in the edge frame.
         - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
           ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
-          ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
-          ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
-          :meth:`transform_boxes` import unchanged.
+          ``torch._assert_async`` for non-finite input (by the next synchronization on CUDA, and on MPS from
+          torch 2.13). Both vertex modes accept rotated, sheared and projective quadrilaterals.
         - ``'xyxy_plus'`` and ``'xywh'`` build the exclusive far corner, ``x + 1`` or ``x + w``, in the box dtype, so
           it rounds as torch rounds that sum. bfloat16 has no odd integers above 256 and float16 none above 2048:
           bfloat16 ``xyxy_plus=[256, 0, 258, 2]`` stores the edge 260. float32 holds every integer edge below
           ``2**24``. With ``validate_boxes=True`` a positive extent that rounds to zero, such as bfloat16
           ``xywh=[256, 0, 1, 1]``, raises ``ValueError`` instead of storing an empty box; without validation the
-          rounded corner is stored.
+          rounded corner is stored. The ``'vertices_plus'`` import also raises for a collapsed float16 or bfloat16
+          extent with validation enabled in eager mode.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (for list inputs,
           every element is checked); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
@@ -513,9 +545,7 @@ class Boxes:
         :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
         ``size``; its deprecated ``width, height`` form takes the opposite order:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices_plus'`` adds the inclusive offset at
-        fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
-        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim`` was never implemented and is deprecated:
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     See Also:
@@ -1079,10 +1109,9 @@ class Boxes:
 
             validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
                 which also reject non-positive extents in each mode's convention and positive ones that round to
-                zero in the box dtype, and ``RuntimeError`` from ``torch._assert_async`` for the vertex modes, which
-                take no extent or shape check.
-                The ``'xy*'`` checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
-                them.
+                zero in the box dtype, and ``RuntimeError`` from ``torch._assert_async`` for the vertex modes.
+                ``'vertices_plus'`` also raises ``ValueError`` if an extent rounds to zero in float16 or bfloat16.
+                Graph capture (``torch.compile``, ``torch.export``) skips the checks that require a host read.
 
         Returns:
             :class:`Boxes` containing the converted exclusive vertex representation.

@@ -2315,6 +2315,26 @@ class TestConventionAugmentationSequential(BaseTester):
         box_object = seq(video, VideoBoxes.from_tensor(exclusive), data_keys=["input", "bbox"], params=seq._params)
         self.assert_close(box_object[1].to_tensor("xyxy")[0, :, 0], edges.expand(2, 4), atol=0.0, rtol=0.0)
 
+    def test_convention_video_bbox_xywh_rejects_rounded_zero_extent_6710(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("tests half-precision coordinate spacing")
+        x = 2048 if dtype == torch.float16 else 256
+        video = torch.zeros(1, 1, 1, 4, x + 16, device=device)
+        corners = torch.tensor([[x, 1], [x, 1], [x, 2], [x, 2]], device=device, dtype=dtype).view(1, 1, 1, 4, 2)
+        seq = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0)), data_keys=["input", "bbox_xywh"]
+        )
+        with pytest.raises(ValueError, match="positive extent that rounds to 0"):
+            seq(video, corners)
+
+        # The inclusive centres x..x cover the pixel [x, x+1). Mirrored in a width-(x+16) frame it covers [15, 16).
+        expected = torch.tensor([[[[15.0, 1.0, 1.0, 2.0]]]], device=device)
+        self.assert_close(seq(video, corners.float())[1], expected, atol=0.0, rtol=0.0)
+        # The bare key still moves inclusive centres directly, so the same box is representable in half precision.
+        expected_legacy = torch.tensor([[[[15.0, 1.0, 15.0, 2.0]]]], device=device, dtype=dtype)
+        legacy = seq(video, corners, data_keys=["input", "bbox_xyxy"], params=seq._params)[1]
+        self.assert_close(legacy, expected_legacy, atol=0.0, rtol=0.0)
+
     def test_convention_mosaic_clamp_follows_the_box_storage_6710(self, device, dtype):
         # kornia#6710: Mosaic clamps exclusive boxes to the far edge of the output, 20 for a 20-pixel output, so a
         # box that fills its tile reaches it. A tensor under the bare key keeps the legacy clamp at 19, the centre of
