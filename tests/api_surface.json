@@ -494,6 +494,7 @@
     "So3",
     "SpatialSoftArgmax2d",
     "StereoCamera",
+    "StereoRectification",
     "Translate",
     "Vflip",
     "affine",
@@ -707,6 +708,7 @@
     "spatial_soft_argmax2d",
     "spatial_softmax2d",
     "squared_norm",
+    "stereo_rectify",
     "subpix",
     "symmetric_transfer_error",
     "symmetrical_epipolar_distance",
@@ -759,11 +761,17 @@
     "VideoBoxes"
   ],
   "kornia.geometry.calibration": [
+    "StereoRectification",
     "distort_points",
     "solve_pnp_dlt",
+    "stereo_rectify",
     "tilt_projection",
     "undistort_image",
     "undistort_points"
+  ],
+  "kornia.geometry.calibration.stereo": [
+    "StereoRectification",
+    "stereo_rectify"
   ],
   "kornia.geometry.camera": [
     "PinholeCamera",

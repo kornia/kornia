@@ -130,3 +130,14 @@ Perspective-n-Point (PnP)
 -------------------------
 
 .. autofunction:: solve_pnp_dlt
+
+
+Stereo rectification
+--------------------
+
+Use :func:`stereo_rectify` to build backward sampling maps for two calibrated cameras and their
+rectified projection matrices for :class:`~kornia.geometry.camera.StereoCamera`.
+
+.. autofunction:: stereo_rectify
+
+.. autoclass:: StereoRectification
