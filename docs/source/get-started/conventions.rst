@@ -429,7 +429,10 @@ Bounding boxes
 - :meth:`kornia.geometry.boxes.Boxes.transform_boxes` reads its matrix on pixel
   centres, as kornia's image matrices are, and applies it to the exclusive corners
   as ``e' = M (e - 1/2) + 1/2``: a flip of a ``W``-wide image maps ``x' = W - x``
-  and a 2x resize with ``align_corners=False`` maps ``x' = 2 x``.
+  and a 2x resize with ``align_corners=False`` maps ``x' = 2 x``. A matrix
+  written for box coordinates, such as ``diag(s, s, 1)`` between resolutions or a
+  normalized-to-pixel scale, needs ``T(-1/2) M T(+1/2)``; or scale the
+  ``to_tensor('xyxy')`` export instead.
   :class:`kornia.geometry.boxes.Boxes3D` stores exclusive corners too, but its
   ``transform_boxes`` applies the matrix to them as given.
 - ``Boxes`` coordinates keep their dtype. The far corner of ``'xyxy_plus'`` and

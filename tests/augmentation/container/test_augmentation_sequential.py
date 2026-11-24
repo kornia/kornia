@@ -2278,6 +2278,43 @@ class TestConventionAugmentationSequential(BaseTester):
         box_object = seq(image, Boxes.from_tensor(xyxy[:, :1]), data_keys=["input", "bbox_xyxy"], params=seq._params)
         self.assert_close(box_object[1].to_tensor("xyxy")[0, 0], edges, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(
+        ("aug", "corners", "edges"),
+        [
+            # Inclusive corners x 10..30, y 12..40 in a 64-pixel frame. A flip mirrors pixel centres, x' = 63 - x, so
+            # both paths cover pixels 33..53.
+            (K.RandomHorizontalFlip(p=1.0), [33.0, 12.0, 53.0, 40.0], [33.0, 12.0, 54.0, 41.0]),
+            # A 2x resize with align_corners=False maps pixel centres as x' = 2 x + 1/2 and edges as e' = 2 e: the
+            # corners move to 20.5..60.5 and the region [10, 31) to [20, 62).
+            (K.Resize((128, 128), align_corners=False), [20.5, 24.5, 60.5, 80.5], [20.0, 24.0, 62.0, 82.0]),
+        ],
+    )
+    def test_convention_video_box_paths_6710(self, aug, corners, edges, device, dtype):
+        # The video form of test_convention_box_paths_6710. A pipeline with VideoSequential takes (B, T, N, 4, 2)
+        # inclusive corners under every box key. Under the bare "bbox" and "bbox_xyxy" keys they keep the legacy
+        # storage and their numbers; under "bbox_xywh" they become the exclusive region [10, 31) x [12, 41) and take
+        # the frame conversion, as a VideoBoxes object does.
+        from kornia.geometry.boxes import VideoBoxes
+
+        video = torch.rand(1, 2, 3, 64, 64, device=device, dtype=dtype)
+        inclusive = torch.tensor([[10.0, 12.0], [30.0, 12.0], [30.0, 40.0], [10.0, 40.0]], device=device, dtype=dtype)
+        inclusive = inclusive.expand(1, 2, 1, 4, 2).clone()
+        seq = K.AugmentationSequential(K.VideoSequential(aug), data_keys=["input", "bbox", "bbox_xyxy", "bbox_xywh"])
+        _, out_vertices, out_xyxy, out_xywh = seq(video, inclusive.clone(), inclusive.clone(), inclusive.clone())
+
+        corners = torch.tensor(corners, device=device, dtype=dtype)
+        edges = torch.tensor(edges, device=device, dtype=dtype)
+        for frame in range(2):
+            self.assert_close(out_vertices[0, frame, 0, 0], corners[:2], atol=0.0, rtol=0.0)
+            self.assert_close(out_vertices[0, frame, 0, 2], corners[2:], atol=0.0, rtol=0.0)
+            self.assert_close(out_xyxy[0, frame, 0], corners, atol=0.0, rtol=0.0)
+            self.assert_close(out_xywh[0, frame, 0, :2], edges[:2], atol=0.0, rtol=0.0)
+            self.assert_close(out_xywh[0, frame, 0, 2:], edges[2:] - edges[:2], atol=0.0, rtol=0.0)
+
+        exclusive = Boxes.from_tensor(inclusive.flatten(0, 1), mode="vertices_plus").data.unflatten(0, (1, 2))
+        box_object = seq(video, VideoBoxes.from_tensor(exclusive), data_keys=["input", "bbox"], params=seq._params)
+        self.assert_close(box_object[1].to_tensor("xyxy")[0, :, 0], edges.expand(2, 4), atol=0.0, rtol=0.0)
+
     def test_convention_mosaic_clamp_follows_the_box_storage_6710(self, device, dtype):
         # kornia#6710: Mosaic clamps exclusive boxes to the far edge of the output, 20 for a 20-pixel output, so a
         # box that fills its tile reaches it. A tensor under the bare key keeps the legacy clamp at 19, the centre of
