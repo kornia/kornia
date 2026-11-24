@@ -6,6 +6,15 @@ kornia.geometry.ransac
 
 .. currentmodule:: kornia.geometry.ransac
 
+Batched homography fitting
+--------------------------
+
+Use :func:`~kornia.geometry.ransac.find_homography_ransac_batched` when
+a matching workflow has several independent image pairs. Pass source and target
+points of shape ``(B, N, 2)`` and a boolean ``(B, N)`` mask if pairs have
+different correspondence counts. The function draws a fixed number of
+four-point samples per pair and scores each pair independently.
+
 Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies,
 fundamental and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
 and calling it on one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
@@ -363,3 +372,5 @@ retaining the plain seven-point behavior.
 
 .. autoclass:: RANSAC
    :members: forward, resolve_batch_size
+
+.. autofunction:: find_homography_ransac_batched

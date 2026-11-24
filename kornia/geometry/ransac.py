@@ -24,11 +24,12 @@ fundamental matrix of two affine cameras), or an essential matrix from normalize
 ``inl_th`` is a distance in the units of the correspondences.
 :ref:`Two-view geometry <two-view-conventions>` compares this with OpenCV.
 
-Which class to use:
+Which estimator to use:
 
 - One model from correspondences with outliers: :class:`RANSAC`, with ``model_type`` one of ``"homography"``,
   ``"homography_from_linesegments"``, ``"affine"``, ``"fundamental"`` (seven-point samples),
   ``"fundamental_7pt"``, ``"fundamental_8pt"``, ``"fundamental_affine"`` or ``"essential"``.
+- Independent homographies from a batch of padded correspondences: :func:`find_homography_ransac_batched`.
 - A model from correspondences known to be inliers, without sampling: the estimators it wraps,
   :func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`,
   :func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential`.
@@ -70,9 +71,11 @@ from kornia.geometry.epipolar.fundamental import (
 )
 from kornia.geometry.homography import (
     _four_point_homography,
+    _homography_sample_orientations,
     _line_segment_squared_distance_one_way,
     _refine_homography_lm,
     _transfer_basis,
+    _transfer_errors,
     _transfer_from_basis,
     find_homography_dlt,
     find_homography_dlt_iterated,
@@ -84,7 +87,7 @@ from kornia.geometry.homography import (
 )
 from kornia.geometry.solvers.affine import _find_affine_triplet, find_affine
 
-__all__ = ["RANSAC"]
+__all__ = ["RANSAC", "find_homography_ransac_batched"]
 
 # The batch size that the ``max_iter`` budget counts in when ``batch_size="auto"``.
 _DEFAULT_BATCH = 2048
@@ -1751,3 +1754,147 @@ class RANSAC(nn.Module):
         if not self._is_supported(int(mask.sum())):
             return failure
         return model.to(device), mask.to(device)
+
+
+def _fit_batched_homographies(
+    kp1: torch.Tensor,
+    kp2: torch.Tensor,
+    valid: torch.Tensor,
+    threshold_squared: float,
+    max_samples: int,
+    generator: Optional[torch.Generator],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    batch, num_points = valid.shape
+    best_model = kp1.new_zeros(batch, 3, 3)
+    best_inliers = torch.zeros_like(valid)
+    if batch == 0 or num_points <= 4:
+        return best_model, best_inliers
+
+    # Keep the projected points and sample ranking tensors bounded as the batch or match count grows.
+    # Up to 192 hypotheses keeps CPU fitting/verification overhead low on batches of a few hundred correspondences.
+    chunk_size = min(192, max(1, (1 << 20) // (batch * num_points)))
+    rows = torch.arange(batch, device=kp1.device)
+    best_support = torch.full((batch,), 4, device=kp1.device, dtype=torch.long)
+    source = convert_points_to_homogeneous(kp1)
+    square = kp1.new_tensor([[0, 0], [1, 0], [0, 1], [1, 1]])
+    for offset in range(0, max_samples, chunk_size):
+        count = min(chunk_size, max_samples - offset)
+        draw = torch.rand(batch, count, num_points, device=kp1.device, generator=generator)
+        draw.masked_fill_(~valid[:, None], -1.0)
+        indices = draw.topk(4, dim=-1, sorted=False).indices
+        sampled1 = kp1[rows[:, None, None], indices].reshape(-1, 4, 2)
+        sampled2 = kp2[rows[:, None, None], indices].reshape(-1, 4, 2)
+        orientation1 = _homography_sample_orientations(sampled1).sign()
+        orientation2 = _homography_sample_orientations(sampled2).sign()
+        keep = (orientation1 == orientation2).all(-1) & (orientation1 != 0).all(-1)
+        keep = keep.view(batch, count) & valid[rows[:, None, None], indices].all(-1)
+        # An invalid sample still enters the batched solver. Give it a finite, nonsingular system and discard its score.
+        usable = keep.reshape(-1, 1, 1)
+        models = find_homography_dlt(torch.where(usable, sampled1, square), torch.where(usable, sampled2, square))
+        models = models.reshape(batch, count, 3, 3)
+        errors = _transfer_errors(models, source, kp2)
+        inliers = (errors <= threshold_squared) & valid[:, None] & keep[..., None]
+        support, winner = inliers.sum(-1).max(dim=1)
+        improved = support > best_support
+        best_support = torch.where(improved, support, best_support)
+        best_model = torch.where(improved[:, None, None], models[rows, winner], best_model)
+        best_inliers = torch.where(improved[:, None], inliers[rows, winner], best_inliers)
+
+    # Refit the winning consensus once. Failed pairs use a safe four-point system, with their result discarded.
+    found = best_support > 4
+    safe_points = kp1.new_zeros(num_points, 2)
+    safe_points[:4] = square
+    refit1 = torch.where(found[:, None, None], kp1, safe_points)
+    refit2 = torch.where(found[:, None, None], kp2, safe_points)
+    weights = torch.where(found[:, None], best_inliers, torch.arange(num_points, device=kp1.device) < 4)
+    refit = find_homography_dlt(refit1, refit2, weights.to(kp1.dtype))
+
+    old_errors = _transfer_errors(best_model[:, None], source, kp2).squeeze(1)
+    new_errors = _transfer_errors(refit[:, None], source, kp2).squeeze(1)
+    new_inliers = (new_errors <= threshold_squared) & valid
+    new_support = new_inliers.sum(-1)
+    old_cost = old_errors.clamp(max=threshold_squared).masked_fill(~valid, 0).sum(-1)
+    new_cost = new_errors.clamp(max=threshold_squared).masked_fill(~valid, 0).sum(-1)
+    improved = found & ((new_support > best_support) | ((new_support == best_support) & (new_cost < old_cost)))
+    return torch.where(improved[:, None, None], refit, best_model), torch.where(
+        improved[:, None], new_inliers, best_inliers
+    )
+
+
+@torch.no_grad()
+def find_homography_ransac_batched(
+    kp1: torch.Tensor,
+    kp2: torch.Tensor,
+    valid_mask: Optional[torch.Tensor] = None,
+    *,
+    inl_th: float = 2.0,
+    max_samples: int = 2048,
+    seed: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Fit one robust homography per pair of point sets in a batch.
+
+    ``models, inliers = find_homography_ransac_batched(kp1, kp2)`` takes source and target pixel
+    correspondences of shape ``(B, N, 2)``. It finds the first model with the largest consensus
+    from a fixed number of four-point samples per pair. An optional validity mask excludes padded
+    correspondences, so different pairs can contribute different numbers of points.
+    One weighted DLT refit improves the winning consensus when its support grows or its capped error falls.
+
+    Convention:
+        - A model maps ``kp1`` to ``kp2``. Its inliers have one-way transfer distance at most
+          ``inl_th``, in the units of the target coordinates.
+        - A failed fit produces a zero model and all-false mask for that pair. The model must have
+          more than four inliers, and its minimal sample must have no collinear triple.
+        - Each pair is scored independently. Supplying ``seed`` reproduces the draws for the same
+          inputs and backend without consuming the global random generator.
+        - Non-finite correspondences and entries excluded by ``valid_mask`` are never sampled or
+          returned as inliers. Half-precision inputs are fitted and scored in float32.
+        - This uses a fixed budget with inlier-count scoring. See :class:`RANSAC` for
+          adaptive stopping or local refinement of a single pair.
+
+    Args:
+        kp1: Source points, shape ``(B, N, 2)``.
+        kp2: Target points with the same shape, device, and floating dtype as ``kp1``.
+        valid_mask: Optional boolean tensor with shape ``(B, N)`` on the points' device.
+        inl_th: Positive, finite inlier distance.
+        max_samples: Positive number of minimal samples per pair.
+        seed: Seed for the private random generator.
+
+    Returns:
+        Homographies with shape ``(B, 3, 3)`` in the input dtype, and boolean inliers with shape
+        ``(B, N)`` in correspondence order.
+
+    See Also:
+        - :class:`RANSAC`: fits a single set of correspondences with adaptive stopping and local optimization.
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: estimates a homography from known inliers.
+
+    Example:
+        >>> points = torch.tensor([[[0., 0.], [2., 0.], [0., 2.], [2., 2.], [1., 1.]]])
+        >>> model, inliers = find_homography_ransac_batched(points, points, max_samples=32, seed=0)
+        >>> inliers.all().item()
+        True
+
+    """
+    KORNIA_CHECK_SHAPE(kp1, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(kp2, ["B", "N", "2"])
+    if kp1.shape != kp2.shape or kp1.device != kp2.device or kp1.dtype != kp2.dtype:
+        raise ValueError("kp1 and kp2 must share shape, device, and dtype")
+    if not kp1.is_floating_point():
+        raise TypeError("kp1 and kp2 must be floating-point tensors")
+    if not math.isfinite(inl_th) or not 0 < inl_th < math.sqrt(sys.float_info.max):
+        raise ValueError("inl_th must have a positive, finite squared distance")
+    if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples <= 0:
+        raise ValueError("max_samples must be a positive integer")
+
+    valid = kp1.isfinite().all(-1) & kp2.isfinite().all(-1)
+    if valid_mask is not None:
+        if valid_mask.shape != valid.shape or valid_mask.dtype != torch.bool or valid_mask.device != kp1.device:
+            raise ValueError("valid_mask must be boolean, on the points' device, with shape (B, N)")
+        valid = valid & valid_mask
+
+    dtype = torch.promote_types(kp1.dtype, torch.float32)
+    kp1_work = torch.where(valid[..., None], kp1.to(dtype), 0)
+    kp2_work = torch.where(valid[..., None], kp2.to(dtype), 0)
+    generator = torch.Generator(device=kp1.device).manual_seed(seed) if seed is not None else None
+    with _autocast_disabled(kp1.device.type):
+        models, inliers = _fit_batched_homographies(kp1_work, kp2_work, valid, inl_th**2, max_samples, generator)
+    return models.to(kp1.dtype), inliers

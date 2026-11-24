@@ -468,16 +468,16 @@ def _four_point_homography(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
 
 def _transfer_errors(H: torch.Tensor, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Squared one-way transfer errors ``(M, N)`` of homographies ``(M, 3, 3)`` on one set of correspondences.
+    """Score homographies ``(..., M, 3, 3)`` on corresponding point sets ``(..., N, 3)`` and ``(..., N, 2)``.
 
-    ``x1`` is homogeneous ``(N, 3)`` with unit last coordinate and ``x2`` ``(N, 2)``. ``H x1`` of every model is one
-    ``(3M, 3) @ (3, N)`` product; the rest is :func:`oneway_transfer_error`'s formula, with its guard of ``w' = 0``.
+    Per set, the projected coordinates of all models come from one packed matrix product with
+    shape ``(3M, 3) @ (3, N)``. The errors have shape ``(..., M, N)``.
     """
-    m, n = H.shape[0], x1.shape[0]
-    projected = (H.reshape(3 * m, 3) @ x1.T).view(m, 3, n)
-    w = projected[:, 2]
+    num_models = H.shape[-3]
+    projected = (H.flatten(-3, -2) @ x1.transpose(-2, -1)).unflatten(-2, (num_models, 3))
+    x, y, w = projected.unbind(-2)
     w_safe = _nonzero(w)
-    err2 = (projected[:, 0] / w_safe - x2[:, 0]).square() + (projected[:, 1] / w_safe - x2[:, 1]).square()
+    err2 = (x / w_safe - x2[..., 0].unsqueeze(-2)).square() + (y / w_safe - x2[..., 1].unsqueeze(-2)).square()
     return _inf_where(err2, w == 0)
 
 
@@ -972,27 +972,15 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
             expected_shape=list(points2.shape),
         )
 
-    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3), gathered by slicing, shape (B, 4, 2). Index tensors
-    # would be copied to the device on every call.
-    def _triples(points: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        p0, p1, p2, p3 = points[:, 0], points[:, 1], points[:, 2], points[:, 3]
-        return torch.stack([p0, p0, p0, p1], 1), torch.stack([p1, p1, p2, p2], 1), torch.stack([p2, p3, p3, p3], 1)
+    return (_homography_sample_orientations(points1).sign() == _homography_sample_orientations(points2).sign()).all(1)
 
-    p1_i, p1_j, p1_k = _triples(points1)
-    p2_i, p2_j, p2_k = _triples(points2)
 
-    # 2D orientation (signed area) for each triple:
-    # orient(a,b,c) = cross2d(b-a, c-a) = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)
-    def _orient(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
-        ab = b - a
-        ac = c - a
-        return ab[..., 0] * ac[..., 1] - ab[..., 1] * ac[..., 0]  # shape (B, 4)
-
-    left_sign = torch.sign(_orient(p1_i, p1_j, p1_k))
-    right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
-
-    # Valid if all four orientation signs match across views
-    return (left_sign == right_sign).all(dim=1)
+def _homography_sample_orientations(points: torch.Tensor) -> torch.Tensor:
+    """Return the four signed triangle areas of each four-point sample."""
+    a, b, c, d = points[:, :4].unbind(1)
+    first = torch.stack((b - a, b - a, c - a, c - b), dim=1)
+    second = torch.stack((c - a, d - a, d - a, d - b), dim=1)
+    return first[..., 0] * second[..., 1] - first[..., 1] * second[..., 0]
 
 
 def find_homography_lines_dlt(

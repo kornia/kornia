@@ -3501,3 +3501,61 @@ class TestRANSACDegensac(BaseTester):
             assert F.shape == (3, 3)
             assert F.dtype == dtype
             assert mask.shape == (500,)
+
+
+class TestBatchedHomographyRANSAC(BaseTester):
+    def test_padded_independent_fits(self, device, dtype):
+        generator = torch.Generator().manual_seed(18)
+        source = torch.rand(3, 32, 2, generator=generator).to(device=device, dtype=dtype) * 8
+        shift = source.new_tensor([[2, -1], [-3, 2], [1, 1]])
+        target = source + shift[:, None]
+        valid = torch.ones_like(source[..., 0], dtype=torch.bool)
+        valid[1, 22:] = False
+        valid[2, 4:] = False
+        target[0, :6] += 20
+        target[1, :5] -= 20
+        target[1, -1] = float("nan")
+        target[0, -1] = float("nan")
+        expected = valid.clone()
+        expected[0, :6] = False
+        expected[0, -1] = False
+        expected[1, :5] = False
+        expected[2] = False
+
+        model, inliers = ransac_module.find_homography_ransac_batched(source, target, valid, inl_th=0.25, seed=4)
+        assert model.shape == (3, 3, 3)
+        assert model.dtype == dtype
+        assert torch.equal(inliers, expected)
+        assert torch.equal(model[2], torch.zeros_like(model[2]))
+        projected = transform_points(model[:2].float(), source[:2].float())
+        error = (projected - target[:2].float()).norm(dim=-1)
+        assert (error[expected[:2]] <= 0.25).all()
+
+    @pytest.mark.parametrize("shape", [(0, 6, 2), (2, 0, 2), (2, 4, 2)])
+    def test_too_few_correspondences(self, device, dtype, shape):
+        points = torch.zeros(shape, device=device, dtype=dtype)
+        model, inliers = ransac_module.find_homography_ransac_batched(points, points, max_samples=1)
+        assert torch.equal(model, points.new_zeros((shape[0], 3, 3)))
+        assert torch.equal(inliers, torch.zeros_like(points[..., 0], dtype=torch.bool))
+
+    def test_collinear_correspondences_fail(self, device, dtype):
+        coordinate = torch.arange(12, device=device, dtype=dtype)
+        points = torch.stack((coordinate, coordinate), dim=-1).unsqueeze(0)
+        model, inliers = ransac_module.find_homography_ransac_batched(points, points, max_samples=32, seed=0)
+        assert torch.equal(model, torch.zeros_like(model))
+        assert torch.equal(inliers, torch.zeros_like(inliers))
+
+    def test_seed_does_not_change_global_stream(self, device, dtype):
+        points = torch.tensor(
+            [[[0, 0], [2, 0], [0, 2], [2, 2], [1, 1], [3, 4]]],
+            device=device,
+            dtype=dtype,
+        )
+        before = torch.random.get_rng_state()
+        args = (points, points + 1)
+        model, inliers = ransac_module.find_homography_ransac_batched(*args, max_samples=32, seed=113)
+        again, again_inliers = ransac_module.find_homography_ransac_batched(*args, max_samples=32, seed=113)
+        assert inliers.all()
+        assert torch.equal(model, again)
+        assert torch.equal(inliers, again_inliers)
+        assert torch.equal(torch.random.get_rng_state(), before)
