@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.15.0.
-There are **12 float16 and 13 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **3 float16 and 3 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. `#4153 <https://github.com/kornia/kornia/issues/4153>`_ tracked them until it was closed on
 2026-10-18; no single issue tracks the remaining entries.
 
@@ -59,25 +59,25 @@ in CI; MPS half precision is not part of CI, and CPU results alone do not establ
      - Warps, rotation matrices, homography normalization and ``crop_and_resize`` compute half inputs in float32 and
        return the input dtype
    * - ``kornia.geometry.camera``
-     - ⚠️
      - ✅
-     - 1 / 0
-     - float16: an affine round trip to pixels beyond 65504; ``cam2pixel`` and Kannala-Brandt distortion compute
-       half inputs in float32, and a half-precision stereo rig keeps ``Q`` in float32
+     - ✅
+     - 0 / 0
+     - ``cam2pixel`` and Kannala-Brandt distortion compute half inputs in float32, and a half-precision stereo rig
+       keeps ``Q`` in float32
    * - ``kornia.geometry.calibration``
-     - ⚠️
-     - ⚠️
-     - 7 / 7
-     - solve_pnp_dlt, distort_points and undistort_points compute half inputs in float32; the remaining entries are
-       solve_pnp_dlt pose checks on a scene whose pixel coordinates, up to 8e4, overflow float16 or round by many
-       pixels in both half dtypes
+     - ✅
+     - ✅
+     - 0 / 0
+     - solve_pnp_dlt, distort_points and undistort_points compute half inputs in float32; solve_pnp_dlt's
+       half-precision pose is checked on a scene that half precision can hold, and its pixel-scale pose checks
+       apply to float32 and float64 only
    * - ``kornia.geometry.epipolar``
      - ⚠️
      - ⚠️
-     - 4 / 3
+     - 3 / 3
      - Essential-matrix decomposition/motion, KRt_from_projection and the fundamental-matrix estimators compute half
        inputs in float32; the remaining entries are Sampson residuals of a pixel-unit F, whose entries span eight
-       decades, and float16 projection matrices with entries above 65504
+       decades
    * - ``kornia.geometry.homography``
      - ✅
      - ✅
@@ -101,10 +101,10 @@ in CI; MPS half precision is not part of CI, and CPU results alone do not establ
      -
    * - ``kornia.geometry.conversions``
      - ✅
-     - ⚠️
-     - 0 / 3
-     - Rotation conversions compute half inputs in float32 and return the input dtype; bfloat16: the log quaternion
-       of a -179.9 degree turn rounds to the other side of the half turn. Includes tests/integration/test_conversions.py
+     - ✅
+     - 0 / 0
+     - Rotation conversions compute half inputs in float32 and return the input dtype. Includes
+       tests/integration/test_conversions.py
    * - ``kornia.geometry.ransac``
      - ✅
      - ✅
@@ -282,11 +282,13 @@ inductor rounds one pixel below its bound.
 
 **CUDA float16 and bfloat16.** Of the 33 failures, 27 are the CUDA counterparts of CPU manifest entries (the other 2
 manifest entries pass on CUDA). One failure and the 3 errors are in ``tests/test_conftest.py``, the harness's own tests,
-which assume they do not already run inside a half-precision subprocess; they pass in a normal ``--device=cuda`` run.
+which assumed they did not already run inside a half-precision subprocess; they passed in a normal ``--device=cuda``
+run, and `#6928 <https://github.com/kornia/kornia/pull/6928>`_ fixed them since.
 One is a flaky test rather than a CUDA failure: ``TestHyperplane::test_through_three`` in bfloat16 draws unseeded random
 points, and about 2 % of random bfloat16 triples, on CPU and CUDA alike, fall within the collinearity check (a
 singular-value ratio of 8 bfloat16 epsilons, 0.0625), so ``Hyperplane.through`` rightly rejects them; it passed in all
-three isolated re-runs. The last 4 fail on CUDA only, in every isolated re-run:
+three isolated re-runs, and `#6928 <https://github.com/kornia/kornia/pull/6928>`_ has since given it fixed points.
+The last 4 fail on CUDA only, in every isolated re-run:
 ``TestRandomRotation3DBackward::test_param`` in bfloat16, with ``degrees`` a tensor of 10, 20 and 30 degrees (the CPU
 manifest entries are its ``(10, 20)`` range parameter). This is a bfloat16 limit rather than a CUDA one. The test takes
 one SGD step with learning rate 10; its gradient is finite and nonzero, but the range must also move. On CUDA (step
@@ -294,14 +296,16 @@ sizes measured on ``26e866e54``) the steps are at most 0.054 degrees, each under
 angle (0.031 at 10 degrees, 0.0625 at 20 and 30 degrees), so no angle changes; the bfloat16 steps match the float32 ones
 within 2 %, apart from one of 7e-5 degrees. On CPU the sampled rotations differ, and the step at 10 degrees (0.032 to
 0.036 degrees) passes half an ulp. The test checks the sum of the changes, so it passes on CPU, although the other two
-angles do not move there either.
+angles do not move there either. `#6817 <https://github.com/kornia/kornia/pull/6817>`_ has since raised the
+learning rate to 100, which makes every step at least 0.2 degrees, and all 64 CUDA half cases of the test pass.
 
-**Batch-dependent CUDA kernels.** CUDA picks convolution and matrix-multiply kernels by batch size, so a half-precision
-LoFTR, SmallSR or LightGlue gives an image slightly different outputs in a batch than alone; on CPU the batched and
-single outputs are bitwise equal. Their batch-consistency tests therefore use a CUDA-only tolerance in half precision
-(`#6584 <https://github.com/kornia/kornia/pull/6584>`_). With cuDNN disabled, SmallSR's outputs are bitwise equal on
-CUDA too; LightGlue has no convolutions, so there the batch-dependent kernels are its matrix multiplications or
-attention. With pretrained weights on Photo Tourism images, the change between a batch and a single image is smaller
+**Batch-dependent CUDA kernels (expected; no change planned).** CUDA picks convolution and matrix-multiply kernels by
+batch size, so a half-precision LoFTR, SmallSR or LightGlue gives an image slightly different outputs in a batch than
+alone; on CPU the batched and single outputs are bitwise equal. This is how cuDNN and the CUDA matrix multiplications
+work, not a Kornia defect, and Kornia does not plan to change it: their batch-consistency tests use a CUDA-only
+tolerance in half precision (`#6584 <https://github.com/kornia/kornia/pull/6584>`_). With cuDNN disabled, SmallSR's
+outputs are bitwise equal on CUDA too; LightGlue has no convolutions, so there the batch-dependent kernels are its
+matrix multiplications or attention. With pretrained weights on Photo Tourism images, the change between a batch and a single image is smaller
 than the error of half precision itself, which the "vs float32" columns show (measured on ``e4a444e9b``):
 
 .. list-table::

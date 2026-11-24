@@ -359,8 +359,12 @@ class TestIntegrationLocalHalfPrecision:
         )
 
     @pytest.mark.uses_accelerator
-    def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
+    def test_local_half_dtype_lifecycle_with_pytester(self, pytester, monkeypatch):
         """Integration test: verify real pytest execution with local half_dtype."""
+        # The children are top-level runs. A caller that sets KORNIA_TEST_IN_SUBPROCESS=1 for the whole session, as the
+        # one-process CUDA half-precision measurement does, would pass it on, and the first child would then act as an
+        # isolation subprocess and run the half-precision test instead of skipping it.
+        monkeypatch.delenv("KORNIA_TEST_IN_SUBPROCESS", raising=False)
         test_file = pytester.makepyfile(
             """
             import pytest
@@ -727,6 +731,7 @@ class TestCpuOnlyRunsHideCuda:
 
     def _run(self, pytester, monkeypatch, device: str, expected: str, preset: str | None = None):
         monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        monkeypatch.delenv("KORNIA_TEST_IN_SUBPROCESS", raising=False)  # the child is a top-level run
         if preset is not None:
             monkeypatch.setenv("CUDA_VISIBLE_DEVICES", preset)
         monkeypatch.setenv("EXPECTED_VISIBLE_DEVICES", expected)
@@ -745,9 +750,11 @@ class TestCpuOnlyRunsHideCuda:
     def test_cpu_only_selection_hides_cuda(self, pytester, monkeypatch):
         self._run(pytester, monkeypatch, "cpu", "").assert_outcomes(passed=2)
 
-    @pytest.mark.parametrize("device", ["cuda", "cpu,cuda", "all"])
-    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device):
-        self._run(pytester, monkeypatch, device, "<unset>").assert_outcomes(passed=2)
+    # Not named "device": the harness's fixtures read a "device" argument as a torch.device, and inside an isolation
+    # subprocess cuda_device_assert_guard called .type on these strings.
+    @pytest.mark.parametrize("device_selection", ["cuda", "cpu,cuda", "all"])
+    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device_selection):
+        self._run(pytester, monkeypatch, device_selection, "<unset>").assert_outcomes(passed=2)
 
     def test_caller_visible_devices_are_kept(self, pytester, monkeypatch):
         self._run(pytester, monkeypatch, "cpu", "0", preset="0").assert_outcomes(passed=2)
