@@ -454,14 +454,48 @@ class TestDistortionKannalaBrandt(BaseTester):
         # which optimization only shrinks, rather than with the first call.
         scripted_subs = _count_nodes(op_script.inlined_graph, "aten::sub")
         for _ in range(2):
-            # On CUDA the optimized call fuses the loop body, and the fused kernels keep bfloat16 intermediates in
-            # float32, so that call lands up to 4 bfloat16 ulps from eager (closer to the float64 result).
-            self.assert_close(op_script(points, params), expected, low_tolerance=dtype == torch.bfloat16)
+            self.assert_close(op_script(points, params), expected)
             assert _count_nodes(torch.jit.last_executed_optimized_graph(), "aten::sub") <= scripted_subs
 
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)
         self._test_jit_undistort(device, dtype)
+
+    @pytest.mark.parametrize("mixed", [False, True])
+    @pytest.mark.applies_to(dtypes=("float16", "bfloat16"), reason="low-precision calibration")
+    def test_undistort_kannala_brandt_rounds_only_at_output(self, device, dtype, mixed):
+        # OpenVINS T265 cam0 calibration. For each rounded input, bisect
+        # F(theta) = ||(pixel-c)/f|| on [0, pi/2] in float64, where F is the
+        # calibrated KB polynomial. The ray uses tan(theta) along the
+        # distorted direction. The radial derivative is sec(theta)^2/F'(theta)
+        # and the tangential one is tan(theta)/F(theta), before dividing by f.
+        params = torch.tensor(
+            [
+                282.01996326,
+                280.71451531,
+                415.95581378,
+                396.66137720,
+                -0.00326900323,
+                0.05405258144,
+                -0.05159409564,
+                0.01074918019,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        cases = {
+            (torch.float16, False): ((392.0, 696.0), (-0.1421240937, 1.7799998641), (0.0059811478, -0.0007461283)),
+            (torch.float16, True): ((392.1875, 696.3125), (-0.1412346910, 1.7846505118), (0.0059897514, -0.0007442235)),
+            (torch.bfloat16, False): ((80.0, 336.0), (-2.6297535613, -0.4729531277), (0.0322206392, 0.0044185218)),
+            (torch.bfloat16, True): ((80.375, 336.625), (-2.6150111747, -0.4659227811), (0.0318483638, 0.0043168909)),
+        }
+        pixel, ray, jacobian = cases[dtype, mixed]
+        points = torch.tensor([pixel], device=device, dtype=torch.float32 if mixed else dtype, requires_grad=True)
+        actual = undistort_points_kannala_brandt(points, params)
+        assert actual.dtype == points.dtype
+        (gradient,) = torch.autograd.grad(actual[0, 0], points)
+        self.assert_close(actual, points.new_tensor([ray]), atol=0, rtol=1e-5)
+        self.assert_close(gradient, points.new_tensor([jacobian]), atol=0, rtol=1e-5)
 
     def test_convention_undistort_points_kannala_brandt_round_trip_closes_4308(self, device, dtype):
         # undistort_points_kannala_brandt is an iterative (Gauss-Newton) inverse, so the round trip closes to the

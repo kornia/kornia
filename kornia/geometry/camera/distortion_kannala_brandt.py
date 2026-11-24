@@ -177,7 +177,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           caller-visible step count, so the round trip through :func:`distort_points_kannala_brandt` closes only
           to the accuracy that iteration reaches.
         - a zero distorted radius maps to the origin.
-        - the iteration runs in the dtype of ``params`` and the result takes the dtype of the points.
+        - float16 and bfloat16 calibrations are evaluated in float32. Other floating calibrations use their own dtype.
+          The result takes the dtype of the points.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape ``(..., 2)``.
@@ -210,8 +211,11 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     device = distorted_points_in_camera.device
     out_dtype = distorted_points_in_camera.dtype
 
-    pts = distorted_points_in_camera.to(device=device, dtype=params.dtype)
-    p = params.to(device=device, dtype=params.dtype)
+    # Round the result once rather than rounding every Newton step and the tangent.
+    p = params.to(device=device)
+    if p.dtype in (torch.float16, torch.bfloat16):
+        p = p.float()
+    pts = distorted_points_in_camera.to(dtype=p.dtype)
 
     x = pts[..., 0]
     y = pts[..., 1]
@@ -231,11 +235,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     nonzero_radius = (un != 0) | (vn != 0)
     safe_un = torch.where(nonzero_radius, un, torch.ones_like(un))
     safe_vn = torch.where(nonzero_radius, vn, torch.zeros_like(vn))
-    radius_dtype = safe_un.dtype
-    if radius_dtype == torch.float16:
-        safe_un = safe_un.float()
-        safe_vn = safe_vn.float()
-    rth = (safe_un * safe_un + safe_vn * safe_vn).sqrt().to(radius_dtype)
+    rth = (safe_un * safe_un + safe_vn * safe_vn).sqrt()
     rth = torch.where(nonzero_radius, rth, torch.zeros_like(rth))
 
     safe_rth = torch.where(nonzero_radius, rth, torch.ones_like(rth))
