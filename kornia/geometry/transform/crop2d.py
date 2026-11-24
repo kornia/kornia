@@ -606,12 +606,15 @@ def crop_by_indices(
           where the box overflowed, so every kept pixel stays at its position in the box.
 
     .. note::
-        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
-        ``'bicubic'`` or ``'nearest'`` interpolation, ``antialias=False`` and
-        ``shape_compensation='resize'`` is cropped by a gather that keeps the box coordinates
-        on the device, so it traces with ``fullgraph=True`` and matches the eager result up to
-        float rounding. Every other call keeps the eager path, which reads the box coordinates
-        back to Python and breaks the graph. Graph export is described in the note below.
+        Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'`` or
+        ``'bicubic'`` interpolation (or ``'nearest'`` with ``align_corners=None``),
+        ``antialias=False`` and ``shape_compensation='resize'`` is cropped by a gather that keeps
+        the box coordinates on the device, so it traces with ``fullgraph=True`` and matches the
+        eager result up to float rounding, on every supported torch release. From torch 2.12
+        every other call keeps the eager path, which reads the box coordinates back to Python
+        and breaks the graph. Before torch 2.12 ``torch.compile`` also reports graph export, so
+        every other call with ``size`` given takes the export path of the note below: the warp,
+        or a ``ValueError`` for ``'nearest-exact'`` and ``'area'``.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -648,12 +651,14 @@ def crop_by_indices(
 
     .. note::
         Under graph export (:func:`torch.export.export` / :func:`torch.onnx.export`) the box
-        coordinates cannot be read back to Python, so the crop is captured as the same warp as
-        :func:`crop_and_resize` (``align_corners=True``), which keeps the box coordinates dynamic.
-        This needs ``size``: a box that is exactly ``size`` pixels (what
-        :class:`~kornia.augmentation.RandomCrop` and :class:`CenterCrop2D` produce) is reproduced
-        exactly, any other box is resampled to ``size`` with ``align_corners=True`` regardless of
-        ``shape_compensation`` and ``align_corners``. Without ``size`` the eager path is kept: it
+        coordinates cannot be read back to Python. This needs ``size``. The calls that
+        :func:`torch.compile` crops by a gather (see the note above) are captured as the same
+        gather, which keeps the box coordinates dynamic and matches the eager result up to float
+        rounding; :class:`CenterCrop2D` in its default mode is one of them. Any other call is
+        captured as the same warp as :func:`crop_and_resize` (``align_corners=True``): a box that
+        is exactly ``size`` pixels is reproduced up to float rounding, any other box is resampled
+        to ``size`` with ``align_corners=True`` regardless of ``shape_compensation`` and
+        ``align_corners``. Without ``size`` the eager path is kept: it
         reads the box coordinates back to Python, which breaks the graph under
         :func:`torch.compile` and is rejected by ``torch.export`` as data-dependent.
 
@@ -675,11 +680,9 @@ def crop_by_indices(
     y1 = src[:, 0, 1]
     y2 = src[:, 3, 1] + 1
 
-    if size is not None and is_exporting():
-        return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
     if (
         size is not None
-        and is_compiling()
+        and (is_compiling() or is_exporting())
         and B > 0
         and (interpolation in ("bilinear", "bicubic") or (interpolation == "nearest" and align_corners is None))
         and not antialias
@@ -687,7 +690,12 @@ def crop_by_indices(
     ):
         # ``_compiled_slice_resize`` implements only these three modes (any other one would be resampled as
         # bicubic) and cannot gather from an empty batch; ``interpolate`` rejects ``align_corners`` for nearest.
+        # It keeps the box coordinates on the device, so graph export takes it too and matches the eager crop,
+        # where the warp below resamples any box that is not exactly ``size`` pixels. Checked before the export
+        # branch also because ``is_exporting()`` is true under ``torch.compile`` on some torch releases.
         return _compiled_slice_resize(input_tensor, src_box, size, interpolation, align_corners)
+    if size is not None and is_exporting():
+        return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
 
     # ``RandomCrop`` passes its ``size`` through as given, and a list never compares equal to a ``torch.Size``:
     # every slice would look mismatched and be resized to its own size.
