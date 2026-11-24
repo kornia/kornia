@@ -10,12 +10,3 @@
 # pillow: 12.3.0
 # generated-by: pytest tests/ --record-known-failures=<candidate> --known-failure-profile=cpu-float16
 
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-float16-20]
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam[cpu-float16-6]
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted[cpu-float16-16]
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted[cpu-float16-20]
-call	torch._C._LinAlgError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_pred_world_to_cam_weighted_rand[cpu-float16-25]
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-20]
-call	builtins.AssertionError	tests/geometry/calibration/test_pnp.py::TestSolvePnpDlt::test_project[cpu-float16-6]
-call	builtins.AssertionError	tests/geometry/camera/test_distortion.py::TestDistortionAffine::test_distort_points_roundtrip[cpu-float16]
-call	builtins.AssertionError	tests/geometry/epipolar/test_fundamental.py::TestFundamentalFromProjections::test_batch_support_check[cpu-float16]

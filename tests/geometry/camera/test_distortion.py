@@ -67,16 +67,19 @@ class TestDistortionAffine(BaseTester):
         self._test_cardinality_distort_batch(device, dtype, batch_size)
         self._test_cardinality_undistort_batch(device, dtype, batch_size)
 
-    # NOTE: data generated with sophus-rs
     def test_distort_points_roundtrip(self, device, dtype):
+        # Points on the normalized z = 1 plane, as distort_points_affine takes them, mapped to a 640 by 480 image:
+        # (u, v) = (600 x + 319.5, 600 y + 239.5). The coordinates are binary fractions, so every product, pixel and
+        # round-trip value is exact in float16; bfloat16 rounds the pixels within its tolerance. The previous
+        # pixel-scale inputs mapped to pixels up to 383719.5, past float16's 65504.
         points = torch.tensor(
             [
                 [0.0, 0.0],
-                [1.0, 400.0],
-                [320.0, 240.0],
-                [319.5, 239.5],
-                [100.0, 40.0],
-                [639.0, 479.0],
+                [-0.5, -0.375],
+                [0.5, 0.375],
+                [0.25, -0.125],
+                [-0.03125, 0.0625],
+                [-0.53125, -0.390625],
             ],
             device=device,
             dtype=dtype,
@@ -85,17 +88,20 @@ class TestDistortionAffine(BaseTester):
         expected = torch.tensor(
             [
                 [319.5, 239.5],
-                [919.5, 240239.5],
-                [192319.5, 144239.5],
-                [192019.5, 143939.5],
-                [60319.5, 24239.5],
-                [383719.5, 287639.5],
+                [19.5, 14.5],
+                [619.5, 464.5],
+                [469.5, 164.5],
+                [300.75, 277.0],
+                [0.75, 5.125],
             ],
             device=device,
             dtype=dtype,
         )
         points_distorted = distort_points_affine(points, params)
-        self.assert_close(points_distorted, expected)
+        # bfloat16 holds the principal point 319.5 as 320 and rounds 600 x to its 2 px spacing between 256 and 512,
+        # so its pixels are off by up to 1.25 px here: allow one spacing at that scale. float16 is exact.
+        tol = {"atol": 256 * torch.finfo(dtype).eps, "rtol": 0.0} if dtype == torch.bfloat16 else {}
+        self.assert_close(points_distorted, expected, **tol)
         self.assert_close(points, undistort_points_affine(points_distorted, params))
 
     def test_dx_distort_points(self, device, dtype):
