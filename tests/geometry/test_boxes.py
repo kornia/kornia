@@ -637,10 +637,11 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
         self.assert_close(boxes.to_tensor("vertices_plus"), vertices, atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only half precision rounds this one-pixel extent to zero"
+    )
     @pytest.mark.parametrize("axis", [0, 1])
     def test_convention_vertices_plus_rejects_rounded_zero_extent_6710(self, axis, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("tests half-precision coordinate spacing")
         # The centre itself is representable, but the next pixel edge is not. A one-pixel box in either axis
         # must raise in the inclusive vertex import, as it does in the equivalent xyxy_plus import.
         centre = 2048.0 if dtype == torch.float16 else 256.0

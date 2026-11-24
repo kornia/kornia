@@ -2315,9 +2315,10 @@ class TestConventionAugmentationSequential(BaseTester):
         box_object = seq(video, VideoBoxes.from_tensor(exclusive), data_keys=["input", "bbox"], params=seq._params)
         self.assert_close(box_object[1].to_tensor("xyxy")[0, :, 0], edges.expand(2, 4), atol=0.0, rtol=0.0)
 
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="only half precision rounds this one-pixel extent to zero"
+    )
     def test_convention_video_bbox_xywh_rejects_rounded_zero_extent_6710(self, device, dtype):
-        if dtype not in (torch.float16, torch.bfloat16):
-            pytest.skip("tests half-precision coordinate spacing")
         x = 2048 if dtype == torch.float16 else 256
         video = torch.zeros(1, 1, 1, 4, x + 16, device=device)
         corners = torch.tensor([[x, 1], [x, 1], [x, 2], [x, 2]], device=device, dtype=dtype).view(1, 1, 1, 4, 2)
