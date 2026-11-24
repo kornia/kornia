@@ -25,12 +25,34 @@ from testing.base import DYNAMIC_EXPORT_UNAVAILABLE_REASON, BaseTester, dynamic_
 
 
 class TestTallCudaSvd(BaseTester):
+    def test_reduction_only_for_tall_cuda_matrices_6559(self, device):
+        from kornia.core.utils import _reduce_tall_cuda_svd
+
+        on_cuda = device.type == "cuda"
+        for rows, cols, expected in ((33, 3, on_cuda), (33, 32, on_cuda), (32, 3, False), (33, 33, False)):
+            assert _reduce_tall_cuda_svd(torch.zeros(1, rows, cols, device=device)) is expected
+
+    @pytest.mark.applies_to(devices=("cuda",), reason="R-only QR is used only on CUDA")
+    def test_traced_find_essential_keeps_backward_6559(self, device):
+        # Inputs to a replayed trace may need gradients even when the trace inputs did not.
+        generator = torch.Generator(device=device).manual_seed(6559)
+        camera1 = torch.rand(2, 40, 3, generator=generator, device=device, dtype=torch.float64) * 2 - 1
+        camera1 = camera1 + camera1.new_tensor([0.0, 0.0, 6.0])
+        camera2 = camera1 + camera1.new_tensor([0.4, 0.1, 0.05])
+        image1 = camera1[..., :2] / camera1[..., 2:]
+        image2 = camera2[..., :2] / camera2[..., 2:]
+        traced = torch.jit.trace(find_essential, (image1, image2), check_trace=False)
+
+        image1.requires_grad_()
+        (actual,) = torch.autograd.grad(traced(image1, image2).nan_to_num(nan=0.0).sum(), image1)
+        (expected,) = torch.autograd.grad(find_essential(image1, image2).nan_to_num(nan=0.0).sum(), image1)
+        assert actual.isfinite().all()
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("count", [16, 17, 32, 33, 100])
     @pytest.mark.parametrize("operation", ["plane", "pnp", "essential"])
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="standard-precision accuracy and dispatch check")
     def test_geometry_avoids_tall_cuda_decomposition_6559(self, count, operation, device, dtype, monkeypatch):
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("The PnP input contract is float32/float64")
-
         def guard(original):
             def wrapped(matrix, *args, **kwargs):
                 # The 33-row dispatch cliff is independent of matrix values.
@@ -105,10 +127,9 @@ class TestTallCudaSvd(BaseTester):
             expected_vectors[..., :, None] * expected_vectors[..., None, :],
         )
 
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="standard-precision rank rejection check")
     def test_tall_rank_checks_reject_degenerate_points_6559(self, device, dtype):
         # With 40 points, CUDA reduces both rank checks by QR; they must still reject degenerate sets.
-        if dtype not in (torch.float32, torch.float64):
-            pytest.skip("The PnP input contract is float32/float64")
         points = torch.rand(2, 40, 3, device=device, dtype=dtype) * 2 - 1
         planar = torch.stack((points[..., 0], points[..., 1], torch.full_like(points[..., 0], 5.0)), -1)
         intrinsics = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3)

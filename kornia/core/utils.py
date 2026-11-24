@@ -570,11 +570,18 @@ def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
 def _reduce_tall_cuda_svd(input: torch.Tensor) -> bool:
     """Return whether a tall CUDA matrix should be reduced by QR before its decomposition.
 
-    CUDA's SVD of a matrix with more than 32 rows and at most 32 columns is much slower than
-    the SVD of its square R factor. ``is_exporting()`` is checked before the sizes: otherwise
-    the size checks become guards that narrow a dynamic dimension in an exported program.
+    A trace can later run with gradients, so it must record an SVD with a backward.
+    Check graph capture before the sizes so export keeps the full dynamic point-count range.
     """
-    return input.device.type == "cuda" and not is_exporting() and input.shape[-2] > 32 and input.shape[-1] <= 32
+    # https://github.com/pytorch/pytorch/issues/200486 tracks the CUDA dispatch cliff. Batched float64
+    # SVD took 0.40 ms for (64, 32, 3) and 57.9 ms for (64, 33, 3) on an RTX 4090 with torch 2.15.
+    # Reassess when a supported PyTorch release closes that gap and preserves accuracy on nearly rank-deficient inputs.
+    return (
+        input.device.type == "cuda"
+        and not _is_tracing_or_exporting()
+        and input.shape[-2] > 32
+        and input.shape[-1] <= 32
+    )
 
 
 def _torch_svd_right(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
