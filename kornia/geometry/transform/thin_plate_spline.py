@@ -43,7 +43,6 @@ import warnings
 import torch
 
 from kornia.core.utils import (
-    _autocast_disabled,
     _reconcile_under_autocast,
     _samples_half_in_float32,
     _torch_grid_sample,
@@ -64,25 +63,19 @@ _KERNEL_CENTERS_NOTICE = (
 
 
 def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
-    r"""Compute the pairwise squared euclidean distance matrices ``(B, N, M)`` between two tensors.
-
-    Tensors with shapes (B, N, C) and (B, M, C).
-    """
+    r"""Compute pairwise squared distances ``(B, N, M)`` between 2D points."""
     if not torch.jit.is_scripting():
         tensor1, tensor2 = _reconcile_under_autocast(tensor1, tensor2)
-    # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
-    t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
-    t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
-    # A caller's autocast region would run this product in half precision and the kernels with it: in bfloat16, a
-    # float32 warp_image_tps of a 256 px [0, 1] image was 0.08 off. TorchScript has no context managers; a scripted call
-    # keeps the caller's precision.
-    if torch.jit.is_scripting():
-        t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
-    else:
-        with _autocast_disabled(tensor1.device.type):
-            t1_t2 = tensor1.matmul(tensor2.transpose(1, 2))
-    square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
-    return square_dist.clamp(min=0)  # handle possible numerical errors
+    if tensor1.dtype != tensor2.dtype:
+        raise RuntimeError(f"Point sets must have one dtype. Got {tensor1.dtype} and {tensor2.dtype}")
+
+    # Subtract coordinates before squaring. The dot-product identity loses nearby distances when pixel coordinates
+    # are far from the image origin. Compute each axis separately to avoid a (B, N, M, 2) intermediate.
+    x1, y1 = tensor1.unbind(-1)
+    x2, y2 = tensor2.unbind(-1)
+    dx = x1.unsqueeze(-1) - x2.unsqueeze(-2)
+    dy = y1.unsqueeze(-1) - y2.unsqueeze(-2)
+    return torch.addcmul(dx.square(), dy, dy)
 
 
 def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
