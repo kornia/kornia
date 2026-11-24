@@ -143,7 +143,7 @@ def _rotate_nearest(kernel: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
     # move first, then cast: on MPS a single .to(device="cpu", dtype=torch.float64) returns zeros (torch 2.14)
     radians = torch.deg2rad(angle.detach().cpu().to(torch.float64) % 360.0)
     cos, sin = radians.cos()[:, None, None], radians.sin()[:, None, None]
-    offsets = torch.arange(kernel_size, dtype=torch.float64) - center
+    offsets = torch.arange(kernel_size, device="cpu", dtype=torch.float64) - center
     v, u = torch.meshgrid(offsets, offsets, indexing="ij")
     snap = 2.0**20
     col = (((cos * u - sin * v) * snap).round() / snap + center).round()
@@ -285,7 +285,7 @@ def _rotate3d_nearest(kernel: torch.Tensor, angle: torch.Tensor) -> torch.Tensor
     center = (kernel_size - 1) / 2
     # move first, then cast: on MPS a single .to(device="cpu", dtype=torch.float64) returns zeros (torch 2.14)
     rotation = axis_angle_to_rotation_matrix(torch.deg2rad(angle.detach().cpu().to(torch.float64)))
-    offsets = torch.arange(kernel_size, dtype=torch.float64) - center
+    offsets = torch.arange(kernel_size, device="cpu", dtype=torch.float64) - center
     z, y, x = torch.meshgrid(offsets, offsets, offsets, indexing="ij")
     # the source of voxel p is R^T (p - c) + c, written as a row vector times R
     source = torch.stack((x, y, z), -1).reshape(1, -1, 3) @ rotation
