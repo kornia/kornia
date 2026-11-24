@@ -180,10 +180,31 @@ class TestVisionTransformer(BaseTester):
     @pytest.mark.device_agnostic
     def test_failed_backbone_probe_preserves_batchnorm(self):
         bn = nn.BatchNorm2d(3)
-        backbone = nn.Sequential(bn, nn.Conv2d(4, 3, 1))
+        backbone = nn.Sequential(bn, nn.Conv2d(4, 3, 1), nn.Dropout().eval())
+        original_modes = [module.training for module in backbone.modules()]
 
         with pytest.raises(RuntimeError, match="channels"):
             VisionTransformer(image_size=8, depth=1, num_heads=1, backbone=backbone)
 
-        assert bn.training
+        assert [module.training for module in backbone.modules()] == original_modes
         assert bn.num_batches_tracked.item() == 0
+
+    @pytest.mark.device_agnostic
+    def test_backbone_probe_preserves_spectral_norm(self):
+        conv = nn.utils.parametrizations.spectral_norm(nn.Conv2d(3, 4, 1))
+        weight = conv.parametrizations.weight
+        spectral_norm = weight[0]
+        with torch.no_grad():
+            # For this weight, a training-mode probe would move _u to a uniform vector.
+            weight.original.fill_(1)
+            spectral_norm._u.copy_(torch.tensor([1.0, 0.0, 0.0, 0.0]))
+            spectral_norm._v.fill_(3**-0.5)
+        u = spectral_norm._u.clone()
+        v = spectral_norm._v.clone()
+
+        VisionTransformer(image_size=8, depth=1, num_heads=1, backbone=nn.Sequential(conv))
+
+        assert torch.equal(spectral_norm._u, u)
+        assert torch.equal(spectral_norm._v, v)
+        assert conv.training
+        assert spectral_norm.training
