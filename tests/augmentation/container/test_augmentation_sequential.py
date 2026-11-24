@@ -1962,8 +1962,8 @@ class TestConventionAugmentationSequential(BaseTester):
 
     def test_mix_children_dispatch_annotation_keys_4493(self, device, dtype):
         # #4493: the container dispatches a mix child's annotation keys to the child's own handlers: RandomMosaic
-        # transforms boxes (container xyxy_plus path), and unsupported keys raise NotImplementedError as a direct
-        # call does. A class key raises from the container.
+        # transforms boxes (container xyxy_plus path, in the legacy inclusive storage of the bare key, kornia#6710),
+        # and unsupported keys raise NotImplementedError as a direct call does. A class key raises from the container.
         from kornia.geometry.boxes import Boxes
 
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
@@ -1979,9 +1979,8 @@ class TestConventionAugmentationSequential(BaseTester):
         assert not torch.equal(out_boxes, boxes)
         params = seq._params[0].data
         mosaic = K.RandomMosaic(p=1.0)
-        expected = mosaic.transform_boxes(Boxes.from_tensor(boxes, mode="xyxy_plus"), params, mosaic.flags).to_tensor(
-            mode="xyxy_plus"
-        )
+        legacy = Boxes._from_tensor(boxes, mode="xyxy_plus", inclusive=True)
+        expected = mosaic.transform_boxes(legacy, params, mosaic.flags).to_tensor(mode="xyxy_plus")
         self.assert_close(out_boxes, expected, rtol=0, atol=0)
 
         # Unsupported annotation keys raise, matching a direct call (no silent passthrough).
@@ -2240,24 +2239,164 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_mask, expected)
         assert not torch.equal(out_mask, without_antialias)
 
-    def test_convention_boxes_follow_the_xyxy_plus_convention(self, device, dtype):
-        # Convention pin: the container's box arithmetic is `Boxes`' inclusive `xyxy_plus` mode, for a scaling
-        # op as well as for a flip - `Boxes.from_tensor(..., mode="xyxy_plus").transform_boxes_(M)` reproduces
-        # the container's output exactly, while `mode="xyxy"` (exclusive) does not.
-        # Two asymmetric boxes on a 6x8 image, resized to (3, 4) => M = diag(3/7, 2/5) in xyxy_plus space.
-        # Snippet used to generate expected: this body. Container
-        # [[0.0, 0.0, 1.2857143, 0.8]], [[0.85714293, 0.4, 2.1428573, 1.6]] == xyxy_plus;
-        # xyxy gives [[0.0, 0.0, 1.8571429, 1.4]], [[0.85714293, 0.4, 2.7142859, 2.2]].
+    @pytest.mark.parametrize(
+        ("aug", "corners", "edges"),
+        [
+            # x from 10 to 30 in a 64-pixel image: a flip mirrors the pixel centres, x' = 63 - x.
+            (K.RandomHorizontalFlip(p=1.0), [33.0, 12.0, 53.0, 40.0], [34.0, 12.0, 54.0, 40.0]),
+            # A 2x resize with align_corners=False maps pixel centres as x' = 2 x + 1/2 and edges as e' = 2 e.
+            (K.Resize((128, 128), align_corners=False), [20.5, 24.5, 60.5, 80.5], [20.0, 24.0, 60.0, 80.0]),
+        ],
+    )
+    def test_convention_box_paths_6710(self, aug, corners, edges, device, dtype):
+        # Revision 4 of kornia#6710, the box [10, 12, 30, 40]: a tensor under the bare "bbox_xyxy" or "bbox" key is
+        # read as plain corners and keeps its numbers, as keypoints do; a Boxes object under any key and a tensor
+        # under "bbox_xywh" are exclusive and take the frame conversion. An all-zero row under the bare key still
+        # passes and moves as a point.
+        image = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        xyxy = torch.tensor([[[10.0, 12.0, 30.0, 40.0], [0.0, 0.0, 0.0, 0.0]]], device=device, dtype=dtype)
+        vertices = torch.tensor(
+            [[[[10.0, 12.0], [30.0, 12.0], [30.0, 40.0], [10.0, 40.0]]]], device=device, dtype=dtype
+        )
+        xywh = torch.tensor([[[10.0, 12.0, 20.0, 28.0]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[10.0, 12.0], [30.0, 40.0]]], device=device, dtype=dtype)
+        keys = ["input", "bbox_xyxy", "bbox", "bbox_xywh", "keypoints"]
+        seq = K.AugmentationSequential(aug, data_keys=keys)
+        _, out_xyxy, out_vertices, out_xywh, out_keypoints = seq(image, xyxy, vertices, xywh, keypoints)
+
+        corners = torch.tensor(corners, device=device, dtype=dtype)
+        edges = torch.tensor(edges, device=device, dtype=dtype)
+        self.assert_close(out_xyxy[0, 0], corners, atol=0.0, rtol=0.0)
+        self.assert_close(out_vertices[0, 0, 0], corners[:2], atol=0.0, rtol=0.0)
+        self.assert_close(out_vertices[0, 0, 2], corners[2:], atol=0.0, rtol=0.0)
+        self.assert_close(out_keypoints[0].sort(dim=0).values, corners.view(2, 2), atol=0.0, rtol=0.0)
+        point = seq.transform_matrix[0, :2, 2]  # where the origin goes
+        self.assert_close(out_xyxy[0, 1], point.repeat(2), atol=0.0, rtol=0.0)
+
+        self.assert_close(out_xywh[0, 0, :2], edges[:2], atol=0.0, rtol=0.0)
+        self.assert_close(out_xywh[0, 0, 2:], edges[2:] - edges[:2], atol=0.0, rtol=0.0)
+        box_object = seq(image, Boxes.from_tensor(xyxy[:, :1]), data_keys=["input", "bbox_xyxy"], params=seq._params)
+        self.assert_close(box_object[1].to_tensor("xyxy")[0, 0], edges, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize(
+        ("aug", "corners", "edges"),
+        [
+            # Inclusive corners x 10..30, y 12..40 in a 64-pixel frame. A flip mirrors pixel centres, x' = 63 - x, so
+            # both paths cover pixels 33..53.
+            (K.RandomHorizontalFlip(p=1.0), [33.0, 12.0, 53.0, 40.0], [33.0, 12.0, 54.0, 41.0]),
+            # A 2x resize with align_corners=False maps pixel centres as x' = 2 x + 1/2 and edges as e' = 2 e: the
+            # corners move to 20.5..60.5 and the region [10, 31) to [20, 62).
+            (K.Resize((128, 128), align_corners=False), [20.5, 24.5, 60.5, 80.5], [20.0, 24.0, 62.0, 82.0]),
+        ],
+    )
+    def test_convention_video_box_paths_6710(self, aug, corners, edges, device, dtype):
+        # The video form of test_convention_box_paths_6710. A pipeline with VideoSequential takes (B, T, N, 4, 2)
+        # inclusive corners under every box key. Under the bare "bbox" and "bbox_xyxy" keys they keep the legacy
+        # storage and their numbers; under "bbox_xywh" they become the exclusive region [10, 31) x [12, 41) and take
+        # the frame conversion, as a VideoBoxes object does.
+        from kornia.geometry.boxes import VideoBoxes
+
+        video = torch.rand(1, 2, 3, 64, 64, device=device, dtype=dtype)
+        inclusive = torch.tensor([[10.0, 12.0], [30.0, 12.0], [30.0, 40.0], [10.0, 40.0]], device=device, dtype=dtype)
+        inclusive = inclusive.expand(1, 2, 1, 4, 2).clone()
+        seq = K.AugmentationSequential(K.VideoSequential(aug), data_keys=["input", "bbox", "bbox_xyxy", "bbox_xywh"])
+        _, out_vertices, out_xyxy, out_xywh = seq(video, inclusive.clone(), inclusive.clone(), inclusive.clone())
+
+        corners = torch.tensor(corners, device=device, dtype=dtype)
+        edges = torch.tensor(edges, device=device, dtype=dtype)
+        for frame in range(2):
+            self.assert_close(out_vertices[0, frame, 0, 0], corners[:2], atol=0.0, rtol=0.0)
+            self.assert_close(out_vertices[0, frame, 0, 2], corners[2:], atol=0.0, rtol=0.0)
+            self.assert_close(out_xyxy[0, frame, 0], corners, atol=0.0, rtol=0.0)
+            self.assert_close(out_xywh[0, frame, 0, :2], edges[:2], atol=0.0, rtol=0.0)
+            self.assert_close(out_xywh[0, frame, 0, 2:], edges[2:] - edges[:2], atol=0.0, rtol=0.0)
+
+        exclusive = Boxes.from_tensor(inclusive.flatten(0, 1), mode="vertices_plus").data.unflatten(0, (1, 2))
+        box_object = seq(video, VideoBoxes.from_tensor(exclusive), data_keys=["input", "bbox"], params=seq._params)
+        self.assert_close(box_object[1].to_tensor("xyxy")[0, :, 0], edges.expand(2, 4), atol=0.0, rtol=0.0)
+
+    def test_convention_video_bbox_xywh_rejects_rounded_zero_extent_6710(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("tests half-precision coordinate spacing")
+        x = 2048 if dtype == torch.float16 else 256
+        video = torch.zeros(1, 1, 1, 4, x + 16, device=device)
+        corners = torch.tensor([[x, 1], [x, 1], [x, 2], [x, 2]], device=device, dtype=dtype).view(1, 1, 1, 4, 2)
+        seq = K.AugmentationSequential(
+            K.VideoSequential(K.RandomHorizontalFlip(p=1.0)), data_keys=["input", "bbox_xywh"]
+        )
+        with pytest.raises(ValueError, match="positive extent that rounds to 0"):
+            seq(video, corners)
+
+        # The inclusive centres x..x cover the pixel [x, x+1). Mirrored in a width-(x+16) frame it covers [15, 16).
+        expected = torch.tensor([[[[15.0, 1.0, 1.0, 2.0]]]], device=device)
+        self.assert_close(seq(video, corners.float())[1], expected, atol=0.0, rtol=0.0)
+        # The bare key still moves inclusive centres directly, so the same box is representable in half precision.
+        expected_legacy = torch.tensor([[[[15.0, 1.0, 15.0, 2.0]]]], device=device, dtype=dtype)
+        legacy = seq(video, corners, data_keys=["input", "bbox_xyxy"], params=seq._params)[1]
+        self.assert_close(legacy, expected_legacy, atol=0.0, rtol=0.0)
+
+    def test_convention_mosaic_clamp_follows_the_box_storage_6710(self, device, dtype):
+        # kornia#6710: Mosaic clamps exclusive boxes to the far edge of the output, 20 for a 20-pixel output, so a
+        # box that fills its tile reaches it. A tensor under the bare key keeps the legacy clamp at 19, the centre of
+        # the last pixel, until the frame-named keys exist; "bbox_xywh" was already exclusive.
+        image = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        full = torch.tensor([[[0.0, 0.0, 20.0, 20.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        seq = K.AugmentationSequential(K.RandomMosaic((20, 20), p=1.0), data_keys=["input", "bbox_xyxy"])
+        torch.manual_seed(0)
+        bare = seq(image, full)[1]
+        assert bare.amax().item() == 19.0
+        box_object = seq(image, Boxes.from_tensor(full), params=seq._params)[1].to_tensor("xyxy")
+        assert box_object.amax().item() == 20.0
+        xywh_seq = K.AugmentationSequential(K.RandomMosaic((20, 20), p=1.0), data_keys=["input", "bbox_xywh"])
+        xywh = xywh_seq(image, full, params=seq._params)[1]
+        assert (xywh[..., :2] + xywh[..., 2:]).amax().item() == 20.0
+
+    @pytest.mark.parametrize("box_dtype", [torch.float16, torch.bfloat16])
+    def test_convention_mosaic_area_threshold_follows_the_box_storage_6710(self, box_dtype, device):
+        # kornia#6710: min_bbox_size meets the float32 area of a half-precision Boxes object, 49 * 51 = 2499 here, and
+        # removes it. A tensor under the bare key keeps the legacy comparison in its own dtype, and its numbers: float16
+        # rounds the area to 2500, and bfloat16 rounds the area and the threshold to 2496.
+        image = torch.rand(1, 3, 64, 64, device=device)
+        box = torch.tensor([[[0.0, 0.0, 49.0, 51.0]]], device=device, dtype=box_dtype)
+        mosaic = K.RandomMosaic((64, 64), mosaic_grid=(1, 1), start_ratio_range=(0.0, 0.0), min_bbox_size=2500, p=1.0)
+        seq = K.AugmentationSequential(mosaic, data_keys=["input", "bbox_xyxy"])
+        self.assert_close(seq(image, box)[1], box, atol=0.0, rtol=0.0)
+        box_object = seq(image, Boxes.from_tensor(box), params=seq._params)[1]
+        assert not box_object.to_tensor("xyxy").any()
+
+    def test_convention_mixed_dtype_list_follows_the_box_storage_6710(self, device):
+        # A list under the bare "bbox_xyxy" key keeps the legacy storage: every sample comes back in the first sample's
+        # dtype, as before kornia#6710, so the float32 1.0001 rounds to 1 in float16. Under "bbox_xywh" the samples
+        # are built in their promoted dtype, float32, and keep their coordinates.
+        image = torch.rand(2, 3, 16, 16, device=device)
+        first = torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=torch.float16)
+        second = torch.tensor([[1.0001, 2.0, 5.0, 5.0]], device=device)
+        for key, dtype in (("bbox_xyxy", torch.float16), ("bbox_xywh", torch.float32)):
+            seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", key])
+            out = seq(image, [first, second])[1]
+            assert [sample.dtype for sample in out] == [dtype, dtype]
+            self.assert_close(out[0], first.to(dtype), atol=0.0, rtol=0.0)
+            self.assert_close(out[1], second.to(dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_bare_xyxy_key_moves_corners_and_boxes_objects_take_the_edge_frame_6710(self, device, dtype):
+        # Convention pin (kornia#6710): a tensor under the bare "bbox_xyxy" key keeps its numbers, the corners
+        # moved by the image matrix as they are, as before the exclusive storage. A Boxes object is exclusive and
+        # the pixel-centre matrix is applied in the edge frame, e' = M (e - 1/2) + 1/2.
+        # Two asymmetric boxes on a 6x8 image, resized to (3, 4): M = diag(3/7, 2/5) on pixel centres.
         boxes = torch.tensor([[[0.0, 0.0, 3.0, 2.0]], [[2.0, 1.0, 5.0, 4.0]]], device=device, dtype=dtype)
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.Resize((3, 4)), data_keys=["input", "bbox_xyxy"])
-        out_boxes = aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), boxes.clone())[1]
-        matrix = aug.transform_matrix
-        inclusive = Boxes.from_tensor(boxes.clone(), mode="xyxy_plus")
-        inclusive.transform_boxes_(matrix)
-        self.assert_close(out_boxes, inclusive.to_tensor(mode="xyxy_plus"))
-        exclusive = Boxes.from_tensor(boxes.clone(), mode="xyxy")
-        exclusive.transform_boxes_(matrix)
-        assert not torch.allclose(out_boxes, exclusive.to_tensor(mode="xyxy"))
+        out_boxes = aug(image, boxes.clone())[1]
+        corners = torch.tensor(
+            [[[0.0, 0.0, 9 / 7, 0.8]], [[6 / 7, 0.4, 15 / 7, 1.6]]], device=device, dtype=dtype
+        )  # x * 3/7, y * 2/5
+        self.assert_close(out_boxes, corners)
+
+        out_object = aug(image, Boxes.from_tensor(boxes.clone(), mode="xyxy"), params=aug._params)[1]
+        edges = torch.tensor(
+            [[[2 / 7, 0.3, 11 / 7, 1.1]], [[8 / 7, 0.7, 17 / 7, 1.9]]], device=device, dtype=dtype
+        )  # (x - 1/2) * 3/7 + 1/2, (y - 1/2) * 2/5 + 1/2
+        self.assert_close(out_object.to_tensor("xyxy"), edges)
 
     def test_convention_inverse_restores_keypoints_and_loses_rotated_box_corners(self, device, dtype):
         # Convention pin: `.inverse()` restores keypoints moved by the geometric chain, while non-axis-aligned

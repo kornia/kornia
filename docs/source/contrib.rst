@@ -82,8 +82,16 @@ Interpreting the report
   ``roundtrip_valid_count`` together with the mean, median, or maximum. Empty labels
   and unavailable inverses do not produce a successful zero-error measurement.
 * Out-of-frame counts use inclusive pixel centers from zero to ``width - 1`` and
-  ``height - 1``. A box is outside when any corner is outside. Nonfinite labels are
-  counted separately.
+  ``height - 1`` for keypoints and for tensor boxes under the bare ``"bbox"`` and
+  ``"bbox_xyxy"`` keys. Exclusive boxes, ``Boxes`` objects and ``"bbox_xywh"``
+  tensors, are checked on their edges, from zero to ``width`` and ``height``, and
+  mapped back on pixel centres for the round trip. A box is outside when any
+  corner is outside. Nonfinite labels are counted separately.
+* Box rows that the pipeline returns without a box are left out of every count
+  and statistic: rows a ``Boxes`` object marks invalid, and the all-zero rows
+  that replace zero-extent rows under ``"bbox_xywh"``. Input rows that hold no box
+  come back that way. Zero rows under the bare ``"bbox"`` and ``"bbox_xyxy"``
+  keys are coordinates and are counted.
 * Crop matrices can invert coordinates even after image content has been discarded.
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.

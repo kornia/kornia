@@ -419,6 +419,30 @@ Bounding boxes
     h, w = infer_bbox_shape(boxes)
     assert (h.item(), w.item()) == (2.0, 2.0)
 
+- These ``kornia.geometry.bbox`` corners are crop windows: first to last pixel
+  centre, the model of a homography between pixel grids. Annotation boxes are
+  regions instead: :class:`kornia.geometry.boxes.Boxes` stores exclusive corners,
+  ``width = x_max - x_min``, so ``to_tensor('xyxy')`` and ``compute_area`` agree
+  with torchvision and COCO, and normalized boxes round-trip
+  (`#6710 <https://github.com/kornia/kornia/issues/6710>`_). Pass
+  ``to_tensor('vertices_plus')`` to the ``kornia.geometry.bbox`` helpers.
+- :meth:`kornia.geometry.boxes.Boxes.transform_boxes` reads its matrix on pixel
+  centres, as kornia's image matrices are, and applies it to the exclusive corners
+  as ``e' = M (e - 1/2) + 1/2``: a flip of a ``W``-wide image maps ``x' = W - x``
+  and a 2x resize with ``align_corners=False`` maps ``x' = 2 x``. A matrix
+  written for box coordinates, such as ``diag(s, s, 1)`` between resolutions or a
+  normalized-to-pixel scale, needs ``T(-1/2) M T(+1/2)``; or scale the
+  ``to_tensor('xyxy')`` export instead.
+  :class:`kornia.geometry.boxes.Boxes3D` stores exclusive corners too, but its
+  ``transform_boxes`` applies the matrix to them as given.
+- The ``'vertices_plus'`` import expands the far bounds by one and scales
+  intermediate vertices proportionally along each axis, keeping corner order.
+  Use ``'vertices'`` for quadrilaterals already in the edge frame.
+- ``Boxes`` coordinates keep their dtype. The far corner of ``'xyxy_plus'``,
+  ``'xywh'`` and ``'vertices_plus'`` input rounds in the box dtype: bfloat16 has no odd
+  integers above 256 and float16 none above 2048. ``from_tensor`` raises when a
+  positive half-precision width or height rounds to zero. Import such boxes in
+  float32. This also applies to inclusive corners under video ``"bbox_xywh"``.
 - :class:`kornia.augmentation.container.AugmentationSequential` accepts three box
   formats via ``data_keys``: ``"bbox"`` (4-corner), ``"bbox_xyxy"``, and
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
@@ -564,9 +588,15 @@ Augmentations
   Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
   spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
   ``mask`` keys for multiple full-batch masks.
-- Boxes use the inclusive ``xyxy_plus`` convention of
-  :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
-  integer pixel centres: ``x' = W - 1 - x``.
+- A tensor under the bare ``"bbox"`` or ``"bbox_xyxy"`` key holds corners on
+  pixel centres, as keypoints do, and keeps the numbers of the releases before
+  `#6710 <https://github.com/kornia/kornia/issues/6710>`_: flips map
+  ``x' = W - 1 - x`` and a 2x resize ``x' = 2 x + 1/2``. A
+  :class:`kornia.geometry.boxes.Boxes` object under any key, and a tensor under
+  ``"bbox_xywh"``, holds exclusive boxes, transformed as in *Bounding boxes*
+  above: ``x' = W - x`` and ``x' = 2 x``. A ``"bbox_xywh"`` row with zero width
+  or height is no box: it is accepted and every output gives an all-zero row for
+  it, as for a box that ``RandomMosaic`` clips away.
 - Nested ``AugmentationSequential`` children contribute matrices from the
   current call under their own matrix mode. Plain ``ImageSequential`` children
   contribute their geometric operations in ``silent`` mode, including repeated

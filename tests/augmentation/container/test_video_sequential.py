@@ -332,6 +332,19 @@ class TestVideoSequential:
 
         return _boxes_to_padded_tensor(boxes, "vertices_plus")
 
+    @staticmethod
+    def _legacy_boxes(boxes):
+        # A tensor under the bare "bbox" key keeps the legacy inclusive storage in the container (kornia#6710).
+        return kornia.geometry.boxes.Boxes._from_tensor(boxes, mode="vertices_plus", inclusive=True)
+
+    @staticmethod
+    def _exclusive_video_boxes(boxes):
+        # The VideoBoxes of the same regions as the inclusive (B, T, N, 4, 2) corners ``boxes``.
+        from kornia.geometry.boxes import Boxes, VideoBoxes
+
+        stored = Boxes.from_tensor(boxes.flatten(0, 1), mode="vertices_plus").data
+        return VideoBoxes.from_tensor(stored.unflatten(0, boxes.shape[:2]))
+
     @pytest.mark.parametrize("p", [1.0, 0.5])
     def test_mosaic_boxes_same_on_frame_follow_each_frame_6173(self, p, device, dtype):
         # Frame t of the boxes is the mosaic of frame t of every video with the video-level parameters, as for the
@@ -351,7 +364,7 @@ class TestVideoSequential:
             partial |= bool(applied.any()) and not bool(applied.all())
             for frame in range(frame_num):
                 assert_close(out[:, frame], mosaic(video[:, frame], params=params))
-                frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes[:, frame], mode="vertices_plus")
+                frame_boxes = self._legacy_boxes(boxes[:, frame])
                 expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes, params, mosaic.flags))
                 assert out_boxes.shape == (batch_size, frame_num, *expected.shape[1:])
                 assert_close(out_boxes[:, frame], expected)
@@ -366,7 +379,7 @@ class TestVideoSequential:
         video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
         boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
         frames = video.reshape(-1, 3, 8, 8)
-        frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes.flatten(0, 1), mode="vertices_plus")
+        frame_boxes = self._legacy_boxes(boxes.flatten(0, 1))
         partial = False
         for seed in range(6):
             torch.manual_seed(seed)
@@ -382,7 +395,9 @@ class TestVideoSequential:
 
     def test_mosaic_video_boxes_object_input_exports_padded_6173(self, device, dtype):
         # A VideoBoxes input comes back as VideoBoxes. After a partial gate its frames hold 4 or 1 boxes, and
-        # to_tensor() returns them as one padded (B, T, N, 4, 2) tensor, equal to the dense tensor input's output.
+        # to_tensor() returns them as one padded (B, T, N, 4, 2) tensor, of the shape of the dense tensor input's
+        # output and equal to the mosaic of each frame's exclusive Boxes. It differs from the dense output where a
+        # box lies beyond the far border: exclusive vertices clamp at the far edge W, the legacy storage at W - 1.
         from kornia.geometry.boxes import VideoBoxes
 
         batch_size, frame_num = 3, 2
@@ -395,24 +410,29 @@ class TestVideoSequential:
             torch.manual_seed(seed)
             _, dense = aug(video, boxes)
             torch.manual_seed(seed)
-            _, wrapped = aug(video, VideoBoxes.from_tensor(boxes))
+            _, wrapped = aug(video, self._exclusive_video_boxes(boxes))
             torch.manual_seed(seed)
             applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
             partial |= bool(applied.any()) and not bool(applied.all())
             assert isinstance(wrapped, VideoBoxes)
-            exported = wrapped.to_tensor()
+            exported = wrapped.to_tensor("vertices_plus")
             assert exported.shape == dense.shape
-            assert_close(exported, dense)
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))
+            for frame in range(frame_num):
+                frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes[:, frame], mode="vertices_plus")
+                expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes, params, mosaic.flags))
+                assert_close(exported[:, frame], expected)
             assert wrapped.to_tensor("xyxy").shape == (*dense.shape[:3], 4)
         assert partial
 
     @pytest.mark.parametrize("then_flip", [False, True])
     def test_mosaic_video_boxes_padding_exports_as_zero_6173(self, then_flip, device, dtype):
         # A video a partial gate skips keeps its one box per frame, followed by padding rows up to the mosaic box
-        # count. A stored zero row exports as [0, 0, 1, 1] in the exclusive modes and a later flip moves it (to
-        # [7, 0, 8, 1] on 8-pixel frames), so the padding has to export as zero in every mode and after indexing,
+        # count. A stored zero row exports as [0, 0, -1, -1] in the inclusive modes and a later flip moves it (to
+        # [8, 0, 8, 1] on 8-pixel frames), so the padding has to export as zero in every mode and after indexing,
         # while the real rows export as their stored coordinates do.
-        from kornia.geometry.boxes import Boxes, VideoBoxes
+        from kornia.geometry.boxes import Boxes
 
         batch_size, frame_num = 3, 2
         mosaic = K.RandomMosaic(p=0.5)
@@ -425,7 +445,7 @@ class TestVideoSequential:
             torch.manual_seed(seed)
             _, dense = aug(video, boxes)
             torch.manual_seed(seed)
-            _, wrapped = aug(video, VideoBoxes.from_tensor(boxes))
+            _, wrapped = aug(video, self._exclusive_video_boxes(boxes))
             torch.manual_seed(seed)
             applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
             if bool(applied.all()):
@@ -435,7 +455,7 @@ class TestVideoSequential:
             # In a skipped video, the rows after each frame's own box are padding.
             padding = ~applied.to(device)[:, None, None] & (torch.arange(num_boxes, device=device) >= boxes.shape[2])
             padding = padding.expand(batch_size, frame_num, num_boxes)
-            assert_close(wrapped.to_tensor(), dense)
+            assert wrapped.to_tensor("vertices_plus").shape == dense.shape
             for mode in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
                 exported = wrapped.to_tensor(mode)
                 assert (exported[padding] == 0).all(), mode

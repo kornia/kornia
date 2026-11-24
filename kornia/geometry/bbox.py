@@ -20,8 +20,10 @@
 A 2D box is four ``(x, y)`` corners in clockwise order, top-left, top-right, bottom-right, bottom-left, so one box per
 image is ``(B, 4, 2)``. A 3D box is those four corners at the front followed by the same four at the back, ``(B, 8, 3)``
 with ``(x, y, z)`` corners. Corners are inclusive pixel centres: a box covering pixels ``0..9`` has corners at ``0`` and
-``9`` and width ``x_max - x_min + 1 = 10``, unlike the exclusive boxes of torchvision, COCO and albumentations
-(`#3934 <https://github.com/kornia/kornia/issues/3934>`_). The generators and the shape and mask functions share this
+``9`` and width ``x_max - x_min + 1 = 10``. These are pixel-index windows, first to last pixel, the model of the crop
+functions and of a homography between pixel grids, not annotation boxes: the exclusive boxes of torchvision, COCO,
+albumentations and :class:`~kornia.geometry.boxes.Boxes` are regions, ``x_max - x_min`` wide
+(`#6710 <https://github.com/kornia/kornia/issues/6710>`_). The generators and the shape and mask functions share this
 convention; :func:`nms` takes exclusive ``(N, 4)`` ``xyxy`` boxes instead
 (`#4008 <https://github.com/kornia/kornia/issues/4008>`_), and :func:`transform_bbox` takes ``xyxy`` or ``xywh`` boxes,
 or corners, and adds no ``+1``. From an unbatched :class:`~kornia.geometry.boxes.Boxes`, pass its
@@ -280,7 +282,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     See Also:
         - :func:`infer_bbox_shape3d`: the depths, heights and widths of ``(B, 8, 3)`` corners, which it validates first.
-        - :meth:`~kornia.geometry.boxes.Boxes.get_boxes_shape`: the inclusive size of the axis-aligned bounds of the
+        - :meth:`~kornia.geometry.boxes.Boxes.get_boxes_shape`: the exclusive size of the axis-aligned bounds of the
           boxes in a container, for corners in any order.
         - :func:`bbox_generator`: the inverse, corners from a start corner and this height and width.
 
@@ -635,9 +637,10 @@ def bbox_generator(
 
     ``boxes = bbox_generator(x_start, y_start, width, height)`` takes ``(B,)`` or scalar tensors and returns
     ``(B, 4, 2)`` corners in clockwise order from the top-left one, with the far corner at ``start + size - 1``, in
-    the dtype of the inputs and with a gradient path to them. These are the corners
-    :meth:`~kornia.geometry.boxes.Boxes.from_tensor` stores for the same boxes in ``'xywh'`` mode, which also
-    validates them and wraps them in a container; to crop the boxes from images, pass the result to
+    the dtype of the inputs and with a gradient path to them. These are the inclusive corners that
+    :class:`~kornia.geometry.boxes.Boxes` exports as ``to_tensor('vertices_plus')`` for the same boxes imported in
+    ``'xywh'`` mode; it stores them exclusive, one pixel further at the far corner. To crop the boxes from images,
+    pass the result to
     :func:`~kornia.geometry.transform.crop_and_resize`. For 3D boxes, use :func:`bbox_generator3d`.
 
     Convention:
@@ -661,8 +664,8 @@ def bbox_generator(
     See Also:
         - :func:`bbox_generator3d`: the 3D form, ``(B, 8, 3)`` corners from a start corner and three sizes.
         - :func:`infer_bbox_shape`: the inverse, the height and width of the corners.
-        - :meth:`~kornia.geometry.boxes.Boxes.from_tensor`: the same corners from ``'xywh'`` boxes, validated and kept
-          in a container with format conversions.
+        - :meth:`~kornia.geometry.boxes.Boxes.from_tensor`: the same boxes from ``'xywh'`` input, validated and kept
+          in a container with format conversions; its ``'vertices_plus'`` export is these corners.
         - :func:`~kornia.geometry.transform.crop_and_resize`: crops one such box per image and resizes it.
 
     Examples:
@@ -729,8 +732,9 @@ def bbox_generator3d(
     ``boxes = bbox_generator3d(x_start, y_start, z_start, width, height, depth)`` takes ``(B,)`` or scalar tensors
     and returns ``(B, 8, 3)`` corners: four at the front, at ``z_start``, in clockwise order from the top-left one,
     then the same four at the back, at ``z_start + depth - 1``. They are in the dtype of the inputs, with a gradient
-    path to them. These are the corners :meth:`~kornia.geometry.boxes.Boxes3D.from_tensor` stores for the same boxes
-    in ``'xyzwhd'`` mode. For 2D boxes, use :func:`bbox_generator`.
+    path to them. These are the inclusive corners that :class:`~kornia.geometry.boxes.Boxes3D` exports as
+    ``to_tensor('vertices_plus')`` for the same boxes imported in ``'xyzwhd'`` mode. For 2D boxes, use
+    :func:`bbox_generator`.
 
     Convention:
         The four front vertices precede the four back vertices. Scalar inputs give a batch of one, and scalar sizes
@@ -757,8 +761,8 @@ def bbox_generator3d(
     See Also:
         - :func:`bbox_generator`: the 2D form, ``(B, 4, 2)`` corners from a start corner, a width and a height.
         - :func:`infer_bbox_shape3d`: the inverse, the depth, height and width of the corners.
-        - :meth:`~kornia.geometry.boxes.Boxes3D.from_tensor`: the same corners from ``'xyzwhd'`` boxes, validated and
-          kept in a container with format conversions.
+        - :meth:`~kornia.geometry.boxes.Boxes3D.from_tensor`: the same boxes from ``'xyzwhd'`` input, validated and
+          kept in a container with format conversions; its ``'vertices_plus'`` export is these corners.
         - :func:`~kornia.geometry.transform.crop_and_resize3d`: crops one such box per volume and resizes it; pass
           ``align_corners=True`` there.
 
