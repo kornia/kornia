@@ -24,6 +24,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import _check_async
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking
 from kornia.image.utils import perform_keep_shape_image
 
@@ -244,7 +245,7 @@ def _compute_luts(
         centre_dtype = torch.promote_types(tiles.dtype, torch.float32)
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device, dtype=centre_dtype)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
-        histos = histogram(tiles, bins, torch.tensor(0.001, dtype=centre_dtype))
+        histos = histogram(tiles, bins, _device_literal(0.001, device=tiles.device, dtype=centre_dtype))
         histos *= pixels
 
     if isinstance(clip, torch.Tensor):
@@ -310,16 +311,20 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     num_imgs, gh, gw, c, _, _ = interp_tiles.shape
 
     # precompute idxs for non corner regions (doing it in cpu seems slightly faster)
-    j_idxs = torch.empty(0, 4, dtype=torch.long)
+    j_idxs = torch.empty(0, 4, dtype=torch.long, device="cpu")
     if gh > 2:
-        j_floor = torch.arange(1, gh - 1).view(gh - 2, 1).div(2, rounding_mode="trunc")
-        j_idxs = torch.tensor([[0, 0, 1, 1], [-1, -1, 0, 0]] * ((gh - 2) // 2))  # reminder + j_idxs[:, 0:2] -= 1
+        j_floor = torch.arange(1, gh - 1, device="cpu").view(gh - 2, 1).div(2, rounding_mode="trunc")
+        j_idxs = torch.tensor(
+            [[0, 0, 1, 1], [-1, -1, 0, 0]] * ((gh - 2) // 2), device="cpu"
+        )  # reminder + j_idxs[:, 0:2] -= 1
         j_idxs += j_floor
 
-    i_idxs = torch.empty(0, 4, dtype=torch.long)
+    i_idxs = torch.empty(0, 4, dtype=torch.long, device="cpu")
     if gw > 2:
-        i_floor = torch.arange(1, gw - 1).view(gw - 2, 1).div(2, rounding_mode="trunc")
-        i_idxs = torch.tensor([[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2))  # reminder + i_idxs[:, [0, 2]] -= 1
+        i_floor = torch.arange(1, gw - 1, device="cpu").view(gw - 2, 1).div(2, rounding_mode="trunc")
+        i_idxs = torch.tensor(
+            [[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2), device="cpu"
+        )  # reminder + i_idxs[:, [0, 2]] -= 1
         i_idxs += i_floor
 
     # The index tensors are built on the CPU; indexing CUDA LUTs with them would copy them with a blocking transfer.
