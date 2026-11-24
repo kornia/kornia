@@ -622,3 +622,33 @@ class TestVideoSequential:
 
         with pytest.raises(TypeError, match="VideoKeypoints or a"):
             aug(video, Keypoints(points.flatten(0, 1)))
+
+    @pytest.mark.parametrize("data_format", ["BTCHW", "BCTHW"])
+    @pytest.mark.parametrize("previous_forward", [False, True])
+    def test_inverse_tracks_explicit_replay_6909(self, device, dtype, data_format, previous_forward):
+        video = torch.arange(48, device=device, dtype=dtype).reshape(2, 3, 1, 2, 4)
+        if data_format == "BCTHW":
+            video = video.transpose(1, 2)
+        sampler = K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format=data_format)
+        params = sampler.forward_parameters(video.shape)
+        seq = K.VideoSequential(K.RandomHorizontalFlip(p=0.0), data_format=data_format)
+        if previous_forward:
+            assert_close(seq(video), video, rtol=0, atol=0)
+        output = seq(video, params=params)
+        assert_close(output, video.flip(-1), rtol=0, atol=0)
+        assert_close(seq.inverse(output), video, rtol=0, atol=0)
+
+    def test_failed_forward_keeps_last_successful_params_6909(self, device, dtype, monkeypatch):
+        video = torch.arange(24, device=device, dtype=dtype).reshape(1, 3, 1, 2, 4)
+        seq = K.VideoSequential(K.RandomHorizontalFlip(p=1.0))
+        output = seq(video)
+        saved = seq._params
+
+        def reject(*args, **kwargs):
+            raise RuntimeError("transformation failed")
+
+        monkeypatch.setattr(seq, "transform_inputs", reject)
+        with pytest.raises(RuntimeError, match="transformation failed"):
+            seq(video)
+        assert seq._params is saved
+        assert_close(seq.inverse(output), video, rtol=0, atol=0)
