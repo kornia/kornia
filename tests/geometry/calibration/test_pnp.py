@@ -375,8 +375,8 @@ class TestSolvePnpDlt(BaseTester):
         self.assert_close(with_zero, without, rtol=1e-4, atol=1e-4)
 
     def test_weight_squared_is_the_point_multiplicity(self, device, dtype):
-        # A weight scales the point's rows, so its square multiplies the point's residual: weight sqrt(2) is the
-        # same as listing the point twice, also in the normalization. On noisy data this separates w**2 from w.
+        # A weight scales the point's rows, so its square sets the multiplicity. Weight 2 is exactly
+        # representable in every dtype and equivalent to listing the point four times.
         torch.manual_seed(0)
         K = torch.tensor([[[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         points = torch.rand(1, 10, 3, device=device, dtype=dtype) * 4 - 2
@@ -384,10 +384,12 @@ class TestSolvePnpDlt(BaseTester):
         img_points = kornia.geometry.project_points(points, K)
         img_points = img_points + 3 * torch.randn_like(img_points)
         weights = torch.ones(1, 10, device=device, dtype=dtype)
-        weights[0, 0] = 2.0**0.5
+        weights[0, 0] = 2.0
         weighted = kornia.geometry.solve_pnp_dlt(points, img_points, K, weights=weights)
         duplicated = kornia.geometry.solve_pnp_dlt(
-            torch.cat([points, points[:, :1]], 1), torch.cat([img_points, img_points[:, :1]], 1), K
+            torch.cat([points, points[:, :1].expand(-1, 3, -1)], 1),
+            torch.cat([img_points, img_points[:, :1].expand(-1, 3, -1)], 1),
+            K,
         )
         self.assert_close(weighted, duplicated, rtol=1e-4, atol=1e-4)
 
@@ -491,19 +493,19 @@ class TestPnpWorldOrigin(BaseTester):
         weights = None
         # Reference: use numpy.average with squared weights for Hartley normalization. Assemble the two DLT
         # rows per point, scale them by the weights, and take np.linalg.svd(A)[2][-1]. Undo image normalization,
-        # fix the sign and scale using the linear part, and use np.linalg.qr in the centered world frame.
+        # fix the sign and scale using the linear part, then use U @ Vt from its SVD in the centered world frame.
         if weighted:
             weights = torch.tensor([[0, 1, 2, 1, 2, 1, 2, 1]], device=device, dtype=dtype).expand(3, -1)
             expected = [
-                [0.9991849550, 0.0107374341, -0.0389118640, 0.3701063215],
-                [-0.0101207471, 0.9998205965, 0.0160107858, -0.5490438039],
-                [0.0390767979, -0.0156039192, 0.9991143686, 8.0260162444],
+                [0.9998154615, 0.0105472050, -0.0160561303, 0.3051930441],
+                [-0.0103288414, 0.9998538575, 0.0136227256, -0.5424153286],
+                [0.0161974655, -0.0134543705, 0.9997782864, 7.9993472933],
             ]
         else:
             expected = [
-                [0.9985661765, 0.0105625235, -0.0524787988, 0.3979626358],
-                [-0.0082789462, 0.9990172640, 0.0435426823, -0.6177789614],
-                [0.0528871466, -0.0430457806, 0.9976722961, 8.0629967050],
+                [0.9995968892, 0.0085074326, -0.0270865784, 0.3355096301],
+                [-0.0077932069, 0.9996219916, 0.0263655048, -0.5751383814],
+                [0.0273006422, -0.0261437853, 0.9992853333, 8.0505131143],
             ]
         origins = world.new_tensor([[0, 0, 0], [32, -16, 8], [-128, 64, 16]]).unsqueeze(1)
         world_shifted = world + origins

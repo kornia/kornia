@@ -20,7 +20,6 @@
 from typing import Optional, Tuple
 
 import torch
-from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import (
@@ -29,10 +28,15 @@ from kornia.core.utils import (
     _reduce_tall_cuda_svd,
     _right_singular_vector,
     _svd_work_dtype,
+    _symmetric_eigenvector,
     _torch_linalg_svdvals,
     _torch_svd_right,
 )
-from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
+from kornia.geometry.conversions import (
+    convert_points_to_homogeneous,
+    normalize_points_with_intrinsics,
+    quaternion_to_rotation_matrix,
+)
 
 
 def _mean_isotropic_scale_normalize(
@@ -61,6 +65,28 @@ def _mean_isotropic_scale_normalize(
     return centered * scale[:, None, None], anchor + local_center, scale
 
 
+def _closest_rotation(linear: torch.Tensor) -> torch.Tensor:
+    """Project a 3x3 matrix to the nearest proper rotation in Frobenius norm."""
+    # The leading eigenvector of Horn's symmetric quaternion matrix maximizes
+    # trace(R(q)^T linear): https://people.csail.mit.edu/bkph/papers/Absolute_Orientation.pdf
+    trace = linear.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+    skew = linear - linear.mT
+    cross = torch.stack((skew[:, 2, 1], skew[:, 0, 2], skew[:, 1, 0]), dim=-1)
+    lower = linear + linear.mT - torch.diag_embed(trace[:, None].expand(-1, 3))
+    horn = torch.cat(
+        (torch.cat((trace[:, None], cross), dim=-1)[:, None], torch.cat((cross[:, :, None], lower), dim=-1)), dim=1
+    )
+    # Shift all eigenvalues to be nonnegative so SVD gives the leading eigenpair,
+    # including on older MPS versions without eigh. The shift preserves the eigenvectors and their derivatives.
+    detached = horn.detach()
+    shift = detached.norm(dim=(-2, -1))[:, None, None]
+    shifted = detached + shift * torch.eye(4, dtype=detached.dtype, device=detached.device)
+    eigenvalues, eigenvectors = _torch_svd_right(shifted)
+    # The other eigenvalues coincide for an exact rotation, but the leading vector is simple.
+    quaternion = _symmetric_eigenvector(horn, eigenvalues, eigenvectors, 0)
+    return quaternion_to_rotation_matrix(quaternion)
+
+
 def solve_pnp_dlt(
     world_points: torch.Tensor,
     img_points: torch.Tensor,
@@ -73,7 +99,8 @@ def solve_pnp_dlt(
     ``Rt = solve_pnp_dlt(world_points, img_points, K)`` takes ``B`` sets of :math:`N \geq 6` world points
     ``(B, N, 3)``, their pixels ``(B, N, 2)`` and the intrinsics ``(B, 3, 3)``, and returns the world-to-camera
     extrinsics ``[R | t]`` of each set, ``(B, 3, 4)``: the Hartley-normalized, optionally weighted, linear
-    (Direct Linear Transform) solution of the Perspective-n-Point problem, with ``R`` made orthonormal by a QR step.
+    (Direct Linear Transform) solution of the Perspective-n-Point problem, with ``R`` projected onto the nearest
+    proper rotation.
     Orthonormalization is performed about the centroid of the world points so that re-expressing them in a
     translated world frame does not change their camera-space coordinates, up to rounding. It is not robust to
     outliers and does not refine the pose nonlinearly. For 2D-2D correspondences of a plane,
@@ -286,7 +313,6 @@ def solve_pnp_dlt(
         sign = torch.where(det < 0, -torch.ones_like(det), torch.ones_like(det))
         factor = (sign / linear[:, :, 0].norm(dim=1))[:, None, None]
 
-        rotation, triangular = linalg_qr(linear * factor)
-        rotation = rotation * triangular.diagonal(dim1=-2, dim2=-1).sign()[:, None, :]
+        rotation = _closest_rotation(linear * factor)
         translation = solution[:, :, 3:] * factor - rotation @ world_center.mT
         return torch.cat((rotation, translation), dim=-1).to(dtype)
