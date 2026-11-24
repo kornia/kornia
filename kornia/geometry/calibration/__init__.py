@@ -28,6 +28,8 @@ Which function to use:
 - Add the distortion to ideal pixels: :func:`distort_points`. Remove it from measured pixels:
   :func:`undistort_points`; from a whole image: :func:`undistort_image`.
 - The sensor-tilt matrix of the last two coefficients, or its inverse: :func:`tilt_projection`.
+- Rectify a calibrated image pair: :func:`stereo_rectify` returns the sampling maps, validity masks and camera
+  matrices in a :class:`StereoRectification`.
 - A world-to-camera pose from ``N >= 6`` world points and their pixels: :func:`solve_pnp_dlt`.
 - The Kannala-Brandt fisheye model, on normalized points and a flat parameter vector:
   :func:`~kornia.geometry.camera.distort_points_kannala_brandt` and

@@ -31,7 +31,11 @@ __all__ = ["StereoRectification", "stereo_rectify"]
 
 
 class StereoRectification(NamedTuple):
-    """Sampling maps, masks, and camera matrices of a horizontally rectified pair."""
+    """Sampling maps, masks, and camera matrices of a horizontally rectified pair.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.stereo_rectify`: build the maps and matrices from two calibrated cameras.
+    """
 
     map_left: torch.Tensor
     map_right: torch.Tensor
@@ -110,6 +114,9 @@ def stereo_rectify(
     Returns:
         Rectification maps, validity masks, projection matrices and rotations.
 
+    See Also:
+        - :func:`~kornia.geometry.calibration.undistort_image`: remove distortion from one image.
+        - :func:`~kornia.geometry.transform.remap`: sample an image with the returned pixel maps.
     """
     for matrix in (K_left, K_right, R_right_left, K_rectified):
         KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])
