@@ -58,6 +58,11 @@ For example, replay a sampled horizontal flip on both frames and their flow labe
 Here ``first``, ``second``, and ``flow`` describe the same batch and ``valid`` flags known source flow vectors.
 Use the returned mask when computing a loss. A valid vector can point outside the warped second frame.
 
+For bilinear resize after slicing both images, slice the flow and validity mask first. Bilinear resize
+replicates the crop's edge pixels when the sampling position falls beyond their centres. Use the crop-to-output
+matrix ``H @ T``, where ``H`` maps original pixels to output pixels and ``T`` adds the crop's top-left offset
+to crop-local coordinates. When a single warp reads directly from the full images, pass the full flow and ``H``.
+
 .. autofunction:: warp_optical_flow
 
 Image 2D transforms
