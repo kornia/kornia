@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import struct
-from math import pi
+from math import log, pi
 from typing import ClassVar, Optional, Union
 
 import torch
@@ -866,6 +866,10 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     ``out = adjust_log(image, gain, inv, clip_output)`` returns ``gain * log2(1 + image)`` for an image in
     :math:`[0, 1]`, or ``gain * (2 ** image - 1)`` with ``inv=True``.
 
+    The logarithmic curve is evaluated as ``log1p(image) / log(2)``, in float32 for float16 and bfloat16 images,
+    so dark pixels are not rounded away and, at unit gain, white stays exactly 1. Exported ONNX graphs compute
+    ``log(1 + image)``, as ONNX has no ``log1p`` operator: a float32 export maps values up to ``2**-24`` to zero.
+
     Reference:
         [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
 
@@ -893,7 +897,14 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     _check_floating_image(image, "adjust_log")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    img_adjust = (2**image - 1) * gain if inv else (1 + image).log2() * gain
+    if inv:
+        img_adjust = (2**image - 1) * gain
+    else:
+        image_dtype = image.dtype
+        # Explicit comparisons keep the scripted dtype guard exportable to ONNX.
+        if image.dtype == torch.float16 or image.dtype == torch.bfloat16:  # noqa: PLR1714
+            image = image.float()
+        img_adjust = (torch.log1p(image) / log(2.0)).to(image_dtype) * gain
 
     # truncate between pixel values
     if clip_output:
