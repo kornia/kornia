@@ -987,8 +987,12 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         # The thresholds meet the area before it is rounded to a half-precision box dtype: in float16 the area 65536 of
-        # a 256 x 256 box becomes ``inf``, and 2401 becomes 2400.
-        area_flat = self._shoelace_area().reshape(self._valid.shape)
+        # a 256 x 256 box becomes ``inf``, and 2401 becomes 2400. The legacy inclusive storage of the bare box keys
+        # still meets the rounded area, so that their outputs keep their numbers.
+        area = self._shoelace_area()
+        if self._inclusive:
+            area = area.to(self._data.dtype)
+        area_flat = area.reshape(self._valid.shape)
         keep = torch.ones_like(area_flat, dtype=torch.bool)
         if min_area is not None:
             keep &= ~(area_flat < min_area)
@@ -1120,6 +1124,12 @@ class Boxes:
             # An empty list holds no boxes, like an empty (0, 4) or (0, 4, 2) tensor; converting one checks ``mode``.
             empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
             quadrilaterals = _boxes_to_quadrilaterals(empty, mode, validate_boxes, inclusive, allow_empty)
+        elif isinstance(boxes[0], torch.Tensor) and inclusive:
+            # The legacy inclusive storage of the bare box keys builds every sample in its own dtype and pads them into
+            # the first sample's dtype, so that their outputs keep their numbers and dtype.
+            quadrilaterals = [
+                _boxes_to_quadrilaterals(box, mode, validate_boxes, inclusive, allow_empty) for box in boxes
+            ]
         elif isinstance(boxes[0], torch.Tensor):
             # Every sample is built in the promoted dtype of the padded batch, so that the extent check sees the corners
             # as stored: built in float32 and padded into float16, ``2048 + 1`` would round back to ``2048``.

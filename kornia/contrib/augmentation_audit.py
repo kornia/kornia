@@ -140,10 +140,11 @@ class SpatialAudit:
 
     ``report.spatial`` of an :class:`AugmentationAuditReport` has one entry per keypoint or box input, and each of its
     tensor fields is ``(B,)``, one value per sample. ``count`` holds the items present, and ``out_of_frame_fraction``
-    divides by it, so an empty input has a NaN fraction. A returned box row that holds no box is not present: a row the
-    returned ``Boxes`` object marks invalid, or a zero-extent row under ``"bbox_xywh"``. The container returns the
-    rows that hold no box in its input that way. The round-trip statistics cover only finite errors of present items,
-    in pixels; a sample with no such error has NaN statistics and a zero ``roundtrip_valid_count``.
+    divides by it, so an empty input has a NaN fraction. ``out_of_frame`` and ``nonfinite`` count present items too.
+    A returned box row that holds no box is not present: a row the returned ``Boxes`` object marks invalid, or a
+    zero-extent row under ``"bbox_xywh"``. The container returns the rows that hold no box in its input that way. The
+    round-trip statistics cover only finite errors of present items, in pixels; a sample with no such error has NaN
+    statistics and a zero ``roundtrip_valid_count``.
 
     Convention:
         See :ref:`augmentation-audit`.
@@ -461,7 +462,7 @@ def _spatial_audit(
         "corner_hausdorff" if key in _BOX_MODES else "euclidean",
         counts,
         out_of_frame,
-        (~finite).sum(-1),
+        (~finite & present).sum(-1),
         out_of_frame / counts,
         valid_count,
         mean,

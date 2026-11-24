@@ -2331,6 +2331,33 @@ class TestConventionAugmentationSequential(BaseTester):
         xywh = xywh_seq(image, full, params=seq._params)[1]
         assert (xywh[..., :2] + xywh[..., 2:]).amax().item() == 20.0
 
+    @pytest.mark.parametrize("box_dtype", [torch.float16, torch.bfloat16])
+    def test_convention_mosaic_area_threshold_follows_the_box_storage_6710(self, box_dtype, device):
+        # kornia#6710: min_bbox_size meets the float32 area of a half-precision Boxes object, 49 * 51 = 2499 here, and
+        # removes it. A tensor under the bare key keeps the legacy comparison in its own dtype, and its numbers: float16
+        # rounds the area to 2500, and bfloat16 rounds the area and the threshold to 2496.
+        image = torch.rand(1, 3, 64, 64, device=device)
+        box = torch.tensor([[[0.0, 0.0, 49.0, 51.0]]], device=device, dtype=box_dtype)
+        mosaic = K.RandomMosaic((64, 64), mosaic_grid=(1, 1), start_ratio_range=(0.0, 0.0), min_bbox_size=2500, p=1.0)
+        seq = K.AugmentationSequential(mosaic, data_keys=["input", "bbox_xyxy"])
+        self.assert_close(seq(image, box)[1], box, atol=0.0, rtol=0.0)
+        box_object = seq(image, Boxes.from_tensor(box), params=seq._params)[1]
+        assert not box_object.to_tensor("xyxy").any()
+
+    def test_convention_mixed_dtype_list_follows_the_box_storage_6710(self, device):
+        # A list under the bare "bbox_xyxy" key keeps the legacy storage: every sample comes back in the first sample's
+        # dtype, as before kornia#6710, so the float32 1.0001 rounds to 1 in float16. Under "bbox_xywh" the samples
+        # are built in their promoted dtype, float32, and keep their coordinates.
+        image = torch.rand(2, 3, 16, 16, device=device)
+        first = torch.tensor([[1.0, 1.0, 4.0, 4.0]], device=device, dtype=torch.float16)
+        second = torch.tensor([[1.0001, 2.0, 5.0, 5.0]], device=device)
+        for key, dtype in (("bbox_xyxy", torch.float16), ("bbox_xywh", torch.float32)):
+            seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.0), data_keys=["input", key])
+            out = seq(image, [first, second])[1]
+            assert [sample.dtype for sample in out] == [dtype, dtype]
+            self.assert_close(out[0], first.to(dtype), atol=0.0, rtol=0.0)
+            self.assert_close(out[1], second.to(dtype), atol=0.0, rtol=0.0)
+
     def test_convention_bare_xyxy_key_moves_corners_and_boxes_objects_take_the_edge_frame_6710(self, device, dtype):
         # Convention pin (kornia#6710): a tensor under the bare "bbox_xyxy" key keeps its numbers, the corners
         # moved by the image matrix as they are, as before the exclusive storage. A Boxes object is exclusive and

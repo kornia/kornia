@@ -260,6 +260,27 @@ class TestAugmentationAudit(BaseTester):
         assert report.spatial[0].count.tolist() == [2]
         assert report.spatial[0].roundtrip_valid_count.tolist() == [2]
 
+    def test_invalid_rows_are_left_out_of_the_nonfinite_count_6710(self, device):
+        # The pixel-centre matrix with the last row (1, 1, 1) sends the edge-frame origin (-1/2, -1/2) to infinity,
+        # and with it the stored zeros of the float16 box that filtering removed. That row still exports as zeros and
+        # holds no box, so it is not counted as nonfinite and gives no warning.
+        image = torch.rand(1, 3, 10, 20, device=device)
+        xyxy = torch.tensor([[[6.0, 3.0, 8.0, 5.0], [1.0, 1.0, 9.0, 9.0]]], device=device, dtype=torch.float16)
+        boxes = Boxes.from_tensor(xyxy).filter_boxes_by_area(max_area=10.0)
+        module = K.RandomPerspective(0.5, p=1.0)
+        params = module.forward_parameters(image.shape)
+        start = image.new_tensor([[[0.0, 0.0], [19.0, 0.0], [19.0, 9.0], [0.0, 9.0]]])
+        params["start_points"] = start
+        params["end_points"] = start / (start.sum(-1, keepdim=True) + 1.0)
+        aug = K.AugmentationSequential(module, data_keys=["input", "bbox"])
+        (_, out), report = audit(aug, image, boxes, params=[ParamItem("RandomPerspective_0", params)])
+        assert not out.data[0, 1].isfinite().any()
+        self.assert_close(out.to_tensor("xyxy")[0, 1], xyxy.new_zeros(4), atol=0.0, rtol=0.0)
+        spatial = report.spatial[0]
+        assert spatial.count.tolist() == [1]
+        assert spatial.nonfinite.tolist() == [0]
+        assert not any("nonfinite" in warning for warning in report.warnings)
+
     @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS has no float64 boxes")
     def test_bounds_read_the_returned_precision_6710(self, device):
         # A float64 right edge at 4 + 1e-7 lies outside a 4-pixel frame. The check reads it as returned; the float32
