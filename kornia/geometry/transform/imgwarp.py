@@ -1014,13 +1014,6 @@ def _normalize_warped_pixel_grid3d(
     return torch.cat((x, y, z), -1)
 
 
-# TODO: move to kornia.geometry.projective
-# TODO: create the nn.Module -- TBD what inputs/outputs etc
-# class PerspectiveTransform(nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
-
-
 def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
     """Closed-form perspective matrix mapping the unit square to a quadrilateral.
 
@@ -2201,9 +2194,6 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
 
     if not src.shape == dst.shape:
         raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
-
-    if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
         raise AssertionError(

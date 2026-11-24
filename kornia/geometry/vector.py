@@ -196,26 +196,6 @@ class Vector3(TensorWrapper):
             shape = ()
         return cls(torch.rand((*shape, 3), device=device, dtype=dtype))
 
-    # TODO: polish overload
-    # @overload
-    # @classmethod
-    # def from_coords(
-    #     cls, x: Tensor, y: Tensor, z: Tensor, device=None, dtype=None
-    # ) -> "Vector3":
-    #     KORNIA_CHECK(isinstance(x, Tensor))
-    #     KORNIA_CHECK(type(x) == type(y) == type(z))
-    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
-
-    # TODO: polish overload
-    # @overload
-    # @classmethod
-    # def from_coords(
-    #     cls, x: float, y: float, z: float, device=None, dtype=None
-    # ) -> "Vector3":
-    #     KORNIA_CHECK(isinstance(x, float))
-    #     KORNIA_CHECK(type(x) == type(y) == type(z))
-    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
-
     @classmethod
     def from_coords(
         cls,
@@ -390,26 +370,3 @@ class Vector2(TensorWrapper):
 
 Vec3 = Vector3
 Vec2 = Vector2
-
-# TODO: adapt to TensorWrapper
-
-# class UnitVector(Module):
-#     def __init__(self, vector: torch.Tensor) -> None:
-#         super().__init__()
-#         KORNIA_CHECK_SHAPE(vector, ["B", "N"])
-#         self._vector = Parameter(vector)
-#
-#     @property
-#     def vector(self) -> Tensor:
-#         return self._vector
-#
-#     @classmethod
-#     def from_unit_vector(cls, v: Tensor) -> "UnitVector":
-#         # TODO: add checks https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/ray.h#L59
-#         return UnitVector(_VectorType(v))
-#
-#     @classmethod
-#     def from_vector(cls, v: Tensor) -> "UnitVector":
-#         """From a vector and normalize."""
-#         return UnitVector(_VectorType(v).normalized())
-#
