@@ -32,6 +32,10 @@ class _DissolvingWraper_HF:
         self.model = model
         self.num_ddim_steps = num_ddim_steps
         self.is_sdxl = is_sdxl
+        # SDXL's default VAE overflows in float16 (#6826). Promote the entire VAE:
+        # pipeline.upcast_vae() can leave decoder entry blocks in half precision.
+        if self.is_sdxl and self.model.vae.dtype == torch.float16 and self.model.vae.config.force_upcast:
+            self.model.vae.to(dtype=torch.float32)
         self.tokenizer = self.model.tokenizer
         self.model.scheduler.set_timesteps(self.num_ddim_steps)
         self.total_steps = len(self.model.scheduler.timesteps)  # Total number of sampling steps.
@@ -169,6 +173,8 @@ class _DissolvingWraper_HF:
         # a stable dissolving effect.
         t = self.num_ddim_steps - self.model.scheduler.timesteps[i]
         latent = self.model.scheduler.scale_model_input(latent, t)
+        # The VAE may need float32 even when the denoiser was loaded in float16.
+        unet_input = latent.to(dtype=self.model.unet.dtype)
         cond_embeddings = cond_embeddings.repeat(latent.size(0), 1, 1)
 
         if self.is_sdxl:
@@ -189,9 +195,9 @@ class _DissolvingWraper_HF:
                     "text_embeds": pooled_embeds,
                     "time_ids": add_time_ids,
                 }
-                noise_pred = self.model.unet(latent, t, cond_embeddings, added_cond_kwargs=added_cond_kwargs).sample
+                noise_pred = self.model.unet(unet_input, t, cond_embeddings, added_cond_kwargs=added_cond_kwargs).sample
         else:
-            noise_pred = self.model.unet(latent, t, cond_embeddings).sample
+            noise_pred = self.model.unet(unet_input, t, cond_embeddings).sample
 
         return self.predict_start_from_noise(noise_pred, t, latent)
 
@@ -226,7 +232,8 @@ class StableDiffusionDissolving(ImageModule):
         - ``input`` is an image in :math:`[0, 1]`, rescaled to :math:`[-1, 1]` before encoding and not clamped; the
           result is clamped to :math:`[0, 1]`.
         - The model runs under ``torch.no_grad()``: the result has no gradient, and it lives on the model's device in
-          the VAE's dtype.
+          the VAE's dtype. An SD XL VAE configured with ``force_upcast=True`` runs in float32 when loaded in float16,
+          using more VAE memory to avoid overflow. The UNet keeps its loaded dtype.
         - The latent is sampled, so two calls on the same input differ.
 
     Args:
