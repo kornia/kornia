@@ -313,11 +313,12 @@ class TestSpatialSoftmax2d(BaseTester):
 
 
 class TestSpatialExpectation2d(BaseTester):
-    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU reduction path")
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="Strict full-precision reduction comparison")
     @pytest.mark.parametrize("normalized", [False, True])
     @pytest.mark.parametrize("transposed", [False, True])
-    def test_large_maps_use_marginal_storage(self, device, dtype, normalized, transposed):
-        probabilities = torch.rand(2, 3, 192, 128, device=device, dtype=dtype)
+    @pytest.mark.parametrize("shape", [(2, 3, 192, 128), (1, 17, 64, 48), (2, 3, 4, 6), (1, 8, 1, 64)])
+    def test_maps_use_marginal_storage(self, device, dtype, normalized, transposed, shape):
+        probabilities = torch.rand(shape, device=device, dtype=dtype)
         probabilities /= probabilities.sum((-2, -1), keepdim=True)
         if transposed:
             probabilities = probabilities.transpose(-2, -1)
@@ -326,13 +327,16 @@ class TestSpatialExpectation2d(BaseTester):
         grid = kornia.geometry.create_meshgrid(height, width, normalized, device=device, dtype=dtype)[0]
         reference = torch.stack([(probabilities * grid[..., axis]).sum((-2, -1)) for axis in range(2)], -1)
         input_storage = probabilities.untyped_storage().data_ptr()
+        max_intermediate = max(
+            shape[0] * shape[1] * max(height, width), 2 * max(height, width), 2 * shape[0] * shape[1]
+        )
 
         class BoundedStorage(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 output = func(*args, **(kwargs or {}))
                 for tensor in output if isinstance(output, (tuple, list)) else (output,):
                     if isinstance(tensor, torch.Tensor) and tensor.untyped_storage().data_ptr() != input_storage:
-                        assert tensor.numel() <= probabilities.numel() // 2, "allocated a full heatmap intermediate"
+                        assert tensor.numel() <= max_intermediate, "allocated more than marginal-sized storage"
                 return output
 
         with BoundedStorage():
@@ -351,7 +355,7 @@ class TestSpatialExpectation2d(BaseTester):
         reason="The Dynamo shape check requires a torch.compile-backed optimizer; export is independent of it.",
     )
     @pytest.mark.parametrize("capture", ["dynamo", "export"])
-    def test_marginal_selector_keeps_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
+    def test_marginals_keep_dynamic_shapes(self, capture, torch_optimizer, optimizer_backend):
         from torch._dynamo.testing import CompileCounter
 
         class Expectation(torch.nn.Module):
@@ -414,12 +418,38 @@ class TestSpatialExpectation2d(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
-    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5), (2, 3, 0, 5), (2, 3, 4, 0), (2, 3, 0, 0)])
     def test_empty_batch_or_channels(self, device, dtype, shape, normalized_coordinates):
         input = torch.rand(shape, device=device, dtype=dtype)
         actual = kornia.geometry.subpix.spatial_expectation2d(input, normalized_coordinates)
         assert actual.shape == (*shape[:2], 2)
         assert actual.dtype == dtype
+        self.assert_close(actual, torch.zeros_like(actual), rtol=0.0, atol=0.0)
+
+    @pytest.mark.applies_to(
+        dtypes=("float16", "bfloat16"), reason="Half-precision rounding against a float64 reference"
+    )
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_half_precision_against_float64(self, device, dtype, normalized):
+        height, width = 64, 48
+        weights = (torch.arange(height * width, dtype=torch.float64).remainder(97) + 1).reshape(1, 1, height, width)
+        probabilities = (weights / weights.sum()).to(device=device, dtype=dtype)
+        # Evaluate the supplied, quantized probabilities using independently constructed float64 coordinates.
+        reference_input = probabilities.cpu().double()
+        xs = torch.linspace(-1.0, 1.0, width, dtype=torch.float64) if normalized else torch.arange(width).double()
+        ys = torch.linspace(-1.0, 1.0, height, dtype=torch.float64) if normalized else torch.arange(height).double()
+        reference = torch.stack(
+            [(reference_input * xs).sum((-2, -1)), (reference_input * ys[:, None]).sum((-2, -1))], -1
+        )
+
+        actual = kornia.geometry.subpix.spatial_expectation2d(probabilities, normalized)
+
+        assert actual.dtype == dtype
+        assert actual.device == probabilities.device
+        # Coordinate quantization and the two reductions each round in the output dtype. Bound absolute error
+        # relative to the coordinate range, including normalized expectations close to zero.
+        scale = 1.0 if normalized else float(max(height, width) - 1)
+        self.assert_close(actual.cpu().double(), reference, rtol=0.0, atol=2 * torch.finfo(dtype).eps * scale)
 
     @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="MPS does not support float64")
     def test_float64_normalized_grid_is_exact_5019(self, device):

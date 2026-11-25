@@ -159,42 +159,19 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     """
     _validate_batched_image_tensor_input(input)
 
-    batch_size, channels, height, width = input.shape
+    height, width = input.shape[-2:]
 
-    # Create coordinates grid in the input dtype, so float64 coordinates carry no float32 rounding. float16 and
-    # bfloat16 still build it in float32 and round once in the cast below, which keeps their results unchanged.
+    # Use the shared coordinate convention without allocating an H x W grid. float64 coordinates carry no
+    # float32 rounding; float16/bfloat16 coordinates are still built in float32 and rounded once.
     grid_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
-    grid = create_meshgrid(height, width, normalized_coordinates, input.device, grid_dtype)
-    grid = grid.to(input.dtype)
+    pos_x = create_meshgrid(1, width, normalized_coordinates, input.device, grid_dtype)[0, 0, :, 0].to(input.dtype)
+    pos_y = create_meshgrid(height, 1, normalized_coordinates, input.device, grid_dtype)[0, :, 0, 1].to(input.dtype)
 
-    if (
-        not torch.jit.is_scripting()
-        and input.device.type == "cpu"
-        and not torch.jit.is_tracing()
-        and not is_compiling()
-        and input.dtype in (torch.float32, torch.float64)
-        and input.numel() >= 2**17
-        and height >= 16
-        and width >= 16
-    ):
-        # Marginalize before weighting: each coordinate is constant along the other axis.
-        # This saves full heatmap products for large 2D maps; capture can fuse those products itself.
-        expected_x = (input.sum(-2) * grid[0, 0, :, 0]).sum(-1)
-        expected_y = (input.sum(-1) * grid[0, :, 0, 1]).sum(-1)
-        return torch.stack([expected_x, expected_y], -1)
-
-    pos_x = grid[..., 0].reshape(-1)
-    pos_y = grid[..., 1].reshape(-1)
-
-    input_flat = input.reshape(batch_size, channels, height * width)
-
-    # Compute the expectation of the coordinates.
-    expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)
-    expected_x = torch.sum(pos_x * input_flat, -1, keepdim=True)
-
-    output = torch.cat([expected_x, expected_y], -1)
-
-    return output.view(batch_size, channels, 2)  # BxNx2
+    # Each coordinate is constant along the other axis. Marginalize first on every device and capture path,
+    # so both the coordinate vectors and the weighted products need only O(H + W) storage per map.
+    expected_x = (input.sum(-2) * pos_x).sum(-1)
+    expected_y = (input.sum(-1) * pos_y).sum(-1)
+    return torch.stack([expected_x, expected_y], -1)
 
 
 def render_gaussian2d(
