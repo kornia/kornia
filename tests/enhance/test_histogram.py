@@ -249,7 +249,8 @@ class TestImageHistogram2d(BaseTester):
     def test_negative_one_bandwidth_uses_the_spacing_of_explicit_centers(self, device, dtype):
         image = torch.tensor([[0.25, 0.5, 0.625]], device=device, dtype=dtype)
         centers = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
-        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, bandwidth=-1.0, centers=centers)
+        # The range default 255 / 256 is not the 0.5 spacing of the centers, so only the spacing gives these counts.
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 255.0, 256, bandwidth=-1.0, centers=centers)
         # The spacing is 0.5: u to 0.25 is 0, 0.5, 0.75 and u to 0.75 is 1, 0.5, 0.25, so the weights are 1 - u.
         expected = torch.tensor([1.75, 1.25], device=device, dtype=hist.dtype)
         self.assert_close(hist, expected)
@@ -297,8 +298,8 @@ class TestImageHistogram2d(BaseTester):
         self.assert_close(pdf, expected_hist / expected_hist.sum())
 
     def test_default_bandwidth_of_float16_centers_does_not_overflow(self, device):
-        # The center range, 80000, exceeds the float16 maximum of 65504, so subtracting in the centers' own dtype gave
-        # an infinite spacing and the finite, distinct centers were rejected.
+        # The center range, 80000, exceeds the float16 maximum of 65504, so subtracting in the centers' own dtype would
+        # give an infinite spacing and the range default instead of the spacing of these finite, distinct centers.
         centers = torch.tensor([-40000.0, 0.0, 40000.0], device=device, dtype=torch.float16)
         image = torch.tensor([[-40000.0, -20000.0, 0.0, 40000.0]], device=device, dtype=torch.float32)
         hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
@@ -310,8 +311,8 @@ class TestImageHistogram2d(BaseTester):
 
     @pytest.mark.applies_to(when=lambda p: p["device_name"] != "mps", reason="MPS has no float64")
     def test_default_bandwidth_of_integer_centers_keeps_float64_precision(self, device):
-        # Rounding these int64 centers to float32 makes them equal, which gave a zero spacing and rejected distinct
-        # centers although a float64 image can represent them.
+        # Rounding these int64 centers to float32 makes them equal, which would give a zero spacing and the range
+        # default, although a float64 image can represent them and their spacing of 1.
         centers = torch.tensor([16777216, 16777217], device=device, dtype=torch.int64)
         image = torch.tensor([[16777216.0, 16777216.5, 16777217.0]], device=device, dtype=torch.float64)
         hist, _ = TestImageHistogram2d.fcn(image, centers=centers, return_pdf=True)
