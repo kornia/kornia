@@ -55,7 +55,7 @@ an external script can silently import the primary editable checkout. Follow the
 | Checks or dynamic shapes | Avoid specializing sizes in error strings; follow [Dynamic-shape check messages](TESTING.md#dynamic-shape-check-messages), including its TorchScript exception. |
 | Public exports | Follow [Public API inventory](TESTING.md#public-api-inventory); exact removal acknowledgements do not replace deprecation or release notes. |
 | Compile or ONNX | Run the [compile](TESTING.md#torchcompile-conformance-5819) and [ONNX](TESTING.md#onnx-conformance-5819) promised-package selections for touched packages and their importers. Inspect the ONNX subsystem/mixins before export changes and verify runtime as well as graph construction. |
-| Performance | Follow [benchmarks/README.md](benchmarks/README.md), use public APIs and shared helpers, and benchmark base and branch on the same workloads. |
+| Performance | Check [which speed-ups qualify](ROADMAP.md#areas-seeking-contributors) first. Follow [benchmarks/README.md](benchmarks/README.md), use public APIs and shared helpers, and benchmark base and branch on the same workloads. |
 
 ## Correctness triage and fixes
 

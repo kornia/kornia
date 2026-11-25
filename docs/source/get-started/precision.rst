@@ -339,10 +339,10 @@ SmallSR's batched outputs changed by at most 0.002 (float16) and 0.008 (bfloat16
 **CUDA torch.compile.** No failures. The 6 CUDA-only compile failures measured on ``e4a444e9b`` were fixed by `#6585
 <https://github.com/kornia/kornia/pull/6585>`_ and `#6586 <https://github.com/kornia/kornia/pull/6586>`_.
 
-**Open CUDA-only issues that the test suite does not exercise:**
-
-- `#6559 <https://github.com/kornia/kornia/issues/6559>`_: batched SVD of matrices with more than 32 rows makes
-  ``solve_pnp_dlt``, ``fit_plane`` and ``find_essential`` up to 200× slower on CUDA than on CPU.
+**CUDA-only issues that the test suite does not exercise.** None are open. `#6562
+<https://github.com/kornia/kornia/pull/6562>`_ closed `#6559 <https://github.com/kornia/kornia/issues/6559>`_, where
+batched SVD of matrices with more than 32 rows made ``solve_pnp_dlt``, ``fit_plane`` and ``find_essential`` up to 200×
+slower on CUDA than on CPU.
 
 **Fixed upstream:** on PyTorch before 2.15, ``RANSAC(compile=True)`` on CUDA can store a CPU program in the inductor
 cache after a CPU compile, and later CUDA processes that share the cache segfault

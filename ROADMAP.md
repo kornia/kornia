@@ -59,12 +59,15 @@ mathematical defects, numerical instability, and upstream workarounds.
 
 1. **Check the contract.** Establish supported inputs, output dtype, conventions, and
    accuracy requirements. Separate wrong mathematics or avoidable instability from
-   rounding, dtype limits, and undefined behavior. Compare with plain PyTorch where
-   applicable: a sum exceeding float16's range does not justify widening its output.
-   This does not excuse a computation that breaks a Kornia guarantee or changes a
-   caller's result in a consequential way, such as NaN, inf, or a flipped decision; a more
-   accurate value alone, even a primitive's public output such as a kernel or a window,
-   needs a workflow that depends on it.
+   rounding, dtype limits, and undefined behavior. Compare with the equivalent PyTorch
+   operation in the same dtype where one exists. In half precision a result PyTorch also
+   returns, such as `inf` from a sum exceeding float16's range, is normally left as it is
+   and does not justify widening the output; in float32 and float64 it may still be worth
+   fixing. The input must be one a real workflow produces. Within those limits, a
+   computation that breaks a Kornia guarantee or changes a caller's result in a
+   consequential way, such as NaN, inf, or a flipped decision, is a defect; a more accurate
+   value alone, even a primitive's public output such as a kernel or a window, needs a
+   workflow that depends on it.
 2. **Do not expand support through bug fixes.** Do not add integer-input support or
    special paths solely for synthetic extremes: half-precision overflow far beyond
    image/coordinate ranges, `1e20` float32 image values or pixel coordinates, or a matrix
@@ -187,11 +190,12 @@ issues own live status and acceptance decisions.
 
 These areas are open-ended: choose the question yourself; nobody needs to assign it. Check
 existing issues, open pull requests, and [the contribution rules](CONTRIBUTING.md) first.
-A roadmap area is not approval for a new API; that needs a maintainer's agreement on an
-open issue ([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is
-the geometry named at the top of this roadmap, local-feature detection, description, and
-matching, and the image operators in `kornia.filters`, `kornia.color`, `kornia.enhance`,
-and `kornia.morphology`.
+A roadmap area is not approval for a new public API, model mode, or separately maintained
+execution path; that needs a maintainer's agreement on an open issue
+([scope agreement](CONTRIBUTING.md#practical-guidelines)). The core, below, is the geometry
+named at the top of this roadmap, `kornia.augmentation`, local-feature detection,
+description, and matching, and the image operators in `kornia.filters`, `kornia.color`,
+`kornia.enhance`, and `kornia.morphology`.
 
 - **Break a property the core should keep.** Shifting the world origin should not change a
   recovered camera pose once expressed in the original frame; rescaling an equivalent
@@ -203,11 +207,12 @@ and `kornia.morphology`.
   expected result independently. A reproducible discrepancy reported as an issue is a
   complete contribution; a patch is optional and follows the
   [correctness policy](#correctness-and-backend-support).
-- **Hardware and backend evidence:** fix the
-  [recorded CUDA-only failures](https://kornia.readthedocs.io/en/latest/get-started/precision.html)
-  and open half-precision issues, and send benchmark results from your hardware with the benchmark suite's
-  `--contribute` workflow, especially CUDA. Take CUDA work only when a CUDA device is
-  available for reproduction and validation.
+- **Hardware and backend evidence:** fix open half-precision issues and CUDA-only failures
+  you can reproduce; the
+  [CUDA and half-precision page](https://kornia.readthedocs.io/en/latest/get-started/precision.html)
+  has the current status and the test commands. Send benchmark results from your hardware
+  with the benchmark suite's `--contribute` workflow, especially CUDA. Take CUDA work only
+  when a CUDA device is available for reproduction and validation.
 - **Reference evidence and code health:** convention tests, independent expected vectors,
   corrective error messages, and compile/export coverage for existing operators.
 - **Faster core workflows:** measure the public call end to end on a common workload.
