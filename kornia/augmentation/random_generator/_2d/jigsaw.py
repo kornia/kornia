@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.random_generator.utils import randperm
 from kornia.augmentation.utils import _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["JigsawGenerator"]
 
@@ -60,7 +61,10 @@ class JigsawGenerator(RandomGeneratorBase):
         self._device = device
         self._dtype = dtype
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
 
@@ -72,12 +76,24 @@ class JigsawGenerator(RandomGeneratorBase):
         if batch_size == 0:
             rand_ids = torch.zeros([0, perm_times], device=self._device)
         elif same_on_batch:
-            rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, identity=identity, device=self._device)
+            rand_ids = randperm(
+                perm_times,
+                ensure_perm=self.ensure_perm,
+                identity=identity,
+                device=self._device,
+                generator=self._generator,
+            )
             rand_ids = torch.stack([rand_ids] * batch_size)
         else:
             rand_ids = torch.stack(
                 [
-                    randperm(perm_times, ensure_perm=self.ensure_perm, identity=identity, device=self._device)
+                    randperm(
+                        perm_times,
+                        ensure_perm=self.ensure_perm,
+                        identity=identity,
+                        device=self._device,
+                        generator=self._generator,
+                    )
                     for _ in range(batch_size)
                 ]
             )

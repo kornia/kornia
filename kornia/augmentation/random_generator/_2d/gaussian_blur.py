@@ -29,6 +29,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.random import _with_generator
 
 __all__ = ["RandomGaussianBlurGenerator"]
 
@@ -80,8 +81,11 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
 
         self.sigma_sampler = UniformDistribution(sigma[0], sigma[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        sigma = _adapted_rsampling((batch_size,), self.sigma_sampler, same_on_batch)
+        sigma = _adapted_rsampling((batch_size,), self.sigma_sampler, same_on_batch, generator=self._generator)
         return {"sigma": sigma}

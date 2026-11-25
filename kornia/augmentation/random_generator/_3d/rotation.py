@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _tuple_range_reader
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype, _to_device_nonblocking
 
 
@@ -76,19 +77,28 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = UniformDistribution(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
 
         return {
             "yaw": _to_device_nonblocking(
-                _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch), _device, _dtype
+                _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch, generator=self._generator),
+                _device,
+                _dtype,
             ),
             "pitch": _to_device_nonblocking(
-                _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch), _device, _dtype
+                _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch, generator=self._generator),
+                _device,
+                _dtype,
             ),
             "roll": _to_device_nonblocking(
-                _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch), _device, _dtype
+                _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch, generator=self._generator),
+                _device,
+                _dtype,
             ),
         }
