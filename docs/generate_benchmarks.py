@@ -112,7 +112,7 @@ def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
     for path in sorted(root.rglob("*.json")):
         if SUPERSEDED_DIR in path.relative_to(root).parts[:-1]:
             continue
-        out.setdefault(path.parent.name, {})[path.name] = json.loads(path.read_text())
+        out.setdefault(path.parent.name, {})[path.name] = json.loads(path.read_text(encoding="utf-8"))
     return out
 
 
@@ -356,18 +356,19 @@ def _digest(results_root: Path) -> str:
 
 
 def refresh_llms(llms_path: Path, results_root: Path) -> None:
-    text = Path(llms_path).read_text()
+    text = Path(llms_path).read_text(encoding="utf-8")
     if BEGIN not in text or END not in text or text.index(BEGIN) > text.index(END):
         raise RuntimeError(f"markers {BEGIN}/{END} not found (in order) in {llms_path}")
     head, rest = text.split(BEGIN, 1)
     _, tail = rest.split(END, 1)
-    Path(llms_path).write_text(f"{head}{BEGIN}\n{_digest(results_root)}{END}{tail}")
+    Path(llms_path).write_text(f"{head}{BEGIN}\n{_digest(results_root)}{END}{tail}", encoding="utf-8", newline="\n")
 
 
 def main() -> None:
-    OUT.write_text(render_page(RESULTS))
+    # Explicit UTF-8 and LF: on Windows the defaults are the locale code page (cp1252) and CRLF.
+    OUT.write_text(render_page(RESULTS), encoding="utf-8", newline="\n")
     HERO_OUT.parent.mkdir(exist_ok=True)
-    HERO_OUT.write_text(render_hero_svg(RESULTS))
+    HERO_OUT.write_text(render_hero_svg(RESULTS), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

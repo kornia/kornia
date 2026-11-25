@@ -98,7 +98,6 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h = (((g - b) / chroma_denominator) % 6) * cond[..., 0, :, :]
     h += ((b - r) / chroma_denominator + 2) * cond[..., 1, :, :]
     h += ((r - g) / chroma_denominator + 4) * cond[..., 2, :, :]
-    # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
     h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 

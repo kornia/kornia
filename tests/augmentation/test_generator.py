@@ -67,15 +67,8 @@ class TestExplicitGenerator(BaseTester):
         }
         assert {case.name for case in _CASES} == exported
 
-    @pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
-    @pytest.mark.parametrize("same_on_batch", [False, True])
-    @pytest.mark.parametrize("sampling_device", ["cpu", "cuda"])
-    def test_parameter_draws_match_global_stream_without_consuming_it(
-        self, case, same_on_batch, sampling_device, dtype
-    ):
+    def _assert_parameter_draws_match_global_stream(self, case, same_on_batch, sampling_device, dtype):
         """An explicit stream replaces the generator, not the sampling algorithm or draw order."""
-        if sampling_device == "cuda" and not torch.cuda.is_available():
-            pytest.skip("CUDA sampling needs a CUDA device")
         aug = case.build()
         aug.p = 0.5
         aug.same_on_batch = same_on_batch
@@ -84,7 +77,9 @@ class TestExplicitGenerator(BaseTester):
         torch.manual_seed(123)
         # Some CUDA-configured samplers mix global CPU and CUDA draws; an explicit stream owns both.
         kwargs = (
-            {"generator": torch.Generator(device=sampling_device).manual_seed(123)} if sampling_device == "cuda" else {}
+            {"generator": torch.Generator(device=sampling_device).manual_seed(123)}
+            if sampling_device.type == "cuda"
+            else {}
         )
         expected = aug.forward_parameters(shape, **kwargs)
         torch.manual_seed(789)
@@ -96,6 +91,18 @@ class TestExplicitGenerator(BaseTester):
         if cuda_before is not None:
             assert torch.equal(cuda_before, torch.cuda.get_rng_state())
         assert aug._generator is None
+
+    @pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_parameter_draws_match_global_stream_without_consuming_it_cpu(self, case, same_on_batch, dtype):
+        self._assert_parameter_draws_match_global_stream(case, same_on_batch, torch.device("cpu"), dtype)
+
+    @pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_parameter_draws_match_global_stream_without_consuming_it_cuda(self, case, same_on_batch, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA sampling requires the CUDA test device")
+        self._assert_parameter_draws_match_global_stream(case, same_on_batch, device, dtype)
 
     @pytest.mark.parametrize(
         ("factory", "parameter"),
@@ -118,8 +125,8 @@ class TestExplicitGenerator(BaseTester):
     @pytest.mark.parametrize("sampling_device", ["cpu", "cuda"])
     def test_nested_random_apply_and_replay(self, sampling_device, device, dtype):
         """Order selection, gates, noise, and nested children share the call's stream."""
-        if sampling_device == "cuda" and not torch.cuda.is_available():
-            pytest.skip("CUDA streams need a CUDA device")
+        if sampling_device == "cuda" and device.type != "cuda":
+            pytest.skip("CUDA sampling requires the CUDA test device")
         x = torch.linspace(0, 1, 768, device=device, dtype=dtype).reshape(4, 3, 8, 8)
         seq = K.AugmentationSequential(
             K.ImageSequential(

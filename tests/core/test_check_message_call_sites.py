@@ -74,6 +74,7 @@ _TORCHSCRIPT_FUNCTIONS = {
     "core/ops.py::vec_like",
     "enhance/shift_rgb.py::shift_rgb",
     "feature/dedode/transformer/layers/patch_embed.py::PatchEmbed.forward",
+    "geometry/conversions.py::quaternion_from_euler",
     "geometry/depth.py::warp_frame_depth",
     "image/draw.py::draw_point2d",
     "image/draw.py::draw_rectangle",

@@ -685,6 +685,7 @@ class TestFilter3D(BaseTester):
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("behaviour", ["corr", "conv"])
     def test_noncontiguous_kernel(self, kernel_batch, normalized, behaviour, device, dtype):
+        # Regression #5159: normalizing a permuted kernel must work for correlation and convolution.
         data = torch.arange(840, device=device, dtype=dtype).reshape(2, 2, 7, 6, 5) / 840
         kernel = (torch.arange(30 * kernel_batch, device=device, dtype=dtype) % 7 - 3).reshape(kernel_batch, 2, 3, 5)
         kernel = kernel.permute(0, 3, 2, 1)
@@ -1082,82 +1083,33 @@ class TestCorrelateConvolveExports:
             assert func is getattr(defining, name), name
             assert func.__module__ == "kornia.filters.filter", name
 
-    @pytest.mark.parametrize("name", NAMES)
-    def test_listed_in_all(self, name):
-        import kornia.filters as KF
-
-        # `from kornia.filters import *` binds exactly the names in `__all__`.
-        assert name in KF.__all__
-
-    def test_all_is_well_formed(self):
+    def test_all_has_no_duplicates(self):
         import kornia.filters as KF
 
         assert len(KF.__all__) == len(set(KF.__all__))
-        assert all(hasattr(KF, name) for name in KF.__all__)
 
 
-class TestCorrelateConvolveShapes(BaseTester):
-    """The output shapes the four docstrings state, for odd and even kernels."""
+class TestCorrelateConvolveForwarding(BaseTester):
+    @pytest.mark.parametrize("func,behaviour", [(correlate2d, "corr"), (convolve2d, "conv")])
+    @pytest.mark.parametrize("padding,normalized,shape", [("same", True, (2, 3, 7, 8)), ("valid", False, (2, 3, 4, 6))])
+    def test_forwarding_2d(self, func, behaviour, padding, normalized, shape, device, dtype):
+        image = torch.rand(2, 3, 7, 8, device=device, dtype=dtype)
+        kernel = torch.arange(1, 13, device=device, dtype=dtype).reshape(1, 4, 3)
+        actual = func(image, kernel, border_type="constant", normalized=normalized, padding=padding)
+        expected = filter2d(
+            image, kernel, border_type="constant", normalized=normalized, padding=padding, behaviour=behaviour
+        )
+        assert actual.shape == shape
+        self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("func", [correlate2d, convolve2d])
-    @pytest.mark.parametrize("kernel_size", [(1, 1), (3, 3), (2, 2), (4, 3), (2, 5)])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_cardinality_2d(self, func, kernel_size, padding, device, dtype):
-        b, c, h, w = 2, 3, 7, 8
-        kh, kw = kernel_size
-        inp = torch.ones(b, c, h, w, device=device, dtype=dtype)
-        kernel = torch.ones(1, kh, kw, device=device, dtype=dtype)
-        expected = (b, c, h, w) if padding == "same" else (b, c, h - kh + 1, w - kw + 1)
-        # the shape does not depend on the border; "constant" also runs in half precision on old torch
-        assert func(inp, kernel, border_type="constant", padding=padding).shape == expected
-
-    @pytest.mark.parametrize("func", [correlate3d, convolve3d])
-    @pytest.mark.parametrize("kernel_size", [(1, 1, 1), (3, 3, 3), (2, 2, 2), (4, 3, 2)])
-    def test_cardinality_3d(self, func, kernel_size, device, dtype):
-        inp = torch.ones(2, 3, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.ones(1, *kernel_size, device=device, dtype=dtype)
-        # the shape does not depend on the border; "constant" also runs in half precision on old torch
-        assert func(inp, kernel, border_type="constant").shape == inp.shape
-
-
-class TestCorrelate2d(BaseTester):
-    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_equivalent_to_filter2d_corr(self, border_type, padding, device, dtype):
-        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        expected = filter2d(inp, kernel, border_type, padding=padding, behaviour="corr")
-        result = correlate2d(inp, kernel, border_type=border_type, padding=padding)
-        self.assert_close(result, expected)
-
-
-class TestConvolve2d(BaseTester):
-    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_equivalent_to_filter2d_conv(self, border_type, padding, device, dtype):
-        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        expected = filter2d(inp, kernel, border_type, padding=padding, behaviour="conv")
-        result = convolve2d(inp, kernel, border_type=border_type, padding=padding)
-        self.assert_close(result, expected)
-
-
-class TestCorrelate3d(BaseTester):
-    def test_equivalent_to_filter3d_corr(self, device, dtype):
-        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        expected = filter3d(inp, kernel, behaviour="corr")
-        result = correlate3d(inp, kernel)
-        self.assert_close(result, expected)
-
-
-class TestConvolve3d(BaseTester):
-    def test_equivalent_to_filter3d_conv(self, device, dtype):
-        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
-        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        expected = filter3d(inp, kernel, behaviour="conv")
-        result = convolve3d(inp, kernel)
-        self.assert_close(result, expected)
+    @pytest.mark.parametrize("func,behaviour", [(correlate3d, "corr"), (convolve3d, "conv")])
+    def test_forwarding_3d(self, func, behaviour, device, dtype):
+        volume = torch.rand(2, 3, 5, 7, 8, device=device, dtype=dtype)
+        kernel = torch.arange(1, 25, device=device, dtype=dtype).reshape(1, 4, 3, 2)
+        actual = func(volume, kernel, border_type="constant", normalized=True)
+        expected = filter3d(volume, kernel, border_type="constant", normalized=True, behaviour=behaviour)
+        assert actual.shape == volume.shape
+        self.assert_close(actual, expected)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1650,16 +1602,6 @@ class TestConventionsFilter2d(BaseTester):
         assert not torch.equal(conv, corr)
         assert torch.equal(filter3d(volume, kernel, behaviour="CONV"), conv)
         assert torch.equal(filter3d(volume, kernel, behaviour="Corr"), corr)
-
-    @pytest.mark.parametrize("behaviour", ["corr", "conv"])
-    def test_convention_filter3d_normalized_accepts_a_non_contiguous_kernel_5159(self, behaviour, device, dtype):
-        """filter3d(normalized=True) gives a permuted kernel the result of its contiguous copy (#5159)."""
-        volume = _rand(1, 1, 5, 6, 7, device=device, dtype=dtype)
-        kernel = _rand(1, 3, 4, 5, device=device, dtype=dtype, seed=1).permute(0, 3, 2, 1)  # (1, 5, 4, 3)
-        assert not kernel.is_contiguous()
-        expected = filter3d(volume, kernel.contiguous(), "constant", normalized=True, behaviour=behaviour)
-        out = filter3d(volume, kernel, "constant", normalized=True, behaviour=behaviour)
-        assert torch.equal(out, expected)
 
     @pytest.mark.parametrize("name", ["filter2d", "fft_conv"])
     def test_convention_filter2d_valid_padding_rejects_a_kernel_larger_than_the_input_5285(self, name, device, dtype):

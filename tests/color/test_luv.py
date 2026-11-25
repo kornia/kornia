@@ -115,6 +115,20 @@ class TestRgbToLuv(BaseTester):
         else:
             self.assert_close(data_out, data)
 
+    def test_black_under_float16_autocast(self, device, dtype):
+        """Black has zero lightness and chroma even if autocast lowers the XYZ matrix product."""
+        if device.type not in ("cpu", "cuda") or dtype != torch.float32:
+            pytest.skip("Test covers float32 inputs under CPU and CUDA float16 autocast.")
+        rgb = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype, requires_grad=True)
+
+        with torch.autocast(device.type, dtype=torch.float16):
+            luv = kornia.color.rgb_to_luv(rgb)
+        luv.sum().backward()
+
+        self.assert_close(luv, torch.zeros_like(luv))
+        assert rgb.grad is not None
+        assert torch.isfinite(rgb.grad).all()
+
     def test_gradcheck(self, device):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -129,7 +143,7 @@ class TestRgbToLuv(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToLuv().to(device, dtype)
         fcn = kornia.color.rgb_to_luv
         self.assert_close(ops(img), fcn(img))
@@ -245,21 +259,10 @@ class TestLuvToRgb(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.LuvToRgb().to(device, dtype)
         fcn = kornia.color.luv_to_rgb
         self.assert_close(ops(img), fcn(img))
-
-
-@pytest.mark.parametrize("function", [kornia.color.rgb_to_luv, kornia.color.luv_to_rgb])
-def test_luv_converters_float16_black_are_finite(function):
-    x = torch.zeros(3, 1, 1, dtype=torch.float16, requires_grad=True)
-
-    output = function(x)
-    output.sum().backward()
-
-    assert torch.isfinite(output).all()
-    assert torch.isfinite(x.grad).all()
 
 
 @pytest.mark.parametrize(

@@ -117,7 +117,7 @@ class TestSe2(BaseTester):
             Se2.random(batch_size=0)
         x = torch.rand(5, dtype=dtype, device=device)
         y = torch.rand(3, dtype=dtype, device=device)
-        with pytest.raises(BaseError):
+        with pytest.raises(BaseError, match=r"x and y must have the same shape, got \[5\] and \[3\]"):
             Se2.trans(x, y)
 
     def test_gradcheck(self, device):

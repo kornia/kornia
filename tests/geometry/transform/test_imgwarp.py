@@ -909,7 +909,7 @@ class TestWarpPerspective(BaseTester):
         traced = torch.jit.trace(warp, (image, matrix))
         expected = warp(image, matrix)
         assert expected.count_nonzero() > 0  # samples inside the image, not only padding
-        # 1e8 overflows nothing: the traced grid goes through transform_points, which leaves |w| <= 1e-8 undivided.
+        # The traced grid goes through transform_points, so it exercises direct division for every nonzero w.
         scales = [1.0, 1e8, 1e-15, -1e15] if dtype == torch.float32 else [1.0, 1e8, 1e-110, -1e110]
         batched_matrix = matrix * torch.tensor(scales, device=device, dtype=dtype).reshape(-1, 1, 1)
         actual = traced(image.expand(len(scales), -1, -1, -1), batched_matrix)
@@ -1299,6 +1299,71 @@ class TestFillValueChannels6021(BaseTester):
 
         assert out.shape == image.shape
         self.assert_close(out[..., :2], fill.expand(2, 3, 4, 3)[..., :2])
+
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("fill_kind", ["scalar", "per_channel", "per_batch", "per_pixel"])
+    def test_fill_matches_independent_channel_warps(self, op, mode, align_corners, fill_kind, device, dtype):
+        _skip_if_mps_lacks_grid_sample_backward(device)
+        image = torch.rand(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.tensor(
+            [[[1.0, 0.02, 0.3], [-0.03, 0.95, -0.2], [0.02, -0.01, 1.0]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1)
+        matrix[1, 0, 2] = -0.4
+        matrix[1, 1, 2] = 0.25
+        if op == "warp_affine":
+            matrix = matrix[:, :2].clone()
+        matrix.requires_grad_()
+        shape = {"scalar": (), "per_channel": (4,), "per_batch": (2, 1, 1, 1), "per_pixel": image.shape}[fill_kind]
+        fill = torch.rand(shape, device=device, dtype=dtype, requires_grad=True)
+        warp = getattr(kornia.geometry, op)
+
+        def apply(source, transform, value):
+            return warp(
+                source, transform, (3, 5), mode=mode, padding_mode="fill", align_corners=align_corners, fill_value=value
+            )
+
+        actual = apply(image, matrix, fill)
+        # Image channels are independent. Warping them separately also tests how shared fill and matrix
+        # derivatives accumulate across channels, without reproducing the mask implementation.
+        # Half warps compute in float32. Accumulate the reference derivatives there before rounding once:
+        # separate half leaves would round each channel's matrix derivative before adding the channels.
+        reference_dtype = torch.promote_types(dtype, torch.float32)
+        reference_image, reference_matrix, reference_fill = (
+            tensor.detach().to(reference_dtype).requires_grad_() for tensor in (image, matrix, fill)
+        )
+        expected_channels = []
+        for channel in range(image.shape[1]):
+            value = reference_fill
+            if fill_kind == "per_channel":
+                value = reference_fill[channel : channel + 1]
+            elif fill_kind == "per_pixel":
+                value = reference_fill[:, channel : channel + 1]
+            expected_channels.append(apply(reference_image[:, channel : channel + 1], reference_matrix, value))
+        expected = torch.cat(expected_channels, dim=1)
+        self.assert_close(actual, expected.to(dtype))
+        actual_grads = torch.autograd.grad(actual.sum(), (image, matrix, fill))
+        expected_grads = torch.autograd.grad(expected.sum(), (reference_image, reference_matrix, reference_fill))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad.to(dtype))
+
+    @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])
+    def test_fill_joint_gradcheck(self, op, device):
+        _skip_if_mps_lacks_grid_sample_backward(device)
+        image = torch.rand(1, 2, 2, 3, device=device, dtype=torch.float64)
+        matrix = torch.tensor(
+            [[[1.0, 0.02, 0.3], [-0.03, 0.95, -0.2], [0.02, -0.01, 1.0]]], device=device, dtype=torch.float64
+        )
+        if op == "warp_affine":
+            matrix = matrix[:, :2].clone()
+        fill = torch.tensor([0.2, 0.7], device=device, dtype=torch.float64)
+        warp = getattr(kornia.geometry, op)
+
+        def apply(source, transform, value):
+            return warp(source, transform, (2, 3), padding_mode="fill", fill_value=value)
+
+        self.gradcheck(apply, (image, matrix, fill))
 
     @pytest.mark.parametrize("shape", [(3, 1), (1, 2), (3, 3, 1, 1), (1, 1, 2, 2), (1, 2, 3, 1, 1)])
     @pytest.mark.parametrize("op", ["warp_affine", "warp_perspective"])

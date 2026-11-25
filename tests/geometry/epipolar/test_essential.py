@@ -20,6 +20,7 @@ import torch
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import BaseError
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.epipolar.essential import _refine_essential_lm
 
@@ -964,6 +965,20 @@ class TestMotionFromEssentialChooseSolution(BaseTester):
         assert R.shape == (1, 3, 3)
         assert t.shape == (1, 3, 1)
         assert X.shape == (1, 1, 3)
+
+    def test_exception(self, device, dtype):
+        E_mat = torch.rand(3, 3, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        x = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        with pytest.raises(
+            BaseError,
+            match=r"E_mat, K1 and K2 must have the same number of batch dimensions, got shapes \[3, 3\], \[1, 3, 3\]",
+        ):
+            epi.motion_from_essential_choose_solution(E_mat, K, K, x, x)
+
+        mask = torch.ones(1, 4, dtype=torch.bool, device=device)
+        with pytest.raises(BaseError, match=r"mask must have shape \[1, 5\], .* got \[1, 4\]"):
+            epi.motion_from_essential_choose_solution(E_mat[None], K, K, x, x, mask=mask)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 3), (2, 3), (2, 8), (3, 2)])
     def test_shape(self, batch_size, num_points, device, dtype):

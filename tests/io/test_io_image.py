@@ -293,6 +293,17 @@ class TestIndexedPng:
         assert out.shape == (4, 2, 3)
         assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
 
+    def test_rgba8_expands_palette_on_decode_device(self, tmp_path: Path) -> None:
+        """Palette expansion works even when factory calls default to another device."""
+        path = tmp_path / "indexed_trns.png"
+        write_indexed_png(path, PALETTE_INDICES, PALETTE, alpha=bytes([0, 128]))
+
+        with torch.device("meta"):
+            out = load_image(path, ImageLoadType.RGBA8, device="cpu")
+
+        assert out.device.type == "cpu"
+        assert out[3].tolist() == [[255, 128, 0], [255, 0, 128]]
+
     @pytest.mark.parametrize(
         "load_type",
         [ImageLoadType.GRAY8, ImageLoadType.RGB8, ImageLoadType.RGBA8, ImageLoadType.GRAY32, ImageLoadType.RGB32],

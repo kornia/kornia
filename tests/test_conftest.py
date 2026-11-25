@@ -318,9 +318,53 @@ class TestIntegrationLocalHalfPrecision:
             ]
         )
 
+    def test_only_cuda_device_assert_children_block_launches_6891(self, pytester, monkeypatch):
+        """A cuda_device_assert child runs with CUDA_LAUNCH_BLOCKING=1; a half-precision child keeps the parent's value.
+
+        Checks the environment rather than a device-side assert, so it does not depend on a GPU where the assert
+        surfaces at a later launch (#6891).
+        """
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        monkeypatch.setenv("CUDA_LAUNCH_BLOCKING", "0")
+        pytester.makepyfile(
+            test_launch_blocking="""
+            import os
+            import pytest
+
+            def child():
+                return os.environ.get("KORNIA_TEST_IN_SUBPROCESS") == "1"
+
+            @pytest.mark.cuda_device_assert
+            def test_marked(device_name, dtype_name):
+                assert child()
+                assert os.environ["CUDA_LAUNCH_BLOCKING"] == "1"
+
+            def test_unmarked(device_name, dtype_name):
+                assert child() is (dtype_name == "float16")
+                assert os.environ["CUDA_LAUNCH_BLOCKING"] == "0"
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            "--device=cuda", "--dtype=float32,float16", "--isolate-half-precision", "-v"
+        )
+        # The marked float16 case is deselected: on CUDA a marked test runs for float32 only.
+        result.assert_outcomes(passed=3, deselected=1)
+        result.stdout.fnmatch_lines(
+            [
+                "*test_marked?cuda-float32? PASSED*",
+                "*test_unmarked?cuda-float32? PASSED*",
+                "*test_unmarked?cuda-float16? PASSED*",
+            ],
+            consecutive=False,
+        )
+
     @pytest.mark.uses_accelerator
-    def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
+    def test_local_half_dtype_lifecycle_with_pytester(self, pytester, monkeypatch):
         """Integration test: verify real pytest execution with local half_dtype."""
+        # The children are top-level runs. A caller that sets KORNIA_TEST_IN_SUBPROCESS=1 for the whole session, as the
+        # one-process CUDA half-precision measurement does, would pass it on, and the first child would then act as an
+        # isolation subprocess and run the half-precision test instead of skipping it.
+        monkeypatch.delenv("KORNIA_TEST_IN_SUBPROCESS", raising=False)
         test_file = pytester.makepyfile(
             """
             import pytest
@@ -687,6 +731,7 @@ class TestCpuOnlyRunsHideCuda:
 
     def _run(self, pytester, monkeypatch, device: str, expected: str, preset: str | None = None):
         monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+        monkeypatch.delenv("KORNIA_TEST_IN_SUBPROCESS", raising=False)  # the child is a top-level run
         if preset is not None:
             monkeypatch.setenv("CUDA_VISIBLE_DEVICES", preset)
         monkeypatch.setenv("EXPECTED_VISIBLE_DEVICES", expected)
@@ -705,9 +750,11 @@ class TestCpuOnlyRunsHideCuda:
     def test_cpu_only_selection_hides_cuda(self, pytester, monkeypatch):
         self._run(pytester, monkeypatch, "cpu", "").assert_outcomes(passed=2)
 
-    @pytest.mark.parametrize("device", ["cuda", "cpu,cuda", "all"])
-    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device):
-        self._run(pytester, monkeypatch, device, "<unset>").assert_outcomes(passed=2)
+    # Not named "device": the harness's fixtures read a "device" argument as a torch.device, and inside an isolation
+    # subprocess cuda_device_assert_guard called .type on these strings.
+    @pytest.mark.parametrize("device_selection", ["cuda", "cpu,cuda", "all"])
+    def test_cuda_selection_keeps_cuda(self, pytester, monkeypatch, device_selection):
+        self._run(pytester, monkeypatch, device_selection, "<unset>").assert_outcomes(passed=2)
 
     def test_caller_visible_devices_are_kept(self, pytester, monkeypatch):
         self._run(pytester, monkeypatch, "cpu", "0", preset="0").assert_outcomes(passed=2)

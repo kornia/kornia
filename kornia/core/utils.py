@@ -567,6 +567,42 @@ def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
     return _normalize_to_float32_or_float64(input.dtype)
 
 
+def _reduce_tall_cuda_svd(input: torch.Tensor) -> bool:
+    """Return whether a tall CUDA matrix should be reduced by QR before its decomposition.
+
+    A trace can later run with gradients, so it must record an SVD with a backward.
+    Check graph capture before the sizes so export keeps the full dynamic point-count range.
+    """
+    # https://github.com/pytorch/pytorch/issues/200486 tracks the CUDA dispatch cliff. Batched float64
+    # SVD took 0.40 ms for (64, 32, 3) and 57.9 ms for (64, 33, 3) on an RTX 4090 with torch 2.15.
+    # Reassess when a supported PyTorch release closes that gap and preserves accuracy on nearly rank-deficient inputs.
+    return (
+        input.device.type == "cuda"
+        and not _is_tracing_or_exporting()
+        and input.shape[-2] > 32
+        and input.shape[-1] <= 32
+    )
+
+
+def _torch_svd_right(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return singular values and right vectors without CUDA's tall-matrix SVD path.
+
+    For a tall CUDA matrix with at most 32 columns, QR reduces the SVD to a small square matrix.
+    This preserves the singular values and right vectors without squaring the condition number.
+    R-only QR has no backward, so differentiable inputs retain the direct SVD. Callers supplying
+    detached inputs can attach their own derivatives to the returned vectors.
+    """
+    if _reduce_tall_cuda_svd(input) and not _needs_derivatives(input):
+        work = input.to(_svd_work_dtype(input))
+        _, r = torch.linalg.qr(work, mode="r")
+        # work already has the decomposition dtype; recasting a half input's
+        # float32 R through _torch_svd_cast would promote it a second time.
+        _, s, vh = torch.linalg.svd(r, full_matrices=False)
+        return s.to(input.dtype), vh.mH.to(input.dtype)
+    _, s, v = _torch_svd_cast(input, full_matrices=False)
+    return s, v
+
+
 def _needs_derivatives(input: torch.Tensor) -> bool:
     """Return whether autograd can ask for a derivative through ``input``.
 
@@ -1238,7 +1274,9 @@ def batched_forward(
     ``out = batched_forward(model, data, device, batch_size=128)`` moves ``model`` to ``device``, runs it on consecutive
     slices of ``batch_size`` samples along the first dimension of ``data``, each moved to ``device``, and concatenates
     the outputs along the first dimension. Use it when ``model(data)`` does not fit into device memory. ``model`` stays
-    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference.
+    on ``device`` afterwards, and gradients are tracked: call it under ``torch.no_grad()`` for inference. When another
+    micro-batch follows, its preceding output is copied before the next call, so a model may reuse its output buffer
+    without overwriting earlier results. The single-call path returns the model output without that extra copy.
 
     Args:
         model: a module that returns one tensor whose first dimension follows its input's.
@@ -1278,7 +1316,9 @@ def batched_forward(
                 continue
             out = model_dev(data[st:end].to(device), **kwargs)
             _check_batched_forward_output(out)
-            out_list.append(out)
+            # A later model call may overwrite this output binding. The final batch is copied by cat itself;
+            # earlier batches need their own storage, at the cost of one copy per retained micro-batch output.
+            out_list.append(out.clone() if end < B else out)
         out = torch.cat(out_list, 0)
         return out.to(data.device)
     out = model_dev(data.to(device), **kwargs)

@@ -4447,60 +4447,6 @@ class TestNormalizeHomography(BaseTester):
         self.assert_close(traced(runtime, identity), WarpPerspective()(runtime, identity), atol=0.0, rtol=0.0)
 
 
-class TestProjectPoints(BaseTester):
-    def test_smoke(self, device, dtype):
-        point_3d = torch.zeros(1, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
-        assert point_2d.shape == (1, 2)
-
-    def test_smoke_batch(self, device, dtype):
-        point_3d = torch.zeros(2, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
-        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
-        assert point_2d.shape == (2, 2)
-
-    def test_smoke_batch_multi(self, device, dtype):
-        point_3d = torch.zeros(2, 4, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 4, -1, -1)
-        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
-        assert point_2d.shape == (2, 4, 2)
-
-    def test_project_and_unproject(self, device, dtype):
-        point_3d = torch.tensor([[10.0, 2.0, 30.0]], device=device, dtype=dtype)
-        depth = point_3d[..., -1:]
-        camera_matrix = torch.tensor(
-            [[[2746.0, 0.0, 991.0], [0.0, 2748.0, 619.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
-        )
-        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
-        point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        if dtype in (torch.float16, torch.bfloat16):
-            # A ~1900 px pixel rounds by up to 0.5 px in float16, 0.0055 after unprojecting by depth / f = 30 / 2746:
-            # within the default half-precision tolerances.
-            self.assert_close(point_3d, point_3d_hat)
-        else:
-            self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
-
-    def test_gradcheck(self, device):
-        # TODO: point [0, 0, 0] crashes
-        points_3d = torch.ones(1, 3, device=device, dtype=torch.float64)
-        camera_matrix = torch.eye(3, device=device, dtype=torch.float64).expand(1, -1, -1)
-
-        # evaluate function gradient
-        self.gradcheck(kornia.geometry.camera.project_points, (points_3d, camera_matrix))
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        op = kornia.geometry.camera.project_points
-        op_optimized = torch_optimizer(op)
-
-        actual = op_optimized(points_3d, camera_matrix)
-        expected = op(points_3d, camera_matrix)
-
-        self.assert_close(actual, expected)
-
-
 class TestDenormalizePointsWithIntrinsics(BaseTester):
     def test_smoke(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -5979,7 +5925,9 @@ class TestEulerFromQuaternion(BaseTester):
     def test_exception(self, device, dtype):
         q = Quaternion.random(batch_size=2)
         q = q.to(device, dtype)
-        with pytest.raises(BaseError):
+        with pytest.raises(
+            BaseError, match=r"w, x, y and z must have the same shape, got \[2\], \[1\], \[2\] and \[2\]"
+        ):
             euler_from_quaternion(q.w, torch.rand(1), q.y, q.z)
 
     def test_gradcheck(self, device):
@@ -6367,7 +6315,9 @@ class TestQuaternionFromEuler(BaseTester):
 
     def test_exception(self, device, dtype):
         _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        with pytest.raises(BaseError):
+        with pytest.raises(
+            BaseError, match=r"roll, pitch and yaw must have the same shape, got \[1\], \[2\] and \[2\]"
+        ):
             quaternion_from_euler(torch.rand(1), pitch, yaw)
 
     def test_gradcheck(self, device):

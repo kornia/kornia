@@ -87,10 +87,11 @@ class ParametrizedLine(nn.Module):
           ``N`` points per line. ``(B, N, D)`` is not ``N`` points per line: it raises unless ``N`` is ``B`` or 1.
           With ``N = B``, line ``j`` meets ``point[:, j]``; with ``N = 1``, every line meets every point and the
           result is ``(B, B)``.
-        - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
-          the stored direction, and the plane's normal need not be unit. It takes a 3D line. A batch of ``B`` lines
-          meets one plane, a batch of ``B`` planes or a batch of one, and one unbatched line or a batch of one meets a
-          batch of planes of any size.
+        - :meth:`intersect` returns ``(lambda, point)``, where each step scales the full direction vector. For a
+          scalar step, reconstruct the point with ``origin + lambda * direction``. For any batched step, append
+          a coordinate axis with ``origin + lambda[..., None] * direction``. The plane's normal need not be unit.
+          It takes a 3D line. A batch of ``B`` lines meets one plane, a batch of ``B`` planes or a batch of one,
+          and one unbatched line or a batch of one meets a batch of planes of any size.
         - ``origin`` and ``direction`` are registered module state, so ``state_dict()`` and ``.to()`` include them.
           Outside graph capture, a floating-point tensor that takes no part in autograd (no ``grad_fn`` and
           ``requires_grad=False``) becomes an ``nn.Parameter``, so a line built from plain tensors, including the
@@ -114,6 +115,20 @@ class ParametrizedLine(nn.Module):
         tensor([6., 8.], grad_fn=<AddBackward0>)
         >>> line.distance(torch.tensor([[4.0, 3.0], [-3.0, -4.0]]))
         tensor([1.4000, 0.0000], grad_fn=<LinalgVectorNormBackward0>)
+
+        For one line and a two-axis grid of planes, the steps have the grid shape and the points
+        have an extra coordinate axis:
+
+        >>> from kornia.geometry.vector import Scalar, Vector3
+        >>> line = ParametrizedLine(torch.zeros(3), torch.tensor([0., 0., 2.]))
+        >>> heights = torch.tensor([[2., 4.], [6., 8.]])
+        >>> planes = Hyperplane(Vector3(torch.tensor([0., 0., 1.])), Scalar(-heights))
+        >>> steps, points = line.intersect(planes)
+        >>> steps.tolist()
+        [[1.0, 2.0], [3.0, 4.0]]
+        >>> tuple(points.shape)
+        (2, 2, 3)
+        >>> torch.testing.assert_close(points, line.origin + steps[..., None] * line.direction)
 
     """
 
@@ -272,12 +287,6 @@ class ParametrizedLine(nn.Module):
         d = point - self.origin
         return d - torch.sum(d * self.direction, dim=-1, keepdim=True) * self.direction
 
-    # TODO(edgar) implement the following:
-    # - intersection
-    # - intersection_parameter
-    # - intersection_point
-
-    # TODO: add tests, and possibly return a mask
     def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor]:
         """Return the intersection point between the line and a given plane.
 
@@ -292,9 +301,24 @@ class ParametrizedLine(nn.Module):
             the intersection ``origin + lambda * direction``, one per plane, of shape ``(..., 3)`` with the same batch.
 
         Note:
-            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
-            intersection; the function returns lambda ``0`` and the line origin as the point.
-            Within this fallback branch, lambda has zero derivatives and the point differentiates as the origin.
+            If ``|normal . direction| < eps``, the method treats the line as parallel and returns step ``0``
+            and the line origin. This fallback also applies to nonzero dot products below the threshold.
+            In the fallback branch, the step has zero derivatives and the point differentiates as the origin.
+            A zero step can also represent a valid intersection at the line origin. Check
+            ``|normal . direction| >= eps`` to tell whether the method computed an intersection or used the fallback.
+
+        Examples:
+            >>> from kornia.geometry.vector import Vector3
+            >>> normal = Vector3(torch.tensor([0., 0., 1.]))
+            >>> plane = Hyperplane.from_vector(normal, Vector3(torch.tensor([0., 0., 4.])))
+            >>> line = ParametrizedLine(torch.zeros(3), torch.tensor([0., 0., 2.]))
+            >>> step, point = line.intersect(plane)
+            >>> step.item(), point.tolist()
+            (2.0, [0.0, 0.0, 4.0])
+            >>> parallel = ParametrizedLine(torch.zeros(3), torch.tensor([1., 0., 0.]))
+            >>> step, point = parallel.intersect(plane)
+            >>> step.item(), point.tolist()
+            (0.0, [0.0, 0.0, 0.0])
 
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction)

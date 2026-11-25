@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from unittest import mock
+
 import pytest
 import torch
 
@@ -52,6 +54,23 @@ def _lovasz_hinge_reference(logits, labels):
 
 
 class TestLovaszHingeLoss(BaseTester):
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_sorted_targets_without_repeated_batch_indices(self, device, dtype, as_module):
+        """Sorting labels needs no pixel-sized repeated batch index."""
+        logits = torch.tensor(
+            [[[[0.3, -0.4, 0.9]]], [[[0.8, 0.1, -0.6]]]], device=device, dtype=dtype, requires_grad=True
+        )
+        labels = torch.tensor([[[1, 0, 0]], [[1, 1, 0]]], device=device)
+        criterion = kornia.losses.LovaszHingeLoss() if as_module else kornia.losses.lovasz_hinge_loss
+
+        with mock.patch.object(torch.Tensor, "repeat", side_effect=AssertionError("batch-index allocation")):
+            actual = criterion(logits, labels)
+
+        # Per-image weights are [1/2, 1/2, 0] and [1/2, 1/6, 1/3] in descending-error order.
+        self.assert_close(actual, torch.tensor(113 / 120, device=device, dtype=dtype))
+        expected_grad = torch.tensor([[[[-1 / 4, 0, 1 / 4]]], [[[-1 / 6, -1 / 4, 1 / 12]]]], device=device, dtype=dtype)
+        self.assert_close(torch.autograd.grad(actual, logits)[0], expected_grad)
+
     @pytest.mark.parametrize(("pred_batch", "target_batch"), [(1, 2), (2, 1), (2, 3), (3, 2)])
     @pytest.mark.parametrize("as_module", [False, True])
     def test_mismatched_batch(self, pred_batch, target_batch, as_module, device, dtype):

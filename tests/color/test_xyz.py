@@ -151,7 +151,7 @@ class TestRgbToXyz(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToXyz().to(device, dtype)
         fcn = kornia.color.rgb_to_xyz
         self.assert_close(ops(img), fcn(img))
@@ -273,7 +273,7 @@ class TestXyzToRgb(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.XyzToRgb().to(device, dtype)
         fcn = kornia.color.xyz_to_rgb
         self.assert_close(ops(img), fcn(img))

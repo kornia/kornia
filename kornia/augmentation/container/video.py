@@ -32,6 +32,7 @@ from kornia.augmentation.utils.helpers import (
     _video_keypoints,
 )
 from kornia.augmentation.utils.random import _with_generator
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -482,8 +483,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            # The tensor is read and returned as the legacy inclusive storage, as before #6710.
+            input = Boxes._from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)),
+                mode="vertices_plus",
+                inclusive=True,
             )
             input = super().transform_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
@@ -507,8 +511,11 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            # The tensor is read and returned as the legacy inclusive storage, as before #6710.
+            input = Boxes._from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)),
+                mode="vertices_plus",
+                inclusive=True,
             )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
@@ -605,4 +612,7 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
-        return self.transform_inputs(input, params, extra_args=extra_args)
+        output = self.transform_inputs(input, params, extra_args=extra_args)
+        if not is_exporting():
+            self._params = params
+        return output

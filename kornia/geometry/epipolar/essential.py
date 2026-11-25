@@ -30,6 +30,7 @@ from kornia.core.utils import (
     _right_singular_vector,
     _torch_svd_cast,
     _torch_svd_in_work_dtype,
+    _torch_svd_right,
 )
 from kornia.geometry.solvers.homogeneous import _null_space_householder
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
@@ -251,7 +252,7 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
         return _NullSpaceBasis.apply(design)[0]
     # every right singular vector has a gradient in torch.linalg.svd itself
     # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
-    _, _, V = _torch_svd_cast(design, full_matrices=False)
+    _, V = _torch_svd_right(design)
     return V[:, :, -4:]
 
 
@@ -990,11 +991,23 @@ def motion_from_essential_choose_solution(
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(x1, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(x2, ["*", "N", "2"])
-    KORNIA_CHECK(len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]))
+    KORNIA_CHECK(
+        len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]),
+        lambda: (
+            "E_mat, K1 and K2 must have the same number of batch dimensions, got shapes "
+            f"{list(E_mat.shape)}, {list(K1.shape)} and {list(K2.shape)}."
+        ),
+    )
 
     if mask is not None:
         KORNIA_CHECK_SHAPE(mask, ["*", "N"])
-        KORNIA_CHECK(mask.shape == x1.shape[:-1])
+        KORNIA_CHECK(
+            mask.shape == x1.shape[:-1],
+            lambda: (
+                f"mask must have shape {list(x1.shape[:-1])}, the shape of x1 without its last dimension, got "
+                f"{list(mask.shape)}."
+            ),
+        )
 
     unbatched = len(E_mat.shape) == 2
 

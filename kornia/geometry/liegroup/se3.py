@@ -592,8 +592,10 @@ class Se3(nn.Module):
             z: the z-axis translation.
 
         """
-        KORNIA_CHECK(x.shape == y.shape)
-        KORNIA_CHECK(y.shape == z.shape)
+        KORNIA_CHECK(
+            x.shape == y.shape == z.shape,
+            lambda: f"x, y and z must have the same shape, got {list(x.shape)}, {list(y.shape)} and {list(z.shape)}.",
+        )
         KORNIA_CHECK_SAME_DEVICES([x, y, z])
         batch_size = x.shape[0] if len(x.shape) > 0 else None
         rotation = So3.identity(batch_size, x.device, x.dtype)

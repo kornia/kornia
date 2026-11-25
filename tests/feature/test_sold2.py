@@ -30,6 +30,114 @@ from kornia.feature.sold2.structures import DetectorCfg, LineDetectorCfg
 from testing.base import BaseTester
 
 
+class TestLocalHeatmapRefinement(BaseTester):
+    @pytest.mark.applies_to(dtypes=("float32", "float64"), reason="Reference literals use unrounded input values")
+    def test_mixed_blocks_match_reference(self, device, dtype):
+        """Different block sizes preserve strict thresholds and the rounded-up top fraction."""
+        # Four overlapping blocks have rows 0:3/2:4 and cols 0:4/2:6. Three scales are
+        # (0.9 + 0.8 + 0.7) / 3, (0.7 + 0.6 + 0.6) / 3 and (0.65 + 0.55) / 2.
+        # The last block peaks exactly at the threshold and stays unrefined. Literals from
+        # the per-block loop at 5cc9c44ed with num_blocks=2, overlap=.5, ratio=.3, threshold=.125.
+        heatmap = torch.tensor(
+            [
+                [0.9, 0.2, 0.5, 0.7, 0.3, 0.6],
+                [0.4, 0.8, 0.1, 0.6, 0.35, 0.45],
+                [0.3, 0.55, 0.125, 0.0625, 0.125, 0.03125],
+                [0.65, 0.15, 0.125, 0.0, 0.0625, 0.125],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor(
+            [
+                [1.0, 0.25, 0.7072368264, 0.9375, 0.4736842215, 0.9473684430],
+                [0.5, 1.0, 0.1414473653, 0.8486841917, 0.5526315570, 0.7105262876],
+                [0.4375, 0.8020833135, 0.1717379391, 0.0858689696, 0.1611842215, 0.0402960554],
+                [1.0, 0.25, 0.1666666567, 0.0, 0.0625, 0.125],
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+        actual = LineSegmentDetectionModule().refine_heatmap_local(
+            heatmap, num_blocks=2, overlap_ratio=0.5, ratio=0.3, valid_thresh=0.125
+        )
+        self.assert_close(actual, expected)
+
+    @pytest.mark.applies_to(devices=("cpu", "cuda"), reason="Gradcheck uses float64")
+    def test_gradcheck_with_inactive_block(self, device):
+        """Inactive blocks pass values and finite gradients through unchanged."""
+        heatmap = torch.tensor(
+            [
+                [0.91, 0.23, 0.52, 0.74, 0.31, 0.63],
+                [0.42, 0.85, 0.17, 0.66, 0.37, 0.48],
+                [0.33, 0.57, 0.011, 0.023, 0.034, 0.041],
+                [0.69, 0.13, 0.017, 0.029, 0.037, 0.044],
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(
+            lambda x: LineSegmentDetectionModule().refine_heatmap_local(
+                x, num_blocks=2, overlap_ratio=0.5, ratio=0.3, valid_thresh=0.05
+            ),
+            (heatmap,),
+            eps=1e-3,
+            atol=1e-4,
+            rtol=1e-3,
+        )
+
+    def test_top_fraction_and_strict_threshold(self, device, dtype):
+        heatmap = torch.tensor([[0, 0.125, 0.25, 0.5], [0.75, 1, 0.0625, 0.125]], device=device, dtype=dtype)
+        actual = LineSegmentDetectionModule().refine_heatmap_local(heatmap, num_blocks=1, ratio=0.5, valid_thresh=0.125)
+        # Four pixels exceed 1/8, so the top half has mean (3/4 + 1) / 2 = 7/8.
+        expected = torch.tensor(
+            [[0, 1 / 7, 2 / 7, 4 / 7], [6 / 7, 1, 1 / 14, 1 / 7]], device=device, dtype=dtype
+        ).float()
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("shape", [(64, 80), (72, 64), (32, 64), (64, 32)])
+    @pytest.mark.parametrize("num_blocks, overlap_ratio", [(1, 0.5), (5, 0.0), (20, 0.5), (20, 0.75)])
+    @pytest.mark.parametrize("value", [0.0, 0.0005, 0.5])
+    def test_overlapping_blocks_and_inactive_blocks(self, device, dtype, shape, num_blocks, overlap_ratio, value):
+        heatmap = torch.full(shape, value, device=device, dtype=dtype)
+        actual = LineSegmentDetectionModule().refine_heatmap_local(
+            heatmap, num_blocks=num_blocks, overlap_ratio=overlap_ratio, valid_thresh=0.001
+        )
+        expected = torch.ones_like(actual) if value > 0.001 else heatmap.float()
+        self.assert_close(actual, expected)
+        self.assert_close(heatmap, torch.full_like(heatmap, value))
+
+    @pytest.mark.parametrize("kind", ["dense", "sparse", "empty"])
+    def test_does_not_read_block_scalars_or_compact_pixels(self, device, dtype, kind):
+        torch.manual_seed(42)
+        heatmap = torch.rand(64, 80).to(device=device, dtype=dtype)
+        if kind == "sparse":
+            heatmap = torch.where(heatmap > 0.99, heatmap, 0)
+        elif kind == "empty":
+            heatmap.zero_()
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profile:
+            LineSegmentDetectionModule().refine_heatmap_local(heatmap, num_blocks=20)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+        events = {event.key: event.count for event in profile.key_averages()}
+        assert events.get("aten::_local_scalar_dense", 0) == 0
+        assert events.get("aten::nonzero", 0) == 0
+        assert events.get("aten::sort", 0) == 0
+        if kind == "empty":
+            assert events.get("aten::topk", 0) == 0
+
+    def test_gradcheck(self, device):
+        heatmap = torch.tensor([[0.11, 0.23, 0.37, 0.49], [0.61, 0.73, 0.87, 0.97]], device=device, dtype=torch.float64)
+        # Local refinement aggregates in float32, so finite differences need a step above float32 rounding.
+        self.gradcheck(
+            lambda x: LineSegmentDetectionModule().refine_heatmap_local(x, num_blocks=1, valid_thresh=0.05),
+            (heatmap,),
+            eps=1e-3,
+            atol=1e-4,
+            rtol=1e-3,
+        )
+
+
 class TestSOLD2_detector(BaseTester):
     def test_has_no_descriptor_head(self, device, dtype):
         # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does

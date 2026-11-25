@@ -487,3 +487,32 @@ class TestCombineTensorPatches(BaseTester):
         assert list(function)[4:6] == ["allow_auto_unpadding", "unpadding"]
         module = inspect.signature(kornia.contrib.CombineTensorPatches).parameters
         assert list(module)[3:5] == ["unpadding", "allow_auto_unpadding"]
+
+    def test_overlapping_patch_values_and_gradients_across_batches_and_channels(self, device, dtype):
+        patches = torch.arange(144, device=device, dtype=dtype).reshape(2, 6, 3, 2, 2).requires_grad_()
+        actual = kornia.contrib.combine_tensor_patches(patches, (3, 4), 2, 1)
+        # Independently average the covering patch entries: the first channel's top overlap is (1 + 12) / 2,
+        # and its central overlap is (3 + 14 + 37 + 48) / 4. Channels add 4; the second batch adds 72.
+        expected = torch.tensor(
+            [[0.0, 6.5, 18.5, 25.0], [19.0, 25.5, 37.5, 44.0], [38.0, 44.5, 56.5, 63.0]],
+            device=device,
+            dtype=dtype,
+        )
+        offsets = torch.tensor([[0.0, 4.0, 8.0], [72.0, 76.0, 80.0]], device=device, dtype=dtype)
+        self.assert_close(actual, expected + offsets[..., None, None])
+        weights = torch.arange(1, 7, device=device, dtype=dtype).reshape(2, 3)
+        gradient = torch.autograd.grad((actual * weights[..., None, None]).sum(), patches)[0]
+        # Each covering patch receives 1 / coverage: the image's counts are [[1,2,2,1],[2,4,4,2],[1,2,2,1]].
+        expected_gradient = torch.tensor(
+            [
+                [[1.0, 0.5], [0.5, 0.25]],
+                [[0.5, 0.5], [0.25, 0.25]],
+                [[0.5, 1.0], [0.25, 0.5]],
+                [[0.5, 0.25], [1.0, 0.5]],
+                [[0.25, 0.25], [0.5, 0.5]],
+                [[0.25, 0.5], [0.5, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(gradient, expected_gradient[None, :, None] * weights[:, None, :, None, None])
