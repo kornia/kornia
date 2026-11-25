@@ -19,10 +19,10 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_ge, torch_version_lt
-from kornia.core.exceptions import AsyncCheckError, ShapeError
+from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ShapeError
 
-from testing.base import BaseTester, raises_value_check
+from testing.base import BaseTester
 
 
 class TestImageHistogram2d(BaseTester):
@@ -240,25 +240,36 @@ class TestImageHistogram2d(BaseTester):
         with pytest.raises(ValueError, match="automatically generated histogram range"):
             TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=0.5)
 
-    @pytest.mark.cuda_device_assert
-    def test_explicit_centers_without_spacing_need_a_bandwidth(self, device, dtype, capfd):
-        centers = torch.tensor([0.5, 0.5], device=device, dtype=dtype)
-        # From torch 2.13 the check on MPS is torch._assert_async: it raises RuntimeError at the next synchronization,
-        # so the block synchronizes itself or the error would surface inside an unrelated later test.
-        async_mps = device.type == "mps" and torch_version_ge(2, 13, 0)
-        with raises_value_check(
-            device, "bandwidth derived from the bin centers", capfd, RuntimeError if async_mps else AsyncCheckError
-        ):
-            TestImageHistogram2d.fcn(torch.ones(4, 4, device=device, dtype=dtype), centers=centers)
-            if async_mps:
-                torch.mps.synchronize()
+    def test_negative_one_bandwidth_with_explicit_centers_needs_a_range(self):
+        # The sentinel falls back to (max - min) / n_bins for centers without a spacing, so it still needs the range.
+        centers = torch.tensor([0.25, 0.75])
+        with pytest.raises(ValueError, match="automatically generated histogram range"):
+            TestImageHistogram2d.fcn(torch.ones(4, 4), min=0.0, max=0.0, bandwidth=-1.0, centers=centers)
 
-    def test_negative_one_bandwidth_with_explicit_centers_does_not_need_a_range(self, device, dtype):
-        # With explicit centers the automatic bandwidth is their spacing, so the sentinel does not use min and max.
+    def test_negative_one_bandwidth_uses_the_spacing_of_explicit_centers(self, device, dtype):
+        image = torch.tensor([[0.25, 0.5, 0.625]], device=device, dtype=dtype)
         centers = torch.tensor([0.25, 0.75], device=device, dtype=dtype)
-        image = torch.rand(4, 4, device=device, dtype=dtype)
-        hist, _ = TestImageHistogram2d.fcn(image, min=0.0, max=0.0, bandwidth=-1.0, centers=centers)
-        expected, _ = TestImageHistogram2d.fcn(image, bandwidth=0.5, centers=centers)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, bandwidth=-1.0, centers=centers)
+        # The spacing is 0.5: u to 0.25 is 0, 0.5, 0.75 and u to 0.75 is 1, 0.5, 0.25, so the weights are 1 - u.
+        expected = torch.tensor([1.75, 1.25], device=device, dtype=hist.dtype)
+        self.assert_close(hist, expected)
+
+    @pytest.mark.parametrize("centers", [[0.5], [0.5, 0.5], [0.5, 0.5, 0.5]])
+    def test_centers_without_spacing_keep_the_range_default(self, device, dtype, centers):
+        # One center, or centers that are all equal, have no spacing, so the bandwidth is (max - min) / n_bins = 0.5.
+        # With the triangular kernel the weights 1 - |x - 0.5| / 0.5 of the image below are 0, 0.5, 1 and 0.5.
+        image = torch.tensor([[0.0, 0.25, 0.5, 0.75]], device=device, dtype=dtype)
+        centers = torch.tensor(centers, device=device, dtype=dtype)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, centers=centers)
+        self.assert_close(hist, torch.full_like(hist, 2.0))
+
+    def test_non_finite_spacing_keeps_the_range_default(self, device):
+        # An infinite center gives no spacing, so the range default applies instead of an error. The gaussian weight of
+        # the finite center, with u = |x - 0.5| / 0.5 = 1, 0.5, 0 and 0.5, is exp(-0.5) + 2 * exp(-0.125) + 1.
+        image = torch.tensor([[0.0, 0.25, 0.5, 0.75]], device=device, dtype=torch.float32)
+        centers = torch.tensor([0.5, float("inf")], device=device, dtype=torch.float32)
+        hist, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, 2, centers=centers, kernel="gaussian")
+        expected = torch.tensor([0.606531 + 2 * 0.882497 + 1.0, 0.0], device=device, dtype=hist.dtype)
         self.assert_close(hist, expected)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
