@@ -10,7 +10,7 @@ body:
         Thanks for the suggestion! Please search existing issues first.
 
         Kornia is concentrating on its differentiable geometry / CV core and is not looking
-        for new features; new model integrations are frozen. Describe a concrete workflow
+        for new features in general; new model integrations are frozen. Describe a concrete workflow
         below. Please do not open a pull request, even a draft, until a maintainer has agreed
         to the scope on this issue; no reply means no agreement. See
         [CONTRIBUTING.md](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#practical-guidelines).
